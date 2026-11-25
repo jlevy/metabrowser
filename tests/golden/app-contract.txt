@@ -294,8 +294,7 @@ status: 200
   "full_name": "<SERVED>",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "served • Metabrowser",
-  "repository": null
+  "title": "served • Metabrowser"
 }
 --- stderr ---
 --- contract ---
@@ -309,8 +308,7 @@ status: 200
   "full_name": "~/served",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "served • Metabrowser",
-  "repository": null
+  "title": "served • Metabrowser"
 }
 --- stderr ---
 --- contract ---
@@ -324,8 +322,7 @@ status: 200
   "full_name": "<SERVED>",
   "kind": "git",
   "kind_label": "Local Git checkout",
-  "title": "checkout • Metabrowser",
-  "repository": "https://github.com/octo/demo"
+  "title": "checkout • Metabrowser"
 }
 --- stderr ---
 --- contract ---
@@ -366,8 +363,7 @@ status: 200
   "full_name": "<ROOT>/origin.git@main",
   "kind": "mirror",
   "kind_label": "Cloud mirror",
-  "title": "origin • Metabrowser",
-  "repository": null
+  "title": "origin • Metabrowser"
 }
 --- stderr ---
 --- contract ---

@@ -9,7 +9,7 @@ public nonisolated enum ProtectedLocations {
         "Library/Containers", "Library/Group Containers",
     ]
     /// Where other volumes mount. An internal second volume asks nothing but mounts here
-    /// too; treating it as protected only delays its server until its tab is selected.
+    /// too; treating it as protected only delays its server until its window is brought forward.
     static let mountPoints = ["/Volumes", "/Network"]
     /// Where the Data volume, home folders and `/Volumes` among its firmlinks, is mounted:
     /// every location above has a second spelling below it.

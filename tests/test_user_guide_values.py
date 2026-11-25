@@ -143,15 +143,15 @@ def stated_values() -> list[Stated]:
         APP_SOURCES / "Setup" / "MetabVersion.swift",
         r"static let minimumRelease = \[(\d+), (\d+), (\d+)\]",
     )
-    live_tabs = int(
+    live_pages = int(
         _swift(
-            APP_SOURCES / "Web" / "TabDiscardPolicy.swift",
-            r"static let defaultLiveBackgroundTabs = (\d+)",
+            APP_SOURCES / "Web" / "PageDiscardPolicy.swift",
+            r"static let defaultLiveBackgroundPages = (\d+)",
         ).group(1)
     )
     budget = _swift(
         APP_SOURCES / "Folders" / "SavedSession.swift",
-        r"static let standard = RestoreBudget\(windows: (\d+), tabs: (\d+)\)",
+        r"static let standard = RestoreBudget\(windows: (\d+), pages: (\d+)\)",
     )
     cap = f"{INVENTORY_MAX_FILES:,}"
     return [
@@ -407,14 +407,14 @@ def stated_values() -> list[Stated]:
         ),
         Stated(
             "docs/macos-app.md",
-            "the live background tabs",
-            r"and so do the (\w+)\s+background tabs shown most recently",
-            (_NUMBER_WORDS.get(live_tabs, str(live_tabs)),),
+            "the live background folders",
+            r"and so do the (\w+)\s+background folders shown most recently",
+            (_NUMBER_WORDS.get(live_pages, str(live_pages)),),
         ),
         Stated(
             "docs/macos-app.md",
             "the restore budget",
-            r"rebuilds at most the front (\d+) windows and (\d+) tabs",
+            r"rebuilds at most the front (\d+) windows and (\d+)\s+pages",
             budget.groups(),
         ),
     ]

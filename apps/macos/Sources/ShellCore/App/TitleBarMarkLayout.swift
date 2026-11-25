@@ -2,8 +2,7 @@ import CoreGraphics
 
 /// Where the app icon's mark sits in the title bar's trailing accessory, which links to
 /// the project on GitHub. AppKit places a trailing accessory flush with the window's
-/// trailing edge and as tall as the title bar, with or without a tab bar below it
-/// (measured on macOS 26.5).
+/// trailing edge and as tall as the title bar (measured on macOS 26.5).
 ///
 /// The mark is 13 points tall and centered in the title bar's height, as the window
 /// buttons are. Its ink ends about 14 points before the window's trailing edge, and a

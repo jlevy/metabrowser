@@ -175,7 +175,7 @@ public nonisolated struct WebViewPolicy: Equatable, Sendable {
 /// (`unsentTextProbe`), the web view stays.
 public nonisolated struct WebPaneState: Equatable, Sendable {
     /// How long a closed popover's pane keeps its web view, and with it a WebContent process of its
-    /// own, which `TabDiscardPolicy` does not count. A web view holding text the user has not
+    /// own, which `PageDiscardPolicy` does not count. A web view holding text the user has not
     /// sent (`unsentTextProbe`) stays for another `keptAfterClosing`, as often as it still
     /// does, so time alone does not bound these processes: there is at most one per live
     /// folder page, since a page the policy discards, or that closes, lets its pane's web view
@@ -188,7 +188,7 @@ public nonisolated struct WebPaneState: Equatable, Sendable {
     /// 3 views:
     ///
     /// - Each view is one WebContent process of 189 to 193 MB, 8 s after loading: more than
-    ///   a folder's page (`TabDiscardPolicy.defaultLiveBackgroundTabs`).
+    ///   a folder's page (`PageDiscardPolicy.defaultLiveBackgroundPages`).
     /// - A fresh view loading the page again, to `didFinish`: 376 to 896 ms in 5 loads; the
     ///   first load of the run took 2.7 s. That is the cost of reopening after this time.
     /// - A released view's process was still there, at the same size, 10 s after release,

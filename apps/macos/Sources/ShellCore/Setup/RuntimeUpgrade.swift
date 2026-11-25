@@ -6,7 +6,7 @@
 public nonisolated enum RuntimeUpgrade {
     /// The indices of `started` whose servers started from `current`'s executable at
     /// another version. Each entry is the runtime a folder's server last started from,
-    /// nil for one that never started, such as a restored folder waiting for its tab,
+    /// nil for one that never started, such as a restored folder waiting to be brought forward,
     /// which is never outdated. With no accepted runtime nothing is. A server started
     /// from another `metab` is not outdated by this one; Restart Server moves it over. A
     /// checkout's description after the version names its working tree, which changes
