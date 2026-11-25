@@ -13,8 +13,10 @@ process no longer holds it in memory. Each pair names the store that computed it
 reader whose records named it, and is admitted only for that store and, once a reader is
 observed, that reader.
 
-Admission reads it with :func:`retained_stack_pair`, which fails closed: a file it cannot
-read now admits nothing and says so, and a malformed one retains nothing. The ``stack``
+Admission reads it with :func:`retained_stack_pair`, and the ``stack`` route's ``since``,
+which says what moved since a drawn pair, with :func:`retained_stack_digest`. Both fail
+closed: a file they cannot read now admits nothing and says so, and a malformed one retains
+nothing. The ``stack``
 route writes it when it answers a pair the file does not end with, by atomic replacement
 under the source's alias lock, as every writer of the ``pulls`` directory does, so two
 writers lose no pair and a cache clear removes the file whole.
@@ -27,6 +29,7 @@ import logging
 import os
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal
 
@@ -195,6 +198,33 @@ def retained_stack_pair(
     this store and, when *reader* is given, that reader; ``unknown`` when the file is there
     but cannot be read now. Blocking and bounded."""
 
+    return _retained(
+        published,
+        number,
+        reader,
+        lambda entry: (
+            (entry.base, entry.head) == (base, head) and (digest is None or entry.digest == digest)
+        ),
+    )
+
+
+def retained_stack_digest(
+    published: PublishedSource, number: int, reader: str, digest: str
+) -> StackPair | Literal["unknown"] | None:
+    """The retained pair of stack *number* whose members' digest is *digest*, for this store
+    and reader: the comparison a page drew, which the ``stack`` route's ``since`` names to
+    say what moved since. ``unknown`` when the file is there but cannot be read now.
+    Blocking and bounded."""
+
+    return _retained(published, number, reader, lambda entry: entry.digest == digest)
+
+
+def _retained(
+    published: PublishedSource,
+    number: int,
+    reader: str | None,
+    matches: Callable[[RetainedStackPair], bool],
+) -> StackPair | Literal["unknown"] | None:
     from metabrowser.builtin_plugins.github.pull_stack import StackPair
 
     try:
@@ -207,8 +237,7 @@ def retained_stack_pair(
         if (
             entry.store == published.store_id
             and (reader is None or entry.reader == reader)
-            and (entry.base, entry.head) == (base, head)
-            and (digest is None or entry.digest == digest)
+            and matches(entry)
             and len(entry.members) == len(entry.in_top)
             and entry.members
         ):
@@ -222,5 +251,6 @@ __all__ = [
     "MAX_RETAINED_STACK_PAIRS",
     "RetainedStackPair",
     "retain_stack_pair",
+    "retained_stack_digest",
     "retained_stack_pair",
 ]

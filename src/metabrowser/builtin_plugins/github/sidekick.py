@@ -988,12 +988,14 @@ async def _stack_sources(request: Request) -> tuple[Any, Any, str | None]:
 
 
 async def stack_handler(request: Request) -> Response:
-    """``GET /api/plugin/github/stack?number=<stack>`` — a native stack's page.
+    """``GET /api/plugin/github/stack?number=<stack>[&since=<key>]`` — a native stack's page.
 
     Its members, its combined comparison and that comparison's routes, the members the top
     lacks, the members still pending and which of them a refresh is fetching now, the
-    totals, and each file's layers (:mod:`.pull_stack`). No GitHub call and no fetch; the
-    first read after a member moves lists the comparison in the store.
+    totals, and each file's layers (:mod:`.pull_stack`). ``since``, the key of a comparison
+    this route answered before, adds how each member's head moved from it (``moved``). No
+    GitHub call and no fetch; the first read after a member moves lists the comparison in
+    the store.
     """
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
@@ -1002,12 +1004,15 @@ async def stack_handler(request: Request) -> Response:
     )
     from metabrowser.builtin_plugins.github.pull_stack import envelope_etag, stack_envelope
 
-    if set(request.query_params) != {"number"}:
-        return _invalid_request('a stack names itself by "number" alone')
+    if not {"number"} <= set(request.query_params) <= {"number", "since"}:
+        return _invalid_request('a stack names itself by "number", and "since" alone besides')
     try:
         number = requested_number(request.query_params)
     except PullRequestError:
         return _invalid_request('"number" is a native stack number')
+    since = request.query_params.get("since")
+    if since is not None and re.fullmatch(r"[0-9a-f]{32}", since) is None:
+        return _invalid_request('"since" is a stack comparison\'s key')
     repository, published, reader = await _stack_sources(request)
     host = pull_host(request.app)
     answer = await unless_disconnected(
@@ -1018,6 +1023,7 @@ async def stack_handler(request: Request) -> Response:
             number,
             reader,
             host.running if host is not None else lambda _number: False,
+            since,
         ),
     )
     if answer is None:

@@ -41,7 +41,8 @@
     "files": [],
     "guide": null,
     "github_url": "https://github.com/octo/demo/pull/10",
-    "probe": null
+    "probe": null,
+    "moved": null
   },
   "current": {
     "state": "current",
@@ -112,7 +113,8 @@
       "number": 10,
       "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
       "every_s": 5.0
-    }
+    },
+    "moved": null
   },
   "lacking": {
     "state": "current",
@@ -196,7 +198,8 @@
       "number": 10,
       "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
       "every_s": 5.0
-    }
+    },
+    "moved": null
   },
   "not_linear": {
     "state": "absent",
@@ -237,6 +240,219 @@
     "files": [],
     "guide": null,
     "github_url": null,
-    "probe": null
+    "probe": null,
+    "moved": null
+  },
+  "left": {
+    "state": "current",
+    "reason": null,
+    "number": 70,
+    "base_ref": "topic",
+    "head_ref": "wip",
+    "open": true,
+    "members": [
+      {
+        "number": 10,
+        "place": 1,
+        "title": "WIP: draft the next page",
+        "state": "draft",
+        "base": "<topic>",
+        "head": "<draft_head>",
+        "in_top": true,
+        "pending": false,
+        "fetching": false
+      }
+    ],
+    "pending": [],
+    "lacking": [],
+    "comparison": {
+      "left": "<topic>",
+      "right": "<draft_head>",
+      "key": "e61d32617b4ee2599eb969c3a0d201b0",
+      "route": "/api/plugin/github/stack-comparison?number=70&left=<topic>&right=<draft_head>&base_policy=direct&key=e61d32617b4ee2599eb969c3a0d201b0&build=<BUILD>&store=<STORE>",
+      "image_route": "/api/plugin/github/pull-image?stack=70&left=<topic>&right=<draft_head>&store=<STORE>",
+      "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=70&left=<topic>&right=<draft_head>&store=<STORE>"
+    },
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false,
+    "files": [
+      {
+        "path": "docs/draft.md",
+        "layers": [
+          {
+            "number": 10,
+            "place": 1,
+            "path": "docs/draft.md"
+          }
+        ]
+      }
+    ],
+    "guide": {
+      "number": 10,
+      "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+    },
+    "github_url": "https://github.com/octo/demo/pull/10",
+    "probe": {
+      "number": 10,
+      "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
+      "every_s": 5.0
+    },
+    "moved": {
+      "since": "ebfe45cd812c6d00f8d4a921576b31d7",
+      "members": []
+    }
+  },
+  "rewritten": {
+    "state": "current",
+    "reason": null,
+    "number": 74,
+    "base_ref": "topic",
+    "head_ref": "count-to-two",
+    "open": true,
+    "members": [
+      {
+        "number": 7,
+        "place": 1,
+        "title": "Count to two in the app",
+        "state": "open",
+        "base": "<base>",
+        "head": "<fork_earlier>",
+        "in_top": true,
+        "pending": false,
+        "fetching": false
+      }
+    ],
+    "pending": [],
+    "lacking": [],
+    "comparison": {
+      "left": "<base>",
+      "right": "<fork_earlier>",
+      "key": "73c1f9a36a46947990971c95114eac2a",
+      "route": "/api/plugin/github/stack-comparison?number=74&left=<base>&right=<fork_earlier>&base_policy=direct&key=73c1f9a36a46947990971c95114eac2a&build=<BUILD>&store=<STORE>",
+      "image_route": "/api/plugin/github/pull-image?stack=74&left=<base>&right=<fork_earlier>&store=<STORE>",
+      "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=74&left=<base>&right=<fork_earlier>&store=<STORE>"
+    },
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false,
+    "files": [
+      {
+        "path": "src/app.txt",
+        "layers": [
+          {
+            "number": 7,
+            "place": 1,
+            "path": "src/app.txt"
+          }
+        ]
+      }
+    ],
+    "guide": {
+      "number": 7,
+      "revision": "a908ac4efc1ac7242364966202d8587c32c72c0e68c1f651913d2d6c5f74357c"
+    },
+    "github_url": "https://github.com/octo/demo/pull/7",
+    "probe": {
+      "number": 7,
+      "held": "a908ac4efc1ac7242364966202d8587c32c72c0e68c1f651913d2d6c5f74357c",
+      "every_s": 5.0
+    },
+    "moved": {
+      "since": "8a0199690873e1666b6e4c3dc484f79c",
+      "members": [
+        {
+          "number": 7,
+          "commits": null
+        }
+      ]
+    }
+  },
+  "grown": {
+    "state": "current",
+    "reason": null,
+    "number": 74,
+    "base_ref": "topic",
+    "head_ref": "count-to-two",
+    "open": true,
+    "members": [
+      {
+        "number": 7,
+        "place": 1,
+        "title": "Count to two in the app",
+        "state": "open",
+        "base": "<base>",
+        "head": "<fork_head>",
+        "in_top": true,
+        "pending": false,
+        "fetching": false
+      }
+    ],
+    "pending": [],
+    "lacking": [],
+    "comparison": {
+      "left": "<base>",
+      "right": "<fork_head>",
+      "key": "8a0199690873e1666b6e4c3dc484f79c",
+      "route": "/api/plugin/github/stack-comparison?number=74&left=<base>&right=<fork_head>&base_policy=direct&key=8a0199690873e1666b6e4c3dc484f79c&build=<BUILD>&store=<STORE>",
+      "image_route": "/api/plugin/github/pull-image?stack=74&left=<base>&right=<fork_head>&store=<STORE>",
+      "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=74&left=<base>&right=<fork_head>&store=<STORE>"
+    },
+    "totals": {
+      "files": 2,
+      "additions": 2,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false,
+    "files": [
+      {
+        "path": "docs/new.md",
+        "layers": [
+          {
+            "number": 7,
+            "place": 1,
+            "path": "docs/new.md"
+          }
+        ]
+      },
+      {
+        "path": "src/app.txt",
+        "layers": [
+          {
+            "number": 7,
+            "place": 1,
+            "path": "src/app.txt"
+          }
+        ]
+      }
+    ],
+    "guide": {
+      "number": 7,
+      "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    },
+    "github_url": "https://github.com/octo/demo/pull/7",
+    "probe": {
+      "number": 7,
+      "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+      "every_s": 5.0
+    },
+    "moved": {
+      "since": "73c1f9a36a46947990971c95114eac2a",
+      "members": [
+        {
+          "number": 7,
+          "commits": 1
+        }
+      ]
+    }
   }
 }

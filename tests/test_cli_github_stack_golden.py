@@ -29,6 +29,12 @@ guide reads ready, and it is left out of 10's rendered description; 8's, pinned 
 head, is below 10 there and is 73's guide, out of date, since 73's top is 9. The guide's
 answers, each under the step of the stack's story it is read at, are
 ``cli-github-stack-guide.txt``, so each transcript stays inside the review budget.
+
+What a page sees after its stack moves is ``cli-github-stack-moves.txt``: the comparison it
+drew keeps answering, and asked with ``since``, that comparison's key, the stack route says
+how each member's head moved from it (``moved``), which the page's notice of a new comparison
+says (docs/reviewing-pull-requests.md, "A Stack's Guide"). 70 loses 8, and then 74's one
+member, 7, is rewritten to its earlier commit and gains a commit again.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -51,10 +58,13 @@ from tests.github_pull_fixture import (
     FETCHED_AT,
     FIRST_CLONE_GH_CALLS,
     Origin,
+    git_env,
+    graph_core_entry,
     in_a_stable_order,
     install_fake_gh,
     logged_gh_calls,
     ok,
+    page,
     scenario,
 )
 from tests.golden_harness import (
@@ -144,6 +154,9 @@ def _paths(document: dict[str, Any]) -> list[str]:
     ]
 
 
+# The story is 63 `metab` runs, each a process of its own: measured 2026-11-25, the test took
+# 64.8 s at a load average near 240, past the suite's 60 s default.
+@pytest.mark.timeout(150)
 def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin) -> None:
     home = isolate_cli(tmp_path, monkeypatch).home
     local = pull_origin.url
@@ -178,12 +191,22 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     for key, value in install_fake_gh(tmp_path, answers).items():
         monkeypatch.setenv(key, value)
     labels = Labels()
-    for name in ("base", "topic", "merged_head", "draft_head", "fork_head", "closed_head"):
+    for name in (
+        "base",
+        "topic",
+        "merged_head",
+        "draft_head",
+        "fork_earlier",
+        "fork_head",
+        "closed_head",
+    ):
         labels.add(pull_origin[name], f"<{name}>")
     blocks: list[str] = []
     # The stack's guide (mb-ri96) has a transcript of its own, cli-github-stack-guide.txt,
     # which these collect, so each stays inside the review budget (devtools/check_goldens.py).
     guide_blocks: list[str] = []
+    # What moved since a drawn comparison, `since`'s answers, cli-github-stack-moves.txt.
+    moves_blocks: list[str] = []
     into = [blocks]
 
     def run(*args: str, gh_free: bool = True) -> Any:
@@ -210,6 +233,16 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     def read_guide(heading: str, route: str) -> Any:
         """Read *route*, a guide's, into the guide's transcript under *heading*."""
         return in_guide(heading, "--api", route)
+
+    def read_moves(heading: str, route: str) -> Any:
+        """Read *route* into the transcript of `since`'s answers under *heading*."""
+        if heading:
+            moves_blocks.append(heading)
+        into[0] = moves_blocks
+        try:
+            return run(CANONICAL, "--api", route)
+        finally:
+            into[0] = blocks
 
     def stack(number: int) -> dict[str, Any]:
         return api(f"{ROUTE}?number={number}").payload()
@@ -448,10 +481,14 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "kind: pull-stack" in file_shown.stdout
     assert "layers=2/2:#10" in file_shown.stdout
 
-    blocks.append(
+    # The stack moves, into the transcript of what a page sees after a move.
+    into[0] = moves_blocks
+    moves_blocks.append(
         "## The stack moves: 70 is now 10 alone. A page still draws the comparison it was"
         " given, so that comparison keeps answering and its rendered documents keep being"
-        " admitted, while an address the route never gave is still refused.\n"
+        " admitted, while an address the route never gave is still refused. Asked `since` that"
+        " comparison, the answer's `moved` names no member: 8's going is in the two answers'"
+        " members, and 10, which stayed, did not move.\n"
     )
     answers["api"][STACKS] = ok(
         STACKS,
@@ -467,10 +504,11 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         str(request),
         gh_free=False,
     )
-    moved_on = stack(70)
+    moved_on = api(f"{ROUTE}?number=70&since={comparison['key']}").payload()
     assert moved_on["state"] == "current"
     assert [member["number"] for member in moved_on["members"]] == [10]
     assert moved_on["comparison"]["key"] != comparison["key"]
+    assert moved_on["moved"] == {"since": comparison["key"], "members": []}
     kept = api(comparison["route"])
     assert kept.exit_code == 0, kept.stderr
     assert _paths(kept.payload()) == ["docs/draft.md"]
@@ -479,6 +517,7 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "status: 410" not in kept_rendered.stdout
     never = api(comparison["route"].replace(comparison["key"], "0" * 32))
     assert "status: 410" in never.stdout
+    into[0] = blocks
     # The guide follows the comparison the page draws, as the Diff summary, Docs, and Changes
     # do: at the current pair, 10 alone, its pins are behind; at the pair the page still
     # draws, it reads as it did, until the reader takes the new comparison.
@@ -563,9 +602,70 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert (refused_twice["state"], refused_twice["carrier"]) == ("invalid", 7)
     assert refused_twice["message"] == "Use one stack-review block in the pull request description."
 
+    # `since`: how a member's head moved since a comparison a page drew.
+    seven = "repos/octo/demo/pulls/7"
+
+    def move_seven(head: str) -> None:
+        """Move 7's head to *head*, at the stand-in and in GitHub's answers, and read 7 again
+        as the reader's own open of it."""
+        subprocess.run(
+            ["git", "--git-dir", str(pull_origin.path), "update-ref", "refs/pull/7/head", head],
+            check=True,
+            capture_output=True,
+            env=git_env(tmp_path),
+        )
+        body = {**pulls[seven]["body"], "head": {**pulls[seven]["body"]["head"], "sha": head}}
+        pulls[seven] = ok(seven, body)
+        pulls["graphql:core:7"] = graph_core_entry(body)
+        for part in ("check-runs", "status"):
+            listed = page(f"repos/octo/demo/commits/{head}/{part}")
+            held = page(f"repos/octo/demo/commits/{pull_origin['fork_head']}/{part}")
+            pulls[listed] = ok(listed, pulls[held]["body"])
+        install_fake_gh(tmp_path, answers)
+        ask.write_text('{"number": 7, "retry": true}\n')
+        reread = run_metab((CANONICAL, "--api", REFRESH, "--data", str(ask)))
+        assert '"refresh": "started"' in reread.stdout, reread.stderr
+        # The read asked GitHub, as the transcripts above show a page's own ask does.
+        assert logged_gh_calls(tmp_path)
+
+    drawn_74 = read_moves("## 74 is 7 alone, drawn at 7's head.\n", f"{ROUTE}?number=74").payload()
+    assert drawn_74["state"] == "current" and drawn_74["moved"] is None
+    move_seven(pull_origin["fork_earlier"])
+    rewritten = read_moves(
+        "## 7's branch is rewritten to its earlier commit, which lacks the head the page drew:"
+        " 7 moved, and no count says what is new.\n",
+        f"{ROUTE}?number=74&since={drawn_74['comparison']['key']}",
+    ).payload()
+    assert rewritten["moved"] == {
+        "since": drawn_74["comparison"]["key"],
+        "members": [{"number": 7, "commits": None}],
+    }
+    move_seven(pull_origin["fork_head"])
+    grown = read_moves(
+        "## 7 gains a commit on top of the earlier one, so asked `since` the comparison a page"
+        " drew there, 7 has one new commit.\n",
+        f"{ROUTE}?number=74&since={rewritten['comparison']['key']}",
+    ).payload()
+    assert grown["moved"] == {
+        "since": rewritten["comparison"]["key"],
+        "members": [{"number": 7, "commits": 1}],
+    }
+    assert grown["comparison"]["key"] == drawn_74["comparison"]["key"]
+    same = read_moves(
+        "## `since` the comparison it answers names no move, and nor does a key the route"
+        " never gave; one that is not a key is refused.\n",
+        f"{ROUTE}?number=74&since={grown['comparison']['key']}",
+    ).payload()
+    assert same["moved"] is None
+    unknown = read_moves("", f"{ROUTE}?number=74&since={'0' * 32}")
+    assert unknown.payload()["moved"] is None
+    malformed = read_moves("", f"{ROUTE}?number=74&since=main")
+    assert "status: 400" in malformed.stdout
+
     for name, written in (
         ("cli-github-stack.txt", blocks),
         ("cli-github-stack-guide.txt", guide_blocks),
+        ("cli-github-stack-moves.txt", moves_blocks),
     ):
         rendered_text = _scoped("".join(written))
         # A rendered document's anchors are named by its sandbox-derived namespace.
@@ -576,7 +676,15 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         assert str(tmp_path) not in rendered_text and "file://" not in rendered_text
         check_golden(name, rendered_text)
     # The answers tests/dom/github-stack-page-session.js replays, as the route gave them.
-    answers = {"pending": pending, "current": current, "lacking": lacking, "not_linear": linear}
+    answers = {
+        "pending": pending,
+        "current": current,
+        "lacking": lacking,
+        "not_linear": linear,
+        "left": moved_on,
+        "rewritten": rewritten,
+        "grown": grown,
+    }
     check_recording(
         "github-stack-responses.json",
         json.loads(labels.apply(_scoped(json.dumps(answers)))),

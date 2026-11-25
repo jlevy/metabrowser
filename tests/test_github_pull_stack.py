@@ -21,6 +21,7 @@ from metabrowser.builtin_plugins.github import pull_stack, pull_stack_retained
 from metabrowser.builtin_plugins.github.pull_stack import StackPair, stack_digest, stack_scope
 from metabrowser.builtin_plugins.github.pull_stack_retained import (
     MAX_RETAINED_STACK_PAIRS,
+    retained_stack_digest,
     retained_stack_pair,
 )
 from metabrowser.builtin_plugins.github.pull_stacks import NativeStack
@@ -210,6 +211,10 @@ def test_a_drawn_stack_pair_stays_admitted_for_its_store_and_reader(tmp_path: Pa
     assert retained_stack_pair(published, 7, "gh:bob", A, C, None) is None
     assert retained_stack_pair(_published(tmp_path, "store-2"), 7, None, A, C, None) is None
     assert retained_stack_pair(published, 8, None, A, C, None) is None
+    # The stack route's ``since`` finds a drawn pair by its digest alone, for its reader.
+    assert retained_stack_digest(published, 7, "gh:alice", first.digest) == first
+    assert retained_stack_digest(published, 7, "gh:bob", first.digest) is None
+    assert retained_stack_digest(published, 7, "gh:alice", "0" * 32) is None
 
 
 def test_a_stack_keeps_its_last_eight_pairs_and_one_reader(tmp_path: Path) -> None:
