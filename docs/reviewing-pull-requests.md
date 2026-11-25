@@ -366,8 +366,11 @@ Changes are. While a layer is being fetched, or the stack cannot be shown as one
 comparison, the guide on screen stays, and a step you have not read yet says why in its
 place; when the stack moves, the page offers its new comparison, and the guide is read
 again there, out of date where a layer moved past its pins, when you take it.
-The same answer is the `guided-review` route’s, by stack, at the current comparison or
-at one the stack’s page named, by the `left`, `right`, and `key` of its `comparison`:
+Until you take it, a step written for the new comparison, as one is once the guide’s
+layer moved and its author pinned it again, says the stack has moved, and the guide’s
+steps stay. The same answer is the `guided-review` route’s, by stack, at the current
+comparison or at one the stack’s page named, by the `left`, `right`, and `key` of its
+`comparison`:
 
 ```shell
 metab <pull request URL> --api '/api/plugin/github/guided-review?stack=<n>'

@@ -1231,6 +1231,10 @@ member’s own guide current.
   and keeps (`retained_stack_pair`); one it never gave is `stack_moved`, and kept pairs
   that cannot be read now are `stack_unavailable` with `snapshot_unavailable`. Without
   them the route reads at the current pair.
+  A kept pair the guide’s pins are past, the current pair’s or a head after the kept
+  one, is `stack_moved` too (`_pinned_past`): the carrier moved and its author pinned
+  the guide again, so it was written for a later comparison, and read at the kept pair
+  it would be reported rewritten.
   The guide’s pins are the stack’s base and top head; its `{path}` references read that
   pair’s kept manifest (`combined` in `pull_stack.py`), each step’s address is the file
   in the stack page’s Changes, and `_staleness` compares the pins with that pair, a
@@ -1247,8 +1251,12 @@ member’s own guide current.
   shown, as the drawn comparison does (`guideShown`), and a step read then says so in
   its place, under the guide’s steps.
   A new revision of the carrier’s record is read in place while the comparison drawn is
-  the current one. A whole document a step cites is drawn from the comparison the page
-  drew while that is the one the step was read at.
+  the current one. While it is not, the navigation is held at the revision read there
+  (`behind` in `createGuideNavigation`): a step answer for another revision, which the
+  carrier moving with the stack gives, is that step’s `stack_moved`, never a new guide,
+  and the guide’s steps stay.
+  A whole document a step cites is drawn from the comparison the page drew while that is
+  the one the step was read at.
   `tests/dom/github-stack-guide-mount-session.js` runs this glue on the production page.
 - **The member’s page.** `render_part` leaves a block that reads as a stack’s guide out
   of the description, as it leaves a guide’s, and Conversation puts a card in its place

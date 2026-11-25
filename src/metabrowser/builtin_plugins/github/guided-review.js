@@ -132,6 +132,12 @@ const renderRetried = (step) =>
  * A refusal that names no revision, a stack's while it is pending or cannot be paired, is
  * that step's, never a new guide: only an answer that names another revision is.
  *
+ * A stack's guide is read at the comparison its page draws, which the stack can move past
+ * (`behind`). The member that carries the guide moves with it, as the top member usually
+ * does, and its author pins the guide again, so until the reader takes the new comparison
+ * an answer that names another revision is that step's `stack_moved`, never a new guide,
+ * and so is the route's own `stack_moved`, whatever revision it names.
+ *
  * A stack's guide has no overview of its own, since no member's description introduces the
  * stack: with *first* 1 it opens on step 1, and no move goes before it.
  *
@@ -147,6 +153,9 @@ export function createGuideNavigation(deps) {
   /** @type {string | null | undefined} */
   let revision;
   let headMoved = false;
+  /** The revision of the guide read at a comparison the stack has moved past, or null. */
+  /** @type {string | null} */
+  let held = null;
   /** @type {number} */
   let selected = first;
   /** The step count of the last answer of this revision that had a step, which bounds a move. */
@@ -183,8 +192,17 @@ export function createGuideNavigation(deps) {
       if (request.signal.aborted) {
         return;
       }
-      if (result.record_revision !== null && result.record_revision !== expected) {
-        deps.render({ state: "updated" }, selected, count);
+      const another = result.record_revision !== null && result.record_revision !== expected;
+      if (another && result.state !== "stack_moved") {
+        // Under a comparison the stack has moved past, another revision is the guide written
+        // for the new one: this step's refusal, until the reader takes that comparison.
+        deps.render(
+          held === null
+            ? { state: "updated" }
+            : { state: "stack_moved", record_revision: result.record_revision },
+          selected,
+          count,
+        );
         return;
       }
       if ("step" in result) {
@@ -235,9 +253,26 @@ export function createGuideNavigation(deps) {
         deps.render({ state: "preview" }, selected, count);
         return;
       }
+      if (held !== null && nextRevision !== held) {
+        // Nothing is read: at the comparison drawn, this guide was written for another. It
+        // is shown again, and read, once the comparison drawn is the stack's own.
+        pending?.abort();
+        revision = undefined;
+        deps.render({ state: "stack_moved", record_revision: nextRevision }, selected, count);
+        return;
+      }
       // A head GitHub reports past the record's is the server's to read: it answers the
       // guide's steps with what is out of date.
       void load(nextRevision);
+    },
+    /**
+     * Whether the stack has moved past the comparison the guide is read at: *at* is the
+     * revision of the guide read there, or null while that comparison is the stack's own.
+     *
+     * @param {string | null} at
+     */
+    behind(at) {
+      held = at;
     },
     /** @param {-1 | 1} by */
     move(by) {

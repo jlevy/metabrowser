@@ -488,6 +488,47 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         f"{GUIDE}?stack=70&step=2{drawn.replace(comparison['key'], '0' * 32)}",
     ).payload()
     assert (gone["state"], gone["carrier"]) == ("stack_moved", 10)
+    # 10's author pins its guide to the stack's new pair. Read at that pair it is current;
+    # at the pair a page still draws, it was written for a later comparison than that one, so
+    # it is `stack_moved` there too, never out of date the wrong way round (B1 of review B
+    # on #838).
+    pinned_old = _stack_guide(pull_origin["base"], pull_origin["draft_head"], _TOP_GUIDE)
+    top["body"] = top["body"].replace(
+        pinned_old,
+        _stack_guide(now["comparison"]["merge_base"], now["comparison"]["head"], _TOP_GUIDE),
+    )
+    # A new body is a new ETag, so the refresh reads it rather than a 304.
+    top_answer = pulls["repos/octo/demo/pulls/10"]
+    top_answer["headers"] = {
+        **top_answer["headers"],
+        "Etag": ok("repos/octo/demo/pulls/10", top)["headers"]["Etag"],
+    }
+    install_fake_gh(tmp_path, answers)
+    ask.write_text('{"number": 10, "retry": true}\n')
+    pinned = in_guide(
+        "## 10's author pins its guide to the stack's new pair, and 10 is read again.\n",
+        "--api",
+        REFRESH,
+        "--data",
+        str(ask),
+        gh_free=False,
+    )
+    assert '"refresh": "started"' in pinned.stdout
+    repinned = run_metab((CANONICAL, "--api", f"{GUIDE}?stack=70&step=2")).payload()
+    assert (repinned["state"], repinned["comparison"]["merge_base"]) == (
+        "ready",
+        pull_origin["topic"],
+    )
+    past = read_guide(
+        "## Its guide, asked at the comparison a page still draws, is pinned past it, so it"
+        " says the stack has moved, as a comparison the route never gave does.\n",
+        f"{GUIDE}?stack=70&step=2{drawn}",
+    ).payload()
+    assert (past["state"], past["carrier"], past["record_revision"]) == (
+        "stack_moved",
+        10,
+        repinned["record_revision"],
+    )
 
     answers["api"][STACKS] = ok(
         STACKS,

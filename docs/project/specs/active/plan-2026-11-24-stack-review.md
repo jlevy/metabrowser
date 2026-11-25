@@ -11,6 +11,12 @@ request’s Changes, which loads it, rather than at the pull request alone.
 Phase 3’s `stack` answer names the guide’s member and its record revision only while the
 stack is current, since a member not read yet may carry a block, so the page keeps the
 guide it showed while the stack is pending, as it keeps the drawn comparison.
+Once the stack moves, the guide is read at the pair the page draws, the current one or
+one the stack route gave and keeps (`retained_stack_pair`), until the reader takes the
+new comparison. A pair the route never gave answers `stack_moved`, as does a kept pair
+the guide’s pins are past, since its carrier moved and was pinned again
+(`_pinned_past`); while the drawn pair is not current, the page reads a step answer for
+another revision as that step’s `stack_moved`, keeping the outline.
 The skill’s stack recipes are held by its command checks, not run by
 `cli-skill-recipes.tryscript.md`, whose stand-in has no stack.
 Phase 1 leaves out the Pulls tab’s **Stack #N** heading as an entry point, since that
@@ -398,6 +404,11 @@ commit is not. Moving a guide to a file later is copying the block.
 - **The route.** `guided-review?stack=<n>&step=<k>` answers it in the envelope a pull
   request’s guide has: `_step_references` reads the stack’s kept manifest, and
   `_staleness` compares the pins with the stack’s pair.
+  It reads at the pair the page draws (`left`, `right`, `key`), the current one or a
+  kept one, as the stack’s Files, Docs, and Changes do.
+  A pair the route never gave, or a kept pair the guide’s pins are past, answers
+  `stack_moved`: there the guide was written for a later comparison, and reading it at
+  the old pair would report it rewritten.
 - **The page.** `guided-review.js` mounts on the stack’s page, with #807’s groups and
   outline and #806’s whole documents as they are.
 - **No description of its own.** The member’s description introduces that member, not

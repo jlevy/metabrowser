@@ -2,11 +2,12 @@
 // a stub SDK on the stack route's recorded answers (tests/fixtures/github-stack-responses.json):
 // the front page mounts the stack's guide and reads its first step at the comparison it draws;
 // a step's file opens in the stack's Changes and another pull request's file in that pull
-// request's; a file the rendered route renders is drawn whole only at the comparison drawn; a
+// request's; a file the rendered route renders is drawn whole at the comparison drawn; a
 // note's links resolve against the member that carries the guide; a new revision of that
 // member is read again while the drawn comparison is current, and a new comparison is offered,
-// not swapped in, until the reader takes it; and leaving the tab disposes the view and aborts
-// its read. The navigation itself is github-guided-review-session.js's, and the stack's own
+// not swapped in, until the reader takes it, whether a member below moved or the carrier
+// moved with it and was pinned again, which no step is read as; and leaving the tab disposes
+// the view and aborts its read. The navigation itself is github-guided-review-session.js's, and the stack's own
 // state machine github-stack-page-session.js's; this is the page's glue between them. Paint is
 // Chrome's.
 const assert = require("node:assert/strict");
@@ -111,10 +112,18 @@ globalThis.fetch = async (route, init = {}) => {
   return response({}, 404);
 };
 
-/** The comparison a stack answer names, and one the stack moved to. */
+/** The comparison a stack answer names; the one it moves to when its bottom member moves,
+ * whose base and key change while the top's head and record stay; and the one it moves to
+ * when the top member, which carries the guide, moves too. */
 const drawnFirst = recorded.current.comparison;
-const movedTo = {
+const belowMoved = {
   ...drawnFirst,
+  left: "<moved_base>",
+  key: "e".repeat(32),
+  route: drawnFirst.route.replace(drawnFirst.key, "e".repeat(32)),
+};
+const movedTo = {
+  ...belowMoved,
   right: "<moved_head>",
   key: "f".repeat(32),
   route: drawnFirst.route.replace(drawnFirst.key, "f".repeat(32)),
@@ -161,7 +170,8 @@ const HUNK = {
   ],
 };
 
-/** Step *step* of 10's two-step guide, read at *pins*, for record revision *carried*: a file
+const TITLES = ["The layers", "The draft", "The plan"];
+/** Step *step* of 10's three-step guide, read at *pins*, for record revision *carried*: a file
  * of the stack drawn as a patch, one the rendered route renders, and a file of 9. 8, below
  * the top, carries the guide's page here, so its notes' links are made absolute there. */
 function step(carried, at, pins) {
@@ -172,15 +182,12 @@ function step(carried, at, pins) {
     record_revision: carried,
     state: "ready",
     comparison: pins,
-    step_count: 2,
-    titles: ["The layers", "The draft"],
-    outline: [
-      { kind: "step", step: 1, title: "The layers" },
-      { kind: "step", step: 2, title: "The draft" },
-    ],
+    step_count: TITLES.length,
+    titles: TITLES,
+    outline: TITLES.map((title, index) => ({ kind: "step", step: index + 1, title })),
     step: at,
     group: null,
-    title: at === 1 ? "The layers" : "The draft",
+    title: TITLES[at - 1],
     note: "Read [elsewhere](https://example.com/elsewhere).",
     note_html: '<p><a href="https://example.com/elsewhere">elsewhere</a></p>',
     note_refusal: null,
@@ -360,9 +367,11 @@ async function run() {
   await settle();
   report.edited = { reads: reads.length, asks: asks(reads[1]) };
 
-  // Another member moves the stack: the new comparison is offered, not swapped in. The guide
-  // keeps the comparison drawn: nothing is read again, and the next step is read there.
-  stackAnswer = stack(revision(2), movedTo);
+  // The bottom member moves the stack: its base and key change, while 10, the top member that
+  // carries the guide, keeps its head and its record. The new comparison is offered, not
+  // swapped in. The guide keeps the comparison drawn: nothing is read again, and the next
+  // step is read there and draws its document there.
+  stackAnswer = stack(revision(2), belowMoved);
   await poll();
   const offer = container.querySelector(".github-pull-notice")?.textContent ?? "";
   assert.match(offer, /Show the new comparison$/);
@@ -371,16 +380,73 @@ async function run() {
   await settle();
   assert.equal(reads.length, 3);
   assert.equal(asks(reads[2]), `70 2 ${drawnFirst.left} ${drawnFirst.right} ${drawnFirst.key}`);
-  // An answer read at another comparison than the one drawn draws no document whole.
-  const drawnBefore = documents.length;
-  reads[2].answer(step(revision(2), 2, pinsOf(movedTo)));
+  reads[2].answer(step(revision(2), 2, pinsOf(drawnFirst)));
   await settle();
-  assert.equal(documents.length, drawnBefore, "a document is drawn only at the comparison drawn");
-  report.moved = {
+  assert.equal(
+    documents.at(-1).right,
+    drawnFirst.right,
+    "a document is drawn at the comparison drawn",
+  );
+  report.below_moved = {
     offer,
     reads_before_next: 2,
     asks: asks(reads[2]),
-    documents_drawn_at_other_pins: documents.length - drawnBefore,
+    document_at: documents.at(-1).right,
+  };
+
+  // Then 10 moves too, and its author pins the guide again, so the carrier's revision and the
+  // comparison change together (B1 of review B on #838). Nothing is read; a step not read
+  // yet, read at the comparison drawn, names the new revision, or the route answers
+  // `stack_moved` for a guide pinned past it: either is that step's refusal in the stack's
+  // words, under the steps the guide keeps, and Show the new comparison is how to read it.
+  stackAnswer = stack(revision(3), movedTo);
+  await poll();
+  assert.equal(reads.length, 3, "a carrier that moves with the stack reads nothing");
+  const guided = () => container.querySelector(".github-pull-guided-review");
+  const said = () => guided().querySelector(".github-pull-quiet")?.textContent ?? "";
+  const listed = () => guided().querySelectorAll(".github-pull-guide-steps-item").length;
+  const MOVED =
+    "This stack has moved since its comparison was drawn. Show the new comparison to read its guide.";
+  press(container, "Next step");
+  await settle();
+  assert.equal(asks(reads[3]), `70 3 ${drawnFirst.left} ${drawnFirst.right} ${drawnFirst.key}`);
+  reads[3].answer(step(revision(3), 3, pinsOf(drawnFirst)));
+  await settle();
+  assert.equal(said(), MOVED);
+  assert.equal(listed(), 3, "the guide keeps its steps");
+  press(container, "Previous step");
+  await settle();
+  assert.equal(reads.length, 4, "a step in hand is not read again");
+  press(container, "Next step");
+  await settle();
+  assert.equal(asks(reads[4]), `70 3 ${drawnFirst.left} ${drawnFirst.right} ${drawnFirst.key}`);
+  reads[4].answer({
+    stack: 70,
+    carrier: 10,
+    carrier_url: "https://github.com/octo/demo/pull/8",
+    record_revision: revision(3),
+    state: "stack_moved",
+  });
+  await settle();
+  assert.equal(said(), MOVED);
+  assert.equal(listed(), 3);
+  const kept = listed();
+  // Back on the tab before taking the new comparison: the guide is not the one read at the
+  // comparison drawn, so nothing is read there, and the stack's words say why. The steps
+  // went with the view the tab disposed, and the route has only the guide pinned again.
+  handle.setTab("files");
+  await settle();
+  handle.setTab("guided");
+  await settle();
+  assert.equal(reads.length, 5, "reopened, the guide reads nothing at the comparison drawn");
+  assert.equal(said(), MOVED);
+  report.carrier_moved = {
+    asks: asks(reads[3]),
+    step_refused: MOVED,
+    steps_kept: kept,
+    route_refused_step: reads[4].asked.get("step"),
+    reopened_reads: reads.length - 5,
+    reopened_steps: listed(),
   };
 
   // The reader takes the new comparison: the guide is mounted again, its old view disposed,
@@ -388,18 +454,22 @@ async function run() {
   container.querySelector(".github-pull-stack-page-take").events.get("click")();
   await settle();
   assert.ok(documents.every((drawn) => drawn.disposed) && patches.every((drawn) => drawn.disposed));
-  assert.equal(reads.length, 4);
-  assert.equal(asks(reads[3]), `70 1 ${movedTo.left} ${movedTo.right} ${movedTo.key}`);
-  report.taken = { asks: asks(reads[3]), earlier_views_disposed: true };
+  assert.equal(reads.length, 6);
+  assert.equal(asks(reads[5]), `70 1 ${movedTo.left} ${movedTo.right} ${movedTo.key}`);
+  report.taken = { asks: asks(reads[5]), earlier_views_disposed: true };
 
   // Leaving the tab while that read is on its way disposes the view and aborts the read, and
   // its late answer draws nothing.
   handle.setTab("files");
   await settle();
-  assert.equal(reads[3].signal.aborted, true);
-  assert.equal(files.mounted, 1);
+  assert.equal(reads[5].signal.aborted, true);
+  assert.equal(files.mounted, 2);
   assert.equal(container.querySelector(".github-pull-guided-review"), null);
-  report.left = { tab: active(), read_aborted: reads[3].signal.aborted, files_mounted: 1 };
+  report.left = {
+    tab: active(),
+    read_aborted: reads[5].signal.aborted,
+    files_mounted: files.mounted,
+  };
   handle.dispose?.();
   console.log(JSON.stringify(report, null, 2));
 }

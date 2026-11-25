@@ -1284,34 +1284,41 @@ async function run() {
 
   // A stack's guide, as the stack's page mounts it: no introduction and no overview, so it
   // opens on its first step and goes no further back; it asks the route by `stack=`, and an
-  // out-of-date guide and a file no longer changed say so of the stack.
+  // out-of-date guide and a file no longer changed say so of the stack. A step refused for
+  // the stack's own reason says it in the step's place, under the steps it keeps; a refusal
+  // of the whole guide names no place, since a stack's guide has no overview (A4 of review A
+  // and B2 of review B on #838).
   {
     host();
     const routes = [];
+    /** What the route answers step *at* with, when it is not the stale step of the guide. */
+    let refuse = (_at) => null;
     globalThis.fetch = async (route) => {
       routes.push(route);
       const at = Number(new URL(route, "http://localhost").searchParams.get("step"));
       const changed = ["src/app.txt", "gone.txt"];
+      const refused = refuse(at);
       return {
         ok: true,
         status: 200,
         headers: { get: () => null },
-        json: async () => ({
-          ...step(1, at),
-          stack: 70,
-          carrier: 10,
-          state: "stale",
-          stale: {
-            guide: { merge_base: "a".repeat(40), head: "c".repeat(40) },
-            current: { merge_base: "a".repeat(40), head: "b".repeat(40) },
-            github_newer: false,
-            history: "rewritten",
-            commit_count: 1,
-            commits: [],
-            changed_paths: changed,
-            changed_steps: [1],
+        json: async () =>
+          refused ?? {
+            ...step(1, at),
+            stack: 70,
+            carrier: 10,
+            state: "stale",
+            stale: {
+              guide: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+              current: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+              github_newer: false,
+              history: "rewritten",
+              commit_count: 1,
+              commits: [],
+              changed_paths: changed,
+              changed_steps: [1],
+            },
           },
-        }),
       };
     };
     const { mountGuidedReview } = await import(
@@ -1366,7 +1373,66 @@ async function run() {
     steps.push(
       `a stack's guide opens on ${position}, lists ${rows.length} steps and no overview, asks ${routes.map((route) => route.split("?")[1]).join(", ")}, and goes no further back; it says "${warned}" and of a file "${gone.join(" | ")}"`,
     );
+    const said = () => container.querySelector(".github-pull-quiet")?.textContent ?? "";
+    const listed = () => container.querySelectorAll(".github-pull-guide-steps-item").length;
+    // Step 2 read while a member is fetched: the stack's words, in the step's place.
+    refuse = () => ({ state: "not_cached", record_revision: null, stack: 70, carrier: null });
+    view.move(1);
+    await settle();
+    const fetching = said();
+    assert.equal(fetching, "This stack's pull requests are still being fetched.");
+    assert.equal(listed(), 2, "a refused step keeps the guide's steps");
+    assert.equal(container.querySelector(".github-pull-guide-position").textContent, "Step 2 of 2");
+    // The stack moved past the comparison drawn, and its carrier with it: a step that names
+    // the guide's new revision is refused in words that say how to read it.
+    view.behind(revisionOf(1));
+    refuse = () => ({ ...step(9, 2), stack: 70, carrier: 10 });
+    view.move(-1);
+    view.move(1);
+    await settle();
+    const movedPast = said();
+    assert.equal(
+      movedPast,
+      "This stack has moved since its comparison was drawn. Show the new comparison to read its guide.",
+    );
+    assert.equal(listed(), 2);
     view.dispose();
+
+    // A guide refused whole, as a block that cannot be read is, names no place.
+    refuse = () => ({
+      state: "invalid",
+      record_revision: revisionOf(1),
+      stack: 70,
+      carrier: 10,
+      message: "The stack-review block cannot be read.",
+    });
+    const whole = new Element("section");
+    const refusedView = mountGuidedReview(
+      whole,
+      null,
+      { kind: "stack", number: 70 },
+      {
+        open() {},
+        openPull() {},
+        age: () => new Element("span"),
+        shortCommit: (sha) => sha.slice(0, 7),
+        loadStyles: async () => {},
+        loadDrawPatch: async () => () => ({ dispose() {} }),
+        loadDrawDocument: async () => null,
+        loadDrawProse: async () => null,
+        refusalNote: () => null,
+      },
+    );
+    refusedView.show(revisionOf(1), false);
+    await settle();
+    const place = whole.querySelector(".github-pull-guide-position").textContent;
+    const refusal = whole.querySelector(".github-pull-quiet")?.textContent ?? "";
+    assert.equal(place, "", "a stack's guide refused whole names no place");
+    assert.equal(refusal, "The stack-review block cannot be read.");
+    steps.push(
+      `a stack step refused while a member is fetched says "${fetching}", one whose carrier moved past the comparison drawn says "${movedPast}", and a guide refused whole names no place and says "${refusal}"`,
+    );
+    refusedView.dispose();
   }
 
   return steps;

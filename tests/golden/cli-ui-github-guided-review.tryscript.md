@@ -117,6 +117,29 @@ $ node tests/dom/github-guided-review-session.js
       "step 3: loading",
       "step 3: step 3 of 3"
     ]
+  },
+  "moved": {
+    "calls": [
+      1,
+      2,
+      3,
+      2,
+      2
+    ],
+    "states": [
+      "step 1: loading, 0 steps",
+      "step 1: step 1 of 3",
+      "step 2: loading, 3 steps",
+      "step 2: stack_moved, 3 steps",
+      "step 1: step 1 of 3",
+      "step 3: loading, 3 steps",
+      "step 3: stack_moved, 3 steps",
+      "step 2: loading, 3 steps",
+      "step 2: step 2 of 3",
+      "step 2: stack_moved, 0 steps",
+      "step 2: loading, 0 steps",
+      "step 2: step 2 of 3"
+    ]
   }
 }
 ? 0
@@ -235,7 +258,8 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "from Conversation, the description's card links /pull/7",
   "a description with a stack's guide: \"This description has a stack guide, read on its stack's page. Open Stack #286\" links Open Stack #286 (/stack/286)",
   "one in no stack this copy knows: \"This description has a stack guide, read on its stack's page.\"",
-  "a stack's guide opens on Step 1 of 2, lists 2 steps and no overview, asks stack=70&step=1, and goes no further back; it says \"This guide was written for an earlier version of this stack, so steps marked changed may not match it. Its author can update the guide.\" and of a file \"This file changed after the guide was written. | This file is no longer in the stack's changes.\""
+  "a stack's guide opens on Step 1 of 2, lists 2 steps and no overview, asks stack=70&step=1, and goes no further back; it says \"This guide was written for an earlier version of this stack, so steps marked changed may not match it. Its author can update the guide.\" and of a file \"This file changed after the guide was written. | This file is no longer in the stack's changes.\"",
+  "a stack step refused while a member is fetched says \"This stack's pull requests are still being fetched.\", one whose carrier moved past the comparison drawn says \"This stack has moved since its comparison was drawn. Show the new comparison to read its guide.\", and a guide refused whole names no place and says \"The stack-review block cannot be read.\""
 ]
 ? 0
 ```

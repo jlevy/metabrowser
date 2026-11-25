@@ -62,20 +62,28 @@ $ node tests/dom/github-stack-guide-mount-session.js
     "reads": 2,
     "asks": "70 1 <base> <draft_head> ebfe45cd812c6d00f8d4a921576b31d7"
   },
-  "moved": {
+  "below_moved": {
     "offer": "This stack has changed since its comparison was drawn. Show the new comparison",
     "reads_before_next": 2,
     "asks": "70 2 <base> <draft_head> ebfe45cd812c6d00f8d4a921576b31d7",
-    "documents_drawn_at_other_pins": 0
+    "document_at": "<draft_head>"
+  },
+  "carrier_moved": {
+    "asks": "70 3 <base> <draft_head> ebfe45cd812c6d00f8d4a921576b31d7",
+    "step_refused": "This stack has moved since its comparison was drawn. Show the new comparison to read its guide.",
+    "steps_kept": 3,
+    "route_refused_step": "3",
+    "reopened_reads": 0,
+    "reopened_steps": 0
   },
   "taken": {
-    "asks": "70 1 <base> <moved_head> ffffffffffffffffffffffffffffffff",
+    "asks": "70 1 <moved_base> <moved_head> ffffffffffffffffffffffffffffffff",
     "earlier_views_disposed": true
   },
   "left": {
     "tab": "Files",
     "read_aborted": true,
-    "files_mounted": 1
+    "files_mounted": 2
   }
 }
 ? 0

@@ -883,8 +883,13 @@ export function mountStackPage(container, ctx, mb) {
   /** @type {{dispose?: () => void, scrollToFile?: (path: string) => unknown} | null} */
   let handle = null;
   /** The guide's view while Guided Review is drawn, told each revision of the description
-   * that carries the guide. @type {{show: (revision: string | null, moved: boolean) => void} | null} */
+   * that carries the guide, and whether the stack has moved past the comparison drawn.
+   * @type {{show: (revision: string | null, moved: boolean) => void,
+   *   behind: (at: string | null) => void} | null} */
   let guidedView = null;
+  /** The revision of the guide read at the comparison drawn while that comparison was the
+   * stack's current one. @type {string | null} */
+  let guideRead = null;
   /** The allowlist a guide's notes are inserted through, loaded with the first guide.
    * @type {Promise<MetabrowserInertHtmlRuntime | null> | null} */
   let inertReady = null;
@@ -1225,10 +1230,17 @@ export function mountStackPage(container, ctx, mb) {
       // An edit of the description that carries the guide is read again while the
       // comparison drawn is the stack's current one. A new comparison is offered, not
       // swapped in: until the reader takes it, the guide stays as it was read at the drawn
-      // one, as Files, Docs, and Changes stay.
+      // one, as Files, Docs, and Changes stay, and a guide its carrier's move changed is
+      // not read there (`behind` in guided-review.js).
       const current = envelope?.state === "current" ? (envelope.comparison?.key ?? null) : null;
-      if (guide !== null && current !== null && current === shown.drawn?.key) {
-        guidedView?.show(guide.revision, false);
+      if (current !== null && current === shown.drawn?.key) {
+        guidedView?.behind(null);
+        if (guide !== null) {
+          guideRead = guide.revision;
+          guidedView?.show(guide.revision, false);
+        }
+      } else if (current !== null) {
+        guidedView?.behind(guideRead);
       }
       return;
     }
@@ -1278,7 +1290,16 @@ export function mountStackPage(container, ctx, mb) {
           guidedView = view;
           // An answer that came while the guide was imported may name a newer revision,
           // which the keep path could not tell a view not yet mounted.
-          view.show((guide ?? carried).revision, false);
+          const revision = (guide ?? carried).revision;
+          const current = envelope?.state === "current" ? (envelope.comparison?.key ?? null) : null;
+          if (current !== null && current !== action.comparison.key) {
+            // Back on the tab while the stack has moved past the comparison drawn: the guide
+            // is read there only if it is the one read there before.
+            view.behind(guideRead ?? revision);
+          } else {
+            guideRead = revision;
+          }
+          view.show(revision, false);
         }
       } catch (failure) {
         if (owns()) {

@@ -1084,6 +1084,47 @@ def test_paths_past_the_bound_stop_git(tmp_path: Path, monkeypatch: pytest.Monke
     assert asyncio.run(guided_review._paths_between(location, old, new)) == set(names)
 
 
+@needs_git
+def test_a_guide_pinned_past_a_kept_pair_is_one_written_for_a_later_comparison(
+    tmp_path: Path,
+) -> None:
+    """A stack's guide read at a pair its page still draws is past it when it is pinned to
+    the stack's current pair, or to a head that comes after the kept head, as when the member
+    that carries it moved and its author pinned it again; otherwise its pins are the
+    staleness read's to report (B1 of review B on #838)."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    line: list[str] = []
+    for n in range(4):
+        (root / "a.txt").write_text(f"{n}\n", encoding="utf-8")
+        git(root, "add", "a.txt")
+        git(root, "commit", "-q", "-m", f"commit {n}")
+        line.append(git(root, "rev-parse", "HEAD").decode().strip())
+    base, kept_head, later, newest = line
+    git(root, "checkout", "-q", "-b", "side", base)
+    (root / "b.txt").write_text("side\n", encoding="utf-8")
+    git(root, "add", "b.txt")
+    git(root, "commit", "-q", "-m", "side")
+    side = git(root, "rev-parse", "HEAD").decode().strip()
+    location = GitLocation.revision(RepositoryStoreTarget(root / ".git", "sha1"), kept_head)
+    kept = (base, kept_head)
+    current = (base, newest)
+
+    def past(merge_base: str, head: str) -> bool:
+        pinned = guided_review.CollectionComparison(merge_base=merge_base, head=head)
+        return asyncio.run(guided_review._pinned_past(location, pinned, kept, current))
+
+    assert past(base, kept_head) is False, "pinned to the kept pair itself"
+    assert past(base, newest) is True, "pinned to the stack's current pair"
+    assert past(base, later) is True, "pinned to a head after the kept head"
+    assert past(kept_head, later) is True, "a head after the kept head, from another base"
+    assert past(later, kept_head) is False, "the kept head, from another base"
+    assert past(base, base) is False, "pinned before the kept head: out of date, as before"
+    assert past(base, side) is False, "rewritten: the staleness read says so"
+    assert past(base, _MISSING) is False, "a head the store lacks: the staleness read says so"
+
+
 _VIEW = PullView(
     number=7,
     host=SimpleNamespace(pulls=SimpleNamespace(home=Path(), slug="octo/demo")),  # pyright: ignore[reportArgumentType]

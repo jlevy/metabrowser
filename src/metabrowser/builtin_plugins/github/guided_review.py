@@ -1440,6 +1440,33 @@ async def _pins_compare(location: GitLocation, pinned: CollectionComparison) -> 
     return True
 
 
+async def _pinned_past(
+    location: GitLocation,
+    pinned: CollectionComparison,
+    kept: tuple[str, str],
+    current: tuple[str, str],
+) -> bool:
+    """Whether a guide pinned to *pinned* was written for a later comparison than the kept
+    pair *kept*, `(merge_base, head)`: the stack's *current* pair, or one whose head comes
+    after the kept head. Read at the kept pair, such a guide would look rewritten.
+
+    A head the store lacks, or one that is not after the kept head, is not past it: what
+    such a guide's pins say is the staleness read's to report (:func:`_staleness`).
+    """
+    pins = (pinned.merge_base, pinned.head)
+    if pins == kept:
+        return False
+    if pins == current:
+        return True
+    if pinned.head == kept[1]:
+        return False
+    try:
+        await run_git_at(["merge-base", "--is-ancestor", kept[1], pinned.head], location)
+    except GitCommandError:
+        return False
+    return True
+
+
 async def _staleness(
     store: PublishedSource | None,
     current: tuple[str | None, str],
@@ -1798,8 +1825,11 @@ async def stack_guided_review(
     ``stack-comparison`` takes it: the stack's current pair, or one the stack route gave
     before and keeps (:func:`retained_stack_pair`), so a page reads its guide at the
     comparison it shows until the reader takes the new one. Without *drawn*, the current
-    pair. A pair neither names is `stack_moved`, and kept pairs that cannot be read now are
-    `stack_unavailable` with the reason ``snapshot_unavailable``. A stack this copy cannot
+    pair. A pair neither names is `stack_moved`, as is a kept pair the guide's pins are past
+    (:func:`_pinned_past`), since the member that carries the guide moved and its author
+    pinned it again: it was written for a later comparison than the one drawn. Kept pairs
+    that cannot be read now are `stack_unavailable` with the reason
+    ``snapshot_unavailable``. A stack this copy cannot
     pair is `stack_unavailable`, with the stack route's ``reason``, and one with a member
     not read yet is `not_cached`, since that member may carry the guide. Runs no ``gh`` and
     no fetch.
@@ -1843,6 +1873,13 @@ async def stack_guided_review(
         if kept == "unknown":
             return {**identity, "state": "stack_unavailable", "reason": "snapshot_unavailable"}
         if kept is None:
+            return {**identity, "state": "stack_moved"}
+        location = GitLocation.revision(
+            RepositoryStoreTarget(published.git_dir, published.object_format), kept.head
+        )
+        if await _pinned_past(
+            location, guide.comparison, (kept.base, kept.head), (pair.base, pair.head)
+        ):
             return {**identity, "state": "stack_moved"}
         pair, newer = kept, False
     stale = newer or guide.comparison.head != pair.head or guide.comparison.merge_base != pair.base

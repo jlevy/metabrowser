@@ -221,8 +221,69 @@ async function main() {
   assert.equal(stackStates.at(-1), "step 3: step 3 of 3");
   assert.deepEqual(stackCalls, [1, 2, 3, 3, 3]);
   stack.dispose();
+
+  // The stack moves past the comparison its page draws, and the member that carries the
+  // guide moves with it, whose author pins the guide again (B1 of review B on #838). Until
+  // the reader takes the new comparison, an answer that names another revision is that
+  // step's `stack_moved`, never a new guide, as is the route's own `stack_moved`: the steps
+  // stay, and a step in hand is not read again. Shown the new revision then, the guide reads
+  // nothing and says the same; once the comparison drawn is the stack's own, it is read.
+  const movedCalls = [];
+  const movedStates = [];
+  const moved = createGuideNavigation({
+    first: 1,
+    read(step, signal) {
+      movedCalls.push(step);
+      return new Promise((resolve, reject) => pending.push({ signal, resolve, reject }));
+    },
+    render(answer, at, steps) {
+      movedStates.push(
+        "step" in answer
+          ? `step ${at}: step ${answer.step} of ${answer.step_count}`
+          : `step ${at}: ${answer.state}, ${steps} steps`,
+      );
+    },
+  });
+  moved.show("drawn", false);
+  await respond(answer("drawn", 1));
+  moved.behind("drawn");
+  moved.move(1);
+  await respond(answer("pinned again", 2));
+  assert.equal(movedStates.at(-1), "step 2: stack_moved, 3 steps");
+  moved.move(-1);
+  assert.equal(movedStates.at(-1), "step 1: step 1 of 3");
+  moved.go(3);
+  await respond({ state: "stack_moved", record_revision: "pinned again", stack: 70, carrier: 10 });
+  assert.equal(movedStates.at(-1), "step 3: stack_moved, 3 steps");
+  // A move of another member leaves the carrier's revision: its steps read as before.
+  moved.go(2);
+  await respond(answer("drawn", 2));
+  assert.equal(movedStates.at(-1), "step 2: step 2 of 3");
+  const asked = movedCalls.length;
+  moved.show("pinned again", false);
+  assert.equal(
+    movedCalls.length,
+    asked,
+    "a guide shown under a comparison it was not read at reads nothing",
+  );
+  assert.equal(movedStates.at(-1), "step 2: stack_moved, 0 steps");
+  moved.behind(null);
+  moved.show("pinned again", false);
+  await respond(answer("pinned again", 2));
+  assert.equal(movedStates.at(-1), "step 2: step 2 of 3");
+  assert.deepEqual(movedCalls, [1, 2, 3, 2, 2]);
+  moved.dispose();
   console.log(
-    JSON.stringify({ calls, states, stack: { calls: stackCalls, states: stackStates } }, null, 2),
+    JSON.stringify(
+      {
+        calls,
+        states,
+        stack: { calls: stackCalls, states: stackStates },
+        moved: { calls: movedCalls, states: movedStates },
+      },
+      null,
+      2,
+    ),
   );
 }
 
