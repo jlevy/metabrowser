@@ -20,7 +20,8 @@ branch chooser, the gear, and the root details, presses each way; this judges it
 - a press on the filter bar beside a Files dropdown closes it;
 - a press that closes one menu acts on what it lands on: the drawer's chevron opens the
   drawer, Show ignored turns off, and another dropdown, the branch chooser, the gear, and
-  the root details open, with the first menu closed.
+  the root details open, with the first menu closed; from the branch chooser, whose list
+  covers Group by's trigger, the first other trigger in sight opens.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``), and CI runs
 it. The session leads a process group of its own, which Chrome and the server join, and
@@ -144,8 +145,12 @@ def test_every_menu_closes_alike_in_chrome(tmp_path: Path, chrome_profile: Path)
     for case, opened in (
         ("otherDropdown", "recency"),
         ("branchFromGroup", "branch"),
-        ("groupFromBranch", "group"),
         ("gearFromGroup", "settings"),
         ("rootDetailsFromGear", "rootDetails"),
     ):
         assert acts[case]["open"] == [opened], (case, acts[case])
+    # The branch chooser's list covers Group by's trigger, so the press goes to the first
+    # other trigger it leaves in sight.
+    from_branch = acts["otherFromBranch"]
+    assert from_branch["pressed"] in ("group", "settings", "rootDetails"), from_branch
+    assert from_branch["open"] == [from_branch["pressed"]], from_branch

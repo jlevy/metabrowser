@@ -308,7 +308,23 @@ try {
   );
   result.pressesAct.otherDropdown = await across("types", MENUS.recency.trigger);
   result.pressesAct.branchFromGroup = await across("group", MENUS.branch.trigger);
-  result.pressesAct.groupFromBranch = await across("branch", MENUS.group.trigger);
+  // The branch chooser's list drops over the pane, Group by's trigger among what it covers,
+  // so the press goes to the first other trigger it leaves in sight.
+  await open("branch");
+  let fromBranch = null;
+  for (const name of ["group", "settings", "rootDetails"]) {
+    if ((await point(MENUS[name].trigger))?.uncovered) {
+      fromBranch = name;
+      break;
+    }
+  }
+  if (fromBranch === null) {
+    throw new Error("the branch chooser covers every other menu's trigger");
+  }
+  result.pressesAct.otherFromBranch = {
+    pressed: fromBranch,
+    ...(await across("branch", MENUS[fromBranch].trigger)),
+  };
   result.pressesAct.gearFromGroup = await across("group", MENUS.settings.trigger);
   result.pressesAct.rootDetailsFromGear = await across("settings", MENUS.rootDetails.trigger);
   await reset();

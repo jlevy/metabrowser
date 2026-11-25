@@ -325,7 +325,7 @@ const MEASURE = `async (titles) => {
     const menu = pageModule.createStackMenu(
       { number: 286, base_ref: "main", open: true, pulls: [6, 7, 8], titles: [PULL, PULL_PLAIN, null] },
       7,
-      { link: () => document.createElement("a"), icon: null, currentTitle: PULL_PLAIN, titleNodes: mb.titleNodes, onOpen() {} },
+      { link: () => document.createElement("a"), icon: null, currentTitle: PULL_PLAIN, titleNodes: mb.titleNodes, onOpen() {}, menus: mb.menus },
     );
     const holder = document.createElement("div");
     holder.className = "github-pull-stacks";
