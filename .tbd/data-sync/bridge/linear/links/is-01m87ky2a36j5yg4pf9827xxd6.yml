@@ -5,6 +5,7 @@ base:
     - linear
     - Improvement
   priority: 1
+  slot: in_progress
   status: in_progress
   title: "Reader-facing notices and errors: a short warning and one simple remedy, never
     internals"
@@ -12,7 +13,9 @@ bead_id: is-01m87ky2a36j5yg4pf9827xxd6
 external_id: 01c43e85-79cd-458a-9674-6e9c92bf7e74
 external_key: OS-633
 external_url: https://linear.app/finterm-ai/issue/OS-633/reader-facing-notices-and-errors-a-short-warning-and-one-simple-remedy
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
 remote_updated_at: 2026-11-25T03:56:14.615Z
 state: linked
-synced_at: 2026-11-25T03:56:14.931Z
+synced_at: 2026-11-25T03:56:51.036Z
 type: lk

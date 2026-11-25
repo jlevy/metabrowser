@@ -2,7 +2,6 @@ base:
   assignee: null
   description_hash: sha256v7:a949fd12359278bbde9e3ea6d29b00a42b40be618ed049c12679c70e04531fcc
   labels:
-    - linear
     - Bug
   priority: 2
   slot: todo
@@ -16,5 +15,5 @@ refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
 remote_updated_at: 2026-11-25T03:56:02.444Z
 state: linked
-synced_at: 2026-11-25T03:56:02.734Z
+synced_at: 2026-11-25T03:56:47.395Z
 type: lk
