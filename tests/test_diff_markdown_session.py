@@ -72,9 +72,14 @@ _LONG_NEW = (
     .replace(b"Later old.", b"Later new.")
     .replace(b"The old end.", b"The new end.")
 )
-# A new document long enough to be drawn a chunk at a time (`CHUNK_UNITS` in
-# diff-markdown.js).
-_BOOK = b"".join(b"Page %d.\n\n" % index for index in range(120))
+# A new document long enough to be drawn a chunk at a time (`WHOLE_UNITS` and
+# `CHUNK_UNITS` in diff-markdown.js), whose first block links to a heading in its last
+# chunk.
+_BOOK = (
+    b"See [the last part](#the-last-part).\n\n"
+    + b"".join(b"Page %d.\n\n" % index for index in range(620))
+    + b"## The last part\n\nThe end.\n"
+)
 _README = (
     b'<p align="center"><img src="https://example.com/logo.png" alt="" width="64"></p>\n\n'
     b"# Demo\n\nWelcome.<br>Press <kbd>Ctrl</kbd> to begin.\n\n"
@@ -330,7 +335,15 @@ def test_session_replays_the_recording() -> None:
     )
     # A long document draws a chunk and keeps the rest's place until the reader nears it.
     book = steps["a long document draws its first chunk and keeps the place of the rest"]
-    assert book["files"]["f11 docs/book.md"]["rows"][-1].startswith("[blocks 100-120 not drawn:")
-    drawn = steps["coming near the place draws the chunk there"]["files"]["f11 docs/book.md"]
-    assert drawn["rows"][-1] == "added: <p>Page 119.</p>"
+    assert book["files"]["f11 docs/book.md"]["rows"][-1].startswith("[blocks 600-623 not drawn:")
+    near = steps["coming near a place draws the chunk there"]["files"]["f11 docs/book.md"]["rows"]
+    # Its first two chunks' 200 blocks drawn, and the places of the other four.
+    assert near[4] == "... 197 rows ..."
+    assert near[-4].startswith("[blocks 300-400 not drawn:")
+    # The link's own navigation goes to the heading, once its chunk is drawn.
+    assert steps["a link into a chunk not drawn yet"]["prevented"] is False
+    drawn = steps["draws every chunk through it, and the link goes there"]["files"]
+    drawn = drawn["f11 docs/book.md"]["rows"]
+    assert drawn[4] == "... 615 rows ..."
+    assert drawn[-1] == "added: <p>The end.</p>"
     assert steps["after disposal"]["timers"] == 0

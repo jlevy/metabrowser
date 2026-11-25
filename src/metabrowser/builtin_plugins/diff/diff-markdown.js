@@ -14,9 +14,11 @@
 // be shown the file shows Source, and its rendered chips stay in place, unavailable, and
 // say why (`REFUSALS`).
 //
-// A long document is drawn a chunk at a time, near the viewport (`CHUNK_UNITS`): what is
-// not drawn yet keeps an estimated height, so the page scrolls as the whole document
-// would, and is drawn as the reader comes near it, follows a link into it, or prints.
+// A document is drawn whole within `WHOLE_UNITS` and `WHOLE_BYTES`, so the browser's
+// find, Select All, and print reach all of it. A longer one is drawn a chunk at a time,
+// near the viewport (`CHUNK_UNITS`): what is not drawn yet keeps an estimated height, so
+// the page scrolls as the whole document would, and is drawn as the reader comes near it,
+// follows a link into it, or prints; find and Select All reach only what is drawn.
 
 import { foldExpander } from "./diff-fold.js";
 import { isStructuredProjection, mountStructuredDiff } from "./diff-structured.js";
@@ -40,17 +42,38 @@ const FORMATS = [
 // 10,000 px/s, 10-11 of 100 swapped against 51, and none was left in Source by a refusal
 // against 32; at 10,000 px/s and 35 ms answers, 3 swapped against 96.
 const LOOKAHEAD = "100%";
+// The blocks (a closed fold is one), and their HTML bytes, a rendered file may hold and
+// still be drawn whole; past either it is drawn a chunk at a time. Drawing 500 blocks and
+// their first layout and paint took about 60 ms in every shape measured, as the comment
+// on `FULL_MAX_BLOCKS` in diff/markdown_views.py records, so these are that bound: a
+// document the Docs tab opens in Full is drawn whole, as it was before chunks.
+const WHOLE_UNITS = 500;
+const WHOLE_BYTES = 512 * 1024;
 // How much of a rendered file is drawn at a time: the first chunk with its answer, and
 // each next one as the reader comes within LOOKAHEAD of it. A chunk is this many blocks
-// (a closed fold is one) or this many bytes of their HTML, whichever comes first.
-// MEASUREMENT PENDING.
+// (a closed fold is one) or this many bytes of their HTML, whichever comes first. Drawing
+// blocks grows with their count: measured 2026-11-24 in headless Chrome 152 at 1,280 x 900
+// on an Apple M1 Pro at a load average of 130 to 195, `appendBlocks` and `sanitizeBlock`
+// and their first layout and paint took 59-62 ms for 500 short blocks and 96-100 ms for
+// 1,000 (about 0.08 ms a block over 22 ms), and 48-53 ms for 200 paragraphs of 2.3 KB
+// (468 KB), so a chunk of 100 blocks or 128 KiB costs about 30 ms. In the page, at a load
+// average of 270 to 330, reaching finterm-ai/investment-research #31's 3,408-block book
+// took a worst task of 62-64 ms on Docs (351-352 ms drawn whole) and none over 50 ms on
+// Changes (361-437 ms), and scrolling it at 400 px a frame for 6 s drew a chunk at a time
+// with no frame over 50 ms. Smaller or larger chunks were not measured.
 const CHUNK_UNITS = 100;
 const CHUNK_BYTES = 128 * 1024;
-// The height a chunk not drawn yet keeps, by its blocks and their HTML bytes, and a fold's
-// bar. MEASUREMENT PENDING.
-const BLOCK_PX = 37;
-const BYTE_PX = 0.32;
-const FOLD_PX = 40;
+// The height a chunk not drawn yet keeps: BLOCK_PX for each block and BYTE_PX for each
+// byte of its HTML, and FOLD_PX for a closed fold. Fitted 2026-11-24 in headless Chrome 152
+// at 1,280 x 900 to the 3,449 blocks of #31's rendered Markdown files drawn whole, each
+// block's top to the next block's: a chunk of 100 blocks so estimated came to 0.90-1.03 of
+// its drawn height (median 1.00), where 37 px and 0.32 px had estimated 1.26-1.53. Lists
+// and tables draw 13-22% taller than estimated, and paragraphs as estimated. A closed fold's bar
+// is 24 px and its top was 24-56 px above the next block's, by that block's margin, in the
+// seven folds of #31 (median 36).
+const BLOCK_PX = 20;
+const BYTE_PX = 0.24;
+const FOLD_PX = 36;
 // How many times a fold's blocks, or Full's, are asked again while the server's one
 // projection slot is busy, after RETRY_MS doubling to RETRY_MAX_MS: about 3 seconds.
 const MORE_TRIES = 5;
@@ -446,13 +469,22 @@ export function viewUnits(model, view) {
 }
 
 /**
- * The units of a run in the chunks it is drawn in: a chunk ends at `CHUNK_UNITS` units, or
- * once its blocks hold `CHUNK_BYTES` of HTML. A fold is one unit of no bytes, as its bar is.
+ * The units of a run in the chunks it is drawn in: one, within `WHOLE_UNITS` and
+ * `WHOLE_BYTES`; past either, a chunk ends at `CHUNK_UNITS` units, or once its blocks
+ * hold `CHUNK_BYTES` of HTML. A fold is one unit of no bytes, as its bar is.
  * @param {Unit[]} units
  * @param {(index: number) => number} bytesOf A block's HTML bytes, by its index.
  * @returns {Unit[][]}
  */
 export function chunkUnits(units, bytesOf) {
+  const blockBytes = (/** @type {Unit} */ unit) =>
+    unit.kind === "block" ? bytesOf(unit.index) : 0;
+  if (
+    units.length <= WHOLE_UNITS &&
+    units.reduce((sum, unit) => sum + blockBytes(unit), 0) <= WHOLE_BYTES
+  ) {
+    return units.length > 0 ? [units] : [];
+  }
   /** @type {Unit[][]} */
   const chunks = [];
   /** @type {Unit[]} */
@@ -460,7 +492,7 @@ export function chunkUnits(units, bytesOf) {
   let bytes = 0;
   for (const unit of units) {
     chunk.push(unit);
-    bytes += unit.kind === "block" ? bytesOf(unit.index) : 0;
+    bytes += blockBytes(unit);
     if (chunk.length >= CHUNK_UNITS || bytes >= CHUNK_BYTES) {
       chunks.push(chunk);
       chunk = [];
@@ -793,7 +825,7 @@ export function kpressStylesheets(assets, base) {
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
  *   ensureStructured?: () => Promise<TreeHelpers | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
- *   mutate: (change: () => void, section?: HTMLElement) => void,
+ *   mutate: (change: () => void) => void,
  *   isTarget?: (value: string, image: boolean) => boolean,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
@@ -802,8 +834,7 @@ export function kpressStylesheets(assets, base) {
  *   holdMs?: number,
  *   current?: boolean
  * }} deps
- *   *current* is whether the diff starts in Current (`show`). *mutate* holds the reader's
- *   place around a change to *section*'s height.
+ *   *current* is whether the diff starts in Current (`show`).
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
@@ -1080,7 +1111,7 @@ export function createMarkdownViews(deps) {
     let settled = false;
     try {
       file.pending = true;
-      deps.mutate(() => drawProgress(file), file.section);
+      deps.mutate(() => drawProgress(file));
       if (file.format !== "markdown") {
         const projection = await deps.load(file.id, signal);
         if (signal.aborted || disposed) {
@@ -1112,7 +1143,7 @@ export function createMarkdownViews(deps) {
           file.pending = false;
           file.retries = 0;
           draw(file);
-        }, file.section);
+        });
         checkFirstScreen();
         return;
       }
@@ -1170,7 +1201,7 @@ export function createMarkdownViews(deps) {
         file.retries = 0;
         refresh(file);
         draw(file);
-      }, file.section);
+      });
       checkFirstScreen();
     } catch (error) {
       if (!signal.aborted && !disposed) {
@@ -1184,7 +1215,7 @@ export function createMarkdownViews(deps) {
     } finally {
       if (!settled && !disposed) {
         file.pending = false;
-        deps.mutate(() => drawProgress(file), file.section);
+        deps.mutate(() => drawProgress(file));
       }
       active = null;
       pump();
@@ -1252,7 +1283,7 @@ export function createMarkdownViews(deps) {
             drawControl(file);
             refresh(file);
             draw(file);
-          }, file.section);
+          });
         }
       });
   }
@@ -1467,7 +1498,7 @@ export function createMarkdownViews(deps) {
       () => {
         expander.control.removeAttribute("aria-busy");
         if (!disposed && expander.expanded() && file.foldViews.get(fold.at) === view) {
-          deps.mutate(() => fillFold(file, view), file.section);
+          deps.mutate(() => fillFold(file, view));
         }
       },
       (error) => {
@@ -1543,7 +1574,7 @@ export function createMarkdownViews(deps) {
       file.drawn === "concise"
         ? model.folds.find((each) => each.at <= index && index < each.at + each.count)
         : undefined;
-    deps.mutate(() => mountThrough(top, fold?.at ?? index), file.section);
+    deps.mutate(() => mountThrough(top, fold?.at ?? index));
     const view = fold === undefined ? undefined : file.foldViews.get(fold.at);
     if (fold === undefined || view === undefined) {
       return null;
@@ -1551,7 +1582,7 @@ export function createMarkdownViews(deps) {
     const inside = () => {
       if (view.region !== null) {
         const region = view.region;
-        deps.mutate(() => mountThrough(region, blockOf(model, id)), file.section);
+        deps.mutate(() => mountThrough(region, blockOf(model, id)));
       }
     };
     if (holds(model, fold.at, fold.at + fold.count)) {
@@ -1586,7 +1617,7 @@ export function createMarkdownViews(deps) {
       file.holding = false;
       drawControl(file);
       draw(file);
-    }, file.section);
+    });
     checkFirstScreen();
   }
 
@@ -1614,7 +1645,7 @@ export function createMarkdownViews(deps) {
         refresh(file);
       }
       draw(file);
-    }, file.section);
+    });
     pump();
   }
 
@@ -1809,22 +1840,23 @@ export function createMarkdownViews(deps) {
           if (disposed) {
             return;
           }
-          /** @type {Map<FileView, {region: Region, chunk: Chunk}[]>} */
-          const near = new Map();
+          /** @type {{region: Region, chunk: Chunk}[]} */
+          const near = [];
           for (const entry of entries) {
             const found = entry.isIntersecting
               ? spacers.get(/** @type {HTMLElement} */ (entry.target))
               : undefined;
             if (found !== undefined) {
-              near.set(found.region.file, [...(near.get(found.region.file) ?? []), found]);
+              near.push(found);
             }
           }
-          for (const [file, chunks] of near) {
+          if (near.length > 0) {
+            // One hold of the reader's place for every chunk drawn at once.
             deps.mutate(() => {
-              for (const { region, chunk } of chunks) {
+              for (const { region, chunk } of near) {
                 mountChunk(region, chunk);
               }
-            }, file.section);
+            });
           }
         },
         { root, rootMargin: `${LOOKAHEAD} 0px ${LOOKAHEAD} 0px` },

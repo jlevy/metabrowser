@@ -564,15 +564,24 @@ async function main() {
   assert.deepEqual(foldBlocks(range, fold), range.blocks);
   assert.equal(foldBlocks({ ...range, at: 7 }, fold), null);
   assert.equal(foldBlocks({ ...range, blocks: [context(8)] }, fold), null);
-  // A long run is drawn a chunk at a time: a hundred units, or 128 KiB of HTML, a chunk.
-  const many = Array.from({ length: 250 }, (_, index) => ({ kind: "block", index }));
+  // A run within 500 units and 512 KiB is drawn whole; a longer one a chunk at a time, a
+  // hundred units or 128 KiB of HTML a chunk.
+  const many = Array.from({ length: 650 }, (_, index) => ({ kind: "block", index }));
   assert.deepEqual(
-    chunkUnits(many, () => 10).map((chunk) => chunk.length),
-    [100, 100, 50],
+    chunkUnits(many.slice(0, 500), () => 1024).map((chunk) => chunk.length),
+    [500],
   );
   assert.deepEqual(
-    chunkUnits(many.slice(0, 7), () => 50 * 1024).map((chunk) => chunk.length),
-    [3, 3, 1],
+    chunkUnits(many, () => 10).map((chunk) => chunk.length),
+    [100, 100, 100, 100, 100, 100, 50],
+  );
+  assert.deepEqual(
+    chunkUnits(many.slice(0, 11), () => 50 * 1024).map((chunk) => chunk.length),
+    [3, 3, 3, 2],
+  );
+  assert.deepEqual(
+    chunkUnits([], () => 0),
+    [],
   );
   assert.equal(
     estimatedHeight(
@@ -582,7 +591,7 @@ async function main() {
       ],
       () => 100,
     ),
-    109,
+    80,
     "a block's place from its bytes, and a fold's bar",
   );
 

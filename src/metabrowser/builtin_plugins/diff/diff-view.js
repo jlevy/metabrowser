@@ -3216,22 +3216,6 @@ function placeOfTopFile(view, mustCoverPaneTop = false) {
 }
 
 /**
- * Whether *section* starts below the bottom of the pane.
- *
- * @param {MountedDiffState} view
- * @param {HTMLElement} section
- */
-function belowPane(view, section) {
-  const pane = scrollerOf(view);
-  if (pane === null) {
-    return false;
-  }
-  const paneTop =
-    pane === pane.ownerDocument?.scrollingElement ? 0 : pane.getBoundingClientRect().top;
-  return section.getBoundingClientRect().top >= paneTop + pane.clientHeight;
-}
-
-/**
  * What a rendered file's change keeps on the screen: the file at the pane's top and, when
  * it shows rendered Markdown, the block at the pane's top, found again by its index after
  * the change, which may draw it anew (`drawnRows`).
@@ -4140,14 +4124,7 @@ export function mountDiffView(container, document_, api, options = {}) {
           return api?.plugins?.load("structured");
         },
         loadStyles: (assets) => api?.loadKpressAssets?.(assets) ?? Promise.resolve(),
-        mutate(change, section) {
-          if (view.pinned === null && section !== undefined && belowPane(view, section)) {
-            // Nothing the reader sees moves for a change below the pane, so nothing is
-            // measured after it, which would lay the page out again at once.
-            change();
-            view.notifyCurrentFile();
-            return;
-          }
+        mutate(change) {
           const anchor = view.pinned === null ? placeOfTopRendered(view) : null;
           change();
           holdPlace(view, anchor);

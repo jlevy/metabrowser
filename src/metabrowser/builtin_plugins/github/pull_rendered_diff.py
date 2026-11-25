@@ -17,12 +17,13 @@ A ready Markdown answer is one of the page's two rendered views of the file, whi
 ``view`` names: ``full`` (the default), every block; ``concise``, each change with the
 unchanged blocks beside it and the runs between folded, a fold of many source lines
 withheld; or ``prefer-full``, Full for a document small enough to draw whole and Concise
-otherwise, as a pull request's Docs tab opens one (:mod:`metabrowser.diff.markdown_views`). The answer says which in ``view``, and both list the
-projection's ``count`` of blocks and its ``folds``, so the page draws either view from
-either answer once it holds the blocks. ``blocks=I-J`` answers the projection's blocks
-from *I* up to *J* alone, for a withheld fold the reader opens. The route keeps one
-projection a file and puts each answer together from its encoded blocks, so neither
-parameter is part of what it keeps.
+otherwise, as a pull request's Docs tab opens one
+(:mod:`metabrowser.diff.markdown_views`). The answer says which in ``view``, and both
+list the projection's ``count`` of blocks and its ``folds``, so the page draws either
+view from either answer once it holds the blocks. ``blocks=I-J`` answers the
+projection's blocks from *I* up to *J* alone, for a withheld fold the reader opens.
+The route keeps one projection a file and puts each answer together from its encoded
+blocks, so neither parameter is part of what it keeps.
 
 A Markdown pair is read up to :data:`_MARKDOWN_PAIR_MAX_BYTES`, whatever a projection in
 a thread may hold: past the thread's budgets the pair is the Markdown child's, whose

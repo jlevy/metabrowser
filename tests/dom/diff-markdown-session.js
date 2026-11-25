@@ -785,10 +785,11 @@ async function main() {
   };
   const near = (...ids) =>
     observers[0].notify(ids.map((id) => ({ target: byId[id].section, isIntersecting: true })));
-  // The reader comes near a chunk not drawn yet.
+  // The reader comes near the first chunk not drawn yet.
   const nearChunk = (file) => {
-    const spacers = observers[1].observed.filter((spacer) => file.rendered.contains(spacer));
-    observers[1].notify(spacers.map((target) => ({ target, isIntersecting: true })));
+    const spacer = observers[1].observed.find((each) => file.rendered.contains(each));
+    assert(spacer !== undefined, `${file.name}: no chunk waits to be drawn`);
+    observers[1].notify([{ target: spacer, isIntersecting: true }]);
   };
   /** A fold's bar in *file*, by the start of its label. */
   const bar = (file, label) => {
@@ -983,7 +984,13 @@ async function main() {
 
   nearChunk(byId.f11);
   await settle();
-  step("coming near the place draws the chunk there", [byId.f11]);
+  step("coming near a place draws the chunk there", [byId.f11]);
+
+  steps.push({
+    step: "a link into a chunk not drawn yet",
+    prevented: await follow(byId.f11, "the last part"),
+  });
+  step("draws every chunk through it, and the link goes there", [byId.f11]);
 
   // Another tab switched the server's pin: a link to a file of the head would open that
   // path at the other pin, so every one drawn becomes plain text, and so does any drawn

@@ -47,13 +47,15 @@ drawn like any other and never folds, and nothing is drawn to say that Source sh
 more: each row is its label and its content, and the session fails on anything else.
 Concise folds each long run of unchanged blocks behind the diff’s own fold bar, which
 builds its blocks when it opens.
-A fold of fewer than 100 source lines comes with the answer, so opening it asks for
-nothing; a longer fold’s blocks are withheld, and asked for (`blocks=`) when it opens or
-a link goes to a heading inside it, which the page goes to once they are drawn.
+A fold of fewer than `INLINE_FOLD_MAX_LINES` source lines comes with the answer, so
+opening it asks for nothing; a longer fold’s blocks are withheld, and asked for
+(`blocks=`) when it opens or a link goes to a heading inside it, which the page goes to
+once they are drawn.
 Full draws every block, asking for the withheld ones first and showing Concise
 meanwhile; switching back asks for nothing, and the folds the reader opened stay open.
-A long document is drawn a chunk at a time: a chunk not drawn yet keeps the place of its
-estimated height, and is drawn when the reader comes near it.
+A document past `WHOLE_UNITS` blocks is drawn a chunk at a time: a chunk not drawn yet
+keeps the place of its estimated height, and is drawn when the reader comes near it, and
+a link to a heading in a later chunk draws every chunk through it before it goes there.
 An image of the head keeps its address on the image route.
 A link to a file of the head keeps its `/view/` address only while the page shows the
 head, which is where that address opens the file; the server’s answer is the same for
@@ -731,36 +733,61 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "Full | *Concise | Source",
           "shows": "rendered",
           "rows": [
+            "added: <p>See <a href=\"#user-content-551f72faeefec8bfd215686a-new-the-last-part\">the last part</a>.</p>",
             "added: <p>Page 0.</p>",
             "added: <p>Page 1.</p>",
             "added: <p>Page 2.</p>",
-            "added: <p>Page 3.</p>",
-            "... 93 rows ...",
-            "added: <p>Page 97.</p>",
-            "added: <p>Page 98.</p>",
-            "added: <p>Page 99.</p>",
-            "[blocks 100-120 not drawn: 842px]"
+            "... 98 rows ...",
+            "[blocks 300-400 not drawn: 2384px]",
+            "[blocks 400-500 not drawn: 2384px]",
+            "[blocks 500-600 not drawn: 2384px]",
+            "[blocks 600-623 not drawn: 564px]"
           ]
         }
       }
     },
     {
-      "step": "coming near the place draws the chunk there",
+      "step": "coming near a place draws the chunk there",
       "requests": [],
       "files": {
         "f11 docs/book.md": {
           "chooser": "Full | *Concise | Source",
           "shows": "rendered",
           "rows": [
+            "added: <p>See <a href=\"#user-content-551f72faeefec8bfd215686a-new-the-last-part\">the last part</a>.</p>",
             "added: <p>Page 0.</p>",
             "added: <p>Page 1.</p>",
             "added: <p>Page 2.</p>",
-            "added: <p>Page 3.</p>",
-            "... 112 rows ...",
-            "added: <p>Page 116.</p>",
-            "added: <p>Page 117.</p>",
-            "added: <p>Page 118.</p>",
-            "added: <p>Page 119.</p>"
+            "... 197 rows ...",
+            "[blocks 300-400 not drawn: 2384px]",
+            "[blocks 400-500 not drawn: 2384px]",
+            "[blocks 500-600 not drawn: 2384px]",
+            "[blocks 600-623 not drawn: 564px]"
+          ]
+        }
+      }
+    },
+    {
+      "step": "a link into a chunk not drawn yet",
+      "prevented": false
+    },
+    {
+      "step": "draws every chunk through it, and the link goes there",
+      "requests": [],
+      "files": {
+        "f11 docs/book.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "added: <p>See <a href=\"#user-content-551f72faeefec8bfd215686a-new-the-last-part\">the last part</a>.</p>",
+            "added: <p>Page 0.</p>",
+            "added: <p>Page 1.</p>",
+            "added: <p>Page 2.</p>",
+            "... 615 rows ...",
+            "added: <p>Page 618.</p>",
+            "added: <p>Page 619.</p>",
+            "added: <h2 id=\"user-content-551f72faeefec8bfd215686a-new-the-last-part\">The last part</h2>",
+            "added: <p>The end.</p>"
           ]
         }
       }

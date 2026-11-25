@@ -4,11 +4,13 @@ withholds (``metabrowser.diff.markdown_views``).
 The route's goldens (``tests/golden/cli-github-pull-rendered-views.txt``) show a fold of
 each kind through ``metab --api``; these hold the edges: the shortest run that folds, a
 block whose source says more than its render, the line count at the withholding bound,
-and the Docs tab's Full bound.
+the Docs tab's Full bound, and that the page draws a document within it whole.
 """
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Literal
 
 import pytest
@@ -95,3 +97,19 @@ def test_the_docs_tab_opens_full_within_both_bounds() -> None:
     assert prefers_full(FULL_MAX_BLOCKS, FULL_MAX_BYTES)
     assert not prefers_full(FULL_MAX_BLOCKS + 1, 0)
     assert not prefers_full(0, FULL_MAX_BYTES + 1)
+
+
+def test_the_page_draws_whole_what_the_docs_tab_opens_in_full() -> None:
+    """``WHOLE_UNITS`` and ``WHOLE_BYTES`` in diff-markdown.js, past which the page draws a
+    document a chunk at a time, are the Full bounds, so a document Docs opens in Full keeps
+    the browser's find and Select All over all of it."""
+
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "src/metabrowser/builtin_plugins/diff/diff-markdown.js"
+    ).read_text(encoding="utf-8")
+    units = re.search(r"^const WHOLE_UNITS = (\d+);$", script, re.MULTILINE)
+    whole_bytes = re.search(r"^const WHOLE_BYTES = (\d+) \* 1024;$", script, re.MULTILINE)
+    assert units is not None and whole_bytes is not None
+    assert int(units.group(1)) == FULL_MAX_BLOCKS
+    assert int(whole_bytes.group(1)) * 1024 == FULL_MAX_BYTES

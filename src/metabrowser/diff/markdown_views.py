@@ -32,7 +32,15 @@ from metabrowser.diff.markdown_projection import MarkdownDiffBlock
 # more than twice this and one more, so a fold always hides at least two blocks.
 CONTEXT_BLOCKS = 2
 # The source lines a fold may span and still be sent with a Concise answer; a fold this
-# long or longer is withheld until the reader opens it. MEASUREMENT PENDING (mb-3q2y).
+# long or longer is withheld until the reader opens it. Sent, a fold costs its HTML in the
+# answer; withheld, one request when it opens. Measured 2026-11-24 against a local server at
+# a load average of about 430, in headless Chrome 152: in finterm-ai/investment-research
+# #22, a fold sent opened in 1-2 ms (six folds, two runs), and a withheld one of 49 blocks
+# and 272 lines in 20-135 ms (four opens; its request took 8-118 ms, 25.6 KB, 6.6 KB
+# compressed); its file's Concise answer was 10.6 KB and its Full one 34.9 KB. Its HTML is
+# 94 bytes a line, so a fold sent adds at most about 9 KB to an answer, and a withheld one
+# only the anchors of its headings, however long the unchanged run. The answer's size was
+# not timed apart from the request.
 INLINE_FOLD_MAX_LINES = 100
 # The blocks, and their HTML bytes, of a document the Docs tab opens in Full. Block
 # count, not bytes, predicts what drawing them costs: measured 2026-11-24 in headless
@@ -43,7 +51,10 @@ INLINE_FOLD_MAX_LINES = 100
 # 76-77 ms for the first 800 blocks of a real book (finterm-ai/investment-research #31,
 # 197 KB) and 297-305 ms for all 3,408 (886 KB); and 48-53 ms for 200 paragraphs of
 # 2.3 KB (468 KB) and 83-84 ms for 400 (940 KB). So 500 blocks or 512 KiB keeps a whole
-# draw near 60 ms in every shape measured.
+# draw near 60 ms in every shape measured. The page draws a document within these bounds
+# whole (`WHOLE_UNITS` and `WHOLE_BYTES` in diff-markdown.js, which a test holds equal to
+# them) and a longer one a chunk at a time, so past them Full costs a chunk to draw, but its
+# answer still holds every block, and the browser's find reaches only the chunks drawn.
 FULL_MAX_BLOCKS = 500
 FULL_MAX_BYTES = 512 * 1024
 
