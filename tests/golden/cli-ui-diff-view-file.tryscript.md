@@ -73,6 +73,7 @@ $ node tests/dom/diff-view-file-session.js
       "step": "a served folder's page has no controls",
       "requests": [],
       "modules": [
+        "diff-fold.js",
         "diff-intraline.js",
         "diff-model.js",
         "diff-render-model.js",
