@@ -3897,16 +3897,16 @@ pull request page’s stack button and menu, a Pulls row’s place, the Pulls ta
 groups, and the stack’s own page ([The Stack Page](#the-stack-page)). The words come
 from one place, `builtin_plugins/github/pull-stacks.js` (`stackLabel`, `WHOLE_STACK`,
 `stackPosition`, `stackPositionHint`, `stackCaption` for a Pulls row’s place,
-`stackGroupHint` for a stack group’s row, and `stackMenuOrder`), and the look from one
-set of classes in the GitHub plugin’s stylesheet on the shell’s tokens, so no surface
-keeps a copy of either.
+`stackGroupHint` for a stack group’s row, `stackMenuOrder`, and `stackEntries` for where
+the Whole stack row goes among the members), and the look from one set of classes in the
+GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy of either.
 
 | Part | Primitive | Where |
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the row of ages; a Pulls row’s place, after its title and a muted dot, before the number, as a stack menu’s member line has it, with no icon |
 | Member row | One line: the pull request’s state icon, `.github-pull-state-icon`; its title, bold in normal text ink, cut short before its place; and at the line’s end, together, its position, bold, a muted dot, `.github-pull-stack-dot`, its number, `.github-pull-stack-member-number`, and, where it is known, another dot and its author, `.github-pull-stack-member-by`, the shell’s actor identity, “14/15 · #N · jlevy”, a Pulls row’s order, the title, the place, the number, and the author. On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu; the stack’s page, in a card |
-| Whole stack row | The stack’s Layers glyph, `.github-pull-stack-icon`, muted, in the state icon’s slot, and “Whole stack” where a member’s title starts, in a member row’s gap | The stack menu’s first row, and the Pulls tab’s last row under an open stack’s members, `.github-pulls-whole-row`; each opens the stack’s page |
+| Whole stack row | The stack’s Layers glyph, `.github-pull-stack-icon`, muted, in the state icon’s slot, and “Whole stack” where a member’s title starts, in a member row’s gap | The first of a stack’s rows, above its members, in the stack menu and under an open stack in the Pulls tab, `.github-pulls-whole-row`; each opens the stack’s page |
 | Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)); then, after a muted dot, the stack’s [brief change line](#brief-change-line) | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
@@ -3981,9 +3981,9 @@ keeps a copy of either.
   reads the states again each time it opens and each time the page repaints.
   The row this replaced wrapped a long title onto lines of its own and marked the
   current member with a check before its position and its number after its title.
-- **Order.** A stack’s members are listed top of the stack first, the order of
-  `stackMenuOrder`: the menu’s rows and a stack group’s rows in the Pulls tab are one
-  order.
+- **Order.** A stack’s rows are its Whole stack row, then its members, top of the stack
+  first, the order of `stackEntries` and `stackMenuOrder`: the menu’s rows and a stack
+  group’s rows in the Pulls tab are one order, so the Whole stack row is first in both.
 - **Links, hover, and focus.** A member row is a link to its pull request and a menu
   item, with the menu’s hover.
   The current member is marked as the Pulls list marks its current row, `--highlight-bg`
@@ -4161,8 +4161,9 @@ does not fit the Pulls toolbar beside the Show group and Refresh at the default 
 width.
 
 - **Rows.** Each stack with a pull request in the list has a row, open by default, and
-  under it, one tree level in, the stack’s pull requests that the list holds, in the
-  stack’s order. Each keeps its own change line and changed files, a level further in.
+  under it, one tree level in, its Whole stack row and then the stack’s pull requests
+  that the list holds, in the stack’s order, the stack menu’s (`stackEntries`). Each
+  pull request keeps its own change line and changed files, a level further in.
 - **Stack order.** The stacks come in the order of their first pull request in the list,
   so the list’s own order, newest first, still decides which comes first.
   The pull requests in no stack follow the stacks, in the list’s order.
@@ -4178,25 +4179,28 @@ width.
   flat: the rows and the pull request page say nothing of stacks either.
   A snapshot kept through a failed or expired refresh still groups, as the places and
   the stack menu still show it.
-- **Whole stack.** An open stack’s last row, one level in, after its pull requests, is
+- **Whole stack.** An open stack’s first row, one level in, above its pull requests, is
   its Whole stack row, a link to the stack’s own page, `/stack/<n>`
   ([The Stack Page](#the-stack-page)), as the stack menu’s first row is: the stack’s
   Layers glyph, muted, in the state icon’s slot, where the members’ icons start, and
   “Whole stack” at the tree’s icon gap from it, where their titles start.
-  It is one of its stack’s set, so the members’ places in the tree count it (“3/4”, and
-  “4/4” for it), and a closed stack hides it with its pull requests.
+  It is one of its stack’s set, so the tree’s places count it with the members (“1/4”
+  for it under a stack of three), and a closed stack hides it with its pull requests.
   While the address is the stack’s page, it is the current row, with a pull request’s
-  current-row mark, `--highlight-bg` and the 2px `--highlight-bar`, and it is shown as a
-  current pull request’s row is: an address that names the stack’s page opens the stack
-  if the reader closed it and scrolls the row into view, or, where the list does not
-  draw the row yet, as before the stacks are known, once it does (`setCurrent`’s
-  `stack`, `pullAddress` in `pulls-nav.js`).
+  current-row mark, `--highlight-bg` and the 2px `--highlight-bar`; a key or a press
+  that opens a pull request takes the mark from it at once, before the address follows,
+  so one row holds it.
+  It is shown as a current pull request’s row is: an address that names the stack’s page
+  opens the stack if the reader closed it and scrolls the row into view, or, where the
+  list does not draw the row yet, as before the stacks are known, once it does
+  (`setCurrent`’s `stack`, `pullAddress` in `pulls-nav.js`).
 - **Keys.** A stack’s row is a row of the tree, as a folder is: `J` and `K` stop on it
   and open nothing; Enter and Space open or close it; Right opens it, or goes to its
-  first pull request; Left closes it, or from a pull request in it, goes to it.
-  The Whole stack row is a row as a pull request’s is: `J` and `K` stop on it and open
-  the stack’s page, Enter and Space open it, a press opens it, Right does nothing, since
-  it holds no files, and Left goes to its stack’s row.
+  first row, the Whole stack row; Left closes it, or from a row in it, goes to it.
+  `J` from an open stack’s row goes to its Whole stack row first, then its pull
+  requests. The Whole stack row is a row as a pull request’s is: `J` and `K` stop on it
+  and open the stack’s page, Enter and Space open it, a press opens it, Right does
+  nothing, since it holds no files, and Left goes to its stack’s row.
   An address that names a pull request in a closed stack opens the stack.
   A grouped list’s Tab stop, until the reader moves it, is its first row.
 - **Scroll.** A grouping that arrives at the top of the list keeps the top, so its first
@@ -4210,7 +4214,7 @@ width.
   back where the reader left it: stacks that arrive while the reader is away, or just
   after the return, regroup the list around it too.
 - **Read ahead.** An open reads ahead the pull requests a key reaches next as drawn, a
-  stack’s row passed over, and the first pull requests drawn.
+  stack’s row and a Whole stack row passed over, and the first pull requests drawn.
 - **Change line.** A stack’s row shows the lines of the stack’s combined change as its
   [brief change line](#brief-change-line) of its line totals alone, after its label and
   a muted dot: “Stack #286 · +1,234 −567”, a total of zero left out as a row’s is.
@@ -4247,11 +4251,11 @@ width.
 `tests/dom/github-pulls-stack-groups-session.js` runs the grouping, the keys, and what
 an open reads ahead against the production code on the server’s recorded answers, and
 mounts the panel and the page’s stack menu to hold the tree’s roles, places, and order,
-each open stack ending in its Whole stack row, which a key or a press opens and an
-address of the stack’s page marks.
+the rows under each open stack its members and its one Whole stack row, which a key or a
+press opens and an address of the stack’s page marks.
 `tests/test_github_stack_page_chrome.py` holds in headless Chrome that the row is the
 current row and in view on the stack’s page, and that a press on it and `J` onto it from
-the last member open the page.
+the stack’s row open the page.
 `tests/dom/github-pulls-stack-lines-session.js` runs what each heading shows of its
 change line, and when it is read, against the production code on the route’s recorded
 answers, and mounts the panel to print a heading waiting, with its line, with none, and

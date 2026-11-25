@@ -164,7 +164,7 @@ type MetabrowserPullsPanelHandle = Readonly<{
   /**
    * Right and Left on a pull request's row: its changed files open, or close, and Left from
    * a closed one goes to the stack's row it is under. On a stack's row: it opens, or Right
-   * goes to its first pull request, and Left closes it.
+   * goes to its first row, Whole stack, and Left closes it.
    */
   expand(): boolean;
   collapse(): boolean;
