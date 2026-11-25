@@ -2,21 +2,19 @@
 // GitHub stand-in with native stacks.
 //
 //   CHROME_BIN=... CHROME_PROFILES=<dir> [SHOTS_DIR=<dir>] [MEASURE_OUT=<file>] \
-//     node tests/dom/github-stack-page-chrome.mjs <server base URL> [--before]
+//     node tests/dom/github-stack-page-chrome.mjs <server base URL>
 //
 // tests/test_github_stack_page_chrome.py serves the stand-in's home with a fake `gh` whose
 // `gh stack` answers #70 (8, then 10) and #71 (8, 7, then 10). The test owns the
 // profile directory and stops this process's whole group, Chrome included, however the run
-// ends (tests/process_group.py). With SHOTS_DIR it saves the screenshots; `--before` takes
-// only those, of the page before this design, and checks nothing.
+// ends (tests/process_group.py). With SHOTS_DIR it saves the screenshots.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
 
-const [base, mode] = process.argv.slice(2);
-const before = mode === "--before";
+const [base] = process.argv.slice(2);
 if (!base || !process.env.CHROME_BIN || !process.env.CHROME_PROFILES) {
   throw new Error("usage: CHROME_BIN CHROME_PROFILES github-stack-page-chrome.mjs <base URL>");
 }
@@ -151,12 +149,11 @@ try {
       await Promise.all(document.getAnimations().filter((animation) => animation instanceof CSSTransition).map((animation) => animation.finished.catch(() => null)));
     })()`);
   // The stack's page once every member's record is read and its comparison is drawn: the
-  // header's Diff summary, and the diff of the tab it shows out of its hold. Before this
-  // design, its Files tab's.
+  // header's Diff summary, and the diff of the tab it shows out of its hold.
   const pageReady = `(() => {
     const page = document.querySelector(".github-pull-stack-page");
     return page !== null &&
-      !/Not fetched yet|Fetching/.test(page.querySelector(".page-header")?.innerText ?? "") &&
+      !/Fetching/.test(page.querySelector(".page-header")?.innerText ?? "") &&
       page.querySelector(".github-pull-summary .diff-summary") !== null &&
       page.querySelector(".github-pull-diff-holding, .github-pull-diff-loading") === null;
   })()`;
@@ -224,7 +221,6 @@ try {
     ),
   ];
 
-  const label = before ? "before" : "after";
   /** Screencast frames, saved under SHOTS_DIR/<name>/ while a recording runs. */
   let filming = null;
   chrome.on("Page.screencastFrame", ({ data, sessionId, metadata }) => {
@@ -246,7 +242,7 @@ try {
   const record = async (name, root, press) => {
     await evaluate(RECORDER(root));
     if (SHOTS !== null) {
-      const dir = path.join(SHOTS, `${label}-${name}`);
+      const dir = path.join(SHOTS, name);
       fs.rmSync(dir, { recursive: true, force: true });
       fs.mkdirSync(dir, { recursive: true });
       filming = { dir, count: 0, wall: Date.now() };
@@ -303,102 +299,98 @@ try {
   await waitFor(pageReady);
   await frames();
   phase("stack 70");
-  if (!before) {
-    // Opened from the menu, the stack's Whole stack row in the Pulls tab is the current row
-    // and in view. Here the list draws the row only after the address names the page; until
-    // its reveal waited for the row (`wholeRevealPending`), it was marked but left 3,745 px
-    // above the view (mb-cm31).
-    await waitFor(
-      `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')?.getAttribute("aria-current") === "page"`,
-    );
-    await frames();
-    const fromMenu = await evaluate(`(() => {
-      const whole = document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]');
-      const box = whole.getBoundingClientRect();
-      const view = document.querySelector(".tree-content").getBoundingClientRect();
-      return { top: box.top, bottom: box.bottom, viewTop: view.top, viewBottom: view.bottom };
-    })()`);
-    measured.wholeFromMenu = fromMenu;
-    check(
-      "opened from the menu, the Pulls tab's Whole stack row is current and in view",
-      fromMenu.top >= fromMenu.viewTop - 1 && fromMenu.bottom <= fromMenu.viewBottom + 1,
-      JSON.stringify(fromMenu),
-    );
-  }
+  // Opened from the menu, the stack's Whole stack row in the Pulls tab is the current row
+  // and in view. Here the list draws the row only after the address names the page; until
+  // its reveal waited for the row (`wholeRevealPending`), it was marked but left 3,745 px
+  // above the view (mb-cm31).
+  await waitFor(
+    `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')?.getAttribute("aria-current") === "page"`,
+  );
+  await frames();
+  const fromMenu = await evaluate(`(() => {
+    const whole = document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]');
+    const box = whole.getBoundingClientRect();
+    const view = document.querySelector(".tree-content").getBoundingClientRect();
+    return { top: box.top, bottom: box.bottom, viewTop: view.top, viewBottom: view.bottom };
+  })()`);
+  measured.wholeFromMenu = fromMenu;
+  check(
+    "opened from the menu, the Pulls tab's Whole stack row is current and in view",
+    fromMenu.top >= fromMenu.viewTop - 1 && fromMenu.bottom <= fromMenu.viewBottom + 1,
+    JSON.stringify(fromMenu),
+  );
   // Its other tabs, as a reader opens them, recorded before any theme changes, whose
   // transitions a screencast would catch.
   const docs = await record("stack-docs", ".github-pull-stack-page", () =>
     click('.github-pull-stack-page .tab-bar a[href$="/docs"]'),
   );
-  await shot(`${label}-stack-70-docs`);
+  await shot(`stack-70-docs`);
   const changes = await record("stack-changes", ".github-pull-stack-page", () =>
     click('.github-pull-stack-page .tab-bar a[href$="/changes"]'),
   );
   await waitFor(pageReady);
-  await shot(`${label}-stack-70-changes`);
-  if (!before) {
-    for (const [name, result] of [
-      ["opening the stack's page", opened],
-      ["its Docs", docs],
-      ["its Changes", changes],
-    ]) {
-      const moved = moves(result);
-      check(
-        `${name}: nothing moves from first paint`,
-        moved.length === 0,
-        moved.slice(0, 6).join("; "),
-      );
-    }
-    const page = await evaluate(`(() => {
-      const page = document.querySelector(".github-pull-stack-page");
-      const members = [...page.querySelectorAll(".github-pull-stack-members .github-pull-stack-member")];
-      const summary = page.querySelector(".github-pull-summary .diff-summary-toggle");
-      const counterpart = page.querySelector(".view-header-end[data-counterpart] a.counterpart-open");
-      return {
-        members: members.map((row) => ({
-          text: row.innerText.replace(/\\s+/g, " ").trim(),
-          current: row.hasAttribute("aria-current"),
-          author: row.querySelector(".github-pull-stack-member-by:not([hidden]) .github-pull-stack-member-author")?.textContent ?? null,
-        })),
-        summary_open: summary?.getAttribute("aria-expanded") ?? null,
-        counterpart: counterpart?.getAttribute("href") ?? null,
-        tabs: [...page.querySelectorAll(".tab-bar .tab-btn")].filter((tab) => !tab.hidden).map((tab) => tab.textContent),
-        size: page.querySelector(".github-pull-size")?.innerText ?? null,
-      };
-    })()`);
-    measured.page = page;
-    // Each member row is the stack menu's (`stackMemberRow`), so its layout is the menu's by
-    // construction. What the running app adds is its data: every member's author, its
-    // record's from the stack's answer, which a member the Pulls tab's lists have not read
-    // (merged 8, which the Open list leaves out) has too. The stand-in's pull requests are
-    // all the maintainer's.
+  await shot(`stack-70-changes`);
+  for (const [name, result] of [
+    ["opening the stack's page", opened],
+    ["its Docs", docs],
+    ["its Changes", changes],
+  ]) {
+    const moved = moves(result);
     check(
-      "every member names its author",
-      page.members.length === 2 && page.members.every((row) => row.author === "maintainer"),
-      JSON.stringify(page.members),
+      `${name}: nothing moves from first paint`,
+      moved.length === 0,
+      moved.slice(0, 6).join("; "),
     );
-    for (const row of page.members) {
-      check(`${row.text}: no member is the page`, !row.current);
-    }
-    check("the Diff summary is closed", page.summary_open === "false", String(page.summary_open));
-    check(
-      "View on GitHub opens the whole stack",
-      page.counterpart === "https://github.com/octo/demo/stack/70",
-      String(page.counterpart),
-    );
-    // The stand-in's stack carries no guide, so its tabs are a pull request's without Guided
-    // Review, and never a Files tab, which the stack's page no longer has.
-    check(
-      "the tabs are Docs and Changes, and no Files",
-      JSON.stringify(page.tabs) === JSON.stringify(["Docs", "Changes"]),
-      JSON.stringify(page.tabs),
-    );
-    check("the size line says the files", page.size === "1 file changed", String(page.size));
   }
+  const page = await evaluate(`(() => {
+    const page = document.querySelector(".github-pull-stack-page");
+    const members = [...page.querySelectorAll(".github-pull-stack-members .github-pull-stack-member")];
+    const summary = page.querySelector(".github-pull-summary .diff-summary-toggle");
+    const counterpart = page.querySelector(".view-header-end[data-counterpart] a.counterpart-open");
+    return {
+      members: members.map((row) => ({
+        text: row.innerText.replace(/\\s+/g, " ").trim(),
+        current: row.hasAttribute("aria-current"),
+        author: row.querySelector(".github-pull-stack-member-by:not([hidden]) .github-pull-stack-member-author")?.textContent ?? null,
+      })),
+      summary_open: summary?.getAttribute("aria-expanded") ?? null,
+      counterpart: counterpart?.getAttribute("href") ?? null,
+      tabs: [...page.querySelectorAll(".tab-bar .tab-btn")].filter((tab) => !tab.hidden).map((tab) => tab.textContent),
+      size: page.querySelector(".github-pull-size")?.innerText ?? null,
+    };
+  })()`);
+  measured.page = page;
+  // Each member row is the stack menu's (`stackMemberRow`), so its layout is the menu's by
+  // construction. What the running app adds is its data: every member's author, its
+  // record's from the stack's answer, which a member the Pulls tab's lists have not read
+  // (merged 8, which the Open list leaves out) has too. The stand-in's pull requests are
+  // all the maintainer's.
+  check(
+    "every member names its author",
+    page.members.length === 2 && page.members.every((row) => row.author === "maintainer"),
+    JSON.stringify(page.members),
+  );
+  for (const row of page.members) {
+    check(`${row.text}: no member is the page`, !row.current);
+  }
+  check("the Diff summary is closed", page.summary_open === "false", String(page.summary_open));
+  check(
+    "View on GitHub opens the whole stack",
+    page.counterpart === "https://github.com/octo/demo/stack/70",
+    String(page.counterpart),
+  );
+  // The stand-in's stack carries no guide, so its tabs are a pull request's without Guided
+  // Review, and never a Files tab, which the stack's page no longer has.
+  check(
+    "the tabs are Docs and Changes, and no Files",
+    JSON.stringify(page.tabs) === JSON.stringify(["Docs", "Changes"]),
+    JSON.stringify(page.tabs),
+  );
+  check("the size line says the files", page.size === "1 file changed", String(page.size));
   await theme("dark");
-  await shot(`${label}-stack-70-dark`);
+  await shot(`stack-70-dark`);
   await theme("light");
-  await shot(`${label}-stack-70-light`);
+  await shot(`stack-70-light`);
 
   // A pull request's own Docs and Changes, for comparison.
   await send("Page.navigate", { url: `${base}/pull/10` });
@@ -410,20 +402,18 @@ try {
   const pullChanges = await record("pull-changes", ".github-pull", () =>
     click('.github-pull .tab-bar a[href$="/files"]'),
   );
-  if (!before) {
-    for (const [name, result] of [
-      ["the stack's Docs", docs],
-      ["the stack's Changes", changes],
-      ["a pull request's Docs", pullDocs],
-      ["a pull request's Changes", pullChanges],
-    ]) {
-      const tops = loadingTops(result);
-      check(
-        `${name}: the loading block stays where it showed`,
-        tops.length <= 1,
-        JSON.stringify(tops),
-      );
-    }
+  for (const [name, result] of [
+    ["the stack's Docs", docs],
+    ["the stack's Changes", changes],
+    ["a pull request's Docs", pullDocs],
+    ["a pull request's Changes", pullChanges],
+  ]) {
+    const tops = loadingTops(result);
+    check(
+      `${name}: the loading block stays where it showed`,
+      tops.length <= 1,
+      JSON.stringify(tops),
+    );
   }
 
   // The Pulls tab beside the page, its stacks grouped.
@@ -433,100 +423,96 @@ try {
   await waitFor(`document.querySelector(".github-pulls-stack-row") !== null`);
   await frames();
   phase("pulls");
-  await shot(`${label}-stack-70-with-pulls`);
-  if (!before) {
-    // The Pulls tab's Whole stack row (mb-cm31): the last of Stack #70's rows, under its
-    // members, the current row while the stack's page is open, and in view.
-    const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
-    const NAV = `(() => {
-      const whole = ${WHOLE};
-      if (whole === null) return null;
-      const members = [];
-      for (let item = whole.closest("li").previousElementSibling; item?.dataset.level === "2"; item = item.previousElementSibling) {
-        members.unshift(Number(item.dataset.number));
-      }
-      const view = document.querySelector(".tree-content").getBoundingClientRect();
-      const box = whole.getBoundingClientRect();
-      return {
-        address: location.pathname,
-        text: whole.textContent,
-        href: whole.getAttribute("href"),
-        current: whole.getAttribute("aria-current"),
-        selected: whole.classList.contains("selected"),
-        focused: document.activeElement === whole,
-        place: whole.getAttribute("aria-posinset") + "/" + whole.getAttribute("aria-setsize"),
-        members,
-        inView: box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
-      };
-    })()`;
-    await waitFor(`${WHOLE}?.getAttribute("aria-current") === "page"`);
-    const nav = await evaluate(NAV);
-    measured.nav = { open: nav };
-    check(
-      "the Pulls tab's Whole stack row ends Stack #70's members and links to its page",
-      nav !== null &&
-        nav.text === "Whole stack" &&
-        nav.href === "/stack/70" &&
-        nav.members.length > 0 &&
-        nav.members.every((number) => [10, 8].includes(number)) &&
-        nav.place === `${nav.members.length + 1}/${nav.members.length + 1}`,
-      JSON.stringify(nav),
-    );
-    check(
-      "it is the current row while the stack's page is open, and in view",
-      nav?.current === "page" && nav.selected && nav.inView,
-      JSON.stringify(nav),
-    );
-    const last = nav?.members.at(-1);
-    // A member's row takes the mark; a press on the Whole stack row opens the stack's page
-    // again and gives it back; and J from the last member walks onto it and opens the page.
-    await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
-    await waitFor(
-      `location.pathname === "/pull/${last}" && ${WHOLE}.getAttribute("aria-current") === null`,
-    );
-    await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-title');
-    await waitFor(
-      `location.pathname === "/stack/70" && ${WHOLE}.getAttribute("aria-current") === "page"`,
-    );
-    measured.nav.pressed = await evaluate(NAV);
-    await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
-    await waitFor(`location.pathname === "/pull/${last}"`);
-    await evaluate(
-      `document.querySelector('#tab-pulls a.github-pulls-row[data-number="${last}"]').focus()`,
-    );
-    for (const type of ["keyDown", "keyUp"]) {
-      await send("Input.dispatchKeyEvent", {
-        type,
-        key: "j",
-        code: "KeyJ",
-        windowsVirtualKeyCode: 74,
-        ...(type === "keyDown" ? { text: "j" } : {}),
-      });
+  await shot(`stack-70-with-pulls`);
+  // The Pulls tab's Whole stack row (mb-cm31): the last of Stack #70's rows, under its
+  // members, the current row while the stack's page is open, and in view.
+  const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
+  const NAV = `(() => {
+    const whole = ${WHOLE};
+    if (whole === null) return null;
+    const members = [];
+    for (let item = whole.closest("li").previousElementSibling; item?.dataset.level === "2"; item = item.previousElementSibling) {
+      members.unshift(Number(item.dataset.number));
     }
-    await waitFor(`location.pathname === "/stack/70" && document.activeElement === ${WHOLE}`);
-    await waitFor(`${WHOLE}.getAttribute("aria-current") === "page"`);
-    measured.nav.walked = await evaluate(NAV);
-    check(
-      "a press on it, and J onto it from the last member, open the stack's page and mark it",
-      measured.nav.pressed?.address === "/stack/70" &&
-        measured.nav.pressed.current === "page" &&
-        measured.nav.walked?.address === "/stack/70" &&
-        measured.nav.walked.current === "page" &&
-        measured.nav.walked.focused,
-      JSON.stringify(measured.nav),
-    );
-    await shot(`${label}-stack-70-whole-row`);
+    const view = document.querySelector(".tree-content").getBoundingClientRect();
+    const box = whole.getBoundingClientRect();
+    return {
+      address: location.pathname,
+      text: whole.textContent,
+      href: whole.getAttribute("href"),
+      current: whole.getAttribute("aria-current"),
+      selected: whole.classList.contains("selected"),
+      focused: document.activeElement === whole,
+      place: whole.getAttribute("aria-posinset") + "/" + whole.getAttribute("aria-setsize"),
+      members,
+      inView: box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+    };
+  })()`;
+  await waitFor(`${WHOLE}?.getAttribute("aria-current") === "page"`);
+  const nav = await evaluate(NAV);
+  measured.nav = { open: nav };
+  check(
+    "the Pulls tab's Whole stack row ends Stack #70's members and links to its page",
+    nav !== null &&
+      nav.text === "Whole stack" &&
+      nav.href === "/stack/70" &&
+      nav.members.length > 0 &&
+      nav.members.every((number) => [10, 8].includes(number)) &&
+      nav.place === `${nav.members.length + 1}/${nav.members.length + 1}`,
+    JSON.stringify(nav),
+  );
+  check(
+    "it is the current row while the stack's page is open, and in view",
+    nav?.current === "page" && nav.selected && nav.inView,
+    JSON.stringify(nav),
+  );
+  const last = nav?.members.at(-1);
+  // A member's row takes the mark; a press on the Whole stack row opens the stack's page
+  // again and gives it back; and J from the last member walks onto it and opens the page.
+  await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
+  await waitFor(
+    `location.pathname === "/pull/${last}" && ${WHOLE}.getAttribute("aria-current") === null`,
+  );
+  await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-title');
+  await waitFor(
+    `location.pathname === "/stack/70" && ${WHOLE}.getAttribute("aria-current") === "page"`,
+  );
+  measured.nav.pressed = await evaluate(NAV);
+  await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
+  await waitFor(`location.pathname === "/pull/${last}"`);
+  await evaluate(
+    `document.querySelector('#tab-pulls a.github-pulls-row[data-number="${last}"]').focus()`,
+  );
+  for (const type of ["keyDown", "keyUp"]) {
+    await send("Input.dispatchKeyEvent", {
+      type,
+      key: "j",
+      code: "KeyJ",
+      windowsVirtualKeyCode: 74,
+      ...(type === "keyDown" ? { text: "j" } : {}),
+    });
   }
+  await waitFor(`location.pathname === "/stack/70" && document.activeElement === ${WHOLE}`);
+  await waitFor(`${WHOLE}.getAttribute("aria-current") === "page"`);
+  measured.nav.walked = await evaluate(NAV);
+  check(
+    "a press on it, and J onto it from the last member, open the stack's page and mark it",
+    measured.nav.pressed?.address === "/stack/70" &&
+      measured.nav.pressed.current === "page" &&
+      measured.nav.walked?.address === "/stack/70" &&
+      measured.nav.walked.current === "page" &&
+      measured.nav.walked.focused,
+    JSON.stringify(measured.nav),
+  );
+  await shot(`stack-70-whole-row`);
 
   await send("Page.navigate", { url: `${base}/stack/71` });
   await waitFor(pageReady);
   await frames();
   phase("stack 71");
-  await shot(`${label}-stack-71-light`);
+  await shot(`stack-71-light`);
 
-  if (!before) {
-    check("no script error on the page", pageErrors.length === 0, pageErrors.join("\n"));
-  }
+  check("no script error on the page", pageErrors.length === 0, pageErrors.join("\n"));
 } finally {
   await chrome.close();
 }

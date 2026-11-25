@@ -72,6 +72,7 @@ import {
   stackLabel,
   stackMembership,
   stackRowKey,
+  WHOLE_STACK,
   watchStacks,
   wholeStackOfKey,
   wholeStackRowKey,
@@ -614,6 +615,21 @@ function catalogMark(envelope) {
     return null;
   }
   return { epoch: envelope.generation?.split(":")[0] ?? "", fetched: envelope.catalog_fetched };
+}
+
+/**
+ * The row that holds the current-row mark once it moves from *previous* to *next*, from
+ * *marked*, the row that held it: a pull request's mark and a Whole stack row's are given and
+ * taken in turn (`followPull`, `followStack`), so a mark that leaves clears only the row that
+ * held it.
+ *
+ * @param {number | null} marked
+ * @param {number | null} previous
+ * @param {number | null} next
+ * @returns {number | null}
+ */
+export function markedRow(marked, previous, next) {
+  return next !== null || marked === previous ? next : marked;
 }
 
 /**
@@ -4898,7 +4914,7 @@ export function mountPullsPanel(container, ctx, mb) {
           class: "github-pulls-row github-pulls-whole-row",
           role: "treeitem",
           "aria-level": String(whole.level),
-          "aria-label": `Whole stack, ${stackLabel(whole.stack)}`,
+          "aria-label": `${WHOLE_STACK}, ${stackLabel(whole.stack)}`,
           href: `/stack/${whole.stack}`,
           tabindex: "-1",
         },
@@ -4906,7 +4922,7 @@ export function mountPullsPanel(container, ctx, mb) {
           h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
             stackSvg === null ? null : document.importNode(stackSvg, true),
           ]),
-          h("span", { class: "github-pulls-title github-pulls-whole-title" }, ["Whole stack"]),
+          h("span", { class: "github-pulls-title github-pulls-whole-title" }, [WHOLE_STACK]),
         ],
       );
       row.dataset.stack = String(whole.stack);
@@ -5600,11 +5616,7 @@ export function mountPullsPanel(container, ctx, mb) {
         if (previous !== null && previous !== next) {
           trees.get(previous)?.controller.setCurrent(null);
         }
-        // A pull request's mark and a Whole stack row's are given and taken in turn
-        // (`followPull`, `followStack`): one leaving clears the row only if it held it.
-        if (next !== null || currentRow === previous) {
-          currentRow = next;
-        }
+        currentRow = markedRow(currentRow, previous, next);
         const leaving = previous === null ? undefined : rowElement(previous);
         if (leaving !== undefined) {
           markShown(leaving, false);
