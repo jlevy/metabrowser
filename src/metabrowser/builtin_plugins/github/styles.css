@@ -726,6 +726,17 @@
 .github-pull-body-holding {
   visibility: hidden;
 }
+/* The diff's loading block, below its held host so it cannot move the diff's first row,
+   stays where it first showed while the hidden diff lays out above it: in flow it was
+   pushed down as the diff grew, 95 px on a pull request's Changes (Chrome 152,
+   2026-11-25). Out of flow, at the top of the body, where the empty host left it. */
+.github-pull-body:has(> .github-pull-diff-holding) {
+  position: relative;
+}
+.github-pull-diff-holding + .github-pull-diff-loading {
+  position: absolute;
+  inset: calc(var(--content-padding-y) + var(--github-pull-gap)) var(--content-padding-x) auto;
+}
 /* Loading blocks that had shown before the conversation's hold began stay over it until it
    shows, so the body never blinks empty between them. Out of flow, where they were, so the
    layout the hold measures is the conversation's own. */
@@ -1805,6 +1816,39 @@
   justify-self: center;
   color: var(--muted);
 }
+/* A stack's Whole stack row (pulls-panel.js, `paintWholeRow`), the last under its open stack,
+   opens the stack's own page. It is one line in a member's row grid: the stack's Layers glyph,
+   muted, in the state icon's slot, and "Whole stack" in the members' title column, one
+   --github-pull-row-gap (the tree's icon gap) past the glyph, as the stack menu's Whole stack
+   row has them (`.github-pull-stack-whole`). It hovers, takes the focus ring, and takes the
+   current-row mark as a pull request's row does, on its own ground, since no entry holds it
+   (`.github-pulls-entry`). */
+.github-pulls-row.github-pulls-whole-row {
+  grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);
+  padding-bottom: 2px;
+  scroll-margin-block-start: calc(var(--chip-height) + 12px);
+}
+.github-pulls-whole-row > .github-pull-stack-icon {
+  display: inline-flex;
+  justify-content: center;
+  color: var(--muted);
+}
+.github-pulls-whole-row > .github-pulls-whole-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pulls-whole-row:hover {
+  background: var(--hover-bg);
+}
+.github-pulls-whole-row:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  background: var(--hover-bg);
+}
+.github-pulls-whole-row.selected {
+  background: var(--highlight-bg);
+}
 /* The heading is one line whatever it holds, a line of the row's content box: "Stack #N"
    then, after a muted dot, the stack's line totals, "· +1,234 −567", the shell's brief
    change line of its totals alone, with no file statuses, as a pull request's row says its
@@ -2218,48 +2262,32 @@
   white-space: nowrap;
 }
 
-/* ── The stack page (stack-page.js; arch-github-pull-requests.md, "The Stack Page") ──
-   A native stack's header: "Stack #N into base", its counts, then its members top first,
-   each its place, state, number, and title, as a stack menu's member reads
-   (`.github-pull-stack-member`): the place is a stack's bold position
-   (`.github-pull-stack-position`) and the number a pull request's (`.github-pull-number`),
-   in the header's link ink. The page's tabs and diff views are the shell's and the diff
-   plugin's. */
-.github-pull-stack-page-base {
-  color: var(--muted);
-  font-weight: normal;
-}
-.github-pull-stack-page-line,
-.github-pull-stack-page-lacking {
-  color: var(--muted);
-}
-.github-pull-stack-page-members {
-  display: grid;
-  gap: 2px;
-  margin: 4px 0 0;
+/* ── The stack page (stack-page.js; docs/design-system.md, "The Stack Page") ──
+   A pull request's page made of the parts a stack has, on the pull request page's own
+   classes: its header's title, corner, branches, status, size, and Diff summary rows, its
+   tab bar, and its diff's hold. What is here is the one part a pull request's page has no
+   row for, the members, which are the stack menu's member rows (`.menu-item` and
+   `.github-pull-stack-member`, above) listed in the header in a page card (`.page-card`),
+   as a guided step's card lists a pull request it cites (`.github-pull-guide-row`): every
+   row one line at the menu's size, the state icon in the tree's icon slot, the title cut
+   short before the place and the number. No member is this page, so none takes the
+   current-row mark.
+
+   The card insets its rows as every card on a pull request's page insets what it holds,
+   by the card text's inset (`--github-pull-text-inset`), so a member's state icon starts
+   where Guided Review's badge and a step's text start under it. With the menu's own inset,
+   `--menu-row-inset`, the icons stood 8 px nearer the card's edge than every other card's
+   content on the page (Chrome 152, 2026-11-25). The body's column is the pull request
+   page's (`bodyInColumn` in stack-page.js). */
+.github-pull-stack-members {
+  margin: 0;
   padding: 0;
   list-style: none;
 }
-.github-pull-stack-page-member {
+.github-pull-stack-members-item {
   display: flex;
-  align-items: baseline;
-  gap: 0 0.4em;
   min-width: 0;
 }
-.github-pull-stack-page-link {
-  white-space: nowrap;
-}
-.github-pull-stack-page-member-title {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.github-pull-stack-page-note {
-  color: var(--muted);
-  white-space: nowrap;
-}
-.github-pull-stack-page-status:empty {
-  display: none;
-}
-.github-pull-stack-page-take {
-  margin-inline-start: 0.4em;
+.github-pull-stack-members .github-pull-stack-member {
+  padding-inline: var(--github-pull-text-inset);
 }

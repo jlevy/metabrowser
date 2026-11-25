@@ -42,9 +42,6 @@ PRIMITIVE_MODULES = {
     SOURCE / "static" / "plugin-sdk.js",
     SOURCE / "static" / "plugin-sdk-views.js",
 }
-# A stack's page, which another change is rebuilding, still paints its one age from
-# `formatAge`; it moves to `metabrowser.ageLabel` with that work.
-NOT_YET_ON_THE_BUILDER = {SOURCE / "builtin_plugins" / "github" / "stack-page.js"}
 
 
 def _tracked(pattern: str) -> list[Path]:
@@ -137,7 +134,7 @@ _KEPT = re.compile(r"\b(?:const|let|var)\s+(\w+)\s*=\s*[^;]*?" + _PRIMITIVE_CALL
 def test_no_module_paints_an_age_from_the_primitives_class() -> None:
     findings: list[str] = []
     for module in _tracked("src/metabrowser/*.js"):
-        if module in PRIMITIVE_MODULES or module in NOT_YET_ON_THE_BUILDER:
+        if module in PRIMITIVE_MODULES:
             continue
         text = module.read_text(encoding="utf-8")
         where = module.relative_to(ROOT)
@@ -151,11 +148,3 @@ def test_no_module_paints_an_age_from_the_primitives_class() -> None:
         "draw an age with ageLabel or ageLabelHtml, which put its freshness class on it, "
         "not with formatAge's class:\n" + "\n".join(findings)
     )
-
-
-def test_the_exemptions_are_still_needed() -> None:
-    for module in NOT_YET_ON_THE_BUILDER:
-        text = module.read_text(encoding="utf-8")
-        assert _DESTRUCTURED.search(text) or _READ_AT_ONCE.search(text), (
-            f"{module.relative_to(ROOT)} draws its ages with the builder now: drop its exemption"
-        )

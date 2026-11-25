@@ -132,6 +132,12 @@ class StackMemberWire(TypedDict):
     place: int
     title: str | None
     state: MemberState | None
+    # Its author and the author's avatar, which end its member row, as they end the stack
+    # menu's (docs/design-system.md, "Authors Follow Pull Requests"): its record's, or with
+    # none the repository's cached list row's, as its title is, and the stacks route's
+    # `authors` and `avatars` are; None where neither holds it.
+    author: str | None
+    avatar: str | None
     # The record's comparison, or None with no usable record.
     base: str | None
     head: str | None
@@ -200,6 +206,9 @@ class StackEnvelope(TypedDict):
     reason: StackAbsence | None
     number: int
     base_ref: str | None
+    # The top member's head branch, which the page's header shows merging into
+    # ``base_ref``; None until the top member's record is read.
+    head_ref: str | None
     open: bool | None
     members: list[StackMemberWire]
     pending: list[int]
@@ -212,7 +221,8 @@ class StackEnvelope(TypedDict):
     # (`stack_guide_carrier` in guided_review.py), or None: none does, or the stack is not
     # current, so a member not read yet may.
     guide: StackGuideWire | None
-    # What View on GitHub opens: the top member's page, which GitHub draws with its stack.
+    # The top member's page on GitHub, which a guide's note is resolved against when its
+    # step names no page. View on GitHub is the counterpart route's (counterpart.py).
     github_url: str | None
     # The top member's automatic ask, which keeps the repository's list probed while the
     # stack's page is all that is open, so the catalog reports every member's head.
@@ -227,6 +237,8 @@ class _Member:
     revision: str | None
     title: str | None
     state: MemberState | None
+    author: str | None
+    avatar: str | None
     moved: bool
 
 
@@ -372,6 +384,12 @@ def _read_members(
                 record=record,
                 revision=revision if record is not None else None,
                 title=record.pull.title if record is not None else row.title if row else None,
+                author=record.pull.author if record is not None else row.author if row else None,
+                avatar=record.pull.author_avatar_url
+                if record is not None
+                else row.author_avatar_url
+                if row
+                else None,
                 state=member_state(
                     record,
                     row.state if row is not None else None,
@@ -688,6 +706,7 @@ def _envelope(
     members = read.members if read is not None else ()
     pair = read.pair if read is not None else None
     fetching = read.fetching if read is not None else frozenset[int]()
+    top = members[-1].record if members else None
     wires: list[StackMemberWire] = []
     for place, member in enumerate(members, 1):
         pending = member.record is None or member.moved
@@ -697,6 +716,8 @@ def _envelope(
                 place=place,
                 title=member.title,
                 state=member.state,
+                author=member.author,
+                avatar=member.avatar,
                 base=member.record.comparison.base
                 if member.record is not None and member.record.comparison is not None
                 else None,
@@ -713,6 +734,7 @@ def _envelope(
         reason=None,
         number=number,
         base_ref=stack.base_ref if stack is not None else None,
+        head_ref=top.pull.head.ref if top is not None else None,
         open=stack.open if stack is not None else None,
         members=wires,
         pending=[wire["number"] for wire in wires if wire["pending"]],

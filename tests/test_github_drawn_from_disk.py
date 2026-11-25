@@ -727,7 +727,7 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         frozenset({"merge-base", "rev-parse"}),
     ),
     Drawn(
-        "Files, Docs, and Changes",
+        "Diff summary, Docs, and Changes",
         "Stack page",
         "stack-comparison",
         lambda built: built.stack_comparison_route,

@@ -1247,11 +1247,14 @@ _PAGE_HEADER_LINES = (
 
 
 def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
-    """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
+    """A commit's, a pull request's, and a stack's page have one header ("Page Headers").
+
+    One since mb-26zj, and the stack's since mb-cm31.
 
     Each is a `.page-header`, with its first line `--page-title-gap` under the title and
     the common line gap beneath it. The pull request adds half a gap on each side of its
-    size line. Every line under the title but the labels is a `.page-header-line` at
+    size line. Every line under the title but the labels and a stack's members card is a
+    `.page-header-line` at
     `--body-font-size`, including the ages and Diff summary, whose text the diff plugin sets at the
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
@@ -1328,6 +1331,28 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     ):
         assert f'class: "{row} page-header-line"' in page, row
     assert 'class: "github-pull-labels"' in page, "the labels row is a row of chips"
+    # A native stack's page is a pull request's header for the whole stack ("The Stack
+    # Page"): the same header and lines, every line under the title but its members, the
+    # stack menu's member rows in a page card, at the menu's size and a card's inset, which
+    # tests/dom/github-stack-page-chrome.mjs measures against the menu's and
+    # tests/dom/github-stack-page-layout-chrome.mjs against a card's head.
+    stack = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-page.js").read_text(encoding="utf-8")
+    assert 'class: "github-pull-header page-header page-reading-column"' in stack
+    for row in (
+        "github-pull-branches",
+        "github-pull-status",
+        "github-pull-size",
+        "github-pull-summary metabrowser-diff-host",
+    ):
+        assert f'class: "{row} page-header-line' in stack, row
+    assert 'class: "github-pull-stack-members page-card",' in stack, "the members are a card"
+    assert github[".github-pull-stack-members .github-pull-stack-member"] == {
+        "padding-inline": "var(--github-pull-text-inset)"
+    }, "a member row is inset as a card's head and text are"
+    # Its body takes a pull request's columns ("The Stack Page's Spacing"): it starts in the
+    # reading column, and `bodyInColumn` decides it with each plan, as `diffTab` does there.
+    assert 'class: "github-pull-body page-reading-column"' in stack
+    assert 'body.classList.toggle("page-reading-column", bodyInColumn(shown, tab));' in stack
 
 
 def test_a_person_is_one_identity_on_every_page() -> None:
@@ -1657,7 +1682,6 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
     ("agents/agent-log.css", ".log-event-kind"): "a badge",
-    ("diff/styles.css", ".diff-file-marks"): "a row of layer chips, each a link (fileMarks)",
     ("github/styles.css", ".github-pull-labels"): "a row of label chips",
     ("github/styles.css", ".github-pull-label"): "a label chip",
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
@@ -2629,7 +2653,12 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
     assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
-    assert 'h("span", { class: "github-pull-stack-member-title" })' in page
+    # The stack menu and a stack's page draw a member with one builder (stack-member-row.js).
+    member_row = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-member-row.js").read_text(
+        encoding="utf-8"
+    )
+    assert "stackMemberRow(link, deps.titleNodes, deps.identity)" in page
+    assert 'make("span", "github-pull-stack-member-title")' in member_row
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:
         assert github[title]["color"] == "var(--text)", title

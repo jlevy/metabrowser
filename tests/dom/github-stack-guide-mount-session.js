@@ -1,5 +1,9 @@
-// Guided Review on the production stack page (`mountStackPage` in stack-page.js), mounted with
-// a stub SDK on the stack route's recorded answers (tests/fixtures/github-stack-responses.json):
+// The production stack page (`mountStackPage` in stack-page.js), mounted with a stub SDK on the
+// stack route's recorded answers (tests/fixtures/github-stack-responses.json). First its
+// header: the rows its first paint draws from the stack the Pulls tab knows, before the stack's
+// answer, are the rows the answer settles in, and what it passes the diff view draws the Diff
+// summary collapsed and Docs and Changes as a pull request's page does.
+// Then Guided Review:
 // the front page mounts the stack's guide and reads its first step at the comparison it draws;
 // a step's file opens in the stack's Changes and another pull request's file in that pull
 // request's; a file the rendered route renders is drawn whole at the comparison drawn; a
@@ -7,7 +11,10 @@
 // member is read again while the drawn comparison is current, and a new comparison is offered,
 // not swapped in, until the reader takes it, whether a member below moved or the carrier
 // moved with it and was pinned again, which no step is read as; and leaving the tab disposes
-// the view and aborts its read. The navigation itself is github-guided-review-session.js's, and the stack's own
+// the view and aborts its read. Last, Docs and Changes that could not load: each says so in a
+// pull request's error notice with Retry, whose press disposes what the failed draw left and
+// draws again, and a Retry left behind by a tab switch or the page's disposal draws nothing.
+// The navigation itself is github-guided-review-session.js's, and the stack's own
 // state machine github-stack-page-session.js's; this is the page's glue between them. Paint is
 // Chrome's.
 const assert = require("node:assert/strict");
@@ -22,6 +29,7 @@ const recorded = JSON.parse(
 );
 const GUIDE_ROUTE = "/api/plugin/github/guided-review";
 const STACK_ROUTE = "/api/plugin/github/stack";
+const STACKS_ROUTE = "/api/plugin/github/stacks";
 /** A record revision, 64 hexadecimal characters. */
 const revision = (digit) => String(digit).repeat(64);
 
@@ -85,6 +93,34 @@ globalThis.DOMParser = class {
 
 /** The stack route's answers in order, each with its validator. */
 let stackAnswer = null;
+/** The repository's stacks, as the Pulls tab reads them: 70 of 8 and then 10, titled as the
+ * stack route's recorded answer titles them. */
+const stacksAnswer = {
+  state: "current",
+  reason: null,
+  source: "https://github.com/octo/demo",
+  reader: "gh:octo-reader",
+  fetched_at: "2026-09-17T12:05:01Z",
+  fresh_for_s: 90,
+  refreshing: false,
+  last_refresh: null,
+  complete: true,
+  stacks: [
+    {
+      number: 70,
+      base_ref: recorded.current.base_ref,
+      open: true,
+      pulls: recorded.current.members.map((member) => member.number),
+      titles: recorded.current.members.map((member) => member.title),
+      // The stacks route read 10's author with its title and holds none for 8, so 10's
+      // member row ends in its author and 8's in its number.
+      authors: recorded.current.members.map((member) =>
+        member.number === 10 ? "maintainer" : null,
+      ),
+      avatars: recorded.current.members.map(() => null),
+    },
+  ],
+};
 /** Each read of the guide: what it asked, its signal, and whether it was answered. */
 const reads = [];
 const response = (body, status = 200, etag = null) => ({
@@ -96,6 +132,9 @@ const response = (body, status = 200, etag = null) => ({
 globalThis.fetch = async (route, init = {}) => {
   if (route.startsWith(`${STACK_ROUTE}?`)) {
     return response(stackAnswer, 200, `"${JSON.stringify(stackAnswer).length}"`);
+  }
+  if (route === STACKS_ROUTE && (init.method ?? "GET") === "GET") {
+    return response(stacksAnswer, 200, '"stacks-1"');
   }
   if (route.startsWith(`${GUIDE_ROUTE}?`)) {
     const asked = new URL(route, "http://localhost").searchParams;
@@ -251,19 +290,62 @@ async function run() {
       };
     },
   };
-  /** Files' view, which the reader leaves the guide for. */
-  const files = { mounted: 0 };
+  /** The diff view: what the page passed it for the header's Diff summary and for each
+   * diff it drew, and how many of each it drew. */
+  const files = { summaries: 0, rendered: 0 };
+  /** How the diff view's next draws fail, in order: `throw` fails the draw itself, and
+   * `late` draws and then fails its first screen, after the page has adopted the view. */
+  const failures = [];
+  /** Each diff view drawn, and whether the page disposed it. */
+  const views = [];
+  /** @type {Array<Record<string, unknown>>} */
+  const drawings = [];
+  const shape = (ctx) =>
+    Object.fromEntries(
+      Object.entries(ctx)
+        .filter(([name]) => !["comparison", "comparisonSignal", "raw"].includes(name))
+        .map(([name, value]) => [name, typeof value === "function" ? "function" : value]),
+    );
   const filesView = {
-    prefetch: async () => ({}),
-    summary: async () => {
-      files.mounted += 1;
+    prefetch: async () => ({ manifest: { totals: { files: 1 } } }),
+    summary: async (_slot, ctx) => {
+      files.summaries += 1;
+      drawings.push({ summary: shape(ctx) });
       return { dispose() {} };
     },
-    render: async () => ({ dispose() {} }),
+    render: async (_host, ctx) => {
+      files.rendered += 1;
+      drawings.push({ render: shape(ctx) });
+      const failure = failures.shift();
+      if (failure === "throw") {
+        throw new Error("the stub diff could not draw");
+      }
+      const view = {
+        disposed: false,
+        dispose() {
+          view.disposed = true;
+        },
+      };
+      if (failure === "late") {
+        view.firstScreen = () => Promise.reject(new Error("the stub diff's first screen failed"));
+      }
+      views.push(view);
+      return view;
+    },
   };
   const mb = {
     titleNodes: (title) => [title],
-    formatAge: () => ({ label: "now", className: "age" }),
+    // The shell's actor identity, as its name alone.
+    actorIdentity(name, { nameClass = "" } = {}) {
+      const identity = new Element("span");
+      identity.className = nameClass;
+      identity.textContent = name;
+      return identity;
+    },
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
     formatTimestamp: () => "now",
     shortCommit: (sha) => sha.slice(0, 7),
     ensureAsset: async () => {},
@@ -280,6 +362,15 @@ async function run() {
       },
     },
     getRegisteredView: () => filesView,
+    changeSizeLine: ({ files: count }) => ({
+      text: `${count} file${count === 1 ? "" : "s"} changed`,
+    }),
+    changeSizeLineNodes: (line) => [line.text],
+    mergeRefs(source, target) {
+      const merge = new Element("span");
+      merge.textContent = `${source.name} → ${target.name}`;
+      return merge;
+    },
   };
   async function poll() {
     const due = [...timers];
@@ -298,6 +389,14 @@ async function run() {
   const plain = { button: 0, preventDefault() {} };
   const report = {};
 
+  // The Pulls tab has read the repository's stacks, as it has when a stack button opens the
+  // page.
+  const stacks = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-stacks.js")).href
+  );
+  const pullsTab = stacks.watchStacks(() => {});
+  await settle();
+
   // The front page of 70, whose guide 10 carries, mounts the guide on its first step and
   // reads it at the comparison the page draws.
   stackAnswer = stack(revision(1));
@@ -314,7 +413,55 @@ async function run() {
     },
     mb,
   );
+  // The header's rows as the reader sees them: each row, and what it holds.
+  const header = container.querySelector(".github-pull-header");
+  const rowName = (node) =>
+    node.tag === "h1"
+      ? "title"
+      : node.classes.has("view-header-end")
+        ? "corner"
+        : node.classes.has("github-pull-stack-members")
+          ? "members"
+          : node.classes.has("github-pull-branches")
+            ? "merge"
+            : node.classes.has("github-pull-status")
+              ? "status"
+              : node.classes.has("github-pull-size")
+                ? "size"
+                : node.classes.has("github-pull-summary")
+                  ? "summary"
+                  : node.tag;
+  const holds = (node) =>
+    node.querySelector(".tally-pending") !== null ? "(pending)" : node.textContent;
+  const rows = () =>
+    header.children
+      .filter((node) => !node.hidden)
+      .map((node) => {
+        const name = rowName(node);
+        if (name === "members") {
+          return {
+            members: node
+              .querySelectorAll(".github-pull-stack-member")
+              .map((row) => row.textContent.replace(/\s+/g, " ").trim()),
+          };
+        }
+        return name === "title" || name === "corner" ? name : { [name]: holds(node) };
+      });
+  const firstPaint = rows();
+  const cold = header.classes.has("github-pull-cold");
   await settle();
+  const settled = rows();
+  const names = (list) => list.map((row) => (typeof row === "string" ? row : Object.keys(row)[0]));
+  assert.deepEqual(names(firstPaint), names(settled), "the answer lands in the rows drawn");
+  assert.equal(cold, false, "a stack the Pulls tab knows is not held as cold");
+  const summaryDrawn = drawings.find((drawing) => drawing.summary)?.summary;
+  assert.deepEqual(Object.keys(summaryDrawn).sort(), ["openFile"], "where a file opens alone");
+  report.header = {
+    first_paint: firstPaint,
+    settled,
+    summary_drawing: summaryDrawn,
+  };
+  pullsTab.dispose();
   const active = () =>
     container
       .querySelectorAll(".tab-btn")
@@ -387,7 +534,7 @@ async function run() {
   // step is read there and draws its document there.
   stackAnswer = stack(revision(2), belowMoved);
   await poll();
-  const offer = container.querySelector(".github-pull-notice")?.textContent ?? "";
+  const offer = container.querySelector(".github-pull-status")?.textContent ?? "";
   assert.match(offer, /Show the new comparison$/);
   assert.equal(reads.length, 2, "an offered comparison reads nothing");
   press(container, "Next step");
@@ -448,7 +595,7 @@ async function run() {
   // Back on the tab before taking the new comparison: the guide is not the one read at the
   // comparison drawn, so nothing is read there, and the stack's words say why. The steps
   // went with the view the tab disposed, and the route has only the guide pinned again.
-  handle.setTab("files");
+  handle.setTab("changes");
   await settle();
   handle.setTab("guided");
   await settle();
@@ -465,7 +612,7 @@ async function run() {
 
   // The reader takes the new comparison: the guide is mounted again, its old view disposed,
   // and read at the comparison now drawn.
-  container.querySelector(".github-pull-stack-page-take").events.get("click")();
+  container.querySelector(".github-pull-stack-take").events.get("click")();
   await settle();
   assert.ok(documents.every((drawn) => drawn.disposed) && patches.every((drawn) => drawn.disposed));
   assert.equal(reads.length, 6);
@@ -474,21 +621,103 @@ async function run() {
 
   // Leaving the tab while that read is on its way disposes the view and aborts the read, and
   // its late answer draws nothing.
-  handle.setTab("files");
+  handle.setTab("changes");
   await settle();
   assert.equal(reads[5].signal.aborted, true);
-  assert.equal(files.mounted, 2);
   assert.equal(container.querySelector(".github-pull-guided-review"), null);
+  const changes = drawings.findLast((drawing) => drawing.render)?.render;
+  assert.equal(changes.summary, false, "the header draws the Diff summary, the diff none");
   report.left = {
     tab: active(),
     read_aborted: reads[5].signal.aborted,
-    files_mounted: files.mounted,
+    // The header's Diff summary, once for each comparison drawn, and the diffs drawn.
+    summaries_drawn: files.summaries,
+    diffs_drawn: files.rendered,
+    changes_drawing: changes,
   };
+
+  // Docs and Changes that could not load: a pull request's error notice and its Retry
+  // (`paintDiff` in stack-page.js, as `mountDiff` in pull-page.js). The page logs each
+  // failure; the session keeps the messages out of its transcript.
+  const logError = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args.map(String)[0]);
+  const body = container.querySelector(".github-pull-body");
+  const notice = () => body.querySelector(".github-pull-notice");
+  const retryButton = (node) => [...node.descendants()].find((each) => each.tag === "button");
+  /** What the body shows: the notice's words and its button, or the diff's host. */
+  const shows = () => {
+    const shown = notice();
+    if (shown === null) {
+      return body.querySelector(".metabrowser-diff-host") === null ? "(nothing)" : "the diff";
+    }
+    return `${shown.getAttribute("data-severity")}: ${shown.textContent}`;
+  };
+  const failed = {};
+  // Docs whose draw fails says so, and Retry draws it again.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  let renders = files.rendered;
+  failed.docs = { notice: shows(), retry: retryButton(notice())?.textContent ?? null };
+  assert.equal(failed.docs.notice, "error: Docs could not load. Retry");
+  retryButton(notice()).events.get("click")();
+  await settle();
+  failed.docs.after_retry = { shows: shows(), draws: files.rendered - renders };
+  assert.deepEqual(failed.docs.after_retry, { shows: "the diff", draws: 1 });
+  // Changes that draws and then fails its first screen says so too, and Retry disposes the
+  // view the failed draw left before it draws again.
+  failures.push("late");
+  handle.setTab("changes");
+  await settle();
+  const left = views.at(-1);
+  renders = files.rendered;
+  failed.changes = { notice: shows(), left_view_disposed: left.disposed };
+  assert.equal(failed.changes.notice, "error: Changes could not load. Retry");
+  retryButton(notice()).events.get("click")();
+  await settle();
+  failed.changes.after_retry = {
+    shows: shows(),
+    draws: files.rendered - renders,
+    left_view_disposed: left.disposed,
+  };
+  assert.deepEqual(failed.changes.after_retry, {
+    shows: "the diff",
+    draws: 1,
+    left_view_disposed: true,
+  });
+  // A Retry left behind by a tab switch draws nothing: the tab now shown keeps its diff.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  const behind = retryButton(notice());
+  handle.setTab("changes");
+  await settle();
+  renders = files.rendered;
+  behind.events.get("click")();
+  await settle();
+  failed.retry_after_tab_switch = { shows: shows(), draws: files.rendered - renders };
+  assert.deepEqual(failed.retry_after_tab_switch, { shows: "the diff", draws: 0 });
+  // And one pressed after the page is disposed draws nothing.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  const disposedRetry = retryButton(notice());
   handle.dispose?.();
+  renders = files.rendered;
+  disposedRetry.events.get("click")();
+  await settle();
+  failed.retry_after_dispose = { draws: files.rendered - renders };
+  assert.deepEqual(failed.retry_after_dispose, { draws: 0 });
+  console.error = logError;
+  assert.equal(logged.length, 4, "each failure is logged once");
+  failed.logged = logged;
+  report.failed = failed;
   console.log(JSON.stringify(report, null, 2));
 }
 
 run().catch((error) => {
-  console.error(error);
+  // Straight to standard error: the failure section quiets `console.error` while it runs.
+  process.stderr.write(`${error?.stack ?? error}\n`);
   process.exitCode = 1;
 });
