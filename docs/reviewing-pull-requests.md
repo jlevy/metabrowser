@@ -62,22 +62,25 @@ Metabrowser fetches the repository’s list of pull requests in the background a
 each page as it arrives; scroll toward the end to load more, and a spinner below the
 last row says how many have been fetched so far.
 
-Each row’s title takes its first two lines, and a longer title ends in an ellipsis; the
-page shows all of it.
-The third line is the number, the author, and the lines the pull request adds and
-deletes, such as **#455 · octo · +1,234 −567**, so walking the list shows the size of
-each change. The lines sum the same list of changed files the row’s tree shows, as a
-stack’s heading sums its pull requests’, and ask GitHub for nothing: the lists come from
-what the Pulls tab already reads behind you for the rows in view and from trees you
-open, and a gray placeholder holds their place until one arrives.
+Each row reads as one run: the title, the number, and the lines the pull request adds
+and deletes, with a chevron after them, such as **Fix the reader · #455 · +1,234 −567
+›**, wrapping as far as it needs, each line starting under the title, so walking the
+list shows the size of each change.
+The author and the age are on the line below.
+At the Pulls tab’s default width most rows take four lines, and a short title three; a
+wider tab fits more rows in three.
+The lines sum the same list of changed files the row’s tree shows, as a stack’s heading
+sums its pull requests’, and ask GitHub for nothing: the lists come from what the Pulls
+tab already reads behind you for the rows in view and from trees you open, and a gray
+placeholder holds their place until one arrives.
 
-Click a row’s title to open its pull request; its files stay as they were.
-The third line carries the chevron for the files, which start collapsed: click anywhere
-on that line, the number and the author included, to show or hide them under the row.
+Click a row anywhere to open its pull request; its files stay as they were.
+The lines and the chevron after them show and hide the files, which start collapsed:
+click either to show or hide them under the row.
 No row expands on its own.
 Click a file to open **Changes** at that file.
-Move between pull requests with `J` and `K` or the arrow keys; each one’s three lines
-are one row. Enter opens the focused pull request, and Space shows or hides its files.
+Move between pull requests with `J` and `K` or the arrow keys; each pull request is one
+row. Enter opens the focused pull request, and Space shows or hides its files.
 Right shows them, or moves into them once shown, and Left hides them.
 The file list says **Listing changed files…** until GitHub answers.
 Once the files show, a later page or an updated list does not move the rows you are
@@ -94,19 +97,20 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), th
 tab groups the pull requests of each native GitHub stack under a **Stack #N** row, open
 by default, top of the stack first; pull requests in no stack follow, and a stack’s row
 opens and closes like a folder.
-A member’s row shows its place before its title, such as **1/6 · Fix the reader**; a
-pull request in no stack shows its title alone.
+A member’s row shows its place after its title and before its number, such as **Fix the
+reader · 1/6 · #455**; a pull request in no stack shows no place.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
-On the page, a stack button at the end of the line of state and dates, just before
-Refresh, shows the same position, and a pull request in two stacks has a button for
-each, which names its stack, such as **⧉300 2/2**. The button opens a menu of the
-stack’s members, from top to base, each on one line: its state, its position, and its
-title. On macOS, Control-N goes to the next member toward the top and Control-P to the
-previous one toward the base; on Windows and Linux, where those keys are the browser’s,
-use the menu. Without the extension, or when GitHub cannot answer, pull requests read as
-usual and the list stays flat, unless stacks are cached.
+On the page, a stack button at the end of the line of state and dates shows the same
+position, and a pull request in two stacks has a button for each, which names its stack,
+such as **⧉300 2/2**. The button opens a menu of the stack’s members, from top to base,
+each on one line: its state and its title, then its position and its number at the
+line’s end, such as **Fix the reader 1/6 · #455**, the order a row in the Pulls tab has.
+On macOS, Control-N goes to the next member toward the top and Control-P to the previous
+one toward the base; on Windows and Linux, where those keys are the browser’s, use the
+menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
+and the list stays flat, unless stacks are cached.
 Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
@@ -291,7 +295,10 @@ the commit.
 These are read from what this copy already has: a pull request not loaded yet
 shows by its number, a file of one not loaded yet says to open it, and a commit the copy
 lacks says it is unavailable.
-None of them makes the guide out of date.
+A commit fetched with a pull request but missing from the checkout you are browsing
+shows without a link, since its page reads that checkout.
+None of them makes the guide out of date, except a file this pull request itself
+changes, cited with its own number, which counts as a file of the guide.
 
 The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
@@ -390,6 +397,21 @@ A deleted file, a symbolic link, and a submodule have no View on branch, and no 
 does while Changes shows an earlier head than the pull request’s, which no branch holds
 any more. If the pull request moves on in the moment before the page has followed it,
 View on branch and Browse code switch nothing and say that the head has moved.
+
+### Lines Between Hunks
+
+A code file’s diff in **Changes** and **Docs**, and on a commit’s page, shows each
+change with a few unchanged lines around it.
+Each hunk’s `@@` bar opens to the unchanged lines above it, back to the hunk before or
+the file’s start, and the bar after the last hunk, **Rest of the file**, to the lines
+after it. The bar says how many lines it holds, and opens a long run a part at a time,
+the part nearest the hunk first, with a bar for the rest.
+Opening a bar above the line you are reading leaves that line where it is on the screen.
+The lines are read from the pull request’s or the commit’s files when you open the bar,
+and stay open as you switch between **Split**, **Unified**, and **Current**. Where they
+cannot be read, as for a binary file or one Git converts for its diff, the file’s hunk
+bars stay plain, and the file says so.
+A guided review step draws a code file’s hunks with plain bars, as a patch file does.
 
 ### Diff or Current
 
@@ -520,8 +542,9 @@ entries.
 ## Staying Current
 
 The page says when GitHub CLI fetched what it shows, as in
-`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line; Refresh ends the
-line of state and dates above it.
+`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line.
+The page has no Refresh of its own: the Pulls tab’s **Refresh** refreshes the pull
+request page beside the list, then the list.
 While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
 repository’s list of pull requests, so new pull requests, state changes, and edits
 arrive by themselves.
@@ -536,10 +559,11 @@ A visible page refreshes a record that has gone stale, and the Pulls tab also fe
 behind you, the pull requests you are likely to open next, within hourly limits and
 while enough of your GitHub rate limit remains.
 The page names a problem only when it cannot refresh: `Offline`, a rate limit with the
-time of its next check, or the last failure with **Refresh**. The page tries a failure
-again once a window while it stays open, except one you must fix, such as GitHub CLI
-missing or signed out, which waits for **Refresh**. The Pulls tab’s **Refresh** asks for
-a new check of the list.
+time of its next check, or the last failure with **Retry**, which asks again even while
+the navigation pane is hidden.
+The page tries a failure again once a window while it stays open, except one you must
+fix, such as GitHub CLI missing or signed out, which waits for **Retry**. The Pulls
+tab’s **Refresh** asks for a new check of the page and the list.
 
 The page follows the pull request.
 When new commits are pushed, the conversation and checks update, and **Changes** and
@@ -631,7 +655,8 @@ pull request not yet cached while `gh` is missing, too old, or not signed in, wi
 step that fixes it, without cloning anything.
 Any other pull request that cannot be read does not stop it: `metab` serves the default
 branch, exits 0 in the one-shot modes, and says why on its `pull_request` line.
-The page says why too, and offers **Fetch** to try again once the cause is fixed.
+The page says why too, and offers **Fetch** to try again once the cause is fixed, or
+**Retry** where it already shows the pull request.
 `metab --doctor` shows what `gh` reports: its path and version, the account, and the
 account’s scopes.
 
@@ -642,11 +667,11 @@ account’s scopes.
 | `not_logged_in` | `gh` is not signed in to github.com | Run `gh auth login --hostname github.com` |
 | `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `metab --doctor` names an account with access and the `repo` scope |
 | `rate_limited` | GitHub’s rate limit, with its reset time when GitHub gives one | Wait; the page tries again after the reset |
-| `network_error`, `network_unreachable`, `connection_interrupted`, `timed_out` | GitHub could not be reached, by `gh` or by Git | Restore the network, then **Refresh** |
+| `network_error`, `network_unreachable`, `connection_interrupted`, `timed_out` | GitHub could not be reached, by `gh` or by Git | Restore the network, then **Retry** |
 | `too_large` | The first clone does not fit on the cache’s volume | See [large repositories](#large-repositories) |
 | `lender_missing` | The checkout this clone borrows from has moved, gone, or can no longer lend | Run the command again with `--checkout <new path>` |
-| `account_changed`, `head_mismatch` | The `gh` account changed, or the pull request kept moving, during the read | **Refresh** |
-| `fetch_failed`, `git_failed` | Git failed | **Refresh**; for a clone, `--log-level debug` shows Git’s own message |
+| `account_changed`, `head_mismatch` | The `gh` account changed, or the pull request kept moving, during the read | **Retry** |
+| `fetch_failed`, `git_failed` | Git failed | **Retry**; for a clone, `--log-level debug` shows Git’s own message |
 | `cache_unwritable` | The cache refused the write | Fix what the message names, or clear the repository’s cache |
 | `newer_cache`, `unknown_cache` | A newer Metabrowser wrote the repository’s list, or its version cannot be read | Upgrade, or clear the repository’s cache |
 
@@ -656,11 +681,11 @@ The record names why in `unavailable.comparison`:
 | Name | What it means | What to do |
 | --- | --- | --- |
 | `no_store` | A checkout has the record but no comparison yet | Open **Changes**, which prepares it |
-| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | **Refresh** with the network, which fetches more history into the cache |
-| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | **Refresh** tries to recover them from the origin |
-| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then **Refresh**; Metabrowser never writes to your checkout |
+| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | The Pulls tab’s **Refresh** with the network, which fetches more history into the cache |
+| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | The Pulls tab’s **Refresh** tries to recover them from the origin |
+| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then the Pulls tab’s **Refresh**; Metabrowser never writes to your checkout |
 | `no_merge_base` | The base and head share no history | Read the diff on GitHub |
-| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | **Refresh**, or read the diff on GitHub |
+| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | The Pulls tab’s **Refresh**, or read the diff on GitHub |
 
 The page says each of these in one short sentence of its own.
 Every reason also comes with a message that says more, in the route’s JSON that

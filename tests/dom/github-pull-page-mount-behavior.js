@@ -1482,8 +1482,24 @@ async function tabKeys(page) {
   steps.push(result("g"));
   arrive("files");
   steps.push(`the route arrives: ${shown()}`);
-  // Changes offers Refresh, which takes the next number.
+  // Changes numbers Browse code alone: the page has no Refresh of its own, and the Pulls
+  // tab's Refresh runs the page's `refresh` (mb-ablv), which names the comparison on screen.
   steps.push(`numbered on Changes: ${numbered()}`);
+  /** What the page's handle told a listener of whether it can refresh, as the Pulls tab hears. */
+  const heard = [];
+  handle.onRefreshChange(() => heard.push(handle.canRefresh()));
+  /** Press the Pulls tab's Refresh as it runs the page's, and say what the page asked for. */
+  const pullsRefresh = async () => {
+    asked.length = 0;
+    const offered = handle.canRefresh();
+    handle.refresh();
+    for (const callback of [...timers.values()]) {
+      callback();
+    }
+    timers.clear();
+    await settle();
+    return `the Pulls tab's Refresh, the page ${offered ? "offering" : "not offering"} one: ${asked.join("; ") || "nothing asked"}`;
+  };
   // A refresh whose answer serves the pull request's head repaints Browse code as a link:
   // 1 now opens the code in the page, the action of this paint, where it asked the server
   // to serve the head before.
@@ -1491,46 +1507,46 @@ async function tabKeys(page) {
   atHead.pin = atHead.record.pull.head.sha;
   atHead.pin_ref = "refs/pull/7/head";
   answer = atHead;
-  steps.push(await numberResult("2"));
+  steps.push(await pullsRefresh());
   steps.push(`numbered after a refresh serves the head: ${numbered()}`);
   steps.push(await numberResult("1"));
-  // A refresh whose answer has no pin repaints the header without Browse code: Refresh
-  // moves up to 1, and 1 runs it, and 2 reaches nothing.
+  // A refresh whose answer has no pin repaints the header without Browse code, and 1 then
+  // reaches nothing.
   const unpinned = structuredClone(recorded.current.body);
   unpinned.pin = null;
   unpinned.pin_ref = null;
   answer = unpinned;
-  steps.push(await numberResult("2"));
+  steps.push(await pullsRefresh());
   steps.push(`numbered after a refresh with no pin: ${numbered()}`);
   steps.push(await numberResult("1"));
-  steps.push(await numberResult("2"));
-  // While the refresh 2 asks for runs, Refresh waits, shown and disabled, and keeps 2, so a
-  // second 2 asks nothing (B2 of review B on #506): hidden as it waited, it gave its number
-  // to whatever followed it. Code on the pull request's own head offers nothing more: the
-  // server follows that head, so no switch to it is numbered.
+  // While a refresh runs the page offers none, so the Pulls tab's Refresh asks it for
+  // nothing, and the page says so to the Pulls tab, which waits while the list cannot
+  // refresh either. Code on the pull request's own head offers nothing more: the server
+  // follows that head, so no switch to it is numbered.
   answer = atHead;
-  steps.push(await numberResult("1"));
+  steps.push(await pullsRefresh());
   steps.push(`numbered with the code on the head: ${numbered()}`);
   answer = { ...structuredClone(atHead), refreshing: true };
-  steps.push(await numberResult("2"));
-  steps.push(`numbered while that refresh runs: ${numbered()}`);
-  steps.push(await numberResult("2"));
-  // The refresh ends. On Changes Refresh is offered again; on Conversation nothing is left
-  // to refresh, so Refresh is not shown (C2 of review C on #506, accepted: a Refresh waits
-  // only while its refresh runs).
+  steps.push(await pullsRefresh());
+  steps.push(`while that refresh runs, the page can refresh: ${handle.canRefresh()}`);
+  steps.push(await pullsRefresh());
+  // The refresh ends. On Changes the page offers a refresh again; on Conversation nothing is
+  // left to refresh.
   answer = atHead;
   for (const callback of [...timers.values()]) {
     callback();
   }
   timers.clear();
   await settle();
-  steps.push(`numbered once the refresh ends: ${numbered()}`);
+  steps.push(`once the refresh ends, the page can refresh: ${handle.canRefresh()}`);
   arrive("");
   await settle();
+  steps.push(`on Conversation once the refresh ends, the page can refresh: ${handle.canRefresh()}`);
   steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
   arrive("files");
   await settle();
-  steps.push(await numberResult("3"));
+  steps.push(`the page told the Pulls tab it can refresh: ${heard.join(", ")}`);
+  steps.push(await numberResult("2"));
   // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
   steps.push(result("e", { shiftKey: true }));
@@ -1858,11 +1874,11 @@ async function headerAges(page) {
 // line is there only for a failure, a message, or an offer, and a rate limit's hold is
 // said in the freshness note's place, so it adds none (mb-ne91). Each row's height is its
 // stylesheet's (tests/test_reserved_chrome.py); here, that every row it shows is there, a
-// hidden row left out. A stack's chip has its slot at the row of ages' end, just before
-// Refresh's slot, which ends that row on every tab (mb-646g); the slot is held by a strut
-// until a chip arrives, which holds the row at a chip's height, and the author's row is its
-// lead alone. tests/dom/github-pull-header-chrome.mjs measures that a late chip moves
-// nothing, Refresh included.
+// hidden row left out. A stack's chip has its slot at the row of ages' end, which it ends on
+// every tab (mb-646g, mb-ablv); the slot is held by a strut until a chip arrives, which holds
+// the row at a chip's height, and the author's row is its lead alone. The page has no Refresh
+// of its own: a status line that says what to retry or fetch ends in its remedy (mb-ablv).
+// tests/dom/github-pull-header-chrome.mjs measures that a late chip moves nothing.
 async function headerShape(page) {
   // The header's corner, the View on GitHub button's, is no row: it is placed in the page's
   // upper right, out of the rows' flow (mb-4wqh).
@@ -1914,6 +1930,9 @@ async function headerShape(page) {
     // head. Code served on that head followed it there, and says nothing. A rate limit's hold, and a server with no
     // GitHub repository, are said in the note's place.
     failed: recorded.failed.body,
+    // A record still current whose last refresh failed: nothing will ask again by itself, so
+    // the failure ends in Retry (mb-ablv). A stale one is asked for again, and offers none.
+    "failed, still current": { ...structuredClone(recorded.failed.body), state: "current" },
     "held by a rate limit": (() => {
       const body = structuredClone(recorded.current.body);
       body.state = "stale";
@@ -1949,10 +1968,15 @@ async function headerShape(page) {
   // A failure ends in its Details, the event log's records for it (mb-9zp5).
   const STATUS = {
     failed: "Could not reach GitHub.Details",
+    "failed, still current": "Could not reach GitHub.DetailsRetry",
     "a checkout at the head":
       "This checkout’s HEAD is this pull request’s head. Browse the checkout",
     "on its way, its last refresh failed":
       "Fetching the pull request…Could not reach GitHub.Details",
+  };
+  /** What each variant's status line offers as its remedy, or none (mb-ablv). */
+  const REMEDY = {
+    "failed, still current": "Retry",
   };
   /** What each variant's note says where it is not the record's fetch, null where none. */
   const NOTE = {
@@ -1976,13 +2000,18 @@ async function headerShape(page) {
       const stacks = container.querySelector(".github-pull-stacks");
       const status = container.querySelector(".github-pull-status");
       const end = status.children.at(-1);
-      const refresh = container.querySelector(".github-pull-refresh");
+      const remedy = container.querySelector(".github-pull-remedy");
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
       const opened = container.querySelector(".github-pull-opened");
       assert.equal(
-        opened.children.at(-2),
+        opened.children.at(-1),
         stacks,
-        `${name} ${tab}: the stack slot ends the row of ages, before Refresh's`,
+        `${name} ${tab}: the stack slot ends the row of ages, with no Refresh after it`,
+      );
+      assert.equal(
+        container.querySelector(".github-pull-refresh"),
+        null,
+        `${name} ${tab}: the page has no Refresh of its own`,
       );
       assert.deepEqual(
         meta.children.map((node) => node.getAttribute("class")),
@@ -2050,9 +2079,6 @@ async function headerShape(page) {
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
       );
-      // Refresh's slot ends the row of ages, after Browse code and the stack's slot, whatever
-      // the record's state (A1 of review A on #506).
-      assert.equal(opened.children.at(-1), refresh, `${name} ${tab}: Refresh ends the row of ages`);
       // The note ends the author's row's lead: the record's one time, or what is said in its
       // place (mb-ne91).
       const note = container.querySelector(".github-pull-note");
@@ -2078,11 +2104,23 @@ async function headerShape(page) {
         STATUS[name] ?? null,
         `${name} ${tab}: the status line`,
       );
-      // A text action, a line tall, so the status line is a metadata line (mb-2u08).
-      assert.ok(
-        refresh.classes.has("github-pull-text-action") && !refresh.classes.has("btn"),
-        `${name} ${tab}: Refresh is a text action`,
+      // A status line that says what to retry or fetch ends in its remedy, first among the
+      // offers at its end (mb-ablv): a text action, a line tall, so the status line is a
+      // metadata line (mb-2u08).
+      assert.equal(
+        remedy === null ? null : remedy.textContent,
+        REMEDY[name] ?? null,
+        `${name} ${tab}: the status line's remedy`,
       );
+      if (remedy !== null) {
+        assert.ok(
+          remedy.classes.has("github-pull-text-action") &&
+            !remedy.classes.has("btn") &&
+            remedy.parentNode === end &&
+            end.children[0] === remedy,
+          `${name} ${tab}: the remedy is a text action, first at the status line's end`,
+        );
+      }
       assert.ok(
         container.querySelector(".tab-bar"),
         `${name} ${tab}: the tab bar is under the header from first paint`,
@@ -2327,8 +2365,9 @@ async function mountScripted(page, tab, options = {}) {
         : { mountCounterpart: options.mountCounterpart }),
       // With *sdk*, more of the SDK, or a part of it replaced: the event log's reporter.
       ...(options.sdk ?? {}),
-      // With *brief*, the change line's painters, as text, and the tree's breakdown, so the
-      // page draws the cached list's brief line (mb-z8ea).
+      // With *brief*, the change line's builder, the shell's own, so the line says what the
+      // page's does (mb-ox6a), its painter, as text, and the tree's breakdown, so the page
+      // draws the cached list's brief line (mb-z8ea).
       ...(options.brief === undefined && options.briefPainters !== true
         ? {}
         : {
@@ -2341,10 +2380,7 @@ async function mountScripted(page, tab, options = {}) {
                     ? part.number
                     : ` ${part.separator} `,
               ),
-            changeLine: (input) => ({
-              text: `${input.statuses.map(({ count, letter }) => `${count} ${letter}`).join(", ")} · +${input.additions} −${input.deletions}`,
-              label: "",
-            }),
+            changeLine: require("./changed-files-tree-fixture.js").shellPainters().changeLine,
             changeLineNodes: (line) => [line.text],
             loadChangedFilesTree: async () => ({
               statusBreakdown: (statuses) => {
@@ -2353,7 +2389,9 @@ async function mountScripted(page, tab, options = {}) {
                   counts.set(status, (counts.get(status) ?? 0) + 1);
                 }
                 return [...counts].map(([status, count]) => ({
+                  status,
                   count,
+                  word: status,
                   letter: status[0].toUpperCase(),
                 }));
               },
@@ -2390,6 +2428,125 @@ async function mountScripted(page, tab, options = {}) {
     await idle();
   };
   return { handle, row, steps, idle, serve, poll, show, refused, container };
+}
+
+// The page has no Refresh of its own (mb-ablv): a status line that says what to retry or
+// fetch ends in its remedy, Retry or Fetch, which runs what the Pulls tab's Refresh runs of
+// the page. A pressed Retry waits, muted, until the refresh it asked for runs, and its failure
+// and it then go. Each step says the status line, its remedy, whether the note shows, what
+// the page asked the server, and whether the page offers the Pulls tab a refresh.
+async function statusRemedies(page) {
+  const steps = [];
+  const posts = [];
+  /** @type {((answer: unknown) => void) | null} */
+  let reply = null;
+  const mount = async (body, reader) => {
+    globalThis.document = {
+      visibilityState: "visible",
+      addEventListener() {},
+      removeEventListener() {},
+      createElement: (tag) => new Element(tag),
+      importNode: () => new Element("svg"),
+    };
+    globalThis.window = {
+      location: { pathname: `/pull/${body.number}` },
+      setTimeout: () => Symbol(),
+      clearTimeout() {},
+    };
+    globalThis.fetch = async (route, options = {}) => {
+      if (options.method === "POST") {
+        posts.push(`POST ${route} ${options.body}`);
+        return new Promise((resolve) => {
+          reply = resolve;
+        });
+      }
+      return route.startsWith("/api/plugin/github/pull?")
+        ? { status: 200, headers: { get: () => null }, json: async () => body }
+        : { status: 304, headers: { get: () => null } };
+    };
+    const container = new Element("main");
+    const handle = page.mountPullPage(
+      container,
+      {
+        number: body.number,
+        tab: "",
+        ...(reader ? { reader: { initial: { etag: null, body }, fetchAfterMs: 60_000 } } : {}),
+      },
+      {
+        perf,
+        ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
+        ensureKindAssets: async () => {},
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+        navigation: { href: () => "/view/", async open() {} },
+        sourceKind: () => "filesystem",
+        icons: { toggle: "" },
+      },
+    );
+    await settle();
+    return { container, handle };
+  };
+  const say = ({ container, handle }, what) => {
+    const status = container.querySelector(".github-pull-status");
+    const remedy = container.querySelector(".github-pull-remedy");
+    const note = container.querySelector(".github-pull-note");
+    const waiting = remedy?.getAttribute("aria-disabled") === "true" ? " (waiting)" : "";
+    steps.push(
+      `${what}: status ${status.hidden ? "none" : `"${status.textContent}"`}; ` +
+        `remedy ${remedy === null ? "none" : `${remedy.textContent}${waiting}`}; ` +
+        `note ${note.hidden ? "none" : "shown"}; ` +
+        `asked ${posts.splice(0).join(", ") || "nothing"}; ` +
+        `the Pulls tab ${handle.canRefresh() ? "may refresh it" : "has nothing to refresh"}`,
+    );
+  };
+  // A record still current whose last refresh failed: nothing will ask again by itself, so
+  // the failure ends in Retry.
+  const failed = { ...structuredClone(recorded.failed.body), state: "current" };
+  const current = await mount(failed, true);
+  say(current, "a current record whose last refresh failed");
+  const retry = current.container.querySelector(".github-pull-remedy");
+  retry.events.get("click")();
+  await settle();
+  say(current, "Retry pressed, its refresh not yet started");
+  retry.events.get("click")();
+  await settle();
+  say(current, "Retry pressed again while it waits");
+  reply({
+    status: 202,
+    headers: { get: () => null },
+    json: async () => ({ pull: { ...structuredClone(failed), refreshing: true } }),
+  });
+  await settle();
+  say(current, "the refresh runs");
+  current.handle.dispose();
+  // A pull request not fetched yet, opened by a direct link after its last fetch failed: the
+  // page's word goes to the status line with the failure, and ends in Fetch.
+  const unfetched = {
+    ...structuredClone(recorded.absent.body),
+    last_refresh: {
+      outcome: "network_error",
+      message: "gh could not reach api.github.com",
+      reset_at: null,
+      at: "2026-09-17T12:30:00Z",
+    },
+  };
+  const direct = await mount(unfetched, false);
+  say(direct, "a direct link to a pull request whose fetch failed");
+  direct.container.querySelector(".github-pull-remedy").events.get("click")();
+  await settle();
+  say(direct, "Fetch pressed");
+  direct.handle.dispose();
+  // A saved copy from another version: nothing fails, and the page's word ends in Fetch.
+  const other = {
+    ...structuredClone(recorded.absent.body),
+    reason: "schema_mismatch",
+  };
+  const otherVersion = await mount(other, false);
+  say(otherVersion, "a direct link to a copy saved by another version");
+  otherVersion.handle.dispose();
+  return steps;
 }
 
 // A Diff summary that has not arrived at the event log's late threshold, and a refresh that
@@ -3103,6 +3260,14 @@ async function summaryBrief(page) {
   tell("no list cached", absent);
   absent.handle.dispose();
 
+  // A list that only adds lines leaves its zero total out, as every lines summary does
+  // (mb-ox6a): "+3,893", never "+3,893 −0".
+  const addsOnly = await mountScripted(page, "", {
+    brief: { ...listed(head), additions: 3893, deletions: 0 },
+  });
+  tell("a record of a list that only adds lines", addsOnly);
+  addsOnly.handle.dispose();
+
   // A page opened from a Pulls row: the row's line is in the document's memory.
   const remember = (due) =>
     rowLines.documentRowLines.set(rowLines.rowLineKey(full.source, 7), {
@@ -3429,19 +3594,17 @@ async function run() {
     assert.ok(note.classes.has("github-pull-note"));
     assert.equal(lead.children.length, 2);
     assert.equal(meta.children.length, 1);
-    // The state's badge leads the first metadata row, and the stack's slot and Refresh's end
-    // it (mb-646g): the slot holds a strut while no stack is known, so a late chip lands in
-    // the row's empty end, before Refresh's slot.
-    const [stateBadgeSlot, ages, stackSlot, refreshSlot] = opened.children;
+    // The state's badge leads the first metadata row, and the stack's slot ends it (mb-646g):
+    // the slot holds a strut while no stack is known, so a late chip lands in the row's empty
+    // end. Nothing follows it: the page has no Refresh of its own (mb-ablv).
+    const [stateBadgeSlot, ages, stackSlot] = opened.children;
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
     assert.ok(stackSlot.classes.has("github-pull-stacks"));
     assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
-    // Refresh's slot ends the row of ages, after Browse code (A1 of review A on #506).
-    assert.ok(refreshSlot.classes.has("github-pull-refresh"));
-    assert.equal(opened.children.length, 4);
+    assert.equal(opened.children.length, 3);
     const stateBadge = stateBadgeSlot.children[0];
-    assert.equal(opened.children.at(-2), container.querySelector(".github-pull-stacks"));
+    assert.equal(opened.children.at(-1), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
     // The author's sentence is the row; the branches have the line below to themselves.
@@ -3628,13 +3791,12 @@ async function run() {
     const opened = mounted.length;
     const onScreen = mounted.at(-1);
     const displayed = { base: onScreen.left, head: onScreen.right };
-    const refresh = [...container.descendants()].find(
-      (element) => element.tag === "button" && element.textContent === "Refresh",
-    );
-    assert.ok(refresh, "fresh Files offers explicit repair");
-    refresh.events.get("click")();
+    // The page has no Refresh of its own: the Pulls tab's Refresh runs the page's `refresh`,
+    // which names the comparison on screen (mb-ablv).
+    assert.ok(handle.canRefresh(), "fresh Files offers explicit repair");
+    handle.refresh();
     await settle();
-    refresh.events.get("click")();
+    handle.refresh();
     await settle();
     assert.deepEqual(requests, [{ number: 7, retry: true, recovery: displayed }]);
     assert.equal(mounted.length, opened, "a pending POST cannot remount");
@@ -3665,9 +3827,10 @@ async function run() {
     await tick();
     assert.equal(mounted.length, repaired, "only one remount per repair");
     handle.dispose();
-    refresh.events.get("click")();
+    handle.refresh();
     await settle();
-    assert.equal(requests.length, 1, "disposed Refresh is inert");
+    assert.equal(requests.length, 1, "a disposed page's refresh is inert");
+    assert.equal(handle.canRefresh(), false, "a disposed page has nothing to refresh");
   }
   const checkout = JSON.parse(
     fs.readFileSync(
@@ -3976,6 +4139,7 @@ async function run() {
   const textDiagramSteps = await textDiagrams();
   const switchUnavailableSteps = await switchUnavailable(page);
   const eventLogDetailsSteps = await eventLogDetails(page);
+  const statusRemedySteps = await statusRemedies(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -4009,6 +4173,7 @@ async function run() {
     textDiagrams: textDiagramSteps,
     switchUnavailable: switchUnavailableSteps,
     eventLogDetails: eventLogDetailsSteps,
+    statusRemedies: statusRemedySteps,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

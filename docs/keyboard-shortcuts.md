@@ -64,6 +64,9 @@ On UK and German keyboards, the key in that position types `#`. Use the chevron 
 layouts where Backslash needs Option or AltGr.
 While the pane is hidden, the keys of its controls, such as `0`, `F`, and the filters’
 numbers, do nothing until it is shown again.
+With the pane hidden, a pull request page that waits on a fetch or a failed refresh
+still offers Fetch or Retry on its status line, but its other refreshes, such as one for
+a newer copy, wait for the Pulls tab’s Refresh.
 
 ## Keys in a Menu
 
@@ -84,8 +87,8 @@ Each control is numbered only while it is shown:
 | Screen | Numbered controls |
 | --- | --- |
 | The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has Modified within, and Group by age, only where its Git can read file ages |
-| The Pulls tab | Open, Closed, and All, then Refresh, which keeps its number while it waits |
-| A pull request page | The header’s links and actions, such as Browse code and Refresh, in the order the header shows them; Refresh keeps its number while it waits |
+| The Pulls tab | Open, Closed, and All, then Refresh, which refreshes the pull request page beside the list and then the list, and keeps its number while it waits |
+| A pull request page | The header’s links and actions, such as Browse code, the status line’s Retry or Fetch where it offers one, and Browse the checkout, in the order the header shows them; Retry keeps its number while it waits |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers continue
 after those of the tab beside it.

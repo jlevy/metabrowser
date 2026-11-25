@@ -187,8 +187,8 @@ export function createSummaryBrief(deps) {
  * The brief line, through the SDK's painters, as the Diff summary's header draws a line with
  * no files to open (diff-view.js, `renderDiffSummary`): the file count, bold, and its dot, one
  * item (`.diff-summary-group`), then the shell's brief change line, each dot said as a comma.
- * An empty slot where the header's chevron is keeps its words where the header's will be
- * (`.github-pull-summary-brief` in styles.css).
+ * Its words start where the header's will, which leads with them, its chevron after them
+ * (`.github-pull-summary-brief` in styles.css; mb-f0pz).
  *
  * @param {{
  *   countPartsNodes(parts: MetabrowserCountParts): Array<Node | string>,
@@ -216,10 +216,7 @@ export function briefLine(mb, h, summary, breakdown) {
     },
     // Its file count is on the size line above it, as the summary that replaces it leaves
     // it there (docs/design-system.md, "Change Size Line").
-    [
-      h("span", { class: "diff-summary-chevron", "aria-hidden": "true" }),
-      ...mb.changeLineNodes(line, { spoken: ", " }),
-    ],
+    mb.changeLineNodes(line, { spoken: ", " }),
   );
 }
 

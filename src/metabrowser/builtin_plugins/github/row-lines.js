@@ -1,7 +1,6 @@
-// A pull request's brief change line, on the third line of its row in the Pulls column
-// (mb-d0a3), after its number and its author: its line totals alone, "+1,234 −567", with no
-// file total and no file statuses (mb-lqkb), the chevron for its changed files at the line's
-// start.
+// A pull request's brief change line, at the end of its row's run in the Pulls column
+// (mb-d0a3, mb-pw8t), after its number and a dot: its line totals alone, "+1,234 −567", with
+// no file total and no file statuses (mb-lqkb), the chevron for its changed files after it.
 //
 // What it says is what the row's own list of changed files sums to, the list its chevron
 // discloses, so the line and the tree under it agree: the server sums the cached list
@@ -27,8 +26,8 @@
 //   into view or in a Pulls tab mounted again, has its line in the paint that draws it.
 //
 // A row waits for its line in the shell's pending placeholder, after the quiet period, so
-// nothing moves when the line arrives; the line's box is the row's third line, which is always
-// there, as the chevron is. A row whose list is not cached and is not being listed shows no
+// nothing moves when the line arrives; the line's box keeps the placeholder's room at the run's
+// end, which is always there, as the chevron is. A row whose list is not cached and is not being listed shows no
 // line and no placeholder.
 
 import { changeLineInput, createBoundedIndex } from "./change-lines.js";
@@ -72,7 +71,7 @@ const RECENT = 8;
  * last said it.
  * @typedef {{number: number, head: string | null}} LineRow
  *
- * What a row's third line shows now: its line, its pending placeholder, or nothing.
+ * What a row's lines show now: its line, its pending placeholder, or nothing.
  * @typedef {{phase: "shown", summary: FilesSummary} | {phase: "waiting"} | {phase: "none"}} RowLineState
  *
  * What the document remembers of a row: the head it was read for, its last listed answer,
@@ -376,7 +375,7 @@ export function createRowLines(deps) {
 
   return Object.freeze({
     /**
-     * What *row*'s third line shows now: its kept line, shown while a newer answer is read,
+     * What *row*'s lines show now: its kept line, shown while a newer answer is read,
      * until one replaces it; the placeholder while a read of it is coming or its list is being
      * listed; or nothing, when its list is not cached and nothing lists it.
      *

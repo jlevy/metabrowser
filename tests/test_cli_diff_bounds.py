@@ -83,7 +83,7 @@ def test_every_file_is_hydrated_and_one_too_large_alone_is_said(
 
     text = _run(root, capsys)
     assert "A    big.txt  [too_large]" in text
-    assert "A    c.txt  [+30 -0]" in text
+    assert "A    c.txt  [+30]" in text
     assert "M    logo.bin  [binary]" in text
 
     with pytest.raises(typer.Exit) as refused:

@@ -812,17 +812,15 @@ Useful helpers include:
   `{status, letter, count}` for a status count, “21 A”, its number and letter drawn bold
   in the status’s color
   ([Count Summaries Bold Their Numbers](design-system.md#count-summaries-bold-their-numbers));
-- `changeLine(change, options)` and `changeLineNodes(line, options)` for a brief change
-  line, “10 A, 5 D, 4 M · +1,234 −567”, the host’s one component for a change set’s
-  statuses and line totals: `changeLine` builds it from
-  `{statuses, additions, deletions}`, each status `{status, letter, word, count}` in the
-  order shown and a count `null` where it is not known, in the host’s number format, and
-  returns its parts, its `text`, and its `label` in words; with `{omitZeroTotals: true}`
-  it leaves out a total of zero, “+1,234” for a change that only adds lines, and says a
-  change of none “0 lines”, which a compact list of changes may want; `changeLineNodes`
-  paints it as the nodes of one `span.change-line`, with `{spoken: ", "}` on a line
-  whose name does not say it in words
-  ([Brief Change Line](design-system.md#brief-change-line));
+- `changeLine(change)` and `changeLineNodes(line, options)` for a brief change line, “10
+  A, 5 D, 4 M · +1,234 −567”, the host’s one component for a change set’s statuses and
+  line totals: `changeLine` builds it from `{statuses, additions, deletions}`, each
+  status `{status, letter, word, count}` in the order shown and a count `null` where it
+  is not known, in the host’s number format, and returns its parts, its `text`, and its
+  `label` in words, a total of zero left out, “+1,234” for a change that only adds
+  lines, and a change of none “0 lines”; `changeLineNodes` paints it as the nodes of one
+  `span.change-line`, with `{spoken: ", "}` on a line whose name does not say it in
+  words ([Brief Change Line](design-system.md#brief-change-line));
 - `changeSizeLine(change)` and `changeSizeLineNodes(line)` for a change set’s size line,
   “77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw diff)”:
   `changeSizeLine` builds it from `{commits?, files, pushedBytes?, diffBytes?}`, a count

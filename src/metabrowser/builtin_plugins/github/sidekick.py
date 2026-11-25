@@ -300,6 +300,7 @@ async def guided_review_handler(request: Request) -> Response:
         pull_host,
         requested_number,
     )
+    from metabrowser.git.routes import session_git_location
     from metabrowser.view_routes import parse_pull_number
 
     params = request.query_params
@@ -315,8 +316,12 @@ async def guided_review_handler(request: Request) -> Response:
         repository, published, reader = await _stack_sources(request)
         if repository is None:
             return JSONResponse({"state": "not_github"}, status_code=409, headers=_NO_STORE)
+        # A `{commit}`'s row links its page only where that page reads Git, as below.
         answer = await unless_disconnected(
-            request, stack_guided_review(repository, published, reader, stack, step)
+            request,
+            stack_guided_review(
+                repository, published, reader, stack, step, links=session_git_location()
+            ),
         )
         if answer is None:
             return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
@@ -331,8 +336,12 @@ async def guided_review_handler(request: Request) -> Response:
     host = pull_host(request.app)
     if host is None:
         return JSONResponse({"state": "not_github"}, status_code=409, headers=_NO_STORE)
+    # A `{commit}`'s row links its page only where that page reads Git: a served checkout's.
     answer = await unless_disconnected(
-        request, guided_review(host, number, step, served_repository(request.app))
+        request,
+        guided_review(
+            host, number, step, served_repository(request.app), links=session_git_location()
+        ),
     )
     if answer is None:
         return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)

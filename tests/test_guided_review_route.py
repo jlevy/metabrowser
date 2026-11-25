@@ -757,22 +757,49 @@ def test_a_reference_past_the_pull_request_is_never_stale(stand: _Stand) -> None
     assert answer["stale"]["changed_steps"] == [1]
 
 
+def test_the_guides_own_pull_request_cited_with_a_path_is_its_own_file(stand: _Stand) -> None:
+    """A `{pull, path}` that names the guide's own pull request is that comparison's
+    `{path}`: read at the guide's comparison, and marked when a push changes it (A4 of
+    review A on #834)."""
+    origin = stand.origin
+    body = (
+        kinds_guide_body(origin)
+        .replace(f'head: "{origin["fork_head"]}"', f'head: "{origin["fork_earlier"]}"')
+        .replace("{pull: 9, path: src/app.txt}", "{pull: 7, path: src/app.txt}")
+    )
+    _cache(stand, body)
+    answer = _ask(stand, step=2)
+    assert answer["stale"]["changed_paths"] == ["src/app.txt"]
+    assert answer["stale"]["changed_steps"] == [1, 2]
+    own = answer["references"][2]
+    assert (own["kind"], own["pull"], own["href"], own["comparison"]) == (
+        "file",
+        None,
+        "/pull/7/files/src/app.txt",
+        None,
+    )
+    assert _rows(answer, 2) == ["context:one", "add:two"]
+
+
 def test_another_pull_requests_comparison_the_store_cannot_read_says_so_in_its_place(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A `{pull, path}` whose pull request's comparison this copy cannot list is
+    """A `{pull, path}` whose pull request's comparison this copy cannot read is
     unavailable in its place; the step's other references still draw."""
     _cache(stand, kinds_guide_body(stand.origin))
     for number in (8, 9, 10):
         stand.refresh(number)
-    real = guided_review.shared_pull_manifest
+    nine = stand.record(9)
+    assert isinstance(nine, PullRecord) and nine.comparison is not None
+    nines = nine.comparison.head
+    real = guided_review._read_files  # pyright: ignore[reportPrivateUsage]
 
-    async def unreadable(published: Any, number: int, *args: Any) -> Any:
-        if number == 9:
-            raise DiffSourceError("the store cannot list it")
-        return await real(published, number, *args)
+    async def unreadable(store: Any, compared: Any, head: str, refs: Any) -> Any:
+        if head == nines:
+            raise DiffSourceError("the store cannot read it")
+        return await real(store, compared, head, refs)
 
-    monkeypatch.setattr(guided_review, "shared_pull_manifest", unreadable)
+    monkeypatch.setattr(guided_review, "_read_files", unreadable)
     answer = _ask(stand, step=2)
     assert [ref["state"] for ref in answer["references"][:3]] == [
         "ready",
@@ -785,18 +812,76 @@ def test_another_pull_requests_comparison_the_store_cannot_read_says_so_in_its_p
     )
 
 
-def test_a_commit_whose_line_passes_its_bound_names_neither_subject_nor_date(
+def test_a_commit_whose_line_passes_its_bound_names_no_subject(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Git prints a subject whole, so a commit whose line passes the bound is still the
-    commit, named by its SHA alone."""
+    """Git prints a subject whole, so commits whose lines pass the bound are read again for
+    their IDs and times: each is still the commit, named by its SHA and when it was made."""
     _cache(stand, kinds_guide_body(stand.origin))
     monkeypatch.setattr(guided_review, "_MAX_COMMIT_ROW_BYTES", 8)
-    commit = _ask(stand, step=2)["references"][5]
-    assert (commit["state"], commit["target"]) == (
+    commit, missing = _ask(stand, step=2)["references"][5:7]
+    assert (commit["state"], commit["href"], commit["target"]) == (
         "ready",
-        {"subject": None, "committed_at": None},
+        f"/commit/{stand.origin['fork_head']}",
+        {"subject": None, "committed_at": "2026-08-29T14:40:00Z"},
     )
+    assert (missing["state"], missing["target"]) == ("commit_unavailable", None)
+
+
+def test_a_pull_requests_file_with_no_kept_manifest_is_not_listed_here(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `{pull, path}` reads only the manifest its pull request's page kept: one with none
+    is `not_cached`, opened from its Changes, and no whole comparison is listed on the
+    guide's request (A1 of review A on #834)."""
+    _cache(stand, kinds_guide_body(stand.origin))
+    for number in (8, 9, 10):
+        stand.refresh(number)
+    real = guided_review.kept_pull_manifest
+    listed: list[int] = []
+
+    def kept(published: Any, number: int, base: str, head: str) -> Any:
+        return None if number == 9 else real(published, number, base, head)
+
+    async def listing(published: Any, number: int, *args: Any, **kwargs: Any) -> Any:
+        listed.append(number)
+        raise AssertionError("a cited pull request's comparison is listed on this request")
+
+    monkeypatch.setattr(guided_review, "kept_pull_manifest", kept)
+    monkeypatch.setattr(guided_review, "shared_pull_manifest", listing)
+    answer = _ask(stand, step=2)
+    assert _cited(answer)[1:3] == [
+        ("pull_file", 10, "ready", "/pull/10/files/docs/draft.md"),
+        ("pull_file", 9, "not_cached", "/pull/9/files/src/app.txt"),
+    ]
+    assert listed == []
+
+
+def test_a_commit_the_served_checkout_lacks_is_answered_with_no_address(
+    stand: _Stand, tmp_path: Path
+) -> None:
+    """A `{commit}`'s page reads Git where the session does: on a served checkout that
+    lacks a commit the store fetched, the commit is named and dated with no address, and
+    one the checkout has links its page (A3 of review A on #834)."""
+    origin = stand.origin
+    _cache(stand, kinds_guide_body(origin))
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    git(checkout, "init", "-q", "-b", "main")
+    git(checkout, "commit", "-q", "--allow-empty", "-m", "the checkout's own")
+    links = GitLocation.filesystem(checkout)
+    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
+    answer: Any = asyncio.run(guided_review.guided_review(host, 7, 2, None, links=links))
+    commit = answer["references"][5]
+    assert (commit["state"], commit["href"], commit["target"]) == (
+        "ready",
+        None,
+        {"subject": "count to two", "committed_at": "2026-08-29T14:40:00Z"},
+    )
+    # A checkout that has the commit links it, as a mirror does.
+    git(checkout, "fetch", "-q", str(stand.published.git_dir), origin["fork_head"])
+    linked: Any = asyncio.run(guided_review.guided_review(host, 7, 2, None, links=links))
+    assert linked["references"][5]["href"] == f"/commit/{origin['fork_head']}"
 
 
 async def _commits_since(root: Path, subject: str) -> dict[str, object]:

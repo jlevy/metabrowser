@@ -70,7 +70,7 @@
 //                                          element of class git-commit-sha
 //     countPartsNodes(parts)             — a count summary's nodes: the shell's one
 //                                          painter of them
-//     changeLine(change, options?)       — a brief change line, "10 A, 5 D, 4 M · +1,234
+//     changeLine(change)                 — a brief change line, "10 A, 5 D, 4 M · +1,234
 //                                          −567", from statuses and line totals
 //     changeLineNodes(line, options?)    — its nodes, the shell's one component for it
 //     countClass(count)                   — shared file-count emphasis class
@@ -1588,10 +1588,10 @@
     return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
   }
 
-  /** @param {MetabrowserChangeLineInput} change @param {MetabrowserChangeLineBuildOptions} [options] */
-  function changeLine(change, options) {
+  /** @param {MetabrowserChangeLineInput} change */
+  function changeLine(change) {
     const formatters = global.MetabrowserFormatters;
-    return formatters.changeLine(change, formatters.formatInteger, options);
+    return formatters.changeLine(change, formatters.formatInteger);
   }
 
   /**

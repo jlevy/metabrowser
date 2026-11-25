@@ -126,7 +126,7 @@ const PARTS = {
   "ref menu triggers": "git-ref-action",
   "opened row": "github-pull-quiet",
   labels: "github-pull-label",
-  Refresh: "github-pull-refresh",
+  "Retry or Fetch": "github-pull-remedy",
 };
 
 async function run() {

@@ -7163,14 +7163,6 @@ pre.code-block.metabrowser-source-lines > code {
   margin-left: auto;
   font-variant-numeric: var(--tabular-numerals);
 }
-.changed-file-stats > .diff-stat-add {
-  color: var(--status-success-text);
-  font-weight: var(--weight-bold);
-}
-.changed-file-stats > .diff-stat-del {
-  color: var(--status-error-text);
-  font-weight: var(--weight-bold);
-}
 .changed-file-row > :is(.tree-container-badge, .changed-file-name, .changed-file-stats) {
   align-self: baseline;
 }
@@ -7987,9 +7979,8 @@ pre.code-block.metabrowser-source-lines > code {
   font-weight: var(--weight-bold);
 }
 
-/* A line that leaves out its zero totals (`omitZeroTotals`, the Pulls tab's rows and stack
-   headings) says "0 lines" in their place for a change of no lines: muted and at its line's
-   weight, as there are no lines to ink (mb-efum). */
+/* A line leaves out a total of zero, and says "0 lines" in their place for a change of no
+   lines: muted and at its line's weight, as there are no lines to ink (mb-efum, mb-ox6a). */
 .change-line-stats > .change-line-none {
   color: var(--muted);
 }
@@ -8094,7 +8085,7 @@ pre.code-block.metabrowser-source-lines > code {
    size and the two ellipses at the chips' smaller one.
    The equal growth gives each name at least its chip's frame and an
    ellipsis, and what is left is the arrow's. A line too short for that floor moves the merge
-   to a line of its own (the Pulls tab's `.github-pulls-line`). */
+   to a line of its own. */
 .merge-refs {
   display: inline-grid;
   grid-template-columns: minmax(0, max-content) max-content minmax(0, max-content);
@@ -8441,21 +8432,11 @@ pre.code-block.metabrowser-source-lines > code {
   white-space: nowrap;
 }
 
-.git-stat-add,
-.git-stat-del,
+/* A file's lines, the brief change line of its totals alone (formatters.js), or "binary". */
+.git-commit-file > .change-line,
 .git-stat-binary {
   flex-shrink: 0;
   font-variant-numeric: var(--tabular-numerals);
-}
-
-.git-stat-add {
-  color: var(--status-success-text);
-  font-weight: var(--weight-bold);
-}
-
-.git-stat-del {
-  color: var(--status-error-text);
-  font-weight: var(--weight-bold);
 }
 
 .git-stat-binary {

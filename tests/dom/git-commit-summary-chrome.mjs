@@ -144,14 +144,18 @@ const SUMMARY_INDENT = `async (place) => {
     })),
   };
 }`;
-/** The rows of a measured tree that do not start one step per level in from its header. */
+/**
+ * The rows of a measured tree that do not start one step per level in from its header: a
+ * row's leading glyph, a folder's chevron or a file's letter, is a level's step past the
+ * header's words, which start the header, its chevron after them (mb-hi4l, mb-f0pz).
+ */
 const offStep = (indent) =>
   indent === null
     ? ["not measured"]
     : indent.rows.filter(
         (row) =>
-          Math.abs(row.lead - indent.chevron - indent.step * row.level) > 0.5 ||
-          Math.abs(row.name - indent.words - indent.step * row.level) > 0.5,
+          Math.abs(row.lead - indent.words - indent.step * row.level) > 0.5 ||
+          indent.chevron <= indent.words,
       );
 
 // The pane widths the page is read at: a wide pane, the default, and a narrow one.

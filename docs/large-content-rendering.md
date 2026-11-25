@@ -331,6 +331,9 @@ this standard. Paths are under `src/metabrowser/`.
 | `PAINT_MAX_CELLS` | `builtin_plugins/folder/treemap-map.js` | The cells a treemap lays out and paints: one relayout’s main-thread time, and the marks a family hover draws |
 | `LAYOUT_PROJECTION_BATCH_FILES`, `FOLD_MATERIALIZATION_BATCH_ROWS`, `JUMP_QUIET_MS` | `builtin_plugins/diff/diff-view.js` | Diff main-thread work per task, and when a burst of file jumps asks for its file |
 | `MAX_FILE_PATCH_BYTES`, `MAX_MANIFEST_FILES` | `diff/adapters/git.py` | One file’s patch in a comparison, and a comparison’s file list |
+| `DIFF_GAP_LINES` | `settings.py` | The unchanged lines one open of a gap between a code diff’s hunks draws and highlights, and the most one `view=lines` answer of the comparison route holds |
+| `MAX_LINES_SIDE_BYTES` | `builtin_plugins/diff/sidekick.py` | The side of a changed file a `view=lines` answer reads; past it the file’s separators stay plain |
+| `MAX_LINES_ANSWER_BYTES` | `diff/side_lines.py` | The line text one `view=lines` answer carries, and so one press of a gap’s bar draws, which only a side of very long lines meets |
 | `MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES` | `builtin_plugins/diff/comparison_cache.py` | Server memory for kept comparisons |
 | `KEPT_COMPARISON_CHARS` | `builtin_plugins/github/comparison-prefetch.js` | The document’s memory for the pull-request comparisons its pages read, which outlives every page; the Commits panel keeps its own within `GIT_COMPARISON_CACHE_BYTES` (`settings.py`), so a document holds both |
 | `WINDOW_ROWS`, `DISPLAY_ROWS`, `PULL_ROWS_OVERSCAN` | `builtin_plugins/github/pulls-panel.js` | Pulls rows per cached-page request, read at first, and mounted beyond the viewport |

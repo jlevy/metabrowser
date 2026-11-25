@@ -293,6 +293,9 @@ const REFERENCE_MESSAGES = Object.freeze({
 // A commit a step cites that the repository's copy here does not have, as after a force push
 // removed it from every branch.
 const COMMIT_UNAVAILABLE = "This commit is unavailable.";
+// A commit the copy has that the served checkout, where its page reads Git, does not, as a
+// pull request's branch only the copy fetched: named and dated, with no page to open.
+const COMMIT_ELSEWHERE = "Not in this checkout.";
 
 // A reference of an out-of-date guide, read at the pull request's current head, whose file
 // changed since the guide was written: a note above its excerpt when it resolves, and in its
@@ -539,16 +542,22 @@ function commitRow(reference, words) {
   const target = /** @type {CommitTarget | null} */ (reference.target);
   const section = element("section", "", "github-pull-guide-reference github-pull-guide-row");
   const id = element("span", words.shortCommit(sha), "github-pull-guide-row-id git-commit-sha");
-  if (reference.state !== "ready" || reference.href === null) {
+  if (reference.state !== "ready") {
     const row = element("div", "", "github-pull-guide-row-link github-pull-guide-commit");
     row.append(id, " ", element("span", COMMIT_UNAVAILABLE, "github-pull-quiet"));
     section.append(row);
     return section;
   }
-  const link = /** @type {HTMLAnchorElement} */ (
-    element("a", "", "github-pull-guide-row-link github-pull-guide-commit")
+  // A commit whose page cannot read it is drawn as a link is, unlinked.
+  const href = reference.href;
+  const link = element(
+    href === null ? "div" : "a",
+    "",
+    "github-pull-guide-row-link github-pull-guide-commit",
   );
-  link.href = reference.href;
+  if (href !== null) {
+    /** @type {HTMLAnchorElement} */ (link).href = href;
+  }
   const copy = element("span", "", "github-pull-guide-row-copy");
   copy.append(element("span", target?.subject ?? "Commit", "github-pull-guide-row-title"));
   link.append(id, " ", copy);
@@ -557,6 +566,9 @@ function commitRow(reference, words) {
     const committed = element("span", "committed ", "github-pull-guide-row-place");
     committed.append(words.age(when));
     link.append(" ", committed);
+  }
+  if (reference.href === null) {
+    link.append(" ", element("span", COMMIT_ELSEWHERE, "github-pull-quiet"));
   }
   section.append(link);
   return section;

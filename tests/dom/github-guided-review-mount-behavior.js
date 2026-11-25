@@ -815,6 +815,12 @@ async function run() {
           target: { subject: "Count <i>to</i> two", committed_at: "2026-08-29T14:40:00Z" },
         }),
         cited({ kind: "commit", commit: "e".repeat(40), state: "commit_unavailable" }),
+        // A commit the served checkout lacks, which the route answers with no address.
+        cited({
+          kind: "commit",
+          commit: "f".repeat(40),
+          target: { subject: "Fetched with its pull request", committed_at: null },
+        }),
       ],
     });
     await settle();
