@@ -1218,13 +1218,14 @@
    A row in no stack is flush on the list's inset; only a stack's members are indented, under
    their stack's row (mb-3vil). The row's two lines of title are there from its first paint,
    however short its title, and its third line whatever it holds, so every row is one height.
-   A stack's row keeps two slots, its chevron's and its Layers icon's
-   (`.github-pulls-stack-row`). The DOM keeps the title the link's first text, so its
-   accessible name gives the state, from the state icon's label, the place, and then the
-   title, before the number's line in words. */
+   The link is one column, its title's two lines; a stack's row, a link of one line, keeps
+   its chevron's and its Layers icon's slots and an age column (`.github-pulls-stack-row`).
+   The DOM keeps the title the link's first text, so its accessible name gives the state,
+   from the state icon's label, the place, and then the title, before the number's line in
+   words. */
 .github-pulls-row {
   display: grid;
-  grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr) 5ch;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-height: var(--ui-row-height);
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
@@ -1292,7 +1293,6 @@
 .github-pulls-row > .github-pulls-heading {
   position: relative;
   display: -webkit-box;
-  grid-column: 1 / -1;
   height: 2lh;
   overflow: hidden;
   text-indent: var(--github-pull-row-text-column);
@@ -1309,8 +1309,8 @@
    line and left the first the icon alone (Chrome 152, at every width from 420 to 180 px). */
 .github-pulls-heading > .github-pull-state-icon {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset-block-start: 0;
+  inset-inline-start: 0;
   height: 1lh;
   text-indent: 0;
 }
@@ -1381,7 +1381,11 @@
    (tests/dom/type-scale-chrome.mjs holds it whole). WebKit was not measured. */
 .github-pulls-change {
   --github-pulls-change-line: calc(var(--ui-row-height) - 4px);
-  /* The placeholder's width, and the room the lines take (`.github-pulls-change-line`). */
+  /* The placeholder's width, and the room the lines take (`.github-pulls-change-line`).
+     Measured in headless Chrome 152 on this repository's pull requests 440 to 488
+     (tests/dom/github-pulls-row-lines-chrome.mjs, `REAL_LINES`), a row's lines, "+1,234
+     −567", are 2.6 to 7.4 em of the nav's type, 5.0 at the median and 5.52 or less for 44
+     of 45, so 5.6em holds all but a change of over ten thousand lines each way. */
   --github-pulls-lines-room: 5.6em;
   display: grid;
   grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr) 5ch;
@@ -1497,11 +1501,8 @@
 /* While the lines are read, the row holds the shell's pending placeholder where they will be,
    as a stack's heading does (`.github-pulls-stack-change-pending`): the navigation tally's
    gray block and slow pulse, after the quiet period, as wide as a row's lines nearly always
-   are, and, as they would, out of view where there is no room for it. Measured in headless
-   Chrome 152 on this repository's pull requests 440 to 488
-   (tests/dom/github-pulls-row-lines-chrome.mjs, `REAL_LINES`), a row's lines, "+1,234 −567",
-   are 2.6 to 7.4 em of the nav's type, 5.0 at the median and 5.52 or less for 44 of 45, so
-   `--github-pulls-lines-room` holds all but a change of over ten thousand lines each way. */
+   are (`--github-pulls-lines-room`, measured on `.github-pulls-change`), and, as they would,
+   out of view where there is no room for it. */
 .github-pulls-change-pending {
   display: flex;
   align-items: center;

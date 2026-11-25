@@ -3475,8 +3475,9 @@ A pull request is three lines, one item, and two targets, because a pane is narr
 than its parts. Its link is the first two, its title’s: the state icon, a stack member’s
 place and dot, and the title, two lines tall.
 The third is its change line: the chevron, then the number, the author, and the brief
-change line, with the age at the row’s end on its baseline; a click anywhere on it opens
-and closes the files and opens no page.
+change line, with the age at the row’s end, every part at one size and centered on the
+line ([Rows and Disclosures](#rows-and-disclosures)); a plain click anywhere on it opens
+and closes the files and opens no page, and a modified click toggles nothing.
 The keys see the item as one row of the list.
 The title is the link’s first text, so the row’s accessible name gives the state, from
 the state icon’s label, the place, and then the title, before the number’s line in

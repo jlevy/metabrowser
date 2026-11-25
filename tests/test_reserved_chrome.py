@@ -535,11 +535,12 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
-    # A pull request's link is its title's two lines, across the row from the state icon in
-    # the slot to the row's end (mb-85op); a stack's row is one line, the age at its end.
+    # A pull request's link is one column, its title's two lines, across the row from the
+    # state icon in the slot to the row's end (mb-85op); a stack's row is one line, the age at
+    # its end.
     # The state icon is the tree's one icon slot (mb-hmv7), on the row's inset, with no empty
     # slot before it (mb-3vil); a stack's row has two, its chevron's and its Layers icon's.
-    assert " ".join(columns.group(1).split()) == "var(--tree-icon-slot) minmax(0, 1fr) 5ch"
+    assert " ".join(columns.group(1).split()) == "minmax(0, 1fr)"
     stack_columns = re.search(
         r"grid-template-columns:\s*([^;]*);",
         _rule(css, ".github-pulls-row.github-pulls-stack-row"),
@@ -628,7 +629,6 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     heading = _rule(css, ".github-pulls-row > .github-pulls-heading")
     for declaration in (
         "position: relative;",
-        "grid-column: 1 / -1;",
         "height: 2lh;",
         "overflow: hidden;",
         "text-indent: var(--github-pull-row-text-column);",
@@ -646,8 +646,8 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     icon = _rule(css, ".github-pulls-heading > .github-pull-state-icon")
     for declaration in (
         "position: absolute;",
-        "top: 0;",
-        "left: 0;",
+        "inset-block-start: 0;",
+        "inset-inline-start: 0;",
         "height: 1lh;",
         "text-indent: 0;",
     ):

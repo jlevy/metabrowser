@@ -11,21 +11,22 @@
 // The list is a tree: a row is one anchor in the role of a tree's item, in a list item with no
 // role of its own, and the row's changed files hang off it as a folder's children do
 // (pull-files-view.js): a `.tree-children[role="group"]` after it, which it owns, and
-// `aria-expanded` on it. A pull request is one item of three lines (mb-1z7j): the anchor's
-// two, its title and its number's line, and under them its brief change line (row-lines.js),
-// which carries the chevron, as a folder's line does. The three are one hover, one selection,
-// and one keyboard stop (`.github-pulls-entry`). The rule for a row with a disclosure toggle
-// (docs/design-system.md, "A Click on the Toggle's Line Toggles"): a click on the line that
-// carries the toggle toggles, and a click on the larger item that includes it does not. So a
-// click on the change line, anywhere on it, toggles the files and opens no page, and a click
-// on the title or the number's line opens the pull request and expands nothing. No row expands
-// on its own: not on an open, a selection, or a key's walk. Up and Down walk the pull requests
-// as wholes, and bring the whole item into view; on one, Space toggles its files, Right opens
-// them or goes to the first, Left closes them or goes to its stack's row, and Enter opens it.
-// Every key acts on the row that has focus (`anchorFocusedRow`). The change line is the
-// pointer's alone: hidden from assistive technology, it leaves the tree its items and groups,
-// and its words describe the row. The walk goes by `rows`, not by the DOM, so it reads the
-// same however a row is drawn.
+// `aria-expanded` on it. A pull request is one item of three lines (mb-1z7j): the anchor's two,
+// its title's (mb-85op), and under them its change line, which carries the chevron, as a
+// folder's line does, then its number, its author, and its brief change line (row-lines.js,
+// mb-lqkb). The three are one hover, one selection, and one keyboard stop
+// (`.github-pulls-entry`). The rule for a row with a disclosure toggle (docs/design-system.md,
+// "A Click on the Toggle's Line Toggles"): a click on the line that carries the toggle toggles,
+// and a click on the larger item that includes it does not. So a click on the change line,
+// anywhere on it, the number and the author included, toggles the files and opens no page, and
+// a click on the title opens the pull request and expands nothing; a modified click toggles
+// nothing, and on the title is the browser's, a new tab. No row expands on its own: not on an
+// open, a selection, or a key's walk. Up and Down walk the pull requests as wholes, and bring
+// the whole item into view; on one, Space toggles its files, Right opens them or goes to the
+// first, Left closes them or goes to its stack's row, and Enter opens it. Every key acts on the
+// row that has focus (`anchorFocusedRow`). The change line is the pointer's alone: hidden from
+// assistive technology, it leaves the tree its items and groups, and its words describe the
+// row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
@@ -4169,12 +4170,12 @@ export function mountPullsPanel(container, ctx, mb) {
   /**
    * A stack member's place in its stack, at the start of its title's flow, after the state
    * icon, then a muted dot before the title: "14/15 · title" (docs/design-system.md, "Stacks";
-   * mb-vkhd), the stack menu's member line's dot (`.github-pull-stack-dot`). It has no stack icon of its own: the stack's row it sits under has
-   * it. The place of its row's own stack comes first, bare, and any other stack's is named by
-   * the Layers glyph before its number. A pull request in no stack has neither place nor
-   * dot, so its title follows the icon. A passive part of the row's one primary link,
-   * named by its accessible name; the Pulls column shows no tooltips (docs/design-system.md,
-   * "Tooltips Add Information").
+   * mb-vkhd), the stack menu's member line's dot (`.github-pull-stack-dot`). It has no stack
+   * icon of its own: the stack's row it sits under has it. The place of its row's own stack
+   * comes first, bare, and any other stack's is named by the Layers glyph before its number.
+   * A pull request in no stack has neither place nor dot, so its title follows the icon. A
+   * passive part of the row's one primary link, named by its accessible name; the Pulls
+   * column shows no tooltips (docs/design-system.md, "Tooltips Add Information").
    *
    * @param {HTMLElement} element
    * @param {number} number
@@ -4584,7 +4585,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (line.phase === "shown") {
         // Its line totals alone, with no file statuses, as a pull request's row says its own
         // (mb-lqkb).
-        const said = mb.changeLine(stackLineInput(line.change, null));
+        const said = mb.changeLine(stackLineInput(line.change));
         // "Stack #286 · +1,234 −567": the dot is a count summary's separator, which the name,
         // saying the line in words, needs no word for.
         // Totals a member's list could not count, a binary file it listed, are not exact:
@@ -5528,12 +5529,15 @@ export function mountPullsPanel(container, ctx, mb) {
       }
       // A press anywhere on a row's change line, the line that carries its toggle, opens or
       // closes its changed files, as a press on a folder's line does, and opens no page; the
-      // item takes the focus, so Space and the arrows go on from it.
+      // item takes the focus, so Space and the arrows go on from it. A modified press, which on
+      // a link opens a new tab, toggles nothing: the title above it is the item's link.
       const change = changeOf(event.target);
       if (change !== null) {
-        const number = Number(change.dataset.number);
-        focusItem(number);
-        toggleRowFiles(number);
+        if (isPlainClick(event)) {
+          const number = Number(change.dataset.number);
+          focusItem(number);
+          toggleRowFiles(number);
+        }
         return;
       }
       const row = rowOf(event.target);
