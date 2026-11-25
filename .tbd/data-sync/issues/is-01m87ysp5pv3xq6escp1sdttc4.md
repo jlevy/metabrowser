@@ -5,7 +5,7 @@ title: "Docs tab mounts a large new Markdown document whole: #31 of investment-r
 kind: bug
 status: in_progress
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
 hold: null
 hold_until: null
 created_at: 2026-11-24T23:38:29.940Z
-updated_at: 2026-11-24T23:57:42.488Z
+updated_at: 2026-11-25T03:06:21.534Z
 started_at: 2026-11-24T23:57:42.485Z
 ---
 Measured 2026-11-24, runtime 19cd5a41 (main dcb9f32), headless Chrome 1280x900, finterm-ai/investment-research PR 31 (one new 876,516-byte Markdown book, 17,177 lines; 13 files).
@@ -30,3 +30,11 @@ Cause: rendered Markdown mounts every block of a file (diff-markdown.js load -> 
 After load interactions are 50-150 ms per relayout (Diff/Current, collapse, resize). content-visibility:auto on .diff-markdown-block did not change layout (2.3-3.0 s either way). WebKit (the macOS app) not yet measured.
 
 Fix candidates: (1) draw rendered blocks near the viewport with reserved height, the policy the diff view already follows for source; (2) until then, a measured block/byte bound past which a rendered document opens its first chunk and grows on demand; (3) skip or coalesce the place hold when the changed file sits below the viewport, one measurement per frame. Separate: /api/catalog answered 12.4 MB in 2.8 s at this repo start.
+
+## Notes
+
+PR #811 (claude/rendered-markdown-modes). Rendered Markdown chooser is Full | Concise | Source; a file within WHOLE_UNITS/WHOLE_BYTES (= FULL_MAX_BLOCKS/FULL_MAX_BYTES, 500 blocks / 512 KiB) is drawn whole, a longer one a chunk at a time (CHUNK_UNITS 100 / CHUNK_BYTES 128 KiB) over spacers estimated at BLOCK_PX 20 + BYTE_PX 0.24 a byte, FOLD_PX 36.
+
+Measured 2026-11-24, headless Chrome 152 1280x900, load average 270-330, origin/main vs branch, back-to-back pairs: reaching #31's 3,408-block book on Docs, worst task 351-352 -> 62-64 ms, task 0.48-0.52 -> 0.15-0.19 s, layout 0.165 -> 0.006 s; on Changes, worst 361-437 ms -> none over 50 ms, task 0.44-0.55 -> 0.07-0.09 s.
+
+Not fixed here: the Docs page load itself (4.0-4.2 s, 72k nodes in both builds) comes from the book's Source body drawn at load while its rendered view waits -> mb-qzgs. Item 3 of the fix candidates (skip the place hold below the pane) was measured and dropped: scroll task 1.175-1.178 s with it, 1.195-1.223 s without. WebKit not measured.
