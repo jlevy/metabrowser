@@ -39,9 +39,9 @@ work.
 | `O` | Overview | A folder is shown |
 | `M` | Treemap, from its map | A folder is shown |
 | `C` | Conversation | A pull request page is shown |
-| `D` | Docs: the pull request’s changed documents, rendered | A pull request page that changes a document is shown |
-| `G` | Changes, from chan-*g*es | A pull request page is shown |
-| `R` | Guided Review, from guided P-*R*, a review | The Guided Review tab is shown |
+| `D` | Docs: the changed documents, rendered | A pull request or stack page that changes a document is shown |
+| `G` | Changes, from chan-*g*es | A pull request or stack page is shown |
+| `R` | Guided Review, from guided P-*R*, a review | A pull request or stack page’s Guided Review tab is shown |
 | `E` | Checks, from ch-*e*-cks | A pull request page is shown |
 | `L` | Diff layout: Split or Unified | A diff with a layout control is shown |
 | `N` | Diff or Current: what changed, or the new version alone, from curre*n*t | A diff is shown |
@@ -89,6 +89,7 @@ Each control is numbered only while it is shown:
 | The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has Modified within, and Group by age, only where its Git can read file ages |
 | The Pulls tab | Open, Closed, and All, then Refresh, which refreshes the pull request page beside the list and then the list, and keeps its number while it waits |
 | A pull request page | The header’s links and actions, such as Browse code, the status line’s Retry or Fetch where it offers one, and Browse the checkout, in the order the header shows them; Retry keeps its number while it waits |
+| A stack page | The status line’s Retry where it offers one, then Show the new comparison where it offers that |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers continue
 after those of the tab beside it.
@@ -116,6 +117,9 @@ Right shows them or moves into them, and Left hides them.
 Grouped by stack, a stack’s row opens nothing: Enter and Space open or close it, Right
 opens it or goes to its first pull request, and Left closes it or returns to it from a
 pull request inside it whose files are closed.
+An open stack’s last row, Whole stack, opens the stack’s page: a move onto it opens it,
+as a move onto a pull request opens that, Enter and Space open it, and Left returns to
+the stack’s row.
 
 Press `#` to open Quick Search for pull requests.
 The cursor starts after the prefix, ready for a number or title.
