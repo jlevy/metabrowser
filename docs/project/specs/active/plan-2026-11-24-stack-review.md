@@ -335,8 +335,8 @@ references:
 | Kind | Resolves against | Answers | Draws as |
 | --- | --- | --- | --- |
 | `{pull}` | The cached record, or the catalog’s row | Number, title, state, place in its stack, and address; `not_cached` when this copy knows neither | A row, as the stack menu lists a member |
-| `{pull, path}` | That pull request’s current comparison | As a `{path}` alone does today: the whole patch, or the document | As a `{path}` alone, with the pull request named |
-| `{commit}` | The store | Subject, date, and address; `commit_unavailable` when the store lacks it | A row, as the Commits tab lists one |
+| `{pull, path}` | That pull request’s kept manifest, the one its Changes reads, at its record’s comparison | As a `{path}` alone does today: the whole patch, or the document; `not_cached` when this copy has no record or no kept manifest | As a `{path}` alone, with the pull request named |
+| `{commit}` | The store, and a served checkout for its address | Subject, date, and address; `commit_unavailable` when the store lacks it, and no address when the checkout does | A row, as the Commits tab lists one |
 
 - **Valid in every carrier**, a pull request’s guide included, so a layer’s guide can
   cite its neighbors.
@@ -347,8 +347,9 @@ references:
   [Later](#later-loose-and-pinned-collections) gives it pins.
 - **A reference to a pull request or a commit is never stale,** a `{pull, path}`
   included, which follows that pull request.
-  Only a `{path}` in the collection’s own comparison counts toward a stale guide’s
-  `changed_steps`.
+  Only a file of the collection’s own comparison counts toward a stale guide’s
+  `changed_steps`: a `{path}`, or a `{pull, path}` that names the guide’s own pull
+  request, which reads as its `{path}`.
 - **A step still needs a reference,** which may now be a pull request or a commit, so a
   step no longer has to cite a changed file it is not about.
 - **Rows, not cards.** The collections research reserves cards for the shared card frame
@@ -359,8 +360,12 @@ references:
   [Contracts](plan-2026-11-14-object-data-model-and-views.md#contracts) that groups
   took. The compiled schema states which fields each kind takes without losing a
   refusal’s place, as groups’ `if` on `items` does.
-- **`MAX_REFERENCES` stays one bound.** It was measured on a step’s path hydration, and
-  an object reference costs a record read.
+- **`MAX_REFERENCES` stays one bound.** The worst step of each kind is measured beside
+  it in `guided_review.py`. A `{pull, path}` is the costliest, one run of the diff
+  source for each pull request it names, though it reads only a kept manifest and never
+  lists a comparison; a `{pull}` reads a record and a catalog row, and a step’s
+  `{commit}` references share one `git log`. Whether a `{pull, path}` needs a smaller
+  bound of its own is a person’s call.
   A layers step for a stack longer than the bound cites the layers a reviewer should
   open; the header lists them all.
 
