@@ -30,6 +30,8 @@ them.
   stay, as the drawn comparison does, and the guide is mounted again only when the
   reader takes the comparison offered; a description that no longer carries the guide
   turns the front page to Changes.
+  `column` is the body’s column (`bodyInColumn`): the reading column, as a pull
+  request’s body takes it, except on a drawn Docs or Changes, which take the full pane.
 - `comparison` is what a new answer does to the comparison drawn: the first is shown,
   the same one kept, and another offered rather than swapped in under the reader.
 - `header` is the page’s header, row by row (`stackHeader`), a pull request’s header
@@ -86,6 +88,8 @@ them.
   reader takes the new one.
   A stack that can no longer be shown as one keeps the comparison drawn; with nothing
   drawn, the body says what is missing.
+  `column` is the body’s column, as under `guided`: the full pane once Changes is drawn,
+  and the reading column for a notice or a wait with nothing drawn.
 - `order` is the header’s order of 71’s members, the top first, as every stack menu
   lists them.
 

@@ -11,7 +11,10 @@
 // member is read again while the drawn comparison is current, and a new comparison is offered,
 // not swapped in, until the reader takes it, whether a member below moved or the carrier
 // moved with it and was pinned again, which no step is read as; and leaving the tab disposes
-// the view and aborts its read. The navigation itself is github-guided-review-session.js's, and the stack's own
+// the view and aborts its read. Last, Docs and Changes that could not load: each says so in a
+// pull request's error notice with Retry, whose press disposes what the failed draw left and
+// draws again, and a Retry left behind by a tab switch or the page's disposal draws nothing.
+// The navigation itself is github-guided-review-session.js's, and the stack's own
 // state machine github-stack-page-session.js's; this is the page's glue between them. Paint is
 // Chrome's.
 const assert = require("node:assert/strict");
@@ -284,6 +287,11 @@ async function run() {
   /** The diff view: what the page passed it for the header's Diff summary and for each
    * diff it drew, and how many of each it drew. */
   const files = { summaries: 0, rendered: 0 };
+  /** How the diff view's next draws fail, in order: `throw` fails the draw itself, and
+   * `late` draws and then fails its first screen, after the page has adopted the view. */
+  const failures = [];
+  /** Each diff view drawn, and whether the page disposed it. */
+  const views = [];
   /** @type {Array<Record<string, unknown>>} */
   const drawings = [];
   const shape = (ctx) =>
@@ -302,7 +310,21 @@ async function run() {
     render: async (_host, ctx) => {
       files.rendered += 1;
       drawings.push({ render: shape(ctx) });
-      return { dispose() {} };
+      const failure = failures.shift();
+      if (failure === "throw") {
+        throw new Error("the stub diff could not draw");
+      }
+      const view = {
+        disposed: false,
+        dispose() {
+          view.disposed = true;
+        },
+      };
+      if (failure === "late") {
+        view.firstScreen = () => Promise.reject(new Error("the stub diff's first screen failed"));
+      }
+      views.push(view);
+      return view;
     },
   };
   const mb = {
@@ -583,11 +605,89 @@ async function run() {
     diffs_drawn: files.rendered,
     changes_drawing: changes,
   };
+
+  // Docs and Changes that could not load: a pull request's error notice and its Retry
+  // (`paintDiff` in stack-page.js, as `mountDiff` in pull-page.js). The page logs each
+  // failure; the session keeps the messages out of its transcript.
+  const logError = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args.map(String)[0]);
+  const body = container.querySelector(".github-pull-body");
+  const notice = () => body.querySelector(".github-pull-notice");
+  const retryButton = (node) => [...node.descendants()].find((each) => each.tag === "button");
+  /** What the body shows: the notice's words and its button, or the diff's host. */
+  const shows = () => {
+    const shown = notice();
+    if (shown === null) {
+      return body.querySelector(".metabrowser-diff-host") === null ? "(nothing)" : "the diff";
+    }
+    return `${shown.getAttribute("data-severity")}: ${shown.textContent}`;
+  };
+  const failed = {};
+  // Docs whose draw fails says so, and Retry draws it again.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  let renders = files.rendered;
+  failed.docs = { notice: shows(), retry: retryButton(notice())?.textContent ?? null };
+  assert.equal(failed.docs.notice, "error: Docs could not load. Retry");
+  retryButton(notice()).events.get("click")();
+  await settle();
+  failed.docs.after_retry = { shows: shows(), draws: files.rendered - renders };
+  assert.deepEqual(failed.docs.after_retry, { shows: "the diff", draws: 1 });
+  // Changes that draws and then fails its first screen says so too, and Retry disposes the
+  // view the failed draw left before it draws again.
+  failures.push("late");
+  handle.setTab("changes");
+  await settle();
+  const left = views.at(-1);
+  renders = files.rendered;
+  failed.changes = { notice: shows(), left_view_disposed: left.disposed };
+  assert.equal(failed.changes.notice, "error: Changes could not load. Retry");
+  retryButton(notice()).events.get("click")();
+  await settle();
+  failed.changes.after_retry = {
+    shows: shows(),
+    draws: files.rendered - renders,
+    left_view_disposed: left.disposed,
+  };
+  assert.deepEqual(failed.changes.after_retry, {
+    shows: "the diff",
+    draws: 1,
+    left_view_disposed: true,
+  });
+  // A Retry left behind by a tab switch draws nothing: the tab now shown keeps its diff.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  const behind = retryButton(notice());
+  handle.setTab("changes");
+  await settle();
+  renders = files.rendered;
+  behind.events.get("click")();
+  await settle();
+  failed.retry_after_tab_switch = { shows: shows(), draws: files.rendered - renders };
+  assert.deepEqual(failed.retry_after_tab_switch, { shows: "the diff", draws: 0 });
+  // And one pressed after the page is disposed draws nothing.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  const disposedRetry = retryButton(notice());
   handle.dispose?.();
+  renders = files.rendered;
+  disposedRetry.events.get("click")();
+  await settle();
+  failed.retry_after_dispose = { draws: files.rendered - renders };
+  assert.deepEqual(failed.retry_after_dispose, { draws: 0 });
+  console.error = logError;
+  assert.equal(logged.length, 4, "each failure is logged once");
+  failed.logged = logged;
+  report.failed = failed;
   console.log(JSON.stringify(report, null, 2));
 }
 
 run().catch((error) => {
-  console.error(error);
+  // Straight to standard error: the failure section quiets `console.error` while it runs.
+  process.stderr.write(`${error?.stack ?? error}\n`);
   process.exitCode = 1;
 });

@@ -15,8 +15,10 @@
 // body, Guided Review's step list and its step's card, and the diff's host on Docs and
 // Changes. Each is measured on both pages, in the light and the dark scheme, at a desktop
 // width with the navigation pane shown and at a phone's with it hidden, and held equal
-// within half a pixel, border and ground included; a part whose padding the pull request's
-// page gives it cannot lose it on the stack's. The members, the one part a pull request's
+// within `NEAR`, border and ground included; a part whose padding the pull request's
+// page gives it cannot lose it on the stack's. Changes and Guided Review are measured again
+// once the reader has pressed their tabs on the stack's page, which draws the body again in
+// place rather than on a page of its own. The members, the one part a pull request's
 // page lacks, are a page card as Guided Review's are, its rows inset as a card's head is,
 // so a member's state icon starts where Guided Review's badge does.
 import fs from "node:fs";
@@ -232,7 +234,7 @@ try {
     await togglePane();
     await waitFor(`!${COLLAPSED}`);
     await send("Emulation.clearDeviceMetricsOverride");
-    phase(`measured ${route}`);
+    phase(`measured ${name}`);
     return measured;
   };
 
@@ -245,12 +247,8 @@ try {
   const PULL = ".github-pull:not(.github-pull-stack-page)";
   // The stack's front page is Guided Review, on its first step; a pull request's on its
   // overview, so the reader's way on takes it to its first step's card.
-  const stackGuided = await take(
-    "/stack/70",
-    STACK,
-    `document.querySelector("${STACK} .github-pull-guide-position")?.textContent === "Step 1 of 2" && document.querySelector("${STACK} .github-pull-guide-card .github-pull-guide-references") !== null`,
-    "stack-70-guided",
-  );
+  const STACK_GUIDED = `document.querySelector("${STACK} .github-pull-guide-position")?.textContent === "Step 1 of 2" && document.querySelector("${STACK} .github-pull-guide-card .github-pull-guide-references") !== null`;
+  const stackGuided = await take("/stack/70", STACK, STACK_GUIDED, "stack-70-guided");
   const pullGuided = await take(
     "/pull/7/guided",
     PULL,
@@ -272,6 +270,44 @@ try {
     "stack-70-changes",
   );
   const pullChanges = await take("/pull/10/files", PULL, DIFF_READY(PULL), "pull-10-changes");
+
+  // A press of a tab's link on the stack's page, which the shell lands on the page already
+  // mounted (stack-page.js's `land`). The page's root is marked before the first press, so
+  // the mark still there once the switched tab is measured shows its body was drawn in place.
+  const MARK = `document.querySelector(${JSON.stringify(STACK)}).dataset.layoutSwitch = "kept"`;
+  const KEPT = `document.querySelector(${JSON.stringify(STACK)})?.dataset.layoutSwitch === "kept"`;
+  const press = async (label, path) => {
+    await evaluate(
+      `[...document.querySelectorAll(${JSON.stringify(`${STACK} .tab-bar .tab-btn`)})].find((tab) => tab.textContent === ${JSON.stringify(label)}).click()`,
+    );
+    await waitFor(`location.pathname === ${JSON.stringify(path)}`);
+  };
+  const stackSwitchedChanges = await take(
+    "/stack/70",
+    STACK,
+    DIFF_READY(STACK),
+    "stack-70-switched-changes",
+    async () => {
+      await waitFor(STACK_GUIDED);
+      await evaluate(MARK);
+      await press("Changes", "/stack/70/changes");
+    },
+  );
+  const changesKept = await evaluate(KEPT);
+  const stackSwitchedGuided = await take(
+    "/stack/70",
+    STACK,
+    STACK_GUIDED,
+    "stack-70-switched-guided",
+    async () => {
+      await waitFor(STACK_GUIDED);
+      await evaluate(MARK);
+      await press("Changes", "/stack/70/changes");
+      await waitFor(DIFF_READY(STACK));
+      await press("Guided Review", "/stack/70/guided");
+    },
+  );
+  const guidedKept = await evaluate(KEPT);
 
   /** Hold each of *names* on the stack's page to the pull request's, in every measurement. */
   const compare = (label, stack, pull, names) => {
@@ -321,6 +357,10 @@ try {
   compare("Guided Review", stackGuided, pullGuided, GUIDED);
   compare("Docs", stackDocs, pullDocs, DIFF);
   compare("Changes", stackChanges, pullChanges, DIFF);
+  check("Changes after a switch of tabs: drawn in place", changesKept === true);
+  check("Guided Review after a switch of tabs: drawn in place", guidedKept === true);
+  compare("Changes after a switch of tabs", stackSwitchedChanges, pullChanges, DIFF);
+  compare("Guided Review after a switch of tabs", stackSwitchedGuided, pullGuided, GUIDED);
 
   // The members: a page card, as Guided Review's step list and its step's card are, and each
   // row inset as a card's head insets what it holds, so its state icon starts where the

@@ -1761,6 +1761,9 @@ export function mountStackPage(container, ctx, mb) {
     );
     body.replaceChildren(host, loading);
     const docs = which === "docs";
+    /** A view the diff drew and the page has not adopted yet, which a failure disposes.
+     * @type {{dispose?: () => void} | null} */
+    let unadopted = null;
     try {
       await mb.ensureKindAssets("diff");
       const view = /** @type {any} */ (mb.getRegisteredView("diff", "diff"));
@@ -1805,6 +1808,7 @@ export function mountStackPage(container, ctx, mb) {
         mounted?.dispose?.();
         return;
       }
+      unadopted = mounted;
       if (emptied) {
         host
           .querySelector(".diff-type-empty")
@@ -1818,6 +1822,7 @@ export function mountStackPage(container, ctx, mb) {
       // Landed before the wait, so the first screen the Markdown layer reports is the one
       // the reader lands on: a file the address names, not the top of the diff.
       adopt(mounted);
+      unadopted = null;
       const firstScreen = /** @type {{firstScreen?: () => Promise<void>} | null} */ (mounted)
         ?.firstScreen;
       if (typeof firstScreen === "function") {
@@ -1836,17 +1841,20 @@ export function mountStackPage(container, ctx, mb) {
         host.classList.remove("github-pull-diff-holding");
       }
     } catch (failure) {
+      unadopted?.dispose?.();
       if (owns()) {
         console.error("metabrowser github: the stack's diff could not load", failure);
         loading.remove();
         host.classList.remove("github-pull-diff-holding");
         // A pull request's error notice and its Retry, in its words (`mountDiff` in
-        // pull-page.js), not a bare sentence in the diff's host.
+        // pull-page.js), not a bare sentence in the diff's host. Retry disposes what the
+        // failed draw adopted before it draws again, as `paintBody` does before every draw.
         const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
         retry.addEventListener(
           "click",
           () => {
             if (owns()) {
+              disposeBody();
               void paintDiff(which, comparison, owns, adopt);
             }
           },

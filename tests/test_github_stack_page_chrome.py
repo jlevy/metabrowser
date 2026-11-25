@@ -22,10 +22,11 @@ running app. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its screensh
 The second test serves the stand-in with guides (``--guided-stack``): 7 carries its own, and
 10 the guide of #70, whose top it is. ``tests/dom/github-stack-page-layout-chrome.mjs`` holds
 each part the stack's page shares with a pull request's at a pull request's edges and padding,
-border and ground, within half a pixel: the header, the tab bar, Guided Review's step list and
-step card against 7's, and the Docs and Changes bodies against 10's, in the light and the
-dark scheme at a desktop width and a phone's; and the members' card a page card whose rows
-are inset as a card's head is. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its
+border and ground, within the module's ``NEAR``: the header, the tab bar, Guided Review's
+step list and step card against 7's, and the Docs and Changes bodies against 10's, in the
+light and the dark scheme at a desktop width and a phone's, each tab loaded and after the
+reader switches tabs in place; and the members' card a page card whose rows are inset as a
+card's head is. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its
 screenshots too.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns

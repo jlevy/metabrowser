@@ -3931,9 +3931,10 @@ Each part of a pull request’s page, and what the stack’s page does with it:
 - **Diff summary:** kept.
   The header’s last line, drawn from the stack’s comparison, closed at first paint as
   every Diff summary is.
-  Its rows carry the tree’s marks alone: the gray places of the members that change each
-  file, which the page’s Files tab drew beside every file, were no part of this system
-  and crowded a combined diff.
+  Its rows carry the tree’s marks alone: the layer chips the page’s Files tab drew
+  beside every file, the gray places of the members that change it, “2/4”, each opening
+  the file in that member, were no part of this system and crowded a combined diff, and
+  the diff view no longer draws them.
 - **Tab bar:** adapted.
   The pull request’s tabs and keys, Guided Review (only when a member’s description
   carries the stack’s guide), Docs, and Changes; Conversation and Checks are each
@@ -3949,10 +3950,6 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   A stack that cannot be shown as one comparison says so in the pull request’s body
   notice, and a page with no member known yet is held out of sight for the quiet period,
   as a pull request’s with no record is.
-- **Layer chips:** dropped.
-  The page’s Files tab marked each file with the places of the members that change it,
-  “2/4”, each a chip that opened the file in that member; the diff view no longer draws
-  such marks, and the combined diff and the Diff summary carry none.
 - **Details for a late or failed read:** dropped for now.
   The page offers no Details; its failures are said on the status line.
 
@@ -3973,10 +3970,13 @@ paint, opening the page or its tabs.
 #### The Stack Page’s Spacing
 
 **Every part the stack’s page shares with a pull request’s stands at the same edges with
-the same padding.** No part sets a padding, margin, or inset of its own: each carries
-the pull request page’s classes inside its `.github-pull` scope, which declares the card
-inset, `--github-pull-text-inset`, and the page’s gap and rhythm, so the same component
-looks the same on both pages.
+the same padding.** No shared part sets a padding, margin, or inset of its own: each
+carries the pull request page’s classes inside its `.github-pull` scope, which declares
+the card inset, `--github-pull-text-inset`, and the page’s gap and rhythm, so the same
+component looks the same on both pages.
+The members’ rows, which only the stack’s page has, take one rule of their own,
+`.github-pull-stack-members .github-pull-stack-member` in `github/styles.css`, which
+insets them by that same card inset.
 
 | Part | Spacing, as on a pull request’s page |
 | --- | --- |
@@ -3987,17 +3987,18 @@ looks the same on both pages.
 | Guided Review | `guided-review.js`’s step list and step card ([Guided Review](#guided-review)), their heads, a step’s note, and its references inset by `--github-pull-text-inset` |
 | Notices | `.notice.github-pull-notice`, in the body or the diff’s host |
 
-The page before this design was outside the `.github-pull` scope, so every part that
-reads the card inset had none: Guided Review’s heads, a step’s note, and its references
-stood on their card’s border.
-Its header and body sat inside a second gutter, 24 px in from a pull request’s, and
-Guided Review took the whole pane, its cards 233.75 px wider than a pull request’s in a
-1280 px window with the navigation pane shown (Chrome 152, 2026-11-25).
-`tests/dom/github-stack-page-layout-chrome.mjs`, which
-`tests/test_github_stack_page_chrome.py` runs on the stand-in with guides, measures each
-shared part against a pull request’s, its edges, padding, border, and ground within half
-a pixel, in both schemes at a desktop width and a phone’s; a part a pull request’s page
-pads cannot lose its padding on the stack’s. It holds the members’ card to the step
+The stack’s page before it was rebuilt as a pull request’s was outside the
+`.github-pull` scope, so every part that reads the card inset had none: Guided Review’s
+heads, a step’s note, and its references stood on their card’s border, and its header
+and body sat inside a second gutter, 24 px in from a pull request’s. The rebuilt page,
+until its body took a pull request’s columns, set Guided Review across the whole pane,
+its cards 233.75 px wider than a pull request’s in a 1280 px window with the navigation
+pane shown (Chrome 152, 2026-11-25). `tests/dom/github-stack-page-layout-chrome.mjs`,
+which `tests/test_github_stack_page_chrome.py` runs on the stand-in with guides,
+measures each shared part against a pull request’s, its edges, padding, border, and
+ground within that module’s `NEAR`, in both schemes at a desktop width and a phone’s, on
+each tab loaded and after the reader switches tabs in place; a part a pull request’s
+page pads cannot lose its padding on the stack’s. It holds the members’ card to the step
 list’s border and ground, and each member’s state icon to the badge’s edge.
 `tests/dom/github-stack-page-session.js` runs which column the body takes in each state.
 
