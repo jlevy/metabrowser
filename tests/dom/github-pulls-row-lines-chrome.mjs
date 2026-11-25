@@ -1,4 +1,4 @@
-// Each Pulls row's three lines (mb-d0a3, mb-85op, mb-lqkb), laid out by headless Chrome: the
+// Each Pulls row's lines (mb-d0a3, mb-85op, mb-lqkb, mb-zuy0), laid out by headless Chrome: the
 // production panel module, the shell's SDK, icon registry, and stylesheets, mounted on recorded
 // answers.
 //
@@ -19,9 +19,10 @@
 // quiet period, and again once its line has arrived. At every pane width from 420 px to the
 // 180 px minimum, in the light theme and the dark, it holds that:
 //
-// - each pull request's row is three lines: its link's two, its title's, one flow of the state
-//   icon on the first line's start and the title, which wraps under the icon and is cut short at
-//   the second line's end, two lines tall whatever its length; then its change line, which holds
+// - each pull request's row is its link, its title's lines, one flow of the state icon on the
+//   first line's start and the title, which wraps under the icon and is cut short at the second
+//   line's end, one line tall for a title that fits it and two for any longer (mb-zuy0); then
+//   its change line, which holds
 //   the chevron in the icon slot under the state icon, the number's line in the title's column,
 //   the number, the author, and the lines changed, and the age at the row's end; the link holds
 //   no chevron;
@@ -39,7 +40,7 @@
 //   down the link's and the change line's edge.
 //
 // At 299 px, the default pane, in each theme, with real pointer and keyboard input, it holds
-// that a pull request's three lines are one item (mb-1z7j): the pointer on any of them hovers
+// that a pull request's lines are one item (mb-1z7j): the pointer on any of them hovers
 // the item's one ground, and on the change line, the line with the toggle, the chevron's plate
 // too, the inner target's own hover, which the link's lines never show; Tab's stop is the
 // row's link, whose ring is drawn round the whole item, and the change line is no stop. A
@@ -57,7 +58,9 @@
 // muted "0 lines" at the line's weight, whole wherever #106's recorded line is shown.
 //
 // It also lays out the lines changed of this repository's own pull requests (`REAL_LINES`), to
-// say how wide a typical row's lines are, which the placeholder's width is judged against.
+// say how wide a typical row's lines are, which the placeholder's width is judged against, and
+// their titles (`REAL_TITLES`) in a closed row at every width, to say how tall a typical row
+// is, which `ROW_ESTIMATE_PX` is held to.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -112,6 +115,108 @@ const ANSWERS = {
 const SHOWN = [106, 105];
 const NONE = [104, 103];
 const OPEN = 105;
+
+const REAL_TITLES = [
+  [440, "plan: documentation from first principles"],
+  [
+    441,
+    "docs(perf): the next campaigns' plan, every hypothesis current, and a committed paced-series driver",
+  ],
+  [
+    442,
+    "perf(transitions): recorder revision 6, the readings Phase 2–3 needs and the three open recorder bugs",
+  ],
+  [
+    444,
+    "Menus: one group pattern at the row inset, and filter menus that fit their rows and the window (mb-s6vu, mb-1wfn)",
+  ],
+  [445, "Files: Group by as the filter row's one control, with age and type sections (mb-sogv)"],
+  [447, "fix(diff): a rendered Markdown fold expands in place with no box (mb-m5dd)"],
+  [448, "feat(diff): a Diff summary of changed files, on the Pulls tree's shared model (mb-epw2)"],
+  [449, "perf(diff): answer a commit comparison with two git processes, not four (H116)"],
+  [450, "feat(github): group the Pulls tab by native stack, in one stack design (mb-cm61)"],
+  [451, "Conversation: commits read like comments, joined by a timeline line (mb-g3ao)"],
+  [452, "docs: rebuild the documentation from first principles"],
+  [453, "plan: one object data model with several views"],
+  [
+    455,
+    "perf(server): encode stamped assets once, and send uncompressed to the app's own loopback client (H115), with U2's server-time instrument",
+  ],
+  [456, "fix(styles): h2 upright wherever the prose face is sans (mb-l4vm)"],
+  [
+    457,
+    "feat(keys): Control-N and Control-P walk a stack, and P opens the Pulls tab (mb-lnqj, mb-6rfu)",
+  ],
+  [458, "fix(nav): navigation toolbars wrap when the pane is narrow (mb-nm4z)"],
+  [
+    459,
+    "feat(files): Group by reads By age and By file type, takes A, T, and N, and opens with focus (mb-4mir, mb-ibo4, mb-spqw)",
+  ],
+  [460, "fix(tooltips): a tooltip only adds information; the Pulls column has none (mb-8mpo)"],
+  [461, "fix(github): one Conversation rhythm, and headings that read alike (mb-w7rt, mb-novh)"],
+  [462, "feat(titles): a conventional-commit prefix is regular and the rest bold (mb-z57p)"],
+  [
+    463,
+    "fix: make the Files tab, stack menu, changed-file rows and GitHub tokens follow the design system (mb-xlla)",
+  ],
+  [464, "feat(nav): navigating to an item reveals it in the nav pane by every route (mb-6y0g)"],
+  [465, "feat(github): color label chips as github.com does (mb-9qob)"],
+  [
+    466,
+    "perf(files): Group by reads every group in one pass and shows a choice while it waits (mb-navs, mb-75l5)",
+  ],
+  [467, "docs: bring the docs and CHANGELOG to the consistency pass's final state (mb-vg55)"],
+  [468, "chore(policy): grant github-stacked-prs and github-workflows"],
+  [
+    469,
+    "feat(github): a Pulls row reads its number's line first and its whole title second (mb-lkkt)",
+  ],
+  [470, "feat(diff): one Diff summary at the top of the commit and pull request pages (mb-pb35)"],
+  [
+    471,
+    "feat(github): cache each repository's label set so every chip is colored on first paint (mb-varu)",
+  ],
+  [
+    472,
+    "fix(diff): the Diff summary opens in the page's flow, one step in from its header (mb-hi4l)",
+  ],
+  [
+    473,
+    "fix: a group heading's tally sits beside it, and a stack heading has none (mb-mcjd, mb-yk0i)",
+  ],
+  [
+    474,
+    "fix(diff): no rule under the layout chooser, and every count summary's numbers are bold (mb-a073, mb-roa9)",
+  ],
+  [475, "fix(fonts): keep one monospace face across the shell and KPress documents"],
+  [
+    476,
+    "fix(github): the pull request header's freshness line is a metadata line, and its Diff summary row holds the pending placeholder (mb-2u08, mb-onr2)",
+  ],
+  [477, "feat(nav): the folder name goes home, with every tab reset; 0 does the same (mb-5lzl)"],
+  [
+    478,
+    "perf(github): a pull request's comparison is cached and prefetched, so a revisit never waits (mb-neg9)",
+  ],
+  [
+    479,
+    'feat(diff): the Diff summary reads "N files changed" with colored status letters (mb-vb51)',
+  ],
+  [480, "fix(markdown): keep sanitizer diagnostics out of the reader's disclosure"],
+  [
+    481,
+    "fix(files): repaints elsewhere leave the pending tooltip, so a tree row's tooltip shows under load (mb-alff)",
+  ],
+  [482, "build(deps): raise kpress to 0.3.6"],
+  [
+    484,
+    "feat(github): each stack heading in the Pulls column shows its brief change line (mb-9ekj)",
+  ],
+  [485, "plan: publishing setup for the macOS app (signing, notarization, DMG, install checks)"],
+  [486, "fix: the whole-stack review's follow-ups for stack #446 (B1 to B11 of review B on #478)"],
+  [487, "feat(ui): one page header for the commit and pull request pages"],
+  [488, "test(faces): read each probe's text in the pane, not in the shell's stage (mb-nvo0)"],
+];
 
 // This repository's pull requests #440 to #488, as GitHub listed their changed files on
 // 2026-11-16 (`GET /repos/{owner}/{repo}/pulls/{n}/files`), summed as the summary route sums a
@@ -386,7 +491,7 @@ const INKS = `(() => {
   // The line totals alone, a zero one left out, as the row draws them (mb-lqkb, mb-efum).
   const said = window.metabrowser.changeLine({
     statuses: [], additions: summary.additions, deletions: summary.deletions,
-  }, { omitZeroTotals: true });
+  });
   reference.replaceChildren(...window.metabrowser.changeLineNodes(said));
   const open = document.querySelector('a.github-pulls-row[data-number="${OPEN}"]');
   const openChange = document.querySelector('.github-pulls-change[data-number="${OPEN}"]');
@@ -413,6 +518,34 @@ const TOKEN = `((name) => {
   return color;
 })`;
 
+// In the page: how tall each real pull request's closed row is at the pane's width, its title in
+// a copy of #104's row, drawn and gone at once, and how many of its titles take one line.
+const REAL_ROWS = `((titles) => {
+  const item = document.querySelector('li.github-pulls-item[data-number="104"]');
+  const round = (value) => Math.round(value * 100) / 100;
+  const rows = titles.map(([number, title]) => {
+    const copy = item.cloneNode(true);
+    copy.removeAttribute("data-number");
+    copy.querySelector(".github-pulls-title").textContent = title;
+    item.parentElement.append(copy);
+    const heading = copy.querySelector(".github-pulls-heading");
+    const lh = parseFloat(getComputedStyle(heading).lineHeight);
+    const row = { number, height: round(copy.getBoundingClientRect().height), lines: Math.round(heading.getBoundingClientRect().height / lh) };
+    copy.remove();
+    return row;
+  });
+  const heights = rows.map((row) => row.height);
+  return {
+    n: rows.length,
+    lh: parseFloat(getComputedStyle(item.querySelector(".github-pulls-heading")).lineHeight),
+    mean: round(heights.reduce((sum, height) => sum + height, 0) / rows.length),
+    min: Math.min(...heights),
+    max: Math.max(...heights),
+    oneLine: rows.filter((row) => row.lines === 1).length,
+    twoLines: rows.filter((row) => row.lines === 2).length,
+  };
+})`;
+
 // In the page: how wide each real pull request's lines changed are in the change line's type,
 // whole, as the row draws them, its totals alone.
 const REAL = `((lines) => {
@@ -424,7 +557,7 @@ const REAL = `((lines) => {
   const em = parseFloat(getComputedStyle(host).fontSize);
   const round = (value) => Math.round(value * 100) / 100;
   const widths = lines.map(([number, _added, _modified, _removed, _renamed, additions, deletions]) => {
-    const said = window.metabrowser.changeLine({ statuses: [], additions, deletions }, { omitZeroTotals: true });
+    const said = window.metabrowser.changeLine({ statuses: [], additions, deletions });
     host.replaceChildren(...window.metabrowser.changeLineNodes(said));
     const width = host.querySelector(".change-line").getBoundingClientRect().width;
     return { number, text: said.text, px: round(width), em: round(width / em) };
@@ -446,6 +579,8 @@ const REAL = `((lines) => {
 })`;
 
 const WIDTHS = [420, 380, 340, 299, 260, 220, 200, 180];
+// The default pane's width, where the hover and the focus are held.
+const DEFAULT_PANE = 299;
 const THEMES = ["light", "dark"];
 const PARTS = [
   "item",
@@ -462,7 +597,7 @@ const PARTS = [
   "flow",
 ];
 
-/** Whether *r*'s parts are its three lines: the link's two of title, and the change line. */
+/** Whether *r*'s parts are its lines: the link's one or two of title, and the change line. */
 function threeLines(r) {
   if (!r?.change || !r.toggle || !r.chevron || !r.heading || !r.meta || !r.number || !r.age) {
     return { ok: false, why: "a part is missing" };
@@ -470,9 +605,15 @@ function threeLines(r) {
   const within = (inner, outer) =>
     inner.top >= outer.top - TOLERANCE_PX && inner.bottom <= outer.bottom + TOLERANCE_PX;
   const first = r.titleLines[0];
+  // The lines the title takes, one for a title that fits the first line, and two for any
+  // longer, cut short at the second (mb-zuy0).
+  const shown = Math.min(2, r.titleLines.length);
   const parts = {
-    // The link is the title's two lines, two lines tall whatever the title holds (mb-85op).
-    titleTwoLines: near(r.heading.height, 2 * r.lh) && near(r.row.height, r.padTop + 2 * r.lh),
+    // The link is the title's lines, as tall as they are (mb-85op, mb-zuy0).
+    titleLines:
+      shown > 0 &&
+      near(r.heading.height, shown * r.lh) &&
+      near(r.row.height, r.padTop + shown * r.lh),
     // The state icon leads the first line, on the row's inset in the one icon slot (mb-3vil),
     // centered on the first line's box; the title starts one column gap after it.
     iconOnFirst: near(r.icon.top, r.heading.top) && near(r.icon.height, r.lh),
@@ -688,16 +829,27 @@ async function main() {
           ),
           placeholder: before.rows[106]?.block?.width ?? null,
         };
-        // A closed row is the height the panel places an unmeasured row at, waiting or shown,
-        // so a row the window has not drawn yet takes its own room (`ROW_ESTIMATE_PX`).
+        // A closed row is its title's lines and its change line, waiting or shown: a title of
+        // two lines makes the height the panel places an unmeasured row at
+        // (`ROW_ESTIMATE_PX`), and one of a line a row one line shorter (mb-zuy0).
         const estimate = await browser.evaluate(`window.__module.ROW_ESTIMATE_PX`);
+        const titleLines = (number) => Math.min(2, after.rows[number]?.titleLines.length ?? 0);
+        const lineHeight = after.rows[SHOWN[0]]?.lh ?? 0;
+        const expected = (number) => estimate - (2 - titleLines(number)) * lineHeight;
         check(
-          `${at}: a closed row is ROW_ESTIMATE_PX tall, waiting and shown`,
-          Object.values(measured[at].heights).every(
-            (height) => near(height.waiting, estimate) && near(height.shown, estimate),
+          `${at}: a closed row is ROW_ESTIMATE_PX tall with a title of two lines, a line less with one, waiting and shown`,
+          Object.entries(measured[at].heights).every(
+            ([number, height]) =>
+              near(height.waiting, expected(Number(number))) &&
+              near(height.shown, expected(Number(number))),
           ),
-          JSON.stringify({ estimate, heights: measured[at].heights }),
+          JSON.stringify({ estimate, lineHeight, heights: measured[at].heights }),
         );
+        if (theme === THEMES[0]) {
+          measured[at].realTitles = await browser.evaluate(
+            `(${REAL_ROWS})(${JSON.stringify(REAL_TITLES)})`,
+          );
+        }
         for (const number of [...SHOWN, ...NONE]) {
           const was = before.rows[number];
           const now = after.rows[number];
@@ -711,7 +863,7 @@ async function main() {
           ]) {
             const lines = threeLines(r);
             check(
-              `${at}: #${number}'s row is three lines, the chevron on the third (${phase})`,
+              `${at}: #${number}'s row is its title's lines and its change line, the chevron on the last (${phase})`,
               lines.ok,
               JSON.stringify(lines.parts ?? lines.why),
             );
@@ -750,8 +902,8 @@ async function main() {
             );
           } else {
             check(
-              `${at}: #${number}'s short title is one line in its two lines' box`,
-              drawn.length === 1 && !now.clamped,
+              `${at}: #${number}'s short title is one line, in a box of one line (mb-zuy0)`,
+              drawn.length === 1 && !now.clamped && near(now.heading.height, now.lh),
               JSON.stringify({ drawn, heading: now.heading }),
             );
           }
@@ -989,6 +1141,17 @@ async function main() {
     }
     await browser.evaluate(`(window.__rowTotals = null, true)`);
     measured.real = await browser.evaluate(`(${REAL})(${JSON.stringify(REAL_LINES)})`);
+    // The height an unmeasured row is placed at is a typical row's at the default pane: this
+    // repository's titles, in a closed row at 299 px, whose mean it is within half a line of.
+    const real = measured[`${DEFAULT_PANE} px ${THEMES[0]}`]?.realTitles;
+    const estimate = await browser.evaluate(`window.__module.ROW_ESTIMATE_PX`);
+    check(
+      "ROW_ESTIMATE_PX is within half a line of this repository's rows at the default pane",
+      real !== undefined &&
+        real.n === REAL_TITLES.length &&
+        Math.abs(real.mean - estimate) <= real.lh / 2,
+      JSON.stringify({ estimate, real }),
+    );
     check(
       "the real lines are measured in the change line's type",
       measured.real.font[0] === measured.real.font[1],
@@ -1046,7 +1209,7 @@ async function main() {
     const outer = (seen) =>
       seen.item === tokens.hover && seen.row === tokens.none && seen.change === tokens.none;
     check(
-      `${at}: the pointer on any of a pull request's three lines hovers its one item`,
+      `${at}: the pointer on any of a pull request's lines hovers its one item`,
       [result.hoverTitle, result.hoverMeta, result.hoverLine, result.hoverChevron].every(outer) &&
         result.away.item !== tokens.hover,
       JSON.stringify({ ...result, tokens }),

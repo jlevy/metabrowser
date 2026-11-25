@@ -3316,14 +3316,17 @@
     const tag = navigable ? "button" : "div";
     const attrs = navigable ? ` type="button" data-path="${escapeHtml(file.path)}"` : "";
 
-    let counts = "";
-    if (file.binary) {
-      counts = '<span class="git-stat-binary">binary</span>';
-    } else {
-      counts =
-        `<span class="git-stat-add">+${file.additions ?? 0}</span>` +
-        `<span class="git-stat-del">−${file.deletions ?? 0}</span>`;
-    }
+    // A binary file says so; any other its lines as every lines summary says them, through
+    // the shell's one component (formatters.js, `changeLine`; mb-ox6a).
+    const formatters = window.MetabrowserFormatters;
+    const counts = file.binary
+      ? '<span class="git-stat-binary">binary</span>'
+      : formatters.changeLineHtml(
+          formatters.changeLine(
+            { statuses: [], additions: file.additions ?? 0, deletions: file.deletions ?? 0 },
+            formatters.formatInteger,
+          ),
+        );
 
     let name = escapeHtml(file.path);
     if (file.old_path) {

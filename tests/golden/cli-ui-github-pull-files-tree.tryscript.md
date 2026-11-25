@@ -15,6 +15,8 @@ documents. This browserless session loads the production
 gave while a fake `gh` replayed full-size pages, recorded in
 `tests/fixtures/github-pull-files-responses.json`. A folder row ends with the line
 counts of every file under it, rolled up, whether it is open or closed.
+Each row’s counts are written as the row writes them (`changeStats`), a total of zero
+left out and a row of no lines “0 lines” (mb-ox6a).
 
 `a list fills page by page` is pull request 106’s first list, read between its pages:
 each step says the window the tree asked for, which is past the rows it holds while the
@@ -79,19 +81,19 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1) +0 -0",
-          "  M logo.png +0 -0",
-          "v docs/ (2) +3 -12",
-          "  R guide.md (from docs/old-guide.md) +3 -0",
-          "  D removed.md +0 -12",
-          "v src/app/plugins/github/ (96) +384 -192",
-          "  M mod_000.py +4 -2",
-          "  M mod_001.py +4 -2",
-          "  M mod_002.py +4 -2",
+          "v assets/ (1) 0 lines",
+          "  M logo.png 0 lines",
+          "v docs/ (2) +3 −12",
+          "  R guide.md (from docs/old-guide.md) +3",
+          "  D removed.md −12",
+          "v src/app/plugins/github/ (96) +384 −192",
+          "  M mod_000.py +4 −2",
+          "  M mod_001.py +4 −2",
+          "  M mod_002.py +4 −2",
           "  … 91 more",
-          "  M mod_094.py +4 -2",
-          "  M mod_095.py +4 -2",
-          "M README.md +2 -1"
+          "  M mod_094.py +4 −2",
+          "  M mod_095.py +4 −2",
+          "M README.md +2 −1"
         ]
       },
       {
@@ -107,19 +109,19 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1) +0 -0",
-          "  M logo.png +0 -0",
-          "v docs/ (2) +3 -12",
-          "  R guide.md (from docs/old-guide.md) +3 -0",
-          "  D removed.md +0 -12",
-          "v src/app/plugins/github/ (196) +784 -392",
-          "  M mod_000.py +4 -2",
-          "  M mod_001.py +4 -2",
-          "  M mod_002.py +4 -2",
+          "v assets/ (1) 0 lines",
+          "  M logo.png 0 lines",
+          "v docs/ (2) +3 −12",
+          "  R guide.md (from docs/old-guide.md) +3",
+          "  D removed.md −12",
+          "v src/app/plugins/github/ (196) +784 −392",
+          "  M mod_000.py +4 −2",
+          "  M mod_001.py +4 −2",
+          "  M mod_002.py +4 −2",
           "  … 191 more",
-          "  M mod_194.py +4 -2",
-          "  M mod_195.py +4 -2",
-          "M README.md +2 -1"
+          "  M mod_194.py +4 −2",
+          "  M mod_195.py +4 −2",
+          "M README.md +2 −1"
         ]
       },
       {
@@ -135,28 +137,28 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1) +0 -0",
-          "  M logo.png +0 -0",
-          "v docs/ (2) +3 -12",
-          "  R guide.md (from docs/old-guide.md) +3 -0",
-          "  D removed.md +0 -12",
-          "v src/app/ (242) +1086 -479",
-          "  v plugins/github/ (240) +1076 -478",
-          "    M mod_000.py +4 -2",
-          "    M mod_001.py +4 -2",
-          "    M mod_002.py +4 -2",
+          "v assets/ (1) 0 lines",
+          "  M logo.png 0 lines",
+          "v docs/ (2) +3 −12",
+          "  R guide.md (from docs/old-guide.md) +3",
+          "  D removed.md −12",
+          "v src/app/ (242) +1086 −479",
+          "  v plugins/github/ (240) +1076 −478",
+          "    M mod_000.py +4 −2",
+          "    M mod_001.py +4 −2",
+          "    M mod_002.py +4 −2",
           "    … 235 more",
-          "    M mod_238.py +4 -2",
-          "    A pull_files.py +120 -0",
-          "  v views/ (2) +10 -1",
-          "    M one.py +1 -1",
-          "    A two.py +9 -0",
-          "v tools/new/ (1) +0 -0",
-          "  R script.sh (from scripts/script.sh) +0 -0",
-          "v weird/ (2) +2 -1",
-          "  A bell�name.txt +1 -0",
-          "  M zero�width.md +1 -1",
-          "M README.md +2 -1"
+          "    M mod_238.py +4 −2",
+          "    A pull_files.py +120",
+          "  v views/ (2) +10 −1",
+          "    M one.py +1 −1",
+          "    A two.py +9",
+          "v tools/new/ (1) 0 lines",
+          "  R script.sh (from scripts/script.sh) 0 lines",
+          "v weird/ (2) +2 −1",
+          "  A bell�name.txt +1",
+          "  M zero�width.md +1 −1",
+          "M README.md +2 −1"
         ]
       }
     ],
@@ -205,47 +207,47 @@ $ node tests/dom/github-pull-files-tree-session.js
     ],
     "a chain row toggles as one": {
       "closed": [
-        "v assets/ (1) +0 -0",
-        "  M logo.png +0 -0",
-        "v docs/ (2) +3 -12",
-        "  R guide.md (from docs/old-guide.md) +3 -0",
-        "  D removed.md +0 -12",
-        "> src/app/ (242) +1086 -479",
-        "v tools/new/ (1) +0 -0",
-        "  R script.sh (from scripts/script.sh) +0 -0",
-        "v weird/ (2) +2 -1",
-        "  A bell�name.txt +1 -0",
-        "  M zero�width.md +1 -1",
-        "M README.md +2 -1"
+        "v assets/ (1) 0 lines",
+        "  M logo.png 0 lines",
+        "v docs/ (2) +3 −12",
+        "  R guide.md (from docs/old-guide.md) +3",
+        "  D removed.md −12",
+        "> src/app/ (242) +1086 −479",
+        "v tools/new/ (1) 0 lines",
+        "  R script.sh (from scripts/script.sh) 0 lines",
+        "v weird/ (2) +2 −1",
+        "  A bell�name.txt +1",
+        "  M zero�width.md +1 −1",
+        "M README.md +2 −1"
       ],
       "reopened": [
-        "v assets/ (1) +0 -0",
-        "  M logo.png +0 -0",
-        "v docs/ (2) +3 -12",
-        "  R guide.md (from docs/old-guide.md) +3 -0",
-        "  D removed.md +0 -12",
-        "v src/app/ (242) +1086 -479",
-        "  v plugins/github/ (240) +1076 -478",
-        "    M mod_000.py +4 -2"
+        "v assets/ (1) 0 lines",
+        "  M logo.png 0 lines",
+        "v docs/ (2) +3 −12",
+        "  R guide.md (from docs/old-guide.md) +3",
+        "  D removed.md −12",
+        "v src/app/ (242) +1086 −479",
+        "  v plugins/github/ (240) +1076 −478",
+        "    M mod_000.py +4 −2"
       ]
     },
     "past the threshold only the top level shows": [
-      "> assets/ (1) +0 -0",
-      "> docs/ (2) +3 -12",
-      "> src/app/ (242) +1086 -479",
-      "> tools/new/ (1) +0 -0",
-      "> weird/ (2) +2 -1",
-      "M README.md +2 -1"
+      "> assets/ (1) 0 lines",
+      "> docs/ (2) +3 −12",
+      "> src/app/ (242) +1086 −479",
+      "> tools/new/ (1) 0 lines",
+      "> weird/ (2) +2 −1",
+      "M README.md +2 −1"
     ],
     "the file a page shows is revealed and current": [
-      "> assets/ (1) +0 -0",
-      "> docs/ (2) +3 -12",
-      "> src/app/ (242) +1086 -479",
-      "> tools/new/ (1) +0 -0",
-      "v weird/ (2) +2 -1",
-      "  A bell�name.txt +1 -0  <- current",
-      "  M zero�width.md +1 -1",
-      "M README.md +2 -1"
+      "> assets/ (1) 0 lines",
+      "> docs/ (2) +3 −12",
+      "> src/app/ (242) +1086 −479",
+      "> tools/new/ (1) 0 lines",
+      "v weird/ (2) +2 −1",
+      "  A bell�name.txt +1  <- current",
+      "  M zero�width.md +1 −1",
+      "M README.md +2 −1"
     ],
     "a name is the server's display, and its path the identity": [
       {
@@ -271,10 +273,10 @@ $ node tests/dom/github-pull-files-tree-session.js
       "failure": null,
       "says": null,
       "rows": [
-        "v docs/ (1) +1 -0",
-        "  A new.md +1 -0",
-        "v src/ (1) +1 -0",
-        "  M app.txt +1 -0"
+        "v docs/ (1) +1",
+        "  A new.md +1",
+        "v src/ (1) +1",
+        "  M app.txt +1"
       ]
     },
     "GitHub stops at 3,000 files": {

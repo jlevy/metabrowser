@@ -68,12 +68,21 @@
    title leaves the button its room, less the space beside the column: the page's width,
    `100cqi` of the main view, which is the query container, less the header's, the title's
    `100%` and the header's pads. */
-.github-pull-header:has(> .view-header-end[data-counterpart]) > .github-pull-title {
-  padding-inline-end: max(
+.github-pull-header:has(> .view-header-end[data-counterpart]) {
+  --github-pull-title-room: max(
     0px,
     var(--view-header-corner-room) -
     (100cqi - 100% - 2 * var(--content-padding-x))
   );
+}
+.github-pull-header:has(> .view-header-end[data-counterpart]) > .github-pull-title {
+  padding-inline-end: var(--github-pull-title-room);
+}
+/* The row of ages ends where the title's number does, the room the title leaves the corner's
+   button short of the content edge, so the stack chip at its end ends under the number's end
+   (mb-dwha). The room is the title's, resolved against the header as the title's is. */
+.github-pull-header:has(> .view-header-end[data-counterpart]) > .github-pull-opened {
+  margin-inline-end: var(--github-pull-title-room);
 }
 /* A page mounted with no record in hand holds its cold header and tab column out of sight
    for the shell's quiet period, and pull-page.js lifts the hold with the first header that
@@ -136,12 +145,12 @@
 .github-pull-number {
   color: var(--text);
 }
-/* A pull request's number is bold wherever it names the pull request: the page's title and a
-   Pulls row, at the shell's one weight for it (`--pull-number-weight`; docs/design-system.md,
-   "Pull Request Numbers"). A stack menu's member names its pull request by its place and
-   title, and shows no number (mb-as06). */
+/* A pull request's number is bold wherever it names the pull request: the page's title, a
+   Pulls row, and a stack menu's member, at the shell's one weight for it
+   (`--pull-number-weight`; docs/design-system.md, "Pull Request Numbers"). */
 .github-pull-number,
-.github-pulls-number {
+.github-pulls-number,
+.github-pull-stack-member-number {
   font-weight: var(--pull-number-weight);
 }
 .github-pull-title-with-state > .github-pull-number {
@@ -326,7 +335,8 @@
 }
 /* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
    widest state's (`.github-pull-state-slot`), then when it was opened, updated, merged, or
-   closed, then at its right end the stack chip's slot and Refresh's (mb-646g). One line in
+   closed and Browse code, then Refresh's slot, and at its right end the stack chip's
+   (mb-646g, mb-dwha), which ends under the end of the title's number. One line in
    every state: the badge's box and the ages' line are both 18 px in Chrome 152, the stack's
    strut holds the row at a chip's height, and a page with no record yet holds the line with
    no badge. The row positions the stack's menu, which hangs from its end. */
@@ -650,12 +660,14 @@
 .github-pull-offer > :is(button, a) {
   flex: none;
 }
-/* Refresh, or Fetch, ends the row of ages, at its right end, after Browse code, so it takes
-   the number after Browse code's and renumbers it neither as it comes nor as it is held
-   (mb-ne91). The stack chip's slot before it takes the row's spare width
-   (`.github-pull-stacks`), which puts Refresh on the row's end whatever the slot holds, and
-   Refresh held hidden keeps its box, so a chip that arrives lands before it, moving it not
-   at all (mb-646g). The ages are cut short before it; it never is. */
+/* Refresh, or Fetch, follows Browse code on the row of ages, so it takes the number after
+   Browse code's and renumbers it neither as it comes nor as it is held (mb-ne91). The stack
+   chip's slot after it takes the row's spare width (`.github-pull-stacks`), which puts the
+   chip on the row's end, under the end of the title's number, and Refresh held hidden keeps
+   its box, so neither it nor a chip that arrives moves the other (mb-646g, mb-dwha): at the
+   row's end, Refresh's held slot kept the chip a Refresh's width short of the number. The
+   ages are cut short before it and the chip; it never is, and where they are cut it follows
+   their end, as Browse code does. */
 .github-pull-refresh {
   flex: none;
 }
@@ -1291,37 +1303,50 @@
 .github-pulls-filters .count.tally-pending {
   width: 3ch;
 }
-/* The title's two lines (mb-85op): one run of inline text, a stack member's place and its
-   dot, and the title, from the row's inset to its end, after the state icon on the first
-   line, so the title's second line starts under the icon, and cut short with an ellipsis at
-   the second line's end, as the pull request page's title is (`.github-pull-title-text`). Its
-   box is two lines of the row's type from the first paint, a title of one line included, so a
-   title's length, or a place that arrives, never moves the row's third line. A word of the
+/* The title's lines (mb-85op): one run of inline text, a stack member's place and its dot,
+   and the title, from the row's inset to its end, after the state icon on the first line, so
+   the title's second line starts under the icon, and cut short with an ellipsis at the second
+   line's end, as the pull request page's title is (`.github-pull-title-text`). Its box is as
+   tall as its lines, one for a title that fits the first line and two for any longer, so a
+   row whose title fits is a line shorter (mb-zuy0); it was two lines from the first paint
+   whatever the title held. The Pulls list places rows of either height by their measured
+   boxes (`createPullsWindow`), so a title's length moves nothing; a place that arrives with
+   the stacks can lengthen a title to two lines, as the stacks regroup the list. A word of the
    title longer than the line breaks anywhere, so nothing scrolls sideways; the place breaks
    only after its dot (`.github-pulls-place`). */
 .github-pulls-row > .github-pulls-heading {
   position: relative;
   display: -webkit-box;
-  height: 2lh;
   overflow: hidden;
-  text-indent: var(--github-pull-row-text-column);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
+}
+/* The first line's room for the state icon: an empty inline box at the line's start, its start
+   margin the text column, so the place or the title starts one column gap after the icon and
+   the second line starts under it. Not the first line's `text-indent`, which WebKit drops on a
+   `-webkit-box`: in the app's WKWebView (WebKit 21624.2, macOS 26.5) the first line started
+   at the icon's left edge, so a member's place, or a title, was drawn over its state icon
+   (mb-ma3f), while Chrome 152 indented it. An empty inline box is no place the line can break,
+   as an inline-block is, so a title of one word longer than the line still starts the first
+   line, in both engines. */
+.github-pulls-row > .github-pulls-heading::before {
+  content: "";
+  margin-inline-start: var(--github-pull-row-text-column);
 }
 /* The state icon is the first line's start, in the tree's icon slot, one column gap before the
    text, the height of the line's box and centered on it as the page's title centers its icon
    (`.github-pull-title > .github-pull-state-icon`), so the chevron under it and the number's
    line after the chevron start where the icon and the title's first line do. It is out of the
-   text's flow, which the first line's indent makes room for: as an inline box it was a place
-   the line could break, so a title of one word longer than the line went whole to the second
-   line and left the first the icon alone (Chrome 152, at every width from 420 to 180 px). */
+   text's flow, which the first line's start margin makes room for (above): as an inline box it
+   was a place the line could break, so a title of one word longer than the line went whole to
+   the second line and left the first the icon alone (Chrome 152, at every width from 420 to
+   180 px). */
 .github-pulls-heading > .github-pull-state-icon {
   position: absolute;
   inset-block-start: 0;
   inset-inline-start: 0;
   height: 1lh;
-  text-indent: 0;
 }
 /* A pull request's title is bold in normal text ink wherever it appears
    (docs/design-system.md, "The Pulls Tab"). Set on the title, not inherited from the row,
@@ -1627,12 +1652,13 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-/* Optional membership has its slot at the right end of the row of ages (mb-646g), under the
-   end of the title, just before Refresh's slot, which ends the row on the header's content
-   edge: its chip, which arrives from its own /stacks answer, lands in the row's empty end
-   and moves nothing, Refresh included, since Refresh holds its slot whether it shows or not.
-   The ages keep their start; where the row has no room left for the chip, they are cut short
-   at their end, as at a narrow pane, and the row never takes a second line. The menu hangs
+/* Optional membership has its slot at the right end of the row of ages (mb-646g), after
+   Refresh's slot, its end under the end of the title's number (mb-dwha): its chip, which
+   arrives from its own /stacks answer, lands in the row's empty end and moves nothing,
+   Refresh included, and Refresh, which holds its slot whether it shows or not, moves it not
+   at all. The ages keep their start; where the row has no room left for the chip, they are
+   cut short at their end, as at a narrow pane, Browse code and Refresh following it, and the
+   row never takes a second line. The menu hangs
    from the end of that row, so it fits a narrow pane as well as a wide one. On the author's
    row a line below (mb-cf0l), the chip stood apart from the state and ages it belongs
    with. */
@@ -1683,9 +1709,10 @@
 }
 /* A member is one line, as a Pulls row's first line is (mb-as06): its state icon in the
    tree's icon slot, a tree row's gap before its text, then its bold place, a muted dot, and
-   its title, which alone gives way, cut short at the line's end with the whole title in the
-   member's tip. The row it replaced, a check then "1/6 · title · #N", wrapped a long title
-   onto lines of its own, so members were of different heights. */
+   its title, and its number at the line's end (mb-1kzu). The title alone gives way, cut
+   short before the number with the whole title in the member's tip. The row it replaced, a
+   check then "1/6 · title · #N", wrapped a long title onto lines of its own, so members
+   were of different heights. */
 .github-pull-stack-member {
   gap: var(--tree-icon-gap);
   color: var(--text);
@@ -1762,6 +1789,15 @@
 .github-pull-stack-member-copy > .github-pull-stack-member-position,
 .github-pull-stack-member-copy > .github-pull-stack-dot {
   flex: none;
+}
+/* The number as a Pulls row shows it (`.github-pulls-number`): the text's ink, the number's
+   weight (above), and the font's own numerals. It never gives way: it ends the line, and the
+   title is cut short before it. */
+.github-pull-stack-member-number {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--text);
+  white-space: nowrap;
 }
 /* The current member is marked as the Pulls list marks its current row
    (`.github-pulls-row.selected`): the highlight's tint and its 2px bar at the row's left

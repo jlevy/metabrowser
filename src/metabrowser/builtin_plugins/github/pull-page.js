@@ -4431,13 +4431,13 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
-        // The state icon, then the place, a muted dot, and the title: the place and the dot
-        // never give way, and the title is cut short at the line's end. The number is said and
-        // not shown, so a screen reader still tells two members of one title apart.
+        // The state icon, then the place, a muted dot, and the title, and the number at the
+        // line's end, as a Pulls row draws it (mb-1kzu): the place, the dot, and the number
+        // never give way, and the title is cut short before the number.
         const title = h("span", { class: "github-pull-stack-member-title" });
         const position = h("strong", { class: "github-pull-stack-member-position" });
         const dot = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
-        const said = h("span", { class: "visually-hidden" }, [`#${target}`]);
+        const shown = h("span", { class: "github-pull-stack-member-number" }, [`#${target}`]);
         const copy = h("span", { class: "github-pull-stack-member-copy" }, [
           position,
           " ",
@@ -4445,7 +4445,7 @@ export function createStackMenu(initial, number, deps) {
           " ",
           title,
           " ",
-          said,
+          shown,
         ]);
         const icon = h("span", { class: "github-pull-state-icon", "aria-hidden": "true" });
         link.append(icon, copy);
@@ -4786,10 +4786,12 @@ export function mountPullPage(container, ctx, mb) {
       [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
     );
   // A stack's chip arrives from its own /stacks answer, so it has a slot at the right end of
-  // the row of ages, under the title's end, just before Refresh's slot, which ends the row
-  // (mb-646g): arriving, it lands in the row's empty end and moves nothing, Refresh
-  // included, and where the row has no room left the ages give way, cut short at their end
-  // as in a narrow pane, and the row never takes a second line. With no stack the slot holds
+  // the row of ages, ending under the end of the title's number (mb-646g, mb-dwha), after
+  // Refresh's slot, which follows Browse code: arriving, it lands in the row's empty end and
+  // moves nothing, Refresh included, and where the row has no room left the ages give way,
+  // cut short at their end as in a narrow pane, with Browse code and Refresh after them, and
+  // the row never takes a second line. Before Refresh's slot, which ends the row whether
+  // Refresh shows or not, the chip ended a Refresh's width short of the number. With no stack the slot holds
   // a strut, which gives the row a chip's height. At the end of the author's row (mb-cf0l)
   // it was a row below the state and ages it belongs with; at the end of the row that also
   // held the branches, a chip took its width from the sentence and the merge, which slid up
@@ -4832,7 +4834,7 @@ export function mountPullPage(container, ctx, mb) {
   // tall, the merge's arrow's, while no record is shown too.
   const branchesRow = h("div", { class: "github-pull-branches page-header-line" });
   // The pull request's state leads the row of its ages: its badge, then when it was
-  // opened, updated, merged, or closed, then the stack's slot and Refresh's at its end.
+  // opened, updated, merged, or closed, then Refresh's slot and, at its end, the stack's.
   const openedRow = h("div", { class: "github-pull-opened page-header-line" });
   // The pull request's Diff summary, the header's last row, above the tabs and on every one
   // of them (mb-pb35): its header the change set's file and line totals, its tree the
@@ -6139,9 +6141,10 @@ export function mountPullPage(container, ctx, mb) {
     /** The situational controls this paint draws, by what each does, for their numbers.
      * @type {Map<string, {element: HTMLElement, run: () => unknown}>} */
     const numbered = new Map();
-    // Refresh, or Fetch before a record, ends the row of ages, its slot held hidden when there
-    // is nothing to refresh: it came and went with the tab, moving the tab bar 8 px. A stack's
-    // chip lands just before it (mb-646g), so a chip arriving moves it not at all. It is a
+    // Refresh, or Fetch before a record, follows the ages and Browse code on their row, its
+    // slot held hidden when there is nothing to refresh: it came and went with the tab, moving
+    // the tab bar 8 px. A stack's chip lands after it, at the row's end (mb-646g, mb-dwha),
+    // so neither moves the other as it comes and goes. It is a
     // text action, as Browse code before it is, so its line is a metadata line's height: as a
     // bordered .btn it was 26 px where the line's text is 18 (mb-2u08). Numbers go in reading
     // order, so it takes the number after Browse code's and renumbers it neither as it comes
@@ -6249,7 +6252,7 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      placeChildren(openedRow, [stateBadge, opened.row, stackColumn, refresh]);
+      placeChildren(openedRow, [stateBadge, opened.row, refresh, stackColumn]);
       children.push(title, counterpartCorner, openedRow, paintStateRow(pull), branchesRow);
       // The labels follow the branches and take no row or gap if absent. They come
       // with its record or core, so the row is decided with the record's first paint; a
@@ -6295,8 +6298,8 @@ export function mountPullPage(container, ctx, mb) {
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
-          stackColumn,
           refresh,
+          stackColumn,
         ]);
         placeChildren(labelList, []);
         children.push(openedRow, stateRow, branchesRow, labelsRow);
@@ -6370,7 +6373,7 @@ export function mountPullPage(container, ctx, mb) {
     const end = headerPart("status end", null, () =>
       h("span", { class: "github-pull-status-end" }),
     );
-    // Refresh ends the row of ages wherever there is one (above).
+    // Refresh is on the row of ages wherever there is one (above).
     const agesRow = children.includes(openedRow);
     placeChildren(end, agesRow ? ending : [...ending, refresh]);
     /** @type {Element[]} */

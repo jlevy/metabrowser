@@ -634,9 +634,7 @@ async function rowStory(lines, totals = null) {
       // Each row draws the component built with its zero totals left out, after the number's
       // line's separator, and is described by its words (mb-efum).
       const drawn = SHOWN.map((number, at) => {
-        const said = sdk.changeLine(lines.rowLineInput(rowSummaries.get(number), null), {
-          omitZeroTotals: true,
-        });
+        const said = sdk.changeLine(lines.rowLineInput(rowSummaries.get(number), null));
         const line = shape(lineOf(number).childNodes);
         assert.deepEqual(
           line,
@@ -672,7 +670,7 @@ async function rowStory(lines, totals = null) {
     // with no file statuses (mb-lqkb): the separator, then the same nodes, part for part.
     const { rowLineInput } = lines;
     const summary106 = summaries.summed.body.rows.find((row) => row.number === 106);
-    const said106 = sdk.changeLine(rowLineInput(summary106, null), { omitZeroTotals: true });
+    const said106 = sdk.changeLine(rowLineInput(summary106, null));
     assert.deepEqual(said106.statusParts, [], "the lines name no file statuses");
     assert.deepEqual(
       arrived["#106"].line,

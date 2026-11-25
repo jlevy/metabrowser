@@ -45,17 +45,15 @@ function escaped(text) {
 
 function line(row) {
   const indent = "  ".repeat(row.depth);
+  // Its counts as its row writes them (`changeStats`), a total of zero left out (mb-ox6a).
+  const stats = shared.changeStats(row, String);
+  const counts = stats === null ? "" : ` ${stats.text}`;
   if (row.kind === "folder") {
-    const counts =
-      row.additions === null && row.deletions === null
-        ? ""
-        : ` +${row.additions ?? "?"} -${row.deletions ?? "?"}`;
     const unknown = row.unknown > 0 ? `, ${row.unknown} without counts` : "";
     return `${indent}${row.expanded ? "v" : ">"} ${row.name}/ (${row.files}${unknown})${counts}`;
   }
   const from = row.previousName === null ? "" : ` (from ${row.previousName})`;
-  const counts = `+${row.additions ?? "?"} -${row.deletions ?? "?"}`;
-  return `${indent}${row.badge} ${row.name}${from} ${counts}${row.current ? "  <- current" : ""}`;
+  return `${indent}${row.badge} ${row.name}${from}${counts}${row.current ? "  <- current" : ""}`;
 }
 
 /** Visible rows as lines, a run of more than six files at one depth shown by its ends. */

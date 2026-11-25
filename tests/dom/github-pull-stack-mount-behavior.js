@@ -311,10 +311,10 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     ["3/3 · Stack change 8 #8", "2/3 · Stack change 7 #7", "1/3 · Stack change 6 #6"],
   );
   // Every member is one line in one layout (mb-as06): the state icon, then the bold place, a
-  // muted dot, and the title, whose whole is the member's tip, then the number, visually
-  // hidden, so a screen reader tells two members of one title apart. The page's own member
-  // has the header's state; a member the Pulls list has not listed keeps the icon's slot,
-  // empty.
+  // muted dot, and the title, whose whole is the member's tip, then the number, shown at the
+  // line's end as a Pulls row shows it (mb-1kzu), so a reader and a screen reader alike tell
+  // two members of one title apart. The page's own member has the header's state; a member
+  // the Pulls list has not listed keeps the icon's slot, empty.
   const classOf = (node) => node.className || node.getAttribute("class");
   const layout = (link) => ({
     parts: link.children.map(classOf),
@@ -329,7 +329,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "strong.github-pull-stack-member-position",
     "span.github-pull-stack-dot",
     "span.github-pull-stack-member-title",
-    "span.visually-hidden",
+    "span.github-pull-stack-member-number",
   ];
   const parts = ["github-pull-state-icon", "github-pull-stack-member-copy"];
   assert.deepEqual(memberLinks().map(layout), [
@@ -340,7 +340,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.deepEqual(
     memberLinks().map((link) => link.children[1].children.at(-1).textContent),
     ["#8", "#7", "#6"],
-    "each member's number is said",
+    "each member's number ends its line",
   );
   // Once the Pulls list has said the others' states, the menu opened again draws them.
   pullState.noteListed(source, "all", [

@@ -2327,8 +2327,9 @@ async function mountScripted(page, tab, options = {}) {
         : { mountCounterpart: options.mountCounterpart }),
       // With *sdk*, more of the SDK, or a part of it replaced: the event log's reporter.
       ...(options.sdk ?? {}),
-      // With *brief*, the change line's painters, as text, and the tree's breakdown, so the
-      // page draws the cached list's brief line (mb-z8ea).
+      // With *brief*, the change line's builder, the shell's own, so the line says what the
+      // page's does (mb-ox6a), its painter, as text, and the tree's breakdown, so the page
+      // draws the cached list's brief line (mb-z8ea).
       ...(options.brief === undefined && options.briefPainters !== true
         ? {}
         : {
@@ -2341,10 +2342,7 @@ async function mountScripted(page, tab, options = {}) {
                     ? part.number
                     : ` ${part.separator} `,
               ),
-            changeLine: (input) => ({
-              text: `${input.statuses.map(({ count, letter }) => `${count} ${letter}`).join(", ")} · +${input.additions} −${input.deletions}`,
-              label: "",
-            }),
+            changeLine: require("./changed-files-tree-fixture.js").shellPainters().changeLine,
             changeLineNodes: (line) => [line.text],
             loadChangedFilesTree: async () => ({
               statusBreakdown: (statuses) => {
@@ -2353,7 +2351,9 @@ async function mountScripted(page, tab, options = {}) {
                   counts.set(status, (counts.get(status) ?? 0) + 1);
                 }
                 return [...counts].map(([status, count]) => ({
+                  status,
                   count,
+                  word: status,
                   letter: status[0].toUpperCase(),
                 }));
               },
@@ -3102,6 +3102,14 @@ async function summaryBrief(page) {
   });
   tell("no list cached", absent);
   absent.handle.dispose();
+
+  // A list that only adds lines leaves its zero total out, as every lines summary does
+  // (mb-ox6a): "+3,893", never "+3,893 −0".
+  const addsOnly = await mountScripted(page, "", {
+    brief: { ...listed(head), additions: 3893, deletions: 0 },
+  });
+  tell("a record of a list that only adds lines", addsOnly);
+  addsOnly.handle.dispose();
 
   // A page opened from a Pulls row: the row's line is in the document's memory.
   const remember = (due) =>

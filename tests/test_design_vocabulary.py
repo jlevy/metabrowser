@@ -346,7 +346,10 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     # centering puts on its baseline, with its own text on one baseline.
     facts = box(
         "diff-file-facts",
-        text("diff-file-stats", el("diff-stat-add"), el("diff-stat-del")),
+        text(
+            "diff-file-stats",
+            el("change-line", el("change-line-stats", el("diff-stat-add"), el("diff-stat-del"))),
+        ),
         text("diff-file-note"),
     )
     # The bar is a centered row of boxes: the name's group, the toggle with the copy control
@@ -498,17 +501,11 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
 
 
 def test_inline_change_stats_are_bold() -> None:
+    # Every lines summary is the brief change line, a file's and a folder's too, so its one
+    # rule inks and weighs every +N and −N (mb-ox6a).
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
-        encoding="utf-8"
-    )
-    for css, selector in (
-        (diff_css, ".metabrowser-diff-host .diff-stat-add"),
-        (diff_css, ".metabrowser-diff-host .diff-stat-del"),
-        (styles, ".git-stat-add"),
-        (styles, ".git-stat-del"),
-    ):
-        assert "font-weight: var(--weight-bold)" in _rule(css, selector), f"{selector} not bold"
+    for selector in (".change-line-stats > .diff-stat-add", ".change-line-stats > .diff-stat-del"):
+        assert "font-weight: var(--weight-bold)" in _rule(styles, selector), f"{selector} not bold"
 
 
 def test_branch_chips_are_bold_and_square() -> None:
@@ -1737,8 +1734,6 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".git-history-page-placeholder"),
     ("styles.css", ".git-panel-empty"),
     ("styles.css", ".git-commit-files-summary"),
-    ("styles.css", ".git-stat-add"),
-    ("styles.css", ".git-stat-del"),
     ("styles.css", ".git-stat-binary"),
     ("styles.css", ".file-header-path"),
     ("styles.css", ".file-header-mirror"),
@@ -2597,15 +2592,15 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
     # A pull request's number is bold wherever it names the pull request, the weight of a
     # stack's position, through one token (mb-vrvs): one rule in the GitHub plugin for the
-    # title's and a Pulls row's, and the shell's Quick Search result and ref selector; no
-    # other rule sets a number's weight. A stack menu's member shows no number (mb-as06).
-    # In headless Chrome each computes to 700 (github-pulls-stacks-chrome.mjs,
+    # title's, a Pulls row's, and a stack menu member's (mb-1kzu), and the shell's Quick
+    # Search result and ref selector; no other rule sets a number's weight. In headless
+    # Chrome each computes to 700 (github-pulls-stacks-chrome.mjs,
     # github-pull-header-chrome.mjs).
     assert "### Pull Request Numbers" in doc
     shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert shell_css.count("--pull-number-weight:") == 1
     assert "--pull-number-weight: var(--weight-bold);" in shell_css
-    numbers = (".github-pull-number", ".github-pulls-number")
+    numbers = (".github-pull-number", ".github-pulls-number", ".github-pull-stack-member-number")
     weighted = [
         (selector, declarations["font-weight"])
         for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
@@ -2627,6 +2622,7 @@ _PULL_NUMBERS = frozenset(
         ".github-pulls-number",
         ".github-pull-stack-position",
         ".github-pull-stack-member-position",
+        ".github-pull-stack-member-number",
         ".search-palette-pull-number",
         ".source-ref-selector-pull-number",
     }
@@ -2864,21 +2860,9 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
         "align-items": "baseline",
         "column-gap": "inherit",
     }
-    # A line that leaves out its zero totals says "0 lines" for a change of none, muted at
-    # its line's weight (mb-efum). Only the Pulls tab's rows and stack headings leave them
-    # out: every other surface that says a change set in brief says both totals.
+    # A line leaves out a total of zero and says "0 lines" for a change of none, muted at
+    # its line's weight, wherever it stands (mb-efum, mb-ox6a).
     assert shell[".change-line-stats > .change-line-none"] == {"color": "var(--muted)"}
-    panel = (REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js").read_text(encoding="utf-8")
-    assert panel.count("{ omitZeroTotals: true }") == 2
-    for path in (
-        "builtin_plugins/diff/diff-view.js",
-        "builtin_plugins/github/pull-page.js",
-        "builtin_plugins/github/pull-summary-brief.js",
-        "static/git-panel.js",
-        "static/changed-files-tree.js",
-    ):
-        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
-        assert "omitZeroTotals" not in source, path
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:
@@ -4525,8 +4509,6 @@ def test_a_failure_is_one_ink_and_a_stat_is_one_pair() -> None:
     ink = {
         ".diff-stat-add": "--status-success-text",
         ".diff-stat-del": "--status-error-text",
-        ".git-stat-add": "--status-success-text",
-        ".git-stat-del": "--status-error-text",
     }
     seen: dict[str, set[str]] = {}
     for sheet in _stylesheets():

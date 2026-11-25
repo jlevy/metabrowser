@@ -67,6 +67,7 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   shown: boolean,
  *   scrollRoot: HTMLElement | null,
  *   chevron: () => Node | null,
+ *   changeLineNodes: MetabrowserPublicSdk["changeLineNodes"],
  *   href: (path: string) => string | null,
  *   request: import("./pull-files-tree.js").FileTreeDependencies["request"],
  *   formatTime: (iso: string) => string,
@@ -181,10 +182,11 @@ export function mountFileTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "changed-file-stats github-pull-file-stats", "aria-hidden": "true" }, [
-            h("span", { class: "diff-stat-add" }, [stats.additions]),
-            h("span", { class: "diff-stat-del" }, [stats.deletions]),
-          ]),
+          h(
+            "span",
+            { class: "changed-file-stats github-pull-file-stats", "aria-hidden": "true" },
+            host.changeLineNodes(stats),
+          ),
         ];
   }
 

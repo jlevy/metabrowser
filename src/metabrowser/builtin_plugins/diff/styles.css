@@ -433,16 +433,6 @@
   flex: none;
 }
 
-.metabrowser-diff-host .diff-stat-add {
-  color: var(--status-success-text);
-  font-weight: var(--weight-bold);
-}
-
-.metabrowser-diff-host .diff-stat-del {
-  color: var(--status-error-text);
-  font-weight: var(--weight-bold);
-}
-
 /* View file, or View on branch on a pull request: a quiet text action
    after the name and its stats, the same whether
    it is a link (the page has the file's address) or a button (following

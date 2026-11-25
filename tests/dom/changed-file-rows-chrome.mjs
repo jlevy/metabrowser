@@ -31,6 +31,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>changed fi
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/github/styles.css">
 <link rel="stylesheet" href="/diff/styles.css">
+<script src="/static/formatters.js"></script>
 <script src="/static/changed-files-tree.js"></script>
 <style>body { display: flex; gap: 24px; margin: 0; } .host { width: 360px; }</style>
 </head><body>
@@ -70,6 +71,8 @@ const MOUNT = `(async () => {
     { path: "src/logo.png", display: "src/logo.png", previous_path: null, previous_display: null, status: "modified", additions: null, deletions: null },
   ];
   const formatCount = (count) => count.toLocaleString("en-US");
+  // The one painter of a file's lines, as the SDK hands it plugins (formatters.js).
+  const changeLineNodes = (line, options) => window.MetabrowserFormatters.changeLineNodes(document, line, options);
   const chevron = () => {
     const box = document.createElement("span");
     box.innerHTML = '<svg class="toggle-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6"/></svg>';
@@ -89,6 +92,7 @@ const MOUNT = `(async () => {
     number: 7, autoExpandFiles: 3000, current: null, shown: true,
     scrollRoot: document.getElementById("pulls-scroll"),
     chevron, href: (file) => "#" + file,
+    changeLineNodes,
     request: async () => ({ status: 200, etag: null, body: listing }),
     formatTime: (value) => value,
     decorateExternalLink: (anchor) => anchor,
@@ -104,7 +108,7 @@ const MOUNT = `(async () => {
   pulls.controller.expand();
   // The Diff summary's tree, as diff-view.js mounts it under its header.
   const { mountSummaryTree } = await import("/diff/diff-summary.js");
-  const summary = mountSummaryTree({ tree, files, id: "summary-tree", formatCount, chevron, jump() {} });
+  const summary = mountSummaryTree({ tree, files, id: "summary-tree", formatCount, changeLineNodes, chevron, jump() {} });
   document.getElementById("diff-host").append(summary.body);
   summary.setOpen(true);
   const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));

@@ -1366,15 +1366,11 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
   toggle.append(pathSpan);
   /** @param {unknown} value */
   const count = (value) => (typeof value === "number" ? value : null);
-  const counts =
-    model === null
-      ? change.additions !== null && change.additions !== undefined
-        ? { additions: `+${change.additions}`, deletions: `\u2212${change.deletions}` }
-        : null
-      : model.changeStats(
-          { additions: count(change.additions), deletions: count(change.deletions) },
-          countFormatter(api),
-        );
+  const additions = count(change.additions);
+  const deletions = count(change.deletions);
+  // Its lines as every lines summary says them, through the shell's one component (mb-ox6a).
+  const paint = additions === null && deletions === null ? null : shellPainters(api);
+  const counts = paint === null ? null : paint.changeLine({ statuses: [], additions, deletions });
   // The change's stats and notes follow the copy control, which sits right after the name
   // it copies, so they are not in the trigger: they describe it, and a click on them
   // toggles the file as anywhere else on the bar does.
@@ -1384,10 +1380,9 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
     facts = el("span", "diff-file-facts");
     facts.setAttribute("id", factsId);
     toggle.setAttribute("aria-describedby", factsId);
-    if (counts !== null) {
+    if (counts !== null && paint !== null) {
       const stats = el("span", "diff-file-stats");
-      stats.append(el("span", "diff-stat-add", counts.additions));
-      stats.append(el("span", "diff-stat-del", counts.deletions));
+      stats.append(...paint.changeLineNodes(counts));
       facts.append(stats);
     }
     for (const note of notes) {
@@ -2192,6 +2187,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
               files: rows,
               id,
               formatCount,
+              changeLineNodes: paint.changeLineNodes,
               // The header's own chevron, for each folder row of the tree.
               chevron: () => {
                 if (!chevronSvg) {

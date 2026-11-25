@@ -4037,6 +4037,7 @@ export function mountPullsPanel(container, ctx, mb) {
         shown: panelShown,
         scrollRoot: tab.scrollRoot,
         chevron,
+        changeLineNodes: mb.changeLineNodes,
         href: (path) => tab.fileHref(number, path),
         request: async (method, route, options) => {
           const answer = await request(mb.perf, method, route, {
@@ -4433,7 +4434,7 @@ export function mountPullsPanel(container, ctx, mb) {
     entry.changeKey = shown;
     let words = null;
     if (line.phase === "shown") {
-      const said = mb.changeLine(rowLineInput(line.summary, null), { omitZeroTotals: true });
+      const said = mb.changeLine(rowLineInput(line.summary, null));
       entry.changeLine.replaceChildren(entry.changeSep, ...mb.changeLineNodes(said));
       words = said.label;
     } else if (line.phase === "waiting") {
@@ -4586,7 +4587,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (line.phase === "shown") {
         // Its line totals alone, with no file statuses, a total of zero left out, as a pull
         // request's row says its own (mb-lqkb, mb-efum).
-        const said = mb.changeLine(stackLineInput(line.change), { omitZeroTotals: true });
+        const said = mb.changeLine(stackLineInput(line.change));
         // "Stack #286 · +1,234 −567": the dot is a count summary's separator, which the name,
         // saying the line in words, needs no word for.
         // Totals a member's list could not count, a binary file it listed, are not exact:

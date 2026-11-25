@@ -366,10 +366,10 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "text-overflow" not in ages
     assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-quiet > .github-pull-ages")
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
-    # Refresh ends it, after Browse code (A1 of review A on #506), with the stack's slot just
-    # before it (mb-646g), on a record's row and on the one held before a record.
-    assert "placeChildren(openedRow, [stateBadge, opened.row, stackColumn, refresh]);" in page
-    assert "          stackColumn,\n          refresh,\n        ]);" in page
+    # Refresh follows Browse code (A1 of review A on #506), and the stack's slot ends the row
+    # after it (mb-646g, mb-dwha), on a record's row and on the one held before a record.
+    assert "placeChildren(openedRow, [stateBadge, opened.row, refresh, stackColumn]);" in page
+    assert "          refresh,\n          stackColumn,\n        ]);" in page
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page
 
 
@@ -419,13 +419,14 @@ def test_labels_have_a_row_while_unknown_or_present() -> None:
     assert "children.push(openedRow, stateRow, branchesRow, labelsRow);" in page
 
 
-def test_the_stack_chip_ends_the_row_of_ages_before_refresh() -> None:
-    """A late chip lands in the row's empty end, before Refresh's slot, moving it not (mb-646g).
+def test_the_stack_chip_ends_the_row_of_ages_under_the_number() -> None:
+    """A late chip lands in the row's empty end, after Refresh's slot (mb-646g, mb-dwha).
 
-    The slot takes the row's spare width, so Refresh, which keeps its box held hidden, ends
-    the row on the header's content edge whatever the slot holds. The ages take only the
-    width the chips leave, so they give way before a chip does, and a chip's position is cut
-    short only once they have none left. tests/dom/github-pull-header-chrome.mjs measures it.
+    The slot takes the row's spare width, so the chip ends the row, which ends where the
+    title's number does, and Refresh, which keeps its box held hidden, follows Browse code,
+    so neither moves the other. The ages take only the width the chips leave, so they give
+    way before a chip does, and a chip's position is cut short only once they have none
+    left. tests/dom/github-pull-header-chrome.mjs measures it.
     """
 
     css = _github_css()
@@ -437,6 +438,16 @@ def test_the_stack_chip_ends_the_row_of_ages_before_refresh() -> None:
     # slot's and leave the chip in the middle of the row.
     assert ".github-pull-opened > .github-pull-refresh" not in css
     assert "visibility: hidden;" in _rule(css, ".github-pull-refresh[hidden]")
+    # The row ends where the title's number does: the room the title leaves the corner's
+    # button, one value for both.
+    room = ".github-pull-header:has(> .view-header-end[data-counterpart])"
+    assert "--github-pull-title-room: max(" in _rule(css, room)
+    assert _rule(css, f"{room} > .github-pull-title").strip() == (
+        "padding-inline-end: var(--github-pull-title-room);"
+    )
+    assert _rule(css, f"{room} > .github-pull-opened").strip() == (
+        "margin-inline-end: var(--github-pull-title-room);"
+    )
     # The ages' basis is nothing, and they grow to their own width at most.
     ages = _rule(css, ".github-pull-opened > .github-pull-quiet")
     assert "flex: 1 1 0;" in ages and "max-width: max-content;" in ages
@@ -628,10 +639,11 @@ def test_a_stack_members_place_leads_its_title() -> None:
 
 
 def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
-    """A pull request's row is three lines (mb-lkkt, mb-d0a3, mb-85op, mb-lqkb). Its link is
-    two: its title's, one flow of the state icon, a stack member's place and dot, and the
-    title, which wraps under the icon and is cut short at the second line's end, two lines
-    tall whatever it holds. The third line is its change line, not part of the link: the
+    """A pull request's row is three lines, or two for a title that fits one (mb-lkkt, mb-d0a3,
+    mb-85op, mb-lqkb, mb-zuy0). Its link is its title's lines: one flow of the state icon, a
+    stack member's place and dot, and the title, which wraps under the icon and is cut short
+    at the second line's end, as tall as its lines, one or two. The last line is its change
+    line, not part of the link: the
     chevron under the state icon, then the number's line, "#113 · jlevy · +1,234 −567", with
     the age at the row's end. The number's line came first, the icon leading it, from mb-3cbf
     until 2026-11-17, when the owner asked for the title first; the chevron moved to the third
@@ -648,27 +660,35 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     heading = _rule(css, ".github-pulls-row > .github-pulls-heading")
     for declaration in (
         "position: relative;",
-        "height: 2lh;",
         "overflow: hidden;",
-        "text-indent: var(--github-pull-row-text-column);",
         "-webkit-line-clamp: 2;",
         "line-clamp: 2;",
     ):
         assert declaration in heading, declaration
+    # As tall as its lines, one or two (mb-zuy0): a fixed two lines made a title that fits
+    # one take two.
+    assert not re.search(r"(?<![-\w])(?:min-|max-)?height\s*:", heading), heading
+    # The first line's room for the icon is an empty inline box's start margin, not the
+    # first line's indent, which WebKit drops on a -webkit-box: in the app's WKWebView the
+    # place or the title was drawn over the state icon (mb-ma3f). No rule of the sheet
+    # indents a line.
+    before = _rule(css, ".github-pulls-row > .github-pulls-heading::before")
+    assert 'content: "";' in before
+    assert "margin-inline-start: var(--github-pull-row-text-column);" in before
+    assert not re.search(r"(?m)^\s*text-indent\s*:", css)
     # Only the title breaks anywhere: on the heading, that break let a place wider than the
     # first line put its dot at the second line's start (Chrome 152, 180 px).
     assert "overflow-wrap" not in heading
     assert "overflow-wrap: anywhere;" in _rule(css, ".github-pulls-title")
-    # The icon is out of the text's flow, in the slot the first line's indent leaves, one line
-    # of the row's type tall: inline, it was a break, and a title of one long word left the
-    # first line the icon alone.
+    # The icon is out of the text's flow, in the slot the first line's start margin leaves,
+    # one line of the row's type tall: inline, it was a break, and a title of one long word
+    # left the first line the icon alone.
     icon = _rule(css, ".github-pulls-heading > .github-pull-state-icon")
     for declaration in (
         "position: absolute;",
         "inset-block-start: 0;",
         "inset-inline-start: 0;",
         "height: 1lh;",
-        "text-indent: 0;",
     ):
         assert declaration in icon, declaration
     # A pull request's chevron is on its change line, in the row's one slot under the state

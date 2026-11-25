@@ -546,8 +546,8 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     );
     const folder = rows().find((row) => row.dataset.id === "src/deep/");
     check(
-      "a folder row carries its rolled-up counts",
-      folder?.text().includes("+1,200") && folder.text().includes("−0"),
+      "a folder row carries its rolled-up counts, a zero total left out (mb-ox6a)",
+      folder?.text().includes("+1,200") && !folder.text().includes("−0"),
       folder?.text() ?? "",
     );
     const list = body.children[0];
@@ -659,7 +659,7 @@ async function repeatedPathChecks(mountDiffView, twoFiles) {
       "a path listed twice is one row, with both changes' counts",
       rows.length === 1 &&
         rows[0].dataset.id === "a.py" &&
-        rows[0].getAttribute("aria-label") === "a.py, modified, 2 added, 2 deleted",
+        rows[0].getAttribute("aria-label") === "a.py, modified, 2 lines added, 2 deleted",
       rows.map((row) => row.getAttribute("aria-label")).join(" | "),
     );
     rows[0].click();
@@ -736,6 +736,7 @@ async function windowedSummaryChecks(repoRoot) {
       files,
       id: "summary",
       formatCount: (count) => String(count),
+      changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
       chevron: () => null,
       jump: (path) => jumps.push(path),
     });
@@ -1643,7 +1644,12 @@ async function main() {
   // supplies the exclusive joined-group contract and reprojects on the
   // reported value without fetching or lexing again.
   const defaultLayout = new FakeElement("div");
-  mountDiffViewImpl(defaultLayout, byName.get("modified-with-heading"));
+  // No preference store at all, under the host's other fields: the shell's painters, which
+  // say each file bar's lines, as every page has them.
+  mountDiffViewImpl(defaultLayout, byName.get("modified-with-heading"), {
+    ...defaultTestApi,
+    prefs: undefined,
+  });
   check(
     "missing layout preference defaults to split",
     defaultLayout.find("diff-root")[0].dataset.layout === "split",
@@ -2211,11 +2217,15 @@ async function main() {
     typeof facts.getAttribute("id") === "string" &&
       toggle.getAttribute("aria-describedby") === facts.getAttribute("id"),
   );
+  // The bar's lines are the shell's brief change line of its totals alone (mb-ox6a).
   const stats = container.find("diff-file-stats")[0];
+  const pair = stats.find("change-line-stats")[0];
   check(
-    "stat pair renders add then del",
-    stats.children[0].classList.contains("diff-stat-add") &&
-      stats.children[1].classList.contains("diff-stat-del"),
+    "stat pair renders add then del, as the shell's brief change line",
+    stats.children.length === 1 &&
+      stats.children[0].classList.contains("change-line") &&
+      pair?.children[0]?.classList.contains("diff-stat-add") === true &&
+      pair.children[1]?.classList.contains("diff-stat-del") === true,
   );
 
   // The whole bar is one activation surface: bar clicks toggle, the

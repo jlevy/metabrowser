@@ -69,6 +69,48 @@ const REGISTER = `(() => {
   };
 })()`;
 
+// In the page: at every width the pane allows, in both themes, each drawn row's state icon and
+// the first box of its first text, a member's place or another row's title, on the row the
+// Pulls panel paints (mb-ma3f): whether the two overlap by more than half a pixel either way,
+// and where the text starts, one column gap past the icon's slot. In the app's WKWebView the
+// first line's indent was dropped, and both started at the icon's left edge.
+const PLACE_SWEEP = `(widths) => {
+  const pane = document.querySelector(".tree-pane");
+  const root = document.documentElement;
+  const saved = [pane.style.width, pane.style.minWidth, root.dataset.theme];
+  const r = (value) => Math.round(value * 100) / 100;
+  const rows = [];
+  let seen = 0;
+  let members = 0;
+  for (const theme of ["light", "dark"]) {
+    root.dataset.theme = theme;
+    for (const width of widths) {
+      pane.style.minWidth = "0";
+      pane.style.width = width + 1 + "px";
+      for (const row of document.querySelectorAll("a.github-pulls-row")) {
+        const icon = row.querySelector(".github-pulls-heading > .github-pull-state-icon");
+        const place = row.querySelector(".github-pulls-heading > .github-pulls-place:not([hidden])");
+        const text = place ?? row.querySelector(".github-pulls-heading > .github-pulls-title");
+        const [box] = text?.getClientRects() ?? [];
+        if (!icon || !box) continue;
+        seen += 1;
+        if (place) members += 1;
+        const a = icon.getBoundingClientRect();
+        const gap = parseFloat(getComputedStyle(row).columnGap);
+        const across = Math.min(a.right, box.right) - Math.max(a.left, box.left);
+        const down = Math.min(a.bottom, box.bottom) - Math.max(a.top, box.top);
+        if ((across > 0.5 && down > 0.5) || Math.abs(box.left - (a.right + gap)) > 0.5) {
+          rows.push({ theme, width, number: Number(row.dataset.number), member: place !== null, icon: [r(a.left), r(a.right)], text: [r(box.left), r(box.right)], gap });
+        }
+      }
+    }
+  }
+  pane.style.width = saved[0];
+  pane.style.minWidth = saved[1];
+  if (saved[2] === undefined) delete root.dataset.theme; else root.dataset.theme = saved[2];
+  return { seen, members, overlaps: rows.slice(0, 20), overlapCount: rows.length };
+}`;
+
 // In the page: the grouped list as drawn, and where its rows start.
 const LIST = `(() => {
   const list = document.querySelector(".github-pulls-list");
@@ -601,6 +643,16 @@ try {
     await frames();
     const list = await evaluate(LIST);
     measured.list = list;
+    // A member's place, and another row's title, starts one column gap after its state icon
+    // wherever the pane is and in both themes: the two boxes never overlap (mb-ma3f).
+    measured.placeSweep = await evaluate(`(${PLACE_SWEEP})(${JSON.stringify(WIDTHS)})`);
+    check(
+      "a member's place, or a row's title, never overlaps its state icon, at any width, in either theme",
+      measured.placeSweep.members > 0 &&
+        measured.placeSweep.seen > measured.placeSweep.members &&
+        measured.placeSweep.overlapCount === 0,
+      JSON.stringify(measured.placeSweep),
+    );
     const first = list.stacks[0];
     check(
       "the list is grouped, Stack #286 first",
@@ -1446,7 +1498,8 @@ try {
         };
       })(),
       // Each member's one line (mb-as06): its state icon, then its bold place, the muted dot,
-      // and its title, measured part by part, with the Pulls row of the same pull request.
+      // its title, and its number (mb-1kzu), measured part by part, with the Pulls row of the
+      // same pull request.
       lines: (() => {
         const probe = document.createElement("span");
         probe.style.color = "var(--muted)";
@@ -1457,9 +1510,17 @@ try {
         return [...menu.querySelectorAll(".github-pull-stack-member")].map((link) => {
           const number = new URL(link.href).pathname.split("/")[2];
           const [icon, copy] = link.children;
-          const [position, dot, title, said] = copy?.children ?? [];
+          const [position, dot, title, shown] = copy?.children ?? [];
           // The row's state icon starts its title's two lines (mb-85op).
           const row = document.querySelector(\`a.github-pulls-row[data-number="\${number}"] > .github-pulls-heading > .github-pull-state-icon\`);
+          // The row's number is on its change line, after the row's link in its item.
+          const rowNumber = document.querySelector(\`li.github-pulls-item[data-number="\${number}"] .github-pulls-number\`);
+          const face = (el) => el === null ? null : {
+            color: getComputedStyle(el).color,
+            weight: getComputedStyle(el).fontWeight,
+            size: getComputedStyle(el).fontSize,
+            numerals: getComputedStyle(el).fontVariantNumeric,
+          };
           const fontSize = parseFloat(getComputedStyle(title).fontSize);
           return {
             number: Number(number),
@@ -1482,11 +1543,16 @@ try {
             titleCut: { overflow: getComputedStyle(title).textOverflow, wrap: getComputedStyle(title).whiteSpace },
             tip: link.dataset.tipText ?? null,
             titleText: title.textContent,
-            said: said === undefined ? null : {
-              text: said.textContent,
-              width: box(said).width,
-              height: box(said).height,
-              clip: getComputedStyle(said).clip,
+            shown: shown === undefined ? null : {
+              text: shown.textContent,
+              whole: shown.scrollWidth <= shown.clientWidth,
+              width: Math.round(box(shown).width * 100) / 100,
+              endGap: Math.round((box(copy).right - box(shown).right) * 100) / 100,
+              afterTitle: box(shown).left >= box(title).right - 0.5,
+              face: face(shown),
+              rowText: rowNumber?.textContent ?? null,
+              rowFace: face(rowNumber),
+              titleSize: getComputedStyle(title).fontSize,
             },
             current: link.getAttribute("aria-current") === "page",
           };
@@ -1496,7 +1562,7 @@ try {
   })()`);
   measured.menu = menu;
   // Each member's name as Chrome computes it for assistive technology: its state, place, and
-  // title, then its number, which the line does not show (mb-as06).
+  // title, then its number, which the line shows at its end (mb-1kzu).
   if (!before) {
     await send("Accessibility.enable");
     menu.names = [];
@@ -1556,12 +1622,13 @@ try {
       JSON.stringify(menu.weights),
     );
     // Every member one line in one layout (mb-as06): the state icon, the bold place, the
-    // muted dot, and the bold title cut short at the line's end; the icon is the Pulls row's
-    // state for the same pull request, and every member's icon and place start at one edge.
+    // muted dot, the bold title cut short, and the number at the line's end (mb-1kzu); the
+    // icon is the Pulls row's state for the same pull request, and every member's icon and
+    // place start at one edge.
     const lines = menu.lines;
     const first = lines[0];
     check(
-      "every stack member is the state icon, then the place, the dot, and the title",
+      "every stack member is the state icon, then the place, the dot, the title, and the number",
       lines.length === menu.members.length &&
         lines.every(
           (line) =>
@@ -1572,24 +1639,35 @@ try {
                 "github-pull-stack-member-position",
                 "github-pull-stack-dot",
                 "github-pull-stack-member-title",
-                "visually-hidden",
+                "github-pull-stack-member-number",
               ]),
         ),
       JSON.stringify(lines),
     );
+    // Each member shows its number as its Pulls row does, "#455" (mb-1kzu): whole, after the
+    // title and at the line's end, in the row's number's ink, weight, and numerals at the
+    // title's size, and the member's name still ends in it.
     check(
-      "each member's number is said and not shown: hidden in a clipped 1px box, and its name's end",
+      "each member's number is shown whole at the line's end, as its Pulls row's, and ends its name",
       lines.every(
         (line, at) =>
-          line.said?.text === `#${line.number}` &&
-          line.said.width <= 1 &&
-          line.said.height <= 1 &&
-          line.said.clip === "rect(0px, 0px, 0px, 0px)" &&
+          line.shown?.text === `#${line.number}` &&
+          line.shown.rowText === line.shown.text &&
+          line.shown.whole &&
+          line.shown.width > 1 &&
+          Math.abs(line.shown.endGap) <= 0.5 &&
+          line.shown.afterTitle &&
+          line.shown.rowFace !== null &&
+          line.shown.face.color === line.shown.rowFace.color &&
+          line.shown.face.weight === line.shown.rowFace.weight &&
+          line.shown.face.weight === "700" &&
+          line.shown.face.numerals === line.shown.rowFace.numerals &&
+          line.shown.face.size === line.shown.titleSize &&
           typeof menu.names[at] === "string" &&
           menu.names[at].endsWith(`${line.titleText} #${line.number}`),
       ),
       JSON.stringify({
-        said: lines.map(({ number, said }) => ({ number, said })),
+        shown: lines.map(({ number, shown }) => ({ number, shown })),
         names: menu.names,
       }),
     );

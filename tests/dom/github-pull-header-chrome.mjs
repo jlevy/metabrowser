@@ -324,6 +324,12 @@ const MEASURE = `async (name, change, tab, width) => {
   // Where the rows' parts and the labels are, and every row's height: the row of ages' badge,
   // ages, Browse code, and Refresh, the author's sentence, and the branches.
   const places = () => ({
+    refreshAfterQuiet: (() => {
+      const row = header.querySelector(".github-pull-opened");
+      const slot = row?.querySelector(":scope > .github-pull-refresh");
+      const quiet = row?.querySelector(":scope > .github-pull-quiet");
+      return slot && quiet ? box(slot).left - box(quiet).right : null;
+    })(),
     parts: [".github-pull-badge", ".github-pull-ages", ".github-pull-ages-links", ".github-pull-refresh", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
       [...header.querySelectorAll(selector)].map((node) => [selector, Math.round(box(node).left * 100) / 100, Math.round(box(node).width * 100) / 100]),
     ),
@@ -400,8 +406,8 @@ const MEASURE = `async (name, change, tab, width) => {
     }
   }
   // A stack's chip arrives late, from its own answer, through the page's own builder, at
-  // the right end of the row of ages, just before Refresh's slot, which ends the row
-  // (mb-646g): one stack, "⧉2/3", or two, "⧉286 4/4" and "⧉300 2/2", each named by its
+  // the right end of the row of ages, after Refresh's slot, its end under the end of the
+  // title's number (mb-646g, mb-dwha): one stack, "⧉2/3", or two, "⧉286 4/4" and "⧉300 2/2", each named by its
   // stack, as the page names a chip in more than one stack. Its Layers glyph is a bare svg at
   // the glyph's size, so the chip is as wide as the page's. The strut that holds the row of
   // ages at a chip's height, read before a chip replaces it.
@@ -434,14 +440,15 @@ const MEASURE = `async (name, change, tab, width) => {
     await frames();
     const after = places();
     // Nothing moves: every part keeps its start, every row its height, the tab bar its place,
-    // and Refresh, which ends the row the chip lands on, its start and its width. The ages
-    // alone may give up width at their end where the row has none left, and Browse code after
-    // them, kept whole while any age shows (B4 of review B on #506), follows their end, as the
-    // action followed a shorter author on the author's row (mb-cf0l).
+    // and Refresh its width. The ages alone may give up width at their end where the row has
+    // none left, and Browse code after them, kept whole while any age shows (B4 of review B on
+    // #506), and Refresh after it follow their end, as the action followed a shorter author on
+    // the author's row (mb-cf0l).
+    const follows = new Set([".github-pull-ages-links", ".github-pull-refresh"]);
     const kept = (shape) => ({
       parts: shape.parts.map(([selector, left, width]) => [
         selector,
-        selector === ".github-pull-ages-links" ? null : left,
+        follows.has(selector) ? null : left,
         selector === ".github-pull-ages" ? null : width,
       ]),
       rows: shape.rows,
@@ -455,26 +462,57 @@ const MEASURE = `async (name, change, tab, width) => {
     const ages = quiet.querySelector(".github-pull-ages");
     const links = quiet.querySelector(".github-pull-ages-links");
     const r = (value) => Math.round(value * 100) / 100;
+    // Where the chip's end is against the title's number's and the header's content edge,
+    // less the room the title leaves the corner's button: Refresh shown, waiting, held hidden,
+    // and gone from the row, each in turn, then put back (mb-dwha).
+    const numberRange = document.createRange();
+    numberRange.selectNodeContents(header.querySelector(".github-pull-title-with-state .github-pull-number"));
+    const numberEnd = numberRange.getBoundingClientRect().right;
+    const contentEnd = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+    const titleRoom = parseFloat(getComputedStyle(header.querySelector(".github-pull-title")).paddingInlineEnd);
+    const chipEnd = () => Math.max(...menus.map((menu) => box(menu.element).right));
+    const refreshWas = { hidden: refreshSlot.hidden, waiting: refreshSlot.getAttribute("aria-disabled") };
+    const ends = {};
+    for (const [state, apply] of [
+      ["shown", () => { refreshSlot.hidden = false; refreshSlot.removeAttribute("aria-disabled"); }],
+      ["waiting", () => { refreshSlot.hidden = false; refreshSlot.setAttribute("aria-disabled", "true"); }],
+      ["hidden", () => { refreshSlot.hidden = true; refreshSlot.removeAttribute("aria-disabled"); }],
+      ["absent", () => { refreshSlot.remove(); }],
+    ]) {
+      apply();
+      await frames();
+      ends[state] = { chip: r(chipEnd() - numberEnd), content: r(chipEnd() - (contentEnd - titleRoom)) };
+    }
+    column.before(refreshSlot);
+    refreshSlot.hidden = refreshWas.hidden;
+    if (refreshWas.waiting === null) refreshSlot.removeAttribute("aria-disabled");
+    else refreshSlot.setAttribute("aria-disabled", refreshWas.waiting);
+    await frames();
     chipMoves = {
       chips: stacks.length,
       moved: JSON.stringify(kept(before)) === JSON.stringify(kept(after)) ? null : { before, after },
       // How much of the ages' width the chip took.
       cut: r(agesWidth(before) - agesWidth(after)),
       chipShown: Math.min(...menus.map((menu) => shown(menu.element))),
-      // The slot is the row of ages' own, between the ages and Refresh's slot, and the chip
+      // The slot is the row of ages' own, after Refresh's slot, ending the row, and the chip
       // sits on that row's line.
       onAgesRow:
         column.parentElement === row &&
-        column.nextElementSibling === refreshSlot &&
-        refreshSlot === row.lastElementChild &&
+        refreshSlot.nextElementSibling === column &&
+        column === row.lastElementChild &&
         menus.every((menu) => {
           const chip = box(menu.element);
           return chip.top >= box(row).top - 0.5 && chip.bottom <= box(row).bottom + 0.5;
         }),
       overlap: r(box(quiet).right - box(column).left),
-      // From the chip's end to Refresh's start, which is the row's gap.
-      beforeRefresh: r(box(refreshSlot).left - box(column).right),
+      // From Refresh's end to the chip's start, at least the row's gap.
+      afterRefresh: r(box(column).left - box(refreshSlot).right),
       rowGap: parseFloat(getComputedStyle(row).columnGap),
+      // Refresh follows the ages' end: its start from the ages' box's end, before and after.
+      refreshFollows: [r(before.refreshAfterQuiet), r(after.refreshAfterQuiet)],
+      titleRoom: r(titleRoom),
+      contentEnd: r(contentEnd),
+      ends,
       chipWidth: r(box(column).width),
       // A chip's position cut short, and whether the ages and Browse code had any width left
       // when it was.
@@ -679,7 +717,19 @@ const MEASURE = `async (name, change, tab, width) => {
     // How many labels the record names, or null while there is no record.
     recordLabels: body.record ? body.record.pull.labels.length : null,
     refresh: refresh
-      ? { shown: !refresh.hidden, height: r2(box(refresh).height), rightEdge: r2(box(refresh).right - contentEdge) }
+      ? {
+          shown: !refresh.hidden,
+          height: r2(box(refresh).height),
+          rightEdge: r2(box(refresh).right - contentEdge),
+          onAgesRow: refresh.parentElement === opened,
+          // Refresh's start from the end of Browse code's, or of the ages where none.
+          afterLinks: (() => {
+            const quiet = opened?.querySelector(":scope > .github-pull-quiet");
+            const last = quiet?.querySelector(".github-pull-ages-links") ?? quiet;
+            return last ? r2(box(refresh).left - box(last).right) : null;
+          })(),
+          rowGap: opened ? parseFloat(getComputedStyle(opened).columnGap) : null,
+        }
       : null,
     ageWidens,
     lead: leadShape,
@@ -1982,13 +2032,13 @@ async function main() {
           const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
           for (const tab of TABS) {
             // The row of ages is the same on every tab but for Refresh, held hidden on
-            // Conversation and shown on Changes, so its stack chip arrives on those two: one
-            // stack, and two for the records with an avatar, the longest rows (mb-646g).
-            // The Diff summary is the header's last row on every tab, so it is measured on each.
+            // Conversation and shown on Changes, and its stack chip arrives on each, where it
+            // is measured with Refresh shown, waiting, hidden, and gone: one stack, and two
+            // for the records with an avatar, the longest rows (mb-646g, mb-dwha). The Diff
+            // summary is the header's last row on every tab, so it is measured on each.
             const measured = {
-              ...(tab === "" || tab === "files"
-                ? { ...change, stackChip: change.avatar ? 2 : 1 }
-                : change),
+              ...change,
+              stackChip: change.avatar ? 2 : 1,
               summary: true,
             };
             const shape = await browser.evaluate(
@@ -2048,20 +2098,37 @@ async function main() {
             if (shape.chipMoves !== null) {
               const chip = shape.chipMoves;
               check(
-                `${where}: a late stack chip moves nothing in the header, Refresh and every row included`,
+                `${where}: a late stack chip moves nothing in the header but the ages' end, and every row keeps its height`,
                 chip.moved === null,
                 JSON.stringify(chip.moved),
+              );
+              check(
+                `${where}: Refresh follows the ages' end as the chip arrives`,
+                chip.refreshFollows.every(
+                  (gap) => gap !== null && Math.abs(gap - chip.refreshFollows[0]) <= 0.5,
+                ),
+                JSON.stringify(chip.refreshFollows),
+              );
+              // The chip ends under the end of the title's number, which is the content
+              // column's edge less the room the title leaves the corner's button, with Refresh
+              // shown, waiting, held hidden, and gone (mb-dwha).
+              check(
+                `${where}: the stack chip ends under the title's number, on the content column's edge less the title's room, whatever Refresh shows`,
+                Object.values(chip.ends).every(
+                  (end) => Math.abs(end.chip) <= 0.5 && Math.abs(end.content) <= 0.5,
+                ),
+                JSON.stringify({ ends: chip.ends, titleRoom: chip.titleRoom }),
               );
               check(
                 `${where}: a late stack chip shows whole`,
                 chip.chipShown >= 0.99,
                 String(chip.chipShown),
               );
-              // On the row of ages, at its end, one gap before Refresh's slot, which ends the
-              // row on the header's content edge (checked below) (mb-646g).
+              // On the row of ages, at its end, at least a gap after Refresh's slot (mb-646g,
+              // mb-dwha).
               check(
-                `${where}: the stack chip is on the row of ages, one gap before Refresh's slot`,
-                chip.onAgesRow && Math.abs(chip.beforeRefresh - chip.rowGap) <= 0.5,
+                `${where}: the stack chip ends the row of ages, at least a gap after Refresh's slot`,
+                chip.onAgesRow && chip.afterRefresh >= chip.rowGap - 0.5,
                 JSON.stringify(chip),
               );
               check(
@@ -2238,12 +2305,18 @@ async function main() {
               shape.ageWidens === null || shape.ageWidens <= 0.5,
               JSON.stringify({ ageWidens: shape.ageWidens }),
             );
+            // Refresh's slot follows Browse code, a gap after it, before the stack's slot that
+            // ends the row (mb-dwha); with no row of ages it ends the status line, on the
+            // header's content edge.
             check(
-              `${where}: Refresh's slot ends the row of ages at the header's content edge, no taller than it`,
+              `${where}: Refresh's slot follows Browse code on the row of ages, or ends the status line, no taller than its row`,
               shape.refresh !== null &&
                 opened !== undefined &&
                 shape.refresh.height <= tall(opened) + 0.5 &&
-                Math.abs(shape.refresh.rightEdge) <= 0.5,
+                (shape.refresh.onAgesRow
+                  ? shape.refresh.afterLinks !== null &&
+                    Math.abs(shape.refresh.afterLinks - shape.refresh.rowGap) <= 0.5
+                  : Math.abs(shape.refresh.rightEdge) <= 0.5),
               JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
             );
             // The title has the shared gap; both sides of the size line get an extra

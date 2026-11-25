@@ -47,8 +47,9 @@ Say more in the guide”, where a pull request in no stack has its title alone (
 stack’s label on the shared label classes, its trigger shows its bare position, a press
 opens it with focus on the current member, and its members are the group’s, in one
 order. `lines` is each member’s one line as drawn: its state icon’s state, as the list
-said it, then its bold place, a muted dot, and its title; `layout` is the parts that
-line is made of, one for every member, the current one too.
+said it, then its bold place, a muted dot, its title, and its number at the line’s end,
+as a Pulls row shows it (mb-1kzu); `layout` is the parts that line is made of, one for
+every member, the current one too.
 `named` is #8’s two chips, one for each of its stacks, each naming its stack before its
 position, as its page draws them.
 Every step holds the session’s invariants: each listed pull request is drawn once or
@@ -572,9 +573,9 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       8
     ],
     "lines": [
-      "draft 3/3 · Stack change 10 [said, not shown: #10]",
-      "closed 2/3 · Stack change 9 [said, not shown: #9]",
-      "merged 1/3 · Stack change 8 [said, not shown: #8]"
+      "draft 3/3 · Stack change 10 #10",
+      "closed 2/3 · Stack change 9 #9",
+      "merged 1/3 · Stack change 8 #8"
     ],
     "layout": [
       "github-pull-state-icon",
@@ -582,7 +583,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "github-pull-stack-member-position",
       "github-pull-stack-dot",
       "github-pull-stack-member-title",
-      "visually-hidden"
+      "github-pull-stack-member-number"
     ],
     "groupRow": {
       "label": "Stack #290",
