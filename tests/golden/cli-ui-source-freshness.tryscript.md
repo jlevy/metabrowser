@@ -400,7 +400,7 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
         "detail": "This commit is not in the mirror as last fetched.",
         "offer": "[Retry]"
       }
@@ -493,7 +493,7 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
         "detail": "No branch or tag on the origin has this commit.",
         "offer": "[Retry]"
       }
@@ -566,7 +566,7 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
         "detail": "This commit is not in the mirror as last fetched.",
         "offer": "[Retry]"
       }
@@ -613,7 +613,7 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "fetch_failed",
-        "title": "Commit not fetched · fetched 6 d ago",
+        "title": "Could not fetch this commit; the last fetch was 6 d ago.",
         "detail": "The origin could not be read.",
         "offer": "[Retry]"
       }
@@ -684,7 +684,7 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "fetch_failed",
-        "title": "Commit not fetched · fetched 5 min ago",
+        "title": "Could not fetch this commit; the last fetch was 5 min ago.",
         "detail": "Its pull request could not be refreshed while others are being fetched. Try again shortly.",
         "offer": "[Retry]"
       }
@@ -707,7 +707,7 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "fetch_failed",
-        "title": "Commit not fetched · fetched 5 min ago",
+        "title": "Could not fetch this commit; the last fetch was 5 min ago.",
         "detail": "This commit could not be fetched.",
         "offer": "[Retry]"
       }
@@ -1283,7 +1283,7 @@ $ node tests/dom/source-freshness-session.js asks
       "commit": {
         "repaints": 1,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
         "detail": "This commit is not in the mirror as last fetched.",
         "offer": "[Retry]"
       },
@@ -1305,7 +1305,7 @@ $ node tests/dom/source-freshness-session.js asks
       "commit": {
         "repaints": 0,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
         "detail": "This commit is not in the mirror as last fetched.",
         "offer": "[Retry]"
       }

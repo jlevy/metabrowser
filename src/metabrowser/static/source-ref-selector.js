@@ -932,7 +932,7 @@
       if (held === false) {
         decided(false);
         state.switching = false;
-        state.error = "A ref switch is already in progress.";
+        state.error = "Another switch is already in progress.";
         render();
         return;
       }

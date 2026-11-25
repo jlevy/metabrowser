@@ -40,7 +40,7 @@ the graph reloads. If branches move while you scroll an open list, the list says
 
 Every commit has an address, `/commit/<id>`, with its full 40- or 64-character ID. Share
 or bookmark it to come back to that commit; a short ID or a branch name in the address
-shows **Full commit ID needed** instead.
+shows **This address needs the full commit ID.** instead.
 
 The page begins with the commit’s summary, laid out as a pull request’s header is:
 

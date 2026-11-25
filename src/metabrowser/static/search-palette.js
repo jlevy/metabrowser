@@ -347,7 +347,7 @@
             ? " Some files are not indexed."
             : " Scanning continues.";
         status.textContent = includesPulls
-          ? `Search includes ${scope} and cached pull requests.${coverage}`
+          ? `Search includes ${scope} and the pull requests already loaded.${coverage}`
           : `Search includes ${scope}.${coverage}`;
         return;
       }
@@ -783,7 +783,7 @@
           control: modal?.control,
           copy: {
             action: "Quick Search",
-            description: "Find and open a file or, on GitHub, a cached pull request.",
+            description: "Find and open a file or, on GitHub, a pull request.",
             hint: "Quick Search",
           },
           group: "anywhere",

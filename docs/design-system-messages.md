@@ -19,6 +19,9 @@ condition look like a breakdown, when the page is usually still fine.
 Agents and developers do need the detail, so it stays, in the route’s JSON and the logs
 ([Where the Detail Goes](#where-the-detail-goes)), not on the page.
 
+It covers every surface Metabrowser ships: the browser shell and the built-in plugins,
+the server’s answers that pages show, and the macOS app’s alerts and status views.
+
 This guide sits beside the [design system](design-system.md), whose
 [Notices](design-system.md#notices) section owns the notice box’s look, and
 `tests/test_reader_messages.py` enforces what a machine can hold of it
@@ -31,7 +34,7 @@ This guide sits beside the [design system](design-system.md), whose
 | Empty state | What is absent | “No files were modified during the selected time range.” | `.preview-empty`, `.recent-empty`, `.git-panel-empty`; no severity |
 | Loading | What is coming | “Loading charts…” | Inline text, only once [Motion](design-system.md#motion) allows any |
 | Notice or warning | The content is partial, stale, or degraded, and fine as far as it goes | “Recent files may be out of date. Change the filter or refresh to try again.” | `.notice[data-severity="warning"]`, `role="status"` |
-| Error | Something could not be done at all | “Could not load this folder. Collapse and reopen it to try again.” | `.notice[data-severity="error"]` or `.nav-error`, `role="alert"` |
+| Error | Something could not be done at all | “Could not load this folder. Collapse and reopen it to try again.” | `.notice[data-severity="error"]`, `.nav-error`, or the preview pane’s `.preview-error`, `role="alert"` |
 | Refusal | Metabrowser declines by design, and the content is safe | “This document took too long to render, so its source is shown.” | A warning, since nothing failed |
 | Confirmation | An action finished | “Link copied” | Brief status text, `role="status"` |
 
@@ -106,6 +109,8 @@ Calm and plain, and never blaming.
 - **It uses the notice primitive and the design tokens only**: `.notice` with a
   `data-severity`, whose fill, border, and type [Notices](design-system.md#notices)
   owns, and whose role `tests/test_plugin_design_consistency.py` checks.
+  The preview pane’s failure is the one other box, `.preview-empty.preview-error` with
+  `role="alert"`, which `previewErrorHtml` draws.
 - **One condition, one message.** When one view has several things to report, say the
   one that matters most to the reader.
 
@@ -148,31 +153,42 @@ built-in plugins’, through `tests/dom/reader-message-literals.mjs`, which pars
 with the TypeScript compiler’s parser and leaves out what no reader sees: console
 arguments, a built-in `Error`’s arguments, module specifiers, property keys, and
 comparison operands.
-Each rule fails on a planted violation in the same module:
+Each rule fails on planted violations in the same module:
 
-- internal mechanics, from the list above, in a sentence;
+- internal mechanics in a sentence: every term of the list above, which `MECHANICS`
+  holds;
 - an internal path, such as a `.md` or `.py` file, in a sentence;
 - an HTTP status in a sentence;
-- a commit ID interpolated into a sentence, or a `shortCommit` call in a notice’s
-  builder;
+- a commit ID interpolated into a sentence (a `sha` or `oid`, a name ending in one, or
+  the first characters of anything), or a `shortCommit` call in a notice’s builder;
 - a list built inside a notice’s builder, or written in a notice’s markup;
 - a caught exception’s `message`, `stack`, or `String()` read anywhere but a console
-  call;
-- a failure’s detail appended to a sentence, as `: ${error}` or `(${reason})`;
+  call, or the exception itself written into a template, a `+`, or a property;
+- a failure’s detail, status, or code appended to a sentence, as `: ${error}` or
+  `(${response.status})`;
 - an exclamation mark, or a “please,” “unfortunately,” or “oops,” or a failure that
   opens with “Failed to” or “Error:”;
 - a string with more than `MAX_SENTENCES` sentences.
 
-On the server it parses every module under `src/metabrowser/` except the command line’s
-and fails when an answer’s reader field (`error`, `message`, or `summary`), or a
+On the server it parses every module under `src/metabrowser/` except the command line’s.
+It fails when an answer’s reader field (`error`, `message`, or `summary`), or a
 Metabrowser error that becomes one, carries the text or type name of a caught exception
-that Metabrowser did not define, whether directly or through a helper in the same module
-that writes the field.
-Its allowlists are explicit, each entry with its reason, and an entry whose violation is
-gone fails the check until it is removed.
+whose text is not reader copy: one Metabrowser did not define, or one of its errors with
+a `reader_message`, whose `str()` is detail.
+It follows that text through a local, an assignment to a reader field, a traceback, and
+a helper in the same module that writes the field.
+It also holds the literal sentences of those fields, and every error’s `reader_message`,
+to the text rules above: mechanics, internal path, HTTP status, commit ID, appended
+detail, tone, and length.
+
+Its allowlists are explicit, keyed by file, rule, and function, each entry with its
+reason, and an entry whose violation is gone fails the check until it is removed.
 
 What it cannot see is review’s: a message assembled from several strings, whether a
-remedy is real, and tone.
+remedy is real, an exception’s text read under a name the check does not know as one,
+and the rest of tone.
+It does not read the macOS app’s Swift yet, so review holds the app’s alerts and status
+views to this guide.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

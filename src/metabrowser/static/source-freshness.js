@@ -463,7 +463,7 @@
     if (status === null) {
       return {
         state: "fetch_failed",
-        title: "Commit not fetched",
+        title: "Could not fetch this commit.",
         detail: MISSING_COMMIT_DETAIL.fetch_failed,
         retry: true,
       };
@@ -471,7 +471,7 @@
     if (status.subject !== "git_revision" || !status.refreshable) {
       return {
         state: "not_found",
-        title: "Commit not found",
+        title: "This commit was not found.",
         detail: MISSING_COMMIT_DETAIL.no_mirror,
         retry: false,
       };
@@ -480,7 +480,7 @@
     if (error !== null) {
       return {
         state: "fetch_failed",
-        title: `Commit not fetched · fetched ${age}`,
+        title: `Could not fetch this commit; the last fetch was ${age}.`,
         detail: MISSING_COMMIT_DETAIL.fetch_failed,
         retry: true,
       };
@@ -489,7 +489,7 @@
     if (page.fetched !== true) {
       return {
         state: "not_found",
-        title: `Commit not found · fetched ${age}`,
+        title: `This commit was not found in the last fetch, ${age}.`,
         detail: refused
           ? MISSING_COMMIT_DETAIL.pull_refused
           : "This commit is not in the mirror as last fetched.",
@@ -504,7 +504,7 @@
     ) {
       return {
         state: "fetch_failed",
-        title: `Commit not fetched · fetched ${age}`,
+        title: `Could not fetch this commit; the last fetch was ${age}.`,
         detail: OUTCOME_DETAIL[outcome.outcome] ?? OUTCOME_DETAIL.failed,
         retry: true,
       };
@@ -514,14 +514,14 @@
       // commit, was not.
       return {
         state: "fetch_failed",
-        title: `Commit not fetched · fetched ${age}`,
+        title: `Could not fetch this commit; the last fetch was ${age}.`,
         detail: MISSING_COMMIT_DETAIL.pull_refused,
         retry: true,
       };
     }
     return {
       state: "not_found",
-      title: `Commit not found · fetched ${age}`,
+      title: `This commit was not found in the last fetch, ${age}.`,
       detail: MISSING_COMMIT_DETAIL.not_found,
       retry: true,
     };

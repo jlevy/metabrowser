@@ -19,7 +19,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from metabrowser import server
-from metabrowser.builtin_plugins.fsqlite import reader, source, store
+from metabrowser.builtin_plugins.fsqlite import reader, sidekick, source, store
 from metabrowser.builtin_plugins.fsqlite.store import (
     CURRENT_MAX_BYTES,
     CURRENT_MAX_VERSION,
@@ -219,6 +219,18 @@ def test_store_metadata_read_refuses_a_fifo(tmp_path: Path, name: str, state: st
     assert refused.value.state == state
     # The page says the file cannot be read; the operating system's words are detail.
     assert "not a regular file" in refused.value.detail
+
+
+def test_an_unreadable_store_file_is_named_in_the_detail() -> None:
+    """The page says the store cannot be read; the detail, for `metab --api`, says which
+    of its files failed and why, without the folder it sits in (review A8 on #801)."""
+    denied = PermissionError(13, "Permission denied", "/stores/demo/fsqlite.json")
+    assert sidekick._unreadable(denied) == {
+        "state": "invalid",
+        "message": "This store cannot be read.",
+        "detail": "fsqlite.json: Permission denied",
+    }
+    assert sidekick._unreadable(OSError("no such device"))["detail"] == "no such device"
 
 
 def test_pending_envelopes_are_counted_by_their_commit_marker(tmp_path: Path) -> None:

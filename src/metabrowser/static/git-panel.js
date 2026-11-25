@@ -2819,7 +2819,7 @@
     if (controller === null || !freshness) {
       paint({
         state: "not_found",
-        title: "Commit not found",
+        title: "This commit was not found.",
         detail: "This commit is not in the repository.",
         retry: false,
       });
@@ -2871,7 +2871,7 @@
       missingCommitNode(
         {
           state: "not_full",
-          title: "Full commit ID needed",
+          title: "This address needs the full commit ID.",
           detail: "Use the commit’s full lowercase ID in the address, or open it from its row.",
           retry: false,
         },

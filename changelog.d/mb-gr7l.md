@@ -14,3 +14,7 @@
 
 - Drop the detail block under a Markdown document that could not be rendered; the notice
   says what happened and points to the Source tab.
+
+- Answer a capability the opened folder lacks, and a Git too old for a checkout’s
+  branches and tags, with a reader sentence as `error`; what was missing, and the Git
+  release needed, move to `detail`.

@@ -43,6 +43,7 @@ from metabrowser.checkout_revisions import (
     CHECKOUT_REFS_POLL_S,
     NOT_A_CHECKOUT,
     PARTIAL_CLONE_GIT_MINIMUM,
+    CheckoutGitUnsupportedError,
     open_on_ref,
 )
 from metabrowser.git import repo as git_repo
@@ -89,6 +90,9 @@ pytestmark = [
 ]
 
 _JSON = {"content-type": "application/json"}
+# What a page shows for a Git too old for a checkout's revisions; the release it needs
+# is the answer's detail.
+TOO_OLD = CheckoutGitUnsupportedError.reader_message
 FIRST = "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
 SECOND = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
@@ -1526,7 +1530,7 @@ def test_a_partial_clone_answers_object_unavailable_and_fetches_nothing(tmp_path
         if version < PARTIAL_CLONE_GIT_MINIMUM:
             refused = client.post("/api/source/pin", json={"ref": "origin/feature"}, headers=_JSON)
             assert (refused.status_code, refused.json()["code"]) == (409, "unsupported_git")
-            assert "partial clone" in refused.json()["error"]
+            assert "partial clone" in refused.json()["detail"]
             assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
             _the_clone_is_unchanged(clone, packs, before)
             return
@@ -1586,7 +1590,7 @@ def test_a_partial_clone_on_a_git_that_ends_at_a_missing_object_is_refused_by_na
         ):
             assert (refused.status_code, refused.json()) == (
                 409,
-                {"error": said, "code": "unsupported_git"},
+                {"error": TOO_OLD, "detail": said, "code": "unsupported_git"},
             )
         assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
     assert _differing(before, snapshot(clone)) == []
@@ -1611,7 +1615,7 @@ def test_a_partial_clone_on_a_git_that_ends_at_a_missing_object_is_refused_by_na
         if refuses:
             assert (answer.status_code, answer.json()) == (
                 409,
-                {"error": said, "code": "unsupported_git"},
+                {"error": TOO_OLD, "detail": said, "code": "unsupported_git"},
             ), setting
         else:
             assert answer.status_code == 200, answer.text
@@ -1648,7 +1652,7 @@ def test_an_older_git_is_refused_by_name_and_the_working_tree_is_still_served(
         ):
             assert (refused.status_code, refused.json()) == (
                 409,
-                {"error": said, "code": "unsupported_git"},
+                {"error": TOO_OLD, "detail": said, "code": "unsupported_git"},
             )
         assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
         assert _live_tree(client) == ["NOTES.md", "README.md", "STAGED.md", "UNTRACKED.md"]

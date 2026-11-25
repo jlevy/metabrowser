@@ -27,6 +27,8 @@ its marker by path.
 
 from __future__ import annotations
 
+import os
+from pathlib import PurePath
 from typing import Any
 
 from starlette.concurrency import run_in_threadpool
@@ -91,12 +93,14 @@ async def _open(
 
 
 def _unreadable(exc: OSError) -> dict[str, str]:
-    """The error a store's files that cannot be read answer: the operating system's words
-    are its detail."""
+    """The error a store's files that cannot be read answer: the file that failed, by name,
+    and the operating system's words are its detail, for an agent (`metab --api`)."""
+    reason = exc.strerror or str(exc)
+    failed = PurePath(os.fsdecode(exc.filename)).name if exc.filename else ""
     return {
         "state": "invalid",
         "message": "This store cannot be read.",
-        "detail": exc.strerror or str(exc),
+        "detail": f"{failed}: {reason}" if failed else reason,
     }
 
 

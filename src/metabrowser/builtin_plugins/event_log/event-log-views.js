@@ -329,7 +329,7 @@ function detail(row) {
     fact("Open records", String(row.opens ?? 0));
   }
   if (row.orphan === true) {
-    fact("Started", "before this file: the span above it is in an earlier segment");
+    fact("Started", "before this file: the span above it is in an earlier file");
   }
   const body = make("div", "event-log-detail", [facts]);
   const attrs = JSON.stringify(row.attrs, null, 2);
@@ -1203,7 +1203,7 @@ export function mountEventLogView(container, ctx, mb, view) {
     // work is not known to be stuck, and the heading does not say it was.
     parts.body.append(
       heading(
-        continues ? "Not ended in this segment" : "Still running when the log ended",
+        continues ? "Not ended in this file" : "Still running when the log ended",
         mb.formatInteger(count(unfinished.total)),
       ),
     );

@@ -2136,7 +2136,8 @@ async def _windowed_blob_file_response(
             {
                 "type": "error",
                 "path": wire,
-                "error": "Requested preview window exceeds the stream budget for this blob",
+                "error": "This part of the file is past what can be shown here.",
+                "detail": "Requested preview window exceeds the stream budget for this blob",
                 "max_offset": source.max_blob_bytes,
             },
             status_code=416,

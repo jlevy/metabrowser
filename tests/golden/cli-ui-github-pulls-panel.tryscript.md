@@ -605,7 +605,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "not_logged_in": {
       "status": "current",
       "connection": {
-        "text": "Run gh auth login --hostname github.com to sign in to GitHub. Showing cached pull requests.",
+        "text": "Run gh auth login --hostname github.com to sign in to GitHub. Showing the pull requests last loaded.",
         "state": "paused",
         "reload": true
       }
@@ -613,7 +613,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "gh_too_old": {
       "status": "current",
       "connection": {
-        "text": "GitHub CLI needs an update. Showing cached pull requests.",
+        "text": "GitHub CLI needs an update. Showing the pull requests last loaded.",
         "help": "update",
         "state": "paused",
         "reload": true
@@ -622,7 +622,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "not_found_or_private": {
       "status": "current",
       "connection": {
-        "text": "GitHub could not find this repository or grant access to it. Showing cached pull requests.",
+        "text": "GitHub could not find this repository or grant access to it. Showing the pull requests last loaded.",
         "state": "paused",
         "reload": true
       }
@@ -630,7 +630,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "network_error": {
       "status": "current",
       "connection": {
-        "text": "Could not reach GitHub. Showing cached pull requests.",
+        "text": "Could not reach GitHub. Showing the pull requests last loaded.",
         "state": "paused",
         "reload": true
       }
@@ -638,7 +638,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "gh_failed": {
       "status": "current",
       "connection": {
-        "text": "Could not refresh the list. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing the pull requests last loaded.",
         "state": "paused",
         "reload": true
       }
@@ -646,7 +646,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "account_changed": {
       "status": "stale",
       "connection": {
-        "text": "Could not refresh the list. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing the pull requests last loaded.",
         "state": "paused",
         "reload": true
       }
@@ -654,7 +654,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "gh_missing": {
       "status": "current",
       "connection": {
-        "text": "GitHub CLI is not installed. Showing cached pull requests.",
+        "text": "GitHub CLI is not installed. Showing the pull requests last loaded.",
         "help": "install",
         "state": "paused",
         "reload": true
@@ -663,7 +663,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "cache_unwritable": {
       "status": "current",
       "connection": {
-        "text": "Could not refresh the list. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing the pull requests last loaded.",
         "state": "paused",
         "reload": true
       }
@@ -671,7 +671,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "rate_limited": {
       "status": "current",
       "connection": {
-        "text": "GitHub rate limit reached. Next attempt after 2026-09-18T00:00:00.000Z. Showing cached pull requests.",
+        "text": "GitHub rate limit reached. Next attempt after 2026-09-18T00:00:00.000Z. Showing the pull requests last loaded.",
         "state": "paused",
         "reload": false
       }
@@ -1041,7 +1041,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "an age, before": "2h",
     "an age, two hours on": "4h",
     "rows built to tell it": 0,
-    "a passive retry over cached rows breathes the announced outage, with no spinner": "Could not reach GitHub. Showing cached pull requests.",
+    "a passive retry over cached rows breathes the announced outage, with no spinner": "Could not reach GitHub. Showing the pull requests last loaded.",
     "closing twelve expanded trees enforces retention immediately": {
       "whileExpanded": 10,
       "afterClosingAll": 9

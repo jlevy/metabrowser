@@ -27,9 +27,11 @@
 // It also prints a record of kind "access" for each read of `.message` or `.stack` off a
 // value, and of kind "stringified" for each `String(x)`, with the source as its text;
 // caught is true when x is a catch clause's binding or a `.catch()` callback's parameter,
-// so the check can tell an exception's own text from a server's answer. And it prints a
-// record of kind "call" for each call of a function named `shortCommit`, which names a
-// commit by its ID.
+// so the check can tell an exception's own text from a server's answer. It prints a record
+// of kind "caught-value" for each such binding written into text as it is: a template's
+// expression, an operand of `+`, or the value assigned to a property, as
+// `note.textContent = error` writes it. And it prints a record of kind "call" for each call
+// of a function named `shortCommit`, which names a commit by its ID.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
@@ -53,16 +55,56 @@ const BUILT_IN_ERRORS = new Set([
   "DOMException",
 ]);
 
+// The names a script reaches the global object by, so `global.console.warn(...)` is the
+// console as `console.warn(...)` is.
+const GLOBALS = new Set(["global", "globalThis", "window", "self"]);
+
+/** @param {import("typescript").Node} node */
+function isConsole(node) {
+  if (ts.isIdentifier(node)) {
+    return node.text === "console";
+  }
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    node.name.text === "console" &&
+    ts.isIdentifier(node.expression) &&
+    GLOBALS.has(node.expression.text)
+  );
+}
+
 /** @param {import("typescript").Node} node */
 function isConsoleCall(node) {
   if (!ts.isCallExpression(node)) {
     return false;
   }
   const callee = node.expression;
+  return ts.isPropertyAccessExpression(callee) && isConsole(callee.expression);
+}
+
+/**
+ * Whether the identifier *node* is written into text as it is: a template's expression, an
+ * operand of `+`, or the value assigned to a property.
+ * @param {import("typescript").Node} node
+ */
+function isWrittenAsText(node) {
+  const parent = node.parent;
+  if (!parent) {
+    return false;
+  }
+  if (ts.isTemplateSpan(parent) && parent.expression === node) {
+    return true;
+  }
+  if (!ts.isBinaryExpression(parent)) {
+    return false;
+  }
+  const operator = parent.operatorToken.kind;
+  if (operator === ts.SyntaxKind.PlusToken) {
+    return true;
+  }
   return (
-    ts.isPropertyAccessExpression(callee) &&
-    ts.isIdentifier(callee.expression) &&
-    callee.expression.text === "console"
+    (operator === ts.SyntaxKind.EqualsToken || operator === ts.SyntaxKind.PlusEqualsToken) &&
+    parent.right === node &&
+    (ts.isPropertyAccessExpression(parent.left) || ts.isElementAccessExpression(parent.left))
   );
 }
 
@@ -234,6 +276,18 @@ function collect(file, records) {
         functions: functionsAround(node),
         callee: calleeOf(node),
         caught: false,
+      });
+    } else if (ts.isIdentifier(node) && isWrittenAsText(node) && isCaught(node, node.text)) {
+      records.push({
+        file,
+        line: lineOf(node),
+        kind: "caught-value",
+        text: ts.isTemplateSpan(node.parent) ? `\${${node.text}}` : node.parent.getText(tree),
+        expressions: [],
+        context: contextOf(node),
+        functions: functionsAround(node),
+        callee: "",
+        caught: true,
       });
     } else if (
       ts.isPropertyAccessExpression(node) &&

@@ -515,7 +515,7 @@ $ node tests/dom/event-log-view-session.js
     "headings": [
       "Failures by cause · 5",
       "Last failed connectivity probe",
-      "Not ended in this segment · 2",
+      "Not ended in this file · 2",
       "What the pages reported · 1"
     ],
     "summary": [

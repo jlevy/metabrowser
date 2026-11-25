@@ -280,7 +280,8 @@ $ metab shellroot --api /api/source/refresh --data refresh.json
 api: /api/source/refresh
 status: 409
 {
-  "error": "source does not support refresh",
+  "error": "This is not available here.",
+  "detail": "source does not support refresh",
   "code": "unsupported_for_subject",
   "capability": "refresh"
 }
@@ -293,7 +294,8 @@ $ metab shellroot --api /api/source/pin --data pin.json
 api: /api/source/pin
 status: 409
 {
-  "error": "source does not support pin",
+  "error": "This is not available here.",
+  "detail": "source does not support pin",
   "code": "unsupported_for_subject",
   "capability": "pin"
 }
@@ -306,7 +308,8 @@ $ metab shellroot --api /api/source/refs
 api: /api/source/refs
 status: 409
 {
-  "error": "source does not support refs",
+  "error": "This is not available here.",
+  "detail": "source does not support refs",
   "code": "unsupported_for_subject",
   "capability": "refs"
 }

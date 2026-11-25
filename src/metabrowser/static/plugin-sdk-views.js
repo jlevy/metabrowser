@@ -1155,7 +1155,7 @@
     if (held === false) {
       decided(false);
       refMenuIsSwitching = false;
-      status.textContent = "A ref switch is already in progress.";
+      status.textContent = "Another switch is already in progress.";
       return;
     }
     try {
@@ -1174,11 +1174,11 @@
         // the reader can do (docs/design-system-messages.md).
         status.textContent =
           response.status === 202
-            ? "This ref is still being fetched. Try again shortly."
-            : "Could not open this ref.";
+            ? "This branch or tag is still being fetched. Try again shortly."
+            : "Could not open this branch or tag.";
       }
     } catch {
-      status.textContent = "Could not open this ref.";
+      status.textContent = "Could not open this branch or tag.";
     } finally {
       decided(leaving);
       if (!leaving) {

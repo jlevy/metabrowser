@@ -5586,7 +5586,11 @@ async function run() {
     responses.set(`/api/git/commit/${SHA_MISSING}`, notFound);
     await internals.selectCommit(SHA_MISSING);
     await tick();
-    assertContains("missing commit: a folder names the miss", previewHtml, "Commit not found");
+    assertContains(
+      "missing commit: a folder names the miss",
+      previewHtml,
+      "This commit was not found",
+    );
     assertContains(
       "missing commit: a folder says where it looked",
       previewHtml,
@@ -5724,7 +5728,11 @@ async function run() {
     endFetch(fetched("origin_unavailable"));
     await tick();
     await tick();
-    assertContains("unfetched commit: names the failed fetch", previewHtml, "Commit not fetched");
+    assertContains(
+      "unfetched commit: names the failed fetch",
+      previewHtml,
+      "Could not fetch this commit",
+    );
     assertContains("unfetched commit: says why", previewHtml, "The origin could not be read.");
     assertEqual(
       "unfetched commit: the failure is an alert",
@@ -5786,7 +5794,11 @@ async function run() {
       previewHtml,
       "Could not load this commit.",
     );
-    assertNotContains("refused commit: not called not found", previewHtml, "Commit not found");
+    assertNotContains(
+      "refused commit: not called not found",
+      previewHtml,
+      "This commit was not found",
+    );
     assertEqual("refused commit: state on the element", previewNode.dataset.state, "failed");
 
     // Inside the freshness window the controller asks for nothing: the view says the
@@ -5798,7 +5810,7 @@ async function run() {
     await internals.selectCommit(SHA_INSIDE);
     await tick();
     await tick();
-    assertContains("inside the window: names the miss", previewHtml, "Commit not found");
+    assertContains("inside the window: names the miss", previewHtml, "This commit was not found");
     assertContains("inside the window: says what it knows", previewHtml, "as last fetched");
     assertNotContains("inside the window: no fetch is claimed", previewHtml, "did not bring it");
     assertNotContains("inside the window: never said fetching", previewHtml, "Fetching");

@@ -470,7 +470,7 @@
       async function lookup() {
         const response = await read(`/api/plugin/github/pulls?${params}`, { signal });
         if (!response.ok) {
-          throw new Error("Could not search cached pull requests.");
+          throw new Error("Could not search pull requests.");
         }
         return response.json();
       }

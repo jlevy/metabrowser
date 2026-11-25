@@ -491,7 +491,7 @@ export function describePulls(envelope, page) {
   if (known && (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete))) {
     model.empty = page.filter === "all" ? "No pull requests." : `No ${page.filter} pull requests.`;
   }
-  const cached = holding ? " Showing cached pull requests." : "";
+  const cached = holding ? " Showing the pull requests last loaded." : "";
   const heldByRate = rateHoldMs(envelope, page.nowMs) > 0;
   const asking = page.requesting === true || envelope.refreshing;
   const working = asking || envelope.state === "pending" || envelope.state === "absent";
@@ -516,7 +516,7 @@ export function describePulls(envelope, page) {
   } else {
     // Rows are shown: their age stays, and a refresh running breathes it.
     const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
-    const note = envelope.truncated ? " · some pull requests could not be cached" : "";
+    const note = envelope.truncated ? " · some pull requests are not listed" : "";
     model.connection = {
       state: "connected",
       text: `Updated ${age}${note}`,
