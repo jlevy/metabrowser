@@ -123,10 +123,11 @@ DOCTOR_APP_ENV: Final = "METABROWSER_DOCTOR_APP"
 # which tests/test_macos_app_pins.py holds to these two sets; the state directory's, which
 # hold only the event log, are passed too. They get none of STORAGE_OVERRIDES.
 STORAGE_OVERRIDES: Final = frozenset({"XDG_CONFIG_HOME", "METABROWSER_CACHE_DIR", "XDG_CACHE_HOME"})
-# They get LAUNCH_STORAGE_OVERRIDES only as the app was launched with it, as the hand checks
-# launch a development build to keep its recent targets apart. A terminal's reaches no app,
-# and a launch from Finder or the Dock has none, but the doctor the app runs sees the app's
-# own, which its servers use too.
+# They get LAUNCH_STORAGE_OVERRIDES only as the app was launched with it, by `open --env`,
+# as the hand checks launch a development build to keep its recent targets apart, or from
+# launchd's environment (`launchctl setenv`). A terminal's `export` reaches no app, so a
+# doctor run there cannot tell what the app has, but the doctor the app runs sees the
+# app's own, which its servers use too.
 LAUNCH_STORAGE_OVERRIDES: Final = frozenset({"METABROWSER_CONFIG_DIR"})
 
 
@@ -414,10 +415,11 @@ def _servers_directory(
     """The directory the app's servers use instead of *directory*, when they differ.
 
     The app gives its servers none of :data:`STORAGE_OVERRIDES`, and of
-    :data:`LAUNCH_STORAGE_OVERRIDES` only what the app was launched with, which no
-    terminal's reaches. So an override set where this ``metab`` runs, with an app to
-    compare, names a directory they never read, unless the app runs this doctor
-    (*from_app*): then what it sees of those is the app's own, which its servers read too.
+    :data:`LAUNCH_STORAGE_OVERRIDES` only what the app was launched with, which a
+    terminal's ``export`` does not reach. So an override set where this ``metab`` runs,
+    with an app to compare, names a directory they do not read, as far as a terminal can
+    tell, unless the app runs this doctor (*from_app*): then what it sees of those is the
+    app's own, which its servers read too.
     """
 
     from metabrowser.home import StorageDirectoryError, application_cache, configuration_directory

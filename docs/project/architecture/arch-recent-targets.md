@@ -341,9 +341,10 @@ File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
 The app sets no storage override for the `metab` it runs, and passes on the
 `METABROWSER_CONFIG_DIR` it was started with (`ChildEnvironment`), so the list it reads
 is the one its `--recent-add` writes.
-Started from Finder or the Dock, with none, that is the default list, which a person’s
-`metab` in Terminal writes too; a development build the hand checks start with a scratch
-directory keeps its own list there.
+Started from Finder or the Dock, it has launchd’s environment, which usually sets none
+(`launchctl setenv` can), and then that is the default list, which a person’s `metab` in
+Terminal writes too; a development build the hand checks start with a scratch directory
+keeps its own list there.
 The menu’s contents are `metab`’s, pinned by the golden above; drawing them is AppKit’s,
 which the [parity registry](arch-parity-registry.md) records as `app.open-recent-menu`.
 `RecentTargetsTests` covers how the app reads the answer and chooses its rows, and

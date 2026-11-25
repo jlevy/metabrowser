@@ -24,9 +24,11 @@ dev_open() { open --env METABROWSER_CONFIG_DIR="$METABROWSER_CONFIG_DIR" "$@"; }
 ```
 
 `dev_open` is `open` that gives a launched app that directory; `open` gives one the
-environment LaunchServices has, not the shell’s. The checks below open the app with it,
-and wherever one quits the app and launches it again, launch the development build with
-`dev_open -a`, never from the Dock or Finder: a copy launched any other way reads and
+environment LaunchServices has, not the shell’s. The checks below open the app and send
+it links with it, since a link may launch the app, and `--env` changes nothing for a
+copy already running.
+Wherever one quits the app and launches it again, launch the development build with
+`dev_open`, never from the Dock or Finder: a copy launched any other way reads and
 writes your own list and `config.yml`. `make macos-run` starts the app with
 `METABROWSER_RECORD_RECENT=0`, which records nothing, so the Recents and Switching
 Folders checks cannot pass under it.
@@ -82,7 +84,7 @@ Set `APP` to the development build and make some folders:
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 LOGS="$HOME/Library/Logs/Metabrowser"
-mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g,.hidden} "$HOME/Documents/mb-check"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g,h,.hidden} "$HOME/Documents/mb-check"
 echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
 ```
@@ -94,8 +96,8 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    File > Open Folder… chooses a file too.
 2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
    above `a`, and `metab --recent`, run in this shell with the `metab` the app uses,
-   lists the same two. After `metab /tmp/mb-check/c --no-open` in this shell, stopped
-   with Control-C, and a switch back to the app, File > Open Recent lists `c` first.
+   lists the same two. After `metab /tmp/mb-check/h --no-open` in this shell, stopped
+   with Control-C, and a switch back to the app, File > Open Recent lists `h` first.
    Opening `a` again, while its window is open, moves it to the top.
    **One list in the Dock:** drop `f` on the Dock icon, run
    `dev_open -a "$APP" /tmp/mb-check/g`, which opens it as Finder’s Open With does, and
@@ -105,7 +107,7 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    forward. A folder listed twice, or a second group of folders, is macOS’s own
    recent-documents list beside the app’s, and fails the check: the app clears macOS’s
    list only once, at launch, and would have to clear it after each open.
-   Close the windows of `f` and `g`. After `rm -r /tmp/mb-check/c`, choosing `c` shows
+   Close the windows of `f` and `g`. After `rm -r /tmp/mb-check/h`, choosing `h` shows
    the alert and removes it.
    **Not opens:** quit, and relaunch with `dev_open -a "$APP"`, which restores `a` and
    `b`: both menus and `metab --recent` list what they did before the quit, in the same
@@ -208,37 +210,37 @@ REPO=https://github.com/jlevy/metabrowser
 LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 256 | cut -c1-8).log"
 ```
 
-1. **A pull request.** `open -b "$APP_ID" "$REPO/pull/517"` opens a window at the pull
-   request’s page, titled for the repository until the server answers and then as
+1. **A pull request.** `dev_open -b "$APP_ID" "$REPO/pull/517"` opens a window at the
+   pull request’s page, titled for the repository until the server answers and then as
    `metab` names the pull request.
    If the cache did not hold the repository, a confirmation named
    `github.com/jlevy/metabrowser` came first.
    `pgrep -fl -- "metab $REPO/pull/517"` lists one server, on a port from
    `CLIServeLaunch.repositoryBasePort` up, and `"$LOG"` holds its clone or cache line.
-2. **Another revision of an open repository.** `open -b "$APP_ID" "$REPO/tree/main"`
+2. **Another revision of an open repository.** `dev_open -b "$APP_ID" "$REPO/tree/main"`
    brings that window forward, which says it is starting and then shows `main`’s tree,
    not the pull request’s head: `pgrep` lists one server, now started on the tree link,
    and the ref selector names `main`.
 3. **A ref with a `/`.**
-   `open -b "$APP_ID" "$REPO/blob/claude/app-open-urls/docs/macos-app.md"` (any branch
-   whose name holds a `/` that GitHub still has) shows that file on that branch, not a
-   missing page.
+   `dev_open -b "$APP_ID" "$REPO/blob/claude/app-open-urls/docs/macos-app.md"` (any
+   branch whose name holds a `/` that GitHub still has) shows that file on that branch,
+   not a missing page.
 4. **Asked before a clone.** With a small public repository you have never opened, which
-   the cache does not hold, `open -b "$APP_ID" URL` shows one confirmation naming it,
-   whose default button, which Return presses, is Cancel; Cancel opens nothing and
+   the cache does not hold, `dev_open -b "$APP_ID" URL` shows one confirmation naming
+   it, whose default button, which Return presses, is Cancel; Cancel opens nothing and
    starts no `metab` serving it, and sending it again asks again.
    A repository the cache holds, as in check 2, opens with no question.
-5. **Refusals.** `open -b "$APP_ID" "$REPO/issues/1"` shows `metab`’s message about
-   issues pages; `open -b "$APP_ID" https://example.com/` and
-   `open -b "$APP_ID" "https://user:secret@github.com/jlevy/metabrowser"` show the app’s
-   own, which leaves out `user:secret@`. None opens a window, and
+5. **Refusals.** `dev_open -b "$APP_ID" "$REPO/issues/1"` shows `metab`’s message about
+   issues pages; `dev_open -b "$APP_ID" https://example.com/` and
+   `dev_open -b "$APP_ID" "https://user:secret@github.com/jlevy/metabrowser"` show the
+   app’s own, which leaves out `user:secret@`. None opens a window, and
    `log show --last 2m --predicate "subsystem == '$APP_ID'"` prints none of those links
    in full.
 6. **A burst.**
-   `open -b "$APP_ID" $(for n in $(seq 1 30); do echo "$REPO/issues/$n"; done)` sends
-   thirty links at once, and one alert says that 30 links could not be opened, and that
-   those past one being resolved and `LinkQueue.limit` waiting were never read, rather
-   than thirty alerts.
+   `dev_open -b "$APP_ID" $(for n in $(seq 1 30); do echo "$REPO/issues/$n"; done)`
+   sends thirty links at once, and one alert says that 30 links could not be opened, and
+   that those past one being resolved and `LinkQueue.limit` waiting were never read,
+   rather than thirty alerts.
 7. **A first clone.** A link to a public repository that is not cached and takes longer
    than `SupervisorPolicy.startupTimeout` to clone keeps its window starting while the
    log grows, then opens.
@@ -452,7 +454,7 @@ Start signed out: choose Metabrowser > Clear Website Data…, All Websites, and 
    Edit one of your own comments, change it, and click Cancel: GitHub asks whether to
    discard the change, over the popover, and Cancel there keeps the edit.
 5. **Only the button.** With the popover open,
-   `open -b "$APP_ID" "$REPO/blob/main/README.md"` brings the window forward at that
+   `dev_open -b "$APP_ID" "$REPO/blob/main/README.md"` brings the window forward at that
    page, and the popover closes.
    A github.com link in a Markdown page, which is not the button, opens in the default
    browser.
@@ -717,8 +719,9 @@ for a developer; `make macos-run` launches the app with `open -a` and runs no
 `present` also passes `--open-in app`, so a target no app takes is refused, as these
 checks expect, instead of opening in a browser on a server started for it, as the
 default `auto` does; checks 11 and 12 cover `auto`. Launch the build with
-`dev_open -b "$APP_ID"` first: `--present` hands a target to the copy that runs, and one
-it has to launch gets no scratch directory.
+`dev_open -b "$APP_ID"` first: `--present` hands a target to the copy that runs, and
+launches one with `open -b`, which passes no environment, so a copy it launches gets the
+scratch directory only as check 1’s cold start gives it.
 
 ```shell
 APP_ID=io.github.jlevy.metabrowser.dev
@@ -732,10 +735,15 @@ present() {
 1. **A folder.** `present "$folder"` exits 0 with `delivered_to: app` and `bundle_path`
    naming the development build, and a window opens on the folder.
    Note the `real` time with the app running and again after a quit (a cold start),
-   beside `OPEN_TIMEOUT_S` in `cli/present.py`. The cold start launches the build
-   without the scratch directory, so it records `$folder` in your own list:
-   `env -u METABROWSER_CONFIG_DIR metab "$folder" --recent-forget` removes it.
-   Quit, and launch with `dev_open -b "$APP_ID"` again before check 2.
+   beside `OPEN_TIMEOUT_S` in `cli/present.py`. The cold start must not reach your own
+   list, where an open of a full list drops its oldest entry for good, so give the
+   scratch directory to every app launchd starts for the length of it:
+   `launchctl setenv METABROWSER_CONFIG_DIR "$METABROWSER_CONFIG_DIR"`, then the timed
+   `present "$folder"`, then `launchctl unsetenv METABROWSER_CONFIG_DIR` as soon as the
+   window opens, before you launch anything else.
+   The app keeps the directory it started with,
+   `launchctl getenv METABROWSER_CONFIG_DIR` prints nothing, and
+   `env -u METABROWSER_CONFIG_DIR metab --recent` is still your own list as it was.
 2. **A file, its root not open.** Close the folder’s windows, then
    `present "$folder" --path docs/guide.md`: one window opens, rooted at `$folder` (its
    title is the folder’s name, not `docs`), showing `guide.md`.
@@ -757,7 +765,7 @@ present() {
    does `present "$folder"`; nothing opens.
 7. **A GitHub URL.** With a build that declares the marker,
    `present https://github.com/jlevy/metabrowser/pull/517` opens the pull request’s
-   page, as the GitHub Links checks do with `open -b`.
+   page, as the GitHub Links checks do with `dev_open -b`.
 8. **Inside an agent’s sandbox.** From an agent session whose sandbox is on,
    `metab "$folder" --present` exits 5 with `lookup_failed` or `open_failed`, never
    `app_not_found`, under the default `auto` too, which starts no server then.

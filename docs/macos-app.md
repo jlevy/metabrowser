@@ -490,9 +490,11 @@ The app moves nothing itself.
   default cache. It does pass on a `METABROWSER_CONFIG_DIR` it was launched with, as in
   `open --env METABROWSER_CONFIG_DIR=/path/to/config -a Metabrowser`, so that launch
   keeps its recent targets and `config.yml` there.
-  Launched from Finder or the Dock, it uses the default configuration directory, and a
-  `metab` in Terminal that `METABROWSER_CONFIG_DIR` or `XDG_CONFIG_HOME` points
-  elsewhere keeps recent targets of its own, which File > Open Recent does not show.
+  Launched from Finder or the Dock, it uses the default configuration directory, unless
+  launchd’s own environment sets one (`launchctl setenv`); a terminal’s `export` does
+  not reach it. A `metab` in Terminal that `METABROWSER_CONFIG_DIR` or `XDG_CONFIG_HOME`
+  points elsewhere keeps recent targets of its own, which File > Open Recent does not
+  show.
 - A repository that another `metab`, in Terminal say, is cloning at the same moment does
   not open until that clone ends: the window’s start is given up on meanwhile, and Retry
   then opens it from the cache.

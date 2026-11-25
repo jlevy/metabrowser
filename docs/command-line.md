@@ -567,9 +567,11 @@ sentence, the details it read, and the step that fixes it:
 
 The macOS app runs its servers without `METABROWSER_CACHE_DIR`, `XDG_CONFIG_HOME`, or
 `XDG_CACHE_HOME`, and with a `METABROWSER_CONFIG_DIR` only when the app was itself
-launched with one, which a terminal’s never reaches.
+launched with one, by `open --env` or from launchd’s environment, which a terminal’s
+`export` does not reach.
 So when `--present` would open the app, a directory one of those names here is a warning
-that names the directory the app’s servers use instead.
+that names the directory the app’s servers use without one, since a terminal cannot tell
+what the app was launched with.
 Run from the app’s Check Setup…, a `METABROWSER_CONFIG_DIR` the app was launched with is
 the one its servers use, and no warning.
 

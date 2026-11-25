@@ -170,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Folders dropped on the Dock icon, opened with Open With, or passed to `open -a`, and
     /// links sent with `open -b`, as `metab LINK --present` sends them.
     func application(_ application: NSApplication, open urls: [URL]) {
-        urls.forEach { request($0) }
+        urls.forEach { request($0, as: .opened) }
     }
 
     /// The Dock icon's menu: the recent targets, as File > Open Recent lists them.
@@ -301,13 +301,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// arrives later.
     ///
     /// With `inOwnFolder`, a file opens in its own folder even inside an open one, as
-    /// `metab FILE` would serve it (Help > Open Event Log, `EventLogLocation`). `showing`
-    /// says why, `.opened` unless the app opens the folder for itself, as for the event
-    /// log's directory, which the user did not choose and Open Recent does not list
-    /// (`showOpened`).
+    /// `metab FILE` would serve it (Help > Open Event Log, `EventLogLocation`). `showing`,
+    /// which every caller names, says why: `.opened` for the user's open, or
+    /// `.openedForTheApp` for a folder the app opens for itself, such as the event log's
+    /// directory, which the user did not choose and Open Recent does not list (`showOpened`).
     func request(
         _ url: URL, into window: BrowserWindowController? = nil, inOwnFolder: Bool = false,
-        as showing: RecentTargets.Showing = .opened
+        as showing: RecentTargets.Showing
     ) {
         guard url.isFileURL else { return requestLink(url) }
         let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
@@ -372,7 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// records nothing. A page's link that opens a new window
     /// (`FolderSession.openWindow(at:)`) opens another window of its own folder.
     private func showOpened(
-        _ session: FolderSession, in window: WindowForOpen, as showing: RecentTargets.Showing = .opened
+        _ session: FolderSession, in window: WindowForOpen, as showing: RecentTargets.Showing
     ) {
         recentFolders.shown(session.root, showing)
         switch window {
@@ -655,7 +655,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ root: SessionRoot, on link: URL, waitForRuntime: Bool = true
     ) -> Bool {
         if let session = sessions[root.key] as? FolderSession {
-            showOpened(session, in: .link(link, showingProgress: !waitForRuntime))
+            showOpened(session, in: .link(link, showingProgress: !waitForRuntime), as: .opened)
             return true
         }
         let setup = waitForRuntime ? selection.setupForOpening(link) : operations.launchableSetup()
@@ -663,7 +663,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if waitForRuntime, !selection.isBusy { showRuntimeSettings() }
             return false
         }
-        showOpened(session, in: .link(link, showingProgress: !waitForRuntime))
+        showOpened(session, in: .link(link, showingProgress: !waitForRuntime), as: .opened)
         Task { await session.startServer() }
         return true
     }
@@ -824,13 +824,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .showHere(let key):
             guard let window, let session = open(key) else { return }
             AppLog.app.info("switching a window to \(session.folderName, privacy: .public)")
-            showOpened(session, in: .window(window, page: nil))
+            showOpened(session, in: .window(window, page: nil), as: .opened)
         case .bringForward(let key):
             guard let session = open(key) else { return }
-            showOpened(session, in: .front(page: nil))
+            showOpened(session, in: .front(page: nil), as: .opened)
         case .newWindow(let key):
             guard let session = open(key) else { return }
-            showOpened(session, in: .newWindow)
+            showOpened(session, in: .newWindow, as: .opened)
         case .openHere(let url):
             recentFolders.openListed(url) { [weak self] in self?.requestRecent($0, into: window) }
         case .openInNewWindow(let url):
@@ -843,7 +843,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func requestRecent(_ url: URL, into window: BrowserWindowController? = nil) {
         guard !isQuitting else { return }
         guard let repository = PresentPlan.repositoryURL(url.absoluteString) else {
-            return request(url, into: window)
+            return request(url, into: window, as: .opened)
         }
         recheckChangedRuntime()
         let plan = PresentPlan(kind: .repository, repository: repository, link: repository)
@@ -900,7 +900,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if waitingRecentRepositories.remove(folder) != nil {
                 requestRecent(folder, into: window)
             } else {
-                request(folder, into: window)
+                request(folder, into: window, as: .opened)
             }
         }
     }
@@ -918,7 +918,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.message = "Choose a folder to browse with Metabrowser, or a file to see in its folder."
         panel.begin { [weak self] response in
             guard response == .OK else { return }
-            panel.urls.forEach { self?.request($0) }
+            panel.urls.forEach { self?.request($0, as: .opened) }
         }
     }
 

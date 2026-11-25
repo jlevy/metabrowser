@@ -272,9 +272,10 @@ def test_the_apps_servers_get_the_storage_variables_the_doctor_expects() -> None
     of ``LAUNCH_STORAGE_OVERRIDES``.
 
     The doctor's configuration and cache checks warn that a storage variable set in a
-    terminal names a directory the app's servers never read, because the app gives its
-    children none of the first set, and only what it was launched with of the second, which
-    no terminal's reaches; the doctor the app runs sees that launch's own. A name moved
+    terminal names a directory the app's servers do not read, because the app gives its
+    children none of the first set, and of the second only what it was launched with, which
+    a terminal's ``export`` does not reach; the doctor the app runs sees that launch's own.
+    A name moved
     between the allowlist and either set would make a warning false or miss one.
     The allowlist's one entry that is not a literal names the recent-targets variable.
     """
