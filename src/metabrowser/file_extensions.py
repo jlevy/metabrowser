@@ -34,8 +34,8 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
-# Logical extension to a language in the exact vendored Highlight.js common
-# registry. Keep aliases here rather than in individual renderers; settings.py
+# Logical extension to a language in the exact vendored Highlight.js registry: the
+# common build plus the grammars vendored beside it (TOML, Lean). Keep aliases here rather than in individual renderers; settings.py
 # injects one serialized copy into every browser surface.
 SYNTAX_LANGUAGE_BY_EXTENSION: Final[Mapping[str, str]] = MappingProxyType(
     {
@@ -58,6 +58,7 @@ SYNTAX_LANGUAGE_BY_EXTENSION: Final[Mapping[str, str]] = MappingProxyType(
         ".graphql": "graphql",
         ".h": "c",
         ".hh": "cpp",
+        ".hlean": "lean",
         ".hpp": "cpp",
         ".htm": "xml",
         ".html": "xml",
@@ -70,6 +71,7 @@ SYNTAX_LANGUAGE_BY_EXTENSION: Final[Mapping[str, str]] = MappingProxyType(
         ".jsx": "javascript",
         ".kt": "kotlin",
         ".kts": "kotlin",
+        ".lean": "lean",
         ".less": "less",
         ".lua": "lua",
         ".m": "objectivec",

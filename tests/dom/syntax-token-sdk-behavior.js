@@ -108,7 +108,13 @@ function loadSdk(sandbox) {
 async function main() {
   const ready = createSandbox();
   load(ready, "src/metabrowser/static/vendor/highlight.min.js");
-  load(ready, "src/metabrowser/static/vendor/highlight-toml.min.js");
+  // Every grammar vendored beside the runtime, as the shell's prefetched tier loads them.
+  const vendorDir = "src/metabrowser/static/vendor";
+  for (const name of fs.readdirSync(path.join(repoRoot, vendorDir)).sort()) {
+    if (/^highlight-.+\.min\.js$/.test(name)) {
+      load(ready, `${vendorDir}/${name}`);
+    }
+  }
   loadSdk(ready);
   const readySyntaxFallbacks = [];
   ready.metabrowser.perf = {

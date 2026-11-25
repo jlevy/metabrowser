@@ -2267,6 +2267,7 @@ async def index(
     optional_script_assets = [
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
+        {"src": _static_asset_url("vendor/highlight-lean.min.js"), "requires": "hljs"},
     ]
     # On-demand tier: fetched by asset-loader.js the first time a consumer asks.
     # Chart.js and its two plugins are 297,531 bytes read by one view, and
@@ -2726,7 +2727,8 @@ async def index(
        the async enhancement loader below so they cannot block initial
        tree/readme rendering. TOML support comes from the official
        highlight.js ini.min.js grammar (`aliases:["toml"]`), vendored as
-       highlight-toml.min.js. -->
+       highlight-toml.min.js; Lean's from the third-party grammar
+       highlight.js lists, vendored as highlight-lean.min.js. -->
   {settings_block}
   {repository_context_block}
   {initial_tree_block}

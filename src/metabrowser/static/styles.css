@@ -6188,6 +6188,13 @@ pre.code-block code.hljs {
 .hljs .hljs-bullet {
   color: var(--color-syntax-number);
 }
+/* Lean's grammar (highlight-lean.min.js) scopes `sorry` and `admit`, which leave a
+   proof unfinished, apart from keywords so a reader can find them; its README asks the
+   host to color the scope. */
+.hljs .hljs-sorry {
+  color: var(--status-warning-text);
+  font-weight: var(--weight-bold);
+}
 .hljs .hljs-emphasis {
   font-style: italic;
 }

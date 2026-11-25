@@ -20,6 +20,13 @@
     "source": "dist/chartjs-plugin-annotation.min.js",
     "version": "3.1.0"
   },
+  "highlight-lean.min.js": {
+    "bytes": 2329,
+    "package": "highlightjs-lean",
+    "sha256": "6054be641cc4e3adbf7e0c3c377e8c1c3e77fde75bd321ebf747f34951d87275",
+    "source": "dist/lean.min.js",
+    "version": "1.2.0"
+  },
   "highlight-toml.min.js": {
     "bytes": 1044,
     "package": "@highlightjs/cdn-assets",

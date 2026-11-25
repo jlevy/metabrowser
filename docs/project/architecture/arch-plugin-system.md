@@ -477,6 +477,8 @@ for core modules that is not part of the SDK.
 
 The steps below take a format from unknown to fully supported.
 Each is optional except the kind and one view.
+A programming language needs only steps 6 and 7, and
+[Adding a Language](../../adding-a-language.md) is the recipe for them.
 
 1. **Claim the kind.** Add a `[[kind]]` rule to a plugin manifest.
    An extension or basename is cheapest; a content predicate is for a format that shares

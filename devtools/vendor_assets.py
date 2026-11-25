@@ -53,6 +53,9 @@ ENTRIES: tuple[VendorEntry, ...] = (
         "highlight-toml.min.js",
         "LICENSE",
     ),
+    # Lean's grammar is the third-party one Highlight.js lists in SUPPORTED_LANGUAGES.md,
+    # from leanprover-community, compiled for the Highlight.js release vendored above.
+    VendorEntry("highlightjs-lean", "dist/lean.min.js", "highlight-lean.min.js", "LICENSE"),
     VendorEntry("chart.js", "dist/chart.umd.min.js", "chart.umd.min.js", "LICENSE.md"),
     VendorEntry(
         "chartjs-plugin-annotation",

@@ -31,6 +31,12 @@ independent of Metabrowser’s license.
   [highlightjs.org](https://highlightjs.org)). The browser runtime, TOML language
   module, and GitHub stylesheet are vendored under `src/metabrowser/static/vendor/`.
 
+- **highlightjs-lean** v1.2.0
+  ([BSD 3-Clause License](src/metabrowser/static/vendor/licenses/highlightjs-lean.txt),
+  [leanprover-community/highlightjs-lean](https://github.com/leanprover-community/highlightjs-lean)).
+  The Lean grammar for highlight.js is vendored as
+  `src/metabrowser/static/vendor/highlight-lean.min.js`.
+
 - **Chart.js** v4.5.1
   ([MIT License](src/metabrowser/static/vendor/licenses/chart.js.txt),
   [chartjs.org](https://www.chartjs.org)). The browser bundle is vendored as

@@ -237,6 +237,8 @@ Using Metabrowser:
 Extending it:
 
 - [Plugin authoring](docs/plugins.md): the manifest, browser SDK, and data hooks
+- [Adding a language](docs/adding-a-language.md): a programming language’s family,
+  color, and syntax highlighting, from upstream sources
 - [Architecture](docs/architecture.md): the layers and every architecture document
 - [Design system](docs/design-system.md): tokens, components, and interaction design
 - [Reader messages](docs/design-system-messages.md): what notices, empty states, and
