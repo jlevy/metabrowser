@@ -67,7 +67,9 @@ export function dropUnadmittedTargets(root) {
  * stays in the render's `frontmatter_error` diagnostic; the parser's reason is the
  * answer's `frontmatter_error_detail`, which the page does not show. The page's own
  * markup carries KPress's class, as the inert table of contents does, so KPress's
- * stylesheet draws the box; the sentence is text.
+ * stylesheet draws the box; the sentence is text. Its role is `status`, not KPress's
+ * `alert`: the document is shown and only its metadata is not, which is a warning
+ * (docs/design-system-messages.md, "Kinds of Message"), as the diagnostic's severity says.
  *
  * @param {Document} doc
  * @param {string} said
@@ -75,7 +77,7 @@ export function dropUnadmittedTargets(root) {
 function frontmatterErrorNotice(doc, said) {
   const notice = doc.createElement("aside");
   notice.className = "kpress-frontmatter-error";
-  notice.setAttribute("role", "alert");
+  notice.setAttribute("role", "status");
   notice.setAttribute("aria-label", "Frontmatter error");
   const title = doc.createElement("strong");
   title.append(doc.createTextNode("Frontmatter error"));

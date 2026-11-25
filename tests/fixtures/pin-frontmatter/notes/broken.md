@@ -7,3 +7,7 @@ status: draft
 # Tide Tables
 
 The office posts the table by eight.
+
+<!-- A test fixture: a pinned note's front matter, read only by tests.
+This document follows common-doc-guidelines.md.
+-->

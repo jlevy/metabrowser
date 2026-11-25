@@ -43,7 +43,8 @@ def test_a_front_matter_error_is_one_notice_and_not_a_diagnostic_row() -> None:
         assert shown["notices"] == 1, name
         notice = shown["children"][0]
         assert notice["notice"] == "Frontmatter error", name
-        assert notice["role"] == "alert", name
+        # KPress's own notice is an alert; the page's is a warning's status.
+        assert notice["role"] == ("alert" if name == "trusted" else "status"), name
         assert notice["reason"] == FRONTMATTER_ERROR_MESSAGE, name
         assert shown["detailShown"] is False, name
         listed = [child["listed"] for child in shown["children"][1:]]

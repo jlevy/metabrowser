@@ -51,7 +51,7 @@ $ node tests/dom/markdown-frontmatter-error-session.js
     "children": [
       {
         "notice": "Frontmatter error",
-        "role": "alert",
+        "role": "status",
         "reason": "The frontmatter could not be read."
       },
       {
@@ -69,7 +69,7 @@ $ node tests/dom/markdown-frontmatter-error-session.js
     "children": [
       {
         "notice": "Frontmatter error",
-        "role": "alert",
+        "role": "status",
         "reason": "The frontmatter could not be read."
       }
     ],
