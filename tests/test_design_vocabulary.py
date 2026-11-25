@@ -2604,8 +2604,12 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         assert f'"{name}"' in state
         assert name not in icons, f"{name} is back in the shell's eager icon registry"
     assert 'fill="none" stroke="currentColor"' in state, "a state's glyph takes its color"
-    # A row and its page match: one state's icon, from one module.
-    assert "pullStateIcon(" in panel and "pullStateIcon(" in page
+    # A row and its page match: one state's icon, from one module; a Pulls row draws its
+    # icon with its fields (stack-member-row.js).
+    member_row = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-member-row.js").read_text(
+        encoding="utf-8"
+    )
+    assert "pullStateIcon(" in member_row and "pullStateIcon(" in page
     assert 'aria-label", PULL_STATES[state].label' in state
     # Filters, buttons, and the spinner are the shell's.
     assert "controls.groupHtml(" in panel
@@ -2652,13 +2656,12 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
-    assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
-    # The stack menu and a stack's page draw a member with one builder (stack-member-row.js).
-    member_row = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-member-row.js").read_text(
-        encoding="utf-8"
-    )
+    # A Pulls row, the stack menu, and a stack's page draw a pull request's fields with one
+    # builder (stack-member-row.js), its title through the SDK's titleNodes.
+    assert "stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN)" in panel
     assert "stackMemberRow(link, deps.titleNodes, deps.identity)" in page
-    assert 'make("span", "github-pull-stack-member-title")' in member_row
+    assert 'title: "github-pulls-title"' in member_row
+    assert 'title: "github-pull-stack-member-title"' in member_row
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:
         assert github[title]["color"] == "var(--text)", title

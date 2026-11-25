@@ -3666,6 +3666,29 @@ own number, in “Stack #286”, is part of the stack’s label, in the label re
 to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` read each surface’s computed weight in Chrome.
 
+### One Order for a Pull Request’s Fields
+
+Wherever a row names a pull request by more than its title, its fields keep one order:
+the state icon, the title, its place in its stack, its number, and its author, “title ·
+14/15 · #455 · jlevy”.
+A reader who learns the order once reads every such row the same way.
+A surface that leaves a field out keeps the order of the rest: a pull request in no
+stack reads “title · #455 · jlevy”, and a row with no room for an author ends with its
+number.
+
+One builder draws the fields on every row of the GitHub plugin that shows them,
+`stackMemberRow` in `stack-member-row.js`: a Pulls row’s run (`PULLS_RUN`), and a
+stack’s member in the stack menu and on the stack’s own page (`MEMBER_LINE`). The order,
+and the muted dot before each field after the title, are its; a surface chooses only its
+layout, a run that wraps in the text column or one line whose title is cut short before
+the rest.
+
+The shell cannot import the GitHub plugin, so its own rows keep the order in their own
+code: Quick Search’s pull request results, “title #N · Merged”, and a ref selector row’s
+pull request line, its state icon, title, and number.
+An accessible name or a tooltip says the fields in the order the row shows them, “title,
+pull request #455”, never the number first.
+
 ### Authors Follow Pull Requests
 
 Wherever a row names a pull request by its number or its stack place, its author
