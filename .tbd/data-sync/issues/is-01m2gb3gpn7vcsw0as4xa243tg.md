@@ -5,7 +5,7 @@ title: Stabilize the test suite under machine load
 kind: epic
 status: open
 priority: 2
-version: 60
+version: 61
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/495
@@ -101,8 +101,9 @@ child_order_hints:
   - is-01m86734e2vcdjcfdkpaeyd2cg
   - is-01m84x33c0caf03wmz9eyam3ab
   - is-01m88ccctmpetbjwn22w7s4cjx
+  - is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-09-14T16:13:19.443Z
-updated_at: 2026-11-25T03:35:54.450Z
+updated_at: 2026-11-25T03:58:17.051Z
 extensions:
   linear:
     id: 0ec06507-cca1-4389-a123-11079aee3f0d

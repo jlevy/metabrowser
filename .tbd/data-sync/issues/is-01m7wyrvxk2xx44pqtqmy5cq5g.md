@@ -5,7 +5,8 @@ title: "Source and checkout kinds: one mode and one icon for a cloud mirror, a G
 kind: epic
 status: open
 priority: 1
-version: 15
+version: 17
+spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/667
@@ -17,9 +18,9 @@ refs:
     url: https://github.com/jlevy/metabrowser/pull/685
     at: 2026-11-21T19:56:50.023Z
 labels:
-  - linear
   - Improvement
 dependencies: []
+parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 child_order_hints:
   - is-01m7wxbwfxt3m6b3nbs2wy4v44
   - is-01m7p8hjk6jd7ckmr0fnjmpqca
@@ -28,7 +29,7 @@ child_order_hints:
   - is-01m7zt8s6hyeah3vfpm02rb6zf
   - is-01m7zt8tjfje20937mytx38qr8
 created_at: 2026-11-20T17:06:24.306Z
-updated_at: 2026-11-25T02:17:58.685Z
+updated_at: 2026-11-25T03:58:00.098Z
 extensions:
   linear:
     id: 74de802a-b5dd-4672-8169-c0ba864abbc5

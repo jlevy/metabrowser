@@ -5,12 +5,12 @@ title: "Epic: instant transitions and stable layout for the native app"
 kind: epic
 status: open
 priority: 1
-version: 95
+version: 97
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 labels:
-  - linear
   - Improvement
 dependencies: []
+parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 child_order_hints:
   - is-01m774qvqk729advxcgh6e13g4
   - is-01m774qx0e5bprjjzsmatmbe77
@@ -97,7 +97,7 @@ child_order_hints:
   - is-01m7h20dq1ck6pbk73n3pvng1m
   - is-01m7pfyp9qqhp6cg721a6cqp7r
 created_at: 2026-11-12T05:46:57.364Z
-updated_at: 2026-11-20T19:16:38.811Z
+updated_at: 2026-11-25T03:57:26.356Z
 extensions:
   linear:
     id: 57ee4dd2-2bff-4f11-b020-ab1f399ec740

@@ -5,7 +5,7 @@ title: Complete functional UI parity inventory and golden migration
 kind: epic
 status: open
 priority: 2
-version: 19
+version: 20
 spec_path: docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md
 labels:
   - linear
@@ -24,8 +24,9 @@ child_order_hints:
   - is-01m7re714zs51hx8dw5126eex9
   - is-01m7pr9x6jds5pb33d72apcyqp
   - is-01m854naembn4kppaqf2ztnqjm
+  - is-01m1b5mzft281epbec7m4mmca0
 created_at: 2026-09-10T20:54:00.303Z
-updated_at: 2026-11-23T21:23:15.027Z
+updated_at: 2026-11-25T03:58:33.043Z
 extensions:
   linear:
     id: b5547486-4b75-4916-b8ea-90d52974dfb2

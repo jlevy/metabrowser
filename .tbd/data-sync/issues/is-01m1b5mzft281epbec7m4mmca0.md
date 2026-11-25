@@ -5,12 +5,12 @@ title: "API envelope contract: a generated schema the CLI can show"
 kind: epic
 status: open
 priority: 2
-version: 14
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md
 labels:
-  - linear
   - Improvement
 dependencies: []
+parent_id: is-01m26hjjvhpcf49p2x1c3390kk
 child_order_hints:
   - is-01m1b5n06x1efn3vrrg79q5ge0
   - is-01m1b5n0k5zcehw2t11sxrpayv
@@ -20,7 +20,7 @@ child_order_hints:
   - is-01m1cda2sjv8sg4699t9g9yvs7
   - is-01m1cda35c0ppjyfe07hteh2pq
 created_at: 2026-08-31T05:46:06.201Z
-updated_at: 2026-11-20T19:21:06.809Z
+updated_at: 2026-11-25T03:58:36.684Z
 duplicate_of: null
 extensions:
   linear:

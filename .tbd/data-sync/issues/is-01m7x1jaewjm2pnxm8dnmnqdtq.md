@@ -5,7 +5,8 @@ title: "Cache layout and contract: repos/ and sources/ with short readable names
 kind: epic
 status: in_progress
 priority: 1
-version: 13
+version: 15
+spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/551
@@ -17,9 +18,9 @@ refs:
     url: https://github.com/jlevy/metabrowser/pull/666
     at: 2026-11-20T19:14:55.645Z
 labels:
-  - linear
   - Improvement
 dependencies: []
+parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 child_order_hints:
   - is-01m7wxxan4v3hedteasg82q02s
   - is-01m7x1f1scztk0y814r77bz58v
@@ -29,7 +30,7 @@ child_order_hints:
   - is-01m7x8afdch1746ake734g9r60
   - is-01m7x8ag6z4efv8z79hajaa1ak
 created_at: 2026-11-20T17:55:15.547Z
-updated_at: 2026-11-20T19:53:19.326Z
+updated_at: 2026-11-25T03:57:41.111Z
 extensions:
   linear:
     id: 1910be4b-70e6-4d39-ad72-341b9d3c22ce
