@@ -1121,8 +1121,8 @@ The tooltip clears while the menu is open.
 The circled i has a distinct dot and foot at sidebar size.
 It uses the shared icon-only button with muted ink at rest and the same highlight on
 hover, focus, or while the menu is open.
-Its button owns the open state and shares the
-[menu dismissal rule](#shared-overlay-lifecycle).
+Its button owns the open state and closes as
+[every menu closes](#every-menu-closes-alike).
 
 The menu shows information about the folder, including its local path, file count, size,
 and commit when available.
@@ -1682,9 +1682,12 @@ bars) and the section-disclosure mask after heading-like titles, both in `--mute
 pointing right when closed and rotating to point down when open.
 A toggle that expands a diff summary is the one row-like target whose chevron comes
 after its words: the Diff summary’s header, and a Pulls row’s lines
-([Diff Summary](#diff-summary)). Row-like activation targets share `--ui-row-height` and
-`--hover-bg`. These agreements are enforced by `tests/test_design_vocabulary.py`, which
-fails when a surface forks the glyph, the row height, or the hover token.
+([Diff Summary](#diff-summary)). A [fold expander](#fold-expanders) takes no chevron: it
+sets withheld content back in place rather than opening a row’s children, so it draws
+its own pair of glyphs.
+Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agreements
+are enforced by `tests/test_design_vocabulary.py`, which fails when a surface forks the
+glyph, the row height, or the hover token, or puts the chevron on a fold.
 
 ### Row Text Shares a Baseline
 
@@ -1757,14 +1760,43 @@ baseline matches a box, including a text slot in its box state.
 ### Fold Expanders
 
 A run of content withheld until asked for, such as a long stretch of changed lines in a
-diff, sits behind a full-width control at `--ui-row-height` carrying the same registry
-chevron, in `--highlight-bg`, hovering with `--hover-bg`. The label states the count it
-holds (`86 more changed lines`) and becomes the inverse when open (`Hide 86 lines`),
-because a control that hides its size is a control the reader cannot judge.
+diff, sits behind a full-width control at `--ui-row-height`, in `--highlight-bg`,
+hovering with `--hover-bg`. The label states the count it holds
+(`86 more changed lines`) and becomes the inverse when open (`Hide 86 lines`), because a
+control that hides its size is a control the reader cannot judge.
 A fold inside another disclosure stops its click, so expanding a fold never collapses
 its container. It is one primitive, `.fold-expander` in `static/styles.css`, on a button
 or a native `summary`. `test_section_headings_and_fold_expanders_are_primitives` holds
 it.
+
+The control leads with the **expand/contract pair** that KPress’s table of contents
+draws for its expand-all button, not the registry’s chevron:
+
+| State | Glyph | Says |
+| --- | --- | --- |
+| Closed | Lucide `chevrons-up-down` | Expand: the withheld content opens here |
+| Open | Lucide `chevrons-down-up` | Contract: the content folds back into this bar |
+
+A chevron says a row holds children, and it turns as they open.
+A fold holds no children: what it withholds is the run’s own content, cut from its
+middle and set back in place, so opening it opens no level of a tree.
+The pair is the mark for expanding and contracting in place, the one a rendered
+document’s table of contents already draws for its expand-all control.
+
+The primitive draws the glyph, as a mask on `.fold-expander::before`, from the control’s
+own state: a button’s `aria-expanded` or a native summary’s `details[open]`. A fold’s
+markup holds only its words, so every fold, current or new, draws the pair without
+asking for it, and none can carry a chevron.
+The glyph is the chevron’s size, `--toggle-chevron-size`, and weight, in the place a
+chevron would take, muted at rest and in `--text` under the pointer or the focus ring,
+in both themes, and in `CanvasText` in forced colors, which would otherwise mask it out
+on the bar’s `Canvas`. It swaps at once when the fold opens; only the group the fold
+opens travels ([Disclosure Motion](#disclosure-motion)).
+`test_a_fold_expander_draws_the_pair_not_the_chevron` in
+`tests/test_design_vocabulary.py` holds the primitive, its two states, and that no fold
+builds or turns a chevron;
+[the icon catalog](design-system-icons.md#ui-chrome-and-actions) holds the drawings to
+KPress’s.
 
 Every fold of a diff is one **fold bar**, made by one factory, `foldExpander` in the
 diff plugin’s `diff-fold.js`: a code file’s long run of changed lines
@@ -1774,14 +1806,16 @@ the group they open holds.
 Opening a Markdown fold sets the blocks it holds exactly as the unchanged blocks around
 them. A new kind of fold in a diff calls the factory rather than drawing a bar of its
 own. `tests/test_diff_markdown_fold_chrome.py` holds in Chrome that the two bars compute
-alike at rest and under the pointer.
+alike at rest and under the pointer, and that a fold bar and a native summary’s fold
+draw the pair in each state and theme, muted at rest and in the text’s ink under the
+pointer and the focus ring, and in `CanvasText` with forced colors emulated.
 
 ### Disclosure Motion
 
 Every toggle travels the same way: the body animates `height` between `auto` and `0` on
-`var(--transition-fast)` (the same duration its chevron rotates with), with
-`overflow: hidden` during travel and `visibility: hidden` at rest so collapsed content
-leaves the tab order and the accessibility tree.
+`var(--transition-fast)` (the same duration its chevron rotates with; a fold’s glyph
+swaps at once), with `overflow: hidden` during travel and `visibility: hidden` at rest
+so collapsed content leaves the tab order and the accessibility tree.
 `interpolate-size: allow-keywords` is scoped to each animated body; engines without it
 swap instantly. Collapse is always class-driven (`.tree-children-collapsed`,
 `.diff-file-body-collapsed`, `.diff-fold-collapsed`,
@@ -2271,7 +2305,8 @@ the merged purple.
 #### Action Menu
 
 Click a branch or tag chip to open its menu.
-Click the same chip again to close it.
+Click the same chip again to close it; it closes as
+[every menu closes](#every-menu-closes-alike).
 A down chevron fades in over a translucent backdrop at the trailing edge on hover,
 keyboard focus, and while the menu is open.
 The transition uses `--transition-fast` and is skipped under reduced motion.
@@ -3022,7 +3057,8 @@ the one stack design ([Stacks](#stacks)). A Layers icon and position/total, such
 The menu shows titles, ordinals, and PR numbers, ordered from stack top to base, with
 the current member marked.
 Its links are created only when opened.
-Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
+Arrow keys, Home, End, and focus return follow the menu pattern, and it closes as
+[every menu closes](#every-menu-closes-alike).
 On a selected PR on macOS and iOS, Control-N opens the next member toward the stack top
 and Control-P the previous one toward its base, with or without Shift; Help lists them
 in its Pull request stack group.
@@ -4616,10 +4652,10 @@ with consistent gaps, so the set can wrap without drawing one frame around sever
 A `.chip-menu` composes the floating `.menu` surface rather than introducing a second
 menu look, and adds what `.menu` and the native `.menu-select` lack: picking several
 things. Its trigger summarises the selection the way a select does (`Any age`,
-`Past week`, `.md +2`) so the closed control still answers “what is filtered?”.
-Dismissal follows the same rule as every other floating menu: Escape or outside
-interaction. Opening one puts focus on its checked row, and closing it gives focus back
-to the trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
+`Past week`, `.md +2`) so the closed control still answers “what is filtered?”. It
+closes as [every menu closes](#every-menu-closes-alike), a press on the bar beside it
+included. Opening one puts focus on its checked row, and closing it gives focus back to
+the trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
 disclosure chevron at the standard chrome glyph size, rotated downward; do not
 substitute a text caret or shrink it to fit the label.
 
@@ -6285,6 +6321,45 @@ Opening and closing meet these requirements:
 - `dispose()` removes portals, scrims, registrations, observers, and listeners and
   restores any focus, trigger, or inert state it changed.
 
+### Every Menu Closes Alike
+
+Every menu closes the same way, wherever it is and whoever draws it: the Files tab’s
+Group by and filter dropdowns, every other filter bar’s, the branch chooser, the gear,
+the root’s details, a ref’s action menu, View on GitHub’s menu, a pull request’s stack
+menu, and a table’s column menus.
+
+- **A press or a tap outside** the menu and its trigger closes it, and the press goes on
+  to act on what it landed on, as a press beside the branch chooser always has.
+  A press inside the menu leaves it open, and so does a drag that starts inside it, as
+  in selecting a field’s text, and lets go outside it.
+- **A second press on the trigger** closes it, through the trigger’s own toggle.
+- **Escape** closes it and gives focus back to its trigger.
+  An Escape that a surface above the menu took first, such as Quick Search’s, closes
+  only that surface, and one held with Command, Control, or Option is the browser’s.
+- **Focus arriving outside** the menu and its trigger closes it, as does the window
+  losing focus, to another application or to a frame in the page, such as an HTML
+  preview, whose presses never reach the page.
+  Focus that goes nowhere, as when the focused row is removed, leaves it open.
+  A menu opened with focus outside it, as a press in Safari leaves focus where it was,
+  takes focus to its trigger, so a tree redrawn under it that puts focus back on its row
+  does not close it.
+- **Opening one menu closes any other**, so at most one is open.
+
+A press inside a filter bar beside its open dropdown closes the dropdown once the
+control it landed on has acted: on the control’s click, or a checkbox’s change, since
+the bar is redrawn as the dropdown closes and would otherwise take that control from
+under the press. So a press on the drawer’s chevron opens the drawer, a press on Show
+ignored turns it off, and a press on another dropdown’s trigger opens that one, each
+closing the dropdown that was open.
+
+The behavior is one helper’s, `metabrowser.menus.dismissible` (`static/menus.js`,
+reached through `static/filter-controls.js`), and a plugin’s menu uses it too
+([Menus](plugins.md#menus)). A menu says how it closes and which nodes are its own; the
+helper listens on the document only while a menu is open.
+`tests/test_menu_dismissal.py` fails a `.menu` surface that does not close through it,
+`tests/dom/menu-dismissal-session.js` walks each rule without a browser, and
+`tests/test_menu_dismissal_chrome.py` presses each menu in Chrome.
+
 ### Surface Anatomy and Styling
 
 Floating surfaces use the shared raised surface, border, chrome radius, shadow, z-index,
@@ -6608,10 +6683,10 @@ marks, by a press, Enter, Space, `↓`, or `↑` ([Stacks](#stacks)); on its but
 filter’s trigger, `Home` and `End` open nothing.
 
 - **Closing.** Escape, a second click on the trigger, and a choice that closes a
-  single-select menu give focus back to the trigger.
-  Focus the reader moved elsewhere in the page stays there, and an Escape that a surface
-  above the menu took, such as Quick Search’s or Help’s, closes only that surface: the
-  topmost closes first.
+  single-select menu give focus back to the trigger
+  ([Every Menu Closes Alike](#every-menu-closes-alike)). Focus the reader moved
+  elsewhere in the page stays there, and an Escape that a surface above the menu took,
+  such as Quick Search’s or Help’s, closes only that surface: the topmost closes first.
 - **Staying.** A pick in a multi-select menu leaves it open with focus on the row
   picked, and a rebuild of the bar while a row or a trigger has focus, such as a tally
   refresh, puts focus back on the same control, or on the trigger of a menu the rebuild

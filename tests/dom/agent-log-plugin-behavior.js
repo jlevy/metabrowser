@@ -100,6 +100,7 @@ for (const relative of [
   "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin-sdk.js",
   "src/metabrowser/static/filter-controls.js",
+  "src/metabrowser/static/menus.js",
   "src/metabrowser/static/icons.js",
 ]) {
   const filename = path.join(repoRoot, relative);

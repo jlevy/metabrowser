@@ -1034,6 +1034,16 @@
    */
   let drawPullState = null;
 
+  /** How every menu closes, which the shell loads before anything lazy.
+   * @returns {MetabrowserMenus} */
+  function menus() {
+    const controls = window.metabrowser.menus;
+    if (!controls) {
+      throw new Error("source ref selector: the menu helper is unavailable");
+    }
+    return controls;
+  }
+
   /** The shared chip controls, which the shell loads before anything lazy. */
   function chipControls() {
     const controls = window.metabrowser.filterControls;
@@ -1911,22 +1921,24 @@
         parts.label.querySelector('button[aria-expanded="true"]')
       )?.click();
     };
-    // A keyboard shortcut can open the chooser without the pointer leaving either menu.
-    const dismissOtherMenus = () => {
-      closeActionMenu();
-      /** @type {HTMLElement | null} */ (
-        document.querySelector(
-          '#nav-filter-bar .chip-menu[aria-expanded="true"] [data-chip-menu-toggle]',
-        )
-      )?.click();
-    };
+    // The list closes as every menu does (docs/design-system.md, "Every Menu Closes
+    // Alike"), and opening it, by its button or its key, closes any other.
+    const dismissal = menus().dismissible({
+      name: "source-ref-selector-panel",
+      trigger: parts.toggle,
+      inside: (node) => parts.panel.contains(node),
+      isOpen: () => !parts.panel.hidden,
+      close: () => mounted.close(),
+    });
     parts.toggle.addEventListener(
       "click",
       () => {
-        if (parts.panel.hidden) {
-          dismissOtherMenus();
-        }
         void mounted.toggle();
+        if (parts.panel.hidden) {
+          dismissal.closed();
+        } else {
+          dismissal.opened();
+        }
         focusOpenFilter();
       },
       { signal },
@@ -1947,8 +1959,7 @@
       /** @type {HTMLButtonElement[]} */ ([...parts.list.querySelectorAll("button")]);
     // A scroll draws the rows it brings near; a scroll event comes at most once a frame.
     parts.list.addEventListener("scroll", () => drawWindow(parts), { signal, passive: true });
-    // While the list is open, Escape closes it from anywhere on the page and Tab stays
-    // inside it, wrapping at either end, as in a dialog.
+    // While the list is open, Tab stays inside it, wrapping at either end, as in a dialog.
     // A key held with Command or Control is the browser's, as is one held with Option
     // other than Tab, which Safari moves focus with, so the trap keeps Option-Tab.
     document.addEventListener(
@@ -1960,12 +1971,6 @@
           event.metaKey ||
           (event.altKey && event.key !== "Tab")
         ) {
-          return;
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          mounted.close();
-          parts.toggle.focus();
           return;
         }
         if (event.key !== "Tab") {
@@ -2022,47 +2027,26 @@
       },
       { signal },
     );
-    // The selected ref's own chip is a separate trigger from the chooser.
-    /** @param {Node | null} target */
-    const insideChooser = (target) => parts.panel.contains(target) || parts.toggle.contains(target);
-    element.addEventListener(
-      "focusout",
-      (event) => {
-        const to = /** @type {Node | null} */ (event.relatedTarget);
-        if (!parts.panel.hidden && to !== null && !insideChooser(to)) {
-          mounted.close();
-        }
-      },
-      { signal },
-    );
-    // A pointer press anywhere else closes the list, as a menu closes.
-    document.addEventListener(
-      "pointerdown",
-      (event) => {
-        if (!parts.panel.hidden && !insideChooser(/** @type {Node | null} */ (event.target))) {
-          mounted.close();
-        }
-      },
-      { signal },
-    );
     const handle = Object.freeze({
       ...mounted,
       // The control a key's badge marks, and what the key does: the button's path,
       // except that it opens the list rather than toggling it.
       button: parts.toggle,
       activate() {
-        dismissOtherMenus();
         const opened = mounted.open();
+        dismissal.opened();
         focusOpenFilter();
         return opened;
       },
       close() {
         closeActionMenu();
         mounted.close();
+        dismissal.closed();
       },
       dispose() {
         closeActionMenu();
         parts.disposed = true;
+        dismissal.dispose();
         listening.abort();
         unbindKinds();
         mounted.dispose();

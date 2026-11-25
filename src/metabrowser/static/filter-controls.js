@@ -681,6 +681,8 @@
     if (menu?.getAttribute("aria-expanded") !== "true") {
       return null;
     }
+    // Every way a dropdown opens comes here.
+    boundMenus.get(root)?.opened();
     const panel = menu.querySelector(".chip-menu-panel");
     const row = /** @type {HTMLElement | null} */ (
       panel?.querySelector('.chip-menu-item[aria-checked="true"]') ??
@@ -737,9 +739,37 @@
     return () => settleFocus(root, selector);
   }
 
+  // How every menu closes: static/menus.js, a shell tool, fetched if one opens sooner.
+  /** @param {MetabrowserDismissibleMenu} menu @returns {MetabrowserDismissibleHandle} */
+  function dismissible(menu) {
+    let gone = false;
+    /** @type {MetabrowserDismissibleHandle | undefined} */
+    let handle;
+    const real = () => (handle ??= window.MetabrowserMenus?.dismissible(menu));
+    return Object.freeze({
+      opened() {
+        if (real()) {
+          real()?.opened();
+        } else {
+          window.MetabrowserAssets?.ensureAsset("shell-tools").then(
+            () => !gone && menu.isOpen() && real()?.opened(),
+            console.error,
+          );
+        }
+      },
+      closed: () => real()?.closed(),
+      dispose() {
+        gone = true;
+        real()?.dispose();
+      },
+    });
+  }
+
   /** Each bound container's row path, so a row's letter runs what a click on it runs.
    * @type {WeakMap<Element, (row: HTMLElement) => void>} */
   const boundRows = new WeakMap();
+  /** @type {WeakMap<Element, MetabrowserDismissibleHandle>} */
+  const boundMenus = new WeakMap();
 
   /**
    * Choose a dropdown row as a click on it does, through the handlers of the container
@@ -786,7 +816,7 @@
   function bind(root, handlers) {
     const opts = handlers || {};
 
-    /** Any open dropdown, so outside clicks and Escape can close it. */
+    /** The open dropdown's key, or null: the container holds at most one open. */
     function openMenuKey() {
       const open = root.querySelector('.chip-menu[aria-expanded="true"]');
       return open ? open.getAttribute("data-chip-menu") : null;
@@ -839,6 +869,25 @@
 
     /** @param {Event} event */
     function onClick(event) {
+      const target = /** @type {Element} */ (event.target);
+      const key = openMenuKey();
+      const beside = !openWrap()?.contains(target);
+      handleClick(event);
+      closeBeside(beside && !target.closest?.("label") ? key : null);
+    }
+
+    /** @param {string | null} key */
+    function closeBeside(key) {
+      if (key !== null && openMenuKey() === key) {
+        opts.onMenuToggle?.(key, false);
+      }
+      if (openMenuKey() === null) {
+        dropdowns.closed();
+      }
+    }
+
+    /** @param {Event} event */
+    function handleClick(event) {
       const target = /** @type {Element | null} */ (event.target);
       if (!target || typeof target.closest !== "function") {
         return;
@@ -1004,47 +1053,27 @@
       }
     }
 
-    // Outside interaction dismisses the dropdown. Bound on the
-    // document because the whole point is clicks the bar never sees;
-    // the disposer below detaches it with the rest.
-    /** @param {Event} event */
-    function onDocumentPointerDown(event) {
-      const openKey = openMenuKey();
-      if (openKey === null) {
-        return;
-      }
-      const target = /** @type {Node | null} */ (event.target);
-      if (target && root.contains(target)) {
-        return;
-      }
-      if (opts.onMenuToggle) {
-        opts.onMenuToggle(openKey, false);
-      }
-    }
-
-    // Escape has to work even when focus has left the bar, so it is
-    // bound on the document. Kept separate from onKeyDown so arrow
-    // traversal stays scoped to the bar and nothing fires twice.
-    /** @param {Event} event */
-    function onDocumentEscape(event) {
-      const ev = /** @type {KeyboardEvent} */ (event);
-      if (ev.key !== "Escape" || ev.altKey || ev.ctrlKey || ev.metaKey) {
-        return;
-      }
-      // An Escape that closed a surface above the bar, such as Quick Search or Help, is
-      // that surface's: the topmost closes first (docs/design-system.md, "Shared Overlay
-      // Lifecycle"), and the menu waits for the next.
-      if (ev.defaultPrevented) {
-        return;
-      }
-      const openKey = openMenuKey();
-      if (openKey !== null && opts.onMenuToggle) {
-        const trigger = root.querySelector(`[data-chip-menu-toggle="${quoted(openKey)}"]`);
-        opts.onMenuToggle(openKey, false);
-        // Back to the trigger, unless focus had already left the bar for the page.
-        settleFocus(root, trigger ? controlSelector(trigger) : null);
-      }
-    }
+    // A press beside it in the container closes it once the control acts, on its click or a
+    // checkbox's change: the consumer's rebuild as it closes would take the control away.
+    const openWrap = () => root.querySelector('.chip-menu[aria-expanded="true"]');
+    const dropdowns = dismissible({
+      name: "chip-menu-panel",
+      trigger: () =>
+        /** @type {HTMLElement | null} */ (openWrap()?.querySelector("[data-chip-menu-toggle]")),
+      inside: (node) => root.contains(node),
+      isOpen: () => !!openWrap(),
+      close(how) {
+        const openKey = openMenuKey();
+        const trigger = openWrap()?.querySelector("[data-chip-menu-toggle]");
+        if (openKey !== null) {
+          opts.onMenuToggle?.(openKey, false);
+        }
+        // Escape: focus back to the trigger, as rebuilt.
+        if (how === "escape") {
+          settleFocus(root, trigger ? controlSelector(trigger) : null);
+        }
+      },
+    });
 
     // Checkboxes report through `change`, not `click`: that is the
     // event that fires for keyboard activation too.
@@ -1058,6 +1087,7 @@
       if (key && opts.onToggle) {
         opts.onToggle(key, target.checked === true);
       }
+      closeBeside(openMenuKey());
     }
 
     // An open dropdown's room changes with the window, so it is fitted again.
@@ -1068,23 +1098,27 @@
     root.addEventListener("click", onClick);
     root.addEventListener("change", onChange);
     root.addEventListener("keydown", onKeyDown);
-    const doc = root.ownerDocument;
-    const view = doc?.defaultView;
-    doc?.addEventListener("pointerdown", onDocumentPointerDown);
-    doc?.addEventListener("keydown", onDocumentEscape);
+    const view = root.ownerDocument?.defaultView;
     view?.addEventListener("resize", onWindowResize);
     boundRows.set(root, pickRow);
+    boundMenus.set(root, dropdowns);
+    // Drawn open, as by a consumer rebinding each paint (Agents), it keeps closing.
+    if (openWrap()) {
+      dropdowns.opened();
+    }
     // In a navigation toolbar, a segmented group wider than its line takes the cluster.
     const stopFitting = keepJoinedGroupsFitted(root);
     return () => {
       if (boundRows.get(root) === pickRow) {
         boundRows.delete(root);
       }
+      if (boundMenus.get(root) === dropdowns) {
+        boundMenus.delete(root);
+      }
+      dropdowns.dispose();
       root.removeEventListener("click", onClick);
       root.removeEventListener("change", onChange);
       root.removeEventListener("keydown", onKeyDown);
-      doc?.removeEventListener("pointerdown", onDocumentPointerDown);
-      doc?.removeEventListener("keydown", onDocumentEscape);
       view?.removeEventListener("resize", onWindowResize);
       stopFitting();
     };
@@ -1215,4 +1249,5 @@
     return;
   }
   window.metabrowser.filterControls = api;
+  window.metabrowser.menus = Object.freeze({ dismissible });
 })();

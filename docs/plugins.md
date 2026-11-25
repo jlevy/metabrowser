@@ -843,6 +843,7 @@ Useful helpers include:
 - `filterControls` for the host’s accessible filter chips and menus, and for any
   exclusive choice among labelled values;
 - `shortcuts.attach(element, spec)`; see [Keyboard Shortcuts](#keyboard-shortcuts);
+- `menus.dismissible(menu)`, how every menu closes; see [Menus](#menus);
 - `chart(container, type, data, options)`, `ensureAsset(name)`, `ensureModule(name)`,
   `moduleUrl(name)`, and `ensureKindAssets(kind)`, below;
 - `whenIdle(callback, {timeout})`, which runs `callback` when the page is free, no later
@@ -885,6 +886,8 @@ checked row, or else the first.
 Escape, a second click on the trigger, or a choice that closes the menu gives focus back
 to the trigger. An Escape that a surface above has already handled, as Quick Search and
 Help do, leaves the menu open.
+A bound dropdown closes as every menu does ([Menus](#menus)): a press elsewhere in the
+bound container closes it too, once the control it landed on has acted.
 A view that opens a menu from its own state focuses it with
 `filterControls.focusMenu(root, key)`. A view that rebuilds the markup it bound calls
 `filterControls.keepFocus(root)` before the rebuild and the function it returns after,
@@ -1184,6 +1187,53 @@ A numbered spec takes only `id`, `numbered`, `activate`, and `signal`.
   also releases the keys inside a view container it disposes, but a view a host mounts
   by calling its renderer directly, as three hosts mount the diff view, has only its own
   `dispose()`.
+
+### Menus
+
+Every menu closes alike, as
+[Every Menu Closes Alike](design-system.md#every-menu-closes-alike) says: a press or a
+tap outside it and its trigger, focus arriving outside them, the window losing focus (to
+a preview’s frame or another application), and Escape close it, and opening one menu
+closes any other. The press that closes a menu still acts on what it lands on.
+A dropdown that `filterControls.bind` draws closes so already.
+A view that draws a menu of its own gives it that closing with `menus.dismissible`, and
+feature-detects it with `mb.menus?.dismissible`:
+
+```javascript
+const closing = mb.menus?.dismissible({
+  name: "example-menu", // the surface's own class beside `menu`
+  trigger: button, // or a function that finds it after a rebuild
+  inside: (node) => panel.contains(node), // the panel, and anything it places elsewhere
+  isOpen: () => !panel.hidden,
+  close: (how) => setOpen(false), // "outside", "away", "escape", or "other"
+});
+button.addEventListener("click", () => {
+  setOpen(panel.hidden); // the trigger's own click toggles, so a second press closes
+  if (!panel.hidden) closing?.opened();
+  else closing?.closed();
+});
+closing?.dispose(); // from dispose(), when the menu goes for good
+```
+
+- Call `opened()` from every path that opens the menu, a key as well as a click, and
+  `closed()` when the view’s own code closes it.
+  The listeners are held only while a menu is open.
+- `opened()` moves focus to the trigger when focus is outside the menu and its trigger,
+  as a press in Safari leaves it; a view that puts focus into the menu does so after the
+  call.
+- `close(how)` closes the menu as the view’s own code does.
+  For `"escape"` the helper then gives focus back to the trigger, unless `close` already
+  moved it there; for the other reasons focus stays where the press or the key put it.
+- Escape closes the menu opened last, and is prevented when it does.
+  An Escape a surface above the menu already prevented, or one held with Alt, Ctrl, or
+  Meta, leaves it open.
+  The view keeps its own keys inside the menu: its arrows, letters, and Tab.
+- The helper arrives with the shell’s tools, after the first tree.
+  A menu opened sooner asks for them and closes alike once they land.
+- The trigger is part of the menu, so its own click decides what a press on it does;
+  `inside` names the rest.
+  A press anywhere else closes it, but a drag that starts inside the menu, as in
+  selecting a field’s text, does not, wherever it lets go.
 
 ### Folder Overview Contributions
 
