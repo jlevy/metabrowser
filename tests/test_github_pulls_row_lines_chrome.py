@@ -1,16 +1,18 @@
-"""Each Pulls row's third line, its brief change line, laid out by headless Chrome.
+"""Each Pulls row's third line, its change line, laid out by headless Chrome.
 
 What a row's third line shows, and when, and what a press and each key do, is browserless
 (``tests/dom/github-pulls-row-lines-session.js``); what only a browser can tell is held here
-(``tests/dom/github-pulls-row-lines-chrome.mjs``): that a row is three lines, the state icon on
-the first and the chevron on the third, in the first icon slot; that nothing moves when the line
-arrives; that the line stays one line at every pane width from 420 px to the 180 px minimum in
-both themes, whole, its totals alone with its statuses never cut short, or out of view; that its inks and weights are the
-component's; that a row's three lines are one item (mb-1z7j), which carries the open row's
-highlight, hovers as one wherever the pointer is on it, and takes the focus ring round all three,
-while the change line, the toggle's line, adds its chevron's own hover and is no stop; and that a
-real press on a title or a number's line expands nothing while one on the chevron or the line
-opens and closes the files under it. ``METABROWSER_ROW_LINES_MEASURED`` names a file
+(``tests/dom/github-pulls-row-lines-chrome.mjs``): that a row is three lines, two of title, cut
+short at the second, with the state icon leading the first, and the change line, the chevron in
+the same slot, then the number, the author, and the lines changed, with the age at its end
+(mb-85op, mb-lqkb); that nothing moves when the lines arrive; that the change line stays one line
+at every pane width from 420 px to the 180 px minimum in both themes, its lines whole or out of
+view, the author leaving first; that its inks and weights are the component's; that a row's
+three lines are one item (mb-1z7j), which carries the open row's highlight, hovers as one
+wherever the pointer is on it, and takes the focus ring round all three, while the change line,
+the toggle's line, adds its chevron's own hover and is no stop; and that a real press on the
+title expands nothing while one anywhere on the change line, the number and the author
+included, opens and closes the files under it. ``METABROWSER_ROW_LINES_MEASURED`` names a file
 for what it measured, and ``METABROWSER_ROW_LINES_SHOTS`` a directory for a screenshot of each
 width and theme, waiting and shown.
 

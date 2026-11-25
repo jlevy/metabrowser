@@ -145,19 +145,20 @@ try {
   await accompanies(pulls, "#tab-pulls .github-pulls-author", "#tab-pulls .github-pulls-number");
   await accompanies(pulls, "#tab-pulls .github-pulls-age", "#tab-pulls .github-pulls-title");
   await accompanies(pulls, ".github-pulls-connection-text", "#tab-pulls .github-pulls-title");
-  // The age's column is 5ch of the row's type, and the longest compact age is four
-  // characters, "12mo": written into a row's age, it is whole inside the column.
+  // The age's column is 5ch of the row's type, at the end of its change line, the row's third
+  // (mb-lqkb), and the longest compact age is four characters, "12mo": written into a row's
+  // age, it is whole inside the column.
   const longestAge = await evaluate(`(async () => {
     const age = [...document.querySelectorAll("#tab-pulls .github-pulls-age")].find((e) => e.getClientRects().length);
     const saved = age.textContent;
     age.textContent = "12mo";
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const row = age.closest(".github-pulls-row").getBoundingClientRect();
+    const row = age.closest(".github-pulls-change").getBoundingClientRect();
     const box = age.getBoundingClientRect();
     const range = document.createRange();
     range.selectNodeContents(age);
     const text = range.getBoundingClientRect();
-    const column = Number.parseFloat(getComputedStyle(age.closest(".github-pulls-row")).gridTemplateColumns.split(" ").pop());
+    const column = Number.parseFloat(getComputedStyle(age.closest(".github-pulls-change")).gridTemplateColumns.split(" ").pop());
     const read = { text: Math.round(text.width * 100) / 100, box: Math.round(box.width * 100) / 100, column: Math.round(column * 100) / 100, cut: age.scrollWidth > age.clientWidth, inside: text.right <= row.right + 0.5 };
     age.textContent = saved;
     return read;

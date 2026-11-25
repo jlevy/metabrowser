@@ -579,12 +579,13 @@ async function headingStory() {
       labelBefore,
       "the label stays",
     );
-    // The line is the shell's one component, through the SDK: the same nodes, part for part.
+    // The line is the shell's one component, through the SDK: the same nodes, part for part,
+    // of the stack's line totals alone, with no file statuses (mb-lqkb).
     const { stackLineInput } = await import(
       pathToFileURL(path.join(GITHUB, "stack-lines.js")).href
     );
-    const tree = await sdk.loadChangedFilesTree();
-    const said = sdk.changeLine(stackLineInput(changes.current.body, tree.statusBreakdown));
+    const said = sdk.changeLine(stackLineInput(changes.current.body));
+    assert.deepEqual(said.statusParts ?? [], [], "the line counts no files by status");
     const expected = shape([
       ...sdk.countPartsNodes([{ separator: "·" }]),
       ...sdk.changeLineNodes(said),

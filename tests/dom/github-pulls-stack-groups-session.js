@@ -247,9 +247,11 @@ async function mountStory() {
       });
     };
     await step("mounted: Stack #286 open, its pull requests a level in", () => undefined);
-    // Each member's muted line as drawn (pulls-panel.js#paintPlace and #rowMeta): its place
-    // before its number, "3/3 · #8", where another stack's glyph is written ⧉, and no
-    // stack icon on its row, whose stack's row has it (mb-dzsi).
+    // Each member's title line as drawn (pulls-panel.js, `paintPlace` and `buildRow`): the
+    // state icon, then its place in bold and the stack menu's muted dot, "3/3 · ", where
+    // another stack's glyph is written ⧉, then the title, and no stack icon on its row, whose
+    // stack's row has it (mb-dzsi, mb-vkhd). A pull request in no stack has no place and no
+    // dot.
     const find = (node, name) =>
       node.classList?.contains(name)
         ? node
@@ -260,6 +262,19 @@ async function mountStory() {
         : node.classList?.contains("github-pull-stack-other")
           ? "⧉"
           : (node.childNodes ?? []).map(textOf).join("");
+    const classOf = (node) => node.className?.split(" ")[0];
+    const titleLine = (row) => {
+      const heading = find(row, "github-pulls-heading");
+      assert.deepEqual(
+        heading.childNodes.map(classOf),
+        ["github-pull-state-icon", "github-pulls-place", "github-pulls-title"],
+        "the state icon, then the place, then the title, one flow",
+      );
+      const place = heading.childNodes[1];
+      // The no-break space before the dot is written as a space.
+      const text = `${textOf(place)}${textOf(heading.childNodes[2])}`.replaceAll("\u00a0", " ");
+      return { heading, place, text };
+    };
     const memberLines = drawnRows()
       .filter((row) => row.getAttribute("aria-level") === "2")
       .map((row) => {
@@ -268,14 +283,28 @@ async function mountStory() {
           null,
           "a member's row draws no stack icon",
         );
-        const id = find(row, "github-pulls-id");
-        assert.equal(
-          id.childNodes[0],
-          find(row, "github-pulls-place"),
-          "the place leads the number",
+        const { place, text } = titleLine(row);
+        assert.equal(place.hidden, false, "a member's place is shown");
+        // The place and its dot lead the title: the position, a no-break space, so no line
+        // starts with the dot, the dot, and a space, where the title may wrap.
+        assert.deepEqual(
+          place.childNodes.map((node) => classOf(node) ?? node.data),
+          ["github-pull-stack-position", "\u00a0", "github-pull-stack-dot", " "],
+          "the place is the position, then the dot, before the title",
         );
-        return `#${row.dataset.number}: ${textOf(find(row, "github-pulls-line"))}`;
+        const dot = place.childNodes[2];
+        assert.equal(textOf(dot), "·");
+        assert.equal(dot.getAttribute("aria-hidden"), "true", "the place's label says it");
+        assert.equal(find(row, "github-pulls-number"), null, "the number is not on the title line");
+        return `#${row.dataset.number}: ${text}`;
       });
+    const loose = drawnRows().find(
+      (row) => row.getAttribute("aria-level") === "1" && !row.dataset.stack,
+    );
+    const looseLine = titleLine(loose);
+    assert.equal(looseLine.place.hidden, true, "a pull request in no stack has no place");
+    assert.equal(looseLine.place.childNodes.length, 0, "and no dot");
+    const unstacked = `#${loose.dataset.number}: ${looseLine.text}`;
     await step("Space on the stack's row (the handle's toggleStack) closes it", () =>
       handle.toggleStack(286),
     );
@@ -333,6 +362,7 @@ async function mountStory() {
     handle.dispose();
     return {
       "member lines": memberLines,
+      "a pull request in no stack": unstacked,
       files: { "Right on #8": filesOpen, "then Left": filesClosed },
       label: { text: label.textContent, classes: label.className },
       steps,
