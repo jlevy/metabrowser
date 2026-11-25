@@ -262,6 +262,30 @@ A step’s other whole files share that budget (`MAX_STEP_PATCH_BYTES` in
 `guided_review.py`); a file past it says its diff is too large to show in the step, and
 **Open full diff** shows it in Changes.
 A binary change or a rename without a text diff says it has no text changes to show.
+
+A step can also cite past its pull request, so a layer’s guide can point at its
+neighbors:
+
+```yaml
+references:
+  - {pull: 805}                      # another pull request
+  - {pull: 805, path: docs/plan.md}  # a file as that pull request changes it
+  - {commit: "<full commit ID>"}     # a commit
+```
+
+A pull request shows as a row the way the stack menu lists a member: its state, number,
+and title, and its place in a stack when it has one; it opens that pull request.
+A file of another pull request is drawn as a file of this one is, from that pull
+request’s own changes, under a bar that names the pull request, and its **Open full
+diff** opens the file there.
+It takes no line range, since that pull request may move after the guide is written.
+A commit shows as a row of its subject, when it was made, and its short ID, and opens
+the commit.
+These are read from what this copy already has: a pull request not loaded yet
+shows by its number, a file of one not loaded yet says to open it, and a commit the copy
+lacks says it is unavailable.
+None of them makes the guide out of date.
+
 The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
 describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_review.py` bound

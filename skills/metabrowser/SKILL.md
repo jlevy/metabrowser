@@ -452,6 +452,8 @@ Keep it short:
 - A layer of a stack says its place in one line of the description, naming the layers
   below and above it by number, such as “Layer 2 of 3: the route, on #811; the page in
   #813 reads it”, and does not explain the stack again.
+  A step that depends on another layer cites it, `{pull: 811}`, rather than retelling
+  it.
 
 Give each of these concerns a step, or a run of steps, of its own, in this order, and
 title each step so the list reads as the agenda.
@@ -500,10 +502,13 @@ them:
 where each decision is recorded at length.
 A decision whose reason is obvious needs no rationale line.
 
-Every step cites at least one file this pull request changes: a step without a reference
-makes the page refuse the whole guide, and a reference to an unchanged file answers
-`path_not_changed`. When what a step is about did not change, such as the plan a
-follow-up belongs to, code you doubt but did not touch, or tests that cover the change
+Every step cites at least one reference: a step without one makes the page refuse the
+whole guide. A reference is a file this pull request changes, another pull request, a
+file as another pull request changes it, or a commit
+([Write the Block](#write-the-block)), so a step about another layer of a stack, a plan
+another pull request adds, or the commit that fixed a finding cites that directly.
+A file this pull request does not change answers `path_not_changed`: when a step is
+about one, such as code you doubt but did not touch, or tests that cover the change
 unchanged, cite the changed file closest to it, and say in the note what the step is
 about.
 
@@ -606,6 +611,14 @@ collection:
   Test each range against the hunks the comparison route answers
   (`.patches["<id>"].hunks`, as [From a Pull-Request URL](#from-a-pull-request-url)
   reads them), not a local `git diff`, whose options can draw other hunks.
+- Three more kinds cite past this pull request, each read from what the reader’s copy
+  already has and never out of date:
+  - `{pull: 811}`, another pull request, which the page shows as a row with its state,
+    title, and place in its stack;
+  - `{pull: 811, path: docs/plan.md}`, a file as that pull request changes it, drawn as
+    a `path` alone is, whole, and with no range, since that pull request may move;
+  - `{commit: "<full commit ID>"}`, a commit, alone, by its full ID, quoted, which the
+    page shows as a row with its subject.
 - Quote a title or note that contains `: ` or ` #`, or that starts with a backtick or
   another YAML indicator such as `[`, `{`, or `*`, in double quotes.
   Unquoted, a `: ` or a leading indicator makes the page refuse the block as invalid
@@ -643,18 +656,22 @@ read each step, with `<k>` from 1 to the `.step_count` the first answer gives:
 
 ```shell
 <invocation> <url> --api '/api/plugin/github/guided-review?number=<n>&step=<k>' --format json > <tmp>/step.json &&
-  jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' <tmp>/step.json
+  jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
 ```
 
 - `.state` is `ready` when the page can show the guide and its pins are the pull
-  request’s, and each reference’s state follows its path: every one should be `ready`
+  request’s, and each reference’s state follows what it names: every one should be
+  `ready`, except that another pull request this copy has not read answers `not_cached`,
+  which is fine to publish, since a reader who opens it loads it
 - `invalid` means the page refuses the guide, and `.message` says why, such as invalid
   YAML, a second block, or a field the schema refuses, with its place below `collection`
 - `stale` means the pull request moved past the pins, as a push moves it: refresh the
   guide, as below
 - `absent` means the description has no block, or the record is older than your edit
 - A reference that is not `ready` says why, such as `path_not_changed`,
-  `range_unavailable` for a range outside one hunk, or `patch_too_large`
+  `range_unavailable` for a range outside one hunk, `patch_too_large`, or
+  `commit_unavailable` for a commit the store lacks, a full ID mistyped or a commit a
+  force push dropped
 
 ### Refresh It After a Push
 

@@ -264,9 +264,21 @@ def _snapshot(repository: ListedRepository) -> StackCache | None:
     return cache
 
 
-def _state(
+def snapshot_stacks(repository: ListedRepository) -> tuple[NativeStack, ...]:
+    """Every stack of the repository's snapshot, in its order, parsed once for each version
+    of its file, or none without one. Blocking and bounded."""
+
+    cache = _snapshot(repository)
+    snapshot = cache.snapshot if cache is not None else None
+    return () if snapshot is None else tuple(s for page in snapshot.pages for s in page.stacks)
+
+
+def member_state(
     record: PullRecord | None, row_state: str | None, draft: bool, merged: bool
 ) -> MemberState | None:
+    """A pull request's state as a stack's member shows it: from its record, else from its
+    catalog row's *row_state*, *draft*, and *merged*, else ``None``."""
+
     if record is not None:
         pull = record.pull
         return (
@@ -336,7 +348,7 @@ def _read_members(
                 record=record,
                 revision=revision if record is not None else None,
                 title=record.pull.title if record is not None else row.title if row else None,
-                state=_state(
+                state=member_state(
                     record,
                     row.state if row is not None else None,
                     row.draft if row is not None else False,
@@ -734,7 +746,9 @@ __all__ = [
     "comparison_wire",
     "envelope_etag",
     "forget",
+    "member_state",
     "read_stack",
+    "snapshot_stacks",
     "stack_digest",
     "stack_envelope",
     "stack_key",

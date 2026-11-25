@@ -12,6 +12,7 @@ import asyncio
 import re
 import threading
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeGuard
 
@@ -39,8 +40,14 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Sha,
     cut_text,
 )
-from metabrowser.builtin_plugins.github.pull_route import cached_pull_record
+from metabrowser.builtin_plugins.github.pull_route import (
+    cached_pull_record,
+    comparison_route,
+    image_route,
+    rendered_route,
+)
 from metabrowser.cache.acquire import PublishedSource
+from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource, display_path
 from metabrowser.diff.format import Availability, Hunk, LineOp, LineRecord
@@ -54,18 +61,22 @@ from metabrowser.git.process import (
     RepositoryStoreTarget,
     run_git_at,
 )
-from metabrowser.view_routes import format_pull_href
+from metabrowser.http_caching import store_tag
+from metabrowser.view_routes import format_commit_href, format_pull_href
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Awaitable, Callable, Mapping, Sequence
 
     from markdown_it.token import Token
     from pydantic import GetJsonSchemaHandler
+    from pydantic.config import JsonDict
     from pydantic.json_schema import JsonSchemaValue
     from pydantic_core.core_schema import CoreSchema
 
-    from metabrowser.builtin_plugins.github.pull_record import Comparison
+    from metabrowser.builtin_plugins.diff.comparison_cache import ResolvedManifest
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
     from metabrowser.builtin_plugins.github.pull_route import PullHost
+    from metabrowser.builtin_plugins.github.pull_stacks import NativeStack
     from metabrowser.diff.format import FileChange, FilePatch
 
 CONTRACT_ID = "metabrowser.collection:Collection/v1"
@@ -84,6 +95,10 @@ _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 # (INITIAL_PULL_FILES in sidekick.py), in one run of the diff source. A ranged reference
 # renders its lines (MAX_EXCERPT_BYTES), and a path alone its file's whole patch
 # (MAX_STEP_PATCH_BYTES), or, for a file the rendered route renders, nothing at all.
+# A `{pull, path}` reads its own pull request's comparison instead, so a step whose
+# references cite files of several pull requests runs the diff source once for each, at
+# most this many runs; a `{pull}` reads a record and a catalog row, and a `{commit}` one
+# bounded `git log`. Those costs were not measured when the kinds arrived (mb-9dmv).
 MAX_REFERENCES = 8
 # Every entry of a collection's items counts: an item at the top, a group, and each item in a
 # group, so a group holds at most MAX_ITEMS - 1 items. A group is a title and an optional
@@ -145,8 +160,12 @@ MAX_STEP_PATCH_BYTES: Final = 1_950_000
 # the rest, for an agent bringing the guide up to date; the page shows none of them. One
 # bounded `git log` writes the list.
 MAX_STALE_COMMITS: Final = 10
-# A commit's subject as the answer carries it, as the Conversation timeline cuts one.
+# A commit's subject as the answer carries it, as the Conversation timeline cuts one: a
+# stale guide's commits', and a `{commit}` reference's.
 MAX_STALE_SUBJECT_BYTES: Final = 240
+# One commit's line of `git log`, its ID or date and its subject, at most the subject's
+# bound written in four-byte characters, as `_commits_since` sizes each of its lines.
+_MAX_COMMIT_ROW_BYTES: Final = 200 + 4 * MAX_STALE_SUBJECT_BYTES
 # The paths changed since the guide decide which of its steps may no longer match the pull
 # request. A change past this many paths is answered as unknown rather than read whole: no
 # step is then marked, and the page says some may not match.
@@ -170,6 +189,7 @@ _NOTE_PART: Final = "guided-review-note"
 
 type Prose = Annotated[str, Field(min_length=1)]
 type LineNumber = Annotated[int, Field(ge=1)]
+type PullNumber = Annotated[int, Field(ge=1, le=MAX_PULL_REQUEST_NUMBER)]
 
 
 class GuideError(ValueError):
@@ -192,16 +212,83 @@ class CollectionComparison(_Model):
     head: Sha
 
 
+type ReferenceKind = Literal["file", "pull_file", "pull", "commit"]
+
+# The fields a kind of reference does not take, stated in the compiled schema as an `if` on
+# the field that names the kind, as groups' `if` on `items` is (`_GroupWhenItHasItems`), so
+# a refusal keeps its place: `{commit, path}` is refused at `references.0.path`, and a
+# reference that names nothing at `references.0`. A field is forbidden as `not: {}`: a
+# `false` schema's refusal is placed at the reference alone by softschema's error record.
+# `CollectionReference._usable_reference` states the same for a reference made in code and
+# for a null value, which the schema admits.
+_RANGE: Final = ("side", "start_line", "end_line")
+
+
+def _forbidden(*fields: str) -> JsonDict:
+    return {"properties": {name: {"not": {}} for name in fields}}
+
+
+_REFERENCE_KINDS: Final[JsonDict] = {
+    "if": {"required": ["commit"]},
+    "then": _forbidden("path", "pull", *_RANGE),
+    "else": {
+        "if": {"required": ["pull"]},
+        "then": _forbidden(*_RANGE),
+        "else": {"required": ["path"]},
+    },
+}
+
+
 class CollectionReference(_Model):
-    path: Prose
+    """What an item is about, one of four kinds, each spelled one way.
+
+    - `{path}`, a file of the carrier's comparison, whole, or with a `side` and an
+      inclusive line range;
+    - `{pull, path}`, a file as pull request `pull` changes it, whole, in that pull
+      request's current comparison, which the collection does not pin, so a range into it
+      would come to point at other lines;
+    - `{pull}`, a pull request;
+    - `{commit}`, a commit, by its full ID.
+
+    Every kind is valid in every carrier, and a carrier resolves each from what it has
+    cached, fetching nothing.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_REFERENCE_KINDS)
+
+    path: Prose | None = None
     side: Literal["old", "new"] | None = None
     start_line: LineNumber | None = None
     end_line: LineNumber | None = None
+    pull: PullNumber | None = None
+    commit: Sha | None = None
+
+    @property
+    def kind(self) -> ReferenceKind:
+        if self.commit is not None:
+            return "commit"
+        if self.pull is None:
+            return "file"
+        return "pull" if self.path is None else "pull_file"
+
+    @property
+    def ranged(self) -> bool:
+        return self.side is not None or self.start_line is not None or self.end_line is not None
 
     @model_validator(mode="after")
     def _usable_reference(self) -> CollectionReference:
+        if self.commit is not None:
+            if self.path is not None or self.pull is not None or self.ranged:
+                raise ValueError("a commit reference names its commit alone")
+            return self
+        if self.pull is not None and self.ranged:
+            raise ValueError("a pull request's file takes no range")
+        if self.path is None:
+            if self.pull is None:
+                raise ValueError("a reference names a path, a pull request, or a commit")
+            return self
         format_pull_href(1, "files", self.path)
-        if self.side is None and self.start_line is None and self.end_line is None:
+        if not self.ranged:
             return self
         if (
             self.side is None
@@ -656,121 +743,220 @@ def _row_cost(line: LineRecord) -> int:
     return 80 + 6 * len(line.text)
 
 
-def _references(
-    number: int,
-    references: list[CollectionReference],
-    changes: dict[str, FileChange],
-    patches: dict[str, FilePatch],
-    *,
-    truncated: bool,
-    too_large: frozenset[str] = frozenset(),
-    documents: Mapping[str, str] | None = None,
-) -> list[dict[str, object]]:
-    """Each reference of a step as the page draws it: its excerpt, its file's patch, or
-    the format the page draws the whole file in.
+@dataclass(frozen=True, slots=True)
+class _Files:
+    """What one comparison offers a step's file references: its changed files by path, the
+    patches read for the step, the changes left out for their size, alone or beside the
+    step's other files, the files the page draws whole with each one's format, and whether
+    the listing was cut short."""
 
-    *too_large* are the changes whose patches the diff source left out for their size,
-    alone or beside the step's other files. *documents* are the files the step cites whole
-    that the rendered route renders, each with its format: such a reference answers
-    `rendered`, the format, and no hunks, since the page draws that file whole from the
-    comparison route's one-file answer and the rendered route, within their own bounds,
-    so it charges nothing to the step's budget for whole files. Every other reference
-    answers `rendered` null.
+    changes: Mapping[str, FileChange]
+    patches: Mapping[str, FilePatch] = field(default_factory=dict[str, "FilePatch"])
+    truncated: bool = False
+    too_large: frozenset[str] = frozenset()
+    documents: Mapping[str, str] = field(default_factory=dict[str, str])
+
+
+@dataclass(frozen=True, slots=True)
+class _PullFiles:
+    """A pull request's current comparison, which its `{pull, path}` references read: its
+    files, and its pins and routes, which the page draws a document from; or, in *state*,
+    why there are none, `not_cached` or `comparison_unavailable`."""
+
+    files: _Files | None
+    comparison: dict[str, object] | None
+    state: str | None = None
+
+
+@dataclass(slots=True)
+class _Budget:
+    """A step's two budgets, which its references draw on in order, in every comparison
+    they read: what is left of MAX_EXCERPT_BYTES for its ranges, and of
+    MAX_STEP_PATCH_BYTES for its whole files."""
+
+    excerpts: int
+    whole: int
+
+
+# What a `{pull}` or a `{commit}` resolves to: its state, its address, and what the row
+# names, or None.
+type _Target = tuple[str, str | None, dict[str, object] | None]
+
+
+def _file_answer(
+    reference: CollectionReference, files: _Files, href: str | None, budget: _Budget
+) -> dict[str, object]:
+    """A file reference as the page draws it: its excerpt, its file's patch, or the format
+    the page draws the whole file in, within *budget*.
+
+    A file the step cites whole that the rendered route renders, one of *files*'
+    documents, answers `rendered`, its format, and no hunks, since the page draws it whole
+    from the comparison route's one-file answer and the rendered route, within their own
+    bounds, so it charges nothing to the step's budget for whole files. Every other
+    reference answers `rendered` null.
     """
-    output: list[dict[str, object]] = []
-    remaining = MAX_EXCERPT_BYTES
-    whole = MAX_STEP_PATCH_BYTES
-    formats = documents or {}
-    for reference in references:
-        change = changes.get(reference.path)
+    path = reference.path
+    assert path is not None
+    change = files.changes.get(path)
+    rendered = None if reference.ranged else files.documents.get(path)
+    hunks: list[dict[str, object]] = []
+    cut = False
+    if change is None:
+        state = "manifest_truncated" if files.truncated else "path_not_changed"
         href = None
-        hunks: list[dict[str, object]] = []
-        cut = False
-        rendered = formats.get(reference.path) if reference.side is None else None
-        if change is None:
-            state = "manifest_truncated" if truncated else "path_not_changed"
-        elif rendered is not None:
-            href = format_pull_href(number, "files", reference.path)
-            state = "ready"
+    elif rendered is not None:
+        state = "ready"
+    elif (patch := files.patches.get(change.id)) is None:
+        state = "patch_too_large" if change.id in files.too_large else "diff_unavailable"
+    elif not reference.ranged:
+        # The file's whole patch, as Changes shows it, within the step's budget.
+        used = sum(_row_cost(line) for hunk in patch.hunks for line in hunk.lines)
+        if used > budget.whole:
+            state = "patch_too_large"
         else:
-            href = format_pull_href(number, "files", reference.path)
-            patch = patches.get(change.id)
-            if patch is None:
-                state = "patch_too_large" if change.id in too_large else "diff_unavailable"
-            elif reference.side is None:
-                # The file's whole patch, as Changes shows it, within the step's budget.
-                used = sum(_row_cost(line) for hunk in patch.hunks for line in hunk.lines)
-                if used > whole:
-                    state = "patch_too_large"
-                else:
-                    whole -= used
-                    state = "ready"
-                    hunks = [hunk.model_dump(mode="json") for hunk in patch.hunks]
-                    cut = patch.truncated
+            budget.whole -= used
+            state = "ready"
+            hunks = [hunk.model_dump(mode="json") for hunk in patch.hunks]
+            cut = patch.truncated
+    else:
+        state, hunks, used = _excerpt(patch, reference, budget.excerpts)
+        budget.excerpts -= used
+    return {"state": state, "rendered": rendered, "href": href, "hunks": hunks, "truncated": cut}
+
+
+def _references(
+    href: Callable[[str], str],
+    references: Sequence[CollectionReference],
+    files: _Files,
+    *,
+    pulls: Mapping[int, _PullFiles] | None = None,
+    targets: Mapping[int, _Target] | None = None,
+) -> list[dict[str, object]]:
+    """Each reference of a step as the page draws it, in its order.
+
+    A `{path}` reads *files*, the carrier's comparison, and its address is *href* of its
+    path; a `{pull, path}` reads its pull request's comparison in *pulls*, and answers that
+    comparison too, which the page draws a document from; a `{pull}` and a `{commit}` are
+    their entry of *targets*, by the reference's place in the step. Every answer has every
+    field, null where its kind has none.
+    """
+    budget = _Budget(MAX_EXCERPT_BYTES, MAX_STEP_PATCH_BYTES)
+    output: list[dict[str, object]] = []
+    for at, reference in enumerate(references):
+        kind = reference.kind
+        comparison: dict[str, object] | None = None
+        target: dict[str, object] | None = None
+        if kind == "file":
+            assert reference.path is not None
+            answer = _file_answer(reference, files, href(reference.path), budget)
+        elif kind == "pull_file":
+            assert reference.pull is not None and reference.path is not None
+            pulled = (pulls or {}).get(reference.pull)
+            # The file in that pull request's Changes, which loads the pull request when this
+            # copy has not read it.
+            address = format_pull_href(reference.pull, "files", reference.path)
+            if pulled is None or pulled.files is None:
+                state = pulled.state if pulled is not None else None
+                answer = {
+                    "state": state or "comparison_unavailable",
+                    "rendered": None,
+                    "href": address,
+                    "hunks": [],
+                    "truncated": False,
+                }
             else:
-                state, hunks, used = _excerpt(patch, reference, remaining)
-                remaining -= used
+                answer = _file_answer(reference, pulled.files, address, budget)
+                comparison = pulled.comparison
+        else:
+            state, address, target = (targets or {}).get(at, ("not_cached", None, None))
+            answer = {
+                "state": state,
+                "rendered": None,
+                "href": address,
+                "hunks": [],
+                "truncated": False,
+            }
         output.append(
             {
+                "kind": kind,
                 **reference.model_dump(),
-                "state": state,
-                "rendered": rendered,
-                "href": href,
-                "hunks": hunks,
-                "truncated": cut,
+                **answer,
+                # A `{pull, path}`'s comparison, that pull request's pins and routes; null
+                # for every other kind, which the step's own comparison answers.
+                "comparison": comparison,
+                # What a `{pull}` or a `{commit}` names on its row; null for a file.
+                "target": target,
             }
         )
     return output
 
 
-async def _step_references(
-    store: PublishedSource, number: int, comparison: Comparison, step: CollectionItem
-) -> list[dict[str, object]]:
-    """The step's references, read from the pull request's current *comparison*.
+@dataclass(frozen=True, slots=True)
+class _Carrier:
+    """What a guide's references resolve against: the store and the pull requests cached
+    beside it, the carrier's comparison, the address of a file of it on the carrier's page,
+    and the stack a `{pull}` is placed in first.
 
-    A stale guide's steps are read there too, so a guide stays readable after a push, a
-    rebase, or a force push, whether or not the store still has the commits it was written
-    for: a reference that still resolves shows what the pull request changes now, and one
-    that does not says so in its place.
+    *manifest* lists the carrier's comparison, and is asked only by a step that cites one
+    of its files. A `{pull}` in more than one stack is placed in *stack* when it is a
+    member, else in the first stack that holds *pull*, else in the first that holds it.
+    """
 
-    A file the step cites whole that the rendered route renders, by that route's own rule
-    on the manifest's change, both its sides (`rendered_format`), is not read here: the
-    page draws it whole as the diff view does, from that file's own reads.
+    store: PublishedSource
+    home: Path
+    slug: str
+    head: str
+    manifest: Callable[[], Awaitable[ResolvedManifest]]
+    href: Callable[[str], str]
+    repository: ListedRepository | None = None
+    stack: int | None = None
+    pull: int | None = None
+
+
+async def _read_files(
+    store: PublishedSource,
+    compared: ResolvedManifest,
+    head: str,
+    references: Sequence[CollectionReference],
+) -> _Files:
+    """The files of *compared*, the comparison to *head*, that *references* cite, and the
+    patches they need, read in one run of the diff source.
+
+    A file cited whole that the rendered route renders, by that route's own rule on the
+    manifest's change, both its sides (`rendered_format`), is not read here: the page draws
+    it whole as the diff view does, from that file's own reads.
     """
     # The rendered route's module, imported with the step's read rather than this module:
     # the description's render imports this module, and never needs the projections.
     from metabrowser.builtin_plugins.github.pull_rendered_diff import rendered_format
 
-    base, head = comparison.base, comparison.head
-    # The record's own comparison is the pull request's kept manifest (pull_manifest.py),
-    # the one Changes reads.
-    compared = await shared_pull_manifest(store, number, base, head)
     manifest = compared.manifest
     changes = {
         display_path(change): change
         for change in manifest.files
         if (side := change.new or change.old) is not None and side.path_b64 is None
     }
+    cited = [(ref, ref.path) for ref in references if ref.path is not None]
     documents = {
-        ref.path: rendered
-        for ref in step.references
-        if ref.side is None
-        and (change := changes.get(ref.path)) is not None
+        path: rendered
+        for ref, path in cited
+        if not ref.ranged
+        and (change := changes.get(path)) is not None
         and (rendered := rendered_format(change)) is not None
     }
-    ranged = {ref.path for ref in step.references if ref.side is not None}
+    ranged = {path for ref, path in cited if ref.ranged}
     wanted: dict[str, None] = {}
     skipped: set[str] = set()
-    for ref in step.references:
-        change = changes.get(ref.path)
+    for ref, path in cited:
+        change = changes.get(path)
         if change is None or change.availability is not Availability.ready:
             continue
-        if ref.side is None and ref.path in documents:
+        if not ref.ranged and path in documents:
             continue
         # A file whose changed lines alone charge past a step's whole files is never drawn
         # whole, so it is not read for that: every row charges at least 80 bytes.
         lines = (change.additions or 0) + (change.deletions or 0)
-        if ref.path not in ranged and 80 * lines > MAX_STEP_PATCH_BYTES:
+        if path not in ranged and 80 * lines > MAX_STEP_PATCH_BYTES:
             skipped.add(change.id)
         else:
             wanted[change.id] = None
@@ -785,15 +971,180 @@ async def _step_references(
         hydrated = await diff.hydrate(compared.resolved, tuple(wanted), manifest=manifest)
         patches = dict(hydrated.patches)
         too_large |= {*hydrated.too_large, *hydrated.deferred}
+    return _Files(changes, patches, manifest.truncated, too_large, documents)
+
+
+async def _pull_files(
+    carrier: _Carrier, references: Sequence[CollectionReference]
+) -> dict[int, _PullFiles]:
+    """Each pull request the step's `{pull, path}` references cite, at its record's current
+    comparison: its kept manifest, the one its Changes reads, and the patches its cited
+    files need, one run of the diff source for each pull request.
+
+    A pull request with no record answers `not_cached`, and one whose record has no
+    comparison, or whose comparison the store cannot read now, `comparison_unavailable`.
+    """
+    cited: dict[int, list[CollectionReference]] = {}
+    for ref in references:
+        if ref.kind == "pull_file" and ref.pull is not None:
+            cited.setdefault(ref.pull, []).append(ref)
+    found: dict[int, _PullFiles] = {}
+    store = carrier.store
+    for number, refs in cited.items():
+        record, _, _ = await asyncio.to_thread(
+            cached_pull_record, carrier.home, carrier.slug, number
+        )
+        if not isinstance(record, PullRecord):
+            found[number] = _PullFiles(None, None, "not_cached")
+            continue
+        comparison = record.comparison
+        if comparison is None:
+            found[number] = _PullFiles(None, None, "comparison_unavailable")
+            continue
+        base, head = comparison.base, comparison.head
+        try:
+            compared = await shared_pull_manifest(store, number, base, head)
+            files = await _read_files(store, compared, head, refs)
+        except (DiffSourceError, GitError):
+            found[number] = _PullFiles(None, None, "comparison_unavailable")
+            continue
+        tag = store_tag(store.git_dir)
+        found[number] = _PullFiles(
+            files,
+            {
+                "merge_base": base,
+                "head": head,
+                "route": comparison_route(record, store=tag),
+                "image_route": image_route(number, base, head, store=tag),
+                "rendered_route": rendered_route(number, base, head, store=tag),
+            },
+        )
+    return found
+
+
+def _stack_place(
+    stacks: Sequence[NativeStack], number: int, within: int | None
+) -> dict[str, int] | None:
+    """Pull request *number*'s place in stack *within* when it is a member, else in the
+    first stack that holds it, as `{number, place, count}`, or ``None`` in none."""
+    holding = [stack for stack in stacks if number in stack.pulls]
+    if not holding:
+        return None
+    stack = next((stack for stack in holding if stack.number == within), holding[0])
+    return {
+        "number": stack.number,
+        "place": stack.pulls.index(number) + 1,
+        "count": len(stack.pulls),
+    }
+
+
+def _pull_targets(carrier: _Carrier, cited: Sequence[tuple[int, int]]) -> dict[int, _Target]:
+    """Each `{pull}` of *cited*, by its place in the step and its number: its title and
+    state, from its cached record or else its catalog row, and its place in its stack, from
+    the stack snapshot, or `not_cached` when this copy knows neither. Blocking and bounded:
+    the snapshot once, and a record and a catalog row for each, through their parse caches.
+    """
+    from metabrowser.builtin_plugins.github.pull_stack import member_state, snapshot_stacks
+
+    stacks = snapshot_stacks(carrier.repository) if carrier.repository is not None else ()
+    within = carrier.stack
+    if within is None and carrier.pull is not None:
+        within = next((stack.number for stack in stacks if carrier.pull in stack.pulls), None)
+    found: dict[int, _Target] = {}
+    for at, number in cited:
+        record, _, _ = cached_pull_record(carrier.home, carrier.slug, number)
+        held = record if isinstance(record, PullRecord) else None
+        row = catalog_member(carrier.home, carrier.slug, number)[1]
+        href = format_pull_href(number)
+        if held is None and row is None:
+            found[at] = ("not_cached", href, None)
+            continue
+        title = held.pull.title if held is not None else row.title if row is not None else None
+        state = member_state(
+            held,
+            row.state if row is not None else None,
+            row.draft if row is not None else False,
+            row.merged if row is not None else False,
+        )
+        place = _stack_place(stacks, number, within)
+        found[at] = ("ready", href, {"title": title, "state": state, "stack": place})
+    return found
+
+
+async def _commit_target(location: GitLocation, commit: str) -> _Target:
+    """A `{commit}`: its subject, cut as a stale guide's commits' are, and when it was
+    committed, or `commit_unavailable` when the store has no such commit.
+
+    One bounded `git log`, sized as :func:`_commits_since` sizes one commit's line. Git
+    prints a subject whole, so one past the bound answers the commit with neither.
+    """
+    href = format_commit_href(commit)
+    try:
+        out = await run_git_at(
+            [
+                "log",
+                *GIT_NO_DRIVER_ARGS,
+                "-1",
+                "--no-walk",
+                "--format=%cI%x00%s",
+                f"{commit}^{{commit}}",
+                "--",
+            ],
+            location,
+            max_bytes=_MAX_COMMIT_ROW_BYTES,
+        )
+    except GitOutputTooLargeError:
+        return "ready", href, {"subject": None, "committed_at": None}
+    except GitError:
+        return "commit_unavailable", None, None
+    when, _, subject = out.decode("utf-8", errors="replace").rstrip("\n").partition("\0")
+    return (
+        "ready",
+        href,
+        {
+            "subject": cut_text(subject, MAX_STALE_SUBJECT_BYTES)[0] or None,
+            "committed_at": when or None,
+        },
+    )
+
+
+async def _step_references(carrier: _Carrier, step: CollectionItem) -> list[dict[str, object]]:
+    """The step's references, each read from what this copy has cached: a `{path}` from the
+    carrier's current comparison, a `{pull, path}` from that pull request's, a `{pull}` from
+    its record or catalog row, and a `{commit}` from the store. Nothing is fetched.
+
+    A stale guide's steps are read there too, so a guide stays readable after a push, a
+    rebase, or a force push, whether or not the store still has the commits it was written
+    for: a reference that still resolves shows what the change is now, and one that does
+    not says so in its place.
+
+    Raises ``DiffSourceError`` or ``GitError`` when the store cannot list the carrier's
+    comparison for the step's files; a `{pull, path}` whose comparison it cannot list says
+    so in its place.
+    """
+    references = step.references
+    files = _Files({})
+    own = [ref for ref in references if ref.kind == "file"]
+    if own:
+        files = await _read_files(carrier.store, await carrier.manifest(), carrier.head, own)
+    pulls = await _pull_files(carrier, references)
+    targets: dict[int, _Target] = {}
+    asked = [(at, ref.pull) for at, ref in enumerate(references) if ref.kind == "pull"]
+    if asked:
+        targets.update(
+            await asyncio.to_thread(
+                _pull_targets, carrier, [(at, number) for at, number in asked if number]
+            )
+        )
+    store = carrier.store
+    location = GitLocation.revision(
+        RepositoryStoreTarget(store.git_dir, store.object_format), carrier.head
+    )
+    for at, ref in enumerate(references):
+        if ref.commit is not None:
+            targets[at] = await _commit_target(location, ref.commit)
     return await asyncio.to_thread(
-        _references,
-        number,
-        step.references,
-        changes,
-        patches,
-        truncated=manifest.truncated,
-        too_large=too_large,
-        documents=documents,
+        _references, carrier.href, references, files, pulls=pulls, targets=targets
     )
 
 
@@ -828,7 +1179,7 @@ async def _commits_since(location: GitLocation, old: str, new: str) -> dict[str,
                 "--",
             ],
             location,
-            max_bytes=MAX_STALE_COMMITS * (200 + 4 * MAX_STALE_SUBJECT_BYTES),
+            max_bytes=MAX_STALE_COMMITS * _MAX_COMMIT_ROW_BYTES,
         )
     except GitOutputTooLargeError:
         # Git prints a subject whole, so one long enough passes the bound, which is sized
@@ -942,14 +1293,19 @@ async def _staleness(
     except GitError:
         return answer
     if changed is not None:
-        referenced = {ref.path for item in guide.flat_items() for ref in item.references}
-        answer["changed_paths"] = sorted(referenced & changed)
+        # Only a file of the guide's own comparison can be out of date: a `{pull, path}`
+        # follows its pull request, and a pull request or a commit is what it is.
+        cited = [_own_paths(item) for item in guide.flat_items()]
+        answer["changed_paths"] = sorted(set().union(*cited) & changed)
         answer["changed_steps"] = [
-            at
-            for at, item in enumerate(guide.flat_items(), start=1)
-            if any(ref.path in changed for ref in item.references)
+            at for at, paths in enumerate(cited, start=1) if not paths.isdisjoint(changed)
         ]
     return answer
+
+
+def _own_paths(item: CollectionItem) -> set[str]:
+    """The files of the guide's own comparison that *item* cites, its `{path}` references'."""
+    return {ref.path for ref in item.references if ref.kind == "file" and ref.path is not None}
 
 
 def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
@@ -1013,8 +1369,17 @@ def _outline(guide: Collection) -> tuple[list[dict[str, object]], list[int | Non
     return outline, groups
 
 
-async def guided_review(host: PullHost, number: int, step_number: int) -> dict[str, object]:
-    """Return the first or selected step of this PR's guide and only its excerpts."""
+async def guided_review(
+    host: PullHost,
+    number: int,
+    step_number: int,
+    repository: ListedRepository | None = None,
+) -> dict[str, object]:
+    """Return the first or selected step of this PR's guide and only its excerpts.
+
+    *repository* is the served repository, whose stack snapshot places a `{pull}` reference
+    in its stack; without it, a `{pull}` names no place.
+    """
     served = host.pulls
     record, _, revision = await asyncio.to_thread(
         cached_pull_record, served.home, served.slug, number
@@ -1061,7 +1426,23 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
         return {**identity, "state": "step_not_found", **diagnostics}
     step = steps[step_number - 1]
     try:
-        references = await _step_references(published, number, comparison, step)
+        references = await _step_references(
+            _Carrier(
+                store=published,
+                home=served.home,
+                slug=served.slug,
+                head=comparison.head,
+                # The record's own comparison is the pull request's kept manifest
+                # (pull_manifest.py), the one Changes reads.
+                manifest=partial(
+                    shared_pull_manifest, published, number, comparison.base, comparison.head
+                ),
+                href=partial(format_pull_href, number, "files"),
+                repository=repository,
+                pull=number,
+            ),
+            step,
+        )
     except (DiffSourceError, GitError):
         return {**identity, "state": "comparison_unavailable", **diagnostics}
     outline, groups = _outline(guide)

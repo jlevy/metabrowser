@@ -16,6 +16,12 @@ lazy mount are pinned in ``tests/dom/github-pull-page-mount-behavior.js`` and
 and where a list's markers fall against the bordered box around them are paint too, so they are
 measured here: a marker on or past a border is what the first out-of-date notice drew (mb-u46w).
 
+A step that cites past its pull request draws a pull request and a commit as rows, whose
+height, borders, and cut titles are paint, so ``tests/dom/github-guided-review-kinds-chrome.mjs``
+measures them, at a desktop width and a phone's, and that another pull request's document draws
+from that pull request's own routes on the real server, on a stand-in whose pull request 7's
+guide cites every kind of reference (``--describe 7 kinds``).
+
 A step's rendered document is the diff view's own drawing of a file over the server's
 projection, so ``tests/dom/github-guided-review-documents-chrome.mjs`` compares a Markdown
 document with the Docs tab's drawing of the same file, and a YAML document with the Changes
@@ -52,6 +58,7 @@ from tests.test_nav_metadata_chrome import (
 FIXTURE = Path(__file__).resolve().parent / "github_pull_fixture.py"
 SESSION = Path(__file__).resolve().parent / "dom" / "github-guided-review-chrome.mjs"
 DOCUMENTS = Path(__file__).resolve().parent / "dom" / "github-guided-review-documents-chrome.mjs"
+KINDS = Path(__file__).resolve().parent / "dom" / "github-guided-review-kinds-chrome.mjs"
 # Building the stand-in's home runs the production CLI four times through a fake gh; it took
 # about 5 s at a load average near 20 (2026-11-20).
 _BUILD_BUDGET_S = 60.0
@@ -69,8 +76,15 @@ LIFECYCLE_S = (
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
-def _session(tmp_path: Path, chrome_profile: Path, mode: str, session: Path) -> str:
-    """Build the stand-in in fixture *mode*, serve pull request 7, and run *session* on it."""
+def _session(
+    tmp_path: Path,
+    chrome_profile: Path,
+    mode: str,
+    session: Path,
+    describe: tuple[str, str] = ("8", "grouped"),
+) -> str:
+    """Build the stand-in in fixture *mode*, write the guide *describe* names into a pull
+    request's description, serve pull request 7, and run *session* on it."""
     chrome = require_chrome()
     node = require_node()
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
@@ -78,8 +92,8 @@ def _session(tmp_path: Path, chrome_profile: Path, mode: str, session: Path) -> 
     env["METABROWSER_LOG_LEVEL"] = "WARNING"
     stand_in = tmp_path / "stand-in"
     stand_in.mkdir()
-    # Pull request 8's guide is rewritten in groups after the build, whichever mode built it.
-    for build in ([mode], ["--describe", "8", "grouped"]):
+    # A guide is rewritten after the build, whichever mode built it: by default 8's, in groups.
+    for build in ([mode], ["--describe", *describe]):
         built = subprocess.run(
             [sys.executable, str(FIXTURE), str(stand_in), *build],
             capture_output=True,
@@ -134,4 +148,10 @@ def test_guided_review_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile
 def test_guided_review_documents_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     stdout = _session(tmp_path, chrome_profile, "--guided-documents", DOCUMENTS)
     passed = re.fullmatch(r"guided review documents in Chrome: (\d+) checks passed\n", stdout)
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_guided_review_reference_rows_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+    stdout = _session(tmp_path, chrome_profile, "--guided", KINDS, describe=("7", "kinds"))
+    passed = re.fullmatch(r"guided review references in Chrome: (\d+) checks passed\n", stdout)
     assert passed is not None and int(passed.group(1)) > 0, stdout

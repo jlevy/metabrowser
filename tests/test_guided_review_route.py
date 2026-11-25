@@ -27,8 +27,19 @@ from metabrowser.builtin_plugins.github import (
     pull_rendered_diff,
 )
 from metabrowser.builtin_plugins.github.guided_review import parse_guide
-from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES, PullRecord
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_BODY_BYTES,
+    PullRecord,
+    PullRefreshStamp,
+)
 from metabrowser.builtin_plugins.github.pull_route import PullHost, PullView
+from metabrowser.builtin_plugins.github.pull_stacks import (
+    NativeStack,
+    StackPage,
+    StackSnapshot,
+    publish_stacks,
+)
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.diff import markdown_projection_worker as worker_module
 from metabrowser.diff.adapters.base import DiffSourceError
@@ -37,8 +48,12 @@ from metabrowser.git.process import GitError, GitLocation, GitOutputCutError, Re
 from tests.diff_fixture_repo import git
 from tests.github_pull_fixture import (
     _DOCUMENT_FILES,  # pyright: ignore[reportPrivateUsage]
+    DEFAULT_BRANCH,
+    FETCHED_AT,
+    READER,
     grouped_guide_body,
     guide_body,
+    kinds_guide_body,
     markdown_guide_body,
     scenario,
 )
@@ -103,9 +118,11 @@ def _pinned(stand: _Stand, *, merge_base: str | None = None, head: str | None = 
     return body
 
 
-def _ask(stand: _Stand, step: int = 1, number: int = 7) -> dict[str, Any]:
+def _ask(
+    stand: _Stand, step: int = 1, number: int = 7, repository: ListedRepository | None = None
+) -> dict[str, Any]:
     host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
-    return asyncio.run(guided_review.guided_review(host, number, step))
+    return asyncio.run(guided_review.guided_review(host, number, step, repository))
 
 
 def _rows(answer: dict[str, Any], at: int = 0) -> list[str]:
@@ -586,6 +603,165 @@ def test_a_description_cut_inside_its_block_is_truncated_not_invalid(stand: _Sta
     record = _cache(stand, "x" * (MAX_BODY_BYTES - 200) + "\n\n" + guide_body(stand.origin))
     assert record.pull.body_truncated
     assert _ask(stand)["state"] == "description_truncated"
+
+
+def _repository(stand: _Stand, *stacks: tuple[int, ...]) -> ListedRepository:
+    """The stand-in's repository, as the server serves it, with a stack snapshot of each of
+    *stacks*, numbered from 70, when any is given."""
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    if stacks:
+        native = tuple(
+            NativeStack(number=70 + at, base_ref=DEFAULT_BRANCH, open=True, pulls=pulls)
+            for at, pulls in enumerate(stacks)
+        )
+        stamp = FETCHED_AT.strftime("%Y-%m-%dT%H:%M:%SZ")
+        snapshot = StackSnapshot(
+            source=repository.source,
+            reader=f"gh:{READER}",
+            fetched_at=stamp,
+            complete=True,
+            pages=(StackPage(etag=None, has_next=False, stacks=native),),
+        )
+        refresh = PullRefreshStamp(outcome="succeeded", at=stamp, reader=f"gh:{READER}")
+        assert publish_stacks(repository, None, snapshot, refresh)
+    return repository
+
+
+def _cited(answer: dict[str, Any]) -> list[tuple[Any, ...]]:
+    return [
+        (ref["kind"], ref["pull"] or ref["commit"], ref["state"], ref["href"])
+        for ref in answer["references"]
+    ]
+
+
+def test_a_step_cites_other_pull_requests_and_commits(stand: _Stand) -> None:
+    """A `{pull}` is a row naming that pull request, a `{pull, path}` its file at its own
+    current comparison, and a `{commit}` a row naming that commit, each read from this copy
+    alone: a pull request it has not read is `not_cached` until it has."""
+    origin = stand.origin
+    _cache(stand, kinds_guide_body(origin))
+    repository = _repository(stand, (8, 10), (8, 7, 10))
+    before = _ask(stand, step=2, repository=repository)
+    assert before["state"] == "ready"
+    assert _cited(before) == [
+        ("pull", 8, "not_cached", "/pull/8"),
+        ("pull_file", 10, "not_cached", "/pull/10/files/docs/draft.md"),
+        ("pull_file", 9, "not_cached", "/pull/9/files/src/app.txt"),
+        ("pull", 50, "not_cached", "/pull/50"),
+        ("pull", 2000, "not_cached", "/pull/2000"),
+        ("commit", origin["fork_head"], "ready", f"/commit/{origin['fork_head']}"),
+        ("commit", _MISSING, "commit_unavailable", None),
+    ]
+    for number in (8, 9, 10):
+        stand.refresh(number)
+    answer = _ask(stand, step=2, repository=repository)
+    assert _cited(answer)[:3] == [
+        ("pull", 8, "ready", "/pull/8"),
+        ("pull_file", 10, "ready", "/pull/10/files/docs/draft.md"),
+        ("pull_file", 9, "ready", "/pull/9/files/src/app.txt"),
+    ]
+    layer, document, patch, *_rest = answer["references"]
+    # 8 is in both stacks; its place is in 71, the stack that holds 7, the guide's own.
+    assert layer["target"] == {
+        "title": "Say more in the guide",
+        "state": "merged",
+        "stack": {"number": 71, "place": 1, "count": 3},
+    }
+    assert (layer["path"], layer["comparison"], layer["hunks"]) == (None, None, [])
+    # A document another pull request changes is drawn whole from that pull request's own
+    # comparison, which its answer names, as a document of the guide's own is.
+    assert (document["rendered"], document["hunks"]) == ("markdown", [])
+    record = stand.record(10)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    comparison = document["comparison"]
+    assert (comparison["merge_base"], comparison["head"]) == (
+        record.comparison.base,
+        record.comparison.head,
+    )
+    assert comparison["route"].startswith("/api/plugin/github/pull-comparison?number=10&")
+    assert comparison["rendered_route"].startswith(
+        "/api/plugin/github/pull-rendered-diff?number=10&"
+    )
+    assert comparison["image_route"].startswith("/api/plugin/github/pull-image?number=10&")
+    # A file that is not a document is its whole patch, as a `{path}` without a range is.
+    assert patch["rendered"] is None
+    assert [
+        f"{line['op']}:{line['text']}" for hunk in patch["hunks"] for line in hunk["lines"]
+    ] == [
+        "context:one",
+        "add:spam",
+    ]
+    commit = answer["references"][5]
+    assert commit["target"] == {"subject": "count to two", "committed_at": "2026-08-29T14:40:00Z"}
+    assert answer["references"][6]["target"] is None
+
+
+def test_a_pull_request_in_no_stack_or_with_no_snapshot_has_no_place(stand: _Stand) -> None:
+    """Outside a stack, and on a server that lists no repository, a `{pull}` names no place;
+    in stacks without the guide's pull request, its place is in the first that holds it."""
+    _cache(stand, kinds_guide_body(stand.origin))
+    stand.refresh(8)
+    unlisted = _ask(stand, step=2)
+    assert unlisted["references"][0]["target"]["stack"] is None
+    elsewhere = _ask(stand, step=2, repository=_repository(stand, (9,), (10, 8)))
+    assert elsewhere["references"][0]["target"]["stack"] == {"number": 71, "place": 2, "count": 2}
+
+
+def test_a_reference_past_the_pull_request_is_never_stale(stand: _Stand) -> None:
+    """What a push to the guide's own pull request changed is read from its `{path}`
+    references alone: a `{pull, path}` to a file of the same name is another pull request's,
+    and a `{pull}` or a `{commit}` names something no push to this one moves."""
+    origin = stand.origin
+    body = kinds_guide_body(origin).replace(
+        f'head: "{origin["fork_head"]}"', f'head: "{origin["fork_earlier"]}"'
+    )
+    _cache(stand, body)
+    answer = _ask(stand, step=2)
+    assert answer["state"] == "stale"
+    assert answer["stale"]["changed_paths"] == ["src/app.txt"]
+    assert answer["stale"]["changed_steps"] == [1]
+
+
+def test_another_pull_requests_comparison_the_store_cannot_read_says_so_in_its_place(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `{pull, path}` whose pull request's comparison this copy cannot list is
+    unavailable in its place; the step's other references still draw."""
+    _cache(stand, kinds_guide_body(stand.origin))
+    for number in (8, 9, 10):
+        stand.refresh(number)
+    real = guided_review.shared_pull_manifest
+
+    async def unreadable(published: Any, number: int, *args: Any) -> Any:
+        if number == 9:
+            raise DiffSourceError("the store cannot list it")
+        return await real(published, number, *args)
+
+    monkeypatch.setattr(guided_review, "shared_pull_manifest", unreadable)
+    answer = _ask(stand, step=2)
+    assert [ref["state"] for ref in answer["references"][:3]] == [
+        "ready",
+        "ready",
+        "comparison_unavailable",
+    ]
+    assert (answer["references"][2]["href"], answer["references"][2]["comparison"]) == (
+        "/pull/9/files/src/app.txt",
+        None,
+    )
+
+
+def test_a_commit_whose_line_passes_its_bound_names_neither_subject_nor_date(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git prints a subject whole, so a commit whose line passes the bound is still the
+    commit, named by its SHA alone."""
+    _cache(stand, kinds_guide_body(stand.origin))
+    monkeypatch.setattr(guided_review, "_MAX_COMMIT_ROW_BYTES", 8)
+    commit = _ask(stand, step=2)["references"][5]
+    assert (commit["state"], commit["target"]) == (
+        "ready",
+        {"subject": None, "committed_at": None},
+    )
 
 
 async def _commits_since(root: Path, subject: str) -> dict[str, object]:

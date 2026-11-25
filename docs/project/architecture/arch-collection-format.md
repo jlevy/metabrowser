@@ -1,9 +1,10 @@
 # Collection Format
 
 **Status:** Built as contract `metabrowser.collection:Collection/v1`, with one carrier:
-guided reviews of GitHub pull requests, whose notes render as Markdown.
-Designed, not built: a stack’s guide, more kinds of reference, collections in repository
-files, URL references, a Markdown form, and the other carriers below.
+guided reviews of GitHub pull requests, whose notes render as Markdown, and whose
+references name a file, a pull request, a file as a pull request changes it, or a
+commit. Designed, not built: a stack’s guide, collections in repository files, URL
+references, a Markdown form, and the other carriers below.
 
 A collection is an ordered list of annotated items, which may be gathered in titled
 groups: each item is a title, a note, and the references it is about.
@@ -38,6 +39,9 @@ collection:
       note: Check that it describes the snapshot.
       references:
         - {path: docs/cache.md}
+        - {pull: 805}
+        - {pull: 805, path: docs/plan.md}
+        - {commit: "<full commit ID>"}
 ```
 
 - **`items`** are ordered, and the order is the author’s. Each entry is an item or a
@@ -49,6 +53,7 @@ collection:
   this is no break. A note written as plain text reads the same unless it used Markdown
   syntax, which now renders as its author likely meant, or a single line break, which
   now joins its two lines into one paragraph.
+
 - **A group** has a `title`, an optional `note`, and its own `items`, at least one,
   which are items only: groups nest one level.
   A group’s note is Markdown as an item’s is.
@@ -64,18 +69,33 @@ collection:
   The cost is that a release before groups refuses a grouped record at `items.N`, so its
   reader needs a release with groups; a `Collection/v2` would not help that reader,
   whose release refuses v2 as well.
-- **A reference** is a `path`, optionally with a `side` and an inclusive line range.
-  A carrier decides what a path names and how a range resolves: in a guided review it is
-  a changed file and a range of its diff.
-  v1 adds two rules of its one carrier that the compiled schema does not express, so the
-  models enforce them (`CollectionReference` in `guided_review.py`): a path is a
-  normalized relative path (no `./`, `..`, or trailing `/`), checked as the pull route
-  forms an address; and a range needs `side` and both line numbers, in order, so every
-  v1 range is a range of a diff.
+
+- **A reference** is one of four kinds, which its fields name (`kind` on
+  `CollectionReference` in `guided_review.py`):
+  - a file, `path`, optionally with a `side` and an inclusive line range: a file of the
+    collection’s comparison, or a range of its diff;
+  - a pull request, `pull`;
+  - a pull request’s file, `pull` and `path`: that file as that pull request changes it;
+  - a commit, `commit`, its full ID.
+
+  A carrier decides what each names and how it resolves: in a guided review a path is a
+  changed file and a range a range of its diff, and the other three are read from what
+  is cached ([Format and Carrier](#format-and-carrier)). A pull request’s file takes no
+  range: it follows that pull request’s comparison, which the collection does not pin,
+  so a range into it would come to point at other lines.
+  A commit is cited alone.
+  The compiled schema states which fields each kind refuses, as an `if` on `commit` and
+  then on `pull` (`_REFERENCE_KINDS`), so a refusal names the field that does not
+  belong. The models enforce the rules it does not express: a path is a normalized
+  relative path (no `./`, `..`, or trailing `/`), checked as the pull route forms an
+  address; a range needs `side` and both line numbers, in order, so every v1 range is a
+  range of a diff; and a reference names a file, a pull request, or a commit.
   A carrier without a change, which cannot cite lines that way, relaxes the range rule,
-  as it does `comparison`. References to a pull request, to a file as a pull request
-  changes it, and to a commit are designed and not built
-  ([Planned Changes to the Record](#planned-changes-to-the-record)).
+  as it does `comparison`. The three kinds past a file arrived within v1, as groups did:
+  `path` stopped being required and two optional fields joined it, so every record v1
+  accepted before means the same, and a release before them refuses a record that uses
+  them at its reference.
+
 - **`comparison`** pins the change the references resolve against.
   v1 requires it, because its one carrier is a pull request’s description, which is not
   versioned with the code it describes.
@@ -83,6 +103,7 @@ collection:
   optional. That keeps v1, since
   [Contracts](../specs/active/plan-2026-11-14-object-data-model-and-views.md#contracts)
   counts only a field removed, renamed, or retyped as a break.
+
 - **A collection has no prose of its own.** The document that carries it introduces it,
   as a pull request’s description introduces its guide.
 
@@ -116,8 +137,14 @@ path is a changed file and a range lies in one hunk of its diff; excerpts are bo
 `MAX_EXCERPT_BYTES` and `MAX_STEP_PATCH_BYTES`; a note renders as the description does,
 through the same inert render (`render_text` in `pull_markdown.py`), and shows as typed
 when that render is refused; the record is stale when the pull request’s comparison
-moves. The `guided-review` route answers it, and the pull page’s Guided Review tab draws
-it ([GitHub Pull Requests](arch-github-pull-requests.md#guided-review),
+moves. A pull request is read from its cached record or else its row in the list of pull
+requests, and placed in its stack from the stack snapshot; a pull request’s file is read
+at that pull request’s current comparison, as a path is at the guide’s; and a commit is
+read from the store.
+Nothing is fetched to resolve one, and none of the three is ever stale: only a path
+counts toward what a push to the pull request changed.
+The `guided-review` route answers it, and the pull page’s Guided Review tab draws it
+([GitHub Pull Requests](arch-github-pull-requests.md#guided-review),
 [Reviewing Pull Requests](../../reviewing-pull-requests.md#guided-review)).
 
 The fence names the carrier, not the format, so the same record could be written
@@ -162,12 +189,9 @@ names the `collection` plugin that will own it, so it does not change.
 
 ### Planned Changes to the Record
 
-[Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md) plans these, and
-none is built. Each keeps v1, since none removes, renames, or retypes a field.
+[Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md) plans this, and it
+is not built. It keeps v1, since it removes, renames, or retypes no field.
 
-- **Reference kinds** (mb-9dmv): `{pull: <n>}`, a pull request; `{pull: <n>, path}`, a
-  file as that pull request changes it; and `{commit: <id>}`, a commit.
-  They are valid in every carrier, resolve from what is cached, and draw as rows.
 - **Loose and pinned comparisons**, with collections in repository files: `comparison`
   becomes optional and gains an optional `base` and `branch` beside its two pins.
   A side pinned to a commit can be stale; a side left to its branch follows it and never

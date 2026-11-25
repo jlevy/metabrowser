@@ -107,15 +107,43 @@ const HUNKS = [
  */
 function reference(filePath, { range = false, state = "ready", rendered = null } = {}) {
   return {
+    kind: "file",
     path: filePath,
     side: range ? "new" : null,
     start_line: range ? 1 : null,
     end_line: range ? 2 : null,
+    pull: null,
+    commit: null,
     state,
     rendered,
     href: state === "path_not_changed" ? null : `/pull/7/files/${filePath}`,
     hunks: state === "ready" && rendered === null ? HUNKS : [],
     truncated: false,
+    comparison: null,
+    target: null,
+  };
+}
+
+/**
+ * A Markdown file of pull request 10, which a step cites as `{pull: 10, path}`: the guided
+ * route answers that pull request's comparison and the routes that answer it, which are not
+ * the page's.
+ */
+function otherDocument(filePath) {
+  const [left, right] = ["1".repeat(40), "2".repeat(40)];
+  const pair = `number=10&left=${left}&right=${right}`;
+  return {
+    ...reference(filePath, { rendered: "markdown" }),
+    kind: "pull_file",
+    pull: 10,
+    href: `/pull/10/files/${filePath}`,
+    comparison: {
+      merge_base: left,
+      head: right,
+      route: `/api/plugin/github/pull-comparison?${pair}&base_policy=merge_base&build=page-build&store=page-store`,
+      image_route: `/api/plugin/github/pull-image?${pair}&store=page-store`,
+      rendered_route: `/api/plugin/github/pull-rendered-diff?${pair}&store=page-store`,
+    },
   };
 }
 const markdown = (filePath) => reference(filePath, { rendered: "markdown" });
@@ -378,7 +406,8 @@ async function harness() {
                 }
                 return `a document still loading${said}`;
               }
-              const name = section.querySelector(".diff-file-path").textContent;
+              const pull = section.querySelector(".github-pull-guide-reference-pull");
+              const name = `${pull === null ? "" : `${pull.textContent} `}${section.querySelector(".diff-file-path").textContent}`;
               return section.querySelector(".diff-line") !== null
                 ? `${name}: patch${said}`
                 : `${name}: says ${section.children.at(-1).textContent}`;
@@ -577,6 +606,33 @@ async function run() {
       `a comparison with no rendered route: ${without.drawn()}, its rendered layer ${"markdownViews" in drawn.options ? "drawn" : "absent"}`,
     );
     without.handle.dispose();
+  }
+
+  // A document of another pull request is drawn from that pull request's own comparison,
+  // whose routes the step's answer names: its one-file read and its Rendered go to pull
+  // request 10's routes. It draws in a step read at another comparison than the page's,
+  // where a document of this pull request says its diff is unavailable.
+  {
+    world.requests.length = 0;
+    const view = await opened(
+      world,
+      body,
+      step(body, 1, [otherDocument("docs/draft.md"), markdown("docs/guide.md")], {
+        comparison: { merge_base: "c".repeat(40), head: pins.head },
+      }),
+    );
+    steps.push(`another pull request's document, at another comparison: ${view.drawn()}`);
+    const reads = world.requests.filter((asked) => asked.params.file !== undefined);
+    steps.push(
+      `its one-file read: ${reads.map((asked) => `${asked.hook} number=${asked.params.number} left=${asked.params.left.slice(0, 4)} file=${asked.params.file}`).join(", ")}`,
+    );
+    const drawn = world.views.find((shown) => shown.path === "docs/draft.md" && !shown.disposed);
+    world.requests.length = 0;
+    await drawn.options.renderMarkdown(drawn.id, new AbortController().signal);
+    steps.push(
+      `its Rendered is asked of: ${world.requests.map((asked) => `${asked.hook} number=${asked.params.number}`).join(", ")}`,
+    );
+    view.handle.dispose();
   }
 
   // A document whose view could not draw it keeps the guide's bar for it, with its name and

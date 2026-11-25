@@ -4,10 +4,12 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Phases 0 (`mb-mxcm`, `mb-kkib`) and 1 (`mb-vad1`) are built; phases 2 and 3
-are planned. Phase 1 leaves out the Pulls tab’s **Stack #N** heading as an entry point,
-since that heading is the stack row’s disclosure toggle, and the Chrome measurement of
-Docs that [Bounds](#bounds) asks for.
+**Status:** Phases 0 (`mb-mxcm`, `mb-kkib`), 1 (`mb-vad1`), and 2 (`mb-9dmv`) are built;
+phase 3 is planned. Phase 2 addresses a `{pull, path}` this copy cannot read at the file
+in that pull request’s Changes, which loads it, rather than at the pull request alone.
+Phase 1 leaves out the Pulls tab’s **Stack #N** heading as an entry point, since that
+heading is the stack row’s disclosure toggle, and the Chrome measurement of Docs that
+[Bounds](#bounds) asks for.
 **View on GitHub** opens the top pull request, since the plugin knows no address for
 GitHub’s own page of a stack.
 Epic `mb-bxff`. The owner’s decisions of 2026-11-24 are under [Decisions](#decisions).

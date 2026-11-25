@@ -8280,6 +8280,16 @@ export function mountPullPage(container, ctx, mb) {
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
         mount.view = mountGuidedReview(host, introduction, number, {
           open: openChangedFile,
+          // Another pull request a step cites, or a file in its Changes, opened as a stack
+          // member's link opens it.
+          openPull: (target, path) =>
+            void open(
+              path === null
+                ? { number: target, tab: "" }
+                : { number: target, tab: "files", file: path, replace: false, jumped: false },
+            ),
+          age: (iso) => age(iso),
+          shortCommit: (sha) => mb.shortCommit(sha),
           loadStyles: (assets) =>
             Promise.all([
               textStyles(
@@ -8295,12 +8305,32 @@ export function mountPullPage(container, ctx, mb) {
           },
           // A file a step cites whole that the rendered route renders is the diff plugin's
           // own view of it, from this page's comparison while it is the one the step was read
-          // at: a Markdown file drawn as Docs draws it (`DOCS_DRAWING`), and a YAML or JSON
-          // file as Changes does (`CHANGES_DRAWING`).
+          // at, or, a file of another pull request, from that one's comparison, whose routes
+          // the step's answer names: a Markdown file drawn as Docs draws it (`DOCS_DRAWING`),
+          // and a YAML or JSON file as Changes does (`CHANGES_DRAWING`).
           loadDrawDocument: async () => {
             const diff = await mb.plugins.load("diff");
-            /** @param {{merge_base: string | null, head: string}} pins */
+            /**
+             * @param {{merge_base: string | null, head: string, route?: string,
+             *   image_route?: string, rendered_route?: string}} pins
+             */
             const at = (pins) => {
+              if (typeof pins.route === "string" && pins.merge_base !== null) {
+                // Another pull request's, which has no branch this page is on.
+                return {
+                  left: pins.merge_base,
+                  right: pins.head,
+                  route: pins.route,
+                  ...(typeof pins.image_route === "string"
+                    ? { image_route: pins.image_route }
+                    : {}),
+                  ...(typeof pins.rendered_route === "string"
+                    ? { rendered_route: pins.rendered_route }
+                    : {}),
+                  base_policy: /** @type {const} */ ("merge_base"),
+                  branch: null,
+                };
+              }
               const comparison = shown?.comparison ?? null;
               return comparison !== null &&
                 comparison.left === pins.merge_base &&

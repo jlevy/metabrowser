@@ -1466,11 +1466,23 @@ _MARKDOWN_STEP = """\
 """
 
 
+# References the format refuses, each in a step of its own: a range in another pull
+# request's file, a commit beside a path, a commit beside a pull request, and a commit
+# named by a short SHA.
+_REFUSED_REFERENCES: Final[dict[str, str]] = {
+    "pull-file-range": "{pull: 10, path: docs/draft.md, side: new, start_line: 1, end_line: 1}",
+    "commit-and-path": '{commit: "' + "e" * 40 + '", path: src/app.txt}',
+    "commit-and-pull": '{commit: "' + "e" * 40 + '", pull: 8}',
+    "short-commit": '{commit: "85fcb2f"}',
+}
+
+
 # The guides `--describe` writes into a cached description: the stand-in guide's steps each
 # in a group, the first with a note; groups mixed with a step; a longer guide, two groups
 # of two steps each, which tells numbering through the groups from numbering by entry;
-# notes in Markdown, a group's of two steps and the first step's; and two blocks the page
-# refuses, an empty group and a group inside a group.
+# notes in Markdown, a group's of two steps and the first step's; and blocks the page
+# refuses: an empty group, a group inside a group, and each reference of
+# `_REFUSED_REFERENCES` after the count's step.
 GUIDE_VARIANTS: Final[dict[str, str]] = {
     "grouped": (
         "    - title: The count\n"
@@ -1500,10 +1512,15 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "        - title: The value\n"
         "          items:\n" + _in_group(_in_group(_COUNT_STEP))
     ),
+    **{
+        name: _COUNT_STEP
+        + f"    - title: Cite it\n      note: Check it.\n      references:\n        - {reference}\n"
+        for name, reference in _REFUSED_REFERENCES.items()
+    },
 }
 
 
-def _past_max_items() -> str:
+def _past_max_items(_head: str) -> str:
     """Two groups whose steps pass MAX_ITEMS together, though each list is within its own
     bound, so only the total refuses the guide."""
     from metabrowser.builtin_plugins.github.guided_review import MAX_ITEMS
@@ -1512,14 +1529,51 @@ def _past_max_items() -> str:
     return "".join(f"    - title: Part {part}\n      items:\n{group}" for part in (1, 2))
 
 
-# The guides `--describe` builds from the format's bounds as it writes one, so they follow
-# the constants: a guide past MAX_ITEMS.
-BUILT_VARIANTS: Final[dict[str, Callable[[], str]]] = {"past-max-items": _past_max_items}
+# A step that cites past this pull request: a layer of its stack, a document another pull
+# request changes and a patch a third does, a pull request this copy knows from its list
+# alone and one it has not read, the guide's own head as a commit, and a commit the store
+# lacks.
+_MISSING_COMMIT: Final = "e" * 40
+
+
+def _kinds_step(head: str) -> str:
+    return f"""\
+    - title: Read it beside its neighbors
+      note: Check the layer below and the draft above it.
+      references:
+        - {{pull: 8}}
+        - {{pull: 10, path: docs/draft.md}}
+        - {{pull: 9, path: src/app.txt}}
+        - {{pull: 50}}
+        - {{pull: 2000}}
+        - {{commit: "{head}"}}
+        - {{commit: "{_MISSING_COMMIT}"}}
+"""
+
+
+def _kinds(head: str) -> str:
+    """The count's step, then a step of every other kind of reference (:func:`_kinds_step`)."""
+    return _COUNT_STEP + _kinds_step(head)
+
+
+# The guides `--describe` builds as it writes one, from the format's bounds, so they follow
+# the constants, or from the guide's head: a guide past MAX_ITEMS, and one of every kind of
+# reference.
+BUILT_VARIANTS: Final[dict[str, Callable[[str], str]]] = {
+    "past-max-items": _past_max_items,
+    "kinds": _kinds,
+}
 
 
 def grouped_guide_body(origin: Origin) -> str:
     """The stand-in guide of :func:`guide_body` with each of its steps in a group."""
     return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["grouped"])
+
+
+def kinds_guide_body(origin: Origin) -> str:
+    """The stand-in guide's count step, then a step that cites every other kind of
+    reference (``kinds`` of :data:`BUILT_VARIANTS`)."""
+    return _guide_body(origin["base"], origin["fork_head"], _kinds(origin["fork_head"]))
 
 
 def markdown_guide_body(origin: Origin) -> str:
@@ -1587,7 +1641,9 @@ def describe(directory: Path, number: int, variant: str) -> None:
         r'^    merge_base: "([0-9a-f]{40})"\n    head: "([0-9a-f]{40})"$', record.pull.body, re.M
     )
     assert pins is not None, f"pull request {number} has no guide to rewrite"
-    items = GUIDE_VARIANTS[variant] if variant in GUIDE_VARIANTS else BUILT_VARIANTS[variant]()
+    items = (
+        GUIDE_VARIANTS[variant] if variant in GUIDE_VARIANTS else BUILT_VARIANTS[variant](pins[2])
+    )
     body = _guide_body(pins[1], pins[2], items)
     pull = record.pull.model_copy(update={"body": body})
     write_pull_record(home, _source_slug(), record.model_copy(update={"pull": pull}))

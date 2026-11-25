@@ -1096,6 +1096,27 @@ A document the view could not draw keeps the guide’s bar for it, with its name
 Open full diff, above the view’s one-sentence notice.
 Each document is in the step’s list of drawn views, so a step change, or the page
 ending, disposes it and aborts its read.
+A step can also cite past its pull request, with the format’s other
+[reference kinds](arch-collection-format.md#the-record), each answered with its `kind`
+and every field, null where its kind has none (`_references` in `guided_review.py`), and
+each read from this copy alone, never stale, and never counted in `changed_steps`
+(`_own_paths`). A `{pull}` is that pull request’s title and state, from its cached
+record or else its row in the list of pull requests, and its place in a stack from the
+stack snapshot, preferring the stack that holds the guide’s own pull request
+(`_pull_targets`), or `not_cached` when this copy knows neither; its address is the pull
+request’s page. A `{pull, path}` is that file at that pull request’s current comparison,
+read from its record’s kept manifest with one run of the diff source for each pull
+request the step cites, within the step’s one budget (`_pull_files`): the answer carries
+that comparison’s pins and the routes that answer it, which the page draws a document
+from, and is `not_cached` or `comparison_unavailable` when this copy cannot read it; its
+address is the file in that pull request’s Changes, which loads it.
+A `{commit}` is its subject and committer date, read by one bounded `git log` in the
+store (`_commit_target`), or `commit_unavailable`; its address is `/commit/<sha>`, which
+the page opens as a plain link.
+The page draws a `{pull}` as the stack menu draws a member and a `{commit}` as the
+Commits tab draws a commit (`pullRow` and `commitRow` in `guided-review.js`), and a
+`{pull, path}` as a `{path}`, under a bar that names its pull request, whose Open full
+diff opens the file in that pull request’s Changes.
 A ready step carries KPress’s stylesheet manifest, as the description’s Markdown route
 does, and the page loads it and the diff plugin’s styles before drawing the step, so the
 tab reads the same when it is the first thing opened.

@@ -1,31 +1,56 @@
 // Loaded when Guided Review opens. Only the visible step asks for excerpts.
 
+import { stackLabel, stackPosition } from "./pull-stacks.js";
+import { pullStateIcon } from "./pull-state.js";
+
 /**
  * @typedef {{op: "add" | "del" | "context", text: string}} Line
  * @typedef {{old_start: number, old_count: number, new_start: number, new_count: number,
  *   heading: string | null, lines: Line[]}} Hunk
  * @typedef {"markdown" | "yaml" | "json"} Rendered
- * @typedef {{path: string, side: "old" | "new" | null, state: string,
- *   rendered: Rendered | null, href: string | null, hunks: Hunk[], truncated: boolean}}
- *   Reference *side* is null for a file named alone, whose whole patch *hunks* are, and a
- *   range's side otherwise. *rendered* is the format of a file named alone that the
- *   rendered route renders, by that route's own rule (`rendered_format` in
- *   pull_rendered_diff.py): the page draws it whole, and the route sends no hunks for it.
+ * @typedef {{merge_base: string, head: string, route: string, image_route: string,
+ *   rendered_route: string}} PullComparison Another pull request's current comparison, and
+ *   the routes that answer it, which a `{pull, path}` reference's document is drawn from.
+ * @typedef {{title: string | null, state: import("./pull-state.js").PullState | null,
+ *   stack: {number: number, place: number, count: number} | null}} PullTarget What a
+ *   `{pull}` row names: its title and state, and its place in a stack, `place` counted from
+ *   the stack's base.
+ * @typedef {{subject: string | null, committed_at: string | null}} CommitTarget What a
+ *   `{commit}` row names; both null for a commit whose line passed its bound.
+ * @typedef {{kind: "file" | "pull_file" | "pull" | "commit", path: string | null,
+ *   side: "old" | "new" | null, pull: number | null, commit: string | null, state: string,
+ *   rendered: Rendered | null, href: string | null, hunks: Hunk[], truncated: boolean,
+ *   comparison: PullComparison | null, target: PullTarget | CommitTarget | null}}
+ *   Reference What a step cites (`_references` in guided_review.py): a file of the pull
+ *   request (`file`), a file of another pull request at that one's comparison
+ *   (`pull_file`, whose *comparison* is that one's), a pull request (`pull`), or a commit
+ *   (`commit`); the last two are rows, whose *target* is what they name. *side* is null
+ *   for a file named alone, whose whole patch *hunks* are, and a range's side otherwise.
+ *   *rendered* is the format of a file named alone that the rendered route renders, by
+ *   that route's own rule (`rendered_format` in pull_rendered_diff.py): the page draws it
+ *   whole, and the route sends no hunks for it.
  * @typedef {(body: HTMLElement, change: Record<string, unknown>,
  *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void}} DrawPatch
  *   The diff plugin's `mountFilePatch`, bound to the SDK: a file's hunks as Changes draws
  *   them.
  * @typedef {{merge_base: string | null, head: string}} Pins
  * @typedef {{
- *   draws(pins: Pins): boolean,
- *   mount(body: HTMLElement, path: string, format: Rendered, pins: Pins):
+ *   draws(pins: Pins | PullComparison): boolean,
+ *   mount(body: HTMLElement, path: string, format: Rendered, pins: Pins | PullComparison):
  *     {settled: Promise<boolean>, dispose: () => void},
  * }} DrawDocument The diff plugin's `mountRenderedFile`, bound by the page to its
- *   comparison: whether it draws a step read at *pins*, the comparison the step was read
- *   at, which it does only while that is its own; and one file drawn whole, a Markdown file
- *   as the Docs tab draws it and a YAML or JSON file as Changes does. *settled* is true once
- *   the file is drawn, and false when the view's notice says why it is not, or the handle
- *   was disposed first.
+ *   comparison: whether it draws a file read at *pins*, which it does for the comparison a
+ *   step was read at only while that is the page's own, and always for another pull
+ *   request's, which names its own routes; and one file drawn whole, a Markdown file as the
+ *   Docs tab draws it and a YAML or JSON file as Changes does. *settled* is true once the
+ *   file is drawn, and false when the view's notice says why it is not, or the handle was
+ *   disposed first.
+ * @typedef {{open: (path: string) => void,
+ *   openPull: (number: number, path: string | null) => void,
+ *   age: (iso: string) => HTMLElement, shortCommit: (sha: string) => string}} ReferenceWays
+ *   Where a reference goes and how a row says when and which: a file to its Changes
+ *   address, and another pull request to its page or a file in its Changes
+ *   (`mountGuidedReview`'s deps).
  * @typedef {{patch: DrawPatch | null, document: DrawDocument | null, pins: Pins}} Drawers
  *   What draws a step's references, each null when the diff plugin did not load, and the
  *   comparison the step was read at.
@@ -209,7 +234,15 @@ const REFERENCE_MESSAGES = Object.freeze({
   // Past a step's budget for whole files (MAX_STEP_PATCH_BYTES in guided_review.py), or past
   // what the diff source reads in one run beside the step's other files.
   patch_too_large: "This file's diff is too large to show in this step.",
+  // A file of another pull request, which is read from what this copy holds of it: one it
+  // has not read opens from its Open full diff, which loads it.
+  not_cached: "This pull request has not been loaded here. Open it to load its changes.",
+  comparison_unavailable: "This pull request's changes are unavailable.",
 });
+
+// A commit a step cites that the repository's copy here does not have, as after a force push
+// removed it from every branch.
+const COMMIT_UNAVAILABLE = "This commit is unavailable.";
 
 // A reference of an out-of-date guide, read at the pull request's current head, whose file
 // changed since the guide was written: a note above its excerpt when it resolves, and in its
@@ -306,53 +339,162 @@ function groupNote(note, html, drawProse) {
 }
 
 /**
- * How a step draws a reference. A file named alone that the rendered route renders, as the
- * guided route answers it (`rendered`), is a document: the file drawn whole by the diff
- * view, with its Rendered | Source chooser, while the page's comparison is the one the step
- * was read at. Any other ready change with lines is its hunks, as Changes draws them: a
- * range's one hunk, and another file named alone its whole patch. The rest say why there is
- * nothing to draw.
+ * How a step draws a reference. A pull request or a commit it cites is a row naming it. A
+ * file named alone that the rendered route renders, as the guided route answers it
+ * (`rendered`), is a document: the file drawn whole by the diff view, with its Rendered |
+ * Source chooser, while the page's comparison is the one the step was read at, or from the
+ * other pull request's own comparison for a file of one. Any other ready change with lines
+ * is its hunks, as Changes draws them: a range's one hunk, and another file named alone its
+ * whole patch. The rest say why there is nothing to draw.
  *
  * @param {Reference} reference @param {Drawers} drawers
- * @returns {"document" | "patch" | "said"}
+ * @returns {"row" | "document" | "patch" | "said"}
  */
 export function referenceDrawing(reference, drawers) {
+  if (reference.kind === "pull" || reference.kind === "commit") {
+    return "row";
+  }
   if (reference.state !== "ready") {
     return "said";
   }
   if (typeof reference.rendered === "string") {
-    return drawers.document?.draws(drawers.pins) === true ? "document" : "said";
+    const pins = reference.comparison ?? drawers.pins;
+    return drawers.document?.draws(pins) === true ? "document" : "said";
   }
   return reference.hunks.length === 0 || drawers.patch === null ? "said" : "patch";
 }
 
 /**
- * The bar the guide draws above a reference it draws itself: the file's path, and its Open
- * full diff, which goes to the file in Changes.
+ * Whether *event* is a plain press of the main button, which a link the page opens in place
+ * takes over; any other, as one that opens a new tab, is the browser's.
  *
- * @param {Reference} reference @param {(path: string) => void} open
+ * @param {MouseEvent} event
+ */
+const plainPress = (event) =>
+  event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+
+/**
+ * A `{pull}` reference: the pull request as the stack menu lists a member, its state icon,
+ * its number in bold, a muted dot, and its title, and after them its place in a stack when
+ * it has one. It goes to the pull request's page. One this copy has not read keeps the
+ * icon's slot empty and names itself by its number, as a member with no title does.
+ *
+ * @param {Reference} reference @param {(number: number, path: string | null) => void} openPull
+ */
+function pullRow(reference, openPull) {
+  const number = reference.pull ?? 0;
+  const target = /** @type {PullTarget | null} */ (reference.target);
+  const link = /** @type {HTMLAnchorElement} */ (
+    element("a", "", "github-pull-guide-row-link github-pull-guide-pull")
+  );
+  link.href = reference.href ?? `/pull/${number}`;
+  link.addEventListener("click", (event) => {
+    if (plainPress(event)) {
+      event.preventDefault();
+      openPull(number, null);
+    }
+  });
+  const state = target?.state ?? null;
+  const icon =
+    state === null ? element("span", "", "github-pull-state-icon") : pullStateIcon(state);
+  if (state === null) {
+    icon.setAttribute("aria-hidden", "true");
+  }
+  const title = target?.title ?? `Pull request #${number}`;
+  const copy = element("span", "", "github-pull-guide-row-copy");
+  const dot = element("span", "·", "github-pull-guide-row-dot");
+  dot.setAttribute("aria-hidden", "true");
+  copy.append(
+    element("strong", `#${number}`, "github-pull-guide-row-id"),
+    " ",
+    dot,
+    " ",
+    element("span", title, "github-pull-guide-row-title"),
+  );
+  // A flex row draws no space between its parts; the spaces keep its text, and so the
+  // link's name, in words.
+  link.append(icon, " ", copy);
+  const stack = target?.stack ?? null;
+  if (stack !== null) {
+    const place = element(
+      "span",
+      `${stackLabel(stack.number)} ${stackPosition(stack.place - 1, stack.count)}`,
+      "github-pull-guide-row-place",
+    );
+    place.dataset.tipText = `${stackLabel(stack.number)}, position ${stack.place} of ${stack.count}`;
+    link.append(" ", place);
+  }
+  const section = element("section", "", "github-pull-guide-reference github-pull-guide-row");
+  section.append(link);
+  return section;
+}
+
+/**
+ * A `{commit}` reference: the commit as the Commits tab lists one, its subject, when it was
+ * committed, and its short ID, going to the commit's own page, which opens in full. One the
+ * repository's copy here lacks says so in its place, beside its ID.
+ *
+ * @param {Reference} reference
+ * @param {{age: (iso: string) => HTMLElement, shortCommit: (sha: string) => string}} words
+ */
+function commitRow(reference, words) {
+  const sha = reference.commit ?? "";
+  const target = /** @type {CommitTarget | null} */ (reference.target);
+  const section = element("section", "", "github-pull-guide-reference github-pull-guide-row");
+  const id = element("span", words.shortCommit(sha), "github-pull-guide-row-id git-commit-sha");
+  if (reference.state !== "ready" || reference.href === null) {
+    const row = element("div", "", "github-pull-guide-row-link github-pull-guide-commit");
+    row.append(id, " ", element("span", COMMIT_UNAVAILABLE, "github-pull-quiet"));
+    section.append(row);
+    return section;
+  }
+  const link = /** @type {HTMLAnchorElement} */ (
+    element("a", "", "github-pull-guide-row-link github-pull-guide-commit")
+  );
+  link.href = reference.href;
+  const copy = element("span", "", "github-pull-guide-row-copy");
+  copy.append(element("span", target?.subject ?? "Commit", "github-pull-guide-row-title"));
+  link.append(id, " ", copy);
+  const when = target?.committed_at ?? null;
+  if (when !== null) {
+    const committed = element("span", "committed ", "github-pull-guide-row-place");
+    committed.append(words.age(when));
+    link.append(" ", committed);
+  }
+  section.append(link);
+  return section;
+}
+
+/**
+ * The bar the guide draws above a reference it draws itself: the file's path, after the
+ * number of the pull request it is in when that is another, and its Open full diff, which
+ * goes to the file in that pull request's Changes.
+ *
+ * @param {Reference} reference @param {() => void} open
  */
 function referenceBar(reference, open) {
+  const path = reference.path ?? "";
   const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
   const name = element("span", "", "diff-file-toggle");
-  name.append(element("span", reference.path, "diff-file-path"));
+  const other = reference.kind === "pull_file" ? reference.pull : null;
+  if (other !== null) {
+    name.append(element("span", `#${other}`, "github-pull-guide-reference-pull"));
+  }
+  name.append(element("span", path, "diff-file-path"));
   bar.append(name);
   if (reference.href !== null) {
     const full = document.createElement("a");
     full.className = "diff-file-view";
     full.href = reference.href;
     full.textContent = "Open full diff";
-    full.setAttribute("aria-label", `Open full diff for ${reference.path}`);
+    full.setAttribute(
+      "aria-label",
+      `Open full diff for ${path}${other === null ? "" : ` in pull request #${other}`}`,
+    );
     full.addEventListener("click", (event) => {
-      if (
-        event.button === 0 &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.shiftKey &&
-        !event.altKey
-      ) {
+      if (plainPress(event)) {
         event.preventDefault();
-        open(reference.path);
+        open();
       }
     });
     bar.append(full);
@@ -372,11 +514,12 @@ function referenceBar(reference, open) {
  * it is and can open it in Changes.
  *
  * @param {Reference} reference @param {Rendered} format @param {HTMLElement | null} note
- * @param {(path: string) => void} open
- * @param {DrawDocument} drawDocument @param {Pins} pins
+ * @param {() => void} open
+ * @param {DrawDocument} drawDocument @param {Pins | PullComparison} pins
  * @param {Array<{dispose: () => void}>} drawn Where the drawn view is kept for disposal.
  */
 function renderDocument(reference, format, note, open, drawDocument, pins, drawn) {
+  const path = reference.path ?? "";
   const section = element("section", "", "github-pull-guide-reference github-pull-guide-document");
   const body = element("div", "", "github-pull-guide-document-body");
   // The diff's own progress, below the view so it never moves the view's first row, shown
@@ -387,12 +530,12 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawn
     "loading mb-delayed-loading github-pull-guide-document-loading",
   );
   loading.setAttribute("role", "status");
-  loading.setAttribute("aria-label", `Loading ${reference.path}`);
+  loading.setAttribute("aria-label", `Loading ${path}`);
   const spinner = element("span", "", "spinner");
   spinner.setAttribute("aria-hidden", "true");
   loading.append(spinner);
   section.append(...(note === null ? [] : [note]), body, loading);
-  const view = drawDocument.mount(body, reference.path, format, pins);
+  const view = drawDocument.mount(body, path, format, pins);
   drawn.push(view);
   void view.settled.then((drawnFile) => {
     loading.remove();
@@ -409,15 +552,23 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawn
  * its long changed runs behind fold bars, in the plugin's type, gutter, change fills, and
  * syntax (docs/design-system.md, "Diffs"). A range is one hunk of its own lines; a file
  * named alone is its whole patch, or, one the rendered route renders, the whole file drawn
- * by the diff view (`referenceDrawing`).
+ * by the diff view (`referenceDrawing`). A pull request or a commit is a row naming it.
  *
- * @param {Reference} reference @param {(path: string) => void} open
+ * @param {Reference} reference @param {ReferenceWays} ways
  * @param {Change} change Whether the file changed after the guide was written.
  * @param {Drawers} drawers What draws the reference.
  * @param {Array<{dispose: () => void}>} drawn Where each drawn patch is kept for disposal.
  */
-function renderReference(reference, open, change, drawers, drawn) {
+function renderReference(reference, ways, change, drawers, drawn) {
   const drawing = referenceDrawing(reference, drawers);
+  if (drawing === "row") {
+    return reference.kind === "pull"
+      ? pullRow(reference, ways.openPull)
+      : commitRow(reference, ways);
+  }
+  const path = reference.path ?? "";
+  const other = reference.kind === "pull_file" ? reference.pull : null;
+  const open = other === null ? () => ways.open(path) : () => ways.openPull(other, path);
   const changed =
     reference.state === "ready" && change !== "unchanged"
       ? element(
@@ -430,7 +581,8 @@ function renderReference(reference, open, change, drawers, drawn) {
       : null;
   const format = typeof reference.rendered === "string" ? reference.rendered : null;
   if (drawing === "document" && drawers.document !== null && format !== null) {
-    return renderDocument(reference, format, changed, open, drawers.document, drawers.pins, drawn);
+    const pins = reference.comparison ?? drawers.pins;
+    return renderDocument(reference, format, changed, open, drawers.document, pins, drawn);
   }
   const section = element("section", "", "diff-file github-pull-guide-reference");
   section.append(referenceBar(reference, open));
@@ -444,13 +596,13 @@ function renderReference(reference, open, change, drawers, drawn) {
   } else if (drawing === "patch" && drawPatch !== null) {
     const body = element("div", "", "diff-file-body github-pull-guide-excerpt");
     body.setAttribute("role", "group");
-    body.setAttribute("aria-label", `Diff excerpt for ${reference.path}`);
+    body.setAttribute("aria-label", `Diff excerpt for ${path}`);
     section.append(body);
-    const side = { path: reference.path };
+    const side = { path };
     drawn.push(
       drawPatch(
         body,
-        { id: reference.path, old: side, new: side },
+        { id: path, old: side, new: side },
         { hunks: reference.hunks, truncated: reference.truncated },
       ),
     );
@@ -487,13 +639,16 @@ const outdated = (stale) =>
     (stale.current.merge_base !== null && stale.current.merge_base !== stale.guide.merge_base));
 
 /**
- * Whether *path*, which a step cites, changed since a stale guide was written.
+ * Whether the file of the pull request that *reference* cites changed since a stale guide
+ * was written. A reference to anything else, another pull request's file among them, is
+ * never stale: no push to this pull request moves it.
  *
- * @param {Staleness | null | undefined} stale @param {string} path
+ * @param {Staleness | null | undefined} stale @param {Reference} reference
  * @returns {Change}
  */
-function changeOf(stale, path) {
-  if (!outdated(stale)) {
+function changeOf(stale, reference) {
+  const path = reference.path;
+  if (!outdated(stale) || reference.kind !== "file" || path === null) {
     return "unchanged";
   }
   if (stale.changed_paths === null) {
@@ -615,11 +770,16 @@ let groupHeadings = 0;
  * @param {number} number
  * @param {{
  *   open: (path: string) => void,
+ *   openPull: (number: number, path: string | null) => void,
+ *   age: (iso: string) => HTMLElement,
+ *   shortCommit: (sha: string) => string,
  *   loadStyles: (assets: unknown) => Promise<unknown>,
  *   loadDrawPatch: () => Promise<DrawPatch>,
  *   loadDrawDocument: () => Promise<DrawDocument>,
  *   loadDrawProse: () => Promise<DrawProse>,
- * }} deps *open* goes to a file's Changes address. *loadStyles* loads the stylesheets the
+ * }} deps *open* goes to a file's Changes address, and *openPull* to another pull
+ *   request's page, or to a file in its Changes. *age* and *shortCommit* say when a commit
+ *   was made and name it, as the Commits tab does. *loadStyles* loads the stylesheets the
  *   guide is drawn in: KPress's, from the manifest a ready step carries, and the diff
  *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
  *   diff plugin's file renderer, which draws the excerpts, and *loadDrawDocument* its view
@@ -628,7 +788,14 @@ let groupHeadings = 0;
  *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through.
  */
 export function mountGuidedReview(host, introduction, number, deps) {
-  const { open, loadStyles, loadDrawPatch, loadDrawDocument, loadDrawProse } = deps;
+  const { loadStyles, loadDrawPatch, loadDrawDocument, loadDrawProse } = deps;
+  /** @type {ReferenceWays} */
+  const ways = {
+    open: deps.open,
+    openPull: deps.openPull,
+    age: deps.age,
+    shortCommit: deps.shortCommit,
+  };
   /** @type {Promise<unknown> | null} */
   let styles = null;
   /** @type {Promise<DrawPatch | null> | null} */
@@ -917,7 +1084,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
       const drawers = { patch: drawPatch, document: drawDocument, pins: state.comparison };
       references.append(
         ...state.references.map((reference) =>
-          renderReference(reference, open, changeOf(stale, reference.path), drawers, drawn),
+          renderReference(reference, ways, changeOf(stale, reference), drawers, drawn),
         ),
       );
       // A step is a card, as Conversation draws a comment, headed as the author's guided

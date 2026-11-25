@@ -10,6 +10,9 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+patterns:
+  BUILD: '[0-9a-f]{12}'
+  STORE: '[0-9a-f]{16}'
 before: >-
   METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
@@ -63,10 +66,13 @@ status: 200
   "group_note_html": null,
   "references": [
     {
+      "kind": "file",
       "path": "src/app.txt",
       "side": "new",
       "start_line": 1,
       "end_line": 2,
+      "pull": null,
+      "commit": null,
       "state": "ready",
       "rendered": null,
       "href": "/pull/7/files/src/app.txt",
@@ -93,7 +99,9 @@ status: 200
           ]
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     }
   ],
   "assets": {
@@ -264,10 +272,13 @@ status: 200
   "group_note_html": null,
   "references": [
     {
+      "kind": "file",
       "path": "docs/new.md",
       "side": "new",
       "start_line": 1,
       "end_line": 1,
+      "pull": null,
+      "commit": null,
       "state": "ready",
       "rendered": null,
       "href": "/pull/7/files/docs/new.md",
@@ -288,13 +299,18 @@ status: 200
           ]
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     },
     {
+      "kind": "file",
       "path": "src/app.txt",
       "side": null,
       "start_line": null,
       "end_line": null,
+      "pull": null,
+      "commit": null,
       "state": "ready",
       "rendered": null,
       "href": "/pull/7/files/src/app.txt",
@@ -321,29 +337,41 @@ status: 200
           ]
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     },
     {
+      "kind": "file",
       "path": "missing.txt",
       "side": null,
       "start_line": null,
       "end_line": null,
+      "pull": null,
+      "commit": null,
       "state": "path_not_changed",
       "rendered": null,
       "href": null,
       "hunks": [],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     },
     {
+      "kind": "file",
       "path": "src/app.txt",
       "side": "old",
       "start_line": 2,
       "end_line": 4,
+      "pull": null,
+      "commit": null,
       "state": "range_unavailable",
       "rendered": null,
       "href": "/pull/7/files/src/app.txt",
       "hunks": [],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     }
   ],
   "assets": {
@@ -549,15 +577,20 @@ status: 200
   "group_note_html": null,
   "references": [
     {
+      "kind": "file",
       "path": "src/app.txt",
       "side": "new",
       "start_line": 1,
       "end_line": 2,
+      "pull": null,
+      "commit": null,
       "state": "path_not_changed",
       "rendered": null,
       "href": null,
       "hunks": [],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     }
   ],
   "assets": {
@@ -1140,6 +1173,132 @@ $ jq -c '.state, .title, (.references[] | [.path, .side, .state, .rendered, (.hu
 ["config/settings.yaml",null,"ready","yaml",0]
 ["docs/large.md",null,"ready","markdown",0]
 ["src/app.txt",null,"ready",null,1]
+? 0
+```
+
+# References past the pull request
+
+A step can cite three things besides a file of its own pull request: another pull
+request, `{pull}`; a file another pull request changes, `{pull, path}`; and a commit,
+`{commit}`. Each answer names its `kind` and carries every field, null where its kind
+has none. Each is read from this copy alone, and none is ever stale.
+In 7’s guide of every kind, the second step cites 8, which is merged, then 10’s draft
+document and 9’s change to `src/app.txt`, then 50, which this copy knows from its list
+of pull requests alone, and 2000, which it does not know at all.
+Then it cites 7’s own head as a commit, and a commit the store lacks.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 kinds
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=2' --format json > kinds.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+A `{pull}` answers the title, state, and stack place a row names, from the pull
+request’s record or else its row in the list, or `not_cached` when this copy has
+neither. Its address is the pull request’s page either way.
+No stack is known here, so `stack` is null.
+A `{commit}` answers its subject and when it was committed, and `commit_unavailable`
+when the store lacks it.
+
+```console
+$ jq -c '.state, (.references[] | {kind, pull, commit, state, href, target})' kinds.json
+"ready"
+{"kind":"pull","pull":8,"commit":null,"state":"ready","href":"/pull/8","target":{"title":"Say more in the guide","state":"merged","stack":null}}
+{"kind":"pull_file","pull":10,"commit":null,"state":"ready","href":"/pull/10/files/docs/draft.md","target":null}
+{"kind":"pull_file","pull":9,"commit":null,"state":"ready","href":"/pull/9/files/src/app.txt","target":null}
+{"kind":"pull","pull":50,"commit":null,"state":"ready","href":"/pull/50","target":{"title":"Work item 50","state":"open","stack":null}}
+{"kind":"pull","pull":2000,"commit":null,"state":"not_cached","href":"/pull/2000","target":null}
+{"kind":"commit","pull":null,"commit":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","state":"ready","href":"/commit/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","target":{"subject":"count to two","committed_at":"2026-08-29T14:40:00Z"}}
+{"kind":"commit","pull":null,"commit":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","state":"commit_unavailable","href":null,"target":null}
+? 0
+```
+
+A `{pull, path}` is read at that pull request’s current comparison, as a `{path}` alone
+is at the guide’s: a document whole, from that pull request’s own routes, which its
+`comparison` names, and any other file as its whole patch.
+
+```console
+$ jq -c '.references[1:3][] | [.path, .rendered, (.hunks | length), .comparison.merge_base, .comparison.head]' kinds.json
+["docs/draft.md","markdown",0,"c691256511d05858850bc7684ae062fea0d41132","7a7d6596e515735d244dc1d942463c95851e139c"]
+["src/app.txt",null,1,"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd"]
+? 0
+```
+
+```console
+$ jq '.references[1].comparison' kinds.json
+{
+  "merge_base": "c691256511d05858850bc7684ae062fea0d41132",
+  "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+  "route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=[BUILD]&store=[STORE]",
+  "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=[STORE]",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=[STORE]"
+}
+? 0
+```
+
+A `{pull, path}` takes no range, and a commit is cited alone, by its full SHA. The
+refusal names the field that goes wrong.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 pull-file-range
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json | jq -r .message
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.end_line.
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 commit-and-path
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json | jq -r .message
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.path.
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 commit-and-pull
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json | jq -r .message
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.pull.
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 short-commit
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json | jq -r .message
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.commit.
 ? 0
 ```
 

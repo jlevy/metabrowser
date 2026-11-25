@@ -2148,6 +2148,77 @@
   padding: 0 var(--github-pull-text-inset) var(--content-padding-y);
 }
 
+/* A file of another pull request names that pull request before its path, in a pull request
+   number's weight (docs/design-system.md, "Pull Request Numbers"). */
+.github-pull-guide-reference-pull {
+  flex: none;
+  margin-inline-end: 0.4em;
+  color: var(--muted);
+  font-weight: var(--pull-number-weight);
+  font-variant-numeric: var(--tabular-numerals);
+}
+/* A pull request or a commit a step cites is one row in an excerpt's card, as the stack menu
+   lists a member (`.github-pull-stack-member`): its state icon or short ID, its number in
+   bold, a muted dot, and its title, which alone gives way, then its stack place or when it
+   was committed, muted at the row's end. */
+.github-pull-guide-row {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  overflow: hidden;
+}
+.github-pull-guide-row-link {
+  display: flex;
+  align-items: center;
+  gap: var(--tree-icon-gap);
+  min-height: var(--ui-row-height);
+  padding: 0 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+a.github-pull-guide-row-link:hover {
+  background: var(--hover-bg);
+}
+.github-pull-guide-row-copy {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 0.25em;
+  min-width: 0;
+}
+.github-pull-guide-row-id {
+  flex: none;
+  color: var(--text);
+  font-weight: var(--pull-number-weight);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}
+.github-pull-guide-row-dot {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--micro-font-size);
+}
+.github-pull-guide-row-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pull-guide-row-place {
+  flex: none;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* A commit this copy lacks says so in its title's place, and gives way as a title does. */
+.github-pull-guide-row-link > .github-pull-quiet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── The stack page (stack-page.js; arch-github-pull-requests.md, "The Stack Page") ──
    A native stack's header: "Stack #N into base", its counts, then its members top first,
    each its place, state, number, and title, as a stack menu's member reads

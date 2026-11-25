@@ -92,7 +92,7 @@ function step(generation, number, count = 2) {
     note_html: null,
     group_note_html: null,
     references: [
-      {
+      cited({
         path: "src/app.txt",
         side: "new",
         start_line: 1,
@@ -100,21 +100,31 @@ function step(generation, number, count = 2) {
         state: "ready",
         href: "/pull/7/files/src/app.txt",
         hunks,
-        truncated: false,
-      },
-      {
-        path: "gone.txt",
-        side: null,
-        start_line: null,
-        end_line: null,
-        state: "path_not_changed",
-        href: null,
-        hunks: [],
-        truncated: false,
-      },
+      }),
+      cited({ path: "gone.txt", state: "path_not_changed", href: null }),
     ],
   };
 }
+
+/** A reference as the route answers it, every field present: a file of the pull request
+ * named alone, unless *fields* say otherwise. */
+const cited = (fields) => ({
+  kind: "file",
+  path: null,
+  side: null,
+  start_line: null,
+  end_line: null,
+  pull: null,
+  commit: null,
+  state: "ready",
+  rendered: null,
+  href: null,
+  hunks: [],
+  truncated: false,
+  comparison: null,
+  target: null,
+  ...fields,
+});
 
 function host() {
   const timers = new Map();
@@ -325,19 +335,28 @@ function host() {
           const notice = container.querySelector(".github-pull-guide-stale");
           return notice ? said(notice) : "none";
         },
-        /** Each excerpt's path and the note it carries, as a reader reads them. */
+        /** Each excerpt's path and the note it carries, and each row as it reads, as a
+         * reader reads them. */
         references: () =>
           container
             .querySelectorAll(".github-pull-guide-reference")
-            .map(
-              (section) =>
-                `${section.querySelector(".diff-file-path").textContent}: ${
-                  [...section.descendants()]
-                    .filter((node) => node.tag === "p")
-                    .map((note) => note.textContent)
-                    .join(" ") || "no note"
-                }`,
-            )
+            .map((section) => {
+              const row = section.querySelector(".github-pull-guide-row-link");
+              if (row !== null) {
+                const place = row.querySelector(".github-pull-guide-row-place");
+                const tip = place?.dataset.tipText;
+                return `${row.tag === "a" ? `row to ${row.href}` : "row"}: ${row.textContent.replace(/\s+/g, " ").trim()}${tip ? ` (tip: ${tip})` : ""}`;
+              }
+              const pull = section.querySelector(".github-pull-guide-reference-pull");
+              return `${pull === null ? "" : `${pull.textContent} `}${
+                section.querySelector(".diff-file-path").textContent
+              }: ${
+                [...section.descendants()]
+                  .filter((node) => node.tag === "p")
+                  .map((note) => note.textContent)
+                  .join(" ") || "no note"
+              }`;
+            })
             .join(" | "),
         /** The step on screen, as the reader sees it, or null while there is none. */
         shown() {
@@ -674,16 +693,14 @@ async function run() {
       state: "stale",
       references: [
         ...answered.references,
-        {
+        cited({
           path: "src/app.txt",
           side: "old",
           start_line: 2,
           end_line: 4,
           state: "range_unavailable",
           href: "/pull/7/files/src/app.txt",
-          hunks: [],
-          truncated: false,
-        },
+        }),
       ],
       stale: {
         guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
@@ -702,6 +719,109 @@ async function run() {
     view.press("Next step");
     await settle();
     steps.push(`and its step: ${view.shown()}; ${view.references()}`);
+    view.handle.dispose();
+  }
+
+  // A step that cites past its pull request: another pull request is a row as the stack menu
+  // lists a member, which opens that pull request's page, and one this copy has not read is
+  // named by its number; a file of another pull request is drawn under a bar that names it,
+  // whose Open full diff opens that file in that pull request's Changes, and one this copy
+  // cannot read says why; a commit is a row of its subject, when it was committed, and its
+  // short ID, linking to the commit, and one the store lacks says so. A stale guide whose
+  // changed files include a path another pull request's reference names marks none of them.
+  {
+    const wide = host();
+    const view = wide.mount(page, "guided", envelope(1));
+    await settle();
+    const answered = step(1, 1, 3);
+    const head = "c".repeat(40);
+    wide.pending()[0].answer({
+      ...answered,
+      state: "stale",
+      stale: {
+        guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+        current: { merge_base: "a".repeat(40), head },
+        github_newer: false,
+        history: "ahead",
+        commit_count: 1,
+        commits: [],
+        changed_paths: ["src/app.txt"],
+        changed_steps: [3],
+      },
+      references: [
+        cited({
+          kind: "pull",
+          pull: 8,
+          href: "/pull/8",
+          target: {
+            title: "Say <b>more</b>",
+            state: "merged",
+            stack: { number: 71, place: 1, count: 3 },
+          },
+        }),
+        cited({ kind: "pull", pull: 2000, state: "not_cached", href: "/pull/2000" }),
+        cited({
+          kind: "pull_file",
+          pull: 9,
+          path: "src/app.txt",
+          href: "/pull/9/files/src/app.txt",
+          hunks: answered.references[0].hunks,
+          comparison: {
+            merge_base: "a".repeat(40),
+            head: "9".repeat(40),
+            route: "/api/plugin/github/pull-comparison?number=9",
+            image_route: "/api/plugin/github/pull-image?number=9",
+            rendered_route: "/api/plugin/github/pull-rendered-diff?number=9",
+          },
+        }),
+        cited({
+          kind: "pull_file",
+          pull: 12,
+          path: "docs/plan.md",
+          state: "not_cached",
+          href: "/pull/12/files/docs/plan.md",
+        }),
+        cited({
+          kind: "commit",
+          commit: head,
+          href: `/commit/${head}`,
+          target: { subject: "Count <i>to</i> two", committed_at: "2026-08-29T14:40:00Z" },
+        }),
+        cited({ kind: "commit", commit: "e".repeat(40), state: "commit_unavailable" }),
+      ],
+    });
+    await settle();
+    view.press("Next step");
+    await settle();
+    steps.push(`a step past its pull request: ${view.card()}; ${view.references()}`);
+    const plain = {
+      button: 0,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      preventDefault() {},
+    };
+    wide.opened.length = 0;
+    view.container.querySelector(".github-pull-guide-pull").events.get("click")(plain);
+    view.container
+      .querySelectorAll(".github-pull-guide-reference-header")
+      .map((bar) => bar.children.find((child) => child.tag === "a"))
+      .find(Boolean)
+      .events.get("click")(plain);
+    await settle();
+    steps.push(
+      `its pull request row, then its other pull request's Open full diff, open: ${wide.opened
+        .map(
+          (route) =>
+            `#${route.number} ${route.tab || "front page"}${route.file ? ` ${route.file}` : ""}`,
+        )
+        .join("; ")}`,
+    );
+    const commit = view.container
+      .querySelectorAll(".github-pull-guide-commit")
+      .find((node) => node.tag === "a");
+    assert.equal(commit.events.get("click"), undefined, "a commit opens as a plain link");
     view.handle.dispose();
   }
 

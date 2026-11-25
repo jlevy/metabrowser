@@ -29,6 +29,7 @@ from metabrowser.builtin_plugins.github.guided_review import (
     CollectionReference,
     GuideError,
     _excerpt,  # pyright: ignore[reportPrivateUsage]
+    _Files,  # pyright: ignore[reportPrivateUsage]
     _hunk_rows,  # pyright: ignore[reportPrivateUsage]
     _outline,  # pyright: ignore[reportPrivateUsage]
     _outside_shape,  # pyright: ignore[reportPrivateUsage]
@@ -351,6 +352,61 @@ def test_a_schema_refusal_says_where(edit: tuple[str, str], where: str) -> None:
         parse_guide(body)
     assert (
         str(refused.value) == f"The guided-review block does not satisfy the v1 SoftSchema{where}."
+    )
+
+
+def _cite(reference: str) -> str:
+    """The guide with its second step citing *reference* alone."""
+    return _GUIDE.replace("{path: worker.py}", reference)
+
+
+@pytest.mark.parametrize(
+    ("reference", "kind"),
+    [
+        ("{path: worker.py}", "file"),
+        ("{path: worker.py, side: old, start_line: 1, end_line: 1}", "file"),
+        ("{pull: 805}", "pull"),
+        ("{pull: 805, path: docs/plan.md}", "pull_file"),
+        ('{commit: "' + "c" * 40 + '"}', "commit"),
+        ('{commit: "' + "c" * 64 + '"}', "commit"),
+    ],
+)
+def test_a_reference_is_of_the_kind_its_fields_name(reference: str, kind: str) -> None:
+    guide = parse_guide(_cite(reference))
+    assert guide is not None
+    step = guide.items[1]
+    assert isinstance(step, CollectionItem)
+    assert step.references[0].kind == kind
+
+
+@pytest.mark.parametrize(
+    ("reference", "where"),
+    [
+        # A range moves with the file it is in, and another pull request's file is not
+        # pinned by this guide, so it takes none.
+        ("{pull: 805, path: docs/plan.md, side: new, start_line: 1, end_line: 2}", "end_line"),
+        ("{pull: 805, side: new}", "side"),
+        # A commit is cited alone.
+        ('{commit: "' + "c" * 40 + '", path: worker.py}', "path"),
+        ('{commit: "' + "c" * 40 + '", pull: 805}', "pull"),
+        ('{commit: "' + "c" * 40 + '", start_line: 1}', "start_line"),
+        # A commit by its full SHA, and a pull request by its number.
+        ('{commit: "ccccccc"}', "commit"),
+        ("{pull: 0}", "pull"),
+        ('{pull: "805"}', "pull"),
+        # A reference names a file, a pull request, or a commit.
+        ("{side: new, start_line: 1, end_line: 1}", None),
+        ("{}", None),
+    ],
+)
+def test_a_reference_of_no_kind_is_refused_where_it_goes_wrong(
+    reference: str, where: str | None
+) -> None:
+    with pytest.raises(GuideError) as refused:
+        parse_guide(_cite(reference))
+    place = "items.1.references.0" + (f".{where}" if where else "")
+    assert str(refused.value) == (
+        f"The guided-review block does not satisfy the v1 SoftSchema at {place}."
     )
 
 
@@ -763,6 +819,10 @@ def _long_row_patch(file_id: str, characters: int) -> FilePatch:
     return FilePatch(file_id=file_id, hunks=(hunk,), truncated=False)
 
 
+def _files_of(path: str) -> str:
+    return f"/pull/7/files/{path}"
+
+
 def _states(
     references: list[CollectionReference],
     changes: dict[str, FileChange],
@@ -770,7 +830,7 @@ def _states(
     *,
     truncated: bool = False,
 ) -> list[str]:
-    shown = _references(7, references, changes, patches, truncated=truncated)
+    shown = _references(_files_of, references, _Files(changes, patches, truncated))
     return [str(entry["state"]) for entry in shown]
 
 
@@ -827,9 +887,15 @@ def test_a_steps_excerpts_share_one_budget() -> None:
     assert _states(only, changes, big) == ["excerpt_too_large"]
 
 
-def _whole(references: list[CollectionReference], **kwargs: object) -> list[str]:
+def _whole(
+    references: list[CollectionReference],
+    *,
+    patches: dict[str, FilePatch],
+    too_large: frozenset[str] = frozenset(),
+) -> list[str]:
     changes = {path: _change(path, at) for at, path in enumerate(("a.py", "b.py", "c.py"), 1)}
-    return [str(entry["state"]) for entry in _references(7, references, changes, **kwargs)]  # pyright: ignore[reportArgumentType]
+    files = _Files(changes, patches, too_large=too_large)
+    return [str(entry["state"]) for entry in _references(_files_of, references, files)]
 
 
 def test_a_steps_whole_files_share_one_budget() -> None:
@@ -845,15 +911,15 @@ def test_a_steps_whole_files_share_one_budget() -> None:
         "file-2": _long_row_patch("file-2", half),
         "file-3": _long_row_patch("file-3", 3),
     }
-    assert _whole([*whole, ranged], patches=patches, truncated=False) == [
+    assert _whole([*whole, ranged], patches=patches) == [
         "ready",
         "patch_too_large",
         "ready",
     ]
     alone = {"file-1": _long_row_patch("file-1", MAX_STEP_PATCH_BYTES // 6)}
-    assert _whole(whole[:1], patches=alone, truncated=False) == ["patch_too_large"]
+    assert _whole(whole[:1], patches=alone) == ["patch_too_large"]
     # No patch: the diff source left it out for its size, or could not read it.
-    assert _whole(whole, patches={}, truncated=False, too_large=frozenset({"file-1"})) == [
+    assert _whole(whole, patches={}, too_large=frozenset({"file-1"})) == [
         "patch_too_large",
         "diff_unavailable",
     ]
@@ -872,11 +938,9 @@ def test_a_file_with_no_range_shows_its_whole_patch() -> None:
     )
     patch = FilePatch(file_id="file-1", hunks=(_REPLACED, second), truncated=True)
     shown = _references(
-        7,
+        _files_of,
         [CollectionReference(path="a.py")],
-        {"a.py": _change("a.py", 1)},
-        {"file-1": patch},
-        truncated=False,
+        _Files({"a.py": _change("a.py", 1)}, {"file-1": patch}),
     )
     assert shown[0]["state"] == "ready"
     assert shown[0]["truncated"] is True

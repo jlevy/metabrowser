@@ -74,14 +74,58 @@ $defs:
     type: object
   CollectionReference:
     additionalProperties: false
+    description: |-
+      What an item is about, one of four kinds, each spelled one way.
+
+      - `{path}`, a file of the carrier's comparison, whole, or with a `side` and an
+        inclusive line range;
+      - `{pull, path}`, a file as pull request `pull` changes it, whole, in that pull
+        request's current comparison, which the collection does not pin, so a range into it
+        would come to point at other lines;
+      - `{pull}`, a pull request;
+      - `{commit}`, a commit, by its full ID.
+
+      Every kind is valid in every carrier, and a carrier resolves each from what it has
+      cached, fetching nothing.
+    else:
+      else:
+        required:
+        - path
+      if:
+        required:
+        - pull
+      then:
+        properties:
+          end_line:
+            not: {}
+          side:
+            not: {}
+          start_line:
+            not: {}
+    if:
+      required:
+      - commit
     properties:
+      commit:
+        anyOf:
+        - $ref: '#/$defs/Sha'
+        - type: 'null'
+        default: null
       end_line:
         anyOf:
         - $ref: '#/$defs/LineNumber'
         - type: 'null'
         default: null
       path:
-        $ref: '#/$defs/Prose'
+        anyOf:
+        - $ref: '#/$defs/Prose'
+        - type: 'null'
+        default: null
+      pull:
+        anyOf:
+        - $ref: '#/$defs/PullNumber'
+        - type: 'null'
+        default: null
       side:
         anyOf:
         - enum:
@@ -96,8 +140,18 @@ $defs:
         - $ref: '#/$defs/LineNumber'
         - type: 'null'
         default: null
-    required:
-    - path
+    then:
+      properties:
+        end_line:
+          not: {}
+        path:
+          not: {}
+        pull:
+          not: {}
+        side:
+          not: {}
+        start_line:
+          not: {}
     title: CollectionReference
     type: object
   LineNumber:
@@ -106,6 +160,10 @@ $defs:
   Prose:
     minLength: 1
     type: string
+  PullNumber:
+    maximum: 9999999999
+    minimum: 1
+    type: integer
   Sha:
     pattern: ^[0-9a-f]{40}(?:[0-9a-f]{24})?$
     type: string
@@ -136,4 +194,4 @@ title: Collection
 type: object
 x-softschema:
   contract: metabrowser.collection:Collection/v1
-  schema_sha256: 846cc52e2cd31bf1e367383fa03ba0e80697407ae72b871786e01aa350422555
+  schema_sha256: a54f79e64d2ae21643029e4b3e651d1f3d4a536fa9ba7a28a8eb97688b4238b7
