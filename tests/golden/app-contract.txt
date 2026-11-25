@@ -174,6 +174,13 @@ exit: 0
 --- stderr ---
 --- contract ---
 plugins
+# METABROWSER_RECORD_RECENT=0 metab <ROOT>/served --no-open --exit-on-eof --host 127.0.0.1 --port 8411
+exit: 0
+--- stdout ---
+Serving <ROOT>/served at http://127.0.0.1:8411/view/  [dev build: <STATE>]
+--- stderr ---
+--- contract ---
+serve/folder
 # metab --recent --json
 exit: 0
 --- stdout ---
@@ -184,13 +191,12 @@ exit: 0
 --- stderr ---
 --- contract ---
 recent-list/empty
-# metab <ROOT>/served --no-open --exit-on-eof --host 127.0.0.1 --port 8411
+# metab <ROOT>/served/ --recent-add
 exit: 0
 --- stdout ---
-Serving <ROOT>/served at http://127.0.0.1:8411/view/  [dev build: <STATE>]
 --- stderr ---
 --- contract ---
-serve/folder
+recent-add/folder
 # metab --recent --json
 exit: 0
 --- stdout ---
@@ -208,13 +214,6 @@ exit: 0
 --- stderr ---
 --- contract ---
 recent-list/after-an-open
-# METABROWSER_RECORD_RECENT=0 metab <ROOT>/other --no-open --exit-on-eof --host 127.0.0.1 --port 8411
-exit: 0
---- stdout ---
-Serving <ROOT>/other at http://127.0.0.1:8411/view/  [dev build: <STATE>]
---- stderr ---
---- contract ---
-serve/not-an-open
 # metab https://github.com/Octo/Demo/pull/12 --recent-add
 exit: 0
 --- stdout ---
@@ -886,7 +885,7 @@ exit: 1
     {
       "id": "config",
       "title": "<text>",
-      "state": "warning",
+      "state": "ok",
       "summary": "<text>",
       "details": [
         {
@@ -900,17 +899,9 @@ exit: 1
         {
           "name": "<text>",
           "value": "<text>"
-        },
-        {
-          "name": "<text>",
-          "value": "<text>"
         }
       ],
-      "remedy": {
-        "text": "<text>",
-        "command": null,
-        "url": null
-      }
+      "remedy": null
     },
     {
       "id": "cache",

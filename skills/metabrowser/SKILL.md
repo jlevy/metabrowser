@@ -106,6 +106,11 @@ the user an address for a browser:
 - **A server you start** answers any address, so serve for what a target cannot name,
   such as a heading, a commit of a local checkout, or one file of a pull request’s
   changes; in a headless environment; and whenever presenting fails
+- **The user’s recent folders** list what they open.
+  A target you present to the app enters the list as if they had opened it, since the
+  app cannot tell the two apart; a server you start stays out of it, since it runs
+  without a terminal. So present what the user should see, and serve what only you need
+  to look at
 
 ### Present It in the App
 

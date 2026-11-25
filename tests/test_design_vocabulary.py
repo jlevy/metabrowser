@@ -2037,6 +2037,100 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     assert details[".github-pull-hunk-earlier[open]::details-content"]["height"] == "auto"
 
 
+# A fold expander's two glyphs, KPress's table-of-contents pair, each by a path only it has
+# (docs/design-system.md, "Fold Expanders"): chevrons-up-down closed, chevrons-down-up open.
+FOLD_CLOSED_PATH = "m7 15 5 5 5-5"
+FOLD_OPEN_PATH = "m7 20 5-5 5 5"
+# The browser sources that build a fold expander, each with the builder it uses: the diff's
+# factory, and a review comment's earlier lines, on a native summary.
+_FOLD_BUILDERS = {
+    "diff/diff-fold.js": '"fold-expander diff-fold-control disclosure-toggle"',
+    "github/pull-page.js": '{ class: "fold-expander disclosure-toggle" }',
+}
+# The classes a fold is built of: the primitive, the diff's bar, and the pull page's fold.
+_FOLD_CLASSES = ("fold-expander", "diff-fold-control", "github-pull-hunk-earlier")
+
+
+def test_a_fold_expander_draws_the_pair_not_the_chevron() -> None:
+    """Every fold leads with the expand/contract pair its primitive draws, never a chevron.
+
+    A fold sets withheld content back in place; a chevron turns for a row's children. The
+    primitive draws the pair from the control's own state, so no fold's markup holds a
+    glyph, and none can turn one.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    rules = _rules_of(STATIC / "styles.css")
+    glyph = dict(_declarations(_rule(styles, ".fold-expander::before")))
+    assert glyph["content"] == '""'
+    assert glyph["width"] == glyph["height"] == "var(--toggle-chevron-size)"
+    assert glyph["background-color"] == "currentcolor", "the glyph is the expander's muted ink"
+    assert f"d='{FOLD_CLOSED_PATH}'" in glyph["mask"] and FOLD_OPEN_PATH not in glyph["mask"]
+    # Open is the control's own state: a button's aria-expanded, a native summary's open.
+    opened = [
+        (selector, declarations)
+        for selector, declarations in rules
+        if f"d='{FOLD_OPEN_PATH}'" in declarations.get("mask-image", "")
+    ]
+    assert [selector for selector, _ in opened] == [
+        '.fold-expander[aria-expanded="true"]::before',
+        "details[open] > summary.fold-expander::before",
+    ]
+    # The text's ink under the pointer and the ring, and CanvasText in forced colors, which
+    # force the glyph's background to Canvas (tests/test_icon_catalog.py holds every mask).
+    assert {
+        declarations["background-color"]
+        for selector, declarations in rules
+        if selector == ".fold-expander:is(:hover, :focus-visible)::before"
+    } == {"var(--text)", "CanvasText"}, (
+        "the glyph takes the text's ink under the pointer and the ring"
+    )
+    # Nothing styles a chevron in a fold or turns anything there, and the control itself
+    # does not move: only the group it opens travels.
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            if not any(re.search(rf"\.{name}(?![\w-])", selector) for name in _FOLD_CLASSES):
+                continue
+            where = f"{_sheet_name(sheet)}: {selector}"
+            assert "toggle-chevron" not in selector and "svg" not in selector, where
+            assert not any("rotate" in value for value in declarations.values()), where
+            if re.search(r"\.(?:fold-expander|diff-fold-control)(?![\w-])", selector):
+                assert "transform" not in declarations, where
+                assert "transition" not in declarations, where
+    plugins = REPO_ROOT / BUILTIN_PLUGINS
+    for path in [*_browser_sources(), *_stylesheets()]:
+        text = path.read_text(encoding="utf-8")
+        for retired in ("diff-fold-chevron", "github-pull-fold-chevron"):
+            assert retired not in text, f"{path.name} names the fold's old chevron, {retired}"
+    # Only the registered builders make a fold, and neither puts a glyph in it.
+    building = {
+        _source_key(source)
+        for source in _browser_sources()
+        if re.search(r"(?<![\w-])fold-expander(?![\w-])", source.read_text(encoding="utf-8"))
+    }
+    assert building == set(_FOLD_BUILDERS), "a new fold expander is built outside its builders"
+    for key, builder in _FOLD_BUILDERS.items():
+        assert builder in (plugins / key).read_text(encoding="utf-8"), key
+        for glyph_text, listed_builder in _TOGGLE_GLYPHS.get(key, ()):
+            assert listed_builder != builder or "summary" in glyph_text, (
+                f"{key} puts {glyph_text} in a fold expander, which draws its own glyph"
+            )
+    # The factory's body alone, to its top-level closing brace, so a glyph helper declared
+    # after it in the file is not read as the factory's.
+    fold = (plugins / "diff/diff-fold.js").read_text(encoding="utf-8")
+    factory = fold.split("export function foldExpander", 1)[1].split("\n}\n", 1)[0]
+    assert "return { control, group" in factory, "the slice is not foldExpander's body"
+    assert "shellIcon(" not in factory, "foldExpander draws a glyph; .fold-expander draws it"
+    page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
+    assert re.search(
+        r'h\("summary", \{ class: "fold-expander disclosure-toggle" \}, \[\s*'
+        r'h\("span", \{ class: "github-pull-fold-closed" \}',
+        page,
+    ), "a review comment's fold summary holds its words alone"
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "test_a_fold_expander_draws_the_pair_not_the_chevron" in doc
+
+
 # ── Disclosure toggles never select text ───────────────────────────
 #
 # docs/design-system.md, "Disclosure Toggles Never Select Text". Every browser source
@@ -2155,9 +2249,6 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
     ),
-    "diff/diff-fold.js": (
-        ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
-    ),
     "diff/diff-view.js": (
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
         ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
@@ -2181,7 +2272,6 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "github/pull-page.js": (
         ('h( "summary"', '"btn github-pull-stack-trigger disclosure-toggle"'),
         ('h("summary"', '{ class: "fold-expander disclosure-toggle" }'),
-        ("chevron(),", '{ class: "fold-expander disclosure-toggle" }'),
     ),
 }
 # A glyph built far from its builder: a folder row's parts are made by one function and
@@ -4451,6 +4541,24 @@ def test_a_control_no_rule_rings_takes_the_one_ring() -> None:
     }
     # One base, stated once: a second would be a fork of it.
     assert styles.count(base) == 1
+
+
+def test_the_ref_selectors_current_row_shows_focus_by_the_ring() -> None:
+    """A menu row shows focus by the hover tint, which the current row's highlight replaces.
+
+    So the current row, the working tree's or a ref's, draws the one ring on focus instead,
+    and keyboard focus on it is not invisible.
+    """
+
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".menu-item:focus-visible"] == {"background": "var(--hover-bg)", "outline": "none"}
+    for row in (".source-ref-selector-row", ".source-ref-selector-working-tree"):
+        current = f'{row}[aria-current="true"]'
+        assert shell[current]["background"] == "var(--highlight-bg)", row
+        assert shell[current + ":focus-visible"] == {
+            "outline": _FOCUS_OUTLINE,
+            "outline-offset": _FOCUS_OFFSET,
+        }, row
 
 
 _STATUS_TEXT_TOKENS = (

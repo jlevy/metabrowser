@@ -1296,8 +1296,8 @@ A row whose cells changed and a row that arrived flash once; a row that would la
 the reader’s place is offered rather than drawn, said once in the live region, and
 taking the offer draws it, goes to it, and puts the keyboard on it; the focus and the
 selection stay on their rows, by position where rows have no key, an open menu keeps
-what was typed in it, and a refresh whose rows read the same draws nothing.
-A watch refused says the table is not following its file.
+what was typed in it and the focus, and a refresh whose rows read the same draws
+nothing. A watch refused says the table is not following its file.
 A refresh asks the question again as `refresh()` does, from the first page as far as the
 reader reached, so a table drawn as a window keeps no rows above the window as last read
 (`tests/fixtures/table-view-live-window-responses.json`, sixty rows read in part in
@@ -1357,7 +1357,12 @@ $ node tests/dom/table-view-session.js live
       "5 | e | 5 [num]",
       "6 | f | 6 [num]"
     ],
-    "focus": null,
+    "focus": {
+      "on": "input",
+      "row": null,
+      "text": "",
+      "tabStops": 1
+    },
     "menu open, its unsent filter kept": "4"
   },
   "live: the open record, named by position, read again: another row is there now": {

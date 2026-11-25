@@ -137,10 +137,11 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     assert 'console.warn("metabrowser github: the text styles did not load", error);' in source
     # Only shell-owned icon constants are parsed; every use takes an inert copy.
     assert source.count("new DOMParser()") == 1
-    assert source.count("registryIcon(") == 2
-    assert 'registryIcon("toggle")' in source and 'registryIcon("layers")' in source
+    # A review comment's fold draws its own glyph (`.fold-expander`), so the page parses no
+    # chevron.
+    assert source.count("registryIcon(") == 1
+    assert 'registryIcon("layers")' in source and 'registryIcon("toggle")' not in source
     assert 'parseFromString(mb.icons[name] || "", "text/html")' in source
-    assert "document.importNode(chevronSvg, true)" in source
     assert "document.importNode(stackSvg, true)" in source
     assert "insertAdjacentHTML" not in source and "outerHTML" not in source
     assert source.count('rel: "noopener noreferrer"') == 1

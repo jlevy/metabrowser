@@ -118,13 +118,17 @@ _RELEASE: Final = re.compile(r"^([0-9]+(?:\.[0-9]+)*)")
 # is the release build when both are installed (DEFAULT_BUNDLE_IDS). The open_in check
 # keeps a terminal's lookup, since it says where `--present` in a terminal opens a target.
 DOCTOR_APP_ENV: Final = "METABROWSER_DOCTOR_APP"
-# What the app's servers get of the configuration and cache variables: none (the state
-# directory's, which hold only the event log, are passed; ChildEnvironment's allowlist,
-# apps/macos/Sources/ShellCore/Runtime/ChildEnvironment.swift, which
-# tests/test_macos_app_pins.py holds to this set).
-STORAGE_OVERRIDES: Final = frozenset(
-    {"METABROWSER_CONFIG_DIR", "XDG_CONFIG_HOME", "METABROWSER_CACHE_DIR", "XDG_CACHE_HOME"}
-)
+# What the app's servers get of the configuration and cache variables, by
+# ChildEnvironment's allowlist (apps/macos/Sources/ShellCore/Runtime/ChildEnvironment.swift),
+# which tests/test_macos_app_pins.py holds to these two sets; the state directory's, which
+# hold only the event log, are passed too. They get none of STORAGE_OVERRIDES.
+STORAGE_OVERRIDES: Final = frozenset({"XDG_CONFIG_HOME", "METABROWSER_CACHE_DIR", "XDG_CACHE_HOME"})
+# They get LAUNCH_STORAGE_OVERRIDES only as the app was launched with it, by `open --env`,
+# as the hand checks launch a development build to keep its recent targets apart, or from
+# launchd's environment (`launchctl setenv`). A terminal's `export` reaches no app, so a
+# doctor run there cannot tell what the app has, but the doctor the app runs sees the
+# app's own, which its servers use too.
+LAUNCH_STORAGE_OVERRIDES: Final = frozenset({"METABROWSER_CONFIG_DIR"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -406,19 +410,24 @@ def _directory_source(override: str, xdg: str) -> str:
 
 
 def _servers_directory(
-    directory: Path, source: str, app_path: str | None, *, cache: bool
+    directory: Path, source: str, app_path: str | None, *, cache: bool, from_app: bool = False
 ) -> str | None:
     """The directory the app's servers use instead of *directory*, when they differ.
 
-    The app gives its servers none of these storage variables, so an override set where
-    this ``metab`` runs, with an app to compare, names a directory they never read.
+    The app gives its servers none of :data:`STORAGE_OVERRIDES`, and of
+    :data:`LAUNCH_STORAGE_OVERRIDES` only what the app was launched with, which a
+    terminal's ``export`` does not reach. So an override set where this ``metab`` runs,
+    with an app to compare, names a directory they do not read, as far as a terminal can
+    tell, unless the app runs this doctor (*from_app*): then what it sees of those is the
+    app's own, which its servers read too.
     """
 
     from metabrowser.home import StorageDirectoryError, application_cache, configuration_directory
 
     if source == "default" or app_path is None:
         return None
-    environ = {name: value for name, value in os.environ.items() if name not in STORAGE_OVERRIDES}
+    dropped = STORAGE_OVERRIDES if from_app else STORAGE_OVERRIDES | LAUNCH_STORAGE_OVERRIDES
+    environ = {name: value for name, value in os.environ.items() if name not in dropped}
     try:
         theirs = application_cache(environ) if cache else configuration_directory(environ)
     except StorageDirectoryError:
@@ -446,10 +455,11 @@ def _create_remedy(override: str) -> Remedy:
     )
 
 
-def config_check(*, app_path: str | None = None) -> Check:
+def config_check(*, app_path: str | None = None, from_app: bool = False) -> Check:
     """The configuration directory: where, whether it is private, and its ``config.yml``.
 
-    *app_path* is the app ``open_in`` found, whose servers get none of the overrides.
+    *app_path* is the app ``open_in`` found, or the app running this doctor (*from_app*),
+    whose servers get an override only as :func:`_servers_directory` says.
     """
 
     from metabrowser.cache.layout import (
@@ -497,7 +507,7 @@ def config_check(*, app_path: str | None = None) -> Check:
                 "first saves a setting",
                 tuple(details),
             ),
-            _servers_directory(directory, source, app_path, cache=False),
+            _servers_directory(directory, source, app_path, cache=False, from_app=from_app),
         )
     except (PrivateStorageError, StorageDirectoryError) as exc:
         return Check("config", heading, "problem", str(exc), tuple(details))
@@ -522,7 +532,7 @@ def config_check(*, app_path: str | None = None) -> Check:
     details.append((CONFIG_RECORD, "none" if config is None else "read"))
     return _overridden(
         Check("config", heading, "ok", "the configuration directory is private", tuple(details)),
-        _servers_directory(directory, source, app_path, cache=False),
+        _servers_directory(directory, source, app_path, cache=False, from_app=from_app),
     )
 
 
@@ -536,8 +546,8 @@ def _overridden(check: Check, servers: str | None) -> Check:
         check.id,
         check.title,
         "warning",
-        f"{source} names this directory, but the app's servers get no {source} and use "
-        f"{servers}, so what metab records here in a terminal the app does not see",
+        f"{source} names this directory, but the app's servers get no {source} from a terminal "
+        f"and use {servers}, so what metab records here in a terminal the app does not see",
         (*check.details, ("app's servers", servers)),
         Remedy(f"Unset {source} in the terminal, or open targets from the app."),
     )
@@ -728,7 +738,7 @@ def doctor_checks(
     else:
         app_path, app_minimum = open_in.app_path, open_in.app_minimum_metab
         looked_up = open_in.section.get("app") is not None
-    config = config_check(app_path=app_path)
+    config = config_check(app_path=app_path, from_app=running is not None)
     return (
         plugins_check(plugin_count, plugin_problems),
         open_in_check(open_in, config_unreadable=config.state == "problem"),
@@ -744,6 +754,7 @@ __all__ = [
     "CHECKOUT_PROJECT",
     "CHECKOUT_VENV",
     "DOCTOR_APP_ENV",
+    "LAUNCH_STORAGE_OVERRIDES",
     "METAB_UPGRADE_COMMANDS",
     "PIPX_METADATA",
     "STORAGE_OVERRIDES",
