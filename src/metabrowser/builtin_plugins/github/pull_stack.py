@@ -46,8 +46,9 @@ A member with no usable record (none cached, another account's, or one with no
 comparison) leaves the stack ``pending``, with no comparison: the page asks ``pull-refresh``
 for it. A member whose catalog row names a newer head than its record is named in
 ``pending`` while the stack stays ``current``, its record's comparison standing until a
-refresh replaces it. Each pending member's ``fetching`` says whether its refresh is running
-now, so the page asks again for one whose fetch ended without a usable record.
+refresh replaces it. Each pending member's ``fetching`` says whether its refresh was running
+before its record was read, so the page asks again for one whose fetch ended without a
+usable record, and never takes a fetch that ended during the read for one that failed.
 
 **After a move.** A page keeps the comparison it drew, so each pair this route answers is
 kept admitted (:mod:`.pull_stack_retained`), and ``stack-comparison``, ``pull-rendered-diff``
@@ -65,6 +66,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
 from urllib.parse import urlencode
 from weakref import WeakKeyDictionary
@@ -74,6 +76,7 @@ from metabrowser.builtin_plugins.diff.sidekick import comparison_cache_key, list
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
 from metabrowser.builtin_plugins.github.pull_stacks import NativeStack, StackCache, read_stacks
 from metabrowser.builtin_plugins.github.served_pull import ATTENDED_PROBE_S
+from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import source_stacks
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.git.process import (
@@ -136,8 +139,9 @@ class StackMemberWire(TypedDict):
     in_top: bool | None
     # Whether the page asks pull-refresh for it: no usable record, or a newer head known.
     pending: bool
-    # Whether a refresh of this pending member is running now, so that the page tells a
-    # fetch under way from one that ended without a usable record; false for any other.
+    # Whether a refresh of this pending member was running when its record was about to be
+    # read, so that the page tells a fetch under way from one that ended without a usable
+    # record; false for any other.
     fetching: bool
 
 
@@ -235,12 +239,14 @@ class StackPair:
 
 @dataclass(frozen=True, slots=True)
 class StackRead:
-    """What a read of the stack found: the snapshot's stack, its members, and the pair."""
+    """What a read of the stack found: the snapshot's stack, its members, and the pair, and
+    the members whose refresh was running when their records were about to be read."""
 
     stack: NativeStack | None
     members: tuple[_Member, ...]
     pair: StackPair | None
     reason: StackAbsence | None
+    fetching: frozenset[int] = frozenset()
 
 
 _SNAPSHOTS: OrderedDict[tuple[str, str, tuple[int, int, int]], StackCache | None] = OrderedDict()
@@ -294,32 +300,32 @@ def _state(
     )
 
 
+def _snapshot_stack(repository: ListedRepository, number: int) -> NativeStack | None:
+    """Stack *number* as the snapshot has it, or ``None``. Blocking and bounded."""
+
+    cache = _snapshot(repository)
+    snapshot = cache.snapshot if cache is not None else None
+    if snapshot is None:
+        return None
+    return next(
+        (found for page in snapshot.pages for found in page.stacks if found.number == number),
+        None,
+    )
+
+
 def _read_members(
     repository: ListedRepository,
     published: PublishedSource,
-    number: int,
+    stack: NativeStack,
     reader: str | None,
-) -> tuple[NativeStack, tuple[_Member, ...]] | None:
-    """Stack *number* and its members, bottom first, or ``None`` when the snapshot has no such
-    stack. Blocking and bounded: the snapshot, and a record and a catalog row a member, each
-    through its parse cache."""
+) -> tuple[_Member, ...]:
+    """*stack*'s members, bottom first. Blocking and bounded: a record and a catalog row a
+    member, each through its parse cache."""
 
     from metabrowser.builtin_plugins.github.pull_files_route import known_head
     from metabrowser.builtin_plugins.github.pull_list_route import cached_list_row
     from metabrowser.builtin_plugins.github.pull_route import cached_pull_record
 
-    cache = _snapshot(repository)
-    snapshot = cache.snapshot if cache is not None else None
-    stack = (
-        None
-        if snapshot is None
-        else next(
-            (found for page in snapshot.pages for found in page.stacks if found.number == number),
-            None,
-        )
-    )
-    if stack is None:
-        return None
     members: list[_Member] = []
     for member in stack.pulls:
         found, _dumped, revision = cached_pull_record(published.home, published.slug, member)
@@ -354,7 +360,7 @@ def _read_members(
                 moved=moved,
             )
         )
-    return stack, tuple(members)
+    return tuple(members)
 
 
 _ANCESTRIES: OrderedDict[tuple[str, str, str], bool] = OrderedDict()
@@ -395,14 +401,24 @@ def stack_digest(members: tuple[tuple[int, str, str], ...]) -> str:
     ]
 
 
+def _not_fetching(_number: int) -> bool:
+    return False
+
+
 async def read_stack(
     repository: ListedRepository | None,
     published: PublishedSource | None,
     number: int,
     reader: str | None,
+    running: Callable[[int], bool] = _not_fetching,
 ) -> StackRead:
     """Stack *number* as this server has it now: its members and, when every member has a
-    usable record, its current pair. Runs no ``gh``; its Git is ancestry checks alone."""
+    usable record, its current pair. Runs no ``gh``; its Git is ancestry checks alone.
+
+    *running* says whether a member's refresh is running. It is asked on the loop, before the
+    records are read in a thread, as ``PullView`` reads a job's state (``pull_route.py``): a
+    refresh that ends during the read has written its record by then, so the answer never
+    names a fetch as ended while still lacking the record it wrote."""
 
     if repository is None:
         return StackRead(None, (), None, "not_github")
@@ -413,13 +429,14 @@ async def read_stack(
             stack.number == number for page in snapshot.pages for stack in page.stacks
         )
         return StackRead(None, (), None, "no_store" if known else "not_stacked")
-    read = await asyncio.to_thread(_read_members, repository, published, number, reader)
-    if read is None:
+    stack = await asyncio.to_thread(_snapshot_stack, repository, number)
+    if stack is None:
         return StackRead(None, (), None, "not_stacked")
-    stack, members = read
+    fetching = frozenset(member for member in stack.pulls if running(member))
+    members = await asyncio.to_thread(_read_members, repository, published, stack, reader)
     records = [member.record for member in members]
     if any(record is None for record in records):
-        return StackRead(stack, members, None, None)
+        return StackRead(stack, members, None, None, fetching)
     pairs = tuple(
         (member.number, record.comparison.base, record.comparison.head)
         for member, record in zip(members, records, strict=True)
@@ -429,9 +446,9 @@ async def read_stack(
     target = RepositoryStoreTarget(published.git_dir, published.object_format)
     linear = await _contains(target, base, head)
     if linear is None:
-        return StackRead(stack, members, None, "commits_unavailable")
+        return StackRead(stack, members, None, "commits_unavailable", fetching)
     if not linear:
-        return StackRead(stack, members, None, "not_linear")
+        return StackRead(stack, members, None, "not_linear", fetching)
     in_top: list[bool] = []
     for member, (_number, _base, member_head) in zip(members, pairs, strict=True):
         record = member.record
@@ -442,7 +459,7 @@ async def read_stack(
             held = await _contains(target, merge, head)
         in_top.append(held is True)
     pair = StackPair(number, base, head, stack_digest(pairs), pairs, tuple(in_top))
-    return StackRead(stack, members, pair, None)
+    return StackRead(stack, members, pair, None, fetching)
 
 
 def stack_key(published: PublishedSource, pair: StackPair) -> tuple[str, ...]:
@@ -635,17 +652,8 @@ def comparison_wire(published: PublishedSource, pair: StackPair) -> StackCompari
     )
 
 
-def _not_fetching(_number: int) -> bool:
-    return False
-
-
-def absent(
-    number: int,
-    reason: StackAbsence,
-    read: StackRead | None = None,
-    fetching: Callable[[int], bool] = _not_fetching,
-) -> StackEnvelope:
-    envelope = _envelope(number, read, "absent", fetching)
+def absent(number: int, reason: StackAbsence, read: StackRead | None = None) -> StackEnvelope:
+    envelope = _envelope(number, read, "absent")
     envelope["reason"] = reason
     return envelope
 
@@ -654,11 +662,11 @@ def _envelope(
     number: int,
     read: StackRead | None,
     state: Literal["absent", "pending", "current"],
-    fetching: Callable[[int], bool] = _not_fetching,
 ) -> StackEnvelope:
     stack = read.stack if read is not None else None
     members = read.members if read is not None else ()
     pair = read.pair if read is not None else None
+    fetching = read.fetching if read is not None else frozenset[int]()
     wires: list[StackMemberWire] = []
     for place, member in enumerate(members, 1):
         pending = member.record is None or member.moved
@@ -676,7 +684,7 @@ def _envelope(
                 else None,
                 in_top=pair.in_top[place - 1] if pair is not None else None,
                 pending=pending,
-                fetching=pending and fetching(member.number),
+                fetching=pending and member.number in fetching,
             )
         )
     return StackEnvelope(
@@ -703,33 +711,36 @@ async def stack_envelope(
     published: PublishedSource | None,
     number: int,
     reader: str | None,
-    fetching: Callable[[int], bool] = _not_fetching,
+    running: Callable[[int], bool] = _not_fetching,
 ) -> StackEnvelope:
     """Stack *number*'s page answer, or why there is none. Runs no ``gh`` and no fetch.
 
-    *fetching* says whether a refresh of a member is running now. A current pair is kept
-    admitted for later (:func:`.pull_stack_retained.retain_stack_pair`), so the page can keep
-    drawing it after the stack moves.
+    *running* says whether a member's refresh is running; :func:`read_stack` asks it before it
+    reads the records, and each pending member's ``fetching`` reports it. A current pair is
+    kept admitted for later (:func:`.pull_stack_retained.retain_stack_pair`), so the page can
+    keep drawing it after the stack moves.
     """
 
     from metabrowser.builtin_plugins.github.pull_stack_retained import retain_stack_pair
     from metabrowser.diff.adapters.base import DiffSourceError
     from metabrowser.git.process import GitError
 
-    read = await read_stack(repository, published, number, reader)
+    read = await read_stack(repository, published, number, reader, running)
     if read.reason is not None:
-        return absent(number, read.reason, read, fetching)
+        return absent(number, read.reason, read)
     if read.pair is None or published is None:
-        envelope = _envelope(number, read, "pending", fetching)
+        envelope = _envelope(number, read, "pending")
     else:
         try:
             found = await combined(published, read.pair)
         except (DiffSourceError, GitError):
-            return absent(number, "commits_unavailable", read, fetching)
+            return absent(number, "commits_unavailable", read)
         top_record = read.members[-1].record
         if top_record is not None:
-            await asyncio.to_thread(retain_stack_pair, published, read.pair, top_record.reader)
-        envelope = _envelope(number, read, "current", fetching)
+            await run_lock_section(
+                partial(retain_stack_pair, published, read.pair, top_record.reader)
+            )
+        envelope = _envelope(number, read, "current")
         manifest = found.manifest.manifest
         totals = manifest.totals
         envelope["comparison"] = comparison_wire(published, read.pair)
