@@ -192,7 +192,8 @@ const MEASURE = `async (titles) => {
       return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
     };
     const nav = document.createElement("div");
-    nav.style.width = "300px";
+    // Narrow enough that the long title runs past its two lines: at 300 px it fits them.
+    nav.style.width = "200px";
     pane.replaceChildren(nav);
     const handle = panelModule.mountPullsPanel(
       nav,
@@ -223,6 +224,15 @@ const MEASURE = `async (titles) => {
     await document.fonts.ready;
     await frames();
     out.pullsRow = { prefixed: read(title(rows[0].number)), plain: read(title(rows[1].number)) };
+    // The title's two lines (mb-85op): its heading, cut short at the second line's end, past
+    // which the rest of the title runs.
+    const heading = title(rows[0].number).closest(".github-pulls-heading");
+    const lineHeight = parseFloat(getComputedStyle(heading).lineHeight);
+    out.pullsHeading = {
+      clamped: heading.scrollHeight > heading.clientHeight + 1,
+      lineClamp: getComputedStyle(heading).webkitLineClamp,
+      lines: Math.round((heading.clientHeight / lineHeight) * 100) / 100,
+    };
     handle?.dispose?.();
   }
 
@@ -551,12 +561,17 @@ async function main() {
           bare.rest.weight,
         );
       }
-      // A Pulls row cut short ends in an ellipsis, with all of its title its text.
+      // A Pulls row's title cut short at its second line ends in the clamp's ellipsis, with all
+      // of its title its text (mb-85op): it was one line, cut short by text-overflow.
       const row = measured.pullsRow?.prefixed;
+      const heading = measured.pullsHeading;
       check(
-        "a Pulls row's long title is cut short with an ellipsis, whole in its text",
-        row?.clipped === true && row.overflow === "ellipsis" && row.text === PULL,
-        JSON.stringify(row),
+        "a Pulls row's long title is cut short at two lines with an ellipsis, whole in its text",
+        heading?.clamped === true &&
+          heading.lineClamp === "2" &&
+          heading.lines === 2 &&
+          row?.text === PULL,
+        JSON.stringify({ row, heading }),
       );
       // The pull request's heading, clamped at two lines, carries the whole title in its tip.
       const clamped = measured.pullTitleClamped;

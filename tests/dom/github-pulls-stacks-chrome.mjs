@@ -93,11 +93,15 @@ const LIST = `(() => {
       };
       stacks.push(open);
     } else if (row.getAttribute("aria-level") === "2" && open !== null) {
+      const place = row.querySelector(".github-pulls-place");
       open.members.push({
         number: Number(row.dataset.number),
-        // Its place in its stacks, on its number's line, before the number (mb-dzsi).
+        // Its place in its stacks, leading its title, after the state icon (mb-vkhd).
         badge: row.querySelector(".github-pulls-place .github-pull-stack-position")?.textContent ?? "",
-        line: row.querySelector(".github-pulls-line")?.textContent ?? "",
+        // The title's flow, the place and its bullet, then the title, its no-break space a
+        // space; and the number's line, on the row's third line.
+        heading: ((place?.textContent ?? "") + (row.querySelector(".github-pulls-title")?.textContent ?? "")).replaceAll("\u00a0", " "),
+        line: row.closest("li").querySelector(".github-pulls-change .github-pulls-meta")?.textContent ?? "",
         // Another stack named in it, by the Layers glyph before its number.
         others: row.querySelectorAll(".github-pulls-place .github-pull-stack-other svg").length,
         // A member's row draws no stack icon: the stack's row it sits under has it.
@@ -116,10 +120,18 @@ const LIST = `(() => {
     (row) => !row.classList.contains("github-pulls-stack-row"),
   );
   const box = (el) => el?.getBoundingClientRect() ?? null;
-  // The room a row's title gets: its grid cell's width, which a long title fills and is
-  // cut at. A member's and a first-level pull request's, and the pane they are in.
+  // Where a pull request's row's text starts: its title's flow's first box, the place where
+  // it has one and the title where not, on the first line, after the state icon.
+  const textStart = (row) => {
+    if (!row) return null;
+    const place = row.querySelector(".github-pulls-place");
+    const first = (place && !place.hidden ? place : row.querySelector(".github-pulls-title"))?.getClientRects()[0];
+    return first?.left ?? null;
+  };
+  // The room a row's title gets: its two lines' width, which a long title fills and is cut
+  // at. A member's and a first-level pull request's, and the pane they are in.
   const titleBox = (number) =>
-    list.querySelector('a.github-pulls-row[data-number="' + number + '"] .github-pulls-title')?.getBoundingClientRect().width ?? null;
+    list.querySelector('a.github-pulls-row[data-number="' + number + '"] .github-pulls-heading')?.getBoundingClientRect().width ?? null;
   // The Pulls column carries no tooltip (mb-8mpo): every pull request's and stack's row and
   // its parts, after a pointer has crossed each title, as a reader's would.
   for (const title of list.querySelectorAll(".github-pulls-row .github-pulls-title")) {
@@ -141,10 +153,11 @@ const LIST = `(() => {
     memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
-  // A pull request's three lines (mb-lkkt, mb-3cbf, mb-d0a3): its link's two, the state icon
-  // and the title alone, from the text column to the row's end, then the number's line and
-  // the age; and under them its change line, the chevron in the first icon slot and the line in
-  // the title's column. Each row's parts, from its link's content box.
+  // A pull request's three lines (mb-85op, mb-lqkb): its link's two, the title's, one flow of
+  // the state icon, a member's place and bullet, and the title, from the row's inset to its
+  // end; and under them its change line, the chevron in the first icon slot, then the number's
+  // line in the text column, and the age at the row's end. Each row's parts, from its link's
+  // content box.
   const lines = Object.fromEntries(
     [10, 9, 106].map((number) => {
       const row = list.querySelector('a.github-pulls-row[data-number="' + number + '"]');
@@ -156,44 +169,49 @@ const LIST = `(() => {
       const of = (selector) => row.querySelector(selector).getBoundingClientRect();
       const item = row.closest("li");
       const change = item.querySelector(".github-pulls-change");
-      const meta = of(".github-pulls-meta");
-      const age = of(".github-pulls-age");
+      const metaBox = change.querySelector(".github-pulls-meta");
+      const meta = metaBox.getBoundingClientRect();
+      const age = change.querySelector(".github-pulls-age").getBoundingClientRect();
+      const headingBox = row.querySelector(".github-pulls-heading");
+      const heading = headingBox.getBoundingClientRect();
+      const lh = parseFloat(getComputedStyle(headingBox).lineHeight);
       const title = of(".github-pulls-title");
       const icon = of(".github-pull-state-icon");
-      const numberBox = of(".github-pulls-number");
-      const metaBox = row.querySelector(".github-pulls-meta");
-      const line = change?.getBoundingClientRect() ?? null;
-      const toggle = change?.querySelector(".github-pulls-toggle")?.getBoundingClientRect() ?? null;
-      const text = change?.querySelector(".github-pulls-change-line")?.getBoundingClientRect() ?? null;
+      const numberBox = change.querySelector(".github-pulls-number").getBoundingClientRect();
+      const line = change.getBoundingClientRect();
+      const toggle = change.querySelector(".github-pulls-toggle")?.getBoundingClientRect() ?? null;
       const round = (value) => Math.round(value * 100) / 100;
       return [number, {
         text: metaBox.textContent,
-        // The title's line is above the number's, which is one line of the number's type.
-        titleAbove: title.bottom <= meta.top + 0.5 && title.bottom <= age.top + 0.5,
-        oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
-        // The number's line starts in the title's column; the age ends at the row's end.
-        metaFromTitle: round(meta.left - title.left),
+        // The title's two lines are above the change line, whose number's line is one line
+        // of its height.
+        titleAbove: heading.bottom <= meta.top + 0.5 && heading.bottom <= age.top + 0.5 && title.bottom <= heading.bottom + 0.5,
+        titleTwoLines: Math.abs(heading.height - 2 * lh) < 0.5,
+        oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(change).lineHeight)) < 0.5,
+        // The number's line starts in the text column, under the title's first text; the age
+        // ends at the row's end.
+        metaFromText: round(meta.left - textStart(row)),
         ageToEnd: round(end - age.right),
-        // The title runs from the text column, after the state icon's slot, to the row's end.
-        titleToEnd: round(end - title.right),
-        titleFromInset: round(title.left - inset),
+        // The title's lines run from the row's inset to its end, its first line's text in the
+        // text column, after the state icon's slot.
+        titleToEnd: round(end - heading.right),
+        titleFromInset: round(heading.left - inset),
+        textFromInset: round(textStart(row) - inset),
         // The text column is one icon slot and gap in: a row in no stack is flush (mb-3vil).
         textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
-        // The state icon is on the title's line, centred on it, above the number's line; the
-        // link holds no chevron.
-        withTitle: icon.top >= title.top - 0.5 && icon.bottom <= title.bottom + 0.5 && icon.bottom <= meta.top + 0.5,
-        iconOffTitle: round((icon.top + icon.bottom) / 2 - (title.top + title.bottom) / 2),
+        // The state icon is the title's first line's start, one line of it tall, above the
+        // change line; the link holds no chevron.
+        withTitle: Math.abs(icon.top - heading.top) < 0.5 && Math.abs(icon.height - lh) < 0.5 && icon.bottom <= meta.top + 0.5,
         iconFromInset: round(icon.left - inset),
         linkToggles: row.querySelectorAll(".github-pulls-toggle").length,
         // The change line is under the link, and the item is the two; the chevron is inside it,
-        // under the state icon, and the line's values under the title (mb-3vil).
-        changeUnder: line !== null && line.top >= r.bottom - 0.5 && line.top >= meta.bottom - 0.5,
-        threeLines: line !== null && Math.abs(item.getBoundingClientRect().height - r.height - line.height) < 0.5,
-        toggleOnChange: toggle !== null && line !== null && toggle.top >= line.top - 0.5 && toggle.bottom <= line.bottom + 0.5,
+        // under the state icon, and the number after it, under the title's first text (mb-3vil).
+        changeUnder: line.top >= r.bottom - 0.5 && line.top >= heading.bottom - 0.5,
+        threeLines: Math.abs(item.getBoundingClientRect().height - r.height - line.height) < 0.5,
+        toggleOnChange: toggle !== null && toggle.top >= line.top - 0.5 && toggle.bottom <= line.bottom + 0.5,
         toggleFromInset: toggle === null ? null : round(toggle.left - inset),
-        lineFromTitle: text === null ? null : round(text.left - title.left),
         numberLeft: round(numberBox.left - meta.left),
-        titleWidth: round(title.width),
+        titleWidth: round(heading.width),
         height: round(r.height),
         itemHeight: round(item.getBoundingClientRect().height),
       }];
@@ -211,15 +229,14 @@ const LIST = `(() => {
     flatToggle: left(flat?.closest("li").querySelector(".github-pulls-change .github-pulls-toggle")),
     stackLabel: left(stackRow?.querySelector(".github-pull-stack-label")),
     stackIcon: left(stackRow?.querySelector(".github-pull-stack-icon")),
-    flatTitle: left(flat?.querySelector(".github-pulls-title")),
+    // The three lines' text column: the title's first text, the place where there is one,
+    // and the number's line, the number first.
+    flatTitle: textStart(flat),
     flatIcon: left(flat?.querySelector(".github-pull-state-icon")),
-    memberTitle: left(member?.querySelector(".github-pulls-title")),
+    memberTitle: textStart(member),
     memberIcon: left(member?.querySelector(".github-pull-state-icon")),
-    // The three lines' text column: the title, the number's line, and the change line's values.
-    memberMeta: left(member?.querySelector(".github-pulls-meta")),
-    memberLine: left(member?.closest("li").querySelector(".github-pulls-change-line")),
-    flatMeta: left(flat?.querySelector(".github-pulls-meta")),
-    flatLine: left(flat?.closest("li").querySelector(".github-pulls-change-line")),
+    memberMeta: left(member?.closest("li").querySelector(".github-pulls-change .github-pulls-number")),
+    flatMeta: left(flat?.closest("li").querySelector(".github-pulls-change .github-pulls-number")),
     slotWidth: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")),
     rowGap: parseFloat(getComputedStyle(flat ?? document.body).columnGap),
     // A member's indent: one icon slot and the rows' column gap (mb-3vil).
@@ -231,7 +248,7 @@ const LIST = `(() => {
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
     // The label's room ends at the row's content end, where a row's age ends.
     labelRoomRight: box(stackRow?.querySelector(".github-pulls-stack-heading"))?.right ?? null,
-    flatAgeRight: box(flat?.querySelector(".github-pulls-age"))?.right ?? null,
+    flatAgeRight: box(flat?.closest("li").querySelector(".github-pulls-age"))?.right ?? null,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
     // the filters and Reload, which sits at the line's end.
     toolbar: (() => {
@@ -259,6 +276,8 @@ const LIST = `(() => {
         const t = holder.querySelector(toggle).getBoundingClientRect();
         const i = row.querySelector(icon).getBoundingClientRect();
         const g = row.querySelector(icon + " svg").getBoundingClientRect();
+        // The text's first box: a title of two lines is one box over both.
+        const first = row.querySelector(text).getClientRects()[0];
         return {
           toggle: round(t.width),
           toggleFromInset: round(t.left - inset),
@@ -266,7 +285,7 @@ const LIST = `(() => {
           icon: round(i.width),
           iconFromInset: round(i.left - inset),
           glyph: round(g.width),
-          text: round(row.querySelector(text).getBoundingClientRect().left - inset),
+          text: round(first.left - inset),
           gap: parseFloat(style.columnGap),
         };
       };
@@ -621,11 +640,15 @@ try {
         !list.stacks.slice(1).some((s) => s.members.some((m) => m.number === 10)),
       JSON.stringify(list.stacks),
     );
+    // It was on the number's line, before the number, "1/6 · #455", from mb-dzsi until the
+    // title took two lines and the number's line joined the change line (mb-vkhd, mb-85op).
     check(
-      "a member's place is on its number's line, before the number, as 1/6 · #455 reads",
-      first?.members[0]?.line.startsWith("4/4 · 300 2/2 · #10 · ") &&
-        first.members[1]?.line.startsWith("3/4 · #9 · "),
-      JSON.stringify(first?.members.map((m) => m.line)),
+      "a member's place leads its title, then a bullet, as 1/6 • Fix the reader reads, and its number's line starts with its number",
+      first?.members[0]?.heading.startsWith("4/4 · 300 2/2 • ") &&
+        first.members[1]?.heading.startsWith("3/4 • ") &&
+        first.members[0].line.startsWith("#10 · ") &&
+        first.members[1].line.startsWith("#9 · "),
+      JSON.stringify(first?.members.map((m) => [m.heading, m.line])),
     );
     check(
       "no pull request's or stack's row, nor any part of one, its change line included, carries a tooltip",
@@ -649,33 +672,36 @@ try {
     // on the number's line it led the row's link, which a press then both opened and expanded.
     // Under the title's start it put the values a slot and gap past the other two lines' text,
     // which the owner asked to have start at one x (2026-11-18).
+    // The title took two lines, and the number's line joined the change line (mb-85op,
+    // mb-lqkb): before, the title was alone on the first line and the number's line, with the
+    // age, the second.
     check(
-      "a pull request's first line is the icon, on the row's inset, and the title alone, from the text column to the row's end, its second its number's line and its age, and its third its change line, the chevron under the icon and the line in the title's column",
+      "a pull request's first two lines are its title's, the icon on the row's inset and the text from the text column to the row's end, and its third its change line, the chevron under the icon, the number under the title's first text, and the age at the row's end",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
           row?.titleAbove &&
+          row.titleTwoLines &&
           row.oneLine &&
-          Math.abs(row.metaFromTitle) < 0.5 &&
+          Math.abs(row.metaFromText) < 0.5 &&
           Math.abs(row.ageToEnd) < 0.5 &&
           Math.abs(row.titleToEnd) < 0.5 &&
-          Math.abs(row.titleFromInset - row.textColumn) < 0.5 &&
+          Math.abs(row.titleFromInset) < 0.5 &&
+          Math.abs(row.textFromInset - row.textColumn) < 0.5 &&
           row.withTitle &&
-          Math.abs(row.iconOffTitle) < 0.5 &&
           Math.abs(row.iconFromInset) < 0.5 &&
           row.linkToggles === 0 &&
           row.changeUnder &&
           row.threeLines &&
           row.toggleOnChange &&
           Math.abs(row.toggleFromInset) < 0.5 &&
-          Math.abs(row.lineFromTitle) < 0.5 &&
+          row.numberLeft === 0 &&
           row.height === list.titleRoom.flatRow &&
           row.itemHeight === list.lines[106].itemHeight
         );
       }) &&
-        list.lines[9].text.startsWith("3/4 · #9 · ") &&
-        list.lines[106].text.startsWith("#106 · ") &&
-        list.lines[106].numberLeft === 0,
+        list.lines[9].text.startsWith("#9 · ") &&
+        list.lines[106].text.startsWith("#106 · "),
       JSON.stringify(list.lines),
     );
     check(
@@ -712,30 +738,24 @@ try {
       near(list.stackToggle, list.flatIcon) && near(list.flatToggle, list.flatIcon),
       `${list.stackToggle} ${list.flatIcon} ${list.flatToggle} ${list.flatTitle}`,
     );
-    // A row's three lines share two columns (the owner, 2026-11-18): the state icon and the
-    // chevron in the slot, and the title, the number's line, and the change line's values in
-    // the text column, the chevron the rows' one column gap before the values (mb-3vil).
+    // A row's lines share two columns (the owner, 2026-11-18): the state icon and the chevron
+    // in the slot, and the title's first text and the number in the text column, the chevron
+    // the rows' one column gap before the number (mb-3vil). A title's second line starts
+    // under the icon (mb-85op).
     check(
-      "a row's three lines start at one x: the icon over the chevron, and the title over the number's line over the change line's values, one column gap after the chevron's slot",
+      "a row's lines start at one x: the icon over the chevron, and the title's first text over the number, one column gap after the chevron's slot",
       [
-        [list.flatIcon, list.flatToggle, list.flatTitle, list.flatMeta, list.flatLine],
-        [list.memberIcon, list.memberToggle, list.memberTitle, list.memberMeta, list.memberLine],
+        [list.flatIcon, list.flatToggle, list.flatTitle, list.flatMeta],
+        [list.memberIcon, list.memberToggle, list.memberTitle, list.memberMeta],
       ].every(
-        ([icon, toggle, title, meta, line]) =>
+        ([icon, toggle, title, meta]) =>
           near(icon, toggle) &&
           near(title, meta) &&
-          near(title, line) &&
-          near(line - (toggle + list.slotWidth), list.rowGap),
+          near(meta - (toggle + list.slotWidth), list.rowGap),
       ),
       JSON.stringify({
-        flat: [list.flatIcon, list.flatToggle, list.flatTitle, list.flatMeta, list.flatLine],
-        member: [
-          list.memberIcon,
-          list.memberToggle,
-          list.memberTitle,
-          list.memberMeta,
-          list.memberLine,
-        ],
+        flat: [list.flatIcon, list.flatToggle, list.flatTitle, list.flatMeta],
+        member: [list.memberIcon, list.memberToggle, list.memberTitle, list.memberMeta],
         slot: list.slotWidth,
         gap: list.rowGap,
       }),
@@ -1420,7 +1440,7 @@ try {
           return el === null ? null : getComputedStyle(el).fontWeight;
         };
         return {
-          row: weight(".github-pulls-row .github-pulls-number"),
+          row: weight(".github-pulls-change .github-pulls-number"),
           member: weight(".github-pull-stack-menu .github-pull-stack-member-number"),
           title: weight(".github-pull-title .github-pull-number"),
           position: weight(".github-pull-stack-menu .github-pull-stack-member-position"),

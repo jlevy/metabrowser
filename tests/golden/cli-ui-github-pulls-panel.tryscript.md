@@ -1009,10 +1009,8 @@ $ node tests/dom/github-pulls-panel-second-session.js
     ],
     "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-describedby=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
     "its parts": [
-      "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
-      "span .github-pulls-title",
-      "span .github-pulls-age.age-hour",
-      "span .github-pulls-meta"
+      "span .github-pulls-heading",
+      "span .sr-only"
     ],
     "its text leads with its title": true,
     "a PR preview leaves its files expanded": false,

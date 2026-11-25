@@ -123,6 +123,9 @@ FakeElement.prototype.getBoundingClientRect = function () {
 };
 /** A list item's pull request row: the link, first in its three lines' zone (mb-1z7j). */
 const rowOfItem = (item) => item?.firstElementChild.firstElementChild;
+// A row's link holds its title's flow: the state icon, a stack member's place, and the title
+// (pulls-panel.js, `buildRow`).
+const headingOf = (row) => row.childNodes[0];
 const frames = new Map(),
   timers = new Map(),
   observers = [];
@@ -538,8 +541,8 @@ async function paint() {
   assert.equal(scroll.scrollTop, 0, "a new leading PR stays visible when at the top");
   assert.equal(rowFor(500), retained);
   assert.equal(document.activeElement, retained);
-  assert.equal(retained.childNodes[1].textContent, retitled);
-  assert.equal(retained.childNodes[0].dataset.state, "draft");
+  assert.equal(headingOf(retained).childNodes[2].textContent, retitled);
+  assert.equal(headingOf(retained).childNodes[0].dataset.state, "draft");
   const flash = "tree-item-flash-in";
   assert.equal(retained.classList.contains(flash), false);
   const arriving = rowFor(501);
@@ -589,7 +592,7 @@ async function paint() {
   // receipt ends it, a replaced window moves it, and so does losing the network (A1 of review
   // A on #354: offline cancelled the retry but left the titles breathing). Titles are paint
   // only: no row is marked busy. A title drawn into a breathing window joins its beat.
-  const titleOf = (item) => rowOfItem(item).childNodes[1];
+  const titleOf = (item) => headingOf(rowOfItem(item)).childNodes[2];
   const breathingTitles = () =>
     items()
       .filter((item) => titleOf(item).classList.contains("mb-refreshing"))

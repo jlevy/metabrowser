@@ -1330,36 +1330,40 @@ async function paintStory(panel, selection = false) {
       };
     }
 
-    const metadata = row(hostile).childNodes.find((node) =>
-      node.classList?.contains("github-pulls-meta"),
-    );
     /** @param {any} parent @param {string} name */
     const child = (parent, name) =>
       parent.childNodes.find((node) => node.classList?.contains(name));
-    // The line wraps: the author carries the separator before it, so it moves to the next
-    // line whole. A row names no branches; the pull request's page does.
+    // The row's third line holds the number's line (mb-lqkb): the number, then the author,
+    // then the lines changed. A row names no branches; the pull request's page does.
+    const metadata = child(change(hostile), "github-pulls-meta");
+    const numberLabel = child(metadata, "github-pulls-number");
+    // The line gives way: the author carries the separator before it, so it leaves whole.
     const line = child(metadata, "github-pulls-line");
-    const id = child(line, "github-pulls-id");
-    const numberLabel = child(id, "github-pulls-number");
     const by = child(line, "github-pulls-by");
-    // The stylesheet lays the row out as three lines (mb-lkkt, mb-3cbf, mb-d0a3): the icon,
-    // the number's line, where a stack member's place comes before the number (mb-dzsi), and
-    // the age; then the title alone, so it has the room; then the change line, with the
-    // chevron. tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
+    const heading = child(row(hostile), "github-pulls-heading");
+    // The stylesheet lays the row out as three lines (mb-85op, mb-lqkb): the state icon, a
+    // stack member's place and bullet (mb-vkhd), and the title, one flow two lines tall that
+    // wraps under the icon; then the change line, with the chevron, the number, the author,
+    // the lines changed, and the age. tests/dom/github-pull-header-chrome.mjs lays these rows
+    // out in Chrome.
     const classesOf = (node) =>
       node.childNodes
         .filter((child) => typeof child.className === "string")
-        .map((child) => child.className.split(" ").find((name) => name.startsWith("github-pull")));
-    const order = classesOf(row(hostile));
+        .map(
+          (child) =>
+            child.className.split(" ").find((name) => name.startsWith("github-pull")) ??
+            child.className,
+        );
+    assert(
+      JSON.stringify(classesOf(row(hostile))) ===
+        JSON.stringify(["github-pulls-heading", "sr-only"]),
+      `the row's link is its two lines of title and its number's line in words: ${classesOf(row(hostile))}`,
+    );
+    const order = classesOf(heading);
     assert(
       JSON.stringify(order) ===
-        JSON.stringify([
-          "github-pull-state-icon",
-          "github-pulls-title",
-          "github-pulls-age",
-          "github-pulls-meta",
-        ]),
-      `the row's link is the state icon, the title, the age, and the muted line: ${order}`,
+        JSON.stringify(["github-pull-state-icon", "github-pulls-place", "github-pulls-title"]),
+      `the title's flow is the state icon, the place, and the title: ${order}`,
     );
     assert(
       JSON.stringify(classesOf(hostile).slice(0, 1)) === JSON.stringify(["github-pulls-entry"]) &&
@@ -1368,25 +1372,33 @@ async function paintStory(panel, selection = false) {
         JSON.stringify(classesOf(change(hostile))) ===
           JSON.stringify([
             "github-pulls-toggle",
-            "github-pulls-change-line",
+            "github-pulls-meta",
+            "github-pulls-age",
             "github-pulls-change-words",
           ]),
-      "one zone of three lines: the link, then under it the change line, the chevron, the line, and its words, which describe the row",
+      "one zone of three lines: the link, then under it the change line, the chevron, the number's line, the age, and its words, which describe the row",
     );
     assert(
-      id.childNodes[0].classList.contains("github-pulls-place") &&
-        id.childNodes[0].hidden &&
-        id.childNodes[0].textContent === "",
-      "the line starts with the stack place, with the number, empty and hidden while no stack holds it",
+      heading.childNodes[1].hidden && heading.childNodes[1].textContent === "",
+      "the place, before the title, is empty and hidden while no stack holds the row",
     );
     assert(
-      metadata.textContent === `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
+      metadata.textContent.startsWith(
+        `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
+      ),
       "the line reads number, then author, and names no branches",
     );
     assert(
       !metadata.childNodes.some((node) => node.textContent.includes("→")) &&
+        metadata.childNodes.length === 2 &&
         line.childNodes.length === 2,
-      "the line has the place and number, and the author, and no merge",
+      "the line has the number, then the author and the lines changed, and no merge",
+    );
+    assert(
+      child(row(hostile), "sr-only").textContent.startsWith(
+        `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
+      ),
+      "the link says the number's line, which its hidden third line holds",
     );
     assert(
       by.firstChild.classList.contains("github-pulls-sep") && by.firstChild.textContent === " · ",
@@ -1438,12 +1450,14 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
-      // The stylesheet draws the title first and the number's line under it (mb-lkkt); the
-      // DOM keeps the title the row's first text too. This reads the text, not the accessible
-      // name, which gives the state icon's label first and then the title.
+      // The title is the row's first text, after the state icon and a stack member's place
+      // (mb-vkhd). This reads the text, not the accessible name, which gives the state icon's
+      // label first and then the title.
       "its text leads with its title": row(shown)
         .textContent.trim()
-        .startsWith(row(shown).childNodes[1].textContent),
+        .startsWith(
+          child(child(row(shown), "github-pulls-heading"), "github-pulls-title").textContent,
+        ),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
       "Right on its row opens its cached changed files": filesRead,
       "they hang under its three lines as a group": shown.childNodes.map(described),
@@ -1451,9 +1465,10 @@ async function paintStory(panel, selection = false) {
         described(row(shown)),
         described(change(shown)),
       ],
-      "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
-        (node) => ({ node: node.nodeName, data: node.data }),
-      ),
+      "a title written as markup is one text node": child(
+        heading,
+        "github-pulls-title",
+      ).childNodes.map((node) => ({ node: node.nodeName, data: node.data })),
       "rows built for the first window": built,
     };
     // The end of the list comes into view: the next window is appended, and only its rows are
@@ -1483,7 +1498,7 @@ async function paintStory(panel, selection = false) {
     // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
     // row's age, in place.
     const age = () =>
-      row(shown).childNodes.find((node) => node.className?.includes("github-pulls-age"))
+      change(shown).childNodes.find((node) => node.className?.includes("github-pulls-age"))
         .textContent;
     story["an age, before"] = age();
     built = 0;

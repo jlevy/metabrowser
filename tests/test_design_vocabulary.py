@@ -372,23 +372,9 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     rows.append(("Diff file bar", f"{diff_host} .diff-file-lead", lead))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-end", end))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
-    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The chevron and the
-    # state icon are boxes on the first line, centered, beside the number's line and the age,
-    # which share its baseline; the title is alone on the second (mb-lkkt, mb-3cbf).
-    rows.append(
-        (
-            "Pull request row",
-            ".github-pulls-row",
-            el(
-                "github-pulls-row",
-                box("github-pulls-toggle"),
-                box("github-pull-state-icon"),
-                text("github-pulls-title"),
-                text("github-pulls-age age-min"),
-                text("github-pulls-meta"),
-            ),
-        )
-    )
+    # A Pulls row is not one: its title is one run of inline text, and its change line sets
+    # its text at one size on one line height and centers it (docs/design-system.md, "Row
+    # Text Shares a Baseline"; mb-85op, mb-lqkb).
     return rows
 
 
@@ -1730,6 +1716,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
 _MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".chip-badge"): "a chip's count badge, a filled mark inside the chip",
     ("github/styles.css", ".github-pull-stack-dot"): "the dot between a stack's badges",
+    ("github/styles.css", ".github-pulls-bullet"): "the bullet after a Pulls row's stack place",
 }
 # The role tokens that are the small size, each a role of its own.
 _SMALL_SIZE_TOKENS = frozenset({"--kbd-font-size", "--label-font-size", "--mono-block-font-size"})
@@ -2926,20 +2913,34 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
     # The Pulls tab's number's line names no branches (the pull request's page does) and is
-    # one line (mb-lkkt): the author carries its separator, a break falls at its floor onto a
-    # second line its box clips, one line of the number's type tall, and a separator that
-    # starts a line lies in the one-separator offset the box clips.
+    # one line, the row's third, its change line (mb-lkkt, mb-lqkb): the number never gives
+    # way; the author and the lines changed after it are a wrap laid out from its end, the
+    # lines its first item and the author its second, each carrying its separator, so the
+    # author leaves first onto a second line the box clips, one change line tall, and the
+    # lines leave it whole where the number leaves them no room.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     meta = github[".github-pulls-meta"]
-    assert (meta["min-width"], meta["overflow"], meta["height"]) == ("0", "clip", "1lh")
-    assert meta["font-size"] == "var(--nav-font-size)", "1lh is the number's line"
+    assert (meta["min-width"], meta["overflow"], meta["height"]) == (
+        "0",
+        "clip",
+        "var(--github-pulls-change-line)",
+    )
+    assert meta["font-size"] == "var(--nav-font-size)", "the number's line is the nav's type"
+    assert github[".github-pulls-number"]["flex"] == "none", "the number never gives way"
     # The author is the number's line's secondary metadata, at its size, which it inherits.
     assert "font-size" not in github[".github-pulls-by"]
     assert "text-overflow" not in meta
     line = github[".github-pulls-line"]
-    assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
-    assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
-    assert github[".github-pulls-id"]["margin-inline-start"] == ("var(--github-pulls-sep)")
+    assert (line["display"], line["flex-direction"], line["flex-wrap"]) == (
+        "flex",
+        "row-reverse",
+        "wrap",
+    )
+    assert (line["overflow"], line["height"]) == ("clip", "var(--github-pulls-change-line)")
+    assert github[".github-pulls-line::before"]["order"] == "-2", "a zero-width first item"
+    lines = github[".github-pulls-line > .github-pulls-change-line"]
+    assert (lines["flex"], lines["order"]) == ("none", "-1"), "the lines, whole, before the author"
+    assert ".github-pulls-id" not in github, "the number's line starts with the number"
     assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
     by_rule = github[".github-pulls-by"]
     assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")

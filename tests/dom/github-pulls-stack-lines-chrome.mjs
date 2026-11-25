@@ -20,9 +20,9 @@
 //   first, and while its read is held #286's heading, queued behind it, holds no placeholder;
 // - nothing moves when the line arrives: the row, its chevron, its icon, its label, and the
 //   placeholder's start, which is the line's;
-// - the heading stays one line: the row is one `--ui-row-height`, and the line is either
-//   whole on the heading's line, its totals alone with its statuses out of view, or out
-//   of view entirely, never cut through its totals or across the label;
+// - the heading stays one line: the row is one `--ui-row-height`, and the line, the stack's
+//   line totals alone with no file statuses (mb-lqkb), is either whole on the heading's line
+//   or out of view entirely, never cut through its totals or across the label;
 // - the line's inks and weights are the component's, part for part, as the same line drawn
 //   by the SDK outside the heading resolves them in that theme;
 // - #290's heading shows no line and no placeholder once its answer says it has none, and
@@ -30,13 +30,13 @@
 //   had no line does not pulse and go blank again (review of #484, A4).
 //
 // It then serves #286 a long line, exact and then estimated, at every width in the light
-// theme: while "(estimated)" shows, the statuses before it are whole and it follows the
-// totals at the line's gap; it gives way whole first, then the statuses, then the line; and
-// the estimated line goes from view where the exact one does (review A on #529, H2 and L1).
+// theme: while "(estimated)" shows, the totals before it are whole and it follows them at the
+// line's gap; it gives way whole first, then the line; and the estimated line goes from view
+// where the exact one does (review A on #529, H2 and L1).
 //
-// It also lays out the brief change lines of this repository's own stacks
-// (`REAL_LINES`, measured 2026-11-16 with pull_stack_change.py's `comparison_sums`), to say
-// how wide a typical line is, which the placeholder's width is set from.
+// It also lays out the line totals of this repository's own stacks (`REAL_LINES`, measured
+// 2026-11-16 with pull_stack_change.py's `comparison_sums`), to say how wide a typical line
+// is, which the placeholder's width is set from.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -230,21 +230,15 @@ const READ = `(() => {
     const pending = change.querySelector(".github-pulls-stack-change-pending");
     const line = change.querySelector(".change-line");
     const stats = change.querySelector(".change-line-stats");
-    const statuses = change.querySelector(".change-line-statuses");
     return [row.dataset.stack, {
       row: box(row), toggle: box(row.querySelector(".github-pulls-toggle")),
       icon: box(row.querySelector(".github-pull-stack-icon")), heading: box(heading),
       label: box(label), labelCut: label.scrollWidth > label.clientWidth + 0.5,
       change: box(change), pending: box(pending), pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
       line: box(line), stats: box(stats), note: box(change.querySelector(".github-pulls-stack-change-note")),
-      group: box(change.querySelector(".change-line-group")), statusesBox: box(statuses),
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
-      statusesCut: statuses !== null && statuses.scrollWidth > statuses.clientWidth + 0.5,
-      // Statuses are whole or out of view, on the line's hidden second line, never cut short.
-      statusesShown:
-        statuses === null ||
-        (line !== null &&
-          statuses.getBoundingClientRect().top < line.getBoundingClientRect().bottom - 0.5),
+      // The line counts no files by status (mb-lqkb).
+      statuses: change.querySelectorAll(".change-line-statuses, .change-line-group, .file-change-status").length,
       text: change.textContent, name: row.getAttribute("aria-label"), rowHeight,
       headingLines: heading.scrollHeight,
     }];
@@ -254,7 +248,7 @@ const READ = `(() => {
 // In the page: the inks and weights of the line's parts in the heading, and of the same line
 // drawn by the SDK in a plain block of the page, the component outside any host.
 const INKS = `(() => {
-  const parts = [".summary-number", ".file-change-status", ".change-line-statuses > .summary-punctuation", ".change-line-group > .summary-punctuation", ".diff-stat-add", ".diff-stat-del"];
+  const parts = [".diff-stat-add", ".diff-stat-del"];
   const read = (host) => Object.fromEntries(parts.map((selector) => {
     const el = host?.querySelector(selector);
     const style = el ? getComputedStyle(el) : null;
@@ -263,10 +257,9 @@ const INKS = `(() => {
   const heading = document.querySelector('.github-pulls-stack-row[data-stack="286"] .github-pulls-stack-change');
   const reference = document.getElementById("reference");
   const answers = window.__answers.changes.current.body;
-  const tree = window.MetabrowserChangedFilesTree;
+  // The line totals alone, as the heading draws them (mb-lqkb).
   const said = window.metabrowser.changeLine({
-    statuses: tree.statusBreakdown(answers.statuses.flatMap((entry) => Array.from({ length: entry.count }, () => entry.status))),
-    additions: answers.additions, deletions: answers.deletions,
+    statuses: [], additions: answers.additions, deletions: answers.deletions,
   });
   reference.replaceChildren(...window.metabrowser.changeLineNodes(said));
   const dot = heading?.querySelector(":scope > .summary-punctuation");
@@ -278,10 +271,9 @@ const INKS = `(() => {
   return { heading: read(heading), reference: read(reference), dot: dot ? getComputedStyle(dot).color : null, muted, text: heading?.textContent ?? null, said: said.text };
 })()`;
 
-// In the page: how wide each real stack's line is, the separator's dot with it, in the
-// heading's type.
+// In the page: how wide each real stack's line totals are in the heading's type, the room
+// the placeholder holds after the dot's.
 const REAL = `((lines) => {
-  const tree = window.MetabrowserChangedFilesTree;
   const host = document.createElement("span");
   host.className = "github-pulls-stack-change";
   // Outside any row, at its own widest: the heading's type, the nav's.
@@ -289,18 +281,13 @@ const REAL = `((lines) => {
   document.getElementById("reference").append(host);
   const widths = lines.map((line) => {
     const said = window.metabrowser.changeLine({
-      statuses: tree.statusBreakdown(Object.entries(line.statuses).flatMap(([status, count]) => Array.from({ length: count }, () => status))),
-      additions: line.additions, deletions: line.deletions,
+      statuses: [], additions: line.additions, deletions: line.deletions,
     });
     host.replaceChildren(...window.metabrowser.countPartsNodes([{ separator: "·" }]), ...window.metabrowser.changeLineNodes(said));
     const em = parseFloat(getComputedStyle(host).fontSize);
-    const width = host.getBoundingClientRect().width;
-    const stats = host.querySelector(".change-line-stats").getBoundingClientRect();
-    // The floor: the dot, the gaps, and the totals, which the line keeps whole.
-    const dot = host.querySelector(":scope > .summary-punctuation").getBoundingClientRect().width;
-    const floor = dot + 12 + stats.width;
+    const width = host.querySelector(".change-line").getBoundingClientRect().width;
     const round = (value) => Math.round(value * 100) / 100;
-    return { text: said.text, px: round(width), em: round(width / em), floorEm: round(floor / em) };
+    return { text: said.text, px: round(width), em: round(width / em) };
   });
   const pending = document.querySelector(".github-pulls-stack-change-pending > .tally-pending");
   host.remove();
@@ -454,9 +441,9 @@ async function main() {
         if (shown) {
           if (waitedInView) {
             check(
-              `${at}: the line starts where its placeholder did`,
-              near(now.change.left, was.change.left),
-              `${now.change.left} ${was.change.left}`,
+              `${at}: the line starts where its placeholder did, after the dot's room`,
+              near(now.change.left, was.change.left) && near(now.line.left, was.pending.left),
+              `${now.line.left} ${was.pending.left}`,
             );
           }
           check(
@@ -464,26 +451,15 @@ async function main() {
             now.change.left >= now.label.right - TOLERANCE_PX,
           );
           check(
-            `${at}: its totals are whole and in the row`,
-            now.statsWhole && now.stats.right <= now.heading.right + TOLERANCE_PX,
-            JSON.stringify(now.stats),
-          );
-          // Statuses shown are whole on the line, its totals 6 px after them; with none
-          // shown, the totals start the line, with no blank run before them.
-          check(
-            `${at}: its totals follow its whole statuses, or start the line alone`,
-            now.statusesBox === null
-              ? near(now.stats.left, now.line.left)
-              : now.statusesShown
-                ? now.statusesBox.bottom <= now.line.bottom + TOLERANCE_PX &&
-                  now.group.right <= now.heading.right + TOLERANCE_PX &&
-                  near(now.stats.left, now.group.right + 6)
-                : near(now.stats.left, now.line.left),
-            JSON.stringify({ stats: now.stats, group: now.group, line: now.line }),
+            `${at}: its totals are whole and in the row, and start the line`,
+            now.statsWhole &&
+              now.stats.right <= now.heading.right + TOLERANCE_PX &&
+              near(now.stats.left, now.line.left),
+            JSON.stringify({ stats: now.stats, line: now.line }),
           );
           check(
-            `${at}: the name says the line in words`,
-            now.name.startsWith("Stack #286: 1 added, 1 modified; 5 lines added, 0 deleted; "),
+            `${at}: the name says the line's totals in words`,
+            now.name.startsWith("Stack #286: 5 lines added, 0 deleted; "),
             now.name,
           );
           for (const [part, ink] of Object.entries(inks.reference)) {
@@ -499,16 +475,10 @@ async function main() {
             `${inks.dot} ${inks.muted}`,
           );
         }
-        measured[at].shown = shown
-          ? now.statusesCut
-            ? "statuses cut"
-            : now.statusesShown
-              ? "whole"
-              : "totals only"
-          : "dropped";
+        measured[at].shown = shown ? "whole" : "dropped";
         check(
-          `${at}: the statuses are whole or out of view, never cut short`,
-          !now.statusesCut,
+          `${at}: the line counts no files by status`,
+          now.statuses === 0 && after["290"].statuses === 0,
           JSON.stringify({ text: now.text }),
         );
         measured[at].waited = waitedInView ? "in view" : "out of view";
@@ -544,15 +514,10 @@ async function main() {
       measured["420 px light"]?.shown === "whole",
       JSON.stringify(measured["420 px light"]?.shown),
     );
-    check(
-      "a narrow pane shows the line's totals alone, its statuses out of view",
-      Object.values(measured).some((at) => at?.shown === "totals only"),
-      JSON.stringify(Object.fromEntries(Object.entries(measured).map(([k, v]) => [k, v?.shown]))),
-    );
     // A long line, exact and then estimated (review A on #529, H2 and L1): while
-    // "(estimated)" shows, the statuses before it are whole and it follows the totals at the
-    // line's gap; it gives way whole before the statuses do, leaving no blank run; and the
-    // estimated line goes from view at the widths where the exact one does.
+    // "(estimated)" shows, the totals before it are whole and it follows them at the line's
+    // gap; it gives way whole before the line does, leaving no blank run; and the estimated
+    // line goes from view at the widths where the exact one does.
     const long = (exact) => ({
       status: 200,
       body: {
@@ -595,19 +560,13 @@ async function main() {
           `${at}: the note is there exactly when the line is estimated`,
           (now.note !== null) === !exact,
         );
-        const state = !shown
-          ? "dropped"
-          : noteShown
-            ? "whole, noted"
-            : now.statusesShown
-              ? "whole"
-              : "totals only";
+        const state = !shown ? "dropped" : noteShown ? "whole, noted" : "whole";
         states[kind][width] = state;
         if (noteShown) {
           check(
-            `${at}: the statuses before "(estimated)" are whole`,
-            shown && now.statusesShown && near(now.stats.left, now.group.right + 6),
-            JSON.stringify({ stats: now.stats, group: now.group }),
+            `${at}: the totals before "(estimated)" are whole`,
+            shown && now.statsWhole && near(now.stats.left, now.line.left),
+            JSON.stringify({ stats: now.stats, line: now.line }),
           );
           check(
             `${at}: "(estimated)" follows the totals at the line's gap, no blank run`,
@@ -617,11 +576,9 @@ async function main() {
         }
         if (shown) {
           check(
-            `${at}: its totals follow its whole statuses, or start the line alone`,
-            now.statusesShown
-              ? near(now.stats.left, now.group.right + 6)
-              : near(now.stats.left, now.line.left),
-            JSON.stringify({ stats: now.stats, group: now.group, line: now.line }),
+            `${at}: its totals start the line, and count no files by status`,
+            near(now.stats.left, now.line.left) && now.statuses === 0,
+            JSON.stringify({ stats: now.stats, line: now.line, text: now.text }),
           );
         }
         lap(`${at}: ${state}`);
@@ -629,7 +586,7 @@ async function main() {
     }
     await browser.evaluate(`(window.__line286 = null, true)`);
     measured.long = states;
-    const order = ["whole, noted", "whole", "totals only", "dropped"];
+    const order = ["whole, noted", "whole", "dropped"];
     const ranks = WIDTHS.map((width) => order.indexOf(states.estimated[width]));
     check(
       "the estimated line shows its note at the widest pane",
@@ -637,7 +594,7 @@ async function main() {
       JSON.stringify(states.estimated),
     );
     check(
-      "the estimated line gives way note first, then statuses, then the line, as the pane narrows",
+      "the estimated line gives way note first, then the line, as the pane narrows",
       ranks.every((rank, index) => index === 0 || rank >= ranks[index - 1]),
       JSON.stringify(states.estimated),
     );

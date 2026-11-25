@@ -62,17 +62,18 @@ Metabrowser fetches the repository’s list of pull requests in the background a
 each page as it arrives; scroll toward the end to load more, and a spinner below the
 last row says how many have been fetched so far.
 
-Each row’s third line is its pull request’s brief change line, “21 A, 7 D, 15 M · +1,234
-−567”: how many files it adds, deletes, modifies, and renames, and its lines added and
-deleted, so walking the list shows the size of each change.
-It sums the same list of changed files the row’s tree shows, as a stack’s heading sums
-its pull requests’, and asks GitHub for nothing: the lists come from what the Pulls tab
-already reads behind you for the rows in view and from trees you open, and a gray
-placeholder holds the line’s place until one arrives.
+Each row’s title takes its first two lines, and a longer title ends in an ellipsis; the
+page shows all of it.
+The third line is the number, the author, and the lines the pull request adds and
+deletes, such as **#455 · octo · +1,234 −567**, so walking the list shows the size of
+each change. The lines sum the same list of changed files the row’s tree shows, as a
+stack’s heading sums its pull requests’, and ask GitHub for nothing: the lists come from
+what the Pulls tab already reads behind you for the rows in view and from trees you
+open, and a gray placeholder holds their place until one arrives.
 
-Click a row’s title or number to open its pull request; its files stay as they were.
-The change line carries the chevron for the files, which start collapsed: click anywhere
-on that line to show or hide them under the row.
+Click a row’s title to open its pull request; its files stay as they were.
+The third line carries the chevron for the files, which start collapsed: click anywhere
+on that line, the number and the author included, to show or hide them under the row.
 No row expands on its own.
 Click a file to open **Changes** at that file.
 Move between pull requests with `J` and `K` or the arrow keys; each one’s three lines
@@ -93,8 +94,8 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), th
 tab groups the pull requests of each native GitHub stack under a **Stack #N** row, open
 by default, top of the stack first; pull requests in no stack follow, and a stack’s row
 opens and closes like a folder.
-A member’s row shows its place before its number, such as **1/6 · #455 · octo**, and its
-title on the line under it.
+A member’s row shows its place before its title, such as **1/6 • Fix the reader**; a
+pull request in no stack shows its title alone.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 

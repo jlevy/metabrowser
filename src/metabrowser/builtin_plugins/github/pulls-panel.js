@@ -152,10 +152,11 @@ const PAGE_AHEAD_PX = 240;
 // Viewport neighbors; measured catalog-window evidence is recorded with the feature.
 export const PULL_ROWS_OVERSCAN = 40;
 // The height a row not yet measured is placed at: a pull request's closed row, its link's two
-// lines and its change line. Measured in headless Chrome 152 with KPress's faces at the nav's
-// 13 px type, from 180 to 420 px in both themes, 61 px whether the line waits or is shown
-// (41 px of link and 20 of change line; the two-line row it replaced was 43 px)
-// (tests/dom/github-pulls-row-lines-chrome.mjs).
+// lines of title and its change line. Measured in headless Chrome 152 with KPress's faces at
+// the nav's 13 px type, from 180 to 420 px in both themes, 61 px whether the lines wait or are
+// shown, and whether the title is one line, two, or more cut short at two (41 px of link, the
+// 2 px pad and two 19.5 px lines, and 20 of change line), as it was when the number's line was
+// the link's second (mb-85op, mb-lqkb; tests/dom/github-pulls-row-lines-chrome.mjs).
 export const ROW_ESTIMATE_PX = 61;
 // How long a walk waits for a next key before it opens the row it reached, once a key is
 // repeating. A key's release opens it at once, so this is only for a release the page does
@@ -3791,13 +3792,17 @@ export function mountPullsPanel(container, ctx, mb) {
    *   zone: HTMLElement,
    *   row: HTMLAnchorElement,
    *   age: HTMLElement,
+   *   said: HTMLElement,
+   *   heading: HTMLElement,
    *   stack: HTMLElement,
    *   title: HTMLElement,
    *   icon: HTMLElement,
-   *   meta: HTMLElement,
+   *   line: HTMLElement,
+   *   by: HTMLElement,
    *   change: HTMLElement,
    *   changeLine: HTMLElement,
    *   changeWords: HTMLElement,
+   *   changeSep: HTMLElement,
    *   changePending: HTMLElement | null,
    *   changeKey: string,
    *   info: PullRow,
@@ -3921,15 +3926,7 @@ export function mountPullsPanel(container, ctx, mb) {
     });
     return changedFiles;
   };
-  /** The tree once it has loaded, whose status breakdown a stack's change line says. */
-  /** @type {MetabrowserChangedFilesTree | null} */
-  let changedFilesModel = null;
-  void loadChangedFiles().then(
-    (model) => {
-      changedFilesModel = model;
-    },
-    () => {},
-  );
+  void loadChangedFiles().catch(() => {});
   /** Each row's list of changed files as its tree last read it whole, by its generation. */
   /** @type {Map<number, string>} */
   const listsRead = new Map();
@@ -4174,12 +4171,14 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A stack member's place in its stack, on its number's line, before the number: "1/6 ·
-   * #455 · author" (docs/design-system.md, "Stacks"). It has no stack icon of its own: the
-   * stack's row it sits under has it. The place of its row's own stack comes first, bare,
-   * and any other stack's is named by the Layers glyph before its number. A passive part of
-   * the row's one primary link, named by its accessible name; the Pulls column shows no
-   * tooltips (docs/design-system.md, "Tooltips Add Information").
+   * A stack member's place in its stack, at the start of its title's flow, after the state
+   * icon, then a small muted bullet before the title: "14/15 • title" (docs/design-system.md,
+   * "Stacks"; mb-vkhd). It has no stack icon of its own: the stack's row it sits under has
+   * it. The place of its row's own stack comes first, bare, and any other stack's is named by
+   * the Layers glyph before its number. A pull request in no stack has neither place nor
+   * bullet, so its title follows the icon. A passive part of the row's one primary link,
+   * named by its accessible name; the Pulls column shows no tooltips (docs/design-system.md,
+   * "Tooltips Add Information").
    *
    * @param {HTMLElement} element
    * @param {number} number
@@ -4220,48 +4219,49 @@ export function mountPullsPanel(container, ctx, mb) {
           part.position,
         ]),
       ),
-      h("span", { class: "github-pulls-sep" }, [" · "]),
+      // A no-break space before the bullet and a text space after it, so the flow breaks
+      // after the bullet as after a word and never before it (github/styles.css,
+      // `.github-pulls-place`).
+      "\u00a0",
+      h("span", { class: "github-pulls-bullet", "aria-hidden": "true" }, ["•"]),
+      " ",
     );
   }
 
+  /** A separator of the number's line, which a part carries before it. */
+  const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
+
   /**
-   * The number's line, on a row's second, under the title: a stack member's place
-   * (`paintPlace`), the number, and the author, with the age at the row's end; the title has
-   * the first line to itself, after the state icon, from the text column to the row's end
-   * (github/styles.css, `.github-pulls-row`). A row names no branches: the page does, and
-   * the row's room goes to its title (docs/design-system.md, "The Pulls Tab"). The title
-   * is the row's first text, so its accessible name gives the state, from the state icon's
-   * label, and then the title, before the number's line.
+   * The author on a row's third line, after the number, with the separator before it, so past
+   * its floor it leaves the line whole (github/styles.css, `.github-pulls-by`).
    *
    * @param {PullRow} row
-   * @param {HTMLElement} place The row's place, kept across the line built again.
    */
-  function rowMeta(row, place) {
-    // One line (github/styles.css, `.github-pulls-meta`): the author carries the separator
-    // before it, so past its floor it leaves the line whole, onto a second line its box
-    // clips, and a separator that starts a line is clipped. The place and the number are
-    // one part, which never breaks.
-    const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
-    return h("span", { class: "github-pulls-meta" }, [
-      h("span", { class: "github-pulls-line" }, [
-        h("span", { class: "github-pulls-id" }, [
-          place,
-          h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
-        ]),
-        h("span", { class: "github-pulls-by" }, [
-          separator(),
-          // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so
-          // this asks for no avatar outside that window, and a row the window mounts again
-          // as the list scrolls back draws its avatar at once: WebKit fetches a new lazy
-          // image again (docs/design-system.md, "A Repaint Keeps Its Images"). A dense row
-          // draws no box for an author with no avatar: its avatar comes with the row.
-          authorLabel(mb, row.author, row.avatar, "github-pulls-author", {
-            loading: "eager",
-            placeholder: false,
-          }),
-        ]),
-      ]),
+  function rowAuthor(row) {
+    return h("span", { class: "github-pulls-by" }, [
+      separator(),
+      // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so this
+      // asks for no avatar outside that window, and a row the window mounts again as the list
+      // scrolls back draws its avatar at once: WebKit fetches a new lazy image again
+      // (docs/design-system.md, "A Repaint Keeps Its Images"). A dense row draws no box for an
+      // author with no avatar: its avatar comes with the row.
+      authorLabel(mb, row.author, row.avatar, "github-pulls-author", {
+        loading: "eager",
+        placeholder: false,
+      }),
     ]);
+  }
+
+  /**
+   * The number's line said in words for the row's link, "#455 · jlevy · 3d": the line itself
+   * is the third, the toggle's, which is hidden from assistive technology, so the link's name
+   * still names the pull request's number, its author, and its age after its title.
+   *
+   * @param {PullRow} row
+   * @param {string} age
+   */
+  function rowSaid(row, age) {
+    return age === "" ? row.meta : `${row.meta} · ${age}`;
   }
 
   /** Patch a mounted row without detaching its link, expanded files, or focus. */
@@ -4273,7 +4273,7 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     if (row.state !== before.state) {
       const icon = pullStateIcon(row.state);
-      entry.row.insertBefore(icon, entry.icon);
+      entry.heading.insertBefore(icon, entry.icon);
       entry.icon.remove();
       entry.icon = icon;
     }
@@ -4285,11 +4285,12 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.age.className = `github-pulls-age ${when.className}`;
     }
     if (row.avatar !== before.avatar || row.meta !== before.meta) {
-      const meta = rowMeta(row, entry.stack);
-      entry.row.insertBefore(meta, entry.meta);
-      entry.meta.remove();
-      entry.meta = meta;
+      const by = rowAuthor(row);
+      entry.line.insertBefore(by, entry.by);
+      entry.by.remove();
+      entry.by = by;
     }
+    entry.said.textContent = rowSaid(row, entry.label);
     entry.info = row;
     entry.key = key;
   }
@@ -4307,19 +4308,24 @@ export function mountPullsPanel(container, ctx, mb) {
     // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
     // "Titles").
     const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
+    // A stack member's place and the bullet after it, between the state icon and the title
+    // (`paintPlace`); empty and hidden while the row is in no stack.
+    const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
+    const icon = pullStateIcon(row.state);
+    // The row's first two lines are its title's (mb-85op): one flow of the state icon, the
+    // place, and the title, which wraps under the icon and is cut short at the second line's
+    // end, two lines tall whatever it holds (github/styles.css, `.github-pulls-heading`).
+    const heading = h("span", { class: "github-pulls-heading" }, [icon, stack, title]);
     // No tooltip, as nothing in the Pulls column has one: the page has the exact time
     // (docs/design-system.md, "Tooltips Add Information").
     const updated = h("span", { class: `github-pulls-age ${when.className}` }, [when.label]);
-    // A stack member's place, on the number's line (`rowMeta`); empty and hidden until the
-    // row sits under a stack's row.
-    const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
-    const meta = rowMeta(row, stack);
-    const icon = pullStateIcon(row.state);
+    const said = h("span", { class: "sr-only" }, [rowSaid(row, when.label)]);
     const changeId = `github-pull-change-${row.number}`;
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place. Its changed files
     // are its children, as a folder's are, closed until the reader opens them; the tree that
-    // draws them owns them from it (pull-files-view.js, `attach`). Its change line's words
+    // draws them owns them from it (pull-files-view.js, `attach`). Its name is the state, the
+    // place, the title, and its number's line in words (`rowSaid`); its change line's words
     // describe it, so they are read with it, as the line is no stop and no node of the tree.
     const anchor = /** @type {HTMLAnchorElement} */ (
       h(
@@ -4333,7 +4339,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-describedby": changeId,
           tabindex: "-1",
         },
-        [icon, title, updated, meta],
+        [heading, said],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -4343,22 +4349,33 @@ export function mountPullsPanel(container, ctx, mb) {
     if (row.number === anchorRow) {
       anchor.setAttribute("tabindex", "0");
     }
-    // The row's third line, its brief change line (`paintChange`): the line that carries the
-    // toggle, as a folder's line does, with the registry's chevron in the slot under the state
-    // icon. A press anywhere on it opens or closes the changed files and opens no page, so it
-    // is not a link; it is the item's inner target, for the pointer alone. Space, Right, and
-    // Left on the row are its keys, and the row's `aria-expanded` its state, so the line is
-    // hidden from assistive technology, and the tree it sits in holds only its items and their
-    // groups (mb-1z7j). Its words, the line said in full, stay out of view in it, and describe
-    // the row, which reads them though they are hidden. Its `.expanded` follows the files.
+    // The row's third line (mb-lqkb): the registry's chevron in the slot under the state icon,
+    // then the number's line, the number, the author, and the lines the pull request changes
+    // (`paintChange`), with the age at the row's end. It is the line that carries the toggle,
+    // as a folder's line does, so a press anywhere on it opens or closes the changed files and
+    // opens no page, and it is not a link; it is the item's inner target, for the pointer
+    // alone. Space, Right, and Left on the row are its keys, and the row's `aria-expanded` its
+    // state, so the line is hidden from assistive technology, and the tree it sits in holds
+    // only its items and their groups (mb-1z7j); the link's name says the number's line
+    // (`rowSaid`). Its words, the lines said in full, stay out of view in it, and describe the
+    // row, which reads them though they are hidden. Its `.expanded` follows the files.
+    const by = rowAuthor(row);
     const changeLine = h("span", { class: "github-pulls-change-line" });
+    const line = h("span", { class: "github-pulls-line" }, [by, changeLine]);
+    // One line (github/styles.css, `.github-pulls-meta`): the number never gives way; the
+    // lines, then the author, leave it whole where there is no room for them.
+    const meta = h("span", { class: "github-pulls-meta" }, [
+      h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+      line,
+    ]);
     const changeWords = h("span", { class: "github-pulls-change-words", id: changeId, hidden: "" });
     const change = h(
       "div",
       { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" },
       [
         h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]),
-        changeLine,
+        meta,
+        updated,
         changeWords,
       ],
     );
@@ -4374,13 +4391,17 @@ export function mountPullsPanel(container, ctx, mb) {
       zone,
       row: anchor,
       age: updated,
+      said,
+      heading,
       stack,
       title,
       icon,
-      meta,
+      line,
+      by,
       change,
       changeLine,
       changeWords,
+      changeSep: separator(),
       changePending: null,
       changeKey: "",
       info: row,
@@ -4391,12 +4412,13 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A row's third line as it is now (row-lines.js): the pull request's brief change line,
-   * "21 A, 7 D, 15 M · +1,234 −567", the shell's one component for it, with no file total;
-   * the shell's pending placeholder while it is read or its list is listed, so nothing moves
-   * when it arrives; or nothing but the chevron where it cannot be had. The line is said in
-   * words, as a stack's row says its line (`rowLineHint`), in the hidden text that describes
-   * the row, so the row is read with them.
+   * The lines a row's pull request changes, as it is now (row-lines.js), after the author on
+   * the row's third line: "+1,234 −567", the shell's brief change line of its line totals
+   * alone, with no file total and no file statuses (mb-lqkb); the shell's pending placeholder
+   * while it is read or its list is listed, so nothing moves when it arrives; or nothing
+   * where it cannot be had. Each holds the separator before it, and nothing holds none. The
+   * lines are said in words, as a stack's row says its line (`rowLineHint`), in the hidden
+   * text that describes the row, so the row is read with them.
    *
    * @param {PaintedRow} entry
    */
@@ -4406,7 +4428,7 @@ export function mountPullsPanel(container, ctx, mb) {
     };
     const shown =
       line.phase === "shown"
-        ? `${line.summary.generation}:${JSON.stringify(line.summary.statuses)}:${line.summary.additions}:${line.summary.deletions}:${changedFilesModel === null ? 0 : 1}`
+        ? `${line.summary.generation}:${line.summary.additions}:${line.summary.deletions}`
         : line.phase;
     if (entry.changeKey === shown) {
       return;
@@ -4414,10 +4436,8 @@ export function mountPullsPanel(container, ctx, mb) {
     entry.changeKey = shown;
     let words = null;
     if (line.phase === "shown") {
-      const said = mb.changeLine(
-        rowLineInput(line.summary, changedFilesModel?.statusBreakdown ?? null),
-      );
-      entry.changeLine.replaceChildren(...mb.changeLineNodes(said));
+      const said = mb.changeLine(rowLineInput(line.summary, null));
+      entry.changeLine.replaceChildren(entry.changeSep, ...mb.changeLineNodes(said));
       words = said.label;
     } else if (line.phase === "waiting") {
       // The shell's pending placeholder (`.tally-pending`), after the quiet period
@@ -4428,10 +4448,10 @@ export function mountPullsPanel(container, ctx, mb) {
         [h("span", { class: "tally-pending" })],
       );
       if (
-        entry.changeLine.firstChild !== entry.changePending ||
-        entry.changeLine.childNodes.length !== 1
+        entry.changeLine.childNodes[1] !== entry.changePending ||
+        entry.changeLine.childNodes.length !== 2
       ) {
-        entry.changeLine.replaceChildren(entry.changePending);
+        entry.changeLine.replaceChildren(entry.changeSep, entry.changePending);
       }
     } else {
       entry.changeLine.replaceChildren();
@@ -4513,9 +4533,10 @@ export function mountPullsPanel(container, ctx, mb) {
   /**
    * A stack's row: the chevron, the Layers icon, and its heading, the stack's label in the
    * label register the stack menu's heading has (`.group-heading`, docs/design-system.md,
-   * "Stacks"), then the stack's brief change line, after a muted dot: "Stack #286 · 10 A, 5
-   * D, 4 M · +1,234 −567", the shell's one component for it (`metabrowser.changeLine`),
-   * whose words the row's accessible name says. It draws no tally: its pull requests are the
+   * "Stacks"), then the lines the stack changes, after a muted dot: "Stack #286 · +1,234
+   * −567", the shell's brief change line of its line totals alone, with no file statuses, as
+   * a pull request's row says its own (`metabrowser.changeLine`; mb-lqkb), whose words the
+   * row's accessible name says. It draws no tally: its pull requests are the
    * rows under it ("Heading Tallies"), and its accessible name says how many. While its
    * stack's read is on its way the heading holds the shell's pending placeholder where the
    * line will be, and its name says the change is pending; a stack whose change cannot be
@@ -4559,21 +4580,18 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     entry.stack = group.stack;
     const line = stackLineState(group.stack);
-    const shownLine =
-      line.phase === "shown"
-        ? `${line.change.revision}:${changedFilesModel === null ? 0 : 1}`
-        : line.phase;
+    const shownLine = line.phase === "shown" ? line.change.revision : line.phase;
     const key = JSON.stringify([group.label, group.hint, group.expanded, shownLine]);
     if (entry.key !== key) {
       entry.key = key;
       entry.label.textContent = group.label;
       let name = group.hint;
       if (line.phase === "shown") {
-        const said = mb.changeLine(
-          stackLineInput(line.change, changedFilesModel?.statusBreakdown ?? null),
-        );
-        // "Stack #286 · 10 A, 5 D, 4 M · +1,234 −567": the dot is a count summary's
-        // separator, which the name, saying the line in words, needs no word for.
+        // Its line totals alone, with no file statuses, as a pull request's row says its own
+        // (mb-lqkb).
+        const said = mb.changeLine(stackLineInput(line.change, null));
+        // "Stack #286 · +1,234 −567": the dot is a count summary's separator, which the name,
+        // saying the line in words, needs no word for.
         // Totals a member's list could not count, a binary file it listed, are not exact:
         // the Diff summary's muted "(estimated)" follows them, and the name says so (B4 of
         // review B on #484).
@@ -5004,6 +5022,7 @@ export function mountPullsPanel(container, ctx, mb) {
         entry.label = label;
         entry.age.textContent = label;
         entry.age.className = `github-pulls-age ${className}`;
+        entry.said.textContent = rowSaid(entry.info, label);
       }
     }
   }
@@ -5373,14 +5392,10 @@ export function mountPullsPanel(container, ctx, mb) {
     typeof mb.countPartsNodes !== "function"
       ? null
       : createStackLines({
-          async read(number, readSignal) {
-            const answer = await request(mb.perf, "GET", `${STACK_CHANGE_ROUTE}?number=${number}`, {
+          read: (number, readSignal) =>
+            request(mb.perf, "GET", `${STACK_CHANGE_ROUTE}?number=${number}`, {
               signal: readSignal,
-            });
-            // The line's letters are the changed-files tree's, so its first paint has them.
-            changedFilesModel = (await loadChangedFiles().catch(() => null)) ?? changedFilesModel;
-            return answer;
-          },
+            }),
           schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
           cancel: (cancel) => /** @type {() => void} */ (cancel)(),
           isVisible: () => document.visibilityState === "visible" && panelShown,
@@ -5398,17 +5413,10 @@ export function mountPullsPanel(container, ctx, mb) {
     typeof mb.changeLineNodes !== "function"
       ? null
       : createRowLines({
-          async read(numbers, readSignal) {
-            const answer = await request(
-              mb.perf,
-              "GET",
-              `${PULL_FILES_SUMMARY_ROUTE}?numbers=${numbers.join(",")}`,
-              { signal: readSignal },
-            );
-            // The line's letters are the changed-files tree's, so its first paint has them.
-            changedFilesModel = (await loadChangedFiles().catch(() => null)) ?? changedFilesModel;
-            return answer;
-          },
+          read: (numbers, readSignal) =>
+            request(mb.perf, "GET", `${PULL_FILES_SUMMARY_ROUTE}?numbers=${numbers.join(",")}`, {
+              signal: readSignal,
+            }),
           schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
           cancel: (cancel) => /** @type {() => void} */ (cancel)(),
           isVisible: () => document.visibilityState === "visible" && panelShown,
