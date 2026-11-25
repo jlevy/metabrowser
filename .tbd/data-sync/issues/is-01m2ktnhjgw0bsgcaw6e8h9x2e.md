@@ -5,8 +5,8 @@ title: "Hosted releases: provider-neutral formats, GitHub cache, and composable 
 kind: epic
 status: open
 priority: 2
-version: 11
-spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
+version: 12
+spec_path: docs/project/specs/done/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - github
   - hosted-resources
@@ -20,7 +20,7 @@ child_order_hints:
   - is-01m2ktt8fsnkz860ze0f0ps2gm
   - is-01m2ktvrasq8fxf38pn3yf1p8j
 created_at: 2026-09-16T00:43:02.095Z
-updated_at: 2026-11-20T17:18:05.751Z
+updated_at: 2026-11-25T02:40:06.470Z
 ---
 Add GitHub-first release browsing as the next proof of the general external-resource architecture, outside the initial v0.11 PR slice unless rescheduled explicitly. Define provider-neutral Release, ReleaseAsset, and ReleaseIndex SoftSchema contracts; map bounded gh api responses into the common provider store; cache direct release bundles before discovery; render transparent Markdown/YAML Source and rich Release views with exact tag revision content; then add a bounded Releases virtual collection. Reuse installed contract/resource-profile/resource-kind registries, auth-scoped immutable manifests, offline pointers, route/address parity, and nav paging. Each phase is one formal stacked PR with separate implementation and independent review/publication children.
 

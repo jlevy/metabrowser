@@ -2,10 +2,10 @@
 type: is
 id: is-01m0r7eg6f4a4xee33ryv8sjfs
 title: Implement the pluggable inventory engine
-kind: feature
+kind: epic
 status: in_progress
 priority: 1
-version: 30
+version: 31
 spec_path: docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md
 refs:
   - kind: pr
@@ -62,7 +62,7 @@ child_order_hints:
   - is-01m1mva118h2a2j3b8swefvk8y
   - is-01m7rwjtqep1zqb91jyq9pnxc9
 created_at: 2026-08-23T21:11:56.857Z
-updated_at: 2026-11-20T23:48:44.475Z
+updated_at: 2026-11-25T02:41:13.291Z
 extensions:
   linear:
     id: e8ad825b-dd2e-48f1-9eda-b392dc667ebf

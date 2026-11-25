@@ -5,8 +5,8 @@ title: "Hosted releases R3: direct release document and asset children"
 kind: feature
 status: closed
 priority: 2
-version: 8
-spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - hosted-releases
 dependencies:
@@ -17,7 +17,7 @@ child_order_hints:
   - is-01m2ktsfdmrdehcpvg9kqsg6yb
   - is-01m2ktsmf38rkaje935qzed4fp
 created_at: 2026-09-16T00:45:03.412Z
-updated_at: 2026-11-14T18:44:02.989Z
+updated_at: 2026-11-25T02:40:21.992Z
 closed_at: 2026-11-14T18:44:02.988Z
 close_reason: "Obsolete as written: R3 registers a resource kind and generic /hosted address through SDKs the thin-mirror plan retired (absent on main); release browsing stays tracked by mb-7srn until re-planned."
 resolution: canceled

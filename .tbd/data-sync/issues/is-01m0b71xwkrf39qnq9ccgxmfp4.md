@@ -5,13 +5,13 @@ title: Anchor PR review threads in the Changes diff
 kind: feature
 status: deferred
 priority: 3
-version: 12
-spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
+version: 13
+spec_path: docs/project/specs/done/plan-2026-08-27-github-provider-and-pull-requests.md
 labels: []
 dependencies: []
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-08-18T19:54:57.298Z
-updated_at: 2026-11-14T18:46:34.691Z
+updated_at: 2026-11-25T02:40:27.288Z
 ---
 Deferred by the user's 2026-09-23 thin-mirror decisions (inline thread anchoring). Today Conversation lists each review comment with its file, line, and diff hunk, and Changes shows no threads. Place review threads at their lines in the Changes diff, with explicit outdated, resolved, and unmappable states: map a thread only when its commit and line context still match the comparison shown, and otherwise keep its original anchor without inventing a line. Cover file-level, single-line, and range comments, a deleted file, and a force-pushed head. The earlier Hosted Review Format design (ReviewThread, ReviewAnchor; plan-2026-08-27 Phase 4C) was removed in #246 and is background only. Re-plan against the thin mirror and the Pulls tab plan before starting.
 

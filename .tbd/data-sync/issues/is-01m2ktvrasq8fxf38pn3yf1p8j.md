@@ -5,8 +5,8 @@ title: "Hosted releases: stack landing, retargeting, and post-merge verification
 kind: task
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - hosted-releases
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m2ktnhjgw0bsgcaw6e8h9x2e
 parent_id: is-01m2ktnhjgw0bsgcaw6e8h9x2e
 created_at: 2026-09-16T00:46:25.624Z
-updated_at: 2026-11-14T18:45:30.415Z
+updated_at: 2026-11-25T02:40:21.992Z
 closed_at: 2026-11-14T18:45:30.414Z
 close_reason: "Obsolete: landing owner for the retired R0-R4 release stack, which will not be built as designed; a re-plan under mb-7srn would define its own landing."
 resolution: canceled
