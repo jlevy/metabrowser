@@ -277,7 +277,7 @@ const CHECKOUT_NOT_LISTED =
  *   countSuffix: string | null,
  *   catalogReady: boolean,
  *   connection: {state: "working" | "connected" | "paused" | "unavailable", text: string,
- *     reload: boolean, retrying?: true, refreshing?: true, help?: "install" | "update"} | null,
+ *     canRefresh: boolean, retrying?: true, refreshing?: true, help?: "install" | "update"} | null,
  *   refreshingRows?: number[],
  *   empty: string | null,
  *   progress: string | null,
@@ -465,7 +465,7 @@ export function describePulls(envelope, page) {
     model.connection = {
       state: online ? (working ? "working" : "unavailable") : "paused",
       text: online ? (working ? FETCHING : (page.error ?? "")) : "Offline.",
-      reload: online && !working,
+      canRefresh: online && !working,
     };
     model.live = model.connection.text;
     return model;
@@ -498,23 +498,23 @@ export function describePulls(envelope, page) {
   const asking = page.requesting === true || envelope.refreshing;
   const working = asking || envelope.state === "pending" || envelope.state === "absent";
   if (!online) {
-    model.connection = { state: "paused", text: `Offline.${cached}`, reload: false };
+    model.connection = { state: "paused", text: `Offline.${cached}`, canRefresh: false };
   } else if (page.error !== null) {
     model.connection = {
       state: "unavailable",
       text: page.error + cached,
-      reload: !heldByRate && !asking,
+      canRefresh: !heldByRate && !asking,
     };
   } else if (failure !== null) {
     model.connection = {
       ...failure,
       state: "paused",
       text: failure.text + cached,
-      reload: !heldByRate && !asking,
+      canRefresh: !heldByRate && !asking,
       ...(asking ? (holding ? { refreshing: true } : { retrying: true }) : {}),
     };
   } else if ((working || page.more) && !holding) {
-    model.connection = { state: "working", text: FETCHING, reload: false };
+    model.connection = { state: "working", text: FETCHING, canRefresh: false };
   } else {
     // Rows are shown: their age stays, and a refresh running breathes it.
     const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
@@ -522,7 +522,7 @@ export function describePulls(envelope, page) {
     model.connection = {
       state: "connected",
       text: `Updated ${age}${note}`,
-      reload: !working,
+      canRefresh: !working,
       ...(working ? { refreshing: true } : {}),
     };
   }
@@ -1691,7 +1691,7 @@ export function createPullsController(deps, options = {}) {
   function holdRows(list, rows, source) {
     const next = rows.map((row) => describeRow(row));
     if (source !== null) {
-      noteListed(source, next);
+      noteListed(source, filter, next);
     }
     const same =
       next.length === list.rows.length &&
@@ -3533,9 +3533,9 @@ export function createPullsController(deps, options = {}) {
       anchorAt(stackRowKey(stack));
       return true;
     },
-    /** A press of Reload asks the repository's existing catalog job. */
-    reload() {
-      if (!live() || model().connection?.reload !== true || refreshReads.size > 0) {
+    /** A press of Refresh asks the repository's existing catalog job. */
+    refresh() {
+      if (!live() || model().connection?.canRefresh !== true || refreshReads.size > 0) {
         return Promise.resolve();
       }
       held().error = null;
@@ -3733,13 +3733,13 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionMessage,
   ]);
   const connectionHelp = h("span", { hidden: "" });
-  const reloadButton = h(
+  const refreshButton = h(
     "button",
-    { type: "button", class: "btn github-pulls-reload", "aria-disabled": "true" },
-    ["Reload"],
+    { type: "button", class: "btn github-pulls-refresh", "aria-disabled": "true" },
+    ["Refresh"],
   );
-  reloadButton.addEventListener("click", () => void controller.reload());
-  filters.append(reloadButton);
+  refreshButton.addEventListener("click", () => void controller.refresh());
+  filters.append(refreshButton);
   const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
     connectionHelp,
@@ -3763,7 +3763,7 @@ export function mountPullsPanel(container, ctx, mb) {
   container.classList.add("github-pulls");
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
   // at the slot's height, so the list starts where the Files tree does. There they are a
-  // toolbar row, which wraps between its controls in a narrow pane, Reload last and at the
+  // toolbar row, which wraps between its controls in a narrow pane, Refresh last and at the
   // line's end (`.nav-toolbar-row` in the shell's styles.css). The count and connection lines
   // go in the band under the slot when the host has one (`.nav-metadata-band`), outside the
   // scroller that holds the list, so their rule runs the pane's width and they stay in view
@@ -5131,7 +5131,7 @@ export function mountPullsPanel(container, ctx, mb) {
     spinner.hidden = !working && !retrying;
     // Rows are shown: the age (or the outage being retried) breathes, and nothing spins.
     connectionMessage.classList.toggle("mb-refreshing", refreshing);
-    // Busy is said of the status text, never of the row's Reload or help link.
+    // Busy is said of the status text, never of the row's Refresh or help link.
     if (working || retrying || refreshing) {
       connectionText.setAttribute("aria-busy", "true");
     } else {
@@ -5155,7 +5155,7 @@ export function mountPullsPanel(container, ctx, mb) {
         alignRefreshing(list);
       }
     }
-    reloadButton.setAttribute("aria-disabled", String(connected?.reload !== true));
+    refreshButton.setAttribute("aria-disabled", String(connected?.canRefresh !== true));
     const help = connected?.help ?? "";
     if (connectionHelp.dataset.help !== help) {
       connectionHelp.dataset.help = help;
@@ -5427,12 +5427,12 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
   });
-  // The state chips and Reload are situational: through the SDK's shortcut surface each takes
+  // The state chips and Refresh are situational: through the SDK's shortcut surface each takes
   // a number, 1 to 9, from its place among the screen's numbered controls, so the panel picks
   // no digit, and a hidden panel's controls hold none (docs/design-system.md, "Keyboard
   // Shortcuts"). A number runs what a click runs. A chip's number then focuses the chip, as
   // the group's arrow keys do, since the list it replaces may have held focus; a waiting
-  // Reload keeps its place and does nothing, as its click does. Each lasts until disposal
+  // Refresh keeps its place and does nothing, as its click does. Each lasts until disposal
   // aborts `signal`.
   if (typeof mb.shortcuts?.attach === "function") {
     for (const { chip, value } of tallies) {
@@ -5446,9 +5446,9 @@ export function mountPullsPanel(container, ctx, mb) {
         signal,
       });
     }
-    mb.shortcuts.attach(reloadButton, {
-      activate: () => void controller.reload(),
-      id: "github.pulls.reload",
+    mb.shortcuts.attach(refreshButton, {
+      activate: () => void controller.refresh(),
+      id: "github.pulls.refresh",
       numbered: true,
       signal,
     });

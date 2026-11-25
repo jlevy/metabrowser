@@ -1113,7 +1113,7 @@ async function loadTree(options = {}) {
         const treeEl = document.getElementById("tree-content");
         if (treeEl) {
           treeEl.innerHTML =
-            '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
+            '<div class="preview-empty" role="alert">Could not load files. Reload the page to try again.</div>';
         }
       }
 
@@ -1557,7 +1557,7 @@ function failGroupedTree(cause) {
   var panel = document.getElementById("tab-files");
   if (panel) {
     panel.innerHTML =
-      '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
+      '<div class="preview-empty" role="alert">Could not load files. Reload the page to try again.</div>';
   }
 }
 
@@ -5394,7 +5394,7 @@ function fetchRecent(cursor, preserveRows) {
         showInitialError: () => {
           if (results) {
             results.innerHTML =
-              '<div class="recent-empty nav-error" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
+              '<div class="recent-empty nav-error" role="alert">Could not load recently modified files. Reload the page to try again.</div>';
           }
         },
       });
@@ -5552,7 +5552,7 @@ function setRecentContinuityStatus(status) {
   var text =
     status === "retrying"
       ? "Recent files may be out of date; retrying…"
-      : "Recent files may be out of date. Change the filter or refresh to try again.";
+      : "Recent files may be out of date. Reload the page to try again.";
   if (existing) {
     existing.textContent = text;
     return;
@@ -6634,7 +6634,7 @@ async function selectFile(path, preferredViewId) {
         const preview = document.getElementById("preview-pane");
         if (!preview) {
           return {
-            message: "Could not display the file. Refresh the page to try again.",
+            message: "Could not display the file. Reload the page to try again.",
             status: "error",
           };
         }
@@ -7169,7 +7169,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
                 viewMetaAttrs(view) +
                 ' data-active-view="false"' +
                 hidden +
-                '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+                '><div class="preview-empty" role="alert">This view is unavailable. Reload the page to try again.</div></div>';
             }
           }
         } else {
@@ -9097,7 +9097,7 @@ function showPullPageLoadFailure(claim, what = "the pull-request page") {
     stopFolderHeaderSubscription();
   }
   renderPreviewHtml(
-    previewErrorHtml(`Could not load ${what}.`, "Refresh the page to try again."),
+    previewErrorHtml(`Could not load ${what}.`, "Reload the page to try again."),
     held,
   );
 }
@@ -10024,7 +10024,7 @@ if (isGitRevisionSource() && !window.MetabrowserGitPath) {
     const pane = document.getElementById(id);
     if (pane) {
       pane.innerHTML =
-        '<div class="preview-empty" role="alert">This page did not load completely. Refresh the page to try again.</div>';
+        '<div class="preview-empty" role="alert">This page did not load completely. Reload the page to try again.</div>';
     }
   }
   throw new Error("metabrowser: git-path.js did not load on a pinned revision's page");

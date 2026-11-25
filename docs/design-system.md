@@ -593,9 +593,9 @@ A commit shows its author, revision, and age in that order.
 | Line | A commit’s page | A pull request’s page |
 | --- | --- | --- |
 | Title | The subject, `.page-heading`, its own lines | The state icon, the title, and the number, `.page-heading`, cut short at two lines |
-| Author | The [actor identity](#actor-identity) | The actor identity, its sentence, “wants to merge 2 commits”, and the stack chip’s slot at the end |
+| Author | The [actor identity](#actor-identity) | The actor identity and its sentence, “wants to merge 2 commits” |
 | Where it lives | The revision, its copy button, and its refs | The branches, head → base |
-| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …”, Browse code, and Refresh’s slot at the end |
+| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …” and Browse code, and at the end the stack chip’s slot and Refresh’s |
 | Its own | None | The labels, a row of chips; the freshness note ending the author’s row; the status line, while it has something to say |
 | Size line | “4 files changed · 56.9 KB compressed (193.9 KB raw diff)”, the [change size line](#change-size-line) | “2 commits · 36 files changed · 1.8 MB compressed (6.2 MB raw diff)” |
 | Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison |
@@ -1251,11 +1251,12 @@ Every button belongs to one role-specific primitive:
 | --- | --- |
 | Labelled action | `.btn` |
 | Icon-only action | `.icon-btn` |
-| Filter value or filter menu | `.chip` and its variants |
+| Filter value or filter menu | `.chip` and its variants, with `.chip-clear` the quiet reset ([Filter Controls](#filter-controls)) |
 | Exclusive choice among labelled values | `.chip-group[data-select="one"]` |
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
 | Collapsible section title | `.section-disclosure-trigger` |
+| Lines or content folded in place, which a press shows | [`.fold-expander`](#fold-expanders) |
 | Action among links: a text action, below | The context’s text-action class, on `<a>` and `<button>` alike |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
@@ -1265,6 +1266,13 @@ primitive class in the markup and must not recreate the primitive’s border, fi
 typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
+`test_every_plugin_button_carries_a_control_family_class` and
+`test_every_shell_button_carries_a_control_family_class` in
+`tests/test_plugin_design_consistency.py` hold every button the built-in plugins, the
+shell’s modules, and the server’s markup build to one of these, or to an allowlisted
+class with its reason.
+A control that asks for something again takes its word and its widget from
+[Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page).
 
 A **text action** is an action that sits among links in a line of chrome, with no border
 or fill, because a bordered button would read as a different thing from the link beside
@@ -1286,6 +1294,51 @@ has the one focus ring.
 Each context sets one look for the `<a>` and the `<button>`, box included: a `<button>`
 is always an atomic inline box, so where a label can wrap, the `<a>` is one too, and
 what follows a wrapped label starts on the next line in both forms.
+
+### Refresh, Retry, and Reload Page
+
+**A control that asks for something again says which of four things it does, in one
+word, and a word means the same thing wherever it appears.** The words come from what
+the control does, not from where the answer comes from:
+
+| Word | What it does | Where |
+| --- | --- | --- |
+| Refresh | Asks for the current state of what the view shows, in place: the page stays, and what is on screen stays until the answer replaces it ([Refreshing Content](#refreshing-content)). The answer may come from the disk, the repository, GitHub, or a mirror’s origin; the reader asks for the same thing, so the word is the same | The Pulls tab’s toolbar, a pull request’s row of ages, the Commits tab after “No commits yet.” and after “History changed since this list loaded.” |
+| Fetch | The first ask for something not held at all, where there is nothing yet to refresh | A pull request’s header before its record, and the Changes body’s “Changes have not been fetched.” |
+| Retry | Asks again for what failed, beside the sentence that says what failed | The Changes body, a page of history, a commit a mirror lacks, a folder Overview panel |
+| Reload page | Reloads the whole page, as the browser’s Reload does, where the page itself is out of date | The ref selector’s and the freshness row’s “The server now serves another revision” |
+
+- **A label is the verb alone.** The sentence beside the control says what it acts on,
+  so a failed page of history reads “Could not load these commits.”
+  and then Retry, never “Retry loading history”.
+  Reload page names the page because the page is what sets it apart.
+- **Prose uses the same words.** A sentence that sends the reader to the browser says
+  “Reload the page to try again.”, and one that points at a Refresh on screen names it
+  by its label, Refresh.
+  Nothing says “Refresh the page”: Refresh never reloads the page, so the phrase would
+  name the one thing it does not do.
+  A lowercase “refresh to try again” names no control, so it says “Reload the page”
+  instead. Such a sentence is a reader message’s one remedy, and
+  [Reader Messages](design-system-messages.md#what-a-message-contains) holds the rest of
+  it: one statement, at most one remedy, no internals.
+- **The same widget for the same word.** A `.btn` in a toolbar or after a notice’s
+  sentence; a [text action](#control-families) in a line of chrome among links, as a
+  pull request’s Refresh ends its row of ages.
+  A Refresh that waits for a refresh already running stays in its place,
+  `aria-disabled`, and a press does nothing.
+- **Keys.** Refresh in the Pulls tab and on a pull request’s page is situational and
+  numbered; Retry and Reload page are rare and take no key ([The Rules](#the-rules)).
+- **One exception.** A mirror’s freshness row has no Refresh of its own: its age line,
+  “Fetched 3 min ago”, is the control, and its tooltip and accessible name say it
+  refreshes now.
+
+The owner found the Pulls tab’s Reload and a pull request’s Refresh doing the same thing
+under two names (2026-11-24); before that a Reload meant three different things.
+`test_asking_again_has_one_word_for_each_meaning` in `tests/test_browser_copy.py` holds
+the shipped browser code to these words: no “Refresh the page”, no lowercase “refresh
+to”, no Reload that does not name the page, and none of the labels this replaced.
+It reads what a reader could see through the reader-message check’s extractor, so a
+console line or an error’s own text is not held to it.
 
 ### External GitHub Links
 
@@ -1413,6 +1466,21 @@ has no room for a ring; `_FOCUS_RING_OUTSET` in `tests/test_design_vocabulary.py
 the controls that take it.
 `test_every_focus_ring_is_the_one_ring` fails a stylesheet, a plugin’s included, that
 writes a literal ring.
+
+A button or `summary` that no rule rings draws the same ring:
+`:where(button:focus-visible, summary:focus-visible)` in `static/styles.css` states it
+at zero specificity, as [the link base](#links-have-a-base-color) states a link’s color,
+so a family’s own rule wins and a control that sets no ring draws this one, not the user
+agent’s outline in the platform’s accent color outside its box.
+A diff file bar’s label drew the user agent’s until 2026-11-24. Links are not included:
+a link’s ring is its context’s. `test_a_control_no_rule_rings_takes_the_one_ring` holds
+the base.
+
+Any rule that rings a control wins over the base, and that includes KPress’s document
+sheet, which rings a `summary` inside `article.kpress` with a wider ring outside the
+box. A control the app draws inside a KPress article therefore states the one ring
+itself, as a rendered diff’s run of unchanged blocks does in the diff plugin’s sheet;
+`tests/test_diff_markdown_fold_chrome.py` reads that ring with KPress’s sheets loaded.
 
 ### Text Fields
 
@@ -2741,9 +2809,10 @@ tests named beside each primitive.
 The page is a header, a [tab bar](#the-tab-bar), and a body, in that order; native stack
 navigation is part of the header.
 The header is a [page header](#page-headers), as a commit’s summary is: the title, then
-the author’s row, which ends in the freshness note, the branches, the row of ages, which
-ends in Refresh, the labels, the status line while it has something to say, and the Diff
-summary, every line under the title at the body size and one gap under the one before.
+the row of ages, which ends in the stack chip and Refresh, the author’s row, which ends
+in the freshness note, the branches, the labels, the status line while it has something
+to say, and the Diff summary, every line under the title at the body size and one gap
+under the one before.
 It shares the title, the author, the age, and the Diff summary with a commit’s page, in
 that order, and keeps the state, the branches, the labels, the stack chip, and the
 status line, which a commit does not have; the table there says where the two diverge
@@ -2768,7 +2837,8 @@ on that page, so it lands moving nothing; a one-line title then has an empty sec
 there alone. A record that lands within the quiet period was never seen cold, and takes
 its own lines. The icon and the text start at the header’s left edge, and the number,
 outside the clamped text, ends on the header’s right edge, level with the title’s last
-line, over the stack chip that ends the author’s row, whatever the title’s length.
+line, over Refresh’s slot, which ends the row of ages with the stack chip just before
+it, whatever the title’s length.
 The colored badge that leads the row of ages gives the state in text and the title icon
 is decorative. The header’s box is decided at first paint, on every tab, but for the
 title’s lines and two rows.
@@ -2777,18 +2847,18 @@ moves when a pull request gains its first label or loses its last.
 The status line is there only while it has something to say, so the tab bar moves as a
 failure, a message, or an offer comes and goes, and for nothing else: never between
 tabs, nor as the age ticks, Refresh comes, or a rate limit’s hold begins or lifts.
-Otherwise it is decided in every state: the author’s row is one line, the author and the
-sentence, then the freshness note, then at its right end the stack chip’s slot (see
-native stack navigation below); where the row has no room left, the note leaves it
-first, whole, and then the sentence is cut short at its end, the action first and then
-the author, never moved or wrapped; the branches have the line under it to themselves,
-one line in every state, their names cut short rather than wrapping it; the row of ages
-begins with the state’s badge, as wide as the widest state, then “Opened”, the ages, and
-Browse code, one line whose ages are cut short at their end, the links after them whole
-down to 420 px, below which they are clipped at the row’s end, and ends in Refresh’s
-slot; a pull request with labels has a row of them, one line at a label’s height, and
-one with none has no labels row and no gap for it; and a cold page keeps every row,
-empty, at its height.
+Otherwise it is decided in every state: the row of ages begins with the state’s badge,
+as wide as the widest state, then “Opened”, the ages, and Browse code, and ends in the
+stack chip’s slot and then Refresh’s (see native stack navigation below), one line at a
+chip’s height whose ages are cut short at their end, the links after them whole down to
+420 px, or 560 px beside two stacks’ chips, below which they are clipped at the row’s
+end; the author’s row is one line, the author and the sentence, then the freshness note;
+where that row has no room left, the note leaves it first, whole, and then the sentence
+is cut short at its end, the action first and then the author, never moved or wrapped;
+the branches have the line under it to themselves, one line in every state, their names
+cut short rather than wrapping it; a pull request with labels has a row of them, one
+line at a label’s height, and one with none has no labels row and no gap for it; and a
+cold page keeps every row, empty, at its height.
 The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
 its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
 now via GitHub CLI”, never a second time for a check that found nothing changed, since
@@ -2810,20 +2880,21 @@ leaves the line, dot and all, so the author and the sentence keep their natural 
 while it shows, and only then is the sentence cut short.
 Alone on the row, before a record, it is cut short with its whole text as a tooltip.
 Refresh or Fetch ends the row of ages, at its right end, its slot held hidden when there
-is nothing to refresh, so its coming moves nothing; the ages are cut short before it,
-and it never is. It follows View on GitHub and Browse code, so it takes the number after
-theirs and renumbers neither
+is nothing to refresh, so its coming moves nothing, and a stack chip arriving before it
+moves it not at all; the ages are cut short before it, and it never is.
+It follows Browse code, so it takes the number after Browse code’s and renumbers it
+neither as it comes nor as it goes
 ([Numbered Controls](keyboard-shortcuts.md#numbered-controls)). While a refresh it
-offered runs or is due, or a rate limit holds it, it waits, as the Pulls tab’s Reload
+offered runs or is due, or a rate limit holds it, it waits, as the Pulls tab’s Refresh
 does: shown and muted, `aria-disabled`, it keeps its slot and its number, so an offer
 numbered after it keeps its own, and a press does nothing.
 Once the refresh ends, Refresh shows only where it is offered: on Conversation and
 Checks, with nothing left to refresh, it goes, and an offer after it takes its number.
-The status row is the next metadata line, as tall as the row of ages, there only while
-it has something to say: a failure and its remedy, a message, and the offers at its end,
-its text and then its offers’ sentences cut short, never their controls.
-A comparison’s refusal is said in the Changes body, beside its Retry changes, not on the
-status row, which would then show it on Changes alone and move the tab bar between tabs.
+The status row is the next metadata line, a line tall, as the author’s row is, there
+only while it has something to say: a failure and its remedy, a message, and the offers
+at its end, its text and then its offers’ sentences cut short, never their controls.
+A comparison’s refusal is said in the Changes body, beside its Retry, not on the status
+row, which would then show it on Changes alone and move the tab bar between tabs.
 A pull request that cannot be shown has no author’s row and no row of ages, so its
 message and Refresh’s slot are on the status row.
 Only a failure, which says what to do, wraps the status row.
@@ -2924,14 +2995,26 @@ Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
 known cached membership remains visible during refresh or failure.
-Membership has its slot at the right end of the author’s row, under the end of the
-title, so its chip, which arrives from its own answer after the page, lands in the row’s
-empty end and moves nothing; where the row has no room left for it, the sentence is cut
-short at its end. Its menu hangs from the chip’s end of the row.
+Membership has its slot at the right end of the row of ages, with the state and ages it
+belongs with, under the end of the title and just before Refresh’s slot, which ends the
+row.
+Its chip, which arrives from its own answer after the page, lands in the row’s empty
+end and moves nothing, Refresh included, since Refresh keeps its slot whether it shows
+or not; a chip ending the row instead would push Refresh along by its own width as it
+arrived.
+The chip keeps its whole width while any of the ages or Browse code shows: where
+the row has no room left for it, the ages are cut short at their end, then Browse code,
+and only once they have no width left is a chip’s position cut short, its tip saying the
+whole of it, so the row never ends past the header.
+The slot’s strut holds the row at a chip’s height from first paint, and the author’s row
+is a line. Its menu hangs from the row’s end.
 Its `details` is no taller than the strut it replaces there, since the slot sets the
-chip’s own size. `tests/dom/github-pull-header-chrome.mjs` holds, in Chrome, that a late
-chip moves nothing in the header, shows whole, ends on the header’s content edge, and
-does not overlap the sentence.
+chip’s own size. `tests/dom/github-pull-header-chrome.mjs` holds, in Chrome, on
+Conversation, where Refresh is held hidden, and on Changes, where it shows, that a late
+chip moves nothing in the header, Refresh and every row included, shows whole, sits one
+gap before Refresh’s slot on the row of ages, does not overlap the ages, and has its
+position cut short only once the ages and Browse code have no width left
+([measurements](../explorations/performance-loop/design-rule-measurements.md#pull-request-stacks-and-the-timeline)).
 
 ### Text
 
@@ -3068,7 +3151,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
-| Refresh, Fetch | [Text action](#control-families): `.github-pull-text-action` on a button | Refresh ends the row of ages, after View on GitHub and Browse code, so it looks as a link does and is a line tall, where a bordered `.btn` is taller than the row of ages |
+| Refresh, Fetch | [Text action](#control-families): `.github-pull-text-action` on a button | Refresh ends the row of ages, after Browse code and the stack chip, so it looks as a link does and is a line tall, where a bordered `.btn` is taller than a metadata line |
 
 Author, action, and relative age share one metadata size and baseline in a header or
 discussion card. The bold username uses the normal text ink wherever it names an actor.
@@ -3386,13 +3469,14 @@ that shows a number takes it:
 | --- | --- |
 | The pull request page’s title | `.github-pull-number`, after the title |
 | A Pulls row | `.github-pulls-number`, at the start of the number’s line, the row’s third |
-| A stack menu’s member | `.github-pull-stack-member-number` |
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
 | The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
 
-The GitHub plugin’s three are one rule.
-A number in prose, a commit subject, or a tooltip is text, and keeps its line’s weight.
+The GitHub plugin’s two are one rule.
+A stack menu’s member shows no number: its place and title name it on its one line
+([Stacks](#stacks)). A number in prose, a commit subject, or a tooltip is text, and
+keeps its line’s weight.
 A count’s numeral, such as a heading’s tally, is not a pull request’s number and takes
 its own token, `--count-numeral-weight` ([Heading Tallies](#heading-tallies)). A stack’s
 own number, in “Stack #286”, is part of the stack’s label, in the label register
@@ -3466,10 +3550,10 @@ holds the one helper and the one rule in source.
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one icon slot and gap in, each state icon under the Layers icon and each title under the label | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total bold ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)), the words in the line’s regular weight, and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
-| Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
+| Refresh | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
 | Connection | The second, muted line of the navigation metadata line, one live status: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures, which wraps only when it is longer than the pane | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
-| Reload | `.btn` | Reload checks GitHub for updates. See [Control Families](#control-families). |
+| Refresh | `.btn` | Refresh checks GitHub for changes to the list. See [Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page). |
 
 A pull request is three lines, one item, and two targets, because a pane is narrower
 than its parts. Its link is the first two, its title’s: the state icon, a stack member’s
@@ -3559,8 +3643,8 @@ surface keeps a copy of either.
 | Part | Primitive | Where |
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
-| Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the author’s row; a Pulls row’s place, before a muted dot and its title, as a stack menu’s member line has it, with no icon |
-| Member row | Its position, bold; its title, bold in normal text ink; its `#number`, bold ([Pull Request Numbers](#pull-request-numbers)); and on the current pull request a check, `aria-current="page"`, and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
+| Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the row of ages, before Refresh; a Pulls row’s place, before a muted dot and its title, as a stack menu’s member line has it, with no icon |
+| Member row | One line, as a Pulls row’s first line is: the pull request’s state icon, `.github-pull-state-icon`; its position, bold; a muted dot, `.github-pull-stack-dot`; and its title, bold in normal text ink, cut short at the line’s end. On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
 | Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)); then, after a muted dot, the stack’s [brief change line](#brief-change-line) | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
@@ -3584,9 +3668,27 @@ surface keeps a copy of either.
 - **Ink.** The position is in normal text ink wherever it appears: in a Pulls row’s
   place, the ink of the title it comes before, with only its dot muted, on the stack
   button, and in a member row.
-  A member row is a link, so its position, title, and number each set their own ink, and
-  no link, visited, hover, focus, or current state changes them; a part that set none
-  would take the link’s blue.
+  A member row is a link, so its position and title each set their own ink, and no link,
+  visited, hover, focus, or current state changes them; a part that set none would take
+  the link’s blue.
+- **Member row.** Every member has one layout, one line tall, so the members line up and
+  every row of the menu is as tall as the others: the state icon in the tree’s icon
+  slot, a tree row’s gap, then the position, the dot, and the title, about a space
+  apart. The title alone gives way, cut short at the line’s end, and the row’s tip holds
+  the whole of it, which the shell shows only while the title is cut short
+  ([Tooltips Add Information](#tooltips-add-information)). The number follows the title
+  in the shell’s `.visually-hidden`, said and not shown, so a screen reader tells two
+  members of one title apart.
+  The icon is the state the page shows for its own pull request, and for each other
+  member the state the Pulls list last read for it (`stackMemberState` in
+  `pull-page.js`); a member the list has not reached keeps the icon’s slot empty.
+  A list’s answer forgets what was noted of a pull request it no longer holds when the
+  list holds the noted state and it is not a merge, so a member the Open list left out
+  once it merged or closed is not drawn open; and a page notes its own record’s state
+  back over an older list’s (`noteListed` and `noteRecord` in `pull-state.js`). The menu
+  reads the states again each time it opens and each time the page repaints.
+  The row this replaced wrapped a long title onto lines of its own and marked the
+  current member with a check before its position and its number after its title.
 - **Order.** A stack’s members are listed top of the stack first, the order of
   `stackMenuOrder`: the menu’s rows and a stack group’s rows in the Pulls tab are one
   order.
@@ -3618,7 +3720,7 @@ surface keeps a copy of either.
 
 **The Pulls tab always groups by stack** once the repository’s stacks are known; there
 is no option to turn it off, because a Group by stack chip, worded or a glyph alone,
-does not fit the Pulls toolbar beside the Show group and Reload at the default pane
+does not fit the Pulls toolbar beside the Show group and Refresh at the default pane
 width.
 
 - **Rows.** Each stack with a pull request in the list has a row, open by default, and
@@ -3769,7 +3871,7 @@ rather than restate them.
   chooser, of which a page has many; and a control that shows only on hover take no key.
   Each stays reachable by pointer and Tab.
   A key goes on a major tab or a major button, and a rare one, such as the Metabrowser
-  menu, print, retry, or the freshness row’s Reload, goes without.
+  menu, print, Retry, or Reload page, goes without.
 - **One key, and Control only for next and previous.** Every shortcut is a single key
   but Control-N and Control-P on macOS and iOS ([Control Chords](#control-chords)),
   Shift changes nothing, and Command, Option, and every other Control chord stay the
@@ -5626,12 +5728,12 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   A mirror or checkout shows the [revision row](#the-ref-selector) above the filters,
   directly below the tabs.
   The trailing group, which takes the line’s end with an auto margin, moves down whole
-  and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
+  and stays right-aligned: Clear and the chevron on Files, Refresh on Pulls.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
   and the tab bar between its tabs.
   A segmented group in the cluster layout (below) is the one exception: it is one
   control drawn over several lines, and what follows it starts a line of its own.
-  So where the Pulls Show group is the cluster, Reload takes a line under it even where
+  So where the Pulls Show group is the cluster, Refresh takes a line under it even where
   it would fit beside the cluster’s last chip.
 - **Line spacing.** A row’s lines are `--nav-toolbar-line-height` tall, a chip’s height,
   and `--nav-toolbar-gap` apart.
@@ -5639,7 +5741,7 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
   it grows by a line and a gap for each line it adds.
   Every control is one line tall: a shorter one is centered in a line’s height, and a
-  taller one, a `.btn` such as Reload, is held to it, so no line is cramped and none
+  taller one, a `.btn` such as Refresh, is held to it, so no line is cramped and none
   stands taller than the rest.
   An open drawer’s controls wrap on the same gap and are one line tall too, Show
   ignored’s checkbox centered in its line, and a closed drawer adds nothing under the
@@ -6269,7 +6371,7 @@ revisions.
   The Info button’s menu describes the pinned source beside its local path.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
-  freshness row a mirror offers its reload in, with one `.btn`, “Reload”
+  freshness row a mirror offers its reload in, with one `.btn`, “Reload page”
   (`.source-ref-selector-stale`). Every tab shows it because the Pulls tab and
   comparison requests can also be refused.
   The chooser belongs to Files.
@@ -6446,8 +6548,8 @@ Focus lands on the checked row, or on the first row when none is checked, so `�
 `Home`, `End`, Enter, Escape, and the rows’ letters below act on the next key.
 `W`’s branch list is the precedent: it opens with focus in its filter box.
 The pull request page’s stack menu opens the same way, on its current member, the row it
-checks, by a press, Enter, Space, `↓`, or `↑` ([Stacks](#stacks)); on its button, as on
-a filter’s trigger, `Home` and `End` open nothing.
+marks, by a press, Enter, Space, `↓`, or `↑` ([Stacks](#stacks)); on its button, as on a
+filter’s trigger, `Home` and `End` open nothing.
 
 - **Closing.** Escape, a second click on the trigger, and a choice that closes a
   single-select menu give focus back to the trigger.

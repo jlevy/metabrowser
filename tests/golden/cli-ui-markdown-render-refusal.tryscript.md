@@ -53,8 +53,8 @@ $ node tests/dom/markdown-render-refusal-session.js
   "notes": {
     "render_deadline": "This document took too long to render, so its source is shown.",
     "renderer_exited": "This document could not be rendered, so its source is shown.",
-    "renderer_unavailable": "This document could not be rendered, so its source is shown. Reload to try again.",
-    "renderer_busy": "This document could not be rendered, so its source is shown. Reload to try again.",
+    "renderer_unavailable": "This document could not be rendered, so its source is shown. Reload the page to try again.",
+    "renderer_busy": "This document could not be rendered, so its source is shown. Reload the page to try again.",
     "shortened": "This document took too long to render, so its source is shown."
   },
   "documentTab": {
@@ -120,11 +120,11 @@ $ node tests/dom/markdown-render-refusal-session.js
       "renderError": false
     },
     "renderer_unavailable": {
-      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_unavailable\">This document could not be rendered, so its source is shown. Reload to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
+      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_unavailable\">This document could not be rendered, so its source is shown. Reload the page to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
       "renderError": false
     },
     "renderer_busy": {
-      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_busy\">This document could not be rendered, so its source is shown. Reload to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
+      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_busy\">This document could not be rendered, so its source is shown. Reload the page to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
       "renderError": false
     }
   },

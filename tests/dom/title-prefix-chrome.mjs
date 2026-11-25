@@ -338,6 +338,17 @@ const MEASURE = `async (titles) => {
     const members = [...holder.querySelectorAll(".github-pull-stack-member")];
     const member = (title) => members.map((link) => link.querySelector(".github-pull-stack-member-title")).find((node) => node.textContent === title);
     out.stackMember = { prefixed: read(member(PULL)), plain: read(member(PULL_PLAIN)) };
+    // Each member's line and the shell's tip (mb-as06): one line, the long title cut short,
+    // and the whole title in the member's tip, which the shell shows only while it is cut.
+    out.stackMemberLines = members.map((link) => ({
+      height: Math.round(link.getBoundingClientRect().height * 100) / 100,
+      title: link.querySelector(".github-pull-stack-member-title").textContent,
+      tip: link.dataset.tipText ?? null,
+      clipped: (() => {
+        const title = link.querySelector(".github-pull-stack-member-title");
+        return title.scrollWidth > title.clientWidth;
+      })(),
+    }));
     menu.dispose();
   }
 
@@ -572,6 +583,23 @@ async function main() {
           heading.lines === 2 &&
           row?.text === PULL,
         JSON.stringify({ row, heading }),
+      );
+      // A stack menu's member is one line (mb-as06): a long title is cut short with an
+      // ellipsis, the member as tall as one whose title fits, and its tip the whole title.
+      const member = measured.stackMember?.prefixed;
+      const memberLines = measured.stackMemberLines ?? [];
+      check(
+        "a stack member's long title is cut short with an ellipsis on its one line, whole in its tip",
+        member?.clipped === true &&
+          member.overflow === "ellipsis" &&
+          member.text === PULL &&
+          memberLines.length === 3 &&
+          memberLines.every(
+            (line) => line.height === memberLines[0].height && line.tip === line.title,
+          ) &&
+          memberLines.find((line) => line.title === PULL)?.clipped === true &&
+          memberLines.some((line) => !line.clipped),
+        JSON.stringify({ member, memberLines }),
       );
       // The pull request's heading, clamped at two lines, carries the whole title in its tip.
       const clamped = measured.pullTitleClamped;

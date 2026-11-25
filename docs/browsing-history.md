@@ -34,7 +34,7 @@ The selected commit opens in the main pane, and the address becomes that commit�
 
 When you come back to Commits after `HEAD` has moved, as after a checkout or a commit,
 the graph reloads. If branches move while you scroll an open list, the list says
-**History changed since this list loaded.** and offers **Reload history**.
+**History changed since this list loaded.** and offers **Refresh**.
 
 ## A Commit’s Page
 
@@ -133,9 +133,9 @@ Click the chevron in that row or press `W` to browse the other branches and tags
   at another commit, which is a branch you have not fetched since it moved, or have
   pushed since Metabrowser last fetched, and “not in checkout” when you have never
   fetched it; hover over the row for your commit and which of the two was committed
-  later. The row at the foot of the navigation pane says when the origin was last fetched
-  and has **Refresh**, on your working tree’s page too; it fetches Metabrowser’s store,
-  never your checkout.
+  later. The row at the foot of the navigation pane says when the origin was last
+  fetched, and pressing it refreshes, on your working tree’s page too; it fetches
+  Metabrowser’s store, never your checkout.
   A line under the list says when it was fetched, or why it was not: an origin that
   needs a password Metabrowser does not have is listed from your checkout instead, and
   nothing asks for one.
@@ -163,7 +163,7 @@ again or the server stops.
 `metab <folder>` starts on the working tree, and `metab <folder> --ref <name>` starts on
 that branch or tag
 ([the command line](command-line.md#a-branch-or-tag-of-a-local-checkout)). A tab left on
-the other one says so and offers **Reload**.
+the other one says so and offers **Reload page**.
 
 A branch or tag you chose follows that branch or tag.
 Metabrowser fetches nothing into a checkout, so your own branches, and another remote’s,

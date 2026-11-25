@@ -209,7 +209,7 @@
         options.renderError(container, error);
       } else {
         container.innerHTML =
-          '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
+          '<div class="preview-empty" role="alert">Could not display this view. Reload the page to try again.</div>';
       }
       return "error";
     }

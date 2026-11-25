@@ -59,7 +59,7 @@ export function refusalNote(refusal) {
       return "This document took too long to render, so its source is shown.";
     case "renderer_unavailable":
     case "renderer_busy":
-      return "This document could not be rendered, so its source is shown. Reload to try again.";
+      return "This document could not be rendered, so its source is shown. Reload the page to try again.";
     default:
       return "This document could not be rendered, so its source is shown.";
   }

@@ -46,8 +46,8 @@ $ node tests/dom/github-pull-text-refusal-session.js
   "notes": {
     "render_deadline": "This text took too long to render, so it is shown as written.",
     "renderer_exited": "This text could not be rendered, so it is shown as written.",
-    "renderer_unavailable": "This text could not be rendered, so it is shown as written. Reload to try again.",
-    "renderer_busy": "This text could not be rendered, so it is shown as written. Reload to try again.",
+    "renderer_unavailable": "This text could not be rendered, so it is shown as written. Reload the page to try again.",
+    "renderer_busy": "This text could not be rendered, so it is shown as written. Reload the page to try again.",
     "render_failed": "This text could not be rendered, so it is shown as written.",
     "recorded": "This text took too long to render, so it is shown as written.",
     "unknown_part": null,

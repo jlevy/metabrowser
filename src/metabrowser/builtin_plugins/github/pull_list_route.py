@@ -609,7 +609,7 @@ def start_refresh(
     repository, coordinator = view.repository, view.coordinator
     assert repository is not None and coordinator is not None and wanted != "probe"
     key = _job_key(repository)
-    # A change a probe found, or a reader's Reload, reads the delta scan first.
+    # A change a probe found, or a reader's Refresh, reads the delta scan first.
     changed = wanted == "changed"
     if (changed or ask.retry) and view.probe is not None:
         view.probe.scan_started()

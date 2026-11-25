@@ -881,7 +881,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "as written., new element",
             "a newer record, the same text refused again as unavailable: plain, 1 notice "
             "right after it, a status: This text could not be rendered, so it is shown as "
-            "written. Reload to try again., new element",
+            "written. Reload the page to try again., new element",
             "a newer record whose Markdown renders: rendered rendered A, no notice, same element",
         ],
         # A text's Mermaid blocks, in the description and in a comment, drawn as images

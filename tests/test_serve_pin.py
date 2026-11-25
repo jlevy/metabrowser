@@ -949,7 +949,7 @@ def test_a_pins_page_without_its_codec_stops_and_says_so(
     without = check_startup_scripts.run_startup_session(shell.replace(codec.group(0), ""), "/view/")
     assert (
         without["alerts"]
-        == ["This page did not load completely. Refresh the page to try again."] * 2
+        == ["This page did not load completely. Reload the page to try again."] * 2
     )
     assert without["fetches"] == []
     assert without["requested"] == []

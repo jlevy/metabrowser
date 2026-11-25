@@ -747,11 +747,13 @@ present() {
     server starts (`pgrep -f metabrowser.cli.main` finds none).
     Remove the line after.
 
-## Help > Check Setup…
+## Settings and Help > Check Setup…
 
 How the app reads `metab --doctor --json` is unit tested (`DoctorReportTests`, which
-reads the doctor’s transcript, and `LiveMetabTests` against a real `metab`); these check
-the window. Choose the checkout’s `.venv/bin/metab` in Settings first.
+reads the doctor’s transcript, and `LiveMetabTests` against a real `metab`), and
+`SettingsWindowTests` presses the tabs through accessibility and copies part of the
+report; these check the window as a person uses it, in light and dark appearance.
+Choose the checkout’s `.venv/bin/metab` in Settings > Runtime first.
 
 ```shell
 real="$PWD/.venv/bin/metab"
@@ -759,40 +761,56 @@ stand_in="$HOME/.metab-check-setup"
 mkdir -p "$stand_in"
 ```
 
-1. **A clean report.** Help > Check Setup…. Within seconds the window names the
-   development build, the oldest `metab` it runs, and the checkout’s `metab`, then rows
-   for Plugins, Opening from a terminal, metab, Git, Configuration, Cache, Event log,
-   and GitHub CLI, each marked ok.
-   The metab row’s app detail names this development build and the `metab` it runs, even
-   with a release app installed too.
-   Copy Report, then `pbpaste` prints the same rows as text under the two header lines.
-   Settings > Check Setup… brings the same window forward.
+1. **The tabs.** Metabrowser > Settings… opens at General, with General, Runtime,
+   Plugins, and Check Setup along the toolbar.
+   Click each: the window takes the tab’s size with its top edge still, and nothing in a
+   tab overlaps. With Full Keyboard Access on, Tab reaches the tabs and the controls in
+   order and Space presses them.
+   Close the window and choose Settings… again: it opens at the tab it showed last.
 
-2. **A problem with its row.** Choose a stand-in that points the cache somewhere `metab`
-   refuses:
+2. **The plugins.** Click Plugins: within seconds it lists each plugin of
+   `.venv/bin/metab --plugins` with its name, ID, version, source, and what it requires,
+   and counts them below.
+   Switch tabs and back: the list shows at once, without discovering again.
+   Refresh discovers them again.
+
+3. **A clean report.** Help > Check Setup…. Settings comes forward at Check Setup, and
+   within seconds it says there are no problems, then shows the report as text: the
+   development build, the oldest `metab` it runs, and the checkout’s `metab`, then
+   `plugins`, `open_in`, `metab`, `git`, `config`, `cache`, `event_log`, and `github`,
+   each `ok`, with nothing overlapping at any window width.
+   The `metab` check’s app detail names this development build and the `metab` it runs,
+   even with a release app installed too.
+   Drag across a few lines in the middle of the report, Command-C, then `pbpaste` prints
+   exactly those lines.
+   Copy Report, then `pbpaste` prints the whole report.
+
+4. **A problem with its check.** Choose a stand-in that points the cache somewhere
+   `metab` refuses:
 
    ```shell
    printf '#!/bin/sh\nMETABROWSER_CACHE_DIR=relative exec "%s" "$@"\n' "$real" > "$stand_in/metab"
    chmod 755 "$stand_in/metab"
    ```
 
-   then Settings > Choose metab… and `$stand_in/metab`. Check Again: the heading says
-   `metab` found problems, Cache is marked as a problem with the override’s message, and
-   Plugins stays ok.
+   then Settings > Runtime > Choose metab… and `$stand_in/metab`. Settings > Check
+   Setup: the heading says `metab` found problems, `cache` is a problem with the
+   override’s message, and `plugins` stays ok.
 
-3. **No report.** Replace the stand-in with one whose doctor fails:
+5. **No report.** Replace the stand-in with one whose doctor fails:
 
    ```shell
    printf '#!/bin/sh\ncase "$*" in\n*--doctor*) echo boom; exit 3;;\nesac\nexec "%s" "$@"\n' "$real" > "$stand_in/metab"
    ```
 
-   and Check Again. The window says `metab --doctor --json` printed no answer (exit
-   status 3) and shows `boom`; Copy Report includes both.
+   and Check Again. The tab says `metab --doctor --json` printed no answer (exit status
+   3\) and shows `boom`; Copy Report includes both.
 
-4. **No metab, then one.** In Settings, forget the chosen `metab` so none is selected,
-   and Check Again: the window says none is selected, and Check Again stays enabled.
-   Choose `$real` in Settings, then Check Again in the open window: it shows the clean
-   report without reopening it from the Help menu.
+6. **No metab, then one.** In Settings > Runtime, forget the chosen `metab` so none is
+   selected, and in Check Setup, Check Again: the tab says none is selected, Check Again
+   stays enabled, and Plugins says no plugins are listed.
+   Choose `$real` in Settings > Runtime, then Check Setup: it shows the clean report
+   without the Help menu.
    Then `rm -r "$stand_in"`.
 
 ## Help > Open Event Log
