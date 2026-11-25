@@ -5,7 +5,7 @@ title: "Spec: Archive contents and browsing archives as folders"
 kind: epic
 status: in_progress
 priority: 2
-version: 10
+version: 17
 spec_path: docs/project/specs/active/plan-2026-11-24-archive-contents-and-browsing.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,10 +15,17 @@ dependencies: []
 parent_id: null
 child_order_hints:
   - is-01m0dkj0xzgg9b6kc7ge0fm2ne
+  - is-01m885867jg0s1fy2w9f8dwzrd
+  - is-01m885941n5xs6ap60sm1avesc
+  - is-01m885969bezeyfe7tcepdtszx
+  - is-01m8859a9ayeznqbj36nj10470
+  - is-01m8859dc4ryxnv13b7br1vvk0
+  - is-01m8859hheaevf06jatbqce8ja
+  - is-01m8859m23q37fyv4kk33pp5qq
 hold: null
 hold_until: null
 created_at: 2026-07-15T06:15:21.716Z
-updated_at: 2026-11-25T01:31:41.260Z
+updated_at: 2026-11-25T01:32:03.522Z
 started_at: 2026-11-25T01:30:45.263Z
 extensions:
   linear:
