@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, TypedDict
 
 from metabrowser.builtin_plugins.github.pull_catalog import MAX_WINDOW, catalog_rows
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository, PullListRow
@@ -20,7 +20,48 @@ from metabrowser.builtin_plugins.github.pull_stacks import (
 from metabrowser.http_caching import build_scoped_etag
 from metabrowser.mirror_refresh import RefreshCoordinator, refresh_coordinator
 
+if TYPE_CHECKING:
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord
+
 STACKS_ROUTE = "/api/plugin/github/stacks"
+
+
+class MemberIdentity(NamedTuple):
+    """A stack member's title, author, and the author's avatar, as a member row draws them."""
+
+    title: str | None
+    author: str | None
+    avatar: str | None
+
+
+def member_identity(record: PullRecord | None, row: PullListRow | None) -> MemberIdentity:
+    """*record*'s, the member's cached record, which a reader's fetch wrote, else *row*'s, its
+    row in the repository's cached list, else none: the one rule the stacks route and a
+    stack's route (pull_stack.py) name a member by, so the stack menu and a stack's page name
+    it alike (docs/design-system.md, "Stacks")."""
+
+    if record is not None:
+        return MemberIdentity(record.pull.title, record.pull.author, record.pull.author_avatar_url)
+    if row is not None:
+        return MemberIdentity(row.title, row.author, row.author_avatar_url)
+    return MemberIdentity(None, None, None)
+
+
+def _member_record(repository: ListedRepository, reader: str, number: int) -> PullRecord | None:
+    """*number*'s cached record, read through the pull route's parse cache, when it is of
+    *repository* and was read by *reader*, the account the snapshot was read by."""
+
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord
+    from metabrowser.builtin_plugins.github.pull_route import cached_pull_record
+
+    found, _dumped, _revision = cached_pull_record(repository.home, repository.slug, number)
+    if (
+        isinstance(found, PullRecord)
+        and found.source.casefold() == repository.source.casefold()
+        and found.reader == reader
+    ):
+        return found
+    return None
 
 
 class StackEnvelope(TypedDict):
@@ -90,21 +131,31 @@ def stack_envelope(view: StackView) -> StackEnvelope:
         return result
     stacks = [stack.model_dump(mode="json") for page in snapshot.pages for stack in page.stacks]
     # Native stack members contain no titles or authors. Project the repository's existing
-    # metadata cache instead, without provider calls or duplicate storage: each member's
+    # metadata caches instead, without provider calls or duplicate storage: each member's
     # title, its author, and the author's avatar, which the page's stack menu draws after
-    # the member's number as a Pulls row does (docs/design-system.md, "Stacks"). A member
-    # the catalog does not hold has none of the three.
+    # the member's number as a Pulls row does (docs/design-system.md, "Stacks"), by the rule
+    # a stack's page names it by (`member_identity`). The catalog's rows are read in indexed
+    # batches. A member the catalog does not hold, as a merged member the list no longer
+    # holds, is named by its cached record, read through the pull route's parse cache, for
+    # at most as many such members as that cache keeps, so the records an answer reads stay
+    # parsed across polls; one beyond them, or with no record, has none of the three.
     numbers = tuple(dict.fromkeys(number for stack in stacks for number in stack["pulls"]))
     rows: dict[int, PullListRow] = {}
     for offset in range(0, len(numbers), MAX_WINDOW):
         rows.update(
             catalog_rows(repository, snapshot.reader, numbers[offset : offset + MAX_WINDOW])
         )
+    from metabrowser.builtin_plugins.github.pull_route import MAX_PARSED_RECORDS
+
+    unlisted = [number for number in numbers if number not in rows][:MAX_PARSED_RECORDS]
+    records = {number: _member_record(repository, snapshot.reader, number) for number in unlisted}
     for stack in stacks:
-        members = [rows.get(number) for number in stack["pulls"]]
-        stack["titles"] = [row.title if row else None for row in members]
-        stack["authors"] = [row.author if row else None for row in members]
-        stack["avatars"] = [row.author_avatar_url if row else None for row in members]
+        members = [
+            member_identity(records.get(number), rows.get(number)) for number in stack["pulls"]
+        ]
+        stack["titles"] = [member.title for member in members]
+        stack["authors"] = [member.author for member in members]
+        stack["avatars"] = [member.avatar for member in members]
     fresh = result["fresh_for_s"] > 0 and stamp is not None and stamp.outcome == "succeeded"
     result.update(
         state="current" if fresh else "stale",
