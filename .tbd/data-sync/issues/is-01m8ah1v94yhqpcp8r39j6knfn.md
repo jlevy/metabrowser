@@ -1,0 +1,14 @@
+---
+type: is
+id: is-01m8ah1v94yhqpcp8r39j6knfn
+title: Commits tab gets the branch chooser, sharing the Files tab's branch state
+kind: feature
+status: open
+priority: 1
+version: 1
+labels: []
+dependencies: []
+created_at: 2026-11-25T23:36:00.547Z
+updated_at: 2026-11-25T23:36:00.547Z
+---
+User request 2026-11-25: the nav column's Commits tab needs the same branch chooser the Files tab has (working tree / revision selector), and the two tabs share one branch state: choosing a branch or revision in either shows it in both.
