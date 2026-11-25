@@ -7,12 +7,13 @@
 // which fills the group when it opens and empties it when it closes.
 
 /**
- * The shell's icon of that name, or nothing outside the shell.
+ * The shell's icon of that name, or nothing outside the shell. The diff view's other
+ * glyphs take theirs from here too.
  *
  * @param {string} name
  * @returns {string}
  */
-function shellIcon(name) {
+export function shellIcon(name) {
   const shell = /** @type {{metabrowser?: {icons?: Record<string, string>}}} */ (
     /** @type {unknown} */ (globalThis)
   );

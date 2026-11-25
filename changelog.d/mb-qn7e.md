@@ -12,6 +12,8 @@
   does ([Fold Expanders](docs/design-system.md#fold-expanders)). A long fold’s blocks
   are fetched when it opens, or when a link goes to a heading inside it, so a long
   document with a few edits loads in the size of its edits.
+  While its blocks load, the file shows its progress mark; if they do not load, the fold
+  closes again and its bar says so, and a press asks again.
 
 - **Docs and Changes open without drawing hidden Source.** A changed file with a
   rendered view draws its Source lines only when Source shows and you reach it, so a
@@ -21,6 +23,8 @@
   than Docs opens in Full draws its blocks a part at a time near the viewport, keeping
   its place in the scroll bar; a link into a part not drawn yet draws it first, and
   printing draws all of it.
+  Switching between Full and Concise keeps the block at the top of the pane where it
+  was, deep in a long document or inside an open fold.
   In such a file, find in page and Select All reach only the parts drawn.
   Reaching a 3,408-block book, its worst main-thread task fell from 351 ms to 64 ms.
 

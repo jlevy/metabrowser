@@ -50,9 +50,12 @@ builds its blocks when it opens.
 A fold of fewer than `INLINE_FOLD_MAX_LINES` source lines comes with the answer, so
 opening it asks for nothing; a longer fold’s blocks are withheld, and asked for
 (`blocks=`) when it opens or a link goes to a heading inside it, which the page goes to
-once they are drawn.
-Full draws every block, asking for the withheld ones first and showing Concise
-meanwhile; switching back asks for nothing, and the folds the reader opened stay open.
+once they are drawn; the file’s progress mark counts down while they are asked for.
+A fold whose blocks do not load closes again, and its bar says so and that a press asks
+again. Full draws every block, asking for the withheld ones first and showing Concise
+meanwhile; Full that fails after the reader chose Source leaves Source chosen, and
+choosing Full again asks again.
+Switching back asks for nothing, and the folds the reader opened stay open.
 A document past `WHOLE_UNITS` blocks is drawn a chunk at a time: a chunk not drawn yet
 keeps the place of its estimated height, and is drawn when the reader comes near it, and
 a link to a heading in a later chunk draws every chunk through it before it goes there.
@@ -86,6 +89,8 @@ delay), `progress` while its mark counts down, and its rendered rows, a fold as 
 and a chunk not drawn yet as the place it keeps, a long file’s rows shortened to their
 first and last four.
 The session fails if a file’s chooser is ever gone.
+It prints its transcript in two parts, each a block of its own: the links and the steps
+before the long document’s, then the long document’s steps on (`long`).
 
 ```console
 $ node tests/dom/diff-markdown-session.js
@@ -431,7 +436,16 @@ $ node tests/dom/diff-markdown-session.js
           "shows": "source"
         }
       }
-    },
+    }
+  ]
+}
+? 0
+```
+
+```console
+$ node tests/dom/diff-markdown-session.js long
+{
+  "steps": [
     {
       "step": "Concise folds a short run with its blocks and withholds the long runs' blocks",
       "requests": [
@@ -509,6 +523,63 @@ $ node tests/dom/diff-markdown-session.js
       }
     },
     {
+      "step": "a withheld fold asks for its blocks, the file's progress mark counting",
+      "requests": [
+        "f10 blocks=21-23"
+      ],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "progress": "counting",
+          "folds": [
+            "Hide 2 blocks, open",
+            "2 unchanged blocks",
+            "Hide 2 blocks, open, loading"
+          ]
+        }
+      }
+    },
+    {
+      "step": "blocks that did not load close the fold again, and its bar says so",
+      "requests": [],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "folds": [
+            "Hide 2 blocks, open",
+            "2 unchanged blocks",
+            "Could not load 2 unchanged blocks. Retry"
+          ]
+        }
+      }
+    },
+    {
+      "step": "the failure is logged, not shown",
+      "logged": [
+        "metabrowser diff: a fold's blocks did not load"
+      ]
+    },
+    {
+      "step": "a press on it asks again",
+      "requests": [
+        "f10 blocks=21-23"
+      ],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "progress": "counting",
+          "folds": [
+            "Hide 2 blocks, open",
+            "2 unchanged blocks",
+            "Hide 2 blocks, open, loading"
+          ]
+        }
+      }
+    },
+    {
       "step": "a link to a heading a withheld fold holds waits for it",
       "prevented": true
     },
@@ -521,6 +592,7 @@ $ node tests/dom/diff-markdown-session.js
         "f10 docs/long.md": {
           "chooser": "Full | *Concise | Source",
           "shows": "rendered",
+          "progress": "counting",
           "rows": [
             "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
             "removed: <p>See <span>the deep part</span> <del>now</del>.</p>",
@@ -543,7 +615,7 @@ $ node tests/dom/diff-markdown-session.js
             "added: <p>Later <ins>new</ins>.</p>",
             "context: <p>Note A.</p>",
             "context: <p>Note B.</p>",
-            "[2 unchanged blocks]",
+            "[Could not load 2 unchanged blocks. Retry]",
             "context: <p>Coda A.</p>",
             "context: <p>Coda B.</p>",
             "removed: <p>The <del>old</del> end.</p>",
@@ -583,7 +655,7 @@ $ node tests/dom/diff-markdown-session.js
             "added: <p>Later <ins>new</ins>.</p>",
             "context: <p>Note A.</p>",
             "context: <p>Note B.</p>",
-            "[2 unchanged blocks]",
+            "[Could not load 2 unchanged blocks. Retry]",
             "context: <p>Coda A.</p>",
             "context: <p>Coda B.</p>",
             "removed: <p>The <del>old</del> end.</p>",
@@ -635,11 +707,50 @@ $ node tests/dom/diff-markdown-session.js
             "added: <p>Later <ins>new</ins>.</p>",
             "context: <p>Note A.</p>",
             "context: <p>Note B.</p>",
-            "[2 unchanged blocks]",
+            "[Could not load 2 unchanged blocks. Retry]",
             "context: <p>Coda A.</p>",
             "context: <p>Coda B.</p>",
             "removed: <p>The <del>old</del> end.</p>",
             "added: <p>The <ins>new</ins> end.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "Full failing after Source was chosen leaves Source chosen",
+      "requests": [],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | Concise | *Source",
+          "shows": "source",
+          "folds": [
+            "Hide 2 blocks, open",
+            "Hide 2 blocks, open",
+            "Could not load 2 unchanged blocks. Retry"
+          ]
+        }
+      }
+    },
+    {
+      "step": "the failure is logged all the same",
+      "logged": [
+        "metabrowser diff: Full did not load"
+      ]
+    },
+    {
+      "step": "choosing Full again asks for it again",
+      "requests": [
+        "f10 view=full"
+      ],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "*Full | Concise | Source",
+          "shows": "rendered",
+          "progress": "counting",
+          "folds": [
+            "Hide 2 blocks, open",
+            "Hide 2 blocks, open",
+            "Could not load 2 unchanged blocks. Retry"
           ]
         }
       }

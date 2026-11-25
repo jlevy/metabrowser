@@ -46,7 +46,10 @@ const LOOKAHEAD = "100%";
 // still be drawn whole; past either it is drawn a chunk at a time. Drawing 500 blocks and
 // their first layout and paint took about 60 ms in every shape measured, as the comment
 // on `FULL_MAX_BLOCKS` in diff/markdown_views.py records, so these are that bound: a
-// document the Docs tab opens in Full is drawn whole, as it was before chunks.
+// document the Docs tab opens in Full is drawn whole, as it was before chunks. The page
+// counts a block's bytes here, and in CHUNK_BYTES and BYTE_PX, as `html.length`, UTF-16
+// code units, where FULL_MAX_BYTES counts UTF-8 bytes; a string never has more code units
+// than UTF-8 bytes, so what the Docs tab opens in Full is within WHOLE_BYTES too.
 const WHOLE_UNITS = 500;
 const WHOLE_BYTES = 512 * 1024;
 // How much of a rendered file is drawn at a time: the first chunk with its answer, and
@@ -82,13 +85,15 @@ const MORE_TRIES = 5;
 const RETRY_MS = 100;
 const RETRY_MAX_MS = 1600;
 // The app's --loading-state-delay: until it passes, a Markdown file on screen at mount
-// waits for its projection with Source hidden, so a ready answer paints Rendered first
-// and never replaces Source in view. Past it, Source shows and Rendered replaces it.
+// waits for its projection with Source hidden, so a ready answer paints its rendered view
+// first and never replaces Source in view. Past it, Source shows and the rendered view
+// replaces it.
 const LOADING_DELAY_MS = 50;
-// Why a file's Rendered is unavailable, by the `reason` the server's refusal names
+// Why a file's rendered views are unavailable, by the `reason` the server's refusal names
 // (`MarkdownRefusal` in diff/markdown_projection.py, `StructuredRefusal` in
 // diff/structured_projection.py) and, where it names none, by its `status`. Each is the
-// Rendered chip's tooltip and the end of its accessible name.
+// tooltip of the file's rendered chips (Full and Concise, or a tree's Rendered) and the end
+// of their accessible names.
 /** @type {Readonly<Record<string, string>>} */
 const REFUSALS = {
   no_changes: "This file's content did not change.",
@@ -99,7 +104,7 @@ const REFUSALS = {
 // A refusal that names no reason: a file the projection could not read as its format.
 /** @type {Readonly<Record<RenderedFormat, string>>} */
 const UNREADABLE = {
-  markdown: "Rendered cannot match this file's changes to its Markdown.",
+  markdown: "This file's changes cannot be matched to its rendered Markdown.",
   yaml: "Rendered cannot show YAML that does not parse, or has a key twice in one mapping.",
   json: "Rendered cannot show JSON that does not parse.",
 };
@@ -122,7 +127,9 @@ const UNREADABLE = {
 /** @typedef {{units: Unit[], start: number, end: number, spacer: HTMLElement | null}} Chunk
  *   *spacer* holds the chunk's place until it is drawn. */
 /** @typedef {{file: FileView, top: boolean, chunks: Chunk[]}} Region */
-/** @typedef {{fold: Fold, expander: import("./diff-fold.js").FoldExpander, region: Region | null}} FoldView */
+/** @typedef {{fold: Fold, expander: import("./diff-fold.js").FoldExpander, region: Region | null, status: {failed: boolean}}} FoldView
+ *   *failed* is a withheld fold whose blocks did not load, which its bar says until it
+ *   opens again. */
 /** @typedef {{
  *   section: HTMLElement, source: HTMLElement, rendered: HTMLElement,
  *   progress: HTMLElement, progressLabel: HTMLElement,
@@ -135,6 +142,7 @@ const UNREADABLE = {
  *   drawn: View | null, top: Region | null,
  *   foldViews: Map<number, FoldView>, openFolds: Set<number>,
  *   folding: Map<string, Promise<void>>, asking: Set<AbortController>, upgrading: boolean,
+ *   fetching: number,
  *   removed: HTMLElement[], gone: boolean, emptied: boolean,
  *   state: "idle" | "ready" | "unavailable", reason: string,
  *   onSource: ((shown: boolean) => void) | null
@@ -143,10 +151,12 @@ const UNREADABLE = {
  *   is the view the article draws, and *top* its own run of rows. *openFolds* are the
  *   folds open, by their first block, kept when the view is drawn again.
  *   *reason* is why rendering is unavailable, a sentence, while *state* says it is.
- *   *removed* is what a Markdown file's Rendered draws that Current leaves out: its removed
+ *   *fetching* counts the requests for more of the projection in flight (`askMore`): a
+ *   withheld fold's blocks, or Full's.
+ *   *removed* is what a Markdown file's rendered view draws that Current leaves out: its removed
  *   blocks and front matter keys (`removedParts`). *gone* is a deleted file, which has no
  *   current version: in Current it shows its Source body, which says so. *emptied* is a file
- *   whose Rendered is all removed, a file left empty: Current has nothing of it to draw, so it
+ *   whose rendered view is all removed, a file left empty: Current has nothing of it to draw, so it
  *   shows its Source body too, which says it is empty now (`currentAbsence` in diff-view.js). */
 
 /**
@@ -179,7 +189,8 @@ export function renderedFormat(change) {
 /**
  * Whether a projection may be asked for a changed file: it has a rendered format, and
  * its changes are ones the server reads a patch for. Any other file of a rendered format
- * keeps its chooser, with Rendered unavailable for the reason its Source body gives.
+ * keeps its chooser, with its rendered chips unavailable for the reason its Source body
+ * gives.
  * @param {Record<string, unknown>} change
  */
 export function supportsRenderedChange(change) {
@@ -190,7 +201,7 @@ export function supportsRenderedChange(change) {
 }
 
 /**
- * Why the server refused a file's projection, as the sentence its Rendered chip says.
+ * Why the server refused a file's projection, as the sentence its rendered chips say.
  * @param {unknown} answer The route's answer, which is not a projection to draw.
  * @param {RenderedFormat} format
  * @returns {string}
@@ -986,7 +997,7 @@ export function createMarkdownViews(deps) {
   // diff, and stays invisible until the loading-state delay passes.
   /** @param {FileView} file */
   function drawProgress(file) {
-    const showing = file.pending && file.expanded && wantsRendered(file);
+    const showing = (file.pending || file.fetching > 0) && file.expanded && wantsRendered(file);
     file.progress.classList.toggle("mb-delayed-loading", showing);
     file.progressLabel.textContent = showing ? `Rendering ${formatName(file.format)}` : "";
   }
@@ -1089,26 +1100,49 @@ export function createMarkdownViews(deps) {
    */
   async function askMore(file, ask) {
     const controller = new AbortController();
+    const { signal } = controller;
     file.asking.add(controller);
+    file.fetching += 1;
+    drawProgress(file);
     try {
       for (let tries = 0; ; tries += 1) {
         try {
-          return await deps.load(file.id, controller.signal, ask);
+          return await deps.load(file.id, signal, ask);
         } catch (error) {
           if (
             /** @type {{status?: unknown}} */ (error)?.status !== 429 ||
             tries >= MORE_TRIES ||
+            signal.aborted ||
             disposed
           ) {
             throw error;
           }
+          // The wait ends early when `dispose` cancels the request, which then asks no more.
           await new Promise((resolve) => {
-            later(() => resolve(undefined), Math.min(RETRY_MS * 2 ** tries, RETRY_MAX_MS));
+            const stop = () => {
+              cancel(handle);
+              resolve(undefined);
+            };
+            const handle = later(
+              () => {
+                signal.removeEventListener("abort", stop);
+                resolve(undefined);
+              },
+              Math.min(RETRY_MS * 2 ** tries, RETRY_MAX_MS),
+            );
+            signal.addEventListener("abort", stop, { once: true });
           });
+          if (signal.aborted || disposed) {
+            throw error;
+          }
         }
       }
     } finally {
       file.asking.delete(controller);
+      file.fetching -= 1;
+      if (!disposed) {
+        drawProgress(file);
+      }
     }
   }
 
@@ -1257,8 +1291,6 @@ export function createMarkdownViews(deps) {
       return;
     }
     file.upgrading = true;
-    file.pending = true;
-    drawProgress(file);
     askMore(file, { view: "full" })
       .then((answer) => {
         const full = projectionModel(answer);
@@ -1274,16 +1306,19 @@ export function createMarkdownViews(deps) {
         model.blocks = full.model.blocks;
       })
       .catch((error) => {
-        if (!disposed) {
-          // Back to what is drawn: the chooser says what the file shows.
-          console.warn("metabrowser diff: Full did not load; showing Concise", error);
+        if (disposed) {
+          return;
+        }
+        console.warn("metabrowser diff: Full did not load", error);
+        // Back to what is drawn, so the chooser says what the file shows, unless the
+        // reader chose another view while Full was asked for.
+        if (file.mode === "full") {
           file.mode = file.drawn ?? "concise";
           file.chosen = true;
         }
       })
       .finally(() => {
         file.upgrading = false;
-        file.pending = false;
         if (!disposed) {
           deps.mutate(() => {
             drawControl(file);
@@ -1447,15 +1482,25 @@ export function createMarkdownViews(deps) {
   function foldView(file, fold) {
     const { count } = fold;
     const blocks = `block${count === 1 ? "" : "s"}`;
+    // Read by the bar's label, which the bar draws as it is made.
+    const status = { failed: false };
     /** @type {FoldView} */
     const view = {
       fold,
       region: null,
+      status,
       expander: foldExpander({
         id: `${file.rendered.id}-fold-${fold.at}`,
         expanded: false,
+        // A bar whose blocks did not load says so, and a press asks again (docs/design-
+        // system-messages.md, "Degrade Gracefully"; docs/design-system.md, "Refresh,
+        // Retry, and Reload Page").
         label: (expanded) =>
-          expanded ? `Hide ${count} ${blocks}` : `${count} unchanged ${blocks}`,
+          expanded
+            ? `Hide ${count} ${blocks}`
+            : status.failed
+              ? `Could not load ${count} unchanged ${blocks}. Retry`
+              : `${count} unchanged ${blocks}`,
         onToggle: (expanded) => toggleFold(file, view, expanded),
         groupClass: "diff-markdown-fold",
       }),
@@ -1494,11 +1539,13 @@ export function createMarkdownViews(deps) {
       return;
     }
     file.openFolds.add(fold.at);
+    view.status.failed = false;
     const model = /** @type {Model} */ (file.model);
     if (holds(model, fold.at, fold.at + fold.count)) {
       fillFold(file, view);
       return;
     }
+    // The file's progress mark shows while the blocks are asked for (`askMore`).
     expander.control.setAttribute("aria-busy", "true");
     askFold(file, fold).then(
       () => {
@@ -1511,7 +1558,11 @@ export function createMarkdownViews(deps) {
         expander.control.removeAttribute("aria-busy");
         if (!disposed) {
           console.warn("metabrowser diff: a fold's blocks did not load", error);
-          expander.set(false);
+          // Closed again, its bar says why, unless the reader closed it meanwhile.
+          if (expander.expanded()) {
+            view.status.failed = true;
+            expander.set(false);
+          }
         }
       },
     );
@@ -1655,10 +1706,44 @@ export function createMarkdownViews(deps) {
     pump();
   }
 
-  // Printing draws every chunk not yet drawn, so the page prints whole.
+  // Printing draws every chunk not yet drawn, so the page prints whole, holding the
+  // reader's place as the chunks above it take their own heights.
   function mountAll() {
-    for (const { region, chunk } of [...spacers.values()]) {
-      mountChunk(region, chunk);
+    if (disposed || spacers.size === 0) {
+      return;
+    }
+    deps.mutate(() => {
+      for (const { region, chunk } of [...spacers.values()]) {
+        mountChunk(region, chunk);
+      }
+    });
+  }
+
+  /**
+   * Draw the chunk that holds block *index* of a file's article, in its own run and in an
+   * open fold's, so a block the reader was looking at is drawn again where it was after
+   * the view is drawn anew; the chunks around it wait for the reader as before.
+   * @param {FileView} file
+   * @param {number} index
+   */
+  function drawBlock(file, index) {
+    const top = file.top;
+    if (top === null) {
+      return;
+    }
+    const holding = (/** @type {Region} */ region) => {
+      const chunk = region.chunks.find((each) => each.start <= index && index < each.end);
+      if (chunk !== undefined) {
+        mountChunk(region, chunk);
+      }
+    };
+    holding(top);
+    // After the article's chunk, which draws the fold's bar and fills it when it is open.
+    for (const view of file.foldViews.values()) {
+      const { at, count } = view.fold;
+      if (view.region !== null && at <= index && index < at + count) {
+        holding(view.region);
+      }
     }
   }
 
@@ -1728,6 +1813,7 @@ export function createMarkdownViews(deps) {
         folding: new Map(),
         asking: new Set(),
         upgrading: false,
+        fetching: 0,
         removed: [],
         gone: gone === true,
         emptied: false,
@@ -1884,6 +1970,20 @@ export function createMarkdownViews(deps) {
       }
     },
     firstScreen,
+    /**
+     * Draw block *index* of the file in *section* where its view keeps it undrawn: the
+     * chunk that holds it. The diff asks this when it finds again the block at the pane's
+     * top after a change drew the view anew, as `mutate` does (`drawnRows` in
+     * diff-view.js), so the reader keeps that block's place rather than a chunk's.
+     * @param {HTMLElement} section
+     * @param {number} index
+     */
+    drawBlock(section, index) {
+      const file = files.get(section);
+      if (!disposed && file !== undefined) {
+        drawBlock(file, index);
+      }
+    },
     /**
      * Show each file's current version, or its changes (*next* false): Current leaves out
      * what Rendered draws as removed, and a deleted file shows its Source body. The diff

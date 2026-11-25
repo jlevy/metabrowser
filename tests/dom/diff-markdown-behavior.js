@@ -97,6 +97,10 @@ class Element {
     return this.attributes.get(name) ?? null;
   }
 
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
   get firstElementChild() {
     return this.children[0];
   }
@@ -123,7 +127,7 @@ class Element {
 
   click() {
     this.focus();
-    this.listeners.get("click")();
+    this.listeners.get("click")({ target: this, stopPropagation() {}, preventDefault() {} });
     return Promise.resolve();
   }
 
@@ -404,13 +408,13 @@ async function main() {
   );
   assert.equal(
     refusalReason(refused("unsupported"), "markdown"),
-    "Rendered cannot match this file's changes to its Markdown.",
+    "This file's changes cannot be matched to its rendered Markdown.",
   );
   assert.match(refusalReason(refused("unsupported"), "yaml"), /^Rendered cannot show YAML /);
   assert.match(refusalReason(null, "json"), /^Rendered cannot show JSON /);
   assert.equal(
     refusalReason(refused("unsupported", "toString"), "markdown"),
-    "Rendered cannot match this file's changes to its Markdown.",
+    "This file's changes cannot be matched to its rendered Markdown.",
     "a reason is looked up among the sentences, not on the table's prototype",
   );
 
@@ -1095,6 +1099,66 @@ async function main() {
   assert.equal(removed6.hidden, true, "its removed block is hidden as it is placed");
   assert.equal(added6.hidden, false);
   view6.dispose();
+
+  // A withheld fold's blocks asked for while the server's one slot is busy: the wait before
+  // asking again ends when the views are disposed, which leaves no timer and asks nothing
+  // more.
+  const loads7 = [];
+  const time7 = clock();
+  const root7 = make("div");
+  const view7 = createMarkdownViews({
+    controls: { groupHtml: (spec) => spec, bind: () => () => {} },
+    load: (id, signal, ask) =>
+      new Promise((resolve, reject) => loads7.push({ id, signal, ask, resolve, reject })),
+    ensureInert: async () => inert,
+    async loadStyles() {},
+    mutate: (change) => change(),
+    now: time7.now,
+    later: time7.later,
+    cancel: time7.cancel,
+  });
+  const section7 = make("section");
+  root7.append(section7);
+  const bar7 = make("div");
+  const source7 = make("div");
+  source7.id = "w";
+  section7.append(bar7, source7);
+  const end7 = make("div");
+  bar7.append(make("button"), end7);
+  view7.add({
+    section: section7,
+    bar: bar7,
+    end: end7,
+    source: source7,
+    id: "w",
+    format: "markdown",
+  });
+  view7.observe(root7, null);
+  observer.notify([{ target: section7, isIntersecting: true }]);
+  loads7[0].resolve(structuredClone(concise));
+  await new Promise(setImmediate);
+  // Past the loading delay, so no timer but the wait below is left.
+  time7.advance(50);
+  const [, rendered7] = section7.children;
+  // The article holds the fragment it was drawn from, as this page's elements keep one.
+  const withheld7 = rendered7.children
+    .flatMap((node) => (node.tagName === "" ? node.children : [node]))
+    .find((node) => node.dataset.span === "8-10");
+  assert.ok(withheld7 !== undefined, "the withheld fold's bar is drawn");
+  await withheld7.click();
+  assert.deepEqual(
+    loads7.map((each) => each.ask),
+    [{ view: "concise" }, { blocks: "8-10" }],
+    "opening the withheld fold asks for its blocks",
+  );
+  loads7[1].reject(Object.assign(new Error("rendered_diff_busy"), { status: 429 }));
+  await new Promise(setImmediate);
+  assert.equal(time7.pending, 1, "the busy fold waits to ask again");
+  view7.dispose();
+  assert.equal(time7.pending, 0, "disposal ends the wait");
+  time7.advance(10_000);
+  await new Promise(setImmediate);
+  assert.equal(loads7.length, 2, "and nothing is asked after it");
 
   // A sanitizer that loaded nothing, or whose load failed, is loaded again when Rendered
   // is chosen again. Each failure is logged, not shown.

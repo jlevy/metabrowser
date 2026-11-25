@@ -608,13 +608,45 @@ const LONG_ANSWER = {
   count: blocks.length,
   folds: [],
 };
+// A document whose one fold holds a long run of unchanged blocks, sent with the answer:
+// Concise draws it whole, a bar between three changed blocks on each side, and the fold
+// draws its run a chunk at a time when it opens, past WHOLE_UNITS in diff-markdown.js.
+const FOLDED_RUN = 600;
+const foldedBlocks = [];
+for (const [kind, label] of [
+  ["removed", "Old opening"],
+  ["added", "New opening"],
+  ["added", "Added opening"],
+]) {
+  foldedBlocks.push({ kind, html: `<p>${label}.</p>`, source_only: false });
+}
+for (let index = 0; index < FOLDED_RUN; index += 1) {
+  foldedBlocks.push({
+    kind: "context",
+    html: `<p>Unchanged paragraph ${index}.</p>`,
+    source_only: false,
+  });
+}
+for (const [kind, label] of [
+  ["removed", "Old closing"],
+  ["added", "New closing"],
+  ["added", "Added closing"],
+]) {
+  foldedBlocks.push({ kind, html: `<p>${label}.</p>`, source_only: false });
+}
+const FOLDED_ANSWER = {
+  ...LONG_ANSWER,
+  blocks: foldedBlocks,
+  count: foldedBlocks.length,
+  folds: [{ at: 3, count: FOLDED_RUN, lines: 2 * FOLDED_RUN }],
+};
 
 // What is at the pane's top: the first drawn code row or rendered block whose box ends below it,
 // its text (a row's, each side's in Split), and its offset from the pane's top.
 const ROWS = `(() => {
   const shown = (node) => node.getClientRects().length > 0;
   return [...document.querySelectorAll(
-    "#long .diff-file-body:not([hidden]) .diff-line, #long .diff-file-body:not([hidden]) .diff-split-row, #long .diff-markdown:not([hidden]) > .diff-markdown-block"
+    "#long .diff-file-body:not([hidden]) .diff-line, #long .diff-file-body:not([hidden]) .diff-split-row, #long .diff-markdown:not([hidden]) .diff-markdown-block"
   )].filter(shown);
 })()`;
 const TEXT_OF = `(row) => {
@@ -944,6 +976,74 @@ try {
   await fresh();
   await mount("long", DOCS, { comparison: LONG_MARKDOWN, answer: LONG_ANSWER });
   await roundTrip("a long document on Docs, Concise", "Context paragraph 150.", "diff", "current");
+
+  // A view chosen deep in a long document draws its chunk there first, so the block at the
+  // pane's top keeps its place, not the first block of its chunk.
+  /** A round trip through the file's views from where *needle* is at the pane's top. */
+  const viewTrip = async (label, needle) => {
+    await scrollTo(needle);
+    const start = await atTop();
+    check(
+      `${label}: the pane's top reads ${needle}`,
+      start?.text.includes(needle),
+      JSON.stringify(start),
+    );
+    await click("long", ".diff-file-end", "full");
+    samePlace(
+      `${label}: choosing Full keeps the block at the pane's top`,
+      needle,
+      start,
+      await atTop(),
+    );
+    await click("long", ".diff-file-end", "concise");
+    samePlace(`${label}: choosing Concise again returns to it`, needle, start, await atTop());
+  };
+  await fresh();
+  await mount("long", {}, { comparison: LONG_MARKDOWN, answer: LONG_ANSWER });
+  await viewTrip("a long document's views", "Context paragraph 150.");
+
+  // Inside an open fold, the block at the pane's top is the place, not the fold: it keeps
+  // it as the views are drawn anew, and as the fold's chunks above it are drawn (A2).
+  await fresh();
+  await mount("long", {}, { comparison: LONG_MARKDOWN, answer: FOLDED_ANSWER });
+  await chrome?.evaluate(`(async () => {
+    document.querySelector("#long article.diff-markdown .fold-expander").click();
+    for (let frame = 0; frame < 3; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return true;
+  })()`);
+  await viewTrip("an open fold's views", "Unchanged paragraph 350.");
+  // From the end up, a screen at a time, as a reader pages up: each step draws the chunk
+  // above it, whose height was an estimate, and the row at the top moves by the step alone.
+  const climbs = await chrome?.evaluate(`(async () => {
+    const pane = document.getElementById("preview-pane");
+    const frames = async () => {
+      for (let frame = 0; frame < 4; frame += 1) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+    };
+    pane.scrollTop = pane.scrollHeight;
+    await frames();
+    const moves = [];
+    for (let step = 0; step < 12; step += 1) {
+      const before = ${AT_TOP};
+      const offset = (${OFFSET_OF})(before.text);
+      const by = Math.round(pane.clientHeight * 0.9);
+      pane.scrollTop -= by;
+      await frames();
+      const after = (${OFFSET_OF})(before.text);
+      moves.push({ text: before.text, by, moved: after === null ? null : after - offset - by });
+    }
+    return moves;
+  })()`);
+  check(
+    "paging up through an open fold keeps each row where the scroll put it",
+    Array.isArray(climbs) &&
+      climbs.length === 12 &&
+      climbs.every((each) => each.moved !== null && Math.abs(each.moved) < 1),
+    JSON.stringify(climbs),
+  );
 
   await fresh();
   await mount("long", {}, { comparison: LONG_MARKDOWN, answer: LONG_ANSWER });

@@ -259,7 +259,7 @@ def test_recording_matches_the_production_projection() -> None:
 
 
 def test_session_replays_the_recording() -> None:
-    transcript = run_session("diff-markdown-session.js")
+    transcript = run_session("diff-markdown-session.js", "all")
     assert transcript["links"]["route"] == read_recording(_RECORDING)["image_route"]
     # The plugin's rule (`headLinksOpen` in builtin_plugins/diff/index.js): a link to a file
     # of the head opens only on a page that shows the head, until it hears another pin is
@@ -329,6 +329,22 @@ def test_session_replays_the_recording() -> None:
     assert steps["Full asks for the blocks still withheld, showing Concise meanwhile"][
         "requests"
     ] == ["f10 view=full"]
+    # A withheld fold's blocks are asked for under the file's progress mark, and blocks that
+    # did not load close the fold again, its bar saying so; a press asks again (A3 of
+    # review A on #811). Full that fails after the reader chose Source leaves Source chosen
+    # (A7).
+    asking = steps["a withheld fold asks for its blocks, the file's progress mark counting"]
+    assert asking["requests"] == ["f10 blocks=21-23"]
+    assert asking["files"]["f10 docs/long.md"]["progress"] == "counting"
+    failed = steps["blocks that did not load close the fold again, and its bar says so"]
+    assert "progress" not in failed["files"]["f10 docs/long.md"]
+    assert failed["files"]["f10 docs/long.md"]["folds"][-1] == (
+        "Could not load 2 unchanged blocks. Retry"
+    )
+    assert steps["a press on it asks again"]["requests"] == ["f10 blocks=21-23"]
+    chose = steps["Full failing after Source was chosen leaves Source chosen"]["files"]
+    assert chose["f10 docs/long.md"]["chooser"] == "Full | Concise | *Source"
+    assert steps["choosing Full again asks for it again"]["requests"] == ["f10 view=full"]
     assert (
         steps["back to Concise, asking nothing, the folds the reader opened still open"]["requests"]
         == []

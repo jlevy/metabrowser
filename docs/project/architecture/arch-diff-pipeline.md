@@ -367,6 +367,8 @@ either, saying which in the answer’s `view`.
   are left out, and the page asks for them with `blocks=I-J` when the reader opens it or
   follows a link to one of its headings, so a long document with a few edits answers in
   the size of its edits.
+  The file’s progress mark shows while they are asked for, and a fold whose blocks do
+  not load closes again with its bar saying so; a press asks again.
   A shorter fold comes with the answer and opens at once.
   The route assembles every answer, a range included, from the encoded blocks it keeps,
   so a fetched block is the bytes the projection made and passes the same sanitizer and
@@ -384,6 +386,13 @@ either, saying which in the answer’s `view`.
   so the rows above the target stand at their own heights; `beforeprint` draws the rest.
   Find in page and Select All reach only the chunks drawn, as the
   [large-content rules](../../large-content-rendering.md) record.
+- **The reader’s place:** a Markdown file’s rows, to the diff’s place-keeping
+  (`drawnRows` in `diff-view.js`), are its blocks in the page’s order, those inside an
+  open fold among them, so the block at the pane’s top is the place wherever it is.
+  A view drawn anew, Full for Concise or Concise for Full, draws the chunk that holds
+  that block first (`drawBlock`), so the block keeps its place rather than its chunk’s
+  first block; `tests/dom/diff-current-chrome.mjs` reads it in Chrome deep in a long
+  document and inside a long open fold.
 
 ### YAML and JSON
 

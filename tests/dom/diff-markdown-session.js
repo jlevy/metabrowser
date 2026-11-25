@@ -57,6 +57,27 @@ const recorded = JSON.parse(
 );
 const ORIGIN = "http://127.0.0.1:8123";
 
+// The part of the transcript to print, which the golden prints a block at a time:
+// tryscript matches a block through one regular expression, which V8 refuses past about
+// 32,700 characters, and the whole transcript passed that on 2026-11-24. With no part
+// named it prints the links and the steps before the long document's, `long` the rest,
+// and `all` the whole, which tests/test_diff_markdown_session.py reads. The session runs
+// every step whichever it prints.
+const PART = process.argv[2] ?? "mount";
+const LONG_FIRST_STEP =
+  "Concise folds a short run with its blocks and withholds the long runs' blocks";
+/** @param {string | null} part @param {unknown} links @param {{step: string}[]} all */
+function printed(part, links, all) {
+  const split = all.findIndex((each) => each.step === LONG_FIRST_STEP);
+  assert(split > 0, "the long document's steps are found");
+  assert(["mount", "long", "all"].includes(part), `no part of the transcript is ${part}`);
+  return part === "mount"
+    ? { links, steps: all.slice(0, split) }
+    : part === "long"
+      ? { steps: all.slice(split) }
+      : { links, steps: all };
+}
+
 let finished = false;
 process.on("exit", (code) => {
   if (!finished && code === 0) {
@@ -809,6 +830,50 @@ async function main() {
     assert(found !== null, `${file.name}: no fold reads ${label}`);
     return found;
   };
+  /** Every fold's bar in *file*, in order. */
+  const bars = (file) => {
+    const found = [];
+    const find = (parent) => {
+      for (const node of parent.children) {
+        if (node.classList.contains("fold-expander")) {
+          found.push(node);
+        }
+        find(node);
+      }
+    };
+    find(file.rendered);
+    return found;
+  };
+  /** A fold's bar as a step prints it: its label, and whether it is open or waiting. */
+  const barOf = (node) =>
+    `${node.textContent}${node.getAttribute("aria-expanded") === "true" ? ", open" : ""}${
+      node.getAttribute("aria-busy") === "true" ? ", loading" : ""
+    }`;
+  /**
+   * A step about one file's chooser, progress mark, and fold bars alone, its rows left to
+   * the steps around it, which print them when they change.
+   */
+  const brief = (name, file) => {
+    const { rows: _rows, ...now } = describe(file);
+    steps.push({
+      step: name,
+      requests,
+      files: { [file.name]: { ...now, folds: bars(file).map(barOf) } },
+    });
+    requests = [];
+  };
+  /** What the views log while *run* runs, which a page shows no one. */
+  const logged = async (run) => {
+    const warn = console.warn;
+    const lines = [];
+    console.warn = (message) => lines.push(message);
+    try {
+      await run();
+    } finally {
+      console.warn = warn;
+    }
+    return lines;
+  };
   const click = async (node) => {
     let prevented = false;
     node.listeners.get("click")({
@@ -954,6 +1019,24 @@ async function main() {
   await click(bar(byId.f10, "2 unchanged blocks"));
   step("opening the short run's fold asks for nothing", [byId.f10]);
 
+  // The appendix's run is withheld too, and its blocks do not load: the bar closes again
+  // and says so, and a press asks again.
+  const appendix = () => bars(byId.f10).at(-1);
+  await click(appendix());
+  brief("a withheld fold asks for its blocks, the file's progress mark counting", byId.f10);
+  const foldLog = await logged(async () => {
+    answer("f10 blocks=21-23", "failed");
+    await settle();
+  });
+  brief("blocks that did not load close the fold again, and its bar says so", byId.f10);
+  steps.push({ step: "the failure is logged, not shown", logged: foldLog });
+  await click(appendix());
+  brief("a press on it asks again", byId.f10);
+  await logged(async () => {
+    answer("f10 blocks=21-23", "failed");
+    await settle();
+  });
+
   const followed = await follow(byId.f10, "the deep part");
   steps.push({
     step: "a link to a heading a withheld fold holds waits for it",
@@ -968,6 +1051,17 @@ async function main() {
 
   await choose(byId.f10, "full");
   step("Full asks for the blocks still withheld, showing Concise meanwhile", [byId.f10]);
+
+  // Source chosen while Full is asked for, and Full fails: the reader's choice stands.
+  await choose(byId.f10, "source");
+  const fullLog = await logged(async () => {
+    answer("f10 view=full", "failed");
+    await settle();
+  });
+  brief("Full failing after Source was chosen leaves Source chosen", byId.f10);
+  steps.push({ step: "the failure is logged all the same", logged: fullLog });
+  await choose(byId.f10, "full");
+  brief("choosing Full again asks for it again", byId.f10);
 
   answer("f10 view=full");
   await settle();
@@ -1011,7 +1105,7 @@ async function main() {
   steps.push({ step: "after disposal", unbound: unbinds, timers: clock.timers.size });
 
   finished = true;
-  process.stdout.write(`${JSON.stringify({ links, steps }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(printed(PART, links, steps), null, 2)}\n`);
 }
 
 main().catch((error) => {

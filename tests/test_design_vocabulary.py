@@ -2020,7 +2020,9 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     assert '"fold-expander diff-fold-control disclosure-toggle"' in fold_bar
     for user in ("diff/diff-view.js", "diff/diff-markdown.js"):
         source = (plugins / user).read_text(encoding="utf-8")
-        assert 'import { foldExpander } from "./diff-fold.js";' in source, user
+        assert re.search(
+            r'import \{[^}]*\bfoldExpander\b[^}]*\} from "\./diff-fold\.js";', source
+        ), user
         assert "fold-expander" not in source, f"{user} builds a fold bar of its own"
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
     headings = re.findall(r'h\("h2", \{([^}]+)\}', page)

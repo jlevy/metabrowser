@@ -17,7 +17,7 @@
 // deliberately dumber than the model: the data plane is tested by the
 // conformance corpus and CLI goldens, and this layer only projects it.
 
-import { foldExpander } from "./diff-fold.js";
+import { foldExpander, shellIcon } from "./diff-fold.js";
 import { diffSummaryOf, fileChangeLabel, plainTotals, validateDocument } from "./diff-model.js";
 import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
 import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
@@ -454,19 +454,6 @@ function noticeEl(severity, className, text) {
   const node = el("div", `notice diff-notice diff-availability ${className}`.trim(), text);
   node.setAttribute("data-severity", severity);
   return node;
-}
-
-/**
- * A glyph from the shell's shared registry, or "" outside the shell.
- *
- * @param {string} name
- * @returns {string}
- */
-function shellIcon(name) {
-  const shell = /** @type {{metabrowser?: {icons?: Record<string, string>}}} */ (
-    /** @type {unknown} */ (globalThis)
-  );
-  return shell.metabrowser?.icons?.[name] ?? "";
 }
 
 /**
@@ -3465,8 +3452,9 @@ export function anchorRow(count, rowAt, paneTop, paneBottom) {
  * A file's rows as it draws them now, in order: each element, whether Current (*current*
  * true) or Diff draws it too, and how to find it once the choice is drawn. Rendered Markdown
  * keeps its block elements and hides what Current leaves out, so a block is its own element
- * after; a YAML or JSON tree is drawn again, with the same paths; a code file's rows are drawn
- * again from the same lines, so a row is found by its line, the new side's in Split.
+ * after, and a view drawn anew draws it again by its index (`drawnBlock`); a YAML or JSON
+ * tree is drawn again, with the same paths; a code file's rows are drawn again from the same
+ * lines, so a row is found by its line, the new side's in Split.
  *
  * @param {MountedDiffState} view
  * @param {HTMLElement} section
@@ -3497,25 +3485,29 @@ function drawnRows(view, section, current) {
         };
       });
     }
-    return [...rendered.children]
-      .map((child) => /** @type {HTMLElement} */ (child))
-      .filter((element) => !element.hidden)
-      .map((element) => {
-        const at = blockAt(element);
-        return {
-          element,
-          kept: !current || !element.classList.contains("diff-markdown-removed"),
-          find: () =>
-            rendered.hidden
-              ? null
-              : element.isConnected && !element.hidden
-                ? element
-                : at === null
-                  ? null
-                  : drawnBlock(/** @type {HTMLElement} */ (rendered), at),
-          state: null,
-        };
-      });
+    return markdownRows(rendered).map((element) => {
+      const at = blockAt(element);
+      return {
+        element,
+        kept: !current || !element.classList.contains("diff-markdown-removed"),
+        find: () => {
+          if (rendered.hidden) {
+            return null;
+          }
+          if (element.isConnected && !element.hidden) {
+            return element;
+          }
+          if (at === null) {
+            return null;
+          }
+          // Drawn anew, the view may keep the block in a chunk not drawn yet: its chunk is
+          // drawn, so the block itself keeps the reader's place.
+          view.markdown?.controller.drawBlock(section, at);
+          return drawnBlock(/** @type {HTMLElement} */ (rendered), at);
+        },
+        state: null,
+      };
+    });
   }
   const state = view.files.find((file) => section.contains(file.body)) ?? null;
   if (state === null || !drawsLines(state)) {
@@ -3546,6 +3538,38 @@ function drawnRows(view, section, current) {
           },
         ];
   });
+}
+
+/**
+ * A rendered Markdown article's rows in the page's order: its own, and in place of an open
+ * fold's group, the rows the group holds, so the row at the pane's top is the block there
+ * however deep in a fold it is. A fold's rows are its blocks and the places of its chunks
+ * not drawn yet; a closed fold's group holds none.
+ *
+ * @param {HTMLElement} rendered
+ * @returns {HTMLElement[]}
+ */
+function markdownRows(rendered) {
+  /** @type {HTMLElement[]} */
+  const rows = [];
+  for (const child of rendered.children) {
+    const element = /** @type {HTMLElement} */ (child);
+    if (element.hidden) {
+      continue;
+    }
+    if (!element.classList.contains("diff-fold-group")) {
+      rows.push(element);
+      continue;
+    }
+    if (!element.classList.contains("diff-fold-collapsed")) {
+      for (const inner of element.children) {
+        if (!(/** @type {HTMLElement} */ (inner).hidden)) {
+          rows.push(/** @type {HTMLElement} */ (inner));
+        }
+      }
+    }
+  }
+  return rows;
 }
 
 /**
