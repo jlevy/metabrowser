@@ -5552,7 +5552,7 @@ function setRecentContinuityStatus(status) {
   var text =
     status === "retrying"
       ? "Recent files may be out of date; retrying…"
-      : "Recent files may be out of date. Change the filter or refresh to try again.";
+      : "Recent files may be out of date. Reload the page to try again.";
   if (existing) {
     existing.textContent = text;
     return;

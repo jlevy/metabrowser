@@ -1725,12 +1725,15 @@ body {
 }
 
 /* The one focus ring for a button or summary no rule rings. Like the link base above it
-   has zero specificity, so every family's own `:focus-visible` rule still wins, and it
-   only replaces the user agent's ring, an outline in the platform's accent color outside
-   the box, which a diff file bar's label and a rendered diff's run of unchanged blocks
-   drew (seen in Chrome on 2026-11-24, mb-2t80). A link is not included: its ring is its
-   context's (docs/design-system.md, "Focus Ring"). */
-:where(button, summary):focus-visible {
+   has zero specificity, the pseudo-class inside `:where()` too, so every family's own
+   `:focus-visible` rule still wins, and it only replaces the user agent's ring, an outline
+   in the platform's accent color outside the box, which a diff file bar's label drew
+   (seen in Chrome on 2026-11-24, mb-2t80). Any rule that rings a control wins over it,
+   KPress's document sheet too, whose ring is 3px and outset on a `summary` inside
+   `article.kpress`, so a control the app draws inside a KPress article states its own
+   ring, as a rendered diff's run of unchanged blocks does. A link is not included: its
+   ring is its context's (docs/design-system.md, "Focus Ring"). */
+:where(button:focus-visible, summary:focus-visible) {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
@@ -7754,6 +7757,19 @@ pre.code-block.metabrowser-source-lines > code {
 .git-graph-more-failed,
 .nav-error {
   color: var(--status-error-text);
+}
+
+/* A notice in the history list is its sentence, then its control: Retry after a page that
+   failed, Refresh after history that moved. They share a line where both fit and wrap
+   where they do not, a toolbar's one spacing apart either way. As a plain block a failed
+   page's Retry touched its sentence's last word, both edges at 224.31 px in a 300 px
+   column (measured in Chrome on 2026-11-24, mb-qkvr). */
+.git-history-failed,
+.git-history-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nav-toolbar-gap);
 }
 
 /* Rides the .btn primitive; only the spacing is local. */

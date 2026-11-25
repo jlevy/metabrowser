@@ -1313,9 +1313,14 @@ the control does, not from where the answer comes from:
   and then Retry, never “Retry loading history”.
   Reload page names the page because the page is what sets it apart.
 - **Prose uses the same words.** A sentence that sends the reader to the browser says
-  “Reload the page to try again.”, and one that points at a Refresh on screen says
-  Refresh. Nothing says “Refresh the page”: Refresh never reloads the page, so the phrase
-  would name the one thing it does not do.
+  “Reload the page to try again.”, and one that points at a Refresh on screen names it
+  by its label, Refresh.
+  Nothing says “Refresh the page”: Refresh never reloads the page, so the phrase would
+  name the one thing it does not do.
+  A lowercase “refresh to try again” names no control, so it says “Reload the page”
+  instead. Such a sentence is a reader message’s one remedy, and
+  [Reader Messages](design-system-messages.md#what-a-message-contains) holds the rest of
+  it: one statement, at most one remedy, no internals.
 - **The same widget for the same word.** A `.btn` in a toolbar or after a notice’s
   sentence; a [text action](#control-families) in a line of chrome among links, as a
   pull request’s Refresh ends its row of ages.
@@ -1330,8 +1335,10 @@ the control does, not from where the answer comes from:
 The owner found the Pulls tab’s Reload and a pull request’s Refresh doing the same thing
 under two names (2026-11-24); before that a Reload meant three different things.
 `test_asking_again_has_one_word_for_each_meaning` in `tests/test_browser_copy.py` holds
-the shipped browser code to these words: no “Refresh the page”, no Reload that does not
-name the page, and none of the labels this replaced.
+the shipped browser code to these words: no “Refresh the page”, no lowercase “refresh
+to”, no Reload that does not name the page, and none of the labels this replaced.
+It reads what a reader could see through the reader-message check’s extractor, so a
+console line or an error’s own text is not held to it.
 
 ### External GitHub Links
 
@@ -1461,13 +1468,19 @@ the controls that take it.
 writes a literal ring.
 
 A button or `summary` that no rule rings draws the same ring:
-`:where(button, summary):focus-visible` in `static/styles.css` states it at zero
-specificity, as [the link base](#links-have-a-base-color) states a link’s color, so a
-family’s own rule wins and a control that sets no ring draws this one, not the user
+`:where(button:focus-visible, summary:focus-visible)` in `static/styles.css` states it
+at zero specificity, as [the link base](#links-have-a-base-color) states a link’s color,
+so a family’s own rule wins and a control that sets no ring draws this one, not the user
 agent’s outline in the platform’s accent color outside its box.
-A diff file bar’s label and a rendered diff’s run of unchanged blocks drew the user
-agent’s until 2026-11-24. Links are not included: a link’s ring is its context’s.
-`test_a_control_no_rule_rings_takes_the_one_ring` holds the base.
+A diff file bar’s label drew the user agent’s until 2026-11-24. Links are not included:
+a link’s ring is its context’s. `test_a_control_no_rule_rings_takes_the_one_ring` holds
+the base.
+
+Any rule that rings a control wins over the base, and that includes KPress’s document
+sheet, which rings a `summary` inside `article.kpress` with a wider ring outside the
+box. A control the app draws inside a KPress article therefore states the one ring
+itself, as a rendered diff’s run of unchanged blocks does in the diff plugin’s sheet;
+`tests/test_diff_markdown_fold_chrome.py` reads that ring with KPress’s sheets loaded.
 
 ### Text Fields
 

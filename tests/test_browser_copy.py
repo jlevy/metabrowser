@@ -5,6 +5,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
+from tests.test_reader_messages import extract, shipped_scripts
+
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "metabrowser" / "static"
 BUILTINS = ROOT / "src" / "metabrowser" / "builtin_plugins"
@@ -95,22 +99,13 @@ def test_live_filter_exposes_its_exact_cutoff() -> None:
 
 # -- Refresh, Retry, and Reload page -------------------------------------------------------
 
-# The shipped browser code: the shell's modules and every built-in plugin's, not the vendored
-# libraries, whose words are not ours.
-_BROWSER_JS = tuple(
-    sorted(
-        [*STATIC.glob("*.js")]
-        + [path for path in BUILTINS.glob("**/*.js") if "vendor" not in path.parts]
-    )
-)
-# A string literal that opens and closes on one line, in any of JavaScript's three quotes.
-_LITERAL = re.compile(r""""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\\n]|\\.)*`""")
-# A comment: a line that is one, or what follows `//` set off by a space, as a trailing
-# comment is and a URL's `//` is not.
-_COMMENT_LINE = re.compile(r"^\s*(//|\*|/\*)")
-_TRAILING_COMMENT = re.compile(r"\s//\s.*$")
-# "Refresh" asks again in place; the page's own reload is "Reload the page".
-_REFRESH_THE_PAGE = re.compile(r"(?<![\w-])[Rr]efresh(es|ed|ing)? (the|this) page\b")
+# "Refresh" asks again in place; the page's own reload is "Reload the page". The page itself,
+# not a page's part: "Refresh this page's checks" names what it refreshes.
+_REFRESH_THE_PAGE = re.compile(r"(?<![\w-])[Rr]efresh(es|ed|ing)? (the|this) page\b(?!['’])")
+# A sentence names a Refresh on screen by its label, capitalized. A lowercase "refresh to …"
+# names no control, so it is the browser's reload, as the Files tab's "Change the filter or
+# refresh to try again." was where the tab has no Refresh.
+_BARE_REFRESH_REMEDY = re.compile(r"(?<![\w-])refresh to\b")
 # "Reload" is always the whole page, and names it: "Reload page", "Reload the page",
 # "Reloads the page". A bare "Reload" was the Pulls tab's Refresh, beside the PR page's.
 _RELOAD = re.compile(r"(?<![\w-])[Rr]eload(s|ed|ing)?(?![\w-])(?! (the |this )?page\b)")
@@ -134,16 +129,54 @@ _RETIRED_LABELS = {
 
 
 def _browser_literals() -> list[tuple[str, int, str]]:
-    """(file, line, text) for each one-line string literal outside a comment."""
-    found: list[tuple[str, int, str]] = []
-    for path in _BROWSER_JS:
-        where = str(path.relative_to(ROOT))
-        for number, line in enumerate(_read(path).splitlines(), start=1):
-            if _COMMENT_LINE.match(line):
-                continue
-            code = _TRAILING_COMMENT.sub("", line)
-            found.extend((where, number, match.group(0)[1:-1]) for match in _LITERAL.finditer(code))
-    return found
+    """(file, line, text) for each string and template a reader could see.
+
+    The reader-message check's extractor reads the shipped scripts with the TypeScript
+    parser, so a template across lines is one text, and a console argument, a built-in
+    error's argument, a property key, or a comparison operand, which no reader sees, is
+    left out.
+    """
+    return [
+        (str(Path(record["file"]).relative_to(ROOT)), record["line"], record["text"])
+        for record in extract(shipped_scripts())
+        if record["kind"] in ("string", "template") and record["context"] == "text"
+    ]
+
+
+def _asking_again_problems(text: str) -> list[str]:
+    """What is wrong with *text* as a label, tooltip, or sentence that asks again."""
+    if _IDENTIFIER.fullmatch(text):
+        return []
+    problems: list[str] = []
+    if _REFRESH_THE_PAGE.search(text):
+        problems.append("refreshes the page; say Reload the page")
+    if _BARE_REFRESH_REMEDY.search(text):
+        problems.append("offers a refresh no control makes; say Reload the page")
+    if _RELOAD.search(text):
+        problems.append("reloads something other than the page")
+    if text in _RETIRED_LABELS:
+        problems.append(f"is now {_RETIRED_LABELS[text]}")
+    return problems
+
+
+@pytest.mark.parametrize(
+    ("text", "wrong"),
+    [
+        ("Refresh the page to try again.", True),
+        ("Reload to try again.", True),
+        ("Change the filter or refresh to try again.", True),
+        ("Reload", True),
+        ("Retry changes", True),
+        ("Reload the page to try again.", False),
+        ("Reload page", False),
+        ("Refresh this page's checks", False),
+        ("Changes took too long to prepare. Refresh to try again.", False),
+        ("Could not refresh this folder.", False),
+        ("reload", False),
+    ],
+)
+def test_the_asking_again_rules_tell_right_from_wrong(text: str, wrong: bool) -> None:
+    assert bool(_asking_again_problems(text)) is wrong
 
 
 def test_asking_again_has_one_word_for_each_meaning() -> None:
@@ -163,14 +196,9 @@ def test_asking_again_has_one_word_for_each_meaning() -> None:
         assert present in texts, f"the scan no longer finds the {present!r} label"
     assert any("Reload the page to try again." in text for text in texts)
 
-    problems: list[str] = []
-    for where, line, text in literals:
-        if _IDENTIFIER.fullmatch(text):
-            continue
-        if _REFRESH_THE_PAGE.search(text):
-            problems.append(f"{where}:{line}: {text!r} refreshes the page; say Reload the page")
-        if _RELOAD.search(text):
-            problems.append(f"{where}:{line}: {text!r} reloads something other than the page")
-        if text in _RETIRED_LABELS:
-            problems.append(f"{where}:{line}: {text!r} is now {_RETIRED_LABELS[text]}")
+    problems = [
+        f"{where}:{line}: {text!r} {problem}"
+        for where, line, text in literals
+        for problem in _asking_again_problems(text)
+    ]
     assert not problems, "\n".join(problems)
