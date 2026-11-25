@@ -183,8 +183,13 @@ The standard library’s readers are unsafe to point at hostile archives as they
   hardlink through `getmembers()`, which loads the whole archive), and treats an invalid
   header after the first as the end of the archive, so a damaged listing looks complete.
 
-So the plugin parses both formats’ directories itself, with every read bounded, and uses
-`zlib`, `bz2`, and `lzma` directly to decompress one member’s bytes.
+Each of these was confirmed in the CPython 3.12 source and on crafted archives, and
+their fixes vary by patch release within the supported range.
+A wrapper cannot repair them, because the worst hide members that `unzip` and `bsdtar`
+list.
+So the plugin parses both formats’ directories itself, with every read bounded, and
+uses the standard decompressors to decompress one member’s bytes
+([Decision 11](#decision-11-how-archives-are-parsed)).
 
 ## Design
 
@@ -242,7 +247,9 @@ So the plugin parses both formats’ directories itself, with every read bounded
 - **`reader.py`:** format detection from the stored bytes’ magic numbers (gzip, bzip2,
   xz, ZIP, ustar), never from what the content reader decompressed; the ZIP
   central-directory parser and the tar header parser; and member decompression with
-  `zlib`, `bz2`, and `lzma`.
+  `zlib`, `bz2`, and `lzma`, always with `max_length`. It imports only the standard
+  library and nothing from `metabrowser`: a file object and limits in, a plain index
+  out, so it can be fuzzed on its own and later run unchanged in a child process.
 - **`index_cache.py`:** the parsed indexes, kept by archive generation.
 - **`sidekick.py`:** the data hooks.
 - **`source.py`** and **`store.py`** (Phase 2): the member-source adapter and the
@@ -319,7 +326,8 @@ served folder, the object ID on a pin.
 | A name or extra field that cannot be decoded | Listed with `bad_name`; the rest of the archive lists | No |
 | A device, FIFO, or other special member | Listed | Its page says what it is; no bytes |
 | An encrypted ZIP member | Listed with `encrypted` | Its page says it is encrypted |
-| A compression method `zipfile` cannot read (Deflate64, Zstandard, PPMd, and others) | Listed with the method’s name | Its page names the method |
+| A ZIP member neither stored nor deflated (bzip2, LZMA, Deflate64, Zstandard, PPMd, and others) | Listed with the method’s name | Its page names the method |
+| A sparse tar member | Listed | Its page says it is sparse; no bytes |
 | A name not valid UTF-8 | Shown decoded with replacement characters, escaped before JSON | By the inventory’s identity spelling (`canonical_inventory_path`), which is lossless |
 | A segment that starts with `g1-` | Listed | Escaped as the SQLite plugin escapes table segments (`builtin_plugins/sqlite/database.py`), since a pin reads leading `g1-` segments as its own path |
 
@@ -662,6 +670,67 @@ folder but gzip bytes on a pin and for `.tgz`, and caps an archive at single-fil
 preview limits. A gives one byte stream on both subjects, and the reader bounds its own
 decompression.
 
+### Decision 11: How Archives Are Parsed
+
+- **A. Our own index parsers, with the standard decompressors for member bytes.**
+- **B. `zipfile` and `tarfile` as they are, wrapped in checks and bounds.**
+- **C. `zipfile` and `tarfile` in a bounded child process that returns a checked
+  index.**
+- **D. A third-party reader, such as libarchive bindings.**
+
+**Recommendation: A,** as a hybrid with the standard library kept as the test oracle.
+The owner asked whether our own parsers carry risks of their own; a review on 2026-11-24
+weighed them against each option:
+
+- **B and C keep the semantic faults.** One member with an invalid UTF-8 name makes
+  `zipfile` refuse an archive that `unzip -l` lists whole, and a corrupt second tar
+  header makes `tarfile` return one member with no error where `bsdtar` reports damage
+  and lists the rest. A wrapper or a process boundary changes neither answer.
+- **The standard readers differ by patch release.** The ZIP64 end-record check and
+  `tarfile`’s chunked extended-header read are present in some releases in the supported
+  range and absent in others, so goldens over hostile fixtures would differ by
+  interpreter, and a guard on read sizes holds on one release and not another.
+- **There is no memory-safety trade.** Both standard parsers are pure Python, as ours
+  would be; the native code is `zlib`, `bz2`, and `lzma` in every option.
+- **A is faster.** A minimal `struct` loop read central-directory entries in about a
+  quarter of `zipfile`’s time and held less memory per entry.
+- **C does not bound memory on macOS,** where the address-space limit does not apply
+  (`render_child.py`, `sqlite_readers.py`), and a child’s start costs a large part of an
+  instant listing. It remains an option for Phase 2’s whole-tar materialization.
+- **D** is a native reader, which belongs in an installed plugin, and the pure-Python
+  alternatives read local headers rather than the central directory, so they list
+  different members than `unzip`.
+
+The rules A implies:
+
+- **What we parse,** with `struct` on fixed-size records: the ZIP end record (searched
+  within its maximum comment length), the ZIP64 locator and record, central-directory
+  entries, only the ZIP64 (`0x0001`) and Unicode-path (`0x7075`) extra fields, and the
+  local header only to find the data; the tar header (checksum, octal and base-256
+  numbers, type, ustar prefix), GNU `L` and `K`, and pax `x` and `g` records, keeping
+  only `path`, `linkpath`, `size`, and `mtime`.
+- **What we leave out:** sparse tar members and ZIP members neither stored nor deflated
+  are listed and not read, so ZIP reads touch only `zlib`.
+- **What we delegate:** decompression to `zlib.decompressobj`, `bz2.BZ2Decompressor`,
+  and `lzma.LZMADecompressor` with a `memlimit`, always called with `max_length` on
+  bounded input chunks, and the budget checked between calls, as `gz_io.py` does.
+- **Invariants, each a counter a test can read:** every file read passes through one
+  counting wrapper with a named maximum; an extended header’s size is checked before it
+  is read; entries stop at `LISTING_MAX_MEMBERS`; every loop advances by at least one
+  record; every offset and span lies inside the file and before the directory; only the
+  plugin’s own error type leaves the reader; and links resolve from the index with a hop
+  limit.
+- **Data before the archive:** one explicit rule for a ZIP whose offsets are shifted by
+  prepended bytes, pinned by a test.
+- **`zipfile` and `tarfile` stay out of `src/`,** enforced by a check; tests use them as
+  fixture writers and as the oracle.
+
+Residual risks: an ambiguous archive can be read differently than by `unzip`, `bsdtar`,
+or GNU `tar`, which already disagree with one another; `bz2` and `lzma` become native
+decompressors of attacker bytes in the server, which the threat model records under T7
+as it does gzip; a missed bound has no operating-system limit behind it on macOS; and
+the oracle’s list of deviations needs upkeep as CPython changes.
+
 ## Implementation Plan
 
 Each phase is one stack, its layers listed below; implementation beads may be finer.
@@ -730,12 +799,26 @@ Each phase is one stack, its layers listed below; implementation beads may be fi
   holds, a pax header that claims a huge size, symlinks pointing out of the archive, and
   truncated and corrupt files.
 - **Unit tests:** every row of the safety table, every bound at its edge, cache and
-  store keys, and the bounded file object.
+  store keys, and the counting read wrapper.
+- **Differential tests against the standard library:** a seeded corpus from its writers
+  (stored and deflated, forced ZIP64, more than 65,535 entries, data descriptors, code
+  page 437 and UTF-8 names; tar in ustar, GNU, and pax forms with long names, links, and
+  devices). Wherever `zipfile` or `tarfile` reads an archive, our index and member bytes
+  equal theirs, and every deviation is on an enumerated list.
+- **Cross-checks against tools:** `unzip -Z1`, `bsdtar -tf`, and GNU `tar -tf` over the
+  corpus and the pinned cases (the invalid-UTF-8 ZIP and the tar with a corrupt second
+  header), skipped where a tool is absent and never in a golden.
+- **Mutation fuzzing** with no new dependency, seeded and inside `make test`:
+  truncations, bit flips, and maximized length fields, asserting only that the plugin’s
+  error type leaves the reader, the guard counters, and a `tracemalloc` ceiling; a
+  longer run lives in `devtools/`.
+- **Identical hostile goldens on every supported interpreter.**
 - **No name reaches the disk:** a test runs the listing and every member read over the
   hostile fixtures and checks that the store holds only key-named entries and nothing
   appeared anywhere else.
-- **Bombs stop in budget:** the bomb fixtures stop within the request budget, in time
-  and memory measured in the test.
+- **Bombs stop in budget:** the bomb fixtures stop within the request budget, asserted
+  on the budget’s byte counters and `tracemalloc`, never on wall time, which a loaded
+  machine varies tenfold.
 - **Goldens:** `cli-api-archive-listing`, `cli-show`, `cli-api-archive-members`, and the
   route list in `cli-api-shell`.
 - **Browserless sessions:** the Contents model (expansion, chips and filter, a stopped
