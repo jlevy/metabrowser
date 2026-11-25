@@ -89,6 +89,7 @@ _NO_MERGE_BASE = "these two commits share no history, so they have no merge base
 _UNKNOWN_COMMIT = "This commit is not in this repository."
 _NO_SHARED_HISTORY = "These two commits share no history, so they cannot be compared."
 _FILE_NOT_COMPARED = "This file is not in this comparison."
+_LINES_NOT_SHOWN = "These lines cannot be shown."
 
 log = logging.getLogger(__name__)
 
@@ -1428,13 +1429,66 @@ class GitDiffSource:
             ),
         )
 
-    async def _read_blob(self, oid: str) -> bytes:
+    async def _read_blob(self, oid: str, *, max_bytes: int | None = None) -> bytes:
         target = self._location.target
         if isinstance(target, RepositoryStoreTarget):
             from metabrowser.git.tree_source import read_store_blob
 
-            return await read_store_blob(target, oid)
-        return await run_git_at(["cat-file", "blob", oid], self._location)
+            if max_bytes is None:
+                return await read_store_blob(target, oid)
+            return await read_store_blob(target, oid, max_blob_bytes=max_bytes)
+        return await run_git_at(["cat-file", "blob", oid], self._location, max_bytes=max_bytes)
+
+    async def side_bytes(self, entry: EntrySide, *, max_bytes: int) -> bytes:
+        """One side's content, for the lines its hunks leave out (``diff/side_lines.py``),
+        read from the store's shared readers or, in a folder, by ``cat-file``.
+
+        A side past *max_bytes* is refused with ``blob_too_large``. Any other Git failure,
+        a missing or damaged object among them, is the caller's, as a comparison's is.
+        """
+        if entry.content.kind is ContentRefKind.empty:
+            return b""
+        if entry.content.kind is not ContentRefKind.git_object or entry.content.oid is None:
+            raise DiffSourceError(
+                f"{entry.path!r} has no content in this repository",
+                reader_message=_LINES_NOT_SHOWN,
+                code="no_content",
+            )
+        from metabrowser.git.tree_source import GitBlobTooLargeError
+
+        try:
+            return await self._read_blob(entry.content.oid, max_bytes=max_bytes)
+        except (GitBlobTooLargeError, GitOutputTooLargeError) as exc:
+            raise DiffSourceError(
+                f"{entry.path!r} is past the {max_bytes}-byte bound its lines are read within",
+                reader_message=_LINES_NOT_SHOWN,
+                code="blob_too_large",
+            ) from exc
+
+    async def converts(self, path: str) -> bool:
+        """Whether Git diffs *path* through a textconv driver here, so the lines a hunk
+        numbers are a conversion's and not the content's.
+
+        Only a folder's diff runs drivers (``textconv.py``; a store's never does), and only
+        where its configuration names one. Then the path's ``diff`` attribute names the
+        driver, which converts where ``diff.<driver>.textconv`` is set.
+        """
+        if self._location.target is not None or await textconv_named(self._location) is False:
+            return False
+        out = await run_git_at(
+            ["check-attr", "-z", "diff", "--", path], self._location, max_bytes=64 * 1024
+        )
+        fields = out.split(b"\0")
+        driver = fields[2].decode("utf-8", "replace") if len(fields) > 2 else "unspecified"
+        if driver in ("unspecified", "set", "unset", ""):
+            return False
+        try:
+            await run_git_at(
+                ["config", "--get", f"diff.{driver}.textconv"], self._location, max_bytes=64 * 1024
+            )
+        except GitCommandError:
+            return False
+        return True
 
     async def content(
         self, resolved: ResolvedComparison, file_id: str, side: str

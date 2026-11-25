@@ -62,12 +62,14 @@ from metabrowser.diff.format import (
     BasePolicy,
     ChangeSetDocument,
     ChangeSetManifest,
+    EntryType,
     FileChange,
     FilePatch,
     ResolvedComparison,
     Totals,
     dump_document,
 )
+from metabrowser.diff.side_lines import side_lines
 from metabrowser.file_type_match import (
     change_in_type_group,
     change_matches_types,
@@ -99,6 +101,7 @@ from metabrowser.plugin_api import (
     resolve_content,
     resolve_content_container,
 )
+from metabrowser.settings import DIFF_GAP_LINES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.tree_filter import parse_types
 from metabrowser.tree_groups import parse_group
 
@@ -121,9 +124,20 @@ MAX_HYDRATED_FILES = 50
 # A revision compares against its first parent; only two endpoints choose a base.
 _TWO_ENDPOINT_POLICIES = frozenset({BasePolicy.direct.value, BasePolicy.merge_base.value})
 
-# What a comparison request may answer instead of its document: "" is the document, and
-# "types" the File type counts the diff view's menu reads.
-_COMPARISON_VIEWS = frozenset({"", "types"})
+# What a comparison request may answer instead of its document: "" is the document,
+# "types" the File type counts the diff view's menu reads, and "lines" a run of one file's
+# lines, which the diff view draws where a hunk's gap opens (`_lines_answer`).
+_COMPARISON_VIEWS = frozenset({"", "types", "lines"})
+
+# The sides a `view=lines` request may read.
+_LINE_SIDES = frozenset({"new", "old"})
+
+# The most one `view=lines` answer reads of a side: the bound a pinned file's text view
+# reads one request within. Measured 2026-11-24 on a Mac at a load average near 230, an answer
+# of 1,000 lines from the middle of a 16,763,876-byte side took 832-1,048 ms, nearly all of it
+# Git's read (`phases=git`), beside 2.0-2.5 s for that file's comparison itself; cutting a
+# 16 MiB side into lines took 21 ms, which `asyncio.to_thread` keeps off the event loop.
+MAX_LINES_SIDE_BYTES = TEXT_PREVIEW_REQUEST_MAX_BYTES
 
 # A commit ID in full: SHA-1 or SHA-256. Anything else names what it names now.
 _FULL_COMMIT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
@@ -380,6 +394,10 @@ async def comparison_at(
     (``_type_tally_answer``), for the diff view's File type menu: the rows the Files
     tab's menu reads, over every listed change whatever ``types``, ``group`` and
     ``file`` say, so the menu does not shrink as the reader narrows.
+    ``&view=lines&file=<path>&start=<n>&count=<m>`` answers lines *n* onward of that
+    file's new side, or with ``&side=old`` its old one (``_lines_answer``): the unchanged
+    lines between its hunks, which the diff view asks for when a reader opens a hunk's
+    gap. At most ``DIFF_GAP_LINES`` lines; ``line_count`` says where the side ends.
     On a pinned revision, ``HEAD`` is that object id.
 
     A request naming two commit IDs on a store sends an entity tag that names the build
@@ -401,10 +419,13 @@ async def comparison_at(
     if view not in _COMPARISON_VIEWS:
         return _error(
             "diff_comparison",
-            "view is types, or absent for the comparison itself.",
+            "view is types or lines, or absent for the comparison itself.",
             400,
             path=revision or f"{left}..{right}",
         )
+    ask = _lines_ask(request) if view == "lines" else None
+    if isinstance(ask, str):
+        return _error("diff_lines", ask, 400, path=wanted_file)
     wanted_group = request.query_params.get("group", "")
     group = parse_group(wanted_group) if wanted_group else None
     if wanted_group and (group is None or group.by != "type"):
@@ -454,6 +475,8 @@ async def comparison_at(
         answer_key = (
             (*kept_key, "", "view=types")
             if view == "types"
+            else (*kept_key, wanted_file, "view=lines", *ask)
+            if ask is not None
             else (
                 *kept_key,
                 wanted_file,
@@ -520,6 +543,13 @@ async def comparison_at(
             tally = await asyncio.to_thread(_type_tally_answer, resolved, manifest)
             return await _send_body(
                 request, bytes(JSONResponse(tally).body), answer_key, headers, body_generation
+            )
+        if ask is not None:
+            answer = await _lines_answer(source, resolved, manifest, wanted_file, ask)
+            if isinstance(answer, JSONResponse):
+                return answer
+            return await _send_body(
+                request, bytes(JSONResponse(answer).body), answer_key, headers, body_generation
             )
         projected: list[FileChange] = []
         hydrate_ids: list[str] = []
@@ -638,6 +668,74 @@ def _type_tally_answer(
         "truncated": manifest.truncated,
         **type_tally(change_sides(change) for change in manifest.files),
     }
+
+
+def _lines_ask(request: Request) -> tuple[str, str, str] | str:
+    """A ``view=lines`` request's side, start, and count, the count at most
+    ``DIFF_GAP_LINES``, or why the request is refused."""
+
+    if not request.query_params.get("file", ""):
+        return "view=lines names a file."
+    side = request.query_params.get("side", "") or "new"
+    if side not in _LINE_SIDES:
+        return "side is new or old."
+    start = request.query_params.get("start", "")
+    count = request.query_params.get("count", "")
+    if not (start.isdigit() and count.isdigit() and int(start) >= 1 and int(count) >= 1):
+        return "start and count are whole numbers from 1."
+    return side, str(int(start)), str(min(int(count), DIFF_GAP_LINES))
+
+
+async def _lines_answer(
+    source: GitDiffSource,
+    resolved: ResolvedComparison,
+    manifest: ChangeSetManifest,
+    path: str,
+    ask: tuple[str, str, str],
+) -> dict[str, object] | JSONResponse:
+    """Lines of one side of the change at *path* (``diff/side_lines.py``), or why they
+    cannot be read.
+
+    A refusal is 409 with a ``code``: the side is absent (``no_side``), is not a file's
+    text (``not_text``: a binary change, a symbolic link, a submodule), is past
+    :data:`MAX_LINES_SIDE_BYTES` (``blob_too_large``), or is diffed through a textconv
+    driver, whose hunks number the conversion's lines (``textconv``). The page shows the
+    hunk's separator for it, as it does for a patch file, which has no side to read.
+    """
+
+    side, start, count = ask
+    change = next((c for c in manifest.files if _change_display_path(c) == path), None)
+    if change is None:
+        return _error("diff_lines", "This comparison has no entry for that path.", 404, path=path)
+    entry = change.new if side == "new" else change.old
+    refused: tuple[str, str] | None = None
+    if entry is None:
+        refused = ("no_side", f"this change has no {side} side")
+    elif change.binary or entry.entry_type is not EntryType.file:
+        refused = ("not_text", f"the {side} side is not a file's text")
+    elif await source.converts(entry.path):
+        refused = ("textconv", "this file is diffed through a textconv driver")
+    if refused is None and entry is not None:
+        try:
+            content = await source.side_bytes(entry, max_bytes=MAX_LINES_SIDE_BYTES)
+        except DiffSourceError as exc:
+            refused = (exc.code or "no_content", str(exc))
+        else:
+            lines = await asyncio.to_thread(side_lines, content, int(start), int(count))
+            return {
+                "comparison_id": resolved.comparison_id,
+                "file_id": change.id,
+                "path": path,
+                "side": side,
+                "start": lines.start,
+                "lines": list(lines.lines),
+                "line_count": lines.line_count,
+                "ends_with_newline": lines.ends_with_newline,
+            }
+    code, detail = refused or ("no_content", "")
+    return _error(
+        "diff_lines", "These lines cannot be shown.", 409, path=path, detail=detail, code=code
+    )
 
 
 def _listed_totals(changes: list[FileChange]) -> Totals:
