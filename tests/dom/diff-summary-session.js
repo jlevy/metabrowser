@@ -64,7 +64,7 @@ function change(kind, file, additions, deletions, from) {
 function line(row) {
   const indent = "  ".repeat(row.depth);
   const stats = shared.changeStats(row, formatCount);
-  const counts = stats === null ? "" : ` ${stats.additions} ${stats.deletions}`;
+  const counts = stats === null ? "" : ` ${stats.text}`;
   if (row.kind === "folder") {
     const missing = shared.missingCounts(row, formatCount);
     const files = `${row.files}${missing === "" ? "" : `; ${missing}`}`;

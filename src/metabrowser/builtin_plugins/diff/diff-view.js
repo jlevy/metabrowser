@@ -2154,15 +2154,11 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
   toggle.append(pathSpan);
   /** @param {unknown} value */
   const count = (value) => (typeof value === "number" ? value : null);
-  const counts =
-    model === null
-      ? change.additions !== null && change.additions !== undefined
-        ? { additions: `+${change.additions}`, deletions: `\u2212${change.deletions}` }
-        : null
-      : model.changeStats(
-          { additions: count(change.additions), deletions: count(change.deletions) },
-          countFormatter(api),
-        );
+  const additions = count(change.additions);
+  const deletions = count(change.deletions);
+  // Its lines as every lines summary says them, through the shell's one component (mb-ox6a).
+  const paint = additions === null && deletions === null ? null : shellPainters(api);
+  const counts = paint === null ? null : paint.changeLine({ statuses: [], additions, deletions });
   // The change's stats and notes follow the copy control, which sits right after the name
   // it copies, so they are not in the trigger: they describe it, and a click on them
   // toggles the file as anywhere else on the bar does.
@@ -2172,10 +2168,9 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
     facts = el("span", "diff-file-facts");
     facts.setAttribute("id", factsId);
     toggle.setAttribute("aria-describedby", factsId);
-    if (counts !== null) {
+    if (counts !== null && paint !== null) {
       const stats = el("span", "diff-file-stats");
-      stats.append(el("span", "diff-stat-add", counts.additions));
-      stats.append(el("span", "diff-stat-del", counts.deletions));
+      stats.append(...paint.changeLineNodes(counts));
       facts.append(stats);
     }
     for (const note of notes) {
@@ -2847,7 +2842,9 @@ function summaryOwnerOf(view, countsFiles = true) {
 /**
  * A multi-file diff's Diff summary: the header that says what the change set holds, "35
  * files changed · 2 A, 3 D, 30 M · +1,234 −3,423", and is the disclosure toggle of its files
- * as a tree by folder. Each status is its count and its rows' letter, both bold in the
+ * as a tree by folder, its chevron after its words, as every toggle that expands a diff
+ * summary has it (docs/design-system.md, "Diff Summary"; mb-f0pz). Each status is its
+ * count and its rows' letter, both bold in the
  * status's ink, and the dots between the groups, the commas, and the notes after the totals
  * are muted. It starts collapsed, and the tree is not mounted, or its module imported, until
  * the header is first opened; hovering or focusing the header asks for the module first.
@@ -2907,7 +2904,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   chevron.setAttribute("aria-hidden", "true");
   const chevronSvg = shellIcon("toggle");
   chevron.innerHTML = chevronSvg;
-  toggle.append(chevron, ...parts);
+  toggle.append(...parts, chevron);
 
   summaryIds += 1;
   const id = `diff-summary-tree-${summaryIds}`;
@@ -2980,6 +2977,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
               files: rows,
               id,
               formatCount,
+              changeLineNodes: paint.changeLineNodes,
               // The header's own chevron, for each folder row of the tree.
               chevron: () => {
                 if (!chevronSvg) {

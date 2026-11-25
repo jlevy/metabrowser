@@ -272,9 +272,6 @@
     return path.split("/").map(displaySegment).join("/");
   }
 
-  /** U+2212, the minus sign every change stat is written with. */
-  const MINUS = "\u2212";
-
   /**
    * The same order wherever it runs: folders first, then by name without case, then by the
    * name itself, so no locale's collation decides it.
@@ -668,21 +665,23 @@
   }
 
   /**
-   * A row's `+A −D`, written with *formatCount*: null when the row knows neither count, as
-   * a binary file does, and "?" for the one it does not know.
+   * A row's lines, its own or a folder's rolled up, as a brief change line of its line
+   * totals alone (formatters.js, `changeLine`), written with *formatCount*: "+A −D", a total
+   * of zero left out as every lines summary leaves it (mb-ox6a), and "?" for a count the row
+   * does not know; null when it knows neither, as a binary file does.
    *
    * @param {{additions: number | null, deletions: number | null}} row
    * @param {(count: number) => string} formatCount
-   * @returns {{additions: string, deletions: string} | null}
+   * @returns {MetabrowserChangeLine | null}
    */
   function changeStats(row, formatCount) {
     if (row.additions === null && row.deletions === null) {
       return null;
     }
-    return {
-      additions: `+${row.additions === null ? "?" : formatCount(row.additions)}`,
-      deletions: `${MINUS}${row.deletions === null ? "?" : formatCount(row.deletions)}`,
-    };
+    return formatters().changeLine(
+      { statuses: [], additions: row.additions, deletions: row.deletions },
+      formatCount,
+    );
   }
 
   /**
@@ -725,12 +724,9 @@
    * @param {(count: number) => string} formatCount
    */
   function rowLabel(row, formatCount) {
-    /** @param {number | null} count */
-    const said = (count) => (count === null ? "unknown" : formatCount(count));
-    const lines =
-      row.additions === null && row.deletions === null
-        ? ""
-        : `, ${said(row.additions)} added, ${said(row.deletions)} deleted`;
+    // Its lines in the words its stats say them (`changeStats`).
+    const stats = changeStats(row, formatCount);
+    const lines = stats === null ? "" : `, ${stats.label}`;
     if (row.kind === "folder") {
       const missing = missingCounts(row, formatCount);
       const files = `${formatCount(row.files)} ${row.files === 1 ? "file" : "files"}`;

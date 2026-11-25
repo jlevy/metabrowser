@@ -729,6 +729,9 @@ async function main() {
       },
       isLargeTextPreview: (data) => Number(data.size) > LEXED_BYTES,
       langForPath: (filePath) => (filePath.endsWith(".py") ? "python" : ""),
+      // The shell's painters of a count summary and a brief change line, which a file's bar
+      // says its lines with (diff-view.js, `renderFileBar`).
+      ...require("./changed-files-tree-fixture.js").shellPainters(),
       ensureAsset: async () => {},
       prefs: {
         get: (key, fallback) => (key === "diff.layout" ? "unified" : fallback),

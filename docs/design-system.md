@@ -595,7 +595,7 @@ A commit shows its author, revision, and age in that order.
 | Title | The subject, `.page-heading`, its own lines | The state icon, the title, and the number, `.page-heading`, cut short at two lines |
 | Author | The [actor identity](#actor-identity) | The actor identity and its sentence, “wants to merge 2 commits” |
 | Where it lives | The revision, its copy button, and its refs | The branches, head → base |
-| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …” and Browse code, and at the end the stack chip’s slot and Refresh’s |
+| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …” and Browse code, and at the end the stack chip’s slot |
 | Its own | None | The labels, a row of chips; the freshness note ending the author’s row; the status line, while it has something to say |
 | Size line | “4 files changed · 56.9 KB compressed (193.9 KB raw diff)”, the [change size line](#change-size-line) | “2 commits · 36 files changed · 1.8 MB compressed (6.2 MB raw diff)” |
 | Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison |
@@ -1280,15 +1280,16 @@ or fill, because a bordered button would read as a different thing from the link
 it. It is a link when the page already has the address, and a real `<button>` when
 following it first switches the served pin, so that a new tab or a copied address never
 opens something a click would not.
-An action that opens nothing, such as a pull request’s Refresh, is always a `<button>`.
+An action that opens nothing, such as a pull request’s Retry, is always a `<button>`.
 Both forms look the same in their context, a tooltip and accessible name say which
 commit opens and whether the pin switches, and keyboard and screen-reader users still
 get the element they expect.
 The diff file bar’s [View file and View on branch](#diff-file-bar), and
-[Browse code, a review comment’s file, and Refresh](#chrome) on a pull request’s page,
-are text actions. A sortable column header’s label, `.agents-sort` in the session table,
-is a text action in this sense: a bordered button inside a header would read as a
-different thing from the label it sits in.
+[Browse code, a review comment’s file, and Retry or Fetch](#chrome) on a pull request’s
+page, are text actions.
+A sortable column header’s label, `.agents-sort` in the session table, is a text action
+in this sense: a bordered button inside a header would read as a different thing from
+the label it sits in.
 It is a real `<button>` with the cell’s `aria-sort`, takes the label’s type, muted at
 rest and `--text` on hover, shows the sorted direction as an arrow after the label, and
 has the one focus ring.
@@ -1304,9 +1305,9 @@ the control does, not from where the answer comes from:
 
 | Word | What it does | Where |
 | --- | --- | --- |
-| Refresh | Asks for the current state of what the view shows, in place: the page stays, and what is on screen stays until the answer replaces it ([Refreshing Content](#refreshing-content)). The answer may come from the disk, the repository, GitHub, or a mirror’s origin; the reader asks for the same thing, so the word is the same | The Pulls tab’s toolbar, a pull request’s row of ages, the Commits tab after “No commits yet.” and after “History changed since this list loaded.” |
-| Fetch | The first ask for something not held at all, where there is nothing yet to refresh | A pull request’s header before its record, and the Changes body’s “Changes have not been fetched.” |
-| Retry | Asks again for what failed, beside the sentence that says what failed | The Changes body, a page of history, a commit a mirror lacks, a folder Overview panel |
+| Refresh | Asks for the current state of what the view shows, in place: the page stays, and what is on screen stays until the answer replaces it ([Refreshing Content](#refreshing-content)). The answer may come from the disk, the repository, GitHub, or a mirror’s origin; the reader asks for the same thing, so the word is the same | The Pulls tab’s toolbar, for the list and the pull request page beside it; the Commits tab after “No commits yet.” and after “History changed since this list loaded.” |
+| Fetch | The first ask for something not held at all, where there is nothing yet to refresh | A pull request’s status line before its record, and the Changes body’s “Changes have not been fetched.” |
+| Retry | Asks again for what failed, beside the sentence that says what failed | A pull request’s status line after a failed fetch or refresh, the Changes body, a page of history, a commit a mirror lacks, a folder Overview panel |
 | Reload page | Reloads the whole page, as the browser’s Reload does, where the page itself is out of date | The ref selector’s and the freshness row’s “The server now serves another revision” |
 
 - **A label is the verb alone.** The sentence beside the control says what it acts on,
@@ -1324,17 +1325,25 @@ the control does, not from where the answer comes from:
   it: one statement, at most one remedy, no internals.
 - **The same widget for the same word.** A `.btn` in a toolbar or after a notice’s
   sentence; a [text action](#control-families) in a line of chrome among links, as a
-  pull request’s Refresh ends its row of ages.
-  A Refresh that waits for a refresh already running stays in its place,
+  pull request’s Retry or Fetch ends its status line.
+  A control that waits for a refresh already running stays in its place,
   `aria-disabled`, and a press does nothing.
-- **Keys.** Refresh in the Pulls tab and on a pull request’s page is situational and
-  numbered; Retry and Reload page are rare and take no key ([The Rules](#the-rules)).
+- **One Refresh for what the screen shows.** A pull request’s page has no Refresh of its
+  own: the Pulls tab’s Refresh refreshes the page beside the list, then the list.
+  The page offers Fetch or Retry only beside a sentence that says what it lacks or what
+  failed, so the reader still has a remedy with the navigation pane hidden.
+- **Keys.** Refresh in the Pulls tab, and Retry or Fetch on a pull request’s status
+  line, are situational and numbered; the status line’s is the page’s one way to ask
+  again while the navigation pane, and its numbers, are hidden.
+  Other Retries and Reload page are rare and take no key ([The Rules](#the-rules)).
 - **One exception.** A mirror’s freshness row has no Refresh of its own: its age line,
   “Fetched 3 min ago”, is the control, and its tooltip and accessible name say it
   refreshes now.
 
 The owner found the Pulls tab’s Reload and a pull request’s Refresh doing the same thing
 under two names (2026-11-24); before that a Reload meant three different things.
+The owner then asked for one Refresh that refreshes the page and the list together
+(2026-11-25), so the page’s own Refresh went.
 `test_asking_again_has_one_word_for_each_meaning` in `tests/test_browser_copy.py` holds
 the shipped browser code to these words: no “Refresh the page”, no lowercase “refresh
 to”, no Reload that does not name the page, and none of the labels this replaced.
@@ -1602,13 +1611,15 @@ differently under one design.
 - **A folder’s row is one line, and the chevron is on it**, so a click anywhere on the
   row toggles its children ([Navigation Tree Folders](#navigation-tree-folders)), as a
   container file’s row does ([Container Rows](#container-rows)).
-- **A pull request in the Pulls tab is one item of three lines**, and only the third,
-  its change line, carries the chevron.
-  A click anywhere on the change line, the chevron, the number, the author, or the lines
-  changed, opens or closes the changed files and opens no page.
-  A click on the title’s two lines selects and opens the pull request and expands
-  nothing, because those lines belong to the item, not to the toggle
-  ([The Pulls Tab](#the-pulls-tab)).
+- **A pull request in the Pulls tab is one item, its link**, and its toggle is the end
+  of its run: the lines the pull request changes and the chevron after them, the summary
+  the chevron expands ([Diff Summary](#diff-summary)). A click on the lines or the
+  chevron opens or closes the changed files and opens no page.
+  A click anywhere else on the item, the title, the place, the number, the author, or
+  the age, selects and opens the pull request and expands nothing, because those parts
+  belong to the item, not to the toggle ([The Pulls Tab](#the-pulls-tab)). It had a
+  third line that was the toggle’s, the number, the author, and the lines with the
+  chevron, until the number and the lines joined the title’s run.
 
 The keyboard sees the item, not its lines: an item is one stop and one selection, and
 its keys are a folder’s ([Navigational Row Collections](#navigational-row-collections)).
@@ -1617,9 +1628,9 @@ item takes focus of its own.
 
 The item shows that it holds a narrower target.
 The whole item takes one `--hover-bg` ground under the pointer, as a Files row does, and
-while the pointer is on the toggle’s line the chevron also stands on a `--border` plate
-in `--text` ink, as an icon button’s glyph does on a plain ground.
-The plate covers the chevron’s slot alone, so the line’s inks keep the grounds their
+while the pointer is on the toggle the chevron also stands on a `--border` plate in
+`--text` ink, as an icon button’s glyph does on a plain ground.
+The plate covers the chevron’s slot alone, so the toggle’s inks keep the grounds their
 contrast is held on.
 For assistive technology the toggle is the item’s, as it is for the keyboard.
 Where the line is the item, as a folder’s row is, the line carries `aria-expanded`.
@@ -1629,9 +1640,10 @@ a tree’s item may own only items and groups, so a button inside it would make 
 invalid. The line’s words, hidden too, describe the item’s stop (`aria-describedby`).
 
 `tests/dom/github-pulls-row-lines-session.js` pins the rule for the Pulls item: a press
-on the chevron or the change line flips exactly that item and opens no page, a press on
-any other part changes no expansion, and only Space, Right, and Left change it from the
-keyboard, each on the item with focus.
+on the chevron or the lines flips exactly that item and opens no page, though they are
+in the item’s link, a modified or middle press on them flips nothing and opens no tab, a
+press on any other part opens the pull request and changes no expansion, and only Space,
+Right, and Left change it from the keyboard, each on the item with focus.
 `tests/dom/github-pulls-row-lines-chrome.mjs` measures the two hovers and the real
 presses in Chrome, and reads the line’s place in Chrome’s accessibility tree.
 
@@ -1665,11 +1677,14 @@ one activation target with folder navigation.
 ### One Chevron, One Row Contract
 
 Every disclosure chevron in the product is the same Lucide mark: the registry’s leading
-glyph on row-like targets (tree folders, tally tree, diff file bars) and the
-section-disclosure mask after heading-like titles, both in `--muted`, pointing right
-when closed and rotating to point down when open.
-A [fold expander](#fold-expanders) takes no chevron: it sets withheld content back in
-place rather than opening a row’s children, so it draws its own pair of glyphs.
+glyph on row-like targets (tree folders, a Pulls stack’s row, tally tree, diff file
+bars) and the section-disclosure mask after heading-like titles, both in `--muted`,
+pointing right when closed and rotating to point down when open.
+A toggle that expands a diff summary is the one row-like target whose chevron comes
+after its words: the Diff summary’s header, and a Pulls row’s lines
+([Diff Summary](#diff-summary)). A [fold expander](#fold-expanders) takes no chevron: it
+sets withheld content back in place rather than opening a row’s children, so it draws
+its own pair of glyphs.
 Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agreements
 are enforced by `tests/test_design_vocabulary.py`, which fails when a surface forks the
 glyph, the row height, or the hover token, or puts the chevron on a fold.
@@ -1730,12 +1745,13 @@ aligning the two faces on one baseline would grow the line, so it stays centered
 was measured before a revision took its line’s size, and has not been measured again.
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#row-baselines)
 has the offsets behind these three decisions.
-A [Pulls](#the-pulls-tab) row left the table when its title took two lines: the title is
-one run of inline text, and the change line under it sets the number’s line and the age
-at one size on one line height and centers every part.
-Aligned to a baseline, the number and the age took it from the number’s line, a wrap
-whose first line can hold no text, and moved 6px when the author left that line (Chrome
-152, at 200 and 180px; `tests/dom/github-pulls-row-lines-chrome.mjs` holds them still).
+A [Pulls](#the-pulls-tab) row left the table when its title took two lines: its run is
+one flow of inline text, and its last line sets the author and the age at one size on
+one line height and centers them.
+Aligned to a baseline, the number and the age had taken it from the line that held the
+number, a wrap whose first line can hold no text, and moved 6px when the author left
+that line (Chrome 152, at 200 and 180px); `tests/dom/github-pulls-row-lines-chrome.mjs`
+holds the last line still as the lines arrive.
 
 `test_row_text_shares_one_baseline` in `tests/test_design_vocabulary.py` checks this
 table against the stylesheets: every text slot opts in, and no rule that aligns to the
@@ -2377,7 +2393,7 @@ surface that shows a merge calls `mergeRefs`.
 `test_merges_read_source_to_target_in_one_notation` in `tests/test_design_vocabulary.py`
 holds that the page calls it head first, draws no ref chip of its own, and never writes
 `←`, that a Pulls row does not call it, the arrow’s name, direction, floor, and tokens,
-and the rules by which a Pulls row’s number’s line gives way.
+and the rules by which a Pulls row’s last line gives way.
 The page’s session holds the order, the arrow’s name, and the literal refs it draws.
 
 ### File Change Status
@@ -2413,12 +2429,17 @@ share these rules wherever they appear.
 
 The `+N` / `−N` pair that rides beside a filename wherever a surface reports change
 size: `.diff-stat-add` in `--status-success-text`, `.diff-stat-del` in
-`--status-error-text`, always in that order, using the true minus sign, at the local
-small-text size, and always `--weight-bold`: the pair is data, and it must read at a
-glance. The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and
-weight rule but use the commit summary’s standard body size.
-The same pair is the [Diff summary](#diff-summary)’s vocabulary, so a change set, its
-folders, and its files read identically.
+`--status-error-text`, always in that order, using the true minus sign, at the size of
+the text it rides in, and always `--weight-bold`: the pair is data, and it must read at
+a glance. A total of zero is left out, and a file of no lines changed reads “0 lines”.
+The pair is the [brief change line](#brief-change-line) of its line totals alone, built
+and painted by the one component wherever it is drawn: `changeLine` and its painters,
+`changeLineNodes` and `changeLineHtml`, in `static/formatters.js`. A tree of changed
+files reaches it for a file’s row and a folder’s through `changeStats` in
+`static/changed-files-tree.js`; a diff’s file bar (`renderFileBar` in
+`builtin_plugins/diff/diff-view.js`, through the SDK) and a commit page’s file list
+(`static/git-panel.js`) call it directly, so a change set, its folders, and its files
+read identically and leave out a zero total by one rule.
 Kind letters reuse the same mapping (added is `--status-success-text`, deleted is
 `--status-error-text`), and no diff surface introduces a local green or red.
 
@@ -2436,24 +2457,22 @@ reaches both through the SDK, `metabrowser.changeLine` and `metabrowser.changeLi
 dot muted, and the totals the [inline change stats](#inline-change-stats).
 The statuses and the dot after them are one item (`.change-line-group`), so a line that
 wraps breaks after the dot and no line starts with one, and its gap is the Diff
-summary’s. A change set of no statuses is its totals alone, “+0 −0”, and a count it does
-not know is “?”. Its `label` says it in words for a screen reader, “10 added, 5 deleted,
-4 modified; 1,234 lines added, 567 deleted”, and on a line whose name does not, its
-hidden dot says a comma in its place (`spoken`). The [Diff summary](#diff-summary)’s
-header is this component, after its file count, “35 files changed · ”, only where no
+summary’s. A change set of no statuses is its totals alone, “+1,234 −567”, and a count
+it does not know is “?”. A total of zero is left out, so a change set that only adds
+lines reads “+1,234” and one that only deletes them “−567”, since a “−0” is noise
+wherever the line stands; totals both nonzero, or not known, read both, and a change of
+no lines reads “0 lines”, muted at its line’s weight (`.change-line-none`), said “no
+lines changed”.
+Its `label` says it in words for a screen reader, “10 added, 5 deleted, 4
+modified; 1,234 lines added, 567 deleted”, and on a line whose name does not, its hidden
+dot says a comma in its place (`spoken`). The [Diff summary](#diff-summary)’s header is
+this component, after its file count, “35 files changed · ”, only where no
 [size line](#change-size-line) above it says the count; a commit’s
 [hover card](#git-commit-summary), a commit page’s totals line, a pull request’s row in
 the Pulls tab ([The Pulls Tab](#the-pulls-tab)), and a stack’s heading there
 ([Stack Groups](#stack-groups-in-the-pulls-tab)) draw it too; the last two draw its line
-totals alone, with no statuses, as the Pulls column’s change line shares its row with
-the number and the author.
-Those two also build it with `omitZeroTotals`, which leaves out a total of zero, so a
-pull request that only adds lines reads “+1,234” and one that only deletes them “−567”,
-since a “−0” beside the number is noise there; totals both nonzero, or not known, read
-as they do everywhere, and a change of no lines reads “0 lines”, muted at its line’s
-weight (`.change-line-none`), said “no lines changed”.
-Every other surface says both totals, “+0 −0” included, as a change set’s full account.
-It sets no size or ink of its own, so it takes its line’s.
+totals alone, with no statuses, as a Pulls row’s lines share its run with the title and
+the number. It sets no size or ink of its own, so it takes its line’s.
 `tests/dom/count-parts-session.js` pins its markup (`cli-ui-count-parts.tryscript.md`),
 and `test_count_summaries_mute_their_punctuation_and_ink_their_status_counts` its rule
 and that no plugin writes its classes itself.
@@ -2527,9 +2546,9 @@ the read, with one quiet period and one pulse, so the row is never empty while t
 comparison is on its way.
 Where the pull request’s changed-files list is cached, the list a Pulls row’s change
 line sums, the place holds that list’s line instead of the placeholder: “2 A, 3 D, 31 M
-· +2,076 −224”, the summary’s header’s words with its chevron’s slot empty, in the same
-place, so the summary that replaces it moves no word, and the size line above says its
-file count, “36 files changed”.
+· +2,076 −224”, the summary’s header’s words with no chevron, which the header brings
+after them, in the same place, so the summary that replaces it moves no word, and the
+size line above says its file count, “36 files changed”.
 It is drawn only once the page knows the head, and only for a list of that head and its
 base, the record’s comparison’s base commit or the pull request’s base branch, so a
 pushed or retargeted pull request never shows an earlier list’s counts; the placeholder
@@ -2559,17 +2578,24 @@ in each state; the block’s measured size is in
 Its header is at `--body-font-size`, the size of the lines above it on a page
 ([Page Headers](#page-headers)), and in a patch’s toolbar too, and its tree’s rows at
 the navigation rows’ size.
-It is one row-like disclosure toggle that leads with the registry’s chevron in the
-tree’s icon slot, `--tree-icon-slot`: “35 files changed · 2 A, 3 D, 30 M · +1,234
-−3,423”, “1 file changed · 1 R · +5 −2” for one renamed file.
-It is its file count, “35 files changed”, and a muted dot, then the
-[brief change line](#brief-change-line), the one component for the statuses and the line
-totals, “2 A, 3 D, 30 M · +1,234 −3,423”; in a page’s header, on a commit’s page and a
-pull request’s, it is the brief change line alone, “› 2 A, 3 D, 30 M · +1,234 −3,423”,
-and the file count is on the [size line](#change-size-line) above it, whose accessible
-name and tooltip leave the count out too (`countsFiles` in `diff-view.js`); each dot is
-one item with the group before it, so a header that wraps breaks after a dot and no line
-starts with one, and one gap spaces it on both sides, on a toggle and on a line alike.
+It is one row-like disclosure toggle that ends with the registry’s chevron, in the
+tree’s icon slot, `--tree-icon-slot`, after its words: “35 files changed · 2 A, 3 D, 30
+M · +1,234 −3,423 ›”, “1 file changed · 1 R · +5 −2 ›” for one renamed file.
+**Wherever a diff summary expands, its chevron comes after the summary**: on this header
+and on a Pulls row, whose toggle is its lines and the chevron after them
+([The Pulls Tab](#the-pulls-tab)), so the counts are read first and the mark that opens
+them follows. A folder’s toggle and a stack’s lead with their chevrons, as a tree’s rows
+do ([One Chevron, One Row Contract](#one-chevron-one-row-contract)).
+`tests/dom/diff-view-behavior.js` holds the header’s chevron last, and
+`tests/test_reserved_chrome.py` the Pulls row’s. It is its file count, “35 files
+changed”, and a muted dot, then the [brief change line](#brief-change-line), the one
+component for the statuses and the line totals, “2 A, 3 D, 30 M · +1,234 −3,423”; in a
+page’s header, on a commit’s page and a pull request’s, it is the brief change line
+alone, “2 A, 3 D, 30 M · +1,234 −3,423 ›”, and the file count is on the
+[size line](#change-size-line) above it, whose accessible name and tooltip leave the
+count out too (`countsFiles` in `diff-view.js`); each dot is one item with the group
+before it, so a header that wraps breaks after a dot and no line starts with one, and
+one gap spaces it on both sides, on a toggle and on a line alike.
 The statuses are only those some file has, in one order (added, deleted, modified,
 renamed, then copied, type changed, unmerged, and any other), each a status count, its
 count and the letter its rows carry, with a muted comma between each two; numbers use
@@ -2588,7 +2614,7 @@ A list that is whole says its own totals, whatever the page gives.
 A host that cuts the breakdown short to keep the header on one line, as a pull request’s
 header does, gives the header its whole words as a tooltip while it is cut, and none
 while it is whole ([Tooltips Add Information](#tooltips-add-information)). A change set
-of no files has nothing to open, so its header is a line, “0 files changed · +0 −0”,
+of no files has nothing to open, so its header is a line, “0 files changed · 0 lines”,
 which has no name, so each hidden dot says a comma in its place.
 Where the shared tree did not load, the header is a line without its statuses, which
 only the tree’s model names, “N files changed · +A −D” in the shell’s number format,
@@ -2615,13 +2641,14 @@ name is on the row ([Tooltips Add Information](#tooltips-add-information)). A pa
 patch lists more than once, as a file that became a symlink, is one row with both
 changes’ counts, and goes to the first of its sections.
 The header is the tree’s root, so the tree’s first level starts one indentation step,
-`--tree-indent`, in from it, its chevron from the header’s chevron and its name from the
-header’s words, and each level one step more, as a folder’s rows start one step in from
-the folder in the Files tree and the Pulls tab’s, wherever the summary is: in a diff’s
-toolbar, under a commit’s identity, and in a pull request’s header.
+`--tree-indent`, in from it, its chevron from the header’s words, and each level one
+step more, as a folder’s rows start one step in from the folder in the Files tree and
+the Pulls tab’s, wherever the summary is: in a diff’s toolbar, under a commit’s
+identity, and in a pull request’s header.
 The rows give back where the header starts, `--diff-summary-header-inset`, the toolbar’s
-padding in a diff and nothing at a page’s top, less its pull to the left,
-`--diff-summary-toggle-pull`, which lets its hover ground reach past its chevron.
+padding in a diff and nothing at a page’s top; the header pulls left by
+`--diff-summary-toggle-pull` and pads back in, so its words start where it is placed and
+its hover ground reaches a little past them.
 Opened, the tree sits under its header, below the toolbar in a diff, as tall as its
 rows, in the page’s flow, with no scroll bar of its own: the page scrolls past it.
 It has no bound on its length beyond the comparison’s (`MAX_MANIFEST_FILES`), and the
@@ -2880,17 +2907,17 @@ tests named beside each primitive.
 The page is a header, a [tab bar](#the-tab-bar), and a body, in that order; native stack
 navigation is part of the header.
 The header is a [page header](#page-headers), as a commit’s summary is: the title, then
-the row of ages, which ends in the stack chip and Refresh, the author’s row, which ends
-in the freshness note, the branches, the labels, the status line while it has something
-to say, and the Diff summary, every line under the title at the body size and one gap
-under the one before.
-It shares the title, the author, the age, and the Diff summary with a commit’s page, in
-that order, and keeps the state, the branches, the labels, the stack chip, and the
-status line, which a commit does not have; the table there says where the two diverge
-and why. The author is the shell’s [actor identity](#actor-identity), its avatar’s box
-holding the person glyph where GitHub gave no usable avatar, as a commit’s author’s
-does. The header, tabs, Conversation, and Checks use `.page-reading-column` and start at
-the same pane gutter as the commit summary.
+the row of ages, which ends in the stack chip, the author’s row, which ends in the
+freshness note, the branches, the labels, the status line while it has something to say,
+and the Diff summary, every line under the title at the body size and one gap under the
+one before. It shares the title, the author, the age, and the Diff summary with a
+commit’s page, in that order, and keeps the state, the branches, the labels, the stack
+chip, and the status line, which a commit does not have; the table there says where the
+two diverge and why.
+The author is the shell’s [actor identity](#actor-identity), its avatar’s box holding
+the person glyph where GitHub gave no usable avatar, as a commit’s author’s does.
+The header, tabs, Conversation, and Checks use `.page-reading-column` and start at the
+same pane gutter as the commit summary.
 The first tab aligns with the content in narrow and wide panes.
 The column includes the card’s insets so its text can reach the same measure as the
 rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
@@ -2908,8 +2935,10 @@ on that page, so it lands moving nothing; a one-line title then has an empty sec
 there alone. A record that lands within the quiet period was never seen cold, and takes
 its own lines. The icon and the text start at the header’s left edge, and the number,
 outside the clamped text, ends on the header’s right edge, level with the title’s last
-line, over Refresh’s slot, which ends the row of ages with the stack chip just before
-it, whatever the title’s length.
+line, over the stack chip’s slot, which ends the row of ages, whatever the title’s
+length. Where the title leaves the View on GitHub button its room, the row of ages keeps
+that width, so the chip ends at the content edge, that room past the number’s end:
+taking the room from the row too cut its ages and Browse code short in a narrow pane.
 The colored badge that leads the row of ages gives the state in text and the title icon
 is decorative. The header’s box is decided at first paint, on every tab, but for the
 title’s lines and two rows.
@@ -2917,19 +2946,19 @@ The labels row is there only while a pull request has labels, so the tab bar und
 moves when a pull request gains its first label or loses its last.
 The status line is there only while it has something to say, so the tab bar moves as a
 failure, a message, or an offer comes and goes, and for nothing else: never between
-tabs, nor as the age ticks, Refresh comes, or a rate limit’s hold begins or lifts.
+tabs, nor as the age ticks, or a rate limit’s hold begins or lifts.
 Otherwise it is decided in every state: the row of ages begins with the state’s badge,
 as wide as the widest state, then “Opened”, the ages, and Browse code, and ends in the
-stack chip’s slot and then Refresh’s (see native stack navigation below), one line at a
-chip’s height whose ages are cut short at their end, the links after them whole down to
-420 px, or 560 px beside two stacks’ chips, below which they are clipped at the row’s
-end; the author’s row is one line, the author and the sentence, then the freshness note;
-where that row has no room left, the note leaves it first, whole, and then the sentence
-is cut short at its end, the action first and then the author, never moved or wrapped;
-the branches have the line under it to themselves, one line in every state, their names
-cut short rather than wrapping it; a pull request with labels has a row of them, one
-line at a label’s height, and one with none has no labels row and no gap for it; and a
-cold page keeps every row, empty, at its height.
+stack chip’s slot (see native stack navigation below), one line at a chip’s height whose
+ages are cut short at their end, the links after them whole down to 420 px, or 560 px
+beside two stacks’ chips, below which they are clipped at the row’s end; the author’s
+row is one line, the author and the sentence, then the freshness note; where that row
+has no room left, the note leaves it first, whole, and then the sentence is cut short at
+its end, the action first and then the author, never moved or wrapped; the branches have
+the line under it to themselves, one line in every state, their names cut short rather
+than wrapping it; a pull request with labels has a row of them, one line at a label’s
+height, and one with none has no labels row and no gap for it; and a cold page keeps
+every row, empty, at its height.
 The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
 its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
 now via GitHub CLI”, never a second time for a check that found nothing changed, since
@@ -2950,27 +2979,29 @@ at all. Beside the sentence the note is whole or not there: where it cannot be w
 leaves the line, dot and all, so the author and the sentence keep their natural widths
 while it shows, and only then is the sentence cut short.
 Alone on the row, before a record, it is cut short with its whole text as a tooltip.
-Refresh or Fetch ends the row of ages, at its right end, its slot held hidden when there
-is nothing to refresh, so its coming moves nothing, and a stack chip arriving before it
-moves it not at all; the ages are cut short before it, and it never is.
-It follows Browse code, so it takes the number after Browse code’s and renumbers it
-neither as it comes nor as it goes
-([Numbered Controls](keyboard-shortcuts.md#numbered-controls)). While a refresh it
-offered runs or is due, or a rate limit holds it, it waits, as the Pulls tab’s Refresh
-does: shown and muted, `aria-disabled`, it keeps its slot and its number, so an offer
-numbered after it keeps its own, and a press does nothing.
-Once the refresh ends, Refresh shows only where it is offered: on Conversation and
-Checks, with nothing left to refresh, it goes, and an offer after it takes its number.
-The status row is the next metadata line, a line tall, as the author’s row is, there
-only while it has something to say: a failure and its remedy, a message, and the offers
-at its end, its text and then its offers’ sentences cut short, never their controls.
-A comparison’s refusal is said in the Changes body, beside its Retry, not on the status
-row, which would then show it on Changes alone and move the tab bar between tabs.
-A pull request that cannot be shown has no author’s row and no row of ages, so its
-message and Refresh’s slot are on the status row.
+The page has no Refresh of its own: the Pulls tab’s Refresh refreshes the page beside
+the list and then the list, and waits, muted, while neither has anything to refresh
+([Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page)). The page offers its
+remedy where it says what it lacks or what failed: Fetch beside “This pull request has
+not been fetched yet.”, or beside a saved copy another version wrote, and Retry beside a
+failure to fetch or refresh it, first among the status row’s offers, so the reader can
+ask again with the navigation pane hidden.
+It follows Browse code, so it takes the number after Browse code’s
+([Numbered Controls](keyboard-shortcuts.md#numbered-controls)). While the refresh it
+asked for is due and has not started, it waits: shown and muted, `aria-disabled`, it
+keeps its place and its number, so an offer numbered after it keeps its own, and a press
+does nothing.
+Once that refresh runs, the status row says so in its place, and the remedy
+goes. The status row is the next metadata line, a line tall, as the author’s row is,
+there only while it has something to say: a failure and its remedy, a message, and the
+offers at its end, its text and then its offers’ sentences cut short, never their
+controls. A comparison’s refusal is said in the Changes body, beside its Retry, not on
+the status row, which would then show it on Changes alone and move the tab bar between
+tabs. A pull request that cannot be shown has no author’s row and no row of ages, so its
+message and its remedy are on the status row.
 Only a failure, which says what to do, wraps the status row.
-Refresh or Fetch is a [text action](#control-families), a line tall, as Browse code is,
-so its row is no taller than its text.
+Retry or Fetch is a [text action](#control-families), a line tall, as Browse code is, so
+its row is no taller than its text.
 A cold page holds the labels row while the labels are unknown, since the record may
 bring some: a record with labels lands moving nothing, and one with none takes the row
 and its gap away in the paint that lands it, the one paint that changes the header and
@@ -3031,11 +3062,10 @@ its age line breathes ([Refreshing Content](#refreshing-content)). Its freshness
 names GitHub CLI and the plain fetch age, with no prefix while a refresh runs and no
 suffix while the record is stale, since a stale page is refreshing.
 It names a problem only when no refresh can run: `Offline`,
-`GitHub rate limit reached. Next attempt after` a time, or the last failure with
-Refresh. The wording is `rateLimitText` in `builtin_plugins/github/copy.js`, which every
-GitHub surface uses.
-The Checks tab uses the same heading and status badges for check runs and status
-contexts. A check row is its status badge, its plain name, its action, and its
+`GitHub rate limit reached. Next attempt after` a time, or the last failure with Retry.
+The wording is `rateLimitText` in `builtin_plugins/github/copy.js`, which every GitHub
+surface uses. The Checks tab uses the same heading and status badges for check runs and
+status contexts. A check row is its status badge, its plain name, its action, and its
 description. The action says where it opens: **View action on GitHub** for a GitHub
 Actions run, **View on GitHub** for another page on a GitHub host, and **View details**
 for the check’s own site, and its accessible name adds the check’s name.
@@ -3068,24 +3098,21 @@ A member selection preserves the current PR tab and clears the previous file sel
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
 known cached membership remains visible during refresh or failure.
 Membership has its slot at the right end of the row of ages, with the state and ages it
-belongs with, under the end of the title and just before Refresh’s slot, which ends the
-row.
-Its chip, which arrives from its own answer after the page, lands in the row’s empty
-end and moves nothing, Refresh included, since Refresh keeps its slot whether it shows
-or not; a chip ending the row instead would push Refresh along by its own width as it
-arrived.
-The chip keeps its whole width while any of the ages or Browse code shows: where
-the row has no room left for it, the ages are cut short at their end, then Browse code,
-and only once they have no width left is a chip’s position cut short, its tip saying the
-whole of it, so the row never ends past the header.
+belongs with, under the end of the title, and it ends the row at the content edge, where
+the title’s number ends unless the title leaves the View on GitHub button room.
+Its chip, which arrives from its own answer after the page, lands in the row’s empty end
+and moves nothing. The chip keeps its whole width while any of the ages or Browse code
+shows: where the row has no room left for it, the ages are cut short at their end, then
+Browse code, and only once they have no width left is a chip’s position cut short, its
+tip saying the whole of it, so the row never ends past the header.
 The slot’s strut holds the row at a chip’s height from first paint, and the author’s row
 is a line. Its menu hangs from the row’s end.
 Its `details` is no taller than the strut it replaces there, since the slot sets the
 chip’s own size. `tests/dom/github-pull-header-chrome.mjs` holds, in Chrome, on
-Conversation, where Refresh is held hidden, and on Changes, where it shows, that a late
-chip moves nothing in the header, Refresh and every row included, shows whole, sits one
-gap before Refresh’s slot on the row of ages, does not overlap the ages, and has its
-position cut short only once the ages and Browse code have no width left
+Conversation and on Changes, that a late chip moves nothing in the header, every row
+included, shows whole, ends the row of ages on the content edge, the title’s room past
+the end of its number, does not overlap the ages, and has its position cut short only
+once the ages and Browse code have no width left
 ([measurements](../explorations/performance-loop/design-rule-measurements.md#pull-request-stacks-and-the-timeline)).
 
 ### Text
@@ -3223,7 +3250,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
-| Refresh, Fetch | [Text action](#control-families): `.github-pull-text-action` on a button | Refresh ends the row of ages, after Browse code and the stack chip, so it looks as a link does and is a line tall, where a bordered `.btn` is taller than a metadata line |
+| Retry, Fetch | [Text action](#control-families): `.github-pull-text-action` on a button | The status line’s remedy, first among its offers, so it looks as a link does and is a line tall, where a bordered `.btn` is taller than a metadata line |
 
 Author, action, and relative age share one metadata size and baseline in a header or
 discussion card. The bold username uses the normal text ink wherever it names an actor.
@@ -3359,26 +3386,30 @@ The list beside Files and Commits, on a GitHub repository, shows every pull requ
 newest first. Like the page it opens, it has almost no vocabulary of its own.
 `test_the_pulls_tab_carries_the_shells_primitives` holds what follows.
 
-A pull request is one item of three lines, with one hover, one selection, and one
-keyboard stop: its link, the first two lines, its title’s, and its change line, the
-third: the registry’s chevron, then the number, the author, and the lines the pull
-request changes, its [brief change line](#brief-change-line) of its line totals alone,
-“#455 · jlevy · +1,234 −567”, a total of zero left out, “+1,234” for a pull request that
-only adds lines, with the age at the row’s end.
+A pull request is one item, its link, with one hover, one selection, and one keyboard
+stop: a run and a last line.
+The run is one flow: the state icon, then the title, a stack member’s place, the number,
+and the lines the pull request changes, its [brief change line](#brief-change-line) of
+its line totals alone, a total of zero left out, “+1,234” for a pull request that only
+adds lines, with the registry’s chevron after them, a muted dot before each part after
+the title: “Fix the reader · 5/12 · #455 · +1,234 −567 ›”. The run wraps where it needs
+to, and every line of it starts in the text column, past the icon, as a tree’s title
+wraps past its icon.
+The last line is the author, in the text column, and the age at the row’s end.
 The item holds the pull request’s changed-files tree, which hangs under it, is owned by
 the row’s link through `aria-owns`, whose `aria-expanded` alone says whether it is open,
 and starts collapsed.
-The change line is the line with the toggle, so clicking anywhere on it, the chevron,
-the number, the author, or the lines, toggles the tree and opens no page; clicking the
-title’s two lines opens the page and expands nothing
+The lines and the chevron after them are the toggle, the summary the chevron expands
+([Diff Summary](#diff-summary)): clicking them toggles the tree and opens no page, and
+clicking anywhere else on the item, the title, the place, the number, the author, or the
+age, opens the page and expands nothing
 ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)). A press
-there, or Space, Right, or Left on the item, keeps the row where it is, under the
-pointer or the focus, even above a row a reveal placed, whose place gives way to it.
+on the toggle, or Space, Right, or Left on the item, keeps the row where it is, under
+the pointer or the focus, even above a row a reveal placed, whose place gives way to it.
 No row expands on its own: not when it opens, not when it is selected, and not on a
 key’s walk, so Up, Down, J, and K walk the pull requests and each row shows its line
-totals.
-A walk or a reveal brings the whole item into view, its three lines and the focus
-ring round them, clear of the sticky filters, not only its link’s two lines.
+totals. A walk or a reveal brings the whole item into view, and the focus ring round it,
+clear of the sticky filters.
 An address naming a changed file opens its owner’s tree if needed
 ([Navigation Reveals the Item](#navigation-reveals-the-item)). Moving to another PR
 closes a tree opened only for that address; trees the reader opened stay open.
@@ -3394,19 +3425,22 @@ A row’s line is read again only when something says its list changed: the list
 requests names a new head commit for it, the prefetch lane reports it listed the row’s
 files, or the row’s tree reads a list of another refresh
 (`builtin_plugins/github/row-lines.js`). While a line is read, or for a minute at most
-while the row’s files are being listed, the change line holds the shell’s pending
-placeholder after the author, where the lines will be, after the quiet period; a row
-whose files are not cached and not being listed shows the chevron, the number, and the
-author alone.
-The change line’s box is the row’s third line whatever it holds, so nothing
-moves when the lines arrive.
-The change line is the pointer’s alone: never focused, and hidden from assistive
-technology (`aria-hidden`), since a tree’s item may own only items and groups.
+while the row’s files are being listed, the run holds the shell’s pending placeholder
+after the number and its dot, where the lines will be, after the quiet period; a row
+whose files are not cached and not being listed shows no lines, its run ending with the
+dot and the chevron, “#455 · ›”, in the same room, so nothing moves when the prefetch
+lane lists its files and its lines are read after all.
+The lines and the chevron are one box that the run breaks before and never inside, at
+least as wide as the placeholder and the chevron, so lines no wider than the placeholder
+arrive where it was and nothing moves; the room past shorter lines is after the chevron,
+at the run’s end. The toggle is the pointer’s alone: never focused, and hidden from
+assistive technology (`aria-hidden`), since a tree’s item may own only items and groups.
 Its words, hidden too, say the lines, “Changed files: 1,234 lines added, 567 deleted”,
 and only “Changed files” while there are none, and the row’s link, the item’s one stop,
 describes itself by them (`aria-describedby`). The link’s own name says the number, the
-author, and the age after the title, in text that is out of view but read (`rowSaid` in
-`pulls-panel.js`), since the line that shows them is hidden.
+author, and the age after the title and the place, in text that is out of view but read
+(`rowSaid` in `pulls-panel.js`), since the number and the last line, which show them,
+are hidden.
 
 A pull request’s title is always bold in normal text ink, wherever it appears: the
 page’s heading, a Pulls row, the page’s stack menu, and a search result.
@@ -3414,36 +3448,34 @@ A conventional-commit prefix that starts it is regular ([Titles](#titles)). A ro
 menu item is a link, so the title sets its own ink and weight, and no visited, hover,
 focus, selected, or current state changes them.
 A pull request’s number is bold wherever it names the pull request
-([Pull Request Numbers](#pull-request-numbers)). The number’s line gives the PR number
-normal row size and text ink.
-Usernames use the same small metadata size and bold normal text ink; the repository
+([Pull Request Numbers](#pull-request-numbers)), in a row at the run’s size and in text
+ink. Usernames use the same small metadata size and bold normal text ink; the repository
 summary above the list is the [navigation metadata line](#navigation-metadata-line).
 A row names no branches: the pull request’s page names them, head → base, as
 [Merge Direction](#merge-direction) sets them, and the row’s room goes to its title.
-A row’s first two lines are its title’s, one flow from the list’s row inset to the row’s
-end: the state icon, in the tree’s icon slot, then a stack member’s place in its stack,
-bold, and the stack menu’s muted dot, “14/15 · ”, as [Stacks](#stacks) sets the place,
-then the title. The title wraps onto the second line under the icon, and one longer than
-two lines is cut short with an ellipsis at the second line’s end, the whole of it on the
-page it opens; the two lines are there from the first paint, a title of one line
-included, so a member’s title has the room a first-level row’s has, less its one indent.
-A row not in a stack has no place and no dot: the icon, then the title.
+A row’s run starts on the list’s row inset with the state icon, in the tree’s icon slot,
+then the title in the text column, then, for a stack member, the stack menu’s muted dot
+and its place in its stack, bold, “· 14/15”, as [Stacks](#stacks) sets the place, then
+the dot and the number, “· #455”, then the dot and the toggle, the lines and the
+chevron: the stack menu’s member line’s order, the title, then the place and the number.
+A row not in a stack has no place and no dot before one: the icon, the title, and the
+number. A dot keeps to the part before it, so a line breaks after a dot and never starts
+with one; the place and the number never break, and only a word of the title longer than
+the line breaks anywhere.
+The run is never cut short, so it always ends with the chevron.
+At the nav’s default width a typical title’s run takes three lines, so its row is four
+with its last, one more than when the title was cut short at two lines and the number
+and the lines were on the third with the author; a short title’s run takes two, as most
+do at a wider pane, and a long one more.
+The list places each row by its measured box, so a title’s length moves no row.
 A row in no stack is flush on the list’s inset; only a stack’s members are indented,
-under their stack’s row, so the indent itself says which rows are a stack’s. The third
-line is the chevron, in the same slot under the state icon, then the number’s line in
-the text column, one column gap after the chevron’s slot: the number, the author, and
-the lines changed, “#113 · jlevy · +1,234 −567”, with the age at the row’s end.
-So the chevron sits under the state icon, and the number under the title’s first letter
-on a row in no stack.
-The changed files hang one tree level under the chevron.
-The number’s line is one line, so the row is always three, and its parts give way in
-order: the author’s name ends in an ellipsis, down to its avatar and a little of the
-name; past that the author, with its separator, leaves the line whole; and the lines,
-with theirs, leave it whole only where the number leaves them no room, never cut short.
-The number and the age never give way; the author is on the pull request’s page.
-The author’s avatar in a row is a tenth smaller than the shell’s `--actor-avatar-size`
-(`.github-pulls-by` in `builtin_plugins/github/styles.css`), since the number’s line is
-secondary to the title above it.
+under their stack’s row, so the indent itself says which rows are a stack’s. The changed
+files hang one tree level under the state icon.
+The last line is the author in the text column and the age at the row’s end; the
+author’s name ends in an ellipsis where the line has no room for it, and the age never
+gives way. The author’s avatar in a row is a tenth smaller than the shell’s
+`--actor-avatar-size` (`.github-pulls-by` in `builtin_plugins/github/styles.css`), since
+the line is secondary to the run above it.
 The Pulls column has no tooltips
 ([Tooltips Add Information](#tooltips-add-information)). Stack membership comes from one
 shared repository snapshot, indexed once by PR number; rows make no stack requests, and
@@ -3544,15 +3576,14 @@ that shows a number takes it:
 | Surface | Class |
 | --- | --- |
 | The pull request page’s title | `.github-pull-number`, after the title |
-| A Pulls row | `.github-pulls-number`, at the start of the number’s line, the row’s third |
+| A Pulls row | `.github-pulls-number`, in its run after the title and the place, after a muted dot |
+| A stack menu’s member | `.github-pull-stack-member-number`, at the end of its one line, after its place and a muted dot, in the Pulls row’s ink |
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
 | The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
 
-The GitHub plugin’s two are one rule.
-A stack menu’s member shows no number: its place and title name it on its one line
-([Stacks](#stacks)). A number in prose, a commit subject, or a tooltip is text, and
-keeps its line’s weight.
+The GitHub plugin’s three are one rule.
+A number in prose, a commit subject, or a tooltip is text, and keeps its line’s weight.
 A count’s numeral, such as a heading’s tally, is not a pull request’s number and takes
 its own token, `--count-numeral-weight` ([Heading Tallies](#heading-tallies)). A stack’s
 own number, in “Stack #286”, is part of the stack’s label, in the label register
@@ -3615,14 +3646,14 @@ holds the one helper and the one rule in source.
 | Part | Primitive | Why |
 | --- | --- | --- |
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
-| Row | The item, `.github-pulls-entry`, around the link and its change line: the link’s `min-height: --ui-row-height`; one `--hover-bg` under all three lines, the -2px focus ring round them, and `--highlight-bg` when current, with the 2px `--highlight-bar` down the link’s and the change line’s edge, as on a Files row (`.tree-item`) | [One Row Contract](#one-chevron-one-row-contract) |
-| State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, at the start of the title’s first line, before a stack member’s place and the title, which wraps under it | [One Glyph Size](#one-glyph-size) |
-| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the row’s one slot, under the state icon, then the number’s line in the text column: the number, the author, and the [brief change line](#brief-change-line) of the line totals alone, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read, with the age at the row’s end; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The line with the toggle, so a click on it toggles the changed files ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)) |
-| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; two lines, after the state icon and a stack member’s place, from the row’s inset to its end, wrapping under the icon and cut short with an ellipsis at the second line’s end, two lines tall whatever its length (`.github-pulls-heading`); the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
-| Updated time | `metabrowser.formatAge`, at the third line’s end, centered on it as the number is; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
-| PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
-| Username | `--nav-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line, the number’s ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then leaves the number’s line whole |
-| Stack place | `.github-pulls-place`, after the state icon and before the title, in the title’s run and size: the position bold in text ink, then a muted dot, `.github-pull-stack-dot`, in `--muted` at `--micro-font-size`, as a stack menu’s member line has, “14/15 · title”, with what it shows set in [Stacks](#stacks); a row in no stack has neither | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
+| Row | The item, `.github-pulls-entry`, around its link, the run and the last line: the link’s `min-height: --ui-row-height`; one `--hover-bg` under it all, the -2px focus ring round it, and `--highlight-bg` when current, with the 2px `--highlight-bar` down the link’s edge, as on a Files row (`.tree-item`) | [One Row Contract](#one-chevron-one-row-contract) |
+| State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, in the run’s start padding, centered on its first line, so every line of the run starts in the text column past it | [One Glyph Size](#one-glyph-size) |
+| Lines and chevron | The run’s last part, `.github-pulls-change` in `.github-pulls-tail`, after a muted dot: the [brief change line](#brief-change-line) of the line totals alone, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read, then the registry’s chevron, a space’s width on, one box at least the placeholder and the chevron wide, which the run breaks before and never inside; with no lines, the chevron alone after the dot, in the same room; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The toggle, the summary the chevron expands, so a click on it toggles the changed files, and a click elsewhere on the item opens it ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)); a diff summary’s toggle ends with its chevron ([Diff Summary](#diff-summary)) |
+| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the run’s first part, after the state icon, wrapping in the text column and never cut short (`.github-pulls-heading`) | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
+| Updated time | `metabrowser.formatAge`, at the last line’s end, in a column of 5ch; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
+| PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`), in the run after the title and the place, after a muted dot, never breaking | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
+| Username | `--nav-font-size`; `.actor-name`, starting the last line. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes before the age |
+| Stack place | `.github-pulls-place`, after the title and before the number, in the run’s size: a muted dot, `.github-pull-stack-dot`, in `--muted` at `--micro-font-size`, then the position bold in text ink, as a stack menu’s member line has them, “title · 14/15 · #N”, with what it shows set in [Stacks](#stacks); a row in no stack has neither | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one icon slot and gap in, each state icon under the Layers icon and each title under the label | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total bold ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)), the words in the line’s regular weight, and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
@@ -3631,21 +3662,32 @@ holds the one helper and the one rule in source.
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
 | Refresh | `.btn` | Refresh checks GitHub for changes to the list. See [Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page). |
 
-A pull request is three lines, one item, and two targets, because a pane is narrower
-than its parts. Its link is the first two, its title’s: the state icon, a stack member’s
-place and dot, and the title, two lines tall.
-The third is its change line: the chevron, then the number, the author, and the brief
-change line, with the age at the row’s end, every part at one size and centered on the
-line ([Rows and Disclosures](#rows-and-disclosures)); a plain click anywhere on it opens
-and closes the files and opens no page, and a modified click toggles nothing.
-The keys see the item as one row of the list.
+A pull request is a run and a last line, one item, and two targets, because a pane is
+narrower than its parts.
+Its run is one flow: the state icon, then the title, a stack member’s place, the number,
+and the brief change line with the chevron after it, a dot before each part after the
+title, every line of it in the text column, past the icon, and never cut short, so it
+always ends with the chevron.
+The run’s start padding is the text column, and the icon is out of its flow, so no
+line’s start rests on `text-indent`, which WebKit drops on a `-webkit-box`: in the app’s
+web view a place or a title that a first line’s indent made room for was drawn over the
+state icon, and the run is no `-webkit-box`. The last line is the author, with the age
+at the row’s end, at one size and centered on the line
+([Rows and Disclosures](#rows-and-disclosures)). A plain click on the lines or the
+chevron opens and closes the files and opens no page, a modified or middle click on them
+toggles nothing and opens no tab, and a click anywhere else on the item opens the pull
+request. The keys see the item as one row of the list.
 The title is the link’s first text, so the row’s accessible name gives the state, from
-the state icon’s label, the place, and then the title, before the number’s line in
-words. It is one link, so a new tab and a copied address are the browser’s own, and all
-of its text is text: GitHub’s users write it, and none of it reaches markup or a style.
-A closed row is one height whatever its line holds, so nothing moves when one arrives:
-`ROW_ESTIMATE_PX` in `builtin_plugins/github/pulls-panel.js`, which
-`tests/dom/github-pulls-row-lines-chrome.mjs` holds the measured row to.
+the state icon’s label, the title, and the place, before the number, the author, and the
+age in words. It is one link, so a new tab and a copied address are the browser’s own,
+and all of its text is text: GitHub’s users write it, and none of it reaches markup or a
+style. A closed row is one height whatever its lines hold, so nothing moves when they
+arrive: `ROW_ESTIMATE_PX` with a run of three lines, and a line shorter or taller for
+each line fewer or more.
+The list places each row by its measured height (`createPullsWindow`), and a row not yet
+drawn at `ROW_ESTIMATE_PX` in `builtin_plugins/github/pulls-panel.js`, a row with a run
+of three lines, which `tests/dom/github-pulls-row-lines-chrome.mjs` holds the measured
+rows to and holds within half a line of this repository’s own rows at the default pane.
 
 New pull requests use the [shared arrival highlight](#live-row-arrivals), and the rows’
 keys are under [Navigational Row Collections](#navigational-row-collections).
@@ -3719,8 +3761,8 @@ surface keeps a copy of either.
 | Part | Primitive | Where |
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
-| Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the row of ages, before Refresh; a Pulls row’s place, before a muted dot and its title, as a stack menu’s member line has it, with no icon |
-| Member row | One line, as a Pulls row’s first line is: the pull request’s state icon, `.github-pull-state-icon`; its position, bold; a muted dot, `.github-pull-stack-dot`; and its title, bold in normal text ink, cut short at the line’s end. On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
+| Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the row of ages; a Pulls row’s place, after its title and a muted dot, before the number, as a stack menu’s member line has it, with no icon |
+| Member row | One line: the pull request’s state icon, `.github-pull-state-icon`; its title, bold in normal text ink, cut short before its place; and at the line’s end, together, its position, bold, a muted dot, `.github-pull-stack-dot`, and its number, `.github-pull-stack-member-number`, “14/15 · #N”, a Pulls row’s order, the title, the place, and the number. On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
 | Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)); then, after a muted dot, the stack’s [brief change line](#brief-change-line) | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
@@ -3749,15 +3791,19 @@ surface keeps a copy of either.
   the link’s blue.
 - **Member row.** Every member has one layout, one line tall, so the members line up and
   every row of the menu is as tall as the others: the state icon in the tree’s icon
-  slot, a tree row’s gap, then the position, the dot, and the title, about a space
-  apart. The title alone gives way, cut short at the line’s end, and the row’s tip holds
-  the whole of it, which the shell shows only while the title is cut short
-  ([Tooltips Add Information](#tooltips-add-information)). The number follows the title
-  in the shell’s `.visually-hidden`, said and not shown, so a screen reader tells two
-  members of one title apart.
-  The icon is the state the page shows for its own pull request, and for each other
-  member the state the Pulls list last read for it (`stackMemberState` in
-  `pull-page.js`); a member the list has not reached keeps the icon’s slot empty.
+  slot, a tree row’s gap, then the title, and at the line’s end, together, the position,
+  the dot, and the pull request’s number, “14/15 · #455”: the order a Pulls row’s run
+  has them, the title, the place, and the number ([The Pulls Tab](#the-pulls-tab)), so
+  the two surfaces read one way, the menu with the place and the number right-aligned.
+  The number ends the line, “#455” as a Pulls row shows it, in the text’s ink at the
+  number’s weight ([Pull Request Numbers](#pull-request-numbers)), so a reader tells two
+  members of one title apart, and a screen reader hears it last in the member’s name.
+  They never give way: the title alone does, cut short before the place, and the row’s
+  tip holds the whole of it, which the shell shows only while the title is cut short
+  ([Tooltips Add Information](#tooltips-add-information)). The icon is the state the
+  page shows for its own pull request, and for each other member the state the Pulls
+  list last read for it (`stackMemberState` in `pull-page.js`); a member the list has
+  not reached keeps the icon’s slot empty.
   A list’s answer forgets what was noted of a pull request it no longer holds when the
   list holds the noted state and it is not a merge, so a member the Open list left out
   once it merged or closed is not drawn open; and a page notes its own record’s state
@@ -3881,27 +3927,24 @@ weights are the component’s. `tests/test_github_pulls_stacks_chrome.py` measur
 same design in headless Chrome against a running server with two native stacks: the
 shared label tokens, a stack’s row that shows its label alone with its size in its
 accessible name, where rows start, hover and focus, the toolbar’s fit, real keys and
-presses, a row’s change line among them, which Right reaches first, the scroll, a pull
-request’s row of three lines with the state icon centered on its title’s first line and
-the chevron and the number’s line on its change line, a member’s place and dot before
-its title and its missing icon, and the menu’s order and ink.
+presses, a row’s toggle among them, the scroll, a pull request’s row with the state icon
+centered on its run’s first line and the number and the toggle in its run, a member’s
+place and dot after its title and its missing icon, and the menu’s order and ink.
 `tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width down to
-the pane’s minimum and holds that a place arriving moves nothing else in its row, sits
-after the state icon with its dot before the title, and ends inside the row with nothing
-scrolling sideways; that one stack’s place shows whole; that the title is two lines, cut
-short at the second, the link two, and the row three, the icon centered on the title’s
-first line and the chevron and the number on the change line; and that the author keeps
-its floor with its name inside the line, or leaves the line whole.
-`tests/dom/github-pulls-row-lines-session.js` runs what each row’s third line shows,
-when it is read, and what a press and each key do, against the production code on the
-summary route’s recorded answers, and `tests/test_github_pulls_row_lines_chrome.py`
+the pane’s minimum and holds that a place sits after the title with its dot before it,
+and the run ends inside the row with nothing scrolling sideways; that one stack’s place
+shows whole; that every line of the run starts in the text column, the icon centered on
+its first line, and the run ends with the chevron; and that the author’s name stays
+inside the last line, before the age.
+`tests/dom/github-pulls-row-lines-session.js` runs what each row’s run and last line
+show, when it is read, and what a press and each key do, against the production code on
+the summary route’s recorded answers, and `tests/test_github_pulls_row_lines_chrome.py`
 measures in headless Chrome, at every width down to the pane’s minimum in both themes,
-that nothing in a row moves when its lines arrive, that the title is two lines, cut
-short at the second, and the change line one, holding the number, the author, the lines,
-and the chevron, that its inks and weights are the component’s, and that a press, Right,
-and Left keep the row in place.
-`tests/test_github_stack_design.py` holds the source to one label class and one place
-for every stack word.
+that nothing in a row moves when its lines arrive, that every line of its run starts in
+the text column and the run ends with the lines and the chevron after them, that its
+inks and weights are the component’s, and that a press, Right, and Left keep the row in
+place. `tests/test_github_stack_design.py` holds the source to one label class and one
+place for every stack word.
 
 ## Keyboard Shortcuts
 
@@ -3929,7 +3972,7 @@ rather than restate them.
   A page with a natural next and previous uses Control-N and Control-P, a rendered view
   is always `V`, and no other meaning takes those keys.
 - **Numbers for situational items.** Links and one-off actions that depend on what the
-  screen shows, such as the Files tab’s filters or a pull request’s Refresh, take `1`,
+  screen shows, such as the Files tab’s filters or a pull request’s Retry, take `1`,
   `2`, `3`, and on, in reading order, up to `9`. A tenth and later get no key: no letter
   and no wrap-around, and `0` is not a tenth number.
   Numbers are positional, so `1` reaches a different control on a different screen; Help
@@ -4337,8 +4380,8 @@ it passed. The collections differ in the rest:
   focus, and history. On a file tree row, both keys toggle a folder or container file or
   show the next page and leave history alone.
   On a commit row, both keys select it again, replacing the entry.
-- **A pull request** is one item of three lines and one stop: its change line is never
-  focused
+- **A pull request** is one item and one stop: its toggle, the lines and the chevron, is
+  never focused
   ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)). Up,
   Down, `J`, and `K` walk whole pull requests, past any open files, and expand nothing.
   Every key acts on the item with focus, even after a poll or a reveal has moved the

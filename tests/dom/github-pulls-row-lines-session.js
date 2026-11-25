@@ -1,9 +1,10 @@
-// Browserless session: each Pulls row's third line (mb-d0a3, mb-lqkb), which carries the
-// chevron for its changed files (mb-h0ml), the number, the author, and the lines the pull
-// request changes, its brief change line of its line totals alone, and the keys that reach it
-// (mb-1l4i), through the production code.
+// Browserless session: each Pulls row's run and last line (mb-d0a3, mb-lqkb, mb-pw8t): the
+// title, the place, the number, and the lines the pull request changes, its brief change line
+// of its line totals alone, with the chevron for its changed files after them (mb-h0ml,
+// mb-f0pz), then the author and the age, and the presses and keys that reach it (mb-1l4i),
+// through the production code.
 //
-// builtin_plugins/github/row-lines.js decides what a row's third line shows: the shell's
+// builtin_plugins/github/row-lines.js decides what lines a row's toggle shows: the shell's
 // pending placeholder while the line is read or the row's list is being listed, the line once
 // it is, and nothing where its list is not cached and nothing lists it. The line is what the
 // row's own cached list of changed files sums to, which the server answers for every row the
@@ -15,13 +16,13 @@
 // `lane` drives the lane alone over those answers, with the browser's idle time and its clock
 // in the session's hands, and prints what each row shows at each step and what was asked.
 // `row` mounts the production panel over a stand-in for the DOM with the SDK's own painters
-// (tests/dom/sdk-ref-fixture.js) and prints each row's third line in its three states.
+// (tests/dom/sdk-ref-fixture.js) and prints each row's run and last line in its three states.
 // `totals` mounts it again on rows whose totals are zero or not known, and prints the lines
 // they show: a total of zero is left out, and a change of no lines is "0 lines" (mb-efum). `tree`
 // goes on in that panel and prints what a press and each key do on a pull request, one item
-// of three lines (mb-1z7j): a press on its title's two lines opens it and expands nothing, a
-// press anywhere on its third line, the chevron, the number, the author, or the lines,
-// toggles its files, Up and Down walk whole
+// (mb-1z7j): a press on its lines or its chevron toggles its files and opens no page, a press
+// anywhere else on it, the title, the number, the author, or the age, opens it and expands
+// nothing, Up and Down walk whole
 // items and expand nothing, Space toggles the files, Right opens them, Left closes them, and
 // Enter opens the pull request. `focus` goes on from there: every key acts on the item with
 // focus, even after a poll has moved the list's Tab stop to the current pull request.
@@ -307,8 +308,8 @@ const SHOWN = [106, 105, 104, 103];
 
 /**
  * Mount the production panel over a stand-in for the DOM on the recorded All list, with the
- * SDK's own painters and idle time in the session's hands, and print each row's third line
- * at each step, then what a press and each key do. Given *totals*, each drawn row's line
+ * SDK's own painters and idle time in the session's hands, and print each row's run and last
+ * line at each step, then what a press and each key do. Given *totals*, each drawn row's line
  * totals in `SHOWN`'s order, its rows are a recorded listed row with those totals, and the
  * story ends when their lines arrive, with what each shows.
  *
@@ -507,14 +508,15 @@ async function rowStory(lines, totals = null) {
       }
       return undefined;
     };
-    // The item's three lines are one zone (`.github-pulls-entry`, mb-1z7j): the link, the
-    // row of the tree, its title's two lines, and under it the change line, which carries the
-    // toggle and the number's line: the number, the author, and the lines (mb-lqkb).
+    // The item is one zone (`.github-pulls-entry`, mb-1z7j), its link, the row of the tree:
+    // its run, the title, the place, the number, and its toggle, the lines and the chevron
+    // after them (mb-pw8t), and its last line, the author and the age.
     const zoneOf = (number) => childByClass(item(number), "github-pulls-entry");
     const rowOf = (number) => zoneOf(number).childNodes[0];
-    const changeOf = (number) => childByClass(zoneOf(number), "github-pulls-change");
-    const metaOf = (number) => childByClass(changeOf(number), "github-pulls-meta");
-    const lineOf = (number) => findByClass(changeOf(number), "github-pulls-change-line");
+    const headingOf = (number) => childByClass(rowOf(number), "github-pulls-heading");
+    const bylineOf = (number) => childByClass(rowOf(number), "github-pulls-byline");
+    const changeOf = (number) => findByClass(rowOf(number), "github-pulls-change");
+    const lineOf = (number) => childByClass(changeOf(number), "github-pulls-change-line");
     // The line's words, hidden, which describe the row (`aria-describedby`).
     const wordsOf = (number) => childByClass(changeOf(number), "github-pulls-change-words");
     /** Which way the line's chevron points: `.expanded` or `.collapsed`. */
@@ -537,23 +539,34 @@ async function rowStory(lines, totals = null) {
       );
     const textOf = (node) =>
       node.data !== undefined ? node.data : node.childNodes.map(textOf).join("");
-    /** Each row's third line as drawn: its parts, the number's line's parts and the text it
-     * shows, the lines' text, and its item's name and state, and #106's lines part for part;
-     * and what the item says for its number's line, in its link's hidden text (`spoken`). */
-    const thirdLines = () =>
+    /** The text *node* shows: its text but what is hidden. */
+    const shownOf = (node) =>
+      node.data !== undefined
+        ? node.data
+        : node.getAttribute("hidden") !== null
+          ? ""
+          : node.childNodes.map(shownOf).join("");
+    /** A part of a row's run: its class, and the parts of a part that holds the toggle. */
+    const runPart = (node) =>
+      node.childNodes?.some((child) => child.classList?.contains("github-pulls-tail"))
+        ? { [node.className]: node.childNodes.map(runPart) }
+        : node.className === "github-pulls-tail"
+          ? { [node.className]: node.childNodes[0].childNodes.map((child) => child.className) }
+          : (node.className ?? node.data);
+    /** Each row as drawn: its run's parts, its last line's parts, the text its run shows, the
+     * lines' text, and its item's name and state, and #106's lines part for part; and what
+     * the item says for its number, its author, and its age, in its link's hidden text
+     * (`spoken`). */
+    const rowsDrawn = () =>
       Object.fromEntries(
         SHOWN.map((number) => {
-          const change = changeOf(number);
-          const meta = metaOf(number);
+          const heading = headingOf(number);
           return [
             `#${number}`,
             {
-              parts: change.childNodes.map((node) => node.className),
-              meta: [
-                ...meta.childNodes.map((node) => node.className),
-                ...childByClass(meta, "github-pulls-line").childNodes.map((node) => node.className),
-              ],
-              shown: textOf(meta),
+              run: heading.childNodes.map(runPart),
+              last: bylineOf(number).childNodes.map((node) => node.className),
+              shown: shownOf(heading).replaceAll("\u00a0", " "),
               spoken: textOf(childByClass(rowOf(number), "sr-only")),
               text: textOf(lineOf(number)),
               ...(number === 106 ? { line: shape(lineOf(number).childNodes) } : {}),
@@ -586,12 +599,12 @@ async function rowStory(lines, totals = null) {
         .filter(Boolean)
         .join(" · ");
     };
-    /** The line under a row: hidden from assistive technology or not, which way its chevron
-     * points, whether it is a stop of the tree's, and focus. */
+    /** A row's toggle, its lines and chevron: hidden from assistive technology or not, which
+     * way its chevron points, whether it is a stop of the tree's, and focus. */
     const saidLine = (number) => {
       const line = changeOf(number);
       return [
-        `  #${number}'s change line`,
+        `  #${number}'s toggle`,
         line.getAttribute("aria-hidden") === "true" ? "hidden" : "exposed",
         line.getAttribute("role"),
         `chevron ${turnOf(number)}`,
@@ -614,35 +627,31 @@ async function rowStory(lines, totals = null) {
     const steps = [];
     await paint();
     steps.push({
-      step: "mounted: each row's third line holds the pending placeholder; the browser is not idle yet",
-      lines: thirdLines(),
+      step: "mounted: each row's toggle holds the pending placeholder; the browser is not idle yet",
+      lines: rowsDrawn(),
       requests: requests.splice(0),
     });
-    // The placeholder, the chevron, and the change line are the nodes the arrival keeps.
+    // The placeholder, the chevron, and the toggle are the nodes the arrival keeps.
     const changeBefore = changeOf(106);
-    const toggleBefore = childByClass(changeBefore, "github-pulls-toggle");
-    const pendingBefore = lineOf(106).childNodes[1];
+    const toggleBefore = childByClass(changeOf(106), "github-pulls-toggle");
+    const pendingBefore = lineOf(106).childNodes[0];
     await paint();
     assert.equal(
-      lineOf(106).childNodes[1],
+      lineOf(106).childNodes[0],
       pendingBefore,
       "the placeholder is one node across paints, so its quiet period and pulse run once",
     );
     await runIdle();
-    const arrived = thirdLines();
+    const arrived = rowsDrawn();
     if (totals !== null) {
-      // Each row draws the component built with its zero totals left out, after the number's
-      // line's separator, and is described by its words (mb-efum).
+      // Each row draws the component built with its zero totals left out, after the dot
+      // before it, and is described by its words (mb-efum).
       const drawn = SHOWN.map((number, at) => {
-        const said = sdk.changeLine(lines.rowLineInput(rowSummaries.get(number), null), {
-          omitZeroTotals: true,
-        });
+        const said = sdk.changeLine(lines.rowLineInput(rowSummaries.get(number), null));
         const line = shape(lineOf(number).childNodes);
         assert.deepEqual(
           line,
-          [" · ", ...shape([...sdk.changeLineNodes(said)])].map((node, place) =>
-            place === 0 ? { class: "github-pulls-sep", children: [node] } : node,
-          ),
+          shape([...sdk.changeLineNodes(said)]),
           `#${number} draws the component with its zero totals left out`,
         );
         assert.equal(arrived[`#${number}`].words, `Changed files: ${said.label}`);
@@ -666,54 +675,63 @@ async function rowStory(lines, totals = null) {
       lines: arrived,
       requests: requests.splice(0).map((route) => `${route.split("&")[0].slice(0, 80)}…`),
     });
-    assert.equal(changeOf(106), changeBefore, "the change line stays");
+    assert.equal(changeOf(106), changeBefore, "the toggle stays");
     assert.equal(childByClass(changeOf(106), "github-pulls-toggle"), toggleBefore);
     // The lines are the shell's one component, through the SDK, of the line totals alone,
     // with no file statuses (mb-lqkb): the separator, then the same nodes, part for part.
     const { rowLineInput } = lines;
     const summary106 = summaries.summed.body.rows.find((row) => row.number === 106);
-    const said106 = sdk.changeLine(rowLineInput(summary106, null), { omitZeroTotals: true });
+    const said106 = sdk.changeLine(rowLineInput(summary106, null));
     assert.deepEqual(said106.statusParts, [], "the lines name no file statuses");
     assert.deepEqual(
       arrived["#106"].line,
       // Spread into this realm's array: the SDK's own is its sandbox's.
-      [" · ", ...shape([...sdk.changeLineNodes(said106)])].map((node, at) =>
-        at === 0 ? { class: "github-pulls-sep", children: [node] } : node,
-      ),
-      "the row draws the component, after the number's line's separator",
+      shape([...sdk.changeLineNodes(said106)]),
+      "the row draws the component, after the dot before it",
     );
-    // The third line holds the chevron, then the number, the author, and the lines, then the
-    // age (mb-lqkb): the number's line has joined the change line.
+    // The run holds the title, the place, the number, and the toggle, the lines and the
+    // chevron after them, the summary it expands (mb-f0pz, mb-pw8t), a dot before each part
+    // after the title; the last line holds the author and the age. Every row's run ends with
+    // the dot and the toggle, whose box keeps the placeholder's room, so a row with no lines,
+    // whose chevron follows the dot alone, moves nothing when its lines are read after all.
     for (const number of SHOWN) {
+      const run = arrived[`#${number}`].run;
       assert.deepEqual(
-        arrived[`#${number}`].parts,
-        [
-          "github-pulls-toggle",
-          "github-pulls-meta",
-          "github-pulls-age age-min",
-          "github-pulls-change-words",
-        ],
-        `#${number}'s third line is the chevron, the number's line, and the age`,
+        run.slice(1, 5),
+        ["github-pulls-title", "github-pulls-place", "github-pulls-sep", "github-pulls-number"],
+        `#${number}'s run is the title, the place, and the number`,
       );
       assert.deepEqual(
-        arrived[`#${number}`].meta,
-        ["github-pulls-number", "github-pulls-line", "github-pulls-by", "github-pulls-change-line"],
-        `#${number}'s number's line is the number, the author, and the lines`,
+        arrived[`#${number}`].last,
+        ["github-pulls-by", "github-pulls-age age-min"],
+        `#${number}'s last line is the author and the age`,
       );
     }
-    // The link is the title's two lines: the state icon, the place, and the title, one flow,
-    // with the number's line said for its name alone.
+    for (const number of SHOWN.map((shown) => `#${shown}`)) {
+      assert.deepEqual(
+        arrived[number].run.slice(5),
+        [
+          "github-pulls-sep",
+          {
+            "github-pulls-tail": [
+              "github-pulls-change-line",
+              "github-pulls-toggle",
+              "github-pulls-change-words",
+            ],
+          },
+        ],
+        `${number}'s run ends with the dot and the toggle, the lines then the chevron`,
+      );
+    }
+    // The link is the run, the last line, and the number, the author, and the age said for
+    // its name alone.
     assert.deepEqual(
       rowOf(106).childNodes.map((node) => node.className),
-      ["github-pulls-heading", "sr-only"],
-    );
-    assert.deepEqual(
-      childByClass(rowOf(106), "github-pulls-heading").childNodes.map((node) => node.className),
-      ["github-pull-state-icon", "github-pulls-place", "github-pulls-title"],
+      ["github-pulls-heading", "github-pulls-byline", "sr-only"],
     );
     assert.equal(textOf(childByClass(rowOf(106), "sr-only")), "#106 · contributor · 1m");
-    // Each item says its number's line in words, whatever its third line shows: the number,
-    // the author, and the age, read with the title as the item's name.
+    // Each item says its number and its last line in words, whatever its toggle shows: the
+    // number, the author, and the age, read with the title as the item's name.
     for (const number of SHOWN) {
       assert.equal(arrived[`#${number}`].spoken, `#${number} · contributor · 1m`);
     }
@@ -723,9 +741,9 @@ async function rowStory(lines, totals = null) {
       wordsOf(106).getAttribute("id"),
       "the row is described by its line's words",
     );
-    // No file total and no file statuses: the separator and the totals alone (the spaces
-    // between items are the layout's gap).
-    assert.equal(arrived["#106"].text.replace(/\s/g, ""), `·${said106.text}`.replace(/\s/g, ""));
+    // No file total and no file statuses: the totals alone (the spaces between items are the
+    // layout's gap).
+    assert.equal(arrived["#106"].text.replace(/\s/g, ""), said106.text.replace(/\s/g, ""));
     assert.ok(!/file/.test(arrived["#106"].text), "the line names no file total");
     assert.ok(!/\d [ADMR]\b/.test(arrived["#106"].text), "the line names no file status");
     // Collapsed by default, and nothing opens on its own.
@@ -747,38 +765,56 @@ async function rowStory(lines, totals = null) {
         });
       });
     };
-    /** A plain press on *target*, a part of #*number*'s item named *part*. */
-    const press = (what, number, part, target) =>
-      keyStep(what, () => list.listeners.get("click")({ target, button: 0, preventDefault() {} }), {
-        item: number,
-        on: part,
-      });
-    // The item's title, its link's two lines, which include no toggle of their own: a press
-    // opens the pull request and expands nothing (docs/design-system.md, "A Click on the
-    // Toggle's Line Toggles").
+    /** A press on *target*, a part of #*number*'s item named *part*, by *type* ("click", or
+     * "auxclick" for a middle press): whether the panel kept the browser from following the
+     * item's link (`defaultPrevented`). */
+    const press = (what, number, part, target, type = "click") =>
+      keyStep(
+        what,
+        () => {
+          const event = {
+            target,
+            button: type === "click" ? 0 : 1,
+            defaultPrevented: false,
+            preventDefault() {
+              this.defaultPrevented = true;
+            },
+          };
+          list.listeners.get(type)(event);
+          return { defaultPrevented: event.defaultPrevented };
+        },
+        { item: number, on: part, ...(type === "click" ? {} : { type }) },
+      );
+    // Every part of the item but its toggle, the lines and the chevron after them, is the
+    // item's link's: a press opens the pull request and expands nothing (docs/design-system.md,
+    // "A Click on the Toggle's Line Toggles"; mb-pw8t).
     await press(
       "a press on #106's title opens it, and its files stay closed",
       106,
       "title",
       findByClass(rowOf(106), "github-pulls-title"),
     );
-    // The number's line is on the line that carries the toggle (mb-lqkb): a press on its
-    // number or its author toggles the files, and opens no page.
     await press(
-      "a press on #105's number, on its third line, opens its files and no page",
+      "a press on #105's number, after its title, opens it, and its files stay closed",
       105,
       "number",
-      findByClass(changeOf(105), "github-pulls-number"),
+      findByClass(rowOf(105), "github-pulls-number"),
     );
     await press(
-      "a press on #105's author, on the same line, closes them",
+      "a press on #105's author, on its last line, opens it too",
       105,
       "author",
-      findByClass(changeOf(105), "github-pulls-by"),
+      findByClass(rowOf(105), "github-pulls-by"),
     );
-    // A modified press, which on a link opens a new tab, toggles nothing on the line that
-    // carries the toggle and opens no page; on the title, the item's link, it is the
-    // browser's, which opens the pull request in a new tab (`defaultPrevented` false).
+    await press(
+      "a press on #105's age opens it too",
+      105,
+      "age",
+      findByClass(rowOf(105), "github-pulls-age"),
+    );
+    // A modified press, which on a link opens a new tab, toggles nothing on the toggle and
+    // opens no page; off it, on the item's link, it is the browser's, which opens the pull
+    // request in a new tab (`defaultPrevented` false).
     const modifiedPress = (what, number, part, target, modifier) =>
       keyStep(
         what,
@@ -798,18 +834,25 @@ async function rowStory(lines, totals = null) {
         { item: number, on: part, modifier },
       );
     await modifiedPress(
-      "a Cmd-press on #105's number toggles nothing and opens no page",
+      "a Cmd-press on #105's number is the browser's, a new tab: nothing opens or toggles here",
       105,
       "number",
-      findByClass(changeOf(105), "github-pulls-number"),
+      findByClass(rowOf(105), "github-pulls-number"),
       "metaKey",
     );
     await modifiedPress(
-      "a Ctrl-press on #105's chevron toggles nothing either",
+      "a Ctrl-press on #105's chevron toggles nothing and opens no page",
       105,
       "chevron",
       childByClass(changeOf(105), "github-pulls-toggle"),
       "ctrlKey",
+    );
+    await press(
+      "a middle press on #105's lines opens no tab, and toggles nothing",
+      105,
+      "lines",
+      lineOf(105),
+      "auxclick",
     );
     await modifiedPress(
       "a Cmd-press on #106's title is the browser's, a new tab: nothing opens here",
@@ -825,8 +868,8 @@ async function rowStory(lines, totals = null) {
       findByClass(rowOf(106), "github-pull-state-icon"),
     );
     assert.equal(rowOf(106).getAttribute("aria-expanded"), "false");
-    // The line that carries the toggle, anywhere on it: a press toggles, opens no page, and
-    // leaves the focus on the item, the tree's one stop, so Space and the arrows go on from it.
+    // The toggle, the lines or the chevron: a press toggles, opens no page, and leaves the
+    // focus on the item, the tree's one stop, so Space and the arrows go on from it.
     await press(
       "a press on #106's chevron opens its files, opens no page, and focuses its item",
       106,
@@ -837,18 +880,18 @@ async function rowStory(lines, totals = null) {
     assert.equal(rowOf(106).getAttribute("aria-expanded"), "true");
     assert.equal(document.activeElement, rowOf(106), "the item takes the focus, not its line");
     await press(
-      "a press on the values of its change line closes them: the whole line carries the toggle",
+      "a press on its lines, before the chevron, closes them: the lines are the toggle too",
       106,
-      "change line",
+      "lines",
       lineOf(106),
     );
     await press(
-      "a press on the change line itself, past its values, opens them again",
+      "a press on the toggle itself, between its lines and its chevron, opens them again",
       106,
-      "change line",
+      "toggle",
       changeOf(106),
     );
-    await press("and closes them", 106, "change line", changeOf(106));
+    await press("and closes them", 106, "toggle", changeOf(106));
     rowOf(106).focus();
     list.listeners.get("focusin")({ target: rowOf(106) });
     await keyStep("Down walks to #105, a whole item, which opens and expands nothing", () =>
@@ -877,7 +920,7 @@ async function rowStory(lines, totals = null) {
       "Left again, on a pull request in no stack, goes nowhere, and is the list's",
       () => handle.collapse(),
     );
-    // A press on #103's change line focuses #103, whose page is not the one open. A poll then
+    // A press on #103's chevron focuses #103, whose page is not the one open. A poll then
     // settles the list's anchor, its Tab stop, on #105, the current pull request, and leaves
     // focus on #103; each key still acts on #103, the item with focus (mb-1z7j).
     const focusFrom = steps.length;
@@ -891,10 +934,10 @@ async function rowStory(lines, totals = null) {
       step.tree.some((line) => /^#105 .*· Tab stop/.test(line)) &&
       step.tree.some((line) => /^#103 .*· focused$/.test(line));
     await press(
-      "a press on #103's change line opens its files and focuses #103, while #105's page is open",
+      "a press on #103's chevron opens its files and focuses #103, while #105's page is open",
       103,
-      "change line",
-      lineOf(103),
+      "chevron",
+      childByClass(changeOf(103), "github-pulls-toggle"),
     );
     await keyStep("a poll: the Tab stop goes back to #105, and focus stays on #103", firePoll);
     assert.ok(drifted(steps.at(-1)), "the poll moves the Tab stop and leaves the focus");
@@ -969,9 +1012,10 @@ async function rowStory(lines, totals = null) {
   }
   // Every step of the row story holds the item's one zone (mb-1z7j) and the rule for a row
   // with a disclosure toggle (docs/design-system.md, "A Click on the Toggle's Line Toggles"):
-  // a press on the line that carries the toggle toggles that item's files, and a press on the
-  // larger item that includes it toggles nothing. Only those presses and Space, Right, and
-  // Left change what is open; a walk, Enter, Tab, or a line's arrival opens nothing.
+  // a press on the toggle, a Pulls row's lines and the chevron after them (mb-pw8t), toggles
+  // that item's files and opens no page, and a press anywhere else on the item opens it and
+  // toggles nothing. Only those presses and Space, Right, and Left change what is open; a
+  // walk, Enter, Tab, or a line's arrival opens nothing.
   const expansionOf = (tree) =>
     Object.fromEntries(
       tree.flatMap((line) => {
@@ -987,8 +1031,8 @@ async function rowStory(lines, totals = null) {
     const now = expansionOf(step.tree);
     for (const [at, line] of step.tree.entries()) {
       if (line.startsWith("  ")) {
-        // The line under each item turns its chevron with the item's one state, is hidden
-        // from assistive technology with no role, so the tree holds only its items and their
+        // Each item's toggle turns its chevron with the item's one state, is hidden from
+        // assistive technology with no role, so the tree holds only its items and their
         // groups, and is never a stop of its own.
         const number = /#(\d+)/.exec(line)[1];
         const turn = now[number] === "true" ? "expanded" : "collapsed";
@@ -998,27 +1042,31 @@ async function rowStory(lines, totals = null) {
           `${step.step}: ${line}`,
         );
       } else {
-        assert.ok(step.tree[at + 1].startsWith("  "), "each item's row has its line under it");
+        assert.ok(step.tree[at + 1].startsWith("  "), "each item's row has its toggle");
       }
     }
     if (before !== null) {
       const changed = Object.keys(now).filter((number) => now[number] !== before[number]);
       if (step.pressed !== undefined) {
-        // A modified press toggles nothing, wherever it lands, and opens no page.
-        const onToggle =
-          step.pressed.modifier === undefined &&
-          ["chevron", "change line", "number", "author"].includes(step.pressed.on);
-        if (step.pressed.modifier !== undefined) {
+        // A modified or a middle press toggles nothing, wherever it lands, and opens no page
+        // here; on the toggle the browser follows no link either, and off it the browser's
+        // new tab is its own.
+        const onToggle = ["chevron", "lines", "toggle"].includes(step.pressed.on);
+        const plain = step.pressed.modifier === undefined && step.pressed.type === undefined;
+        if (!plain) {
           assert.equal(step.opened, undefined, `${step.step}: a modified press opens no page`);
-          assert.deepEqual(step.handled, { defaultPrevented: false }, step.step);
+          assert.deepEqual(step.handled, { defaultPrevented: onToggle }, step.step);
         }
         assert.deepEqual(
           changed,
-          onToggle ? [String(step.pressed.item)] : [],
-          `${step.step}: a press on the toggle's line toggles, and on the item's other lines does not`,
+          onToggle && plain ? [String(step.pressed.item)] : [],
+          `${step.step}: a press on the toggle toggles, and on the item's other parts does not`,
         );
         if (onToggle) {
-          assert.equal(step.opened, undefined, `${step.step}: the toggle's line opens no page`);
+          assert.equal(step.opened, undefined, `${step.step}: the toggle opens no page`);
+          assert.deepEqual(step.handled, { defaultPrevented: true }, step.step);
+        } else if (plain) {
+          assert.ok(step.opened?.length > 0, `${step.step}: the item's link opens it`);
         }
       } else if (/^(Space|Right|Left)\b/.test(step.step)) {
         // A key toggles at most the item with focus.
@@ -1037,7 +1085,7 @@ async function rowStory(lines, totals = null) {
   const pressedParts = new Set(row.steps.flatMap((step) => step.pressed?.on ?? []));
   assert.deepEqual(
     [...pressedParts].sort(),
-    ["author", "change line", "chevron", "number", "state icon", "title"],
+    ["age", "author", "chevron", "lines", "number", "state icon", "title", "toggle"],
     "the story presses every part of an item",
   );
   // One part a run, so each transcript block stays one reviewable size: `lane`, `row`,

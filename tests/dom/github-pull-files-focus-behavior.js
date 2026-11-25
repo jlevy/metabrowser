@@ -158,6 +158,7 @@ async function run() {
       shown: true,
       scrollRoot: document.body,
       chevron: () => null,
+      changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
       href: (file) => `/${file}`,
       request: async (_method, route) => {
         if (scenario.startsWith("retry")) {
@@ -343,6 +344,7 @@ async function offerFocus(mountFileTree, detail) {
       shown: true,
       scrollRoot: document.body,
       chevron: () => null,
+      changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
       href: (file) => `/${file}`,
       request: () =>
         new Promise((resolve) => {
@@ -552,6 +554,7 @@ async function refreshingPaint(mountFileTree) {
     shown: true,
     scrollRoot: document.body,
     chevron: () => null,
+    changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
     href: (file) => `/${file}`,
     request: (method) =>
       method === "POST"
@@ -586,15 +589,21 @@ async function refreshingPaint(mountFileTree) {
   };
   const asked = painted();
   // A folder row ends with the line counts of its files, rolled up, in the shell's number
-  // format, and says them to a screen reader (mb-epw2).
+  // format, and says them to a screen reader (mb-epw2), as the shell's brief change line
+  // paints them: each total but a zero one (mb-ox6a).
   const folder = list.children.find((row) => row.dataset.id === "src/");
   const stats = folder?.children.find((part) => part.classes.has("github-pull-file-stats"));
+  /** @param {Painted} node @returns {string[]} */
+  const sides = (node) =>
+    node.className === "diff-stat-add" || node.className === "diff-stat-del"
+      ? [node.textContent]
+      : node.children.flatMap(sides);
   assert.deepEqual(
-    stats?.children.map((part) => part.children.map((text) => text.textContent).join("")),
-    ["+2", "\u22120"],
-    "a folder row shows its files' line counts rolled up",
+    stats === undefined ? null : sides(stats),
+    ["+2"],
+    "a folder row shows its files' line counts rolled up, a zero total left out",
   );
-  assert.equal(folder?.getAttribute("aria-label"), "src, 2 files, 2 added, 0 deleted");
+  assert.equal(folder?.getAttribute("aria-label"), "src, 2 files, 2 lines added");
   answerAsk({ status: 202, etag: null, body: { files: listing("stale", true, false) } });
   await settle();
   const running = painted();
@@ -641,6 +650,7 @@ async function walkClaims(mountFileTree) {
     shown: true,
     scrollRoot: document.body,
     chevron: () => null,
+    changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
     // As the route's encoder answers: no address for a segment with a backslash.
     href: (file) => (file.includes("\\") ? null : `/${file}`),
     request: async () => ({

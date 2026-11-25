@@ -545,8 +545,9 @@ async function comparison() {
       change: change.kind,
       binary: change.binary,
       availability: change.availability,
-      // A binary change carries no line counts, as the server says with null.
-      lines: change.additions === null ? null : `+${change.additions} −${change.deletions}`,
+      // Its lines as its bar draws them, a total of zero left out (mb-ox6a); a binary change
+      // carries no line counts, as the server says with null, and its bar draws none.
+      lines: section.find("diff-file-stats")[0]?.reads() ?? null,
       body: notice ? notice.reads() : "text diff",
       card: slot ? describeCard(slot) : null,
       barControls: bar ? describeControls(bar) : [],

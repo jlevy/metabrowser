@@ -11,22 +11,21 @@
 // The list is a tree: a row is one anchor in the role of a tree's item, in a list item with no
 // role of its own, and the row's changed files hang off it as a folder's children do
 // (pull-files-view.js): a `.tree-children[role="group"]` after it, which it owns, and
-// `aria-expanded` on it. A pull request is one item of three lines (mb-1z7j): the anchor's two,
-// its title's (mb-85op), and under them its change line, which carries the chevron, as a
-// folder's line does, then its number, its author, and its brief change line (row-lines.js,
-// mb-lqkb). The three are one hover, one selection, and one keyboard stop
-// (`.github-pulls-entry`). The rule for a row with a disclosure toggle (docs/design-system.md,
-// "A Click on the Toggle's Line Toggles"): a click on the line that carries the toggle toggles,
-// and a click on the larger item that includes it does not. So a click on the change line,
-// anywhere on it, the number and the author included, toggles the files and opens no page, and
-// a click on the title opens the pull request and expands nothing; a modified click toggles
-// nothing, and on the title is the browser's, a new tab. No row expands on its own: not on an
-// open, a selection, or a key's walk. Up and Down walk the pull requests as wholes, and bring
-// the whole item into view; on one, Space toggles its files, Right opens them or goes to the
-// first, Left closes them or goes to its stack's row, and Enter opens it. Every key acts on the
-// row that has focus (`anchorFocusedRow`). The change line is the pointer's alone: hidden from
-// assistive technology, it leaves the tree its items and groups, and its words describe the
-// row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
+// `aria-expanded` on it. A pull request is one item, its anchor (mb-1z7j, mb-pw8t): a run of
+// its title, a stack member's place, its number, and its brief change line (row-lines.js,
+// mb-lqkb) with the chevron after it, one flow that wraps with every line after the first in
+// the text column, then its last line, the author and the age. The item is one hover, one
+// selection, and one keyboard stop (`.github-pulls-entry`). Its toggle is the brief change
+// line and the chevron after it, the summary the chevron expands (docs/design-system.md, "A
+// Click on the Toggle's Line Toggles"): a click on them toggles the files and opens no page,
+// and a click anywhere else on the item opens the pull request and expands nothing; a
+// modified click toggles nothing, and off the toggle is the browser's, a new tab. No row
+// expands on its own: not on an open, a selection, or a key's walk. Up and Down walk the pull
+// requests as wholes, and bring the whole item into view; on one, Space toggles its files,
+// Right opens them or goes to the first, Left closes them or goes to its stack's row, and
+// Enter opens it. Every key acts on the row that has focus (`anchorFocusedRow`). The toggle
+// is the pointer's alone: hidden from assistive technology, it leaves the tree its items and
+// groups, and its words describe the row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
@@ -158,13 +157,18 @@ export const DISPLAY_ROWS = 500;
 const PAGE_AHEAD_PX = 240;
 // Viewport neighbors; measured catalog-window evidence is recorded with the feature.
 export const PULL_ROWS_OVERSCAN = 40;
-// The height a row not yet measured is placed at: a pull request's closed row, its link's two
-// lines of title and its change line. Measured in headless Chrome 152 with KPress's faces at
-// the nav's 13 px type, from 180 to 420 px in both themes, 61 px whether the lines wait or are
-// shown, and whether the title is one line, two, or more cut short at two (41 px of link, the
-// 2 px pad and two 19.5 px lines, and 20 of change line), as it was when the number's line was
-// the link's second (mb-85op, mb-lqkb; tests/dom/github-pulls-row-lines-chrome.mjs).
-export const ROW_ESTIMATE_PX = 61;
+// The height a row not yet measured is placed at: a typical pull request's closed row at the
+// default pane, a run of three lines and its last line, the 2 px pad, three 19.5 px lines, and
+// 20 px of last line, whether its lines wait or are shown (mb-pw8t). Measured in headless
+// Chrome 152 with KPress's faces at the nav's 13 px type, on this repository's pull requests
+// 440 to 488 in a closed row (tests/dom/github-pulls-row-lines-chrome.mjs, `REAL_TITLES`): at
+// 299 px their runs take two lines for 4 of 45, three for 30, four for 10, and five for 1, a
+// mean row of 84 px; at 380 px, two lines for 28 of 45 and three for 15; at 420 px, two for
+// 35. Each line of the run fewer or more makes a row a line shorter or taller, and the list
+// places each row drawn by its measured height. When the run was the title alone, cut short
+// at its second line, and the number and the lines were on the line under it, a row was at
+// most 61 px (mb-85op, mb-lqkb).
+export const ROW_ESTIMATE_PX = 80.5;
 // How long a walk waits for a next key before it opens the row it reached, once a key is
 // repeating. A key's release opens it at once, so this is only for a release the page does
 // not see, and it is past macOS's default repeat of 90 ms, so a held key never waits it out.
@@ -3738,7 +3742,7 @@ export function mountPullsPanel(container, ctx, mb) {
     { type: "button", class: "btn github-pulls-refresh", "aria-disabled": "true" },
     ["Refresh"],
   );
-  refreshButton.addEventListener("click", () => void controller.refresh());
+  refreshButton.addEventListener("click", () => void refreshAll());
   filters.append(refreshButton);
   const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
@@ -3794,12 +3798,12 @@ export function mountPullsPanel(container, ctx, mb) {
    *   stack: HTMLElement,
    *   title: HTMLElement,
    *   icon: HTMLElement,
-   *   line: HTMLElement,
+   *   number: HTMLElement,
+   *   byline: HTMLElement,
    *   by: HTMLElement,
    *   change: HTMLElement,
    *   changeLine: HTMLElement,
    *   changeWords: HTMLElement,
-   *   changeSep: HTMLElement,
    *   changePending: HTMLElement | null,
    *   changeKey: string,
    *   info: PullRow,
@@ -3847,7 +3851,7 @@ export function mountPullsPanel(container, ctx, mb) {
   const rowElement = (/** @type {number} */ key) =>
     key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.row;
   /**
-   * What a row's item is on screen: a pull request's three lines, its zone, which hovers and
+   * What a row's item is on screen: a pull request's lines, its zone, which hovers and
    * takes the ring as one (mb-1z7j), or a stack's one row.
    */
   const itemElement = (/** @type {number} */ key) =>
@@ -3971,12 +3975,58 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {(() => void) | null} */
   let unwatchFile = null;
   let fileFollowEpoch = 0;
+  // The one Refresh (mb-ablv): the tab's Refresh refreshes the pull request page beside it,
+  // as the page's own Refresh did, and then the list, so a reader asks once for both. It
+  // waits, `aria-disabled`, only while neither can refresh, and its number runs what its
+  // click runs.
+  /** Whether the list can refresh, as the last paint said. */
+  let listCanRefresh = false;
+  /** @type {{canRefresh: () => boolean, refresh: () => void, onRefreshChange: (listener: () => void) => () => void} | null} */
+  let refreshPage = null;
+  /** @type {(() => void) | null} */
+  let unwatchRefreshPage = null;
+  function paintRefresh() {
+    const can = listCanRefresh || refreshPage?.canRefresh() === true;
+    refreshButton.setAttribute("aria-disabled", String(!can));
+  }
+  /** A press of Refresh: the page beside the tab first, then the list. */
+  function refreshAll() {
+    if (refreshPage?.canRefresh() === true) {
+      refreshPage.refresh();
+    }
+    return controller.refresh();
+  }
+  /**
+   * Follow the refresh of the page beside the tab, the shown pull request's, as it comes,
+   * is replaced, or goes.
+   *
+   * @param {unknown} page
+   */
+  function followPageRefresh(page) {
+    const next =
+      /** @type {{canRefresh?: unknown, refresh?: unknown, onRefreshChange?: unknown} | null} */ (
+        page
+      );
+    const refreshing =
+      typeof next?.canRefresh === "function" &&
+      typeof next.refresh === "function" &&
+      typeof next.onRefreshChange === "function"
+        ? /** @type {NonNullable<typeof refreshPage>} */ (next)
+        : null;
+    if (refreshing !== refreshPage) {
+      unwatchRefreshPage?.();
+      refreshPage = refreshing;
+      unwatchRefreshPage = refreshing?.onRefreshChange(paintRefresh) ?? null;
+    }
+    paintRefresh();
+  }
   /** A null-file route replays the same page's current observation after address sync.
    * @param {boolean} [replay]
    */
   function followCurrentFile(replay = false) {
     const number = currentRow;
     const page = number === null ? null : tab.pageFor(number);
+    followPageRefresh(page);
     if (!replay && page === followedPage) {
       return;
     }
@@ -4037,6 +4087,7 @@ export function mountPullsPanel(container, ctx, mb) {
         shown: panelShown,
         scrollRoot: tab.scrollRoot,
         chevron,
+        changeLineNodes: mb.changeLineNodes,
         href: (path) => tab.fileHref(number, path),
         request: async (method, route, options) => {
           const answer = await request(mb.perf, method, route, {
@@ -4199,7 +4250,12 @@ export function mountPullsPanel(container, ctx, mb) {
       return;
     }
     element.setAttribute("aria-label", hint);
+    // After the title, with the dot before it, as every part of the row's run after the title
+    // has (`separator`; mb-pw8t).
     element.replaceChildren(
+      "\u00a0",
+      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
+      " ",
       h(
         "span",
         { class: "github-pull-stack-position" },
@@ -4216,26 +4272,31 @@ export function mountPullsPanel(container, ctx, mb) {
           part.position,
         ]),
       ),
-      // A no-break space before the dot and a text space after it, so the flow breaks after
-      // the dot as after a word and never before it (github/styles.css, `.github-pulls-place`).
-      "\u00a0",
-      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-      " ",
     );
   }
 
-  /** A separator of the number's line, which a part carries before it. */
-  const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
+  /**
+   * The dot before a part of a row's run after its title, the place, the number, and the
+   * lines (mb-pw8t): a no-break space before it and a text space after it, so the run breaks
+   * after the dot as after a word and never before it (github/styles.css,
+   * `.github-pulls-heading`). It is the stack menu's dot (`.github-pull-stack-dot`), so the
+   * two surfaces read alike.
+   */
+  const separator = () =>
+    h("span", { class: "github-pulls-sep", "aria-hidden": "true" }, [
+      "\u00a0",
+      h("span", { class: "github-pull-stack-dot" }, ["·"]),
+      " ",
+    ]);
 
   /**
-   * The author on a row's third line, after the number, with the separator before it, so past
-   * its floor it leaves the line whole (github/styles.css, `.github-pulls-by`).
+   * The author, which starts the row's last line, before the age; its name ends in an
+   * ellipsis where the line has no room for it (github/styles.css, `.github-pulls-by`).
    *
    * @param {PullRow} row
    */
   function rowAuthor(row) {
     return h("span", { class: "github-pulls-by" }, [
-      separator(),
       // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so this
       // asks for no avatar outside that window, and a row the window mounts again as the list
       // scrolls back draws its avatar at once: WebKit fetches a new lazy image again
@@ -4249,9 +4310,9 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The number's line said in words for the row's link, "#455 · jlevy · 3d": the line itself
-   * is the third, the toggle's, which is hidden from assistive technology, so the link's name
-   * still names the pull request's number, its author, and its age after its title.
+   * The number, the author, and the age said in words for the row's link, "#455 · jlevy ·
+   * 3d": the number and the last line, which show them, are hidden from assistive
+   * technology, so the link's name says them once, after its title and place.
    *
    * @param {PullRow} row
    * @param {string} age
@@ -4282,7 +4343,7 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     if (row.avatar !== before.avatar || row.meta !== before.meta) {
       const by = rowAuthor(row);
-      entry.line.insertBefore(by, entry.by);
+      entry.byline.insertBefore(by, entry.by);
       entry.by.remove();
       entry.by = by;
     }
@@ -4304,25 +4365,70 @@ export function mountPullsPanel(container, ctx, mb) {
     // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
     // "Titles").
     const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
-    // A stack member's place and the dot after it, between the state icon and the title
-    // (`paintPlace`); empty and hidden while the row is in no stack.
+    // A stack member's place and the dot before it, after the title (`paintPlace`); empty and
+    // hidden while the row is in no stack.
     const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
     const icon = pullStateIcon(row.state);
-    // The row's first two lines are its title's (mb-85op): one flow of the state icon, the
-    // place, and the title, which wraps under the icon and is cut short at the second line's
-    // end, two lines tall whatever it holds (github/styles.css, `.github-pulls-heading`).
-    const heading = h("span", { class: "github-pulls-heading" }, [icon, stack, title]);
-    // No tooltip, as nothing in the Pulls column has one: the page has the exact time
-    // (docs/design-system.md, "Tooltips Add Information").
-    const updated = h("span", { class: `github-pulls-age ${when.className}` }, [when.label]);
-    const said = h("span", { class: "sr-only" }, [rowSaid(row, when.label)]);
+    // The number, after the title and the place, as the stack menu's member line ends with
+    // them (mb-pw8t). The link's name says it (`rowSaid`).
+    const number = h("span", { class: "github-pulls-number", "aria-hidden": "true" }, [
+      `#${row.number}`,
+    ]);
     const changeId = `github-pull-change-${row.number}`;
+    // The lines the pull request changes (`paintChange`), then the registry's chevron, after
+    // the summary it expands, as every toggle of a diff summary has it (mb-f0pz): the run's
+    // last part, and the item's inner target. A press on it opens or closes the changed files
+    // and opens no page, where a press anywhere else on the item opens the pull request
+    // (mb-pw8t). It is for the pointer alone: Space, Right, and Left on the row are its keys,
+    // and the row's `aria-expanded` its state, so it is hidden from assistive technology, and
+    // the tree holds only its items and their groups (mb-1z7j). Its words, the lines said in
+    // full, stay out of view in it, and describe the row, which reads them though they are
+    // hidden. Its `.expanded` follows the files.
+    const changeLine = h("span", { class: "github-pulls-change-line" });
+    const changeWords = h("span", { class: "github-pulls-change-words", id: changeId, hidden: "" });
+    const change = h(
+      "span",
+      { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" },
+      [
+        changeLine,
+        h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]),
+        changeWords,
+      ],
+    );
+    change.dataset.number = String(row.number);
+    // The lines and the chevron never part, and take the pending placeholder's room
+    // (github/styles.css, `.github-pulls-tail`).
+    const tail = h("span", { class: "github-pulls-tail" }, [change]);
+    // The row's run (mb-pw8t): the state icon, then the title, the place, the number, and the
+    // lines with their chevron, a dot between each two, one flow that wraps with every line
+    // after the first in the text column, past the icon, as a tree's title does
+    // (github/styles.css, `.github-pulls-heading`).
+    const heading = h("span", { class: "github-pulls-heading" }, [
+      icon,
+      title,
+      stack,
+      separator(),
+      number,
+      separator(),
+      tail,
+    ]);
+    // The last line: the author, and the age at the row's end. No tooltip, as nothing in the
+    // Pulls column has one: the page has the exact time (docs/design-system.md, "Tooltips Add
+    // Information"). The link's name says them (`rowSaid`).
+    const by = rowAuthor(row);
+    const updated = h("span", { class: `github-pulls-age ${when.className}` }, [when.label]);
+    const byline = h("span", { class: "github-pulls-byline", "aria-hidden": "true" }, [
+      by,
+      updated,
+    ]);
+    const said = h("span", { class: "sr-only" }, [rowSaid(row, when.label)]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place. Its changed files
     // are its children, as a folder's are, closed until the reader opens them; the tree that
     // draws them owns them from it (pull-files-view.js, `attach`). Its name is the state, the
-    // place, the title, and its number's line in words (`rowSaid`); its change line's words
-    // describe it, so they are read with it, as the line is no stop and no node of the tree.
+    // title, the place, and the number, the author, and the age in words (`rowSaid`); its
+    // lines' words describe it, so they are read with it, as its toggle is no stop and no node
+    // of the tree.
     const anchor = /** @type {HTMLAnchorElement} */ (
       h(
         "a",
@@ -4335,7 +4441,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-describedby": changeId,
           tabindex: "-1",
         },
-        [heading, said],
+        [heading, byline, said],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -4345,40 +4451,9 @@ export function mountPullsPanel(container, ctx, mb) {
     if (row.number === anchorRow) {
       anchor.setAttribute("tabindex", "0");
     }
-    // The row's third line (mb-lqkb): the registry's chevron in the slot under the state icon,
-    // then the number's line, the number, the author, and the lines the pull request changes
-    // (`paintChange`), with the age at the row's end. It is the line that carries the toggle,
-    // as a folder's line does, so a press anywhere on it opens or closes the changed files and
-    // opens no page, and it is not a link; it is the item's inner target, for the pointer
-    // alone. Space, Right, and Left on the row are its keys, and the row's `aria-expanded` its
-    // state, so the line is hidden from assistive technology, and the tree it sits in holds
-    // only its items and their groups (mb-1z7j); the link's name says the number's line
-    // (`rowSaid`). Its words, the lines said in full, stay out of view in it, and describe the
-    // row, which reads them though they are hidden. Its `.expanded` follows the files.
-    const by = rowAuthor(row);
-    const changeLine = h("span", { class: "github-pulls-change-line" });
-    const line = h("span", { class: "github-pulls-line" }, [by, changeLine]);
-    // One line (github/styles.css, `.github-pulls-meta`): the number never gives way; the
-    // lines, then the author, leave it whole where there is no room for them.
-    const meta = h("span", { class: "github-pulls-meta" }, [
-      h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
-      line,
-    ]);
-    const changeWords = h("span", { class: "github-pulls-change-words", id: changeId, hidden: "" });
-    const change = h(
-      "div",
-      { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" },
-      [
-        h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]),
-        meta,
-        updated,
-        changeWords,
-      ],
-    );
-    change.dataset.number = String(row.number);
-    // The item's three lines, one hover, one selection, and one focus ring (github/styles.css,
+    // The item, one hover, one selection, and one focus ring (github/styles.css,
     // `.github-pulls-entry`); its files follow, outside it, as a folder's follow its row.
-    const zone = h("div", { class: "github-pulls-entry" }, [anchor, change]);
+    const zone = h("div", { class: "github-pulls-entry" }, [anchor]);
     const item = h("li", { class: "github-pulls-item", role: "none" }, [zone]);
     // Its files, kept across a row built again for what it shows.
     trees.get(row.number)?.attach(item, anchor, change);
@@ -4392,12 +4467,12 @@ export function mountPullsPanel(container, ctx, mb) {
       stack,
       title,
       icon,
-      line,
+      number,
+      byline,
       by,
       change,
       changeLine,
       changeWords,
-      changeSep: separator(),
       changePending: null,
       changeKey: "",
       info: row,
@@ -4408,14 +4483,18 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The lines a row's pull request changes, as it is now (row-lines.js), after the author on
-   * the row's third line: "+1,234 −567", the shell's brief change line of its line totals
-   * alone, with no file total and no file statuses (mb-lqkb), a total of zero left out,
-   * "+1,234" where it only adds lines, and "0 lines" where it changes none (mb-efum); the
-   * shell's pending placeholder while it is read or its list is listed, so nothing moves
-   * when it arrives; or nothing where it cannot be had. Each holds the separator before it, and nothing holds none. The
-   * lines are said in words, as a stack's row says its line (`rowLineHint`), in the hidden
-   * text that describes the row, so the row is read with them.
+   * The lines a row's pull request changes, as it is now (row-lines.js), after its number:
+   * "+1,234 −567", the shell's brief change line of its line totals alone, with no file total
+   * and no file statuses (mb-lqkb), a total of zero left out, "+1,234" where it only adds
+   * lines, and "0 lines" where it changes none (mb-efum); the shell's pending placeholder
+   * while it is read or its list is listed, so nothing moves when it arrives; or nothing
+   * where it cannot be had. A dot comes before them and the chevron after them, in a box that
+   * keeps the placeholder's room whatever it holds (github/styles.css, `.github-pulls-tail`),
+   * so a row whose lines cannot be had ends with the dot and the chevron, "#455 · ›", and
+   * moves nothing when its list is listed and its lines are read after all: a row goes from
+   * none to waiting to shown as the prefetch lane lists its files. The lines are said in
+   * words, as a stack's row says its line (`rowLineHint`), in the hidden text that describes
+   * the row, so the row is read with them.
    *
    * @param {PaintedRow} entry
    */
@@ -4433,8 +4512,8 @@ export function mountPullsPanel(container, ctx, mb) {
     entry.changeKey = shown;
     let words = null;
     if (line.phase === "shown") {
-      const said = mb.changeLine(rowLineInput(line.summary, null), { omitZeroTotals: true });
-      entry.changeLine.replaceChildren(entry.changeSep, ...mb.changeLineNodes(said));
+      const said = mb.changeLine(rowLineInput(line.summary, null));
+      entry.changeLine.replaceChildren(...mb.changeLineNodes(said));
       words = said.label;
     } else if (line.phase === "waiting") {
       // The shell's pending placeholder (`.tally-pending`), after the quiet period
@@ -4445,10 +4524,10 @@ export function mountPullsPanel(container, ctx, mb) {
         [h("span", { class: "tally-pending" })],
       );
       if (
-        entry.changeLine.childNodes[1] !== entry.changePending ||
-        entry.changeLine.childNodes.length !== 2
+        entry.changeLine.firstChild !== entry.changePending ||
+        entry.changeLine.childNodes.length !== 1
       ) {
-        entry.changeLine.replaceChildren(entry.changeSep, entry.changePending);
+        entry.changeLine.replaceChildren(entry.changePending);
       }
     } else {
       entry.changeLine.replaceChildren();
@@ -4586,7 +4665,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (line.phase === "shown") {
         // Its line totals alone, with no file statuses, a total of zero left out, as a pull
         // request's row says its own (mb-lqkb, mb-efum).
-        const said = mb.changeLine(stackLineInput(line.change), { omitZeroTotals: true });
+        const said = mb.changeLine(stackLineInput(line.change));
         // "Stack #286 · +1,234 −567": the dot is a count summary's separator, which the name,
         // saying the line in words, needs no word for.
         // Totals a member's list could not count, a binary file it listed, are not exact:
@@ -4771,9 +4850,8 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   function clearArrivalFlashes() {
-    for (const { row, change } of painted.values()) {
+    for (const { row } of painted.values()) {
       row.classList.remove("tree-item-flash-in");
-      change.classList.remove("tree-item-flash-in");
     }
   }
 
@@ -4908,7 +4986,7 @@ export function mountPullsPanel(container, ctx, mb) {
         : [],
       stackIdentity?.source ?? null,
     );
-    // The pull requests drawn, in the list's order, whose third lines read their change lines.
+    // The pull requests drawn, in the list's order, whose runs read their change lines.
     rowLines?.want(
       panelShown
         ? [...painted.entries()]
@@ -4964,9 +5042,8 @@ export function mountPullsPanel(container, ctx, mb) {
         }
         const box = row.getBoundingClientRect();
         if (box.bottom > box.top && box.bottom > top && box.top < view.bottom) {
-          // The row's three lines arrive together: its change line is under its title.
+          // The row's lines arrive together: they are all its link's.
           row.classList.add("tree-item-flash-in");
-          entry.change.classList.add("tree-item-flash-in");
         }
       }
     }
@@ -5156,7 +5233,8 @@ export function mountPullsPanel(container, ctx, mb) {
         alignRefreshing(list);
       }
     }
-    refreshButton.setAttribute("aria-disabled", String(connected?.canRefresh !== true));
+    listCanRefresh = connected?.canRefresh === true;
+    paintRefresh();
     const help = connected?.help ?? "";
     if (connectionHelp.dataset.help !== help) {
       connectionHelp.dataset.help = help;
@@ -5288,7 +5366,7 @@ export function mountPullsPanel(container, ctx, mb) {
             movingFocus = true;
             row.focus({ preventScroll: true });
             movingFocus = false;
-            // The whole item, its three lines and the ring round them, not the link's two.
+            // The whole item and the ring round it.
             itemElement(next)?.scrollIntoView({ block: "nearest" });
           }
         }
@@ -5403,7 +5481,7 @@ export function mountPullsPanel(container, ctx, mb) {
   // Each row's brief change line, what its own list of changed files sums to (row-lines.js):
   // read for the rows the list draws, in one request, when the browser is idle, from the
   // cache alone, and drawn through the SDK's one component for it. An SDK without `whenIdle`
-  // or the component has no lines, and its rows' third lines hold the chevron alone.
+  // or the component has no lines, and its rows show none.
   rowLines =
     typeof mb.whenIdle !== "function" ||
     typeof mb.changeLine !== "function" ||
@@ -5448,7 +5526,7 @@ export function mountPullsPanel(container, ctx, mb) {
       });
     }
     mb.shortcuts.attach(refreshButton, {
-      activate: () => void controller.refresh(),
+      activate: () => void refreshAll(),
       id: "github.pulls.refresh",
       numbered: true,
       signal,
@@ -5469,7 +5547,7 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /**
    * Focus *number*'s row, the item's one stop, reading nothing and opening nothing: after a
-   * press on its change line, or Left from the top of its files. The pointer is on the item,
+   * press on its toggle, or Left from the top of its files. The pointer is on the item,
    * or the files were under it, so nothing scrolls.
    *
    * @param {number} number
@@ -5528,12 +5606,14 @@ export function mountPullsPanel(container, ctx, mb) {
         controller.setStackOpen(number);
         return;
       }
-      // A press anywhere on a row's change line, the line that carries its toggle, opens or
-      // closes its changed files, as a press on a folder's line does, and opens no page; the
-      // item takes the focus, so Space and the arrows go on from it. A modified press, which on
-      // a link opens a new tab, toggles nothing: the title above it is the item's link.
+      // A press on a row's toggle, its lines and the chevron after them, opens or closes its
+      // changed files, as a press on a folder's chevron does, and opens no page, though the
+      // toggle is in the item's link (mb-pw8t); the item takes the focus, so Space and the
+      // arrows go on from it. A modified press, which on the rest of the link opens a new tab,
+      // toggles nothing and opens nothing.
       const change = changeOf(event.target);
       if (change !== null) {
+        event.preventDefault();
         if (isPlainClick(event)) {
           const number = Number(change.dataset.number);
           focusItem(number);
@@ -5542,12 +5622,23 @@ export function mountPullsPanel(container, ctx, mb) {
         return;
       }
       const row = rowOf(event.target);
-      // A press on the item's other lines, which include no toggle of their own, opens the
-      // pull request, and its changed files stay as they were. A new tab and a copied address
-      // are the browser's own.
+      // A press anywhere else on the item, its title, its place, its number, or its last line,
+      // opens the pull request, and its changed files stay as they were. A new tab and a
+      // copied address are the browser's own.
       if (row !== null && isPlainClick(event)) {
         event.preventDefault();
         controller.activate(Number(row.dataset.number));
+      }
+    },
+    { signal },
+  );
+  // A middle press on a row's toggle opens no tab either: the toggle is the item's link's only
+  // part that is not the link's.
+  list.addEventListener(
+    "auxclick",
+    (event) => {
+      if (changeOf(event.target) !== null) {
+        event.preventDefault();
       }
     },
     { signal },
@@ -5586,8 +5677,8 @@ export function mountPullsPanel(container, ctx, mb) {
   list.addEventListener(
     "pointerover",
     (event) => {
-      // The row, or its change line, whose press opens the files a peek asks for.
-      const row = rowOf(event.target) ?? changeOf(event.target);
+      // The row, whose toggle's press opens the files a peek asks for.
+      const row = rowOf(event.target);
       if (row === null) {
         return;
       }
@@ -5694,6 +5785,16 @@ export function mountPullsPanel(container, ctx, mb) {
     /** @param {boolean} visible */
     setShown(visible) {
       panelShown = visible;
+      if (visible && revealedPlace !== null && tab.scrollRoot !== null) {
+        // The scroll the tab is shown at is the shell's, its saved scroll put back
+        // (main-tabs.js, `activateNavPanel`), not the reader's: the row a reveal placed is
+        // kept from it. Rows regrouped or placed at other heights since it was saved, as
+        // stacks read while the reader was away regroup them, no longer stand where they
+        // did at that scroll, and a list not yet painted at its height clamps it, so taken
+        // for the reader's scroll it let the row go, out of view (headless Chrome 152,
+        // 2026-11-25, rows placed at `ROW_ESTIMATE_PX` and drawn shorter).
+        revealedPlace.scrollTop = tab.scrollRoot.scrollTop;
+      }
       stacks.setShown(visible);
       controller.setShown(visible);
       if (visible) {
@@ -5842,6 +5943,9 @@ export function mountPullsPanel(container, ctx, mb) {
       moved?.disconnect();
       unwatchPage();
       unwatchFile?.();
+      unwatchRefreshPage?.();
+      unwatchRefreshPage = null;
+      refreshPage = null;
       window.clearTimeout(peekTimer);
       unbindFilters();
       stacks.dispose();

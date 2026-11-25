@@ -15,7 +15,7 @@
 // inset and its pull requests one tree level in; that a stack row and a pull request's row
 // hover alike and are as tall as the row contract says; that the toolbar fits the default
 // pane with no Group by stack chip, since the tab always groups; that the keys move real
-// focus onto and off a stack row, and over a pull request's item, its three lines one stop
+// focus onto and off a stack row, and over a pull request's item, its run and last line one stop
 // (mb-1z7j), whose changed files Space, Right, and Left open and close as a folder's; and that
 // the groups list a stack's
 // members in the order the page's stack menu does. It times the first row and the grouping's arrival, and with
@@ -69,6 +69,49 @@ const REGISTER = `(() => {
   };
 })()`;
 
+// In the page: at every width the pane allows, in both themes, each drawn row's state icon and
+// the first box of its title, its run's first text for a member too, whose place follows the
+// title (mb-pw8t), on the row the Pulls panel paints (mb-ma3f): whether the two overlap by more
+// than half a pixel either way, and where the title starts, one column gap past the icon's
+// slot. In the app's WKWebView the first line's indent was dropped, and a member's place,
+// which then led the title, and the title both started at the icon's left edge.
+const PLACE_SWEEP = `(widths) => {
+  const pane = document.querySelector(".tree-pane");
+  const root = document.documentElement;
+  const saved = [pane.style.width, pane.style.minWidth, root.dataset.theme];
+  const r = (value) => Math.round(value * 100) / 100;
+  const rows = [];
+  let seen = 0;
+  let members = 0;
+  for (const theme of ["light", "dark"]) {
+    root.dataset.theme = theme;
+    for (const width of widths) {
+      pane.style.minWidth = "0";
+      pane.style.width = width + 1 + "px";
+      for (const row of document.querySelectorAll("a.github-pulls-row")) {
+        const icon = row.querySelector(".github-pulls-heading > .github-pull-state-icon");
+        const place = row.querySelector(".github-pulls-heading > .github-pulls-place:not([hidden])");
+        const text = row.querySelector(".github-pulls-heading > .github-pulls-title");
+        const [box] = text?.getClientRects() ?? [];
+        if (!icon || !box) continue;
+        seen += 1;
+        if (place) members += 1;
+        const a = icon.getBoundingClientRect();
+        const gap = parseFloat(getComputedStyle(row).columnGap);
+        const across = Math.min(a.right, box.right) - Math.max(a.left, box.left);
+        const down = Math.min(a.bottom, box.bottom) - Math.max(a.top, box.top);
+        if ((across > 0.5 && down > 0.5) || Math.abs(box.left - (a.right + gap)) > 0.5) {
+          rows.push({ theme, width, number: Number(row.dataset.number), member: place !== null, icon: [r(a.left), r(a.right)], text: [r(box.left), r(box.right)], gap });
+        }
+      }
+    }
+  }
+  pane.style.width = saved[0];
+  pane.style.minWidth = saved[1];
+  if (saved[2] === undefined) delete root.dataset.theme; else root.dataset.theme = saved[2];
+  return { seen, members, overlaps: rows.slice(0, 20), overlapCount: rows.length };
+}`;
+
 // In the page: the grouped list as drawn, and where its rows start.
 const LIST = `(() => {
   const list = document.querySelector(".github-pulls-list");
@@ -96,12 +139,12 @@ const LIST = `(() => {
       const place = row.querySelector(".github-pulls-place");
       open.members.push({
         number: Number(row.dataset.number),
-        // Its place in its stacks, leading its title, after the state icon (mb-vkhd).
+        // Its place in its stacks, after its title and before its number (mb-vkhd, mb-pw8t).
         badge: row.querySelector(".github-pulls-place .github-pull-stack-position")?.textContent ?? "",
-        // The title's flow, the place and its dot, then the title, its no-break space a
-        // space; and the number's line, on the row's third line.
-        heading: ((place?.textContent ?? "") + (row.querySelector(".github-pulls-title")?.textContent ?? "")).replaceAll("\u00a0", " "),
-        line: row.closest("li").querySelector(".github-pulls-change .github-pulls-meta")?.textContent ?? "",
+        // The run as it reads: the title, then the dot and the place, its no-break space a
+        // space; and the number after them.
+        heading: ((row.querySelector(".github-pulls-title")?.textContent ?? "") + (place?.textContent ?? "")).replaceAll("\u00a0", " "),
+        line: row.querySelector(".github-pulls-number")?.textContent ?? "",
         // Another stack named in it, by the Layers glyph before its number.
         others: row.querySelectorAll(".github-pulls-place .github-pull-stack-other svg").length,
         // A member's row draws no stack icon: the stack's row it sits under has it.
@@ -120,16 +163,11 @@ const LIST = `(() => {
     (row) => !row.classList.contains("github-pulls-stack-row"),
   );
   const box = (el) => el?.getBoundingClientRect() ?? null;
-  // Where a pull request's row's text starts: its title's flow's first box, the place where
-  // it has one and the title where not, on the first line, after the state icon.
-  const textStart = (row) => {
-    if (!row) return null;
-    const place = row.querySelector(".github-pulls-place");
-    const first = (place && !place.hidden ? place : row.querySelector(".github-pulls-title"))?.getClientRects()[0];
-    return first?.left ?? null;
-  };
-  // The room a row's title gets: its two lines' width, which a long title fills and is cut
-  // at. A member's and a first-level pull request's, and the pane they are in.
+  // Where a pull request's row's text starts: its run's first box, the title's, on the first
+  // line, after the state icon (mb-pw8t).
+  const textStart = (row) => row?.querySelector(".github-pulls-title")?.getClientRects()[0]?.left ?? null;
+  // The room a row's run gets: its width, in which a long title wraps. A member's and a
+  // first-level pull request's, and the pane they are in.
   const titleBox = (number) =>
     list.querySelector('a.github-pulls-row[data-number="' + number + '"] .github-pulls-heading')?.getBoundingClientRect().width ?? null;
   // The Pulls column carries no tooltip (mb-8mpo): every pull request's and stack's row and
@@ -139,8 +177,9 @@ const LIST = `(() => {
     // Leaving, so no hover is left to read a pull request ahead.
     title.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
   }
-  // A pull request's change line, its third line (mb-d0a3), is read as its row is.
-  const tips = [...list.querySelectorAll(".github-pulls-row, .github-pulls-change")].flatMap((row) =>
+  // A pull request's toggle, the lines and the chevron at its run's end, is read as its row
+  // is, inside it (mb-pw8t).
+  const tips = [...list.querySelectorAll(".github-pulls-row")].flatMap((row) =>
     [row, ...row.querySelectorAll("*")]
       .filter((node) => node.hasAttribute("data-tip-text") || node.hasAttribute("title"))
       .map((node) => (row.dataset.number ?? "stack " + row.dataset.stack) + ": " + node.className),
@@ -153,11 +192,11 @@ const LIST = `(() => {
     memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
-  // A pull request's three lines (mb-85op, mb-lqkb): its link's two, the title's, one flow of
-  // the state icon, a member's place and dot, and the title, from the row's inset to its
-  // end; and under them its change line, the chevron in the first icon slot, then the number's
-  // line in the text column, and the age at the row's end. Each row's parts, from its link's
-  // content box.
+  // A pull request's row (mb-pw8t): its run, one flow of the state icon, the title, a
+  // member's place, the number, and the toggle, the lines and the chevron, every line of it in
+  // the text column, from the row's inset to its end; and under it its last line, the author
+  // in the text column and the age at the row's end. Each row's parts, from its link's content
+  // box.
   const lines = Object.fromEntries(
     [10, 9, 106].map((number) => {
       const row = list.querySelector('a.github-pulls-row[data-number="' + number + '"]');
@@ -168,50 +207,47 @@ const LIST = `(() => {
       const end = r.right - parseFloat(style.paddingRight);
       const of = (selector) => row.querySelector(selector).getBoundingClientRect();
       const item = row.closest("li");
-      const change = item.querySelector(".github-pulls-change");
-      const metaBox = change.querySelector(".github-pulls-meta");
-      const meta = metaBox.getBoundingClientRect();
-      const age = change.querySelector(".github-pulls-age").getBoundingClientRect();
       const headingBox = row.querySelector(".github-pulls-heading");
       const heading = headingBox.getBoundingClientRect();
       const lh = parseFloat(getComputedStyle(headingBox).lineHeight);
-      const title = of(".github-pulls-title");
+      const column = heading.left + parseFloat(getComputedStyle(headingBox).paddingInlineStart);
       const icon = of(".github-pull-state-icon");
-      const numberBox = change.querySelector(".github-pulls-number").getBoundingClientRect();
-      const line = change.getBoundingClientRect();
-      const toggle = change.querySelector(".github-pulls-toggle")?.getBoundingClientRect() ?? null;
+      const byline = of(".github-pulls-byline");
+      const by = of(".github-pulls-by");
+      const age = of(".github-pulls-age");
+      const toggle = row.querySelector(".github-pulls-toggle")?.getBoundingClientRect() ?? null;
       const round = (value) => Math.round(value * 100) / 100;
       return [number, {
-        text: metaBox.textContent,
-        // The title's two lines are above the change line, whose number's line is one line
-        // of its height.
-        titleAbove: heading.bottom <= meta.top + 0.5 && heading.bottom <= age.top + 0.5 && title.bottom <= heading.bottom + 0.5,
-        titleTwoLines: Math.abs(heading.height - 2 * lh) < 0.5,
-        oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(change).lineHeight)) < 0.5,
-        // The number's line starts in the text column, under the title's first text; the age
-        // ends at the row's end.
-        metaFromText: round(meta.left - textStart(row)),
+        text: row.querySelector(".github-pulls-number").textContent,
+        // The run is as tall as its lines, never cut short (mb-pw8t), above the last line.
+        runAbove: heading.bottom <= byline.top + 0.5 && heading.bottom <= age.top + 0.5,
+        runLines: Math.round(heading.height / lh),
+        runFits: Math.abs(heading.height - Math.round(heading.height / lh) * lh) < 0.5,
+        // The last line's author starts in the text column, under the title's first text;
+        // the age ends at the row's end.
+        byFromText: round(by.left - textStart(row)),
         ageToEnd: round(end - age.right),
-        // The title's lines run from the row's inset to its end, its first line's text in the
-        // text column, after the state icon's slot.
-        titleToEnd: round(end - heading.right),
-        titleFromInset: round(heading.left - inset),
+        // The run runs from the row's inset to its end, its text in the text column, after the
+        // state icon's slot.
+        runToEnd: round(end - heading.right),
+        runFromInset: round(heading.left - inset),
         textFromInset: round(textStart(row) - inset),
+        columnFromInset: round(column - inset),
         // The text column is one icon slot and gap in: a row in no stack is flush (mb-3vil).
         textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
-        // The state icon is the title's first line's start, one line of it tall, above the
-        // change line; the link holds no chevron.
-        withTitle: Math.abs(icon.top - heading.top) < 0.5 && Math.abs(icon.height - lh) < 0.5 && icon.bottom <= meta.top + 0.5,
+        // The state icon is the run's first line's start, one line of it tall.
+        withTitle: Math.abs(icon.top - heading.top) < 0.5 && Math.abs(icon.height - lh) < 0.5,
         iconFromInset: round(icon.left - inset),
+        // The link's one toggle ends its run, on its last line.
         linkToggles: row.querySelectorAll(".github-pulls-toggle").length,
-        // The change line is under the link, and the item is the two; the chevron is inside it,
-        // under the state icon, and the number after it, under the title's first text (mb-3vil).
-        changeUnder: line.top >= r.bottom - 0.5 && line.top >= heading.bottom - 0.5,
-        threeLines: Math.abs(item.getBoundingClientRect().height - r.height - line.height) < 0.5,
-        toggleOnChange: toggle !== null && toggle.top >= line.top - 0.5 && toggle.bottom <= line.bottom + 0.5,
-        toggleFromInset: toggle === null ? null : round(toggle.left - inset),
-        numberLeft: round(numberBox.left - meta.left),
-        titleWidth: round(heading.width),
+        toggleEndsRun:
+          headingBox.lastElementChild?.classList.contains("github-pulls-tail") === true &&
+          toggle !== null &&
+          toggle.bottom <= heading.bottom + 0.5 &&
+          toggle.top >= heading.bottom - lh - 0.5,
+        // A closed row's item is its link.
+        itemIsRow: Math.abs(item.getBoundingClientRect().height - r.height) < 0.5,
+        runWidth: round(heading.width),
         height: round(r.height),
         itemHeight: round(item.getBoundingClientRect().height),
       }];
@@ -224,19 +260,15 @@ const LIST = `(() => {
     stacks,
     rows: rows.length,
     stackToggle: left(stackRow?.querySelector(".github-pulls-toggle")),
-    // A pull request's chevron is on its change line, its third line (mb-d0a3).
-    memberToggle: left(member?.closest("li").querySelector(".github-pulls-change .github-pulls-toggle")),
-    flatToggle: left(flat?.closest("li").querySelector(".github-pulls-change .github-pulls-toggle")),
     stackLabel: left(stackRow?.querySelector(".github-pull-stack-label")),
     stackIcon: left(stackRow?.querySelector(".github-pull-stack-icon")),
-    // The three lines' text column: the title's first text, the place where there is one,
-    // and the number's line, the number first.
+    // The text column: the run's first text, the title's, and the last line's, the author's.
     flatTitle: textStart(flat),
     flatIcon: left(flat?.querySelector(".github-pull-state-icon")),
     memberTitle: textStart(member),
     memberIcon: left(member?.querySelector(".github-pull-state-icon")),
-    memberMeta: left(member?.closest("li").querySelector(".github-pulls-change .github-pulls-number")),
-    flatMeta: left(flat?.closest("li").querySelector(".github-pulls-change .github-pulls-number")),
+    memberBy: left(member?.querySelector(".github-pulls-by")),
+    flatBy: left(flat?.querySelector(".github-pulls-by")),
     slotWidth: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")),
     rowGap: parseFloat(getComputedStyle(flat ?? document.body).columnGap),
     // A member's indent: one icon slot and the rows' column gap (mb-3vil).
@@ -263,9 +295,9 @@ const LIST = `(() => {
         chip: document.querySelector(".github-pulls-group-toggle") !== null,
       };
     })(),
-    // A row's leading slots, the chevron's and the icon's, from the row's content edge: a
-    // pull request's (#106, first level), whose chevron is on its change line under its
-    // link, and a stack's (mb-hmv7, --tree-icon-slot).
+    // A row's slots, the chevron's and the icon's, from the row's content edge: a pull
+    // request's (#106, first level), whose chevron ends its run (mb-pw8t), and a stack's,
+    // whose chevron leads its row (mb-hmv7, --tree-icon-slot).
     slots: (() => {
       const round = (value) => Math.round(value * 100) / 100;
       const of = (row, holder, toggle, icon, text) => {
@@ -291,7 +323,7 @@ const LIST = `(() => {
       };
       return {
         token: getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot").trim(),
-        pull: of(flat, flat?.closest("li").querySelector(".github-pulls-change"), ".github-pulls-toggle", ".github-pull-state-icon", ".github-pulls-title"),
+        pull: of(flat, flat, ".github-pulls-toggle", ".github-pull-state-icon", ".github-pulls-title"),
         stack: of(stackRow, stackRow, ".github-pulls-toggle", ".github-pull-stack-icon", ".github-pull-stack-label"),
       };
     })(),
@@ -508,8 +540,8 @@ try {
     });
     await frames();
   };
-  // A pull request's change line (mb-d0a3) carries its number too, and is named apart: it is
-  // never focused (mb-1z7j), which naming it would show.
+  // A pull request's toggle (mb-d0a3, mb-pw8t) carries its number too, and is named apart: it
+  // is never focused (mb-1z7j), which naming it would show.
   const focused = () =>
     evaluate(`(() => {
       const el = document.activeElement;
@@ -601,6 +633,16 @@ try {
     await frames();
     const list = await evaluate(LIST);
     measured.list = list;
+    // A row's title, a member's as well, starts one column gap after its state icon wherever
+    // the pane is and in both themes: the two boxes never overlap (mb-ma3f, mb-pw8t).
+    measured.placeSweep = await evaluate(`(${PLACE_SWEEP})(${JSON.stringify(WIDTHS)})`);
+    check(
+      "a row's title, a member's too, never overlaps its state icon, at any width, in either theme",
+      measured.placeSweep.members > 0 &&
+        measured.placeSweep.seen > measured.placeSweep.members &&
+        measured.placeSweep.overlapCount === 0,
+      JSON.stringify(measured.placeSweep),
+    );
     const first = list.stacks[0];
     check(
       "the list is grouped, Stack #286 first",
@@ -641,17 +683,19 @@ try {
       JSON.stringify(list.stacks),
     );
     // It was on the number's line, before the number, "1/6 · #455", from mb-dzsi until the
-    // title took two lines and the number's line joined the change line (mb-vkhd, mb-85op).
+    // title took two lines and the number's line joined the change line (mb-vkhd, mb-85op),
+    // and then before the title, "1/6 · Fix the reader", until the run took the stack menu's
+    // order, the title, the place, and the number (mb-pw8t).
     check(
-      "a member's place leads its title, then the stack menu's dot, as 1/6 · Fix the reader reads, and its number's line starts with its number",
-      first?.members[0]?.heading.startsWith("4/4 · 300 2/2 · ") &&
-        first.members[1]?.heading.startsWith("3/4 · ") &&
-        first.members[0].line.startsWith("#10 · ") &&
-        first.members[1].line.startsWith("#9 · "),
+      "a member's place follows its title after the stack menu's dot, as Fix the reader · 1/6 · #455 reads, and its number follows",
+      first?.members[0]?.heading.endsWith(" · 4/4 · 300 2/2") &&
+        first.members[1]?.heading.endsWith(" · 3/4") &&
+        first.members[0].line === "#10" &&
+        first.members[1].line === "#9",
       JSON.stringify(first?.members.map((m) => [m.heading, m.line])),
     );
     check(
-      "no pull request's or stack's row, nor any part of one, its change line included, carries a tooltip",
+      "no pull request's or stack's row, nor any part of one, its toggle included, carries a tooltip",
       list.tips.length === 0,
       JSON.stringify(list.tips),
     );
@@ -667,53 +711,57 @@ try {
     // the icon leading it, and the number's line under it, with the age (2026-11-17, at the
     // owner's word: the title is what a reader scans for); before, the number's line came
     // first and the icon led it (mb-3cbf). The icon is in the row's one slot, on its inset, so a
-    // row in no stack is flush (mb-3vil). The chevron is on the row's third line, its change
+    // row in no stack is flush (mb-3vil). The chevron was on the row's third line, its change
     // line (mb-d0a3), in that slot under the icon, and the line's values in the title's column:
     // on the number's line it led the row's link, which a press then both opened and expanded.
     // Under the title's start it put the values a slot and gap past the other two lines' text,
     // which the owner asked to have start at one x (2026-11-18).
     // The title took two lines, and the number's line joined the change line (mb-85op,
     // mb-lqkb): before, the title was alone on the first line and the number's line, with the
-    // age, the second.
+    // age, the second. Then the number and the lines joined the title's run, and the author
+    // and the age are the last line (mb-pw8t).
     check(
-      "a pull request's first two lines are its title's, the icon on the row's inset and the text from the text column to the row's end, and its third its change line, the chevron under the icon, the number under the title's first text, and the age at the row's end",
+      "a pull request's run is its first lines, the icon on the row's inset and the text from the text column to the row's end, ending with its toggle, and its last line the author under the title's first text and the age at the row's end",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
-          row?.titleAbove &&
-          row.titleTwoLines &&
-          row.oneLine &&
-          Math.abs(row.metaFromText) < 0.5 &&
+          row?.runAbove &&
+          row.runFits &&
+          Math.abs(row.byFromText) < 0.5 &&
           Math.abs(row.ageToEnd) < 0.5 &&
-          Math.abs(row.titleToEnd) < 0.5 &&
-          Math.abs(row.titleFromInset) < 0.5 &&
+          Math.abs(row.runToEnd) < 0.5 &&
+          Math.abs(row.runFromInset) < 0.5 &&
           Math.abs(row.textFromInset - row.textColumn) < 0.5 &&
+          Math.abs(row.columnFromInset - row.textColumn) < 0.5 &&
           row.withTitle &&
           Math.abs(row.iconFromInset) < 0.5 &&
-          row.linkToggles === 0 &&
-          row.changeUnder &&
-          row.threeLines &&
-          row.toggleOnChange &&
-          Math.abs(row.toggleFromInset) < 0.5 &&
-          row.numberLeft === 0 &&
-          row.height === list.titleRoom.flatRow &&
-          row.itemHeight === list.lines[106].itemHeight
+          row.linkToggles === 1 &&
+          row.toggleEndsRun &&
+          row.itemIsRow &&
+          // Rows whose runs take as many lines are as tall as each other.
+          [10, 9, 106].every((other) => {
+            const that = list.lines[other];
+            return (
+              that?.runLines !== row.runLines ||
+              (that.height === row.height && that.itemHeight === row.itemHeight)
+            );
+          })
         );
       }) &&
-        list.lines[9].text.startsWith("#9 · ") &&
-        list.lines[106].text.startsWith("#106 · "),
+        list.lines[9].text === "#9" &&
+        list.lines[106].text === "#106",
       JSON.stringify(list.lines),
     );
     check(
-      "a member's title has a first-level row's room, less its one indent",
+      "a member's run has a first-level row's room, less its one indent",
       Math.abs(list.titleRoom.member - (list.titleRoom.flat - list.memberIndent)) < 0.5 &&
         Math.abs(list.titleRoom.memberSingle - (list.titleRoom.flat - list.memberIndent)) < 0.5,
       JSON.stringify(list.titleRoom),
     );
     // The leading slots are the tree's one icon slot, 14 px, the Files tree's too: at 16 px
     // a title and a stack's label started 44 px from the row's content edge, and at 14,
-    // 40 (mb-hmv7). A pull request's row has one slot, the state icon's, on its inset, with
-    // its change line's chevron under it; a stack's row has two, the chevron's and the Layers
+    // 40 (mb-hmv7). A pull request's row has one slot, the state icon's, on its inset, and its
+    // chevron ends its run (mb-pw8t); a stack's row has two, the chevron's and the Layers
     // icon's (mb-3vil): a pull request's title once started a second, empty slot in.
     const slots = list.slots;
     check(
@@ -722,9 +770,7 @@ try {
         [slots.pull, slots.stack].every(
           (row) => row !== null && row.toggle === 14 && row.chevron === 12 && row.glyph === 14,
         ) &&
-        // A pull request's chevron is on its change line under its state icon (mb-3vil); a
-        // stack's leads its row.
-        near(slots.pull.toggleFromInset, 0) &&
+        // A stack's chevron leads its row; a pull request's ends its run.
         slots.stack.toggleFromInset === 0 &&
         near(slots.pull.iconFromInset, 0) &&
         near(slots.pull.text, 14 + slots.pull.gap) &&
@@ -735,27 +781,25 @@ try {
     );
     check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
-      near(list.stackToggle, list.flatIcon) && near(list.flatToggle, list.flatIcon),
-      `${list.stackToggle} ${list.flatIcon} ${list.flatToggle} ${list.flatTitle}`,
+      near(list.stackToggle, list.flatIcon),
+      `${list.stackToggle} ${list.flatIcon} ${list.flatTitle}`,
     );
-    // A row's lines share two columns (the owner, 2026-11-18): the state icon and the chevron
-    // in the slot, and the title's first text and the number in the text column, the chevron
-    // the rows' one column gap before the number (mb-3vil). A title's second line starts
-    // under the icon (mb-85op).
+    // A row's lines share one text column (the owner, 2026-11-18; mb-3vil, mb-pw8t): the
+    // title's first text and the last line's author, the rows' one column gap after the state
+    // icon's slot, and every line of the run between (`rowShape` in
+    // tests/dom/github-pulls-row-lines-chrome.mjs).
     check(
-      "a row's lines start at one x: the icon over the chevron, and the title's first text over the number, one column gap after the chevron's slot",
+      "a row's lines start at one x: the title's first text over the author, one column gap after the icon's slot",
       [
-        [list.flatIcon, list.flatToggle, list.flatTitle, list.flatMeta],
-        [list.memberIcon, list.memberToggle, list.memberTitle, list.memberMeta],
+        [list.flatIcon, list.flatTitle, list.flatBy],
+        [list.memberIcon, list.memberTitle, list.memberBy],
       ].every(
-        ([icon, toggle, title, meta]) =>
-          near(icon, toggle) &&
-          near(title, meta) &&
-          near(meta - (toggle + list.slotWidth), list.rowGap),
+        ([icon, title, by]) =>
+          near(title, by) && near(title - (icon + list.slotWidth), list.rowGap),
       ),
       JSON.stringify({
-        flat: [list.flatIcon, list.flatToggle, list.flatTitle, list.flatMeta],
-        member: [list.memberIcon, list.memberToggle, list.memberTitle, list.memberMeta],
+        flat: [list.flatIcon, list.flatTitle, list.flatBy],
+        member: [list.memberIcon, list.memberTitle, list.memberBy],
         slot: list.slotWidth,
         gap: list.rowGap,
       }),
@@ -767,9 +811,8 @@ try {
     );
     check(
       "its pull requests start one tree level in, one icon slot and gap",
-      near(list.memberIcon - list.stackToggle, list.memberIndent) &&
-        near(list.memberToggle, list.memberIcon),
-      `${list.memberIcon} ${list.stackToggle} ${list.memberIndent} ${list.memberToggle} ${list.memberTitle}`,
+      near(list.memberIcon - list.stackToggle, list.memberIndent),
+      `${list.memberIcon} ${list.stackToggle} ${list.memberIndent} ${list.memberTitle}`,
     );
     check(
       "a stack's row is one row tall",
@@ -793,7 +836,7 @@ try {
         list.toolbar.spare > 0,
       JSON.stringify(list.toolbar),
     );
-    // A stack's row and a pull request's item, its three lines (mb-1z7j), hover alike.
+    // A stack's row and a pull request's item (mb-1z7j) hover alike.
     const stackHover = await hover(".github-pulls-stack-row");
     const memberHover = await hover('.github-pulls-item[data-level="2"] > .github-pulls-entry');
     const rest = await evaluate(
@@ -873,8 +916,7 @@ try {
         ]),
       JSON.stringify(toggles),
     );
-    // A member's changed files hang under its item, its three lines (mb-1z7j): Right on the
-    // row opens them, as on a folder's, a tree level further in than the row, and focus stays
+    // A member's changed files hang under its item (mb-1z7j): Right on the row opens them, as on a folder's, a tree level further in than the row, and focus stays
     // on the row; Left closes them, and Left again goes to the stack's row.
     const SEVEN = `document.querySelector('.github-pulls-change[data-number="7"]')`;
     const SEVEN_ROW = `document.querySelector('a.github-pulls-row[data-number="7"]')`;
@@ -888,19 +930,19 @@ try {
       const file = ${sevenFiles};
       const start = (row) => parseFloat(getComputedStyle(row).paddingLeft) + row.getBoundingClientRect().left;
       // The file row's leading glyph, a folder's chevron or a file's change letter, from the
-      // pull request's chevron, which leads its change line.
-      const chevron = change?.querySelector(".github-pulls-toggle").getBoundingClientRect() ?? null;
+      // pull request's state icon, which leads its run (mb-pw8t).
+      const icon = member?.querySelector(".github-pull-state-icon").getBoundingClientRect() ?? null;
       const active = document.activeElement;
       return {
         focus: active === member ? "#7" : active?.className ?? null,
         expanded: member?.getAttribute("aria-expanded") ?? null,
-        // The change line, hidden from assistive technology, only turns its chevron.
+        // The toggle, hidden from assistive technology, only turns its chevron.
         lineTurned: change?.classList.contains("expanded") ?? null,
         level: file.getAttribute("aria-level"),
         rowLevel: member?.getAttribute("aria-level") ?? null,
         indent: Math.round(start(file) - start(member)),
-        fromChevron: chevron === null ? null : Math.round((file.firstElementChild.getBoundingClientRect().left - chevron.left) * 100) / 100,
-        belowChange: change === null ? null : Math.round((file.getBoundingClientRect().top - change.getBoundingClientRect().bottom) * 100) / 100,
+        fromIcon: icon === null ? null : Math.round((file.firstElementChild.getBoundingClientRect().left - icon.left) * 100) / 100,
+        belowRow: member === null ? null : Math.round((file.getBoundingClientRect().top - member.getBoundingClientRect().bottom) * 100) / 100,
       };
     })()`);
     measured.nestedTip = await evaluate(NESTED_TIP);
@@ -919,16 +961,15 @@ try {
         files.lineTurned === true &&
         files.rowLevel === "2" &&
         files.level === "3" &&
-        // One tree level under the change line's chevron, which is under the state icon, in the
-        // row's one slot (mb-3vil).
+        // One tree level under the state icon, in the row's one slot (mb-3vil, mb-pw8t).
         files.indent === Math.round(list.treeIndent) &&
-        near(files.fromChevron, list.treeIndent) &&
-        files.belowChange >= -0.5 &&
+        near(files.fromIcon, list.treeIndent) &&
+        files.belowRow >= -0.5 &&
         JSON.stringify(files.afterLeft) === JSON.stringify(["false", "#7"]) &&
         files.afterSecondLeft === "stack 286",
       JSON.stringify(files),
     );
-    // The keys on a first-level pull request (mb-1l4i, mb-1z7j): its three lines are one stop.
+    // The keys on a first-level pull request (mb-1l4i, mb-1z7j): its item is one stop.
     // Space opens and closes its changed files with focus kept on its row, and the list does
     // not scroll a page from under it, as the browser's Space on a link would; Up and Down walk
     // whole pull requests, over open files, and expand nothing; Right opens the files, Left
@@ -1001,10 +1042,10 @@ try {
         ]),
       JSON.stringify(walk),
     );
-    // Its change line was never focused, is hidden from assistive technology, and turns its
-    // chevron with its row's state.
+    // Its toggle was never focused, is hidden from assistive technology, and turns its chevron
+    // with its row's state.
     check(
-      "a pull request's change line is never focused, is hidden, and turns its chevron with its row's state",
+      "a pull request's toggle is never focused, is hidden, and turns its chevron with its row's state",
       walk.every(([, focus]) => !String(focus).startsWith("line ")) &&
         (await evaluate(
           `[${LINE}?.getAttribute("aria-hidden"), ${LINE}?.classList.contains("expanded")].join()`,
@@ -1439,14 +1480,15 @@ try {
           return el === null ? null : getComputedStyle(el).fontWeight;
         };
         return {
-          row: weight(".github-pulls-change .github-pulls-number"),
+          row: weight(".github-pulls-row .github-pulls-number"),
           title: weight(".github-pull-title .github-pull-number"),
           position: weight(".github-pull-stack-menu .github-pull-stack-member-position"),
           place: weight(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
         };
       })(),
-      // Each member's one line (mb-as06): its state icon, then its bold place, the muted dot,
-      // and its title, measured part by part, with the Pulls row of the same pull request.
+      // Each member's one line (mb-as06): its state icon, then its title, and at the line's end
+      // its bold place, the muted dot, and its number (mb-1kzu, mb-pw8t), measured part by
+      // part, with the Pulls row of the same pull request.
       lines: (() => {
         const probe = document.createElement("span");
         probe.style.color = "var(--muted)";
@@ -1457,9 +1499,17 @@ try {
         return [...menu.querySelectorAll(".github-pull-stack-member")].map((link) => {
           const number = new URL(link.href).pathname.split("/")[2];
           const [icon, copy] = link.children;
-          const [position, dot, title, said] = copy?.children ?? [];
-          // The row's state icon starts its title's two lines (mb-85op).
+          const [title, position, dot, shown] = copy?.children ?? [];
+          // The row's state icon starts its run (mb-85op, mb-pw8t).
           const row = document.querySelector(\`a.github-pulls-row[data-number="\${number}"] > .github-pulls-heading > .github-pull-state-icon\`);
+          // The row's number is in its run, after its title and place.
+          const rowNumber = document.querySelector(\`li.github-pulls-item[data-number="\${number}"] .github-pulls-number\`);
+          const face = (el) => el === null ? null : {
+            color: getComputedStyle(el).color,
+            weight: getComputedStyle(el).fontWeight,
+            size: getComputedStyle(el).fontSize,
+            numerals: getComputedStyle(el).fontVariantNumeric,
+          };
           const fontSize = parseFloat(getComputedStyle(title).fontSize);
           return {
             number: Number(number),
@@ -1470,7 +1520,11 @@ try {
             rowState: row?.dataset.state ?? null,
             iconLeft: Math.round(box(icon).left * 100) / 100,
             iconWidth: Math.round(box(icon).width * 100) / 100,
-            positionLeft: Math.round(box(position).left * 100) / 100,
+            titleLeft: Math.round(box(title).left * 100) / 100,
+            // The place, the dot, and the number are together at the line's end, the place
+            // after the title (mb-pw8t).
+            placeAfterTitle: box(position).left >= box(title).right - 0.5,
+            placeBeforeNumber: box(position).right <= box(dot).left + 0.5 && box(dot).right <= box(shown).left + 0.5,
             height: Math.round(box(link).height * 100) / 100,
             copyHeight: Math.round(box(copy).height * 100) / 100,
             fontSize,
@@ -1482,11 +1536,16 @@ try {
             titleCut: { overflow: getComputedStyle(title).textOverflow, wrap: getComputedStyle(title).whiteSpace },
             tip: link.dataset.tipText ?? null,
             titleText: title.textContent,
-            said: said === undefined ? null : {
-              text: said.textContent,
-              width: box(said).width,
-              height: box(said).height,
-              clip: getComputedStyle(said).clip,
+            shown: shown === undefined ? null : {
+              text: shown.textContent,
+              whole: shown.scrollWidth <= shown.clientWidth,
+              width: Math.round(box(shown).width * 100) / 100,
+              endGap: Math.round((box(copy).right - box(shown).right) * 100) / 100,
+              afterTitle: box(shown).left >= box(title).right - 0.5,
+              face: face(shown),
+              rowText: rowNumber?.textContent ?? null,
+              rowFace: face(rowNumber),
+              titleSize: getComputedStyle(title).fontSize,
             },
             current: link.getAttribute("aria-current") === "page",
           };
@@ -1495,8 +1554,8 @@ try {
     };
   })()`);
   measured.menu = menu;
-  // Each member's name as Chrome computes it for assistive technology: its state, place, and
-  // title, then its number, which the line does not show (mb-as06).
+  // Each member's name as Chrome computes it for assistive technology: its state and title,
+  // then its place and its number, which the line shows at its end (mb-1kzu, mb-pw8t).
   if (!before) {
     await send("Accessibility.enable");
     menu.names = [];
@@ -1555,13 +1614,14 @@ try {
       ["row", "title", "position", "place"].every((key) => menu.weights[key] === "700"),
       JSON.stringify(menu.weights),
     );
-    // Every member one line in one layout (mb-as06): the state icon, the bold place, the
-    // muted dot, and the bold title cut short at the line's end; the icon is the Pulls row's
-    // state for the same pull request, and every member's icon and place start at one edge.
+    // Every member one line in one layout (mb-as06): the state icon, the bold title cut short,
+    // and at the line's end the bold place, the muted dot, and the number (mb-1kzu, mb-pw8t),
+    // a Pulls row's order; the icon is the Pulls row's state for the same pull request, and
+    // every member's icon and title start at one edge.
     const lines = menu.lines;
     const first = lines[0];
     check(
-      "every stack member is the state icon, then the place, the dot, and the title",
+      "every stack member is the state icon, then the title, and the place, the dot, and the number",
       lines.length === menu.members.length &&
         lines.every(
           (line) =>
@@ -1569,27 +1629,40 @@ try {
               JSON.stringify(["github-pull-state-icon", "github-pull-stack-member-copy"]) &&
             JSON.stringify(line.line) ===
               JSON.stringify([
+                "github-pull-stack-member-title",
                 "github-pull-stack-member-position",
                 "github-pull-stack-dot",
-                "github-pull-stack-member-title",
-                "visually-hidden",
-              ]),
+                "github-pull-stack-member-number",
+              ]) &&
+            line.placeAfterTitle &&
+            line.placeBeforeNumber,
         ),
       JSON.stringify(lines),
     );
+    // Each member shows its number as its Pulls row does, "#455" (mb-1kzu): whole, after the
+    // title and the place and at the line's end, in the row's number's ink, weight, and
+    // numerals at the title's size, and the member's name ends in its title, place, and number.
     check(
-      "each member's number is said and not shown: hidden in a clipped 1px box, and its name's end",
+      "each member's number is shown whole at the line's end, as its Pulls row's, and ends its name",
       lines.every(
         (line, at) =>
-          line.said?.text === `#${line.number}` &&
-          line.said.width <= 1 &&
-          line.said.height <= 1 &&
-          line.said.clip === "rect(0px, 0px, 0px, 0px)" &&
+          line.shown?.text === `#${line.number}` &&
+          line.shown.rowText === line.shown.text &&
+          line.shown.whole &&
+          line.shown.width > 1 &&
+          Math.abs(line.shown.endGap) <= 0.5 &&
+          line.shown.afterTitle &&
+          line.shown.rowFace !== null &&
+          line.shown.face.color === line.shown.rowFace.color &&
+          line.shown.face.weight === line.shown.rowFace.weight &&
+          line.shown.face.weight === "700" &&
+          line.shown.face.numerals === line.shown.rowFace.numerals &&
+          line.shown.face.size === line.shown.titleSize &&
           typeof menu.names[at] === "string" &&
-          menu.names[at].endsWith(`${line.titleText} #${line.number}`),
+          menu.names[at].endsWith(`${line.titleText} ${line.positionText} #${line.number}`),
       ),
       JSON.stringify({
-        said: lines.map(({ number, said }) => ({ number, said })),
+        shown: lines.map(({ number, shown }) => ({ number, shown })),
         names: menu.names,
       }),
     );
@@ -1611,15 +1684,13 @@ try {
       ),
     );
     check(
-      "every member's icon and place start at one edge, the current member's too",
-      lines.every(
-        (line) => line.iconLeft === first.iconLeft && line.positionLeft === first.positionLeft,
-      ),
+      "every member's icon and title start at one edge, the current member's too",
+      lines.every((line) => line.iconLeft === first.iconLeft && line.titleLeft === first.titleLeft),
       JSON.stringify(
-        lines.map(({ number, iconLeft, positionLeft, current }) => ({
+        lines.map(({ number, iconLeft, titleLeft, current }) => ({
           number,
           iconLeft,
-          positionLeft,
+          titleLeft,
           current,
         })),
       ),

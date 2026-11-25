@@ -118,6 +118,22 @@ def _build_document(root: Path, spec: str) -> ChangeSetDocument:
         _fail(str(exc))
 
 
+def line_totals(additions: int | None, deletions: int | None) -> str:
+    """A change's lines as every lines summary says them, in the text form's ASCII signs.
+
+    The browser's rule, ``changeLine`` in ``static/formatters.js`` (docs/design-system.md,
+    "Brief Change Line"; mb-efum, mb-ox6a), at the one place the CLI writes line totals: a
+    total of zero is left out, "+12" or "-3", a count not known is "?", and a change of no
+    lines reads "0 lines". ``tests/test_cli_line_totals.py`` holds it to the browser's cases.
+    """
+    shown = [
+        f"{sign}{'?' if count is None else count}"
+        for sign, count in (("+", additions), ("-", deletions))
+        if count != 0
+    ]
+    return " ".join(shown) or "0 lines"
+
+
 def _describe(change: FileChange) -> str:
     letter = _KIND_LETTERS[change.kind]
     if change.similarity is not None:
@@ -137,7 +153,7 @@ def _describe(change: FileChange) -> str:
     if change.availability is not Availability.ready:
         notes.append(change.availability.value)
     elif change.additions is not None and change.deletions is not None:
-        notes.append(f"+{change.additions} -{change.deletions}")
+        notes.append(line_totals(change.additions, change.deletions))
     return f"{letter:<4} {name}" + (f"  [{', '.join(notes)}]" if notes else "")
 
 
@@ -150,9 +166,9 @@ def _print_text(document: ChangeSetDocument) -> None:
     typer.echo(f"right {right}")
     totals = document.manifest.totals
     exactness = "exact" if totals.exact else "estimated"
-    plus = "?" if totals.additions is None else str(totals.additions)
-    minus = "?" if totals.deletions is None else str(totals.deletions)
-    typer.echo(f"files {totals.files}  +{plus} -{minus}  ({exactness})")
+    typer.echo(
+        f"files {totals.files}  {line_totals(totals.additions, totals.deletions)}  ({exactness})"
+    )
     # What the source could not model is said above the files, as the page says it.
     for warning in resolved.warnings:
         typer.echo(f"warning: {warning}")

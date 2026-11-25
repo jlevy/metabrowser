@@ -31,9 +31,9 @@
   );
   --diff-fold-row-height: max(var(--ui-row-height), calc(1.5 * var(--ui-small-font-size) + 2px));
   --diff-notice-row-height: calc(1.5 * var(--body-font-size) + 2 * var(--diff-notice-padding-y));
-  /* How far the Diff summary's header pulls left of where it is placed, so its hover ground
-     reaches past its chevron (`.diff-summary-toggle`). Its tree's rows take it back out, so
-     their first level starts one --tree-indent in from the header (below). */
+  /* How far the Diff summary's header pulls left of where it is placed, and pads back in, so
+     its words start where it is placed and its hover ground reaches a little past them
+     (`.diff-summary-toggle`). */
   --diff-summary-toggle-pull: 4px;
   /* The file bar's space before its View file control, beyond the bar's gap and the
      control's pad: at rest the stats end 44 px before View file's text and start 28 px
@@ -77,7 +77,9 @@
 
 /* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
    set holds and is the disclosure toggle of its files as a tree by folder. The header is a
-   row-like trigger, so it leads with the registry's chevron in the tree's icon slot. Its text
+   row-like trigger whose words come first: the registry's chevron, in the tree's icon slot,
+   follows them, as on every toggle that expands a diff summary, where a folder's toggle and a
+   stack's lead with theirs (docs/design-system.md, "Diff Summary"; mb-f0pz). Its text
    is one size, so its parts share a line box and need no baseline opt-in. That size is the
    body's, the size of every line under a page's title it is drawn among (docs/design-system.md,
    "Page Headers"), and the same in a patch's toolbar: it was the navigation rows' 13 px, a
@@ -100,7 +102,7 @@
   flex: 0 1 auto;
   min-height: var(--ui-row-height);
   margin: 0 0 0 calc(-1 * var(--diff-summary-toggle-pull));
-  padding: 0 6px 0 0;
+  padding: 0 6px 0 var(--diff-summary-toggle-pull);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -192,20 +194,19 @@
    tab's tree's too, so the two trees draw one row; here is only its depth's indent. The
    header is the tree's root, so its first level starts one --tree-indent in from it, as a
    folder's rows start one step in from the folder, and each level adds the step. A row's
-   content starts on the row inset, --pane-header-padding-x past the row's edge; the header
-   starts --diff-summary-header-inset in and pulls --diff-summary-toggle-pull left of that;
-   so the rows give back the difference. Measured in Chrome
-   (tests/test_changed_file_rows_chrome.py, tests/test_git_commit_summary_chrome.py,
-   tests/test_github_pull_header_chrome.py): in a patch's toolbar, under a commit's identity,
-   and in a pull request's header, a first-level row's chevron and name start 16px right of
-   the header's chevron and words, and each level 16px further. Before, they started 4px
-   right of them in the toolbar, and already 16px right of them at the top of a page. */
+   content starts on the row inset, --pane-header-padding-x past the row's edge, and the
+   header's words start --diff-summary-header-inset in, so the rows give back the difference.
+   Measured in Chrome (tests/test_changed_file_rows_chrome.py,
+   tests/test_git_commit_summary_chrome.py, tests/test_github_pull_header_chrome.py): in a
+   patch's toolbar, under a commit's identity, and in a pull request's header, a first-level
+   row's chevron starts 16px right of the header's words, and each level 16px further. While
+   the header led with its chevron, a row's chevron and name started 16px right of the
+   header's chevron and words (mb-f0pz). */
 .metabrowser-diff-host .diff-summary-row {
   --changed-file-indent: calc(
     (var(--diff-summary-depth, 0) + 1) *
     var(--tree-indent) +
     var(--diff-summary-header-inset) -
-    var(--diff-summary-toggle-pull) -
     var(--pane-header-padding-x)
   );
 }
@@ -431,16 +432,6 @@
   gap: 6px;
   white-space: nowrap;
   flex: none;
-}
-
-.metabrowser-diff-host .diff-stat-add {
-  color: var(--status-success-text);
-  font-weight: var(--weight-bold);
-}
-
-.metabrowser-diff-host .diff-stat-del {
-  color: var(--status-error-text);
-  font-weight: var(--weight-bold);
 }
 
 /* View file, or View on branch on a pull request: a quiet text action

@@ -5,9 +5,9 @@
 // and hands back what a reader does to them.
 //
 // The group follows the Files tree's row contract (docs/design-system.md, "Container Rows"):
-// one `.tree-children[role="group"]` after the pull request's three lines, owned by its row
-// as a folder's children are, whose chevron is on its change line, the line that carries the
-// toggle for the pointer (pulls-panel.js), folders that lead with the
+// one `.tree-children[role="group"]` after the pull request's run and last line, owned by its
+// row as a folder's children are, whose chevron follows the lines at the run's end, the toggle
+// for the pointer (pulls-panel.js), folders that lead with the
 // registry's chevron in the tree's icon slot and file rows with the change letter a patch's
 // children carry in place of an icon, the tree's indent and row height, and the inline change
 // stats: a file's own, and a folder's rolled up from every file under it, open or closed, as
@@ -67,6 +67,7 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   shown: boolean,
  *   scrollRoot: HTMLElement | null,
  *   chevron: () => Node | null,
+ *   changeLineNodes: MetabrowserPublicSdk["changeLineNodes"],
  *   href: (path: string) => string | null,
  *   request: import("./pull-files-tree.js").FileTreeDependencies["request"],
  *   formatTime: (iso: string) => string,
@@ -107,7 +108,7 @@ export function mountFileTree(host) {
   /** The item the tree hangs from: the pull request's row (pulls-panel.js). */
   /** @type {HTMLElement | null} */
   let owner = null;
-  /** The line that carries the tree's toggle for the pointer: the pull request's change line. */
+  /** The tree's toggle for the pointer: the pull request's lines and the chevron after them. */
   /** @type {HTMLElement | null} */
   let toggle = null;
   /** @type {FileTreeModel | null} */
@@ -135,9 +136,9 @@ export function mountFileTree(host) {
 
   /**
    * Whether the tree is open, said where the Files tree says a folder's: `aria-expanded` on
-   * the row that owns it, and `.expanded` and `.collapsed` on the line that carries its
-   * toggle, which turn the chevron. The line is hidden from assistive technology, so the row
-   * alone says the state (mb-1z7j).
+   * the row that owns it, and `.expanded` and `.collapsed` on its toggle, which turn the
+   * chevron. The toggle is hidden from assistive technology, so the row alone says the state
+   * (mb-1z7j).
    *
    * @param {boolean} expanded
    */
@@ -181,10 +182,11 @@ export function mountFileTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "changed-file-stats github-pull-file-stats", "aria-hidden": "true" }, [
-            h("span", { class: "diff-stat-add" }, [stats.additions]),
-            h("span", { class: "diff-stat-del" }, [stats.deletions]),
-          ]),
+          h(
+            "span",
+            { class: "changed-file-stats github-pull-file-stats", "aria-hidden": "true" },
+            host.changeLineNodes(stats),
+          ),
         ];
   }
 
@@ -619,8 +621,9 @@ export function mountFileTree(host) {
     controller,
     /**
      * Hang the tree under a pull request's row, the item that owns it, as a folder owns its
-     * children, after the item's three lines; *line*, its change line, carries the toggle's
-     * chevron. A repaint of the list may build all three again.
+     * children, after the item's run and last line; *line*, the toggle at the run's end, its
+     * lines and the chevron after them, carries the toggle's state (pulls-panel.js,
+     * `buildRow`). A repaint of the list may build all three again.
      *
      * @param {HTMLElement} item
      * @param {HTMLElement} row
