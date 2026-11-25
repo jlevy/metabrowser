@@ -5,8 +5,12 @@ title: "Stack page: a change notice only for a real change, saying what changed,
 kind: bug
 status: in_progress
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/854
+    at: 2026-11-25T21:37:35.435Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -14,7 +18,7 @@ parent_id: is-01m8806zrnxn9jwj89hffd2yv7
 hold: null
 hold_until: null
 created_at: 2026-11-25T20:25:18.181Z
-updated_at: 2026-11-25T20:25:25.025Z
+updated_at: 2026-11-25T21:37:35.437Z
 started_at: 2026-11-25T20:25:25.022Z
 ---
 Owner report: on a stack's page the notice "This stack has changed since its comparison was drawn. Show the new comparison" appears a few seconds after the page opens, and clicking Show the new comparison does nothing.
