@@ -57,8 +57,10 @@ type MetabrowserRenderContext = {
   types?: Array<string> | null;
   onTypes?: (types: Array<string> | null) => void;
   /** A diff narrowed to one fixed File type group, `type:<id>`, with no File type chooser;
-   *  every fold drawn open (*unfold*); and what it says when the group holds no file
-   *  (*emptyText*). A pull request's Docs tab is `type:docs`, unfolded. */
+   *  every fold of a text diff drawn open, and each Markdown file opened in Full where it
+   *  is short enough to draw whole and in Concise otherwise (`prefer-full`, *unfold*);
+   *  and what it says when the group holds no file (*emptyText*). A pull request's Docs
+   *  tab is `type:docs`, with *unfold*. */
   group?: string | null;
   unfold?: boolean;
   emptyText?: string;
@@ -702,6 +704,7 @@ type MetabrowserFormatterRuntime = Readonly<{
   changeLine(
     change: MetabrowserChangeLineInput,
     formatCount: (count: number) => string,
+    options?: MetabrowserChangeLineBuildOptions,
   ): MetabrowserChangeLine;
   /** A brief change line as nodes: its one `span.change-line`. */
   changeLineNodes(
@@ -1887,7 +1890,10 @@ type MetabrowserSdk = {
   /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from a change set's statuses and
    *  line totals, in the shell's number format: the one component for one
    *  (docs/design-system.md, "Brief Change Line"). */
-  changeLine(change: MetabrowserChangeLineInput): MetabrowserChangeLine;
+  changeLine(
+    change: MetabrowserChangeLineInput,
+    options?: MetabrowserChangeLineBuildOptions,
+  ): MetabrowserChangeLine;
   /** A brief change line as nodes for its element, painted as the shell paints every one: its
    *  one `span.change-line`. */
   changeLineNodes(
@@ -4680,6 +4686,9 @@ declare global {
     additions: string;
     /** "−567". */
     deletions: string;
+    /** The line totals it shows, in order: both, unless `omitZeroTotals` left out a zero
+     *  one; none for a change of no lines, which it shows as "0 lines". */
+    shownTotals: ReadonlyArray<"additions" | "deletions">;
     /** "10 A, 5 D, 4 M · +1,234 −567". */
     text: string;
     /** "10 added, 5 deleted, 4 modified; 1,234 lines added, 567 deleted". */
@@ -4710,6 +4719,14 @@ declare global {
     label: string;
     /** What each size is, for the size's tooltip; null before the size is known. */
     tooltip: string | null;
+  };
+
+  /** How a brief change line is built for where it stands. */
+  type MetabrowserChangeLineBuildOptions = {
+    /** Leave out a line total of zero: "+1,234" for a change that only adds lines, "−567" for
+     *  one that only deletes them, and a muted "0 lines", said "no lines changed", for one
+     *  of none. Totals both nonzero, or not known, are shown as without it. */
+    omitZeroTotals?: boolean;
   };
 
   /** How a brief change line is painted where it stands. */

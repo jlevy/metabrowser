@@ -1,4 +1,4 @@
-// Each Pulls row's third line, its brief change line (mb-d0a3), laid out by headless Chrome: the
+// Each Pulls row's three lines (mb-d0a3, mb-85op, mb-lqkb), laid out by headless Chrome: the
 // production panel module, the shell's SDK, icon registry, and stylesheets, mounted on recorded
 // answers.
 //
@@ -19,17 +19,22 @@
 // quiet period, and again once its line has arrived. At every pane width from 420 px to the
 // 180 px minimum, in the light theme and the dark, it holds that:
 //
-// - each pull request's row is three lines: its link's two, the state icon and the number's
-//   line, then the title, and its change line under the title, which holds the chevron in the
-//   first icon slot and the line in the title's column; the link holds no chevron;
-// - nothing moves when the line arrives: the item, the link, the change line, the chevron, the
-//   state icon, the title, and the placeholder's start, which is the line's;
-// - the change line stays one line: whole, its totals alone with its statuses out of view, or out
-//   of view entirely, never cut through its totals; nothing scrolls sideways;
-// - the line's inks and weights are the component's, part for part, as the same line drawn by
+// - each pull request's row is three lines: its link's two, its title's, one flow of the state
+//   icon on the first line's start and the title, which wraps under the icon and is cut short at
+//   the second line's end, two lines tall whatever its length; then its change line, which holds
+//   the chevron in the icon slot under the state icon, the number's line in the title's column,
+//   the number, the author, and the lines changed, and the age at the row's end; the link holds
+//   no chevron;
+// - nothing moves when the lines arrive: the item, the link, the title's two lines, the change
+//   line, the chevron, the state icon, the number, the age, and the placeholder's start, which is
+//   the lines';
+// - the change line stays one line: the number whole, and the lines whole or out of view, never
+//   cut short, and out of view only where the number leaves them no room; the author gives way
+//   before them; the line counts no files by status; nothing scrolls sideways;
+// - the lines' inks and weights are the component's, part for part, as the same line drawn by
 //   the SDK outside the row resolves them in that theme, and its item's name says it in words;
-// - #104 and #103, whose lists cannot be had, show the chevron alone, no placeholder, once
-//   answered;
+// - #104 and #103, whose lists cannot be had, show the chevron, the number, and the author, and no
+//   lines and no placeholder, once answered;
 // - the open row's highlight is its item's: one ground under its three lines, and its left bar
 //   down the link's and the change line's edge.
 //
@@ -38,16 +43,21 @@
 // the item's one ground, and on the change line, the line with the toggle, the chevron's plate
 // too, the inner target's own hover, which the link's lines never show; Tab's stop is the
 // row's link, whose ring is drawn round the whole item, and the change line is no stop. A
-// press on a row's title or its number's line opens the pull request and expands nothing; a
-// press on the chevron, and one on the line, open and close the files under the change line,
-// and open no page (docs/design-system.md, "A Click on the Toggle's Line Toggles"). The keys
+// press on a row's title opens the pull request and expands nothing; a press on the number, on
+// the author, on the chevron, and on the lines, each on the change line, opens or closes the
+// files under it, and opens no page (docs/design-system.md, "A Click on the Toggle's Line
+// Toggles"). The keys
 // need the shell's registry, which this page has not: tests/dom/github-pulls-stacks-chrome.mjs
 // holds them in the running app; here the handle's `expand` and `collapse`, which Right and
 // Left call, act on the focused item. With SHOTS_DIR set, it saves the item's hover and the
 // inner target's, at 299 px in each theme.
 //
-// It also lays out the change lines of this repository's own pull requests (`REAL_LINES`), to
-// say how wide a typical line is, which the placeholder's width is judged against.
+// It then mounts the rows again, in each theme at every width, with #106's change of no lines
+// and #105's of additions alone (mb-efum): a zero total is left out, "+3", and no lines are a
+// muted "0 lines" at the line's weight, whole wherever #106's recorded line is shown.
+//
+// It also lays out the lines changed of this repository's own pull requests (`REAL_LINES`), to
+// say how wide a typical row's lines are, which the placeholder's width is judged against.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -80,8 +90,19 @@ const rowsOf = (rows) =>
     : [rows.same_as].flat().flatMap((holder) => rowsOf(lists[holder].body.rows));
 // The recording holds a changed file as one line of JSON.
 const twoFiles = fixture("github-pull-files-responses.json").comparison;
+// Titles of three lengths among the rows checked: #106's and #104's are one line, #105's runs
+// past two lines at every width, and #103's is one unbroken word longer than the row.
+const TITLES = {
+  105: "feat(pulls): keep a stack member's place before its title, and let a long title run to a second line under the state icon before it is cut short at that line's end",
+  103: "docs:" + "x".repeat(160),
+};
 const ANSWERS = {
-  list: { ...lists.current.body, rows: rowsOf(lists.current.body.rows) },
+  list: {
+    ...lists.current.body,
+    rows: rowsOf(lists.current.body.rows).map((row) =>
+      row.number in TITLES ? { ...row, title: TITLES[row.number] } : row,
+    ),
+  },
   stacks: fixture("github-stacks-responses.json").empty.body,
   summed: fixture("github-pull-files-summary-responses.json").summed.body,
   // A row's list of changed files, once its chevron opens it: the recorded two-file list.
@@ -223,7 +244,8 @@ const MOUNT = `async (width, theme, fresh = true) => {
   window.__opened = [];
   const respond = (body, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-  const summed = new Map(answers.summed.rows.map((row) => [row.number, row]));
+  // A sweep may set a row's totals for itself (\`window.__rowTotals\`, by number).
+  const summed = new Map(answers.summed.rows.map((row) => [row.number, { ...row, ...window.__rowTotals?.[row.number] }]));
   const absent = answers.summed.rows.find((row) => row.reason === "not_cached");
   window.fetch = async (route) => {
     const url = new URL(route, location.href);
@@ -295,32 +317,46 @@ const READ = `(() => {
     }
     const item = row.closest("li");
     const change = item.querySelector(".github-pulls-change");
-    const line = change?.querySelector(".github-pulls-change-line") ?? null;
+    const heading = row.querySelector(".github-pulls-heading");
+    const title = row.querySelector(".github-pulls-title");
+    const meta = change?.querySelector(".github-pulls-meta") ?? null;
+    const flow = meta?.querySelector(".github-pulls-line") ?? null;
+    const line = flow?.querySelector(".github-pulls-change-line") ?? null;
+    const by = flow?.querySelector(".github-pulls-by") ?? null;
     const pending = line?.querySelector(".github-pulls-change-pending") ?? null;
     const said = line?.querySelector(".change-line") ?? null;
     const stats = said?.querySelector(".change-line-stats") ?? null;
-    const statuses = said?.querySelector(".change-line-statuses") ?? null;
     const toggle = change?.querySelector(".github-pulls-toggle") ?? null;
     const style = getComputedStyle(row);
+    // The title's lines, from its fragments' rects, a line's at one top: those whose top is
+    // inside the heading's box are the lines drawn, and the rest are past the clamp.
+    const tops = new Map();
+    for (const rect of title?.getClientRects() ?? []) {
+      if (rect.width === 0) continue;
+      const top = Math.round(rect.top * 2) / 2;
+      const seen = tops.get(top);
+      tops.set(top, seen ? { left: Math.min(seen.left, rect.left), top, right: Math.max(seen.right, rect.right) } : { left: rect.left, top, right: rect.right });
+    }
+    const lines = [...tops.values()].sort((a, b) => a.top - b.top);
     rows[number] = {
-      item: box(item), row: box(row), meta: box(row.querySelector(".github-pulls-meta")),
-      title: box(row.querySelector(".github-pulls-title")), age: box(row.querySelector(".github-pulls-age")),
+      item: box(item), row: box(row), heading: box(heading), title: box(title),
+      lh: heading ? parseFloat(getComputedStyle(heading).lineHeight) : null,
+      padTop: parseFloat(style.paddingTop),
+      titleLines: lines, clamped: heading !== null && heading.scrollHeight > heading.clientHeight + 1,
       icon: box(row.querySelector(".github-pull-state-icon")),
+      place: box(row.querySelector(".github-pulls-place")),
       rowToggles: row.querySelectorAll(".github-pulls-toggle").length,
       inset: inset(row), changeInset: inset(change),
       slot: parseFloat(style.getPropertyValue("--tree-icon-slot")), gap: parseFloat(style.columnGap),
       change: box(change), toggle: box(toggle), chevron: box(toggle?.querySelector("svg")),
+      meta: box(meta), number: box(meta?.querySelector(".github-pulls-number") ?? null),
+      flow: box(flow), by: box(by), age: box(change?.querySelector(".github-pulls-age") ?? null),
       changeLine: box(line), pending: box(pending), block: box(pending?.querySelector(".tally-pending")),
       pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
-      line: box(said), stats: box(stats),
-      group: box(said?.querySelector(".change-line-group") ?? null), statusesBox: box(statuses),
+      line: box(said), stats: box(stats), said: said?.textContent ?? null,
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
-      statusesCut: statuses !== null && statuses.scrollWidth > statuses.clientWidth + 0.5,
-      // Statuses are whole or out of view, on the line's hidden second line, never cut short.
-      statusesShown:
-        statuses === null ||
-        (line !== null &&
-          statuses.getBoundingClientRect().top < line.getBoundingClientRect().bottom - 0.5),
+      // The line counts no files by status (mb-lqkb).
+      statuses: said?.querySelectorAll(".change-line-statuses, .change-line-group, .file-change-status").length ?? 0,
       text: line?.textContent ?? null, nodes: line?.childNodes.length ?? null,
       // The change line is the pointer's alone, hidden from assistive technology; its words,
       // hidden too, describe the row, which alone says whether its files are open.
@@ -338,7 +374,7 @@ const READ = `(() => {
 // SDK gives it; and the open row's highlight: its item's ground, and the bar on its link and
 // its change line.
 const INKS = `(() => {
-  const parts = [".summary-number", ".file-change-status", ".change-line-statuses > .summary-punctuation", ".change-line-group > .summary-punctuation", ".diff-stat-add", ".diff-stat-del"];
+  const parts = [".diff-stat-add", ".diff-stat-del"];
   const read = (host) => Object.fromEntries(parts.map((selector) => {
     const el = host?.querySelector(selector);
     const style = el ? getComputedStyle(el) : null;
@@ -347,11 +383,10 @@ const INKS = `(() => {
   const host = document.querySelector('.github-pulls-change[data-number="106"] .github-pulls-change-line');
   const reference = document.getElementById("reference");
   const summary = window.__answers.summed.rows.find((row) => row.number === 106);
-  const tree = window.MetabrowserChangedFilesTree;
+  // The line totals alone, a zero one left out, as the row draws them (mb-lqkb, mb-efum).
   const said = window.metabrowser.changeLine({
-    statuses: tree.statusBreakdown(summary.statuses.flatMap((entry) => Array.from({ length: entry.count }, () => entry.status))),
-    additions: summary.additions, deletions: summary.deletions,
-  });
+    statuses: [], additions: summary.additions, deletions: summary.deletions,
+  }, { omitZeroTotals: true });
   reference.replaceChildren(...window.metabrowser.changeLineNodes(said));
   const open = document.querySelector('a.github-pulls-row[data-number="${OPEN}"]');
   const openChange = document.querySelector('.github-pulls-change[data-number="${OPEN}"]');
@@ -378,26 +413,21 @@ const TOKEN = `((name) => {
   return color;
 })`;
 
-// In the page: how wide each real pull request's line is in the change line's type, whole, and
-// its floor, its totals and the gap before them, which the line keeps whole.
+// In the page: how wide each real pull request's lines changed are in the change line's type,
+// whole, as the row draws them, its totals alone.
 const REAL = `((lines) => {
-  const tree = window.MetabrowserChangedFilesTree;
-  const container = document.querySelector(".github-pulls-change-line");
+  const container = document.querySelector(".github-pulls-meta");
   const host = document.createElement("span");
   // Beside the rows, at its own widest: the change line's type, the nav's.
   host.style.cssText = "position:absolute;visibility:hidden;width:max-content;white-space:nowrap;font-size:var(--nav-font-size)";
   document.getElementById("pane").append(host);
   const em = parseFloat(getComputedStyle(host).fontSize);
   const round = (value) => Math.round(value * 100) / 100;
-  const widths = lines.map(([number, added, modified, removed, renamed, additions, deletions]) => {
-    const statuses = Object.entries({ added, modified, removed, renamed }).flatMap(([status, count]) => Array.from({ length: count }, () => status));
-    const said = window.metabrowser.changeLine({ statuses: tree.statusBreakdown(statuses), additions, deletions });
+  const widths = lines.map(([number, _added, _modified, _removed, _renamed, additions, deletions]) => {
+    const said = window.metabrowser.changeLine({ statuses: [], additions, deletions }, { omitZeroTotals: true });
     host.replaceChildren(...window.metabrowser.changeLineNodes(said));
-    const line = host.querySelector(".change-line");
-    const width = line.getBoundingClientRect().width;
-    const gap = line.querySelector(".change-line-group") === null ? 0 : parseFloat(getComputedStyle(line).columnGap);
-    const floor = gap + line.querySelector(".change-line-stats").getBoundingClientRect().width;
-    return { number, text: said.text, px: round(width), em: round(width / em), floorEm: round(floor / em) };
+    const width = host.querySelector(".change-line").getBoundingClientRect().width;
+    return { number, text: said.text, px: round(width), em: round(width / em) };
   });
   const font = [getComputedStyle(host).fontFamily, container === null ? null : getComputedStyle(container).fontFamily];
   host.remove();
@@ -409,7 +439,7 @@ const REAL = `((lines) => {
   };
   const byWidth = [...widths].sort((a, b) => a.px - b.px);
   return {
-    em, font, n: widths.length, em_: summary("em"), floorEm: summary("floorEm"),
+    em, font, n: widths.length, em_: summary("em"),
     shortest: byWidth[0], median: byWidth[Math.floor(byWidth.length / 2)], longest: byWidth[byWidth.length - 1],
     widths,
   };
@@ -417,48 +447,77 @@ const REAL = `((lines) => {
 
 const WIDTHS = [420, 380, 340, 299, 260, 220, 200, 180];
 const THEMES = ["light", "dark"];
-const PARTS = ["item", "row", "change", "toggle", "chevron", "icon", "title", "changeLine"];
+const PARTS = [
+  "item",
+  "row",
+  "heading",
+  "title",
+  "icon",
+  "change",
+  "toggle",
+  "chevron",
+  "meta",
+  "number",
+  "age",
+  "flow",
+];
 
-/** Whether *r*'s parts are its three lines: the link's two and the change line under them. */
+/** Whether *r*'s parts are its three lines: the link's two of title, and the change line. */
 function threeLines(r) {
-  if (!r?.change || !r.toggle || !r.chevron || !r.changeLine) {
-    return { ok: false, why: "no change line" };
+  if (!r?.change || !r.toggle || !r.chevron || !r.heading || !r.meta || !r.number || !r.age) {
+    return { ok: false, why: "a part is missing" };
   }
-  const middle = (b) => (b.top + b.bottom) / 2;
   const within = (inner, outer) =>
     inner.top >= outer.top - TOLERANCE_PX && inner.bottom <= outer.bottom + TOLERANCE_PX;
+  const first = r.titleLines[0];
   const parts = {
-    // The state icon and the title alone are the first line, the number's line and the age
-    // the second.
-    iconOnFirst:
-      middle(r.icon) >= r.title.top - TOLERANCE_PX &&
-      middle(r.icon) <= r.title.bottom + TOLERANCE_PX,
-    titleAbove:
-      r.title.bottom <= r.meta.top + TOLERANCE_PX && r.title.bottom <= r.age.top + TOLERANCE_PX,
-    // The state icon is in the one icon slot, on the row's inset (mb-3vil); the link holds no
-    // chevron.
-    iconOnInset: near(r.icon.left, r.inset),
+    // The link is the title's two lines, two lines tall whatever the title holds (mb-85op).
+    titleTwoLines: near(r.heading.height, 2 * r.lh) && near(r.row.height, r.padTop + 2 * r.lh),
+    // The state icon leads the first line, on the row's inset in the one icon slot (mb-3vil),
+    // centered on the first line's box; the title starts one column gap after it.
+    iconOnFirst: near(r.icon.top, r.heading.top) && near(r.icon.height, r.lh),
+    iconOnInset: near(r.icon.left, r.inset) && near(r.icon.width, r.slot),
+    titleAfterIcon:
+      first !== undefined &&
+      near(first.top, r.heading.top) &&
+      near(first.left, r.icon.right + r.gap),
+    // No stack in this list: no place, and no bullet.
+    noPlace: r.place !== null && r.place.width === 0,
     noLinkChevron: r.rowToggles === 0,
     // The change line is under the link, and the item is the two.
-    changeUnder:
-      r.change.top >= r.row.bottom - TOLERANCE_PX && r.change.top >= r.meta.bottom - TOLERANCE_PX,
+    changeUnder: r.change.top >= r.row.bottom - TOLERANCE_PX,
     itemIsBoth: near(r.item.height, r.row.height + r.change.height),
     // The chevron is on the change line, in the row's one slot under the state icon, and the
-    // line's values in the text column under the title and the number's line, one column gap
-    // after the chevron's slot (mb-3vil): the three lines share two columns.
-    chevronOnThird:
-      within(r.chevron, r.change) &&
-      within(r.toggle, r.change) &&
-      r.chevron.top >= r.meta.bottom - TOLERANCE_PX,
+    // number's line in the text column, one column gap after the chevron's slot (mb-3vil).
+    chevronOnThird: within(r.chevron, r.change) && within(r.toggle, r.change),
     chevronUnderIcon:
       near(r.toggle.left, r.changeInset) &&
       near(r.toggle.width, r.slot) &&
       near(r.changeInset, r.inset) &&
       near(r.toggle.left, r.icon.left),
-    textColumnShared: near(r.changeLine.left, r.title.left) && near(r.meta.left, r.title.left),
-    chevronGap: near(r.changeLine.left - r.toggle.right, r.gap),
+    numberInTextColumn:
+      near(r.meta.left, r.toggle.right + r.gap) && near(r.number.left, r.meta.left),
+    // The number, the age, and what shows of the author and the lines are on the third line.
+    oneLine:
+      within(r.meta, r.change) &&
+      within(r.number, r.change) &&
+      within(r.age, r.change) &&
+      r.number.right <= r.meta.right + TOLERANCE_PX &&
+      r.age.left >= r.meta.right - TOLERANCE_PX &&
+      r.age.right <= r.change.right + TOLERANCE_PX,
   };
   return { ok: Object.values(parts).every(Boolean), parts };
+}
+
+/** Whether *part* of the number's line, its box *b*, is on the line in view or past it. */
+function onLine(r, b) {
+  if (b === null) {
+    return "none";
+  }
+  if (b.top >= r.flow.top - TOLERANCE_PX && b.bottom <= r.flow.bottom + TOLERANCE_PX) {
+    return b.right <= r.flow.right + TOLERANCE_PX ? "shown" : "cut";
+  }
+  return b.top >= r.flow.bottom - TOLERANCE_PX ? "dropped" : "cut";
 }
 
 async function main() {
@@ -667,19 +726,43 @@ async function main() {
             );
           }
           // Where the placeholder is: on the third line, or wrapped out of view where a
-          // typical line's floor has no room.
-          const waitedInView =
-            was.pending.top >= was.changeLine.top - TOLERANCE_PX &&
-            was.pending.bottom <= was.changeLine.bottom + TOLERANCE_PX;
+          // typical row's lines have no room.
+          const waited = onLine(was, was.pending);
+          const waitedInView = waited === "shown";
           check(
             `${at}: #${number}'s placeholder is on its third line or out of view`,
-            waitedInView !== was.pending.top >= was.changeLine.bottom - TOLERANCE_PX,
-            JSON.stringify({ pending: was.pending, line: was.changeLine }),
+            waited === "shown" || waited === "dropped",
+            JSON.stringify({ pending: was.pending, flow: was.flow }),
           );
+          // The title's two lines: one of a short title, two of a long one, the rest past its
+          // clamp, and the second under the state icon (mb-85op).
+          const drawn = now.titleLines.filter(
+            (line) => line.top < now.heading.bottom - TOLERANCE_PX,
+          );
+          if (number === 105 || number === 103) {
+            check(
+              `${at}: #${number}'s long title is cut short at its second line, which starts under the state icon`,
+              drawn.length === 2 &&
+                now.clamped &&
+                near(drawn[1].left, now.icon.left) &&
+                drawn.every((line) => line.right <= now.heading.right + TOLERANCE_PX),
+              JSON.stringify({ drawn, heading: now.heading, icon: now.icon, clamped: now.clamped }),
+            );
+          } else {
+            check(
+              `${at}: #${number}'s short title is one line in its two lines' box`,
+              drawn.length === 1 && !now.clamped,
+              JSON.stringify({ drawn, heading: now.heading }),
+            );
+          }
           if (NONE.includes(number)) {
             check(
-              `${at}: #${number} shows the chevron alone, no line and no placeholder`,
-              now.nodes === 0 && now.pending === null && now.chevron !== null && now.text === "",
+              `${at}: #${number} shows the chevron, the number, and the author, and no lines and no placeholder`,
+              now.nodes === 0 &&
+                now.pending === null &&
+                now.chevron !== null &&
+                now.text === "" &&
+                onLine(now, now.number) === "shown",
               JSON.stringify({ nodes: now.nodes, text: now.text }),
             );
             check(
@@ -689,55 +772,57 @@ async function main() {
             );
             continue;
           }
-          const shown =
-            now.line !== null &&
-            now.line.top >= now.changeLine.top - TOLERANCE_PX &&
-            now.line.bottom <= now.changeLine.bottom + TOLERANCE_PX;
-          const dropped = now.line !== null && now.line.top >= now.changeLine.bottom - TOLERANCE_PX;
+          const lines = onLine(now, now.changeLine);
+          const author = onLine(now, now.by);
           check(
-            `${at}: #${number}'s line is on its third line or out of view`,
-            shown !== dropped,
-            JSON.stringify({ line: now.line, changeLine: now.changeLine }),
+            `${at}: #${number}'s lines are whole on its third line or out of view, never cut short`,
+            (lines === "shown" && now.statsWhole) || lines === "dropped",
+            JSON.stringify({ lines, changeLine: now.changeLine, flow: now.flow }),
           );
-          measured[at][number] = shown
-            ? now.statusesCut
-              ? "statuses cut"
-              : now.statusesShown
-                ? "whole"
-                : "totals only"
-            : "dropped";
           check(
-            `${at}: #${number}'s statuses are whole or out of view, never cut short`,
-            !now.statusesCut,
+            `${at}: #${number}'s line counts no files by status`,
+            now.statuses === 0 && !/[ADMR],|\b\d+ [ADMR]\b/.test(now.text ?? ""),
             JSON.stringify({ text: now.text }),
           );
-          if (shown) {
+          // The lines leave the line only where the number leaves them no room, and the author
+          // gives way before them: no author on the line without its lines.
+          check(
+            `${at}: #${number}'s lines are out of view only where they have no room beside the number`,
+            lines === "shown" ||
+              now.number.right + now.changeLine.width > now.flow.right + TOLERANCE_PX,
+            JSON.stringify({ number: now.number, changeLine: now.changeLine, flow: now.flow }),
+          );
+          check(
+            `${at}: #${number}'s author is on the line only with its lines, and before them`,
+            author !== "cut" &&
+              (author !== "shown" ||
+                (lines === "shown" && now.by.right <= now.changeLine.left + TOLERANCE_PX)),
+            JSON.stringify({ author, lines, by: now.by, changeLine: now.changeLine }),
+          );
+          measured[at][number] = { lines, author };
+          // Lines no wider than the placeholder arrive in its room: where it was, on the line or
+          // off it, and the author as it was.
+          if (now.line.width <= was.block.width + TOLERANCE_PX) {
+            check(
+              `${at}: #${number}'s lines, no wider than its placeholder, leave the author as it was`,
+              onLine(was, was.by) === author &&
+                ["left", "width"].every((side) => near(was.by?.[side], now.by?.[side])) &&
+                waited === lines,
+              JSON.stringify({ was: was.by, now: now.by, waited, lines }),
+            );
+          }
+          if (lines === "shown") {
             if (waitedInView) {
               check(
-                `${at}: #${number}'s line starts where its placeholder did`,
+                `${at}: #${number}'s lines start where its placeholder did`,
                 near(now.line.left, was.pending.left),
                 `${now.line.left} ${was.pending.left}`,
               );
             }
             check(
               `${at}: #${number}'s totals are whole and in the row`,
-              now.statsWhole &&
-                now.stats.right <= now.changeLine.right + TOLERANCE_PX &&
-                now.changeLine.right <= now.change.right + TOLERANCE_PX,
-              JSON.stringify({ stats: now.stats, line: now.changeLine }),
-            );
-            // Statuses shown are whole on the line, its totals 6 px after them; with none
-            // shown, the totals start the line, with no blank run before them.
-            check(
-              `${at}: #${number}'s totals follow its whole statuses, or start the line alone`,
-              now.statusesBox === null
-                ? near(now.stats.left, now.line.left)
-                : now.statusesShown
-                  ? now.statusesBox.bottom <= now.line.bottom + TOLERANCE_PX &&
-                    now.group.right <= now.changeLine.right + TOLERANCE_PX &&
-                    near(now.stats.left, now.group.right + 6)
-                  : near(now.stats.left, now.line.left),
-              JSON.stringify({ stats: now.stats, group: now.group, line: now.line }),
+              now.statsWhole && now.stats.right <= now.flow.right + TOLERANCE_PX,
+              JSON.stringify({ stats: now.stats, flow: now.flow }),
             );
           }
         }
@@ -748,8 +833,8 @@ async function main() {
         );
         const now = after.rows[106];
         check(
-          `${at}: #106's line says what its list sums to, as the SDK says it`,
-          now.text === inks.text,
+          `${at}: #106's lines say what its list sums to, as the SDK says it, after the author's separator`,
+          now.said === inks.text && now.text === ` · ${inks.text}`,
           `${JSON.stringify(now.text)} ${JSON.stringify(inks.text)}`,
         );
         check(
@@ -757,7 +842,7 @@ async function main() {
           now.hidden === "true" && now.words === `Changed files: ${inks.label}`,
           JSON.stringify({ hidden: now.hidden, words: now.words }),
         );
-        if (measured[at][106] !== "dropped") {
+        if (measured[at][106].lines === "shown") {
           for (const [part, ink] of Object.entries(inks.reference)) {
             check(
               `${at}: ${part} is the component's ink and weight`,
@@ -813,19 +898,96 @@ async function main() {
           measured[at].interaction = await interact(at, tokens);
           measured[at].inView = await walkInView(at);
         }
-        lap(`${at}: #106 ${measured[at][106]}, #105 ${measured[at][105]}`);
+        lap(
+          `${at}: #106 ${JSON.stringify(measured[at][106])}, #105 ${JSON.stringify(measured[at][105])}`,
+        );
       }
     }
+    const seen = Object.values(measured).map((at) => at?.[106] ?? {});
     check(
-      "the line shows whole at the widest pane",
-      measured["420 px light"]?.[106] === "whole",
+      "the number, the author, and the lines show whole at the widest pane",
+      measured["420 px light"]?.[106]?.lines === "shown" &&
+        measured["420 px light"]?.[106]?.author === "shown",
       JSON.stringify(measured["420 px light"]?.[106]),
     );
     check(
-      "a narrow pane shows the line's totals alone, its statuses out of view",
-      Object.values(measured).some((at) => at?.[106] === "totals only"),
+      "a narrower pane drops the author first, its lines whole, and the narrowest the lines too",
+      seen.some((at) => at.author === "dropped" && at.lines === "shown") &&
+        measured["180 px light"]?.[106]?.lines === "dropped",
       JSON.stringify(Object.fromEntries(Object.entries(measured).map(([k, v]) => [k, v?.[106]]))),
     );
+    // A change of no lines and one of additions alone (mb-efum): a zero total is left out,
+    // and "0 lines" is muted, at the line's weight, and whole wherever the recorded line,
+    // "+1,093 −493", which is wider, shows.
+    await browser.evaluate(
+      `(window.__rowTotals = { 106: { additions: 0, deletions: 0 }, 105: { additions: 3, deletions: 0 } }, true)`,
+    );
+    measured.zeroTotals = {};
+    for (const theme of THEMES) {
+      for (const width of WIDTHS) {
+        const at = `${width} px ${theme}`;
+        await browser.evaluate(`(${MOUNT})(${width}, ${JSON.stringify(theme)})`);
+        await browser.waitFor(
+          `(window.__release(), ${JSON.stringify(SHOWN)}.every((number) => document.querySelector('.github-pulls-change[data-number="' + number + '"] .change-line') !== null))`,
+        );
+        await frames();
+        const muted = await browser.evaluate(`(${TOKEN})("--muted")`);
+        const { rows } = await browser.evaluate(READ);
+        const ink = await browser.evaluate(`(() => {
+          const line = document.querySelector('.github-pulls-change[data-number="106"] .change-line');
+          const none = line?.querySelector(".change-line-stats > .change-line-none") ?? null;
+          const added = document.querySelector('.github-pulls-change[data-number="105"] .change-line');
+          return {
+            none: none ? [getComputedStyle(none).color, getComputedStyle(none).fontWeight] : null,
+            line: line ? getComputedStyle(line).fontWeight : null,
+            added: added ? [...added.querySelectorAll(".change-line-stats > *")].map((part) => part.className) : null,
+          };
+        })()`);
+        if (width === 299) {
+          await shot(`row-lines-${theme}-${width}-zero-totals`, width);
+        }
+        const none = rows[106];
+        const lines = onLine(none, none.changeLine);
+        check(
+          `${at} zero totals: #106 says "0 lines", in words "no lines changed"`,
+          none.said === "0 lines" &&
+            none.text === " · 0 lines" &&
+            none.words === "Changed files: no lines changed",
+          JSON.stringify({ said: none.said, text: none.text, words: none.words }),
+        );
+        check(
+          `${at} zero totals: #105 shows its additions alone, "+3"`,
+          rows[105].said === "+3" &&
+            JSON.stringify(ink.added) === JSON.stringify(["diff-stat-add"]),
+          JSON.stringify({ said: rows[105].said, parts: ink.added }),
+        );
+        check(
+          `${at} zero totals: "0 lines" is muted, at the line's weight`,
+          ink.none !== null && ink.none[0] === muted && ink.none[1] === ink.line,
+          JSON.stringify({ ink, muted }),
+        );
+        check(
+          `${at} zero totals: "0 lines" is whole on the third line or out of view, never cut`,
+          (lines === "shown" &&
+            none.statsWhole &&
+            none.stats.right <= none.flow.right + TOLERANCE_PX) ||
+            lines === "dropped",
+          JSON.stringify({ lines, stats: none.stats, flow: none.flow }),
+        );
+        check(
+          `${at} zero totals: "0 lines" shows wherever the recorded line does`,
+          measured[at]?.[106]?.lines !== "shown" || lines === "shown",
+          JSON.stringify({ recorded: measured[at]?.[106]?.lines, lines }),
+        );
+        measured.zeroTotals[at] = {
+          lines,
+          author: onLine(none, none.by),
+          width: none.line?.width ?? null,
+        };
+        lap(`${at} zero totals: #106 ${JSON.stringify(measured.zeroTotals[at])}`);
+      }
+    }
+    await browser.evaluate(`(window.__rowTotals = null, true)`);
     measured.real = await browser.evaluate(`(${REAL})(${JSON.stringify(REAL_LINES)})`);
     check(
       "the real lines are measured in the change line's type",
@@ -863,14 +1025,17 @@ async function main() {
         };
       })()`);
     const name = (what) => `${at.replace(/\s+/g, "-")}-${what}`;
-    // Hover: the title, the number's line, the change line, and the chevron. Every line hovers
-    // the item's one ground; only the change line, the toggle's line, also lights its chevron.
-    await pointAt(`${ROW} .github-pulls-title`, false);
+    // Hover: the title, then on the change line the number, the age, and the chevron. Every
+    // line hovers the item's one ground; only the change line, the toggle's line, also lights
+    // its chevron.
+    // The title's two lines, at their middle: #103's title runs past its clamp, so its own box
+    // reaches under the link.
+    await pointAt(`${ROW} .github-pulls-heading`, false);
     result.hoverTitle = await look();
     await shot(name("hover-item"), 299);
-    await pointAt(`${ROW} .github-pulls-meta`, false, "start");
+    await pointAt(`${CHANGE} .github-pulls-number`, false);
     result.hoverMeta = await look();
-    await pointAt(`${CHANGE} .github-pulls-change-line`, false, "start");
+    await pointAt(`${CHANGE} .github-pulls-age`, false);
     result.hoverLine = await look();
     await shot(name("hover-inner"), 299);
     await pointAt(`${CHANGE} > .github-pulls-toggle`, false);
@@ -888,10 +1053,10 @@ async function main() {
     );
     check(
       `${at}: the change line, the toggle's line, adds the inner target's hover, the chevron's plate`,
-      [result.hoverLine, result.hoverChevron].every(
+      [result.hoverMeta, result.hoverLine, result.hoverChevron].every(
         (seen) => seen.plate === tokens.plate && seen.chevron === tokens.text,
       ) &&
-        [result.hoverTitle, result.hoverMeta, result.away].every(
+        [result.hoverTitle, result.away].every(
           (seen) => seen.plate === tokens.none && seen.chevron !== tokens.text,
         ),
       JSON.stringify({ ...result, tokens }),
@@ -956,16 +1121,40 @@ async function main() {
         result.title.files === null,
       JSON.stringify(result.title),
     );
-    // A press on the number's line, the item's second line, is the link's too.
-    await pointAt('a.github-pulls-row[data-number="106"] .github-pulls-meta', true, "start");
+    // A press on the number, on the third line, the toggle's line since mb-lqkb, opens the
+    // files and no page; one on the author, on the same line, closes them.
+    await pointAt('.github-pulls-change[data-number="106"] .github-pulls-number', true);
+    await pause(250);
+    await browser
+      .waitFor(
+        `document.querySelector('.github-pulls-change[data-number="106"]')?.closest("li")?.querySelector(".github-pull-files-rows")?.firstElementChild != null`,
+        5000,
+      )
+      .catch(() => false);
+    result.number = await browser.evaluate(state);
+    check(
+      `${at}: a press on a row's number opens its files under the change line and opens no page`,
+      result.number.opened.length === result.title.opened.length &&
+        result.number.expanded === "true" &&
+        result.number.files !== null &&
+        result.number.files.top >= result.number.change.bottom - TOLERANCE_PX &&
+        Math.abs(result.number.change.top - result.title.change.top) <= TOLERANCE_PX,
+      JSON.stringify(result.number),
+    );
+    result.authorShown = await browser.evaluate(
+      `(() => { const by = document.querySelector('.github-pulls-change[data-number="106"] .github-pulls-by'); const line = by?.parentElement; return by !== null && by.getBoundingClientRect().bottom <= line.getBoundingClientRect().bottom + 0.5; })()`,
+    );
+    await pointAt('.github-pulls-change[data-number="106"] .github-pulls-author', true);
+    await pause(250);
     result.meta = await browser.evaluate(state);
     check(
-      `${at}: a press on a row's number's line opens the pull request and expands nothing`,
-      result.meta.opened.length === result.title.opened.length + 1 &&
-        result.meta.opened.at(-1) === 106 &&
+      `${at}: a press on a row's author, in view, closes its files and opens no page`,
+      result.authorShown &&
+        result.meta.opened.length === result.title.opened.length &&
         result.meta.expanded === "false" &&
-        result.meta.files === null,
-      JSON.stringify(result.meta),
+        result.meta.files === null &&
+        Math.abs(result.meta.change.top - result.title.change.top) <= TOLERANCE_PX,
+      JSON.stringify({ shown: result.authorShown, meta: result.meta }),
     );
     // A press on the chevron opens the files, under the change line, and opens no page.
     await pointAt('.github-pulls-change[data-number="106"] .github-pulls-toggle', true);

@@ -8,8 +8,8 @@
 // heading); right after the name a copy-path control riding the shared
 // [data-mb-copy] delegation; the inline +N −N stat pair and change
 // notes; then the View file controls of diff-view-file.js when the page
-// can open a file at a commit; and, at the bar's end, a file's
-// Rendered | Source chooser (diff-markdown.js). The diff's own choosers,
+// can open a file at a commit; and, at the bar's end, a rendered file's
+// view chooser (diff-markdown.js). The diff's own choosers,
 // Diff | Current and Split | Unified, end its toolbar. Sections start
 // expanded; the bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
@@ -17,6 +17,7 @@
 // deliberately dumber than the model: the data plane is tested by the
 // conformance corpus and CLI goldens, and this layer only projects it.
 
+import { foldExpander, shellIcon } from "./diff-fold.js";
 import { diffSummaryOf, fileChangeLabel, plainTotals, validateDocument } from "./diff-model.js";
 import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
 import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
@@ -75,6 +76,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {ReturnType<typeof createHydrationScheduler>} hydration
  * @property {{controller: ReturnType<import("./diff-markdown.js").createMarkdownViews>, format: typeof import("./diff-markdown.js").renderedFormat} | null} markdown
  * @property {IntersectionObserver | null} hydrationObserver
+ * @property {Set<string>} reached Held files whose section is within the hydration
+ *   lookahead, whether or not their body is to be drawn (`bodyWanted`).
  * @property {boolean} awaitingWidth Nothing is drawn until the first report of a width.
  * @property {"unified" | "split"} chosenLayout What the reader chose, whatever fits.
  * @property {boolean} insistedOnSplit The reader chose Split where it does not fit.
@@ -463,19 +466,6 @@ function noticeEl(severity, className, text) {
 }
 
 /**
- * A glyph from the shell's shared registry, or "" outside the shell.
- *
- * @param {string} name
- * @returns {string}
- */
-function shellIcon(name) {
-  const shell = /** @type {{metabrowser?: {icons?: Record<string, string>}}} */ (
-    /** @type {unknown} */ (globalThis)
-  );
-  return shell.metabrowser?.icons?.[name] ?? "";
-}
-
-/**
  * @typedef {object} ComposedTextRun
  * @property {string[]} classes
  * @property {string} text
@@ -741,11 +731,15 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
       state.foldsOpened.add(key);
       state.expandedFolds.add(key);
     }
-    const expanded = state.expandedFolds.has(key);
     foldSequence += 1;
-    const group = el("div", `diff-fold-group${expanded ? "" : " diff-fold-collapsed"}`);
-    group.setAttribute("id", `diff-fold-group-${foldSequence}`);
-    section.append(renderFoldControl(group, run.slice(FOLD_VISIBLE), renderRow, state, key), group);
+    const fold = renderFoldControl(
+      `diff-fold-group-${foldSequence}`,
+      run.slice(FOLD_VISIBLE),
+      renderRow,
+      state,
+      key,
+    );
+    section.append(fold.control, fold.group);
     index = end;
   }
 }
@@ -1177,35 +1171,37 @@ function scheduleFileEnhancement(view, state) {
 }
 
 /**
- * The fold expander: the tree's disclosure vocabulary on a full-width
- * row, stating the count it holds so the reader knows what is hidden.
+ * A changed run's fold (`foldExpander` in diff-fold.js), stating the count it holds so the
+ * reader knows what is hidden. Its rows are drawn when it opens, in batches.
  *
  * @template T
- * @param {HTMLElement} group
+ * @param {string} id The group's id.
  * @param {T[]} hiddenRows
  * @param {(row: T) => HTMLElement} renderRow
  * @param {FileViewState} state
  * @param {string} key
- * @returns {HTMLElement}
+ * @returns {import("./diff-fold.js").FoldExpander}
  */
-function renderFoldControl(group, hiddenRows, renderRow, state, key) {
-  let expanded = state.expandedFolds.has(key);
+function renderFoldControl(id, hiddenRows, renderRow, state, key) {
   const hidden = hiddenRows.length;
-  const control = el("button", "fold-expander diff-fold-control disclosure-toggle");
-  control.setAttribute("type", "button");
-  control.setAttribute("aria-expanded", String(expanded));
-  control.setAttribute("aria-controls", group.getAttribute("id") || "");
-  control.classList.toggle("expanded", expanded);
-  const chevron = el("span", "diff-fold-chevron");
-  chevron.innerHTML = shellIcon("toggle");
-  const label = el(
-    "span",
-    "diff-fold-label",
-    expanded
-      ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
-      : `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
-  );
-  control.append(chevron, label);
+  const fold = foldExpander({
+    id,
+    expanded: state.expandedFolds.has(key),
+    label: (expanded) =>
+      expanded
+        ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
+        : `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
+    onToggle(expanded) {
+      if (expanded) {
+        state.expandedFolds.add(key);
+        scheduleMaterialization();
+      } else {
+        state.expandedFolds.delete(key);
+        cancelMaterialization();
+      }
+    },
+  });
+  const { group } = fold;
 
   function cancelMaterialization() {
     const task = state.foldTasks.get(key);
@@ -1238,29 +1234,10 @@ function renderFoldControl(group, hiddenRows, renderRow, state, key) {
     state.foldTasks.set(key, task);
   }
 
-  control.addEventListener("click", (event) => {
-    // The bar above owns clicks on the file section; a fold is its own
-    // control and must not also collapse the whole file.
-    event.stopPropagation();
-    expanded = !expanded;
-    if (expanded) {
-      state.expandedFolds.add(key);
-      scheduleMaterialization();
-    } else {
-      state.expandedFolds.delete(key);
-      cancelMaterialization();
-    }
-    control.setAttribute("aria-expanded", String(expanded));
-    control.classList.toggle("expanded", expanded);
-    group.classList.toggle("diff-fold-collapsed", !expanded);
-    label.textContent = expanded
-      ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
-      : `${hidden} more changed line${hidden === 1 ? "" : "s"}`;
-  });
-  if (expanded) {
+  if (fold.expanded()) {
     scheduleMaterialization();
   }
-  return control;
+  return fold;
 }
 
 /** @param {FileViewState} state */
@@ -1405,7 +1382,7 @@ function isPlainPress(event) {
  * path), the copy control right after the name, and the change's stats and notes, which
  * describe the trigger. The View file controls follow that group, each a part of the bar
  * of its own, so a bar that wraps moves them to the next line before the name gives way.
- * Its end group holds a file's Rendered | Source chooser alone (diff-markdown.js), at the
+ * Its end group holds a rendered file's view chooser alone (diff-markdown.js), at the
  * bar's far end. Diff | Current is the whole diff's, in its toolbar (`renderShowControl`).
  *
  * @param {Record<string, unknown>} change
@@ -3106,6 +3083,7 @@ function settleDeferred(file, view) {
   view.hydrationObserver?.unobserve(file.section);
   view.deferred.delete(String(file.change.id));
   view.deferredBySection.delete(file.section);
+  view.reached.delete(String(file.change.id));
   if (view.deferred.size === 0) {
     view.hydrationObserver?.disconnect();
     view.hydrationObserver = null;
@@ -3253,7 +3231,12 @@ function observeHydration(view) {
       for (const entry of entries) {
         const id = view.deferredBySection.get(/** @type {HTMLElement} */ (entry.target));
         if (id !== undefined) {
-          changes.push([id, entry.isIntersecting]);
+          if (entry.isIntersecting) {
+            view.reached.add(id);
+          } else {
+            view.reached.delete(id);
+          }
+          changes.push([id, entry.isIntersecting && bodyWanted(view, id)]);
         }
       }
       view.hydration.setNearby(changes);
@@ -3262,6 +3245,32 @@ function observeHydration(view) {
   );
   for (const section of view.deferredBySection.keys()) {
     view.hydrationObserver.observe(section);
+  }
+}
+
+/**
+ * Whether a held file's body is to be drawn once it is reached: not while the file's
+ * rendered view hides it (`createMarkdownViews`), since rows nobody sees would cost what
+ * the reader sees: a 17,177-line document's Source on a pull request's Docs, drawn at load
+ * behind its rendered view, was 72,000 nodes and 4 s of main-thread work.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} id
+ */
+function bodyWanted(view, id) {
+  return view.deferred.get(id)?.body.hidden !== true;
+}
+
+/**
+ * A held file's rendered view showed or hid its body: drawn now if it is reached, and not
+ * drawn while it is hidden.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} id
+ */
+function bodyShownChanged(view, id) {
+  if (view.deferred.has(id)) {
+    view.hydration.setNearby([[id, view.reached.has(id) && bodyWanted(view, id)]]);
   }
 }
 
@@ -3404,6 +3413,22 @@ function placeOfTopFile(view, mustCoverPaneTop = false) {
 }
 
 /**
+ * What a rendered file's change keeps on the screen: the file at the pane's top and, when
+ * it shows rendered Markdown, the block at the pane's top, found again by its index after
+ * the change, which may draw it anew (`drawnRows`).
+ *
+ * @param {MountedDiffState} view
+ * @returns {Place | null}
+ */
+function placeOfTopRendered(view) {
+  const place = placeOfTopFile(view, true);
+  const rendered = place?.section.querySelector(".diff-markdown") ?? null;
+  return place === null || rendered === null || /** @type {HTMLElement} */ (rendered).hidden
+    ? place
+    : placeOfTopRow(view, view.show);
+}
+
+/**
  * What a Diff | Current choice keeps on the screen: the file at the pane's top, as
  * `placeOfTopFile` finds it, and the row of it at the pane's top, or the nearest row that
  * what the diff is about to show (*next*) draws too (`anchorRow`), with where that row is to
@@ -3495,8 +3520,9 @@ export function anchorRow(count, rowAt, paneTop, paneBottom) {
  * A file's rows as it draws them now, in order: each element, whether Current (*current*
  * true) or Diff draws it too, and how to find it once the choice is drawn. Rendered Markdown
  * keeps its block elements and hides what Current leaves out, so a block is its own element
- * after; a YAML or JSON tree is drawn again, with the same paths; a code file's rows are drawn
- * again from the same lines, so a row is found by its line, the new side's in Split.
+ * after, and a view drawn anew draws it again by its index (`drawnBlock`); a YAML or JSON
+ * tree is drawn again, with the same paths; a code file's rows are drawn again from the same
+ * lines, so a row is found by its line, the new side's in Split.
  *
  * @param {MountedDiffState} view
  * @param {HTMLElement} section
@@ -3527,15 +3553,29 @@ function drawnRows(view, section, current) {
         };
       });
     }
-    return [...rendered.children]
-      .map((child) => /** @type {HTMLElement} */ (child))
-      .filter((element) => !element.hidden)
-      .map((element) => ({
+    return markdownRows(rendered).map((element) => {
+      const at = blockAt(element);
+      return {
         element,
         kept: !current || !element.classList.contains("diff-markdown-removed"),
-        find: () => (rendered.hidden || element.hidden ? null : element),
+        find: () => {
+          if (rendered.hidden) {
+            return null;
+          }
+          if (element.isConnected && !element.hidden) {
+            return element;
+          }
+          if (at === null) {
+            return null;
+          }
+          // Drawn anew, the view may keep the block in a chunk not drawn yet: its chunk is
+          // drawn, so the block itself keeps the reader's place.
+          view.markdown?.controller.drawBlock(section, at);
+          return drawnBlock(/** @type {HTMLElement} */ (rendered), at);
+        },
         state: null,
-      }));
+      };
+    });
   }
   const state = view.files.find((file) => section.contains(file.body)) ?? null;
   if (state === null || !drawsLines(state)) {
@@ -3566,6 +3606,80 @@ function drawnRows(view, section, current) {
           },
         ];
   });
+}
+
+/**
+ * A rendered Markdown article's rows in the page's order: its own, and in place of an open
+ * fold's group, the rows the group holds, so the row at the pane's top is the block there
+ * however deep in a fold it is. A fold's rows are its blocks and the places of its chunks
+ * not drawn yet; a closed fold's group holds none.
+ *
+ * @param {HTMLElement} rendered
+ * @returns {HTMLElement[]}
+ */
+function markdownRows(rendered) {
+  /** @type {HTMLElement[]} */
+  const rows = [];
+  for (const child of rendered.children) {
+    const element = /** @type {HTMLElement} */ (child);
+    if (element.hidden) {
+      continue;
+    }
+    if (!element.classList.contains("diff-fold-group")) {
+      rows.push(element);
+      continue;
+    }
+    if (!element.classList.contains("diff-fold-collapsed")) {
+      for (const inner of element.children) {
+        if (!(/** @type {HTMLElement} */ (inner).hidden)) {
+          rows.push(/** @type {HTMLElement} */ (inner));
+        }
+      }
+    }
+  }
+  return rows;
+}
+
+/**
+ * The first block of a rendered Markdown row: a block's own index (`data-block`), or the
+ * first of those a fold's bar or a chunk not drawn yet stands for (`data-span`).
+ *
+ * @param {HTMLElement} element
+ * @returns {number | null}
+ */
+function blockAt(element) {
+  const own = element.dataset?.block ?? element.dataset?.span?.split("-")[0];
+  return own === undefined ? null : Number(own);
+}
+
+/**
+ * The element that draws block *index* of a rendered Markdown file now: its row, or what
+ * stands for it, the fold's bar that holds it or the place of a chunk not drawn yet. A
+ * view drawn anew, Full for Concise or a chunk for its place, keeps its blocks' indexes,
+ * so a block the reader was looking at is found again however it is drawn.
+ *
+ * @param {HTMLElement} rendered
+ * @param {number} index
+ * @returns {HTMLElement | null}
+ */
+function drawnBlock(rendered, index) {
+  /** @type {HTMLElement | null} */
+  let best = null;
+  for (const child of rendered.querySelectorAll("[data-block], [data-span]")) {
+    const element = /** @type {HTMLElement} */ (child);
+    if (element.hidden || element.closest(".diff-fold-collapsed") !== null) {
+      continue;
+    }
+    if (element.dataset.block === String(index)) {
+      return element;
+    }
+    const [start, end] = (element.dataset.span ?? "").split("-").map(Number);
+    if (start <= index && index < end) {
+      // The innermost: a chunk's place inside an open fold, before the fold's bar.
+      best = element;
+    }
+  }
+  return best;
 }
 
 /** Whether a code file's body is drawn: not collapsed, and not under its Rendered view. @param {FileViewState} state */
@@ -3830,7 +3944,8 @@ function jumpToEntry(view, entry, path) {
     releasePinOnInput(view, pane);
   }
   const fileId = String(entry.change.id);
-  const lines = view.hydration.jump(fileId);
+  // A file whose rendered view hides its body has no rows to draw for the jump.
+  const lines = bodyWanted(view, fileId) ? view.hydration.jump(fileId) : null;
   const availability = String(entry.change.availability);
   return {
     kind: "jumped",
@@ -3871,7 +3986,8 @@ function rememberFile(view, change, section, expand) {
  * @param {{revision?: string}} context
  * @param {MountedDiffState} view
  * @param {boolean} draw Whether a ready file's rows are drawn now. One past the first screen
- *   is held, with its answer, until it is reached.
+ *   is held, with its answer, until it is reached, and so is one with a rendered view,
+ *   wherever it is, until its Source is shown and reached (`bodyWanted`).
  * @returns {HTMLElement}
  */
 function renderFileSection(change, patch, context, view, draw) {
@@ -3893,7 +4009,7 @@ function renderFileSection(change, patch, context, view, draw) {
   // The whole bar is one activation surface, like a tree row; the
   // button stays the semantic trigger for focus and keyboard, whose
   // synthesized click bubbles here. Only the copy control, a file's
-  // Rendered | Source chooser, and the View file controls opt out.
+  // view chooser, and the View file controls opt out.
   const format = view.markdown?.format(change) ?? null;
   const availability = String(change.availability);
   const markdown =
@@ -3907,6 +4023,7 @@ function renderFileSection(change, patch, context, view, draw) {
           id: String(change.id),
           format,
           gone: String(change.kind) === "deleted",
+          onSource: () => bodyShownChanged(view, String(change.id)),
           // A file whose changes did not load has no Rendered either, for the reason its
           // body gives below.
           ...(availability === "ready" || availability === "deferred"
@@ -3962,7 +4079,7 @@ function renderFileSection(change, patch, context, view, draw) {
     body.append(el("div", "diff-availability", "No content changes."));
     return section;
   }
-  if (!draw) {
+  if (!draw || markdown !== null) {
     const id = String(change.id);
     const held = { manifest: { files: [change] }, patches: { [id]: patch } };
     queueDeferredHydration(section, body, change, context.revision ?? "", view, held);
@@ -4117,7 +4234,11 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   summaryHost?: HTMLElement | null,
  *   summaryTotals?: unknown,
  *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
- *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
+ *   renderMarkdown?: (
+ *     fileId: string,
+ *     signal: AbortSignal,
+ *     ask?: import("./diff-markdown.js").RenderedAsk,
+ *   ) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "renderedFormat">,
  *   markdownTargets?: (value: string, image: boolean) => boolean,
  *   markdownHoldMs?: number,
@@ -4146,9 +4267,10 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   A diff narrowed to some file types (diff-type-filter.js) passes the whole comparison's
  *   manifest as *summaryManifest*, so its summary still describes the whole change set; its
  *   File type control as *toolbarControl*, which leads the toolbar's end group of choosers; and *emptyText*,
- *   what it says when it keeps no file. *unfold* draws every fold open, the rendered
- *   view's unchanged runs and the text diff's long changed runs alike, for a page that
- *   shows its files whole: a pull request's Docs tab. *layout* fixes the layout at
+ *   what it says when it keeps no file. *unfold* draws the text diff's long changed runs
+ *   open and opens a rendered Markdown file in Full where it is small enough to draw whole
+ *   (`createMarkdownViews`' *opens*), for a page that shows its files whole: a pull
+ *   request's Docs tab. *layout* fixes the layout at
  *   Unified, which the diff then draws with no layout control and no `L`, neither reading
  *   nor writing the reader's stored choice: a pull request's Docs tab, whose rendered
  *   documents take that form. Split is the reader's to choose, so no host fixes it. *show*
@@ -4191,6 +4313,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     generation: 1,
     hydration: /** @type {MountedDiffState["hydration"]} */ (/** @type {unknown} */ (null)),
     hydrationObserver: null,
+    reached: new Set(),
     markdown: null,
     insistedOnSplit: false,
     layout: drawnLayout(chosenLayout, narrow, false),
@@ -4237,7 +4360,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         controls: api.filterControls,
         ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
-        unfold: options.unfold === true,
+        opens: options.unfold === true ? "prefer-full" : "concise",
         current: view.show === "current",
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
@@ -4250,7 +4373,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         },
         loadStyles: (assets) => api?.loadKpressAssets?.(assets) ?? Promise.resolve(),
         mutate(change) {
-          const anchor = view.pinned === null ? placeOfTopFile(view, true) : null;
+          const anchor = view.pinned === null ? placeOfTopRendered(view) : null;
           change();
           holdPlace(view, anchor);
           view.notifyCurrentFile();
@@ -4315,7 +4438,8 @@ export function mountDiffView(container, document_, api, options = {}) {
   view.hydrationFailure.hidden = true;
   root.append(view.hydrationFailure);
   // Rows are drawn for the files whose estimated top is within the first screen and one more;
-  // every later ready file is held, with its answer, and drawn when it is reached. The bars
+  // every later ready file is held, with its answer, and drawn when it is reached, as is
+  // every file with a rendered view, whose Source waits until it shows (`bodyWanted`). The bars
   // are all here, and each held file reserves its code rows and chrome before drawing.
   // Soft wraps and arriving scrollbars can add height. Drawing every hydrated file at
   // once was one task of style, layout and commit

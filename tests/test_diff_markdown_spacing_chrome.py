@@ -8,7 +8,7 @@ version alone. Each block of the diff is a row of its own, so the space between 
 margin collapsing across rows, which only a browser computes. So
 ``tests/dom/diff-markdown-spacing-chrome.mjs`` builds the server's projection of a change
 to a document holding every heading level, paragraphs, lists, a quote, and a code block
-through the production ``appendBlocks`` and ``sanitizeBlock``, sets KPress's render of
+through the production ``blockRow`` and ``sanitizeBlock``, sets KPress's render of
 each version in a Document view's frame beside it, and measures both.
 
 Before the rows let their blocks' margins collapse (mb-6d1s), each row padded 4 px above

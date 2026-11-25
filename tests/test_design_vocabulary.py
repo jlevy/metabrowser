@@ -352,7 +352,7 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     # The bar is a centered row of boxes: the name's group, the toggle with the copy control
     # right after it and the change's stats; the View file or View on branch control, a box
     # at the path's size, which centering puts on its baseline; and the group at its end, a
-    # file's Rendered | Source chooser behind its progress mark (`add` in diff-markdown.js).
+    # file's Full | Concise | Source chooser behind its progress mark (`add` in diff-markdown.js).
     # Each group is a centered row of boxes too.
     lead = box(
         "diff-file-lead",
@@ -372,23 +372,9 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     rows.append(("Diff file bar", f"{diff_host} .diff-file-lead", lead))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-end", end))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
-    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The chevron and the
-    # state icon are boxes on the first line, centered, beside the number's line and the age,
-    # which share its baseline; the title is alone on the second (mb-lkkt, mb-3cbf).
-    rows.append(
-        (
-            "Pull request row",
-            ".github-pulls-row",
-            el(
-                "github-pulls-row",
-                box("github-pulls-toggle"),
-                box("github-pull-state-icon"),
-                text("github-pulls-title"),
-                text("github-pulls-age age-min"),
-                text("github-pulls-meta"),
-            ),
-        )
-    )
+    # A Pulls row is not one: its title is one run of inline text, and its change line sets
+    # its text at one size on one line height and centers it (docs/design-system.md, "Row
+    # Text Shares a Baseline"; mb-85op, mb-lqkb).
     return rows
 
 
@@ -1712,10 +1698,6 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
     ("agents/agent-log.css", ".log-event-kind"): "a badge",
-    (
-        "diff/styles.css",
-        ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
-    ): "a fold's control",
     ("diff/styles.css", ".diff-file-marks"): "a row of layer chips, each a link (fileMarks)",
     ("github/styles.css", ".github-pull-labels"): "a row of label chips",
     ("github/styles.css", ".github-pull-label"): "a label chip",
@@ -2018,8 +2000,17 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     plugins = REPO_ROOT / BUILTIN_PLUGINS
     overview = (plugins / "folder/overview.js").read_text(encoding="utf-8")
     assert '"section-heading folder-overview-panel-heading"' in overview
-    diff = (plugins / "diff/diff-view.js").read_text(encoding="utf-8")
-    assert '"fold-expander diff-fold-control disclosure-toggle"' in diff
+    # One fold bar for every fold of a diff: a code file's run of changed lines and a
+    # rendered Markdown file's run of unchanged blocks (docs/design-system.md, "Fold
+    # Expanders").
+    fold_bar = (plugins / "diff/diff-fold.js").read_text(encoding="utf-8")
+    assert '"fold-expander diff-fold-control disclosure-toggle"' in fold_bar
+    for user in ("diff/diff-view.js", "diff/diff-markdown.js"):
+        source = (plugins / user).read_text(encoding="utf-8")
+        assert re.search(
+            r'import \{[^}]*\bfoldExpander\b[^}]*\} from "\./diff-fold\.js";', source
+        ), user
+        assert "fold-expander" not in source, f"{user} builds a fold bar of its own"
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
     headings = re.findall(r'h\("h2", \{([^}]+)\}', page)
     assert headings and len(headings) == page.count('h("h2",')
@@ -2105,18 +2096,15 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "folder/overview.js": (
         '"folder-overview-panel-toggle section-disclosure-trigger disclosure-toggle"',
     ),
+    "diff/diff-fold.js": ('"fold-expander diff-fold-control disclosure-toggle"',),
     "diff/diff-view.js": (
-        '"fold-expander diff-fold-control disclosure-toggle"',
         '"diff-file-bar disclosure-toggle"',
         '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
     ),
     "diff/diff-summary.js": (
         '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
     ),
-    "diff/diff-markdown.js": (
-        'heading.className = "disclosure-toggle"',
-        'summary.className = "disclosure-toggle"',
-    ),
+    "diff/diff-markdown.js": ('heading.className = "disclosure-toggle"',),
     "github/pulls-panel.js": (
         '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
@@ -2167,8 +2155,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
     ),
-    "diff/diff-view.js": (
+    "diff/diff-fold.js": (
         ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
+    ),
+    "diff/diff-view.js": (
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
         ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
     ),
@@ -2180,7 +2170,6 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "diff/diff-markdown.js": (
         ('createElement("summary")', 'heading.className = "disclosure-toggle"'),
-        ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
     "github/pulls-panel.js": (
         ("[chevron()]", '"github-pulls-change disclosure-toggle collapsed"'),
@@ -2381,14 +2370,14 @@ def test_an_unmarked_chevron_beside_a_marked_toggle_fails() -> None:
     new chevron button built just after a diff fold's passed.
     """
 
-    key = "diff/diff-view.js"
+    key = "diff/diff-fold.js"
     text = (REPO_ROOT / BUILTIN_PLUGINS / key).read_text(encoding="utf-8")
-    anchor = (
-        '  const control = el("button", "fold-expander diff-fold-control disclosure-toggle");\n'
-    )
+    anchor = '  control.className = "fold-expander diff-fold-control disclosure-toggle";\n'
     assert anchor in text
     beside = anchor + (
-        '  const more = el("button", "diff-fold-more");\n  more.innerHTML = shellIcon("toggle");\n'
+        '  const more = document.createElement("button");\n'
+        '  more.className = "diff-fold-more";\n'
+        '  more.innerHTML = shellIcon("toggle");\n'
     )
     assert _toggle_source_problems(key, text) == []
     assert _toggle_source_problems(key, text.replace(anchor, beside))
@@ -2741,6 +2730,7 @@ _PUNCTUATION_PAINTERS = {
         '...(at === 0 ? [] : [{ punctuation: "," }, " "]),',
         "{ status: entry.status, letter: entry.letter, count: written(entry.count) },",
         'const CHANGE_LINE_CLASS = "change-line";',
+        'const CHANGE_LINE_NONE_CLASS = "change-line-none";',
         "{ statuses: entries, additions: totals.additions, deletions: totals.deletions },",
     ),
     "static/plugin-sdk.js": (
@@ -2875,6 +2865,21 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
         "align-items": "baseline",
         "column-gap": "inherit",
     }
+    # A line that leaves out its zero totals says "0 lines" for a change of none, muted at
+    # its line's weight (mb-efum). Only the Pulls tab's rows and stack headings leave them
+    # out: every other surface that says a change set in brief says both totals.
+    assert shell[".change-line-stats > .change-line-none"] == {"color": "var(--muted)"}
+    panel = (REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js").read_text(encoding="utf-8")
+    assert panel.count("{ omitZeroTotals: true }") == 2
+    for path in (
+        "builtin_plugins/diff/diff-view.js",
+        "builtin_plugins/github/pull-page.js",
+        "builtin_plugins/github/pull-summary-brief.js",
+        "static/git-panel.js",
+        "static/changed-files-tree.js",
+    ):
+        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
+        assert "omitZeroTotals" not in source, path
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:
@@ -2927,20 +2932,34 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
     # The Pulls tab's number's line names no branches (the pull request's page does) and is
-    # one line (mb-lkkt): the author carries its separator, a break falls at its floor onto a
-    # second line its box clips, one line of the number's type tall, and a separator that
-    # starts a line lies in the one-separator offset the box clips.
+    # one line, the row's third, its change line (mb-lkkt, mb-lqkb): the number never gives
+    # way; the author and the lines changed after it are a wrap laid out from its end, the
+    # lines its first item and the author its second, each carrying its separator, so the
+    # author leaves first onto a second line the box clips, one change line tall, and the
+    # lines leave it whole where the number leaves them no room.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     meta = github[".github-pulls-meta"]
-    assert (meta["min-width"], meta["overflow"], meta["height"]) == ("0", "clip", "1lh")
-    assert meta["font-size"] == "var(--nav-font-size)", "1lh is the number's line"
+    assert (meta["min-width"], meta["overflow"], meta["height"]) == (
+        "0",
+        "clip",
+        "var(--github-pulls-change-line)",
+    )
+    assert meta["font-size"] == "var(--nav-font-size)", "the number's line is the nav's type"
+    assert github[".github-pulls-number"]["flex"] == "none", "the number never gives way"
     # The author is the number's line's secondary metadata, at its size, which it inherits.
     assert "font-size" not in github[".github-pulls-by"]
     assert "text-overflow" not in meta
     line = github[".github-pulls-line"]
-    assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
-    assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
-    assert github[".github-pulls-id"]["margin-inline-start"] == ("var(--github-pulls-sep)")
+    assert (line["display"], line["flex-direction"], line["flex-wrap"]) == (
+        "flex",
+        "row-reverse",
+        "wrap",
+    )
+    assert (line["overflow"], line["height"]) == ("clip", "var(--github-pulls-change-line)")
+    assert github[".github-pulls-line::before"]["order"] == "-2", "a zero-width first item"
+    lines = github[".github-pulls-line > .github-pulls-change-line"]
+    assert (lines["flex"], lines["order"]) == ("none", "-1"), "the lines, whole, before the author"
+    assert ".github-pulls-id" not in github, "the number's line starts with the number"
     assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
     by_rule = github[".github-pulls-by"]
     assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")

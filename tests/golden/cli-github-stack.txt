@@ -912,7 +912,10 @@ status: 200
         "loading": "stylesheet"
       }
     ]
-  }
+  },
+  "view": "full",
+  "count": 1,
+  "folds": []
 }
 --- stderr ---
 --- gh ---

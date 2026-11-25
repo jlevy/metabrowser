@@ -1,0 +1,953 @@
+# metab <PATH>/pull/7 --no-serve
+exit: 0
+--- stdout ---
+acquired: <PATH>
+slug: <SLUG>
+store: <STORE>
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+cloning <PATH> into <HOME>
+cloned <PATH> in 0.0 s
+--- gh ---
+gh auth status
+gh api repos/octo/demo --jq .size
+gh api user
+gh api repos/octo/demo/pulls/7
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
+gh api user (If-None-Match)
+# metab <PATH>/pull/7 --api /api/plugin/github/pull-refresh --data reader.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "<PATH>",
+    "number": 7,
+    "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "pin_ref": "refs/pull/7/head",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "verified_at": "2026-09-17T12:00:00Z",
+    "verified_by": "fetch",
+    "head_moved": false,
+    "checks_pending": true,
+    "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+    "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "record": {
+      "schema_version": 2,
+      "projection_version": 2,
+      "source": "<PATH>",
+      "number": 7,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
+        "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+        "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+        "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+        "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
+        "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+      },
+      "pull": {
+        "number": 7,
+        "title": "Count to two in the app",
+        "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+        "body_truncated": false,
+        "state": "open",
+        "draft": false,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 2,
+        "merge_commit_sha": null,
+        "mergeable": "mergeable",
+        "labels": [
+          {
+            "name": "enhancement",
+            "color": "2700af",
+            "description": "A label's description is its chip's tooltip"
+          }
+        ],
+        "author": "forker",
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": null,
+        "base": {
+          "ref": "topic",
+          "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "count-to-two",
+          "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+          "repository": "forker/demo"
+        },
+        "html_url": "<PATH>/pull/7"
+      },
+      "issue_comments": [
+        {
+          "id": 3341937855,
+          "author": "maintainer",
+          "author_avatar_url": null,
+          "body": "Thanks. CI is green; one question inline.",
+          "body_truncated": false,
+          "created_at": "2026-09-16T17:34:17Z",
+          "updated_at": "2026-09-16T17:35:33Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": 3274109685,
+          "state": "COMMENTED",
+          "author": "maintainer",
+          "author_avatar_url": null,
+          "body": "",
+          "body_truncated": false,
+          "submitted_at": "2026-09-16T12:32:50Z",
+          "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+        },
+        {
+          "id": 3279967139,
+          "state": "APPROVED",
+          "author": "maintainer",
+          "author_avatar_url": null,
+          "body": "Looks right.",
+          "body_truncated": false,
+          "submitted_at": "2026-09-16T17:36:02Z",
+          "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+        }
+      ],
+      "review_comments": [
+        {
+          "id": 2383608906,
+          "review_id": 3274109685,
+          "in_reply_to": null,
+          "path": "src/app.txt",
+          "line": null,
+          "original_line": 1,
+          "start_line": null,
+          "original_start_line": null,
+          "side": "RIGHT",
+          "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+          "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+          "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+          "diff_hunk_truncated": false,
+          "author": "maintainer",
+          "author_avatar_url": null,
+          "body": "Why does this line change?",
+          "body_truncated": false,
+          "created_at": "2026-09-16T12:32:50Z",
+          "updated_at": "2026-09-16T12:32:50Z"
+        },
+        {
+          "id": 2388073350,
+          "review_id": 3279967139,
+          "in_reply_to": 2383608906,
+          "path": "src/app.txt",
+          "line": 2,
+          "original_line": 2,
+          "start_line": null,
+          "original_start_line": null,
+          "side": "RIGHT",
+          "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+          "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+          "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+          "diff_hunk_truncated": false,
+          "author": "forker",
+          "author_avatar_url": null,
+          "body": "It no longer does; the second line is new.",
+          "body_truncated": false,
+          "created_at": "2026-09-16T17:30:11Z",
+          "updated_at": "2026-09-16T17:30:11Z"
+        }
+      ],
+      "check_runs": [
+        {
+          "id": 51401654787,
+          "name": "tests (3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "details_url": "<PATH>/actions/runs/18062895276/job/51401654787",
+          "app": "GitHub Actions"
+        },
+        {
+          "id": 51401654788,
+          "name": "docs",
+          "status": "in_progress",
+          "conclusion": null,
+          "details_url": "<PATH>/actions/runs/18062895276/job/51401654788",
+          "app": "GitHub Actions"
+        }
+      ],
+      "status": {
+        "state": "success",
+        "statuses": [
+          {
+            "context": "docs/readthedocs.org:demo",
+            "state": "success",
+            "description": "Read the Docs build succeeded!",
+            "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+          }
+        ]
+      },
+      "comparison": {
+        "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+        "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+        "base_from": "base_branch"
+      },
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {}
+    },
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
+  },
+  "status_route": "/api/plugin/github/pull?number=7"
+}
+after: /api/plugin/github/pull?number=7
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "<PATH>",
+  "number": 7,
+  "pin": "249c5603e265dc1ac864de29b401e0bc9da77af5",
+  "pin_ref": "refs/pull/7/head",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "verified_at": "2026-09-17T12:00:00Z",
+  "verified_by": "fetch",
+  "head_moved": false,
+  "checks_pending": false,
+  "record_revision": "380790549ddb9fa9771ff65dcd3adc7288359840148520f57c0128a12ef94cf8",
+  "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "image_route": "/api/plugin/github/pull-image?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 2,
+    "source": "<PATH>",
+    "number": 7,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/7": "W/\"517a3fbbf0b513820062d910830e12be2d29fda7612081dcf32ee10cc020d4ca\"",
+      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+      "repos/octo/demo/commits/249c5603e265dc1ac864de29b401e0bc9da77af5/check-runs?per_page=100&page=1": "W/\"a0578eaf6e16d86a745048768414938c20cc5e2664d84a92f6b6ec60f50ff61d\"",
+      "repos/octo/demo/commits/249c5603e265dc1ac864de29b401e0bc9da77af5/status?per_page=100&page=1": "W/\"bb4b0d7ec8741323ed7b4c281f666f74628c48cb1650acd3a0acef89a08f5829\""
+    },
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 2,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
+      ],
+      "author": "forker",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "e77c879c5e497f534c9ed20cb66446574ccc9bfb",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "249c5603e265dc1ac864de29b401e0bc9da77af5",
+        "repository": "forker/demo"
+      },
+      "html_url": "<PATH>/pull/7"
+    },
+    "issue_comments": [
+      {
+        "id": 3341937855,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Thanks. CI is green; one question inline.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:34:17Z",
+        "updated_at": "2026-09-16T17:35:33Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": 3274109685,
+        "state": "COMMENTED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T12:32:50Z",
+        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+      },
+      {
+        "id": 3279967139,
+        "state": "APPROVED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Looks right.",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T17:36:02Z",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+      }
+    ],
+    "review_comments": [
+      {
+        "id": 2383608906,
+        "review_id": 3274109685,
+        "in_reply_to": null,
+        "path": "src/app.txt",
+        "line": null,
+        "original_line": 1,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+        "diff_hunk_truncated": false,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Why does this line change?",
+        "body_truncated": false,
+        "created_at": "2026-09-16T12:32:50Z",
+        "updated_at": "2026-09-16T12:32:50Z"
+      },
+      {
+        "id": 2388073350,
+        "review_id": 3279967139,
+        "in_reply_to": 2383608906,
+        "path": "src/app.txt",
+        "line": 2,
+        "original_line": 2,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+        "diff_hunk_truncated": false,
+        "author": "forker",
+        "author_avatar_url": null,
+        "body": "It no longer does; the second line is new.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:30:11Z",
+        "updated_at": "2026-09-16T17:30:11Z"
+      }
+    ],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": {
+      "base": "7d4089c8f0a60b3011ae78c59c301ae020798fc4",
+      "head": "249c5603e265dc1ac864de29b401e0bc9da77af5",
+      "base_commit": "e77c879c5e497f534c9ed20cb66446574ccc9bfb",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  },
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+gh api user
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/commits/249c5603e265dc1ac864de29b401e0bc9da77af5/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/249c5603e265dc1ac864de29b401e0bc9da77af5/status?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh api user (If-None-Match)
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=concise'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=concise
+status: 200
+{
+  "version": "markdown-diff-v1",
+  "status": "ready",
+  "blocks": [
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<h1 id=\"user-content-<ANCHORS>-new-folds\">Folds</h1>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<p>Change one is <del>old</del>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<p>Change one is <ins>new</ins>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph A.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph B.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph C.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph D.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph E.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph F.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<p>Change two is <del>old</del>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<p>Change two is <ins>new</ins>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph G.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph H.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph K.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph L.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<p>Change three is <del>old</del>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<p>Change three is <ins>new</ins>.</p>",
+      "source_only": false
+    }
+  ],
+  "source_only": false,
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  },
+  "view": "concise",
+  "count": 20,
+  "folds": [
+    {
+      "at": 5,
+      "count": 2,
+      "lines": 3
+    },
+    {
+      "at": 13,
+      "count": 3,
+      "lines": 123,
+      "withheld": true,
+      "ids": [
+        "user-content-<ANCHORS>-new-deep-heading"
+      ]
+    }
+  ]
+}
+--- stderr ---
+selection: pull_request
+pin: 249c5603e265dc1ac864de29b401e0bc9da77af5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=13-16'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=13-16
+status: 200
+{
+  "version": "markdown-diff-v1",
+  "status": "ready",
+  "at": 13,
+  "blocks": [
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<h2 id=\"user-content-<ANCHORS>-new-deep-heading\">Deep heading</h2>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Line 0 of long paragraph I.\nLine 1 of long paragraph I.\nLine 2 of long paragraph I.\nLine 3 of long paragraph I.\nLine 4 of long paragraph I.\nLine 5 of long paragraph I.\nLine 6 of long paragraph I.\nLine 7 of long paragraph I.\nLine 8 of long paragraph I.\nLine 9 of long paragraph I.\nLine 10 of long paragraph I.\nLine 11 of long paragraph I.\nLine 12 of long paragraph I.\nLine 13 of long paragraph I.\nLine 14 of long paragraph I.\nLine 15 of long paragraph I.\nLine 16 of long paragraph I.\nLine 17 of long paragraph I.\nLine 18 of long paragraph I.\nLine 19 of long paragraph I.\nLine 20 of long paragraph I.\nLine 21 of long paragraph I.\nLine 22 of long paragraph I.\nLine 23 of long paragraph I.\nLine 24 of long paragraph I.\nLine 25 of long paragraph I.\nLine 26 of long paragraph I.\nLine 27 of long paragraph I.\nLine 28 of long paragraph I.\nLine 29 of long paragraph I.\nLine 30 of long paragraph I.\nLine 31 of long paragraph I.\nLine 32 of long paragraph I.\nLine 33 of long paragraph I.\nLine 34 of long paragraph I.\nLine 35 of long paragraph I.\nLine 36 of long paragraph I.\nLine 37 of long paragraph I.\nLine 38 of long paragraph I.\nLine 39 of long paragraph I.\nLine 40 of long paragraph I.\nLine 41 of long paragraph I.\nLine 42 of long paragraph I.\nLine 43 of long paragraph I.\nLine 44 of long paragraph I.\nLine 45 of long paragraph I.\nLine 46 of long paragraph I.\nLine 47 of long paragraph I.\nLine 48 of long paragraph I.\nLine 49 of long paragraph I.\nLine 50 of long paragraph I.\nLine 51 of long paragraph I.\nLine 52 of long paragraph I.\nLine 53 of long paragraph I.\nLine 54 of long paragraph I.\nLine 55 of long paragraph I.\nLine 56 of long paragraph I.\nLine 57 of long paragraph I.\nLine 58 of long paragraph I.\nLine 59 of long paragraph I.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Line 0 of long paragraph J.\nLine 1 of long paragraph J.\nLine 2 of long paragraph J.\nLine 3 of long paragraph J.\nLine 4 of long paragraph J.\nLine 5 of long paragraph J.\nLine 6 of long paragraph J.\nLine 7 of long paragraph J.\nLine 8 of long paragraph J.\nLine 9 of long paragraph J.\nLine 10 of long paragraph J.\nLine 11 of long paragraph J.\nLine 12 of long paragraph J.\nLine 13 of long paragraph J.\nLine 14 of long paragraph J.\nLine 15 of long paragraph J.\nLine 16 of long paragraph J.\nLine 17 of long paragraph J.\nLine 18 of long paragraph J.\nLine 19 of long paragraph J.\nLine 20 of long paragraph J.\nLine 21 of long paragraph J.\nLine 22 of long paragraph J.\nLine 23 of long paragraph J.\nLine 24 of long paragraph J.\nLine 25 of long paragraph J.\nLine 26 of long paragraph J.\nLine 27 of long paragraph J.\nLine 28 of long paragraph J.\nLine 29 of long paragraph J.\nLine 30 of long paragraph J.\nLine 31 of long paragraph J.\nLine 32 of long paragraph J.\nLine 33 of long paragraph J.\nLine 34 of long paragraph J.\nLine 35 of long paragraph J.\nLine 36 of long paragraph J.\nLine 37 of long paragraph J.\nLine 38 of long paragraph J.\nLine 39 of long paragraph J.\nLine 40 of long paragraph J.\nLine 41 of long paragraph J.\nLine 42 of long paragraph J.\nLine 43 of long paragraph J.\nLine 44 of long paragraph J.\nLine 45 of long paragraph J.\nLine 46 of long paragraph J.\nLine 47 of long paragraph J.\nLine 48 of long paragraph J.\nLine 49 of long paragraph J.\nLine 50 of long paragraph J.\nLine 51 of long paragraph J.\nLine 52 of long paragraph J.\nLine 53 of long paragraph J.\nLine 54 of long paragraph J.\nLine 55 of long paragraph J.\nLine 56 of long paragraph J.\nLine 57 of long paragraph J.\nLine 58 of long paragraph J.\nLine 59 of long paragraph J.</p>",
+      "source_only": false
+    }
+  ]
+}
+--- stderr ---
+selection: pull_request
+pin: 249c5603e265dc1ac864de29b401e0bc9da77af5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=prefer-full'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=prefer-full
+status: 200
+{
+  "version": "markdown-diff-v1",
+  "status": "ready",
+  "blocks": [
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<h1 id=\"user-content-<ANCHORS>-new-folds\">Folds</h1>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<p>Change one is <del>old</del>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<p>Change one is <ins>new</ins>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph A.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph B.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph C.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph D.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph E.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph F.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<p>Change two is <del>old</del>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<p>Change two is <ins>new</ins>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph G.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph H.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<h2 id=\"user-content-<ANCHORS>-new-deep-heading\">Deep heading</h2>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Line 0 of long paragraph I.\nLine 1 of long paragraph I.\nLine 2 of long paragraph I.\nLine 3 of long paragraph I.\nLine 4 of long paragraph I.\nLine 5 of long paragraph I.\nLine 6 of long paragraph I.\nLine 7 of long paragraph I.\nLine 8 of long paragraph I.\nLine 9 of long paragraph I.\nLine 10 of long paragraph I.\nLine 11 of long paragraph I.\nLine 12 of long paragraph I.\nLine 13 of long paragraph I.\nLine 14 of long paragraph I.\nLine 15 of long paragraph I.\nLine 16 of long paragraph I.\nLine 17 of long paragraph I.\nLine 18 of long paragraph I.\nLine 19 of long paragraph I.\nLine 20 of long paragraph I.\nLine 21 of long paragraph I.\nLine 22 of long paragraph I.\nLine 23 of long paragraph I.\nLine 24 of long paragraph I.\nLine 25 of long paragraph I.\nLine 26 of long paragraph I.\nLine 27 of long paragraph I.\nLine 28 of long paragraph I.\nLine 29 of long paragraph I.\nLine 30 of long paragraph I.\nLine 31 of long paragraph I.\nLine 32 of long paragraph I.\nLine 33 of long paragraph I.\nLine 34 of long paragraph I.\nLine 35 of long paragraph I.\nLine 36 of long paragraph I.\nLine 37 of long paragraph I.\nLine 38 of long paragraph I.\nLine 39 of long paragraph I.\nLine 40 of long paragraph I.\nLine 41 of long paragraph I.\nLine 42 of long paragraph I.\nLine 43 of long paragraph I.\nLine 44 of long paragraph I.\nLine 45 of long paragraph I.\nLine 46 of long paragraph I.\nLine 47 of long paragraph I.\nLine 48 of long paragraph I.\nLine 49 of long paragraph I.\nLine 50 of long paragraph I.\nLine 51 of long paragraph I.\nLine 52 of long paragraph I.\nLine 53 of long paragraph I.\nLine 54 of long paragraph I.\nLine 55 of long paragraph I.\nLine 56 of long paragraph I.\nLine 57 of long paragraph I.\nLine 58 of long paragraph I.\nLine 59 of long paragraph I.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Line 0 of long paragraph J.\nLine 1 of long paragraph J.\nLine 2 of long paragraph J.\nLine 3 of long paragraph J.\nLine 4 of long paragraph J.\nLine 5 of long paragraph J.\nLine 6 of long paragraph J.\nLine 7 of long paragraph J.\nLine 8 of long paragraph J.\nLine 9 of long paragraph J.\nLine 10 of long paragraph J.\nLine 11 of long paragraph J.\nLine 12 of long paragraph J.\nLine 13 of long paragraph J.\nLine 14 of long paragraph J.\nLine 15 of long paragraph J.\nLine 16 of long paragraph J.\nLine 17 of long paragraph J.\nLine 18 of long paragraph J.\nLine 19 of long paragraph J.\nLine 20 of long paragraph J.\nLine 21 of long paragraph J.\nLine 22 of long paragraph J.\nLine 23 of long paragraph J.\nLine 24 of long paragraph J.\nLine 25 of long paragraph J.\nLine 26 of long paragraph J.\nLine 27 of long paragraph J.\nLine 28 of long paragraph J.\nLine 29 of long paragraph J.\nLine 30 of long paragraph J.\nLine 31 of long paragraph J.\nLine 32 of long paragraph J.\nLine 33 of long paragraph J.\nLine 34 of long paragraph J.\nLine 35 of long paragraph J.\nLine 36 of long paragraph J.\nLine 37 of long paragraph J.\nLine 38 of long paragraph J.\nLine 39 of long paragraph J.\nLine 40 of long paragraph J.\nLine 41 of long paragraph J.\nLine 42 of long paragraph J.\nLine 43 of long paragraph J.\nLine 44 of long paragraph J.\nLine 45 of long paragraph J.\nLine 46 of long paragraph J.\nLine 47 of long paragraph J.\nLine 48 of long paragraph J.\nLine 49 of long paragraph J.\nLine 50 of long paragraph J.\nLine 51 of long paragraph J.\nLine 52 of long paragraph J.\nLine 53 of long paragraph J.\nLine 54 of long paragraph J.\nLine 55 of long paragraph J.\nLine 56 of long paragraph J.\nLine 57 of long paragraph J.\nLine 58 of long paragraph J.\nLine 59 of long paragraph J.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph K.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Short paragraph L.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<p>Change three is <del>old</del>.</p>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<p>Change three is <ins>new</ins>.</p>",
+      "source_only": false
+    }
+  ],
+  "source_only": false,
+  "assets": "<ASSETS>",
+  "view": "full",
+  "count": 20,
+  "folds": [
+    {
+      "at": 5,
+      "count": 2,
+      "lines": 3
+    },
+    {
+      "at": 13,
+      "count": 3,
+      "lines": 123
+    }
+  ]
+}
+--- stderr ---
+selection: pull_request
+pin: 249c5603e265dc1ac864de29b401e0bc9da77af5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=whole'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=whole
+status: 400
+{
+  "code": "invalid_rendered_diff"
+}
+--- stderr ---
+selection: pull_request
+pin: 249c5603e265dc1ac864de29b401e0bc9da77af5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=whole returned HTTP 400
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=5-2'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=5-2
+status: 400
+{
+  "code": "invalid_rendered_diff"
+}
+--- stderr ---
+selection: pull_request
+pin: 249c5603e265dc1ac864de29b401e0bc9da77af5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=5-2 returned HTTP 400
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=0-99'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=0-99
+status: 400
+{
+  "code": "invalid_rendered_diff"
+}
+--- stderr ---
+selection: pull_request
+pin: 249c5603e265dc1ac864de29b401e0bc9da77af5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=0-99 returned HTTP 400
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=concise&blocks=0-1'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=concise&blocks=0-1
+status: 400
+{
+  "code": "invalid_rendered_diff"
+}
+--- stderr ---
+selection: pull_request
+pin: 249c5603e265dc1ac864de29b401e0bc9da77af5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&view=concise&blocks=0-1 returned HTTP 400
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=a-b'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=a-b
+status: 400
+{
+  "code": "invalid_rendered_diff"
+}
+--- stderr ---
+selection: pull_request
+pin: 249c5603e265dc1ac864de29b401e0bc9da77af5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=7d4089c8f0a60b3011ae78c59c301ae020798fc4&right=249c5603e265dc1ac864de29b401e0bc9da77af5&store=<STORE>&file=f1&blocks=a-b returned HTTP 400
+--- gh ---

@@ -1,6 +1,7 @@
-// A pull request's brief change line, the third line of its row in the Pulls column (mb-d0a3):
-// "21 A, 7 D, 15 M · +1,234 −567", with no file total, the chevron for its changed files before
-// it.
+// A pull request's brief change line, on the third line of its row in the Pulls column
+// (mb-d0a3), after its number and its author: its line totals alone, "+1,234 −567", with no
+// file total and no file statuses (mb-lqkb), the chevron for its changed files at the line's
+// start.
 //
 // What it says is what the row's own list of changed files sums to, the list its chevron
 // discloses, so the line and the tree under it agree: the server sums the cached list

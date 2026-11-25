@@ -24,7 +24,7 @@
 // it or scrolls sideways; its Diff | Current and Split | Unified share one line in that order,
 // right-aligned at its content end, on the File type control's line or, where they do not fit
 // there, on the next; on Docs Diff | Current alone ends it; a file bar's end group holds a
-// Markdown file's Rendered | Source alone, which ends the bar, and a code file's nothing; and
+// Markdown file's Full | Concise | Source alone, which ends the bar, and a code file's nothing; and
 // choosing Current, or Source, moves no chooser. The Markdown file's answer is the server's
 // projection recorded in tests/fixtures/diff-markdown-responses.json.
 //
@@ -95,7 +95,7 @@ const DOCS = {
   show: "current",
   showPreference: "github.docs.show",
 };
-/** A Markdown file, whose bar ends with Rendered | Source, and a code file, whose bar ends bare. */
+/** A Markdown file, whose bar ends with Full | Concise | Source, and a code file, whose bar ends bare. */
 const COMPARISON = {
   manifest: {
     cursor: null,
@@ -279,7 +279,7 @@ function serve() {
 // chip family, a preference store of its own (*stored* first), and *answer* for every rendered
 // file. With a *typeState*, the toolbar holds the production File type control painted in it,
 // as Changes mounts one (diff/index.js, `mountTypeFiltered`), kept as `window.typeControls`
-// for a repaint. Resolves once the diff draws its rows, and its Rendered view where it has one.
+// for a repaint. Resolves once the diff draws its rows, and its rendered view where it has one.
 const MOUNT = `async (hostId, options, comparison, answer, imageRoute, typeState, stored) => {
   const { mountDiffView, markdownViews, createTypeFilterControl } = window.diffCurrent;
   const host = document.getElementById(hostId);
@@ -525,13 +525,13 @@ function barChecks(measured, at) {
   const [markdown, code] = measured.bars;
   check(`${at}: two bars`, measured.bars.length === 2, `${measured.bars.length}`);
   check(
-    `${at}: the Markdown bar's end group holds Rendered | Source alone`,
+    `${at}: the Markdown bar's end group holds Full | Concise | Source alone`,
     JSON.stringify(markdown.holds) === JSON.stringify(["diff-markdown-control"]) &&
-      markdown.chips.join(" ") === "Rendered Source",
+      markdown.chips.join(" ") === "Full Concise Source",
     JSON.stringify({ holds: markdown.holds, chips: markdown.chips }),
   );
   check(
-    `${at}: Rendered | Source ends the bar, at its content box's end`,
+    `${at}: Full | Concise | Source ends the bar, at its content box's end`,
     near(markdown.format.right, markdown.end.right) && near(markdown.end.right, markdown.right),
     JSON.stringify({ format: markdown.format, end: markdown.end, right: markdown.right }),
   );
@@ -597,14 +597,56 @@ for (let index = 0; index < GROUPS; index += 1) {
     source_only: false,
   });
 }
-const LONG_ANSWER = { version: "markdown-diff-v1", status: "ready", source_only: false, blocks };
+// As the route answers it on Changes (Concise) and on Docs (Concise too, past
+// FULL_MAX_BLOCKS in metabrowser.diff.markdown_views): no run of unchanged blocks folds.
+const LONG_ANSWER = {
+  version: "markdown-diff-v1",
+  status: "ready",
+  blocks,
+  source_only: false,
+  view: "concise",
+  count: blocks.length,
+  folds: [],
+};
+// A document whose one fold holds a long run of unchanged blocks, sent with the answer:
+// Concise draws it whole, a bar between three changed blocks on each side, and the fold
+// draws its run a chunk at a time when it opens, past WHOLE_UNITS in diff-markdown.js.
+const FOLDED_RUN = 600;
+const foldedBlocks = [];
+for (const [kind, label] of [
+  ["removed", "Old opening"],
+  ["added", "New opening"],
+  ["added", "Added opening"],
+]) {
+  foldedBlocks.push({ kind, html: `<p>${label}.</p>`, source_only: false });
+}
+for (let index = 0; index < FOLDED_RUN; index += 1) {
+  foldedBlocks.push({
+    kind: "context",
+    html: `<p>Unchanged paragraph ${index}.</p>`,
+    source_only: false,
+  });
+}
+for (const [kind, label] of [
+  ["removed", "Old closing"],
+  ["added", "New closing"],
+  ["added", "Added closing"],
+]) {
+  foldedBlocks.push({ kind, html: `<p>${label}.</p>`, source_only: false });
+}
+const FOLDED_ANSWER = {
+  ...LONG_ANSWER,
+  blocks: foldedBlocks,
+  count: foldedBlocks.length,
+  folds: [{ at: 3, count: FOLDED_RUN, lines: 2 * FOLDED_RUN }],
+};
 
 // What is at the pane's top: the first drawn code row or rendered block whose box ends below it,
 // its text (a row's, each side's in Split), and its offset from the pane's top.
 const ROWS = `(() => {
   const shown = (node) => node.getClientRects().length > 0;
   return [...document.querySelectorAll(
-    "#long .diff-file-body:not([hidden]) .diff-line, #long .diff-file-body:not([hidden]) .diff-split-row, #long .diff-markdown:not([hidden]) > .diff-markdown-block"
+    "#long .diff-file-body:not([hidden]) .diff-line, #long .diff-file-body:not([hidden]) .diff-split-row, #long .diff-markdown:not([hidden]) .diff-markdown-block"
   )].filter(shown);
 })()`;
 const TEXT_OF = `(row) => {
@@ -625,10 +667,22 @@ const AT_TOP = `(() => {
       }
     : null;
 })()`;
-/** The pane scrolled so the first row that reads *needle* is at its top. */
+/**
+ * The pane scrolled so the first row that reads *needle* is at its top. A rendered
+ * document draws a chunk of blocks as the reader comes near it, so the pane is scrolled a
+ * screen at a time, as a reader would, until that row is drawn.
+ */
 const SCROLL_TO = `async (needle) => {
   const pane = document.getElementById("preview-pane");
-  const row = ${ROWS}.find((candidate) => (${TEXT_OF})(candidate).includes(needle));
+  const find = () => ${ROWS}.find((candidate) => (${TEXT_OF})(candidate).includes(needle));
+  let row = find();
+  for (let step = 0; step < 200 && row === undefined; step += 1) {
+    pane.scrollTop += pane.clientHeight;
+    for (let frame = 0; frame < 3; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    row = find();
+  }
   pane.scrollTop += row.getBoundingClientRect().top - pane.getBoundingClientRect().top;
   for (let frame = 0; frame < 3; frame += 1) {
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -680,7 +734,12 @@ const shot = async (hostId, name) => {
 const mount = (
   hostId,
   options,
-  { comparison = COMPARISON, answer = recorded.answers.f1, typeState = null, stored = {} } = {},
+  {
+    comparison = COMPARISON,
+    answer = recorded.answers.f1["view=concise"],
+    typeState = null,
+    stored = {},
+  } = {},
 ) =>
   chrome?.evaluate(
     `(${MOUNT})(${JSON.stringify(hostId)}, ${JSON.stringify(options)}, ${JSON.stringify(comparison)}, ${JSON.stringify(answer)}, ${JSON.stringify(recorded.image_route)}, ${JSON.stringify(typeState)}, ${JSON.stringify(stored)})`,
@@ -776,14 +835,14 @@ try {
   );
   const changesShows = await mount("changes", {}, { typeState: TYPE_STATES["any type"] });
   check(
-    "Changes opens on Diff, its Rendered view drawn",
+    "Changes opens on Diff, its rendered view drawn",
     changesShows === "diff",
     `${changesShows}`,
   );
   const bareShows = await mount("bare", {});
   check("a diff with no File type control opens on Diff", bareShows === "diff", `${bareShows}`);
   const docsShows = await mount("docs", DOCS);
-  check("Docs opens on Current, its Rendered view drawn", docsShows === "current", `${docsShows}`);
+  check("Docs opens on Current, its rendered view drawn", docsShows === "current", `${docsShows}`);
   await chrome.evaluate("document.fonts.ready.then(() => true)");
 
   // Every state the File type control paints, at every width, and the toolbars beside it.
@@ -916,12 +975,80 @@ try {
 
   await fresh();
   await mount("long", DOCS, { comparison: LONG_MARKDOWN, answer: LONG_ANSWER });
-  await roundTrip("a long document on Docs, Rendered", "Context paragraph 150.", "diff", "current");
+  await roundTrip("a long document on Docs, Concise", "Context paragraph 150.", "diff", "current");
+
+  // A view chosen deep in a long document draws its chunk there first, so the block at the
+  // pane's top keeps its place, not the first block of its chunk.
+  /** A round trip through the file's views from where *needle* is at the pane's top. */
+  const viewTrip = async (label, needle) => {
+    await scrollTo(needle);
+    const start = await atTop();
+    check(
+      `${label}: the pane's top reads ${needle}`,
+      start?.text.includes(needle),
+      JSON.stringify(start),
+    );
+    await click("long", ".diff-file-end", "full");
+    samePlace(
+      `${label}: choosing Full keeps the block at the pane's top`,
+      needle,
+      start,
+      await atTop(),
+    );
+    await click("long", ".diff-file-end", "concise");
+    samePlace(`${label}: choosing Concise again returns to it`, needle, start, await atTop());
+  };
+  await fresh();
+  await mount("long", {}, { comparison: LONG_MARKDOWN, answer: LONG_ANSWER });
+  await viewTrip("a long document's views", "Context paragraph 150.");
+
+  // Inside an open fold, the block at the pane's top is the place, not the fold: it keeps
+  // it as the views are drawn anew, and as the fold's chunks above it are drawn (A2).
+  await fresh();
+  await mount("long", {}, { comparison: LONG_MARKDOWN, answer: FOLDED_ANSWER });
+  await chrome?.evaluate(`(async () => {
+    document.querySelector("#long article.diff-markdown .fold-expander").click();
+    for (let frame = 0; frame < 3; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return true;
+  })()`);
+  await viewTrip("an open fold's views", "Unchanged paragraph 350.");
+  // From the end up, a screen at a time, as a reader pages up: each step draws the chunk
+  // above it, whose height was an estimate, and the row at the top moves by the step alone.
+  const climbs = await chrome?.evaluate(`(async () => {
+    const pane = document.getElementById("preview-pane");
+    const frames = async () => {
+      for (let frame = 0; frame < 4; frame += 1) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+    };
+    pane.scrollTop = pane.scrollHeight;
+    await frames();
+    const moves = [];
+    for (let step = 0; step < 12; step += 1) {
+      const before = ${AT_TOP};
+      const offset = (${OFFSET_OF})(before.text);
+      const by = Math.round(pane.clientHeight * 0.9);
+      pane.scrollTop -= by;
+      await frames();
+      const after = (${OFFSET_OF})(before.text);
+      moves.push({ text: before.text, by, moved: after === null ? null : after - offset - by });
+    }
+    return moves;
+  })()`);
+  check(
+    "paging up through an open fold keeps each row where the scroll put it",
+    Array.isArray(climbs) &&
+      climbs.length === 12 &&
+      climbs.every((each) => each.moved !== null && Math.abs(each.moved) < 1),
+    JSON.stringify(climbs),
+  );
 
   await fresh();
   await mount("long", {}, { comparison: LONG_MARKDOWN, answer: LONG_ANSWER });
   await roundTrip(
-    "a long document on Changes, Rendered",
+    "a long document on Changes, Concise",
     "Context paragraph 150.",
     "current",
     "diff",

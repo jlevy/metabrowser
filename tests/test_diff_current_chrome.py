@@ -4,21 +4,24 @@ The diff's toolbar ends with its choosers, one group on one line and right-align
 | **Current**, then **Split** | **Unified**, or **Diff** | **Current** alone where the host
 fixes the layout, as a pull request's Docs tab does (docs/design-system.md, "Diff
 Toolbar"). Where they do not fit beside the File type control, they take the next line
-together, and nothing runs past the toolbar. A file bar's end group holds a rendered file's
-**Rendered** | **Source** alone, at the bar's end ("Diff File Bar"). What the toolbar and a
+together, and nothing runs past the toolbar. A file bar's end group holds a Markdown file's
+**Full** | **Concise** | **Source** alone, at the bar's end ("Diff File Bar"). What the toolbar and a
 bar hold, and in what order, is pinned browserlessly (``tests/dom/diff-view-behavior.js``,
 ``tests/golden/cli-ui-diff-current.tryscript.md``); where they land is layout, which only a
 browser computes, so ``tests/dom/diff-current-chrome.mjs`` mounts a Markdown file and a
 code file through the production ``mountDiffView``, with the shell's chip family, as
 Changes mounts it, with the production File type control painted in each state the filter
 paints, as a diff with no File type control does, and as Docs does, and measures the toolbars
-and bars from 1,063 to 320 px, in Diff and in Current, and with the Markdown file in Rendered
+and bars from 1,063 to 320 px, in Diff and in Current, and with the Markdown file in Concise
 and in Source.
 
 Which row a Diff | Current choice keeps is the browserless session's
 (``tests/dom/diff-current-session.js``); where it lands beside the browser's own scroll
 anchoring is the browser's, so the same script mounts a long code file and a long rendered
 document in a 600 px pane and reads the row at the pane's top before and after each choice.
+The rendered document draws a chunk of blocks as the reader nears it, so the script scrolls
+to a row a screen at a time, as a reader does, and the chunks drawn on the way hold the
+reader's place too.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 ``CURRENT_SHOTS`` in the environment names a directory for a screenshot of each state and

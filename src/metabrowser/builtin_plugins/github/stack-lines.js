@@ -1,5 +1,5 @@
-// A native stack's brief change line, on its heading in the Pulls column (mb-9ekj):
-// "Stack #286 · 10 A, 5 D, 4 M · +1,234 −567".
+// A native stack's brief change line, on its heading in the Pulls column (mb-9ekj): its line
+// totals alone, "Stack #286 · +1,234 −567", with no file statuses (mb-lqkb).
 //
 // What it says is the stack's combined change: a stack is the accumulation of its pull
 // requests, merged or open, so its change is theirs, each member's own changed files, the
@@ -192,15 +192,15 @@ export function isStackChange(value) {
 }
 
 /**
- * The change line's input from a stack's change, built as a pull request row's is
- * (change-lines.js), so a stack of one draws its row's line.
+ * The change line's input from a stack's change, its line totals alone with no file statuses
+ * (mb-lqkb), built as a pull request row's is (change-lines.js), so a stack of one draws its
+ * row's line.
  *
  * @param {StackChange} change
- * @param {((statuses: Iterable<string>) => MetabrowserChangeLineInput["statuses"]) | null} breakdown
  * @returns {MetabrowserChangeLineInput}
  */
-export function stackLineInput(change, breakdown) {
-  return changeLineInput(change, breakdown);
+export function stackLineInput(change) {
+  return changeLineInput(change, null);
 }
 
 /**

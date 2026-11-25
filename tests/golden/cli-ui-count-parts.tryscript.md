@@ -38,6 +38,10 @@ markup they paint. The transcript pins these behaviors:
   line of no statuses is its totals alone, and a count it does not know is “?”. A screen
   reader is told the line in words, “10 added, 5 deleted, 4 modified; 1,234 lines added,
   567 deleted”.
+- A line built with `omitZeroTotals`, as the Pulls tab’s rows and stack headings build
+  theirs, leaves out a total of zero: “+1,234” said “1,234 lines added”, and “−1” said
+  “1 line deleted”. Totals both nonzero, or not known, are shown as without it, and a
+  change of no lines is “0 lines” in a `span.change-line-none`, said “no lines changed”.
 - A change set’s summary reads “19 files changed · 10 A, 5 D, 4 M · +1,234 −567”, its
   file count then its brief change line, one file “1 file changed”, no files “0 files
   changed · +0 −0”, and totals that are not exact end in “(estimated)”. A commit’s hover
@@ -235,6 +239,66 @@ $ node tests/dom/count-parts-session.js
       "text": "? M · +? −?",
       "label": "? modified; line counts unknown",
       "html": "<span class=\"change-line\"><span class=\"change-line-group\"><span class=\"change-line-statuses\"><span class=\"summary-status-count file-change-status\" data-file-status=\"modified\"><span class=\"summary-number\">?</span> M</span></span><span class=\"summary-punctuation\" aria-hidden=\"true\">·</span></span><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+?</span><span class=\"diff-stat-del\">−?</span></span></span>"
+    }
+  },
+  "zeroTotalsLeftOut": {
+    "only additions": {
+      "text": "+1,234",
+      "label": "1,234 lines added",
+      "html": "<span class=\"change-line\"><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+1,234</span></span></span>"
+    },
+    "only deletions": {
+      "text": "−1",
+      "label": "1 line deleted",
+      "html": "<span class=\"change-line\"><span class=\"change-line-stats\"><span class=\"diff-stat-del\">−1</span></span></span>"
+    },
+    "both nonzero": {
+      "text": "+1,234 −567",
+      "label": "1,234 lines added, 567 deleted",
+      "html": "<span class=\"change-line\"><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+1,234</span><span class=\"diff-stat-del\">−567</span></span></span>"
+    },
+    "no lines": {
+      "text": "0 lines",
+      "label": "no lines changed",
+      "nodes": [
+        {
+          "tag": "span",
+          "class": "change-line",
+          "children": [
+            {
+              "tag": "span",
+              "class": "change-line-stats",
+              "children": [
+                {
+                  "tag": "span",
+                  "class": "change-line-none",
+                  "text": "0 lines"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "no lines, after a status": {
+      "text": "1 M · 0 lines",
+      "label": "1 modified; no lines changed",
+      "html": "<span class=\"change-line\"><span class=\"change-line-group\"><span class=\"change-line-statuses\"><span class=\"summary-status-count file-change-status\" data-file-status=\"modified\"><span class=\"summary-number\">1</span> M</span></span><span class=\"summary-punctuation\" aria-hidden=\"true\">·</span></span><span class=\"change-line-stats\"><span class=\"change-line-none\">0 lines</span></span></span>"
+    },
+    "an unknown total beside a zero": {
+      "text": "−?",
+      "label": "? lines deleted",
+      "html": "<span class=\"change-line\"><span class=\"change-line-stats\"><span class=\"diff-stat-del\">−?</span></span></span>"
+    },
+    "an unknown total beside a known one": {
+      "text": "+12 −?",
+      "label": "12 lines added, ? deleted",
+      "html": "<span class=\"change-line\"><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+12</span><span class=\"diff-stat-del\">−?</span></span></span>"
+    },
+    "line counts unknown": {
+      "text": "+? −?",
+      "label": "line counts unknown",
+      "html": "<span class=\"change-line\"><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+?</span><span class=\"diff-stat-del\">−?</span></span></span>"
     }
   },
   "summaries": {

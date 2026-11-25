@@ -17,8 +17,9 @@
 // at each step and what was asked. `heading` mounts the production panel over a stand-in
 // for the DOM with the SDK's own painters (tests/dom/sdk-ref-fixture.js) and prints the
 // heading of each stack in its three states: waiting, its line arrived, and unavailable,
-// with its parts as drawn and its accessible name. `invariants` are the relations every
-// step holds.
+// with its parts as drawn and its accessible name, then, in a fresh document each, its line
+// with totals that are zero or not known: a total of zero is left out, and a change of no
+// lines is "0 lines" (mb-efum). `invariants` are the relations every step holds.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -579,12 +580,13 @@ async function headingStory() {
       labelBefore,
       "the label stays",
     );
-    // The line is the shell's one component, through the SDK: the same nodes, part for part.
+    // The line is the shell's one component, through the SDK: the same nodes, part for part,
+    // of the stack's line totals alone, with no file statuses (mb-lqkb).
     const { stackLineInput } = await import(
       pathToFileURL(path.join(GITHUB, "stack-lines.js")).href
     );
-    const tree = await sdk.loadChangedFilesTree();
-    const said = sdk.changeLine(stackLineInput(changes.current.body, tree.statusBreakdown));
+    const said = sdk.changeLine(stackLineInput(changes.current.body), { omitZeroTotals: true });
+    assert.deepEqual(said.statusParts ?? [], [], "the line counts no files by status");
     const expected = shape([
       ...sdk.countPartsNodes([{ separator: "·" }]),
       ...sdk.changeLineNodes(said),
@@ -616,6 +618,55 @@ async function headingStory() {
     assert.equal(estimated.text.endsWith("(estimated)"), true);
     assert.match(estimated.name, /^Stack #286: .+, estimated; 3 pull requests/);
     handle.dispose();
+    // A total of zero is left out, and a change of no lines is "0 lines", said "no lines
+    // changed" (mb-efum): #286's answer with each of these totals, in a fresh document each.
+    /** The totals a drawn line shows, each its class and text, from its shape. */
+    const showsOf = (nodes) =>
+      nodes.flatMap((node) =>
+        typeof node === "string"
+          ? []
+          : node.class === "change-line-stats"
+            ? node.children.map((total) => `${total.class}: ${total.children.join("")}`)
+            : showsOf(node.children ?? []),
+      );
+    const totals = [];
+    for (const total of [
+      { additions: 0, deletions: 4 },
+      { additions: 5, deletions: 4 },
+      { additions: 0, deletions: 0 },
+      { additions: 0, deletions: null },
+      { additions: null, deletions: 4 },
+      { additions: null, deletions: null },
+    ]) {
+      lines.documentStackLines.clear();
+      prefetch.documentComparisons.clear();
+      const answer = { ...changes.current, body: { ...changes.current.body, ...total } };
+      changeFor = (number) => (number === 286 ? answer : answerFor(number));
+      container = new PanelElement("div");
+      handle = mount(container);
+      await paint();
+      while (idle.length > 0 || held.length > 0) {
+        await idleOnce();
+        await release();
+      }
+      requests.splice(0);
+      const drawn = headings()["Stack #286"];
+      const built = sdk.changeLine(stackLineInput(answer.body), { omitZeroTotals: true });
+      assert.deepEqual(
+        drawn.change,
+        shape([...sdk.countPartsNodes([{ separator: "·" }]), ...sdk.changeLineNodes(built)]),
+        `${JSON.stringify(total)}: the heading draws the component with its zero totals left out`,
+      );
+      assert.equal(drawn.name.startsWith(`Stack #286: ${built.label}; `), true, drawn.name);
+      assert.ok(!/[+−]0\b/.test(drawn.text), `${JSON.stringify(total)}: no zero total shows`);
+      totals.push({
+        totals: total,
+        text: drawn.text,
+        shows: showsOf(drawn.change),
+        name: drawn.name,
+      });
+      handle.dispose();
+    }
     for (const [name, descriptor] of Object.entries(saved)) {
       if (descriptor === undefined) {
         delete globalThis[name];
@@ -623,7 +674,7 @@ async function headingStory() {
         Object.defineProperty(globalThis, name, descriptor);
       }
     }
-    return { steps, said: { text: said.text, label: said.label } };
+    return { steps, said: { text: said.text, label: said.label }, totals };
   } catch (error) {
     for (const [name, descriptor] of Object.entries(saved)) {
       if (descriptor === undefined) {

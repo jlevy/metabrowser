@@ -253,11 +253,13 @@ container children
 and `pdf/preview-image`, a PDF’s first page as a PNG the server draws
 ([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)); and
 `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
-`github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
-`github/pull-size`, `github/pull-timeline`, `github/pull-markdown`,
-`github/guided-review`, `github/pulls`, `github/pulls-refresh`, `github/pulls-prefetch`,
-`github/pull-files`, `github/pull-files-refresh`, `github/pull-files-summary`,
-`github/stacks`, `github/stacks-refresh`, `github/stack-change`, `github/stack`,
+`github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff` (a changed
+file’s rendered projection; for Markdown, in Full, in Concise, or a range of its blocks,
+by [Markdown Views](arch-diff-pipeline.md#markdown-views)), `github/pull-size`,
+`github/pull-timeline`, `github/pull-markdown`, `github/guided-review`, `github/pulls`,
+`github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,
+`github/pull-files-refresh`, `github/pull-files-summary`, `github/stacks`,
+`github/stacks-refresh`, `github/stack-change`, `github/stack`,
 `github/stack-comparison`, `github/labels`, `github/labels-refresh`,
 `github/cache-clear`, and `github/status`
 ([GitHub Pull Requests](arch-github-pull-requests.md)).

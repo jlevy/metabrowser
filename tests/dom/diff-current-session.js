@@ -23,7 +23,7 @@
 // the chosen chip), the layout control, where `N` and `L` sit, what was written to the
 // preferences, what each file bar's end group holds where that changed, and, for each file
 // whose drawing the step changed, what it draws: a code body's hunk headers and rows (the line
-// numbers, the marker, the text), a Rendered body's blocks and front matter or its tree's rows,
+// numbers, the marker, the text), a rendered body's blocks and front matter or its tree's rows,
 // and what a file with no rows says. A row Current leaves hidden is not printed. A pull
 // request's Docs tab mounts the same diff as its page does, with the layout fixed, Current
 // its default, and a preference of its own, and its steps print what it opens on and what is
@@ -421,8 +421,13 @@ function heightOf(node) {
   if (ROWS.some((name) => node.classList.contains(name))) {
     return ROW_PX;
   }
-  if (node.tagName === "DETAILS" && !node.open) {
+  // A fold's bar is a row; a chunk of rendered blocks not drawn yet keeps the height the
+  // views estimate for it.
+  if (node.classList.contains("fold-expander")) {
     return ROW_PX;
+  }
+  if (node.classList.contains("diff-markdown-spacer")) {
+    return Number.parseFloat(node.style?.height ?? "0") || 0;
   }
   return node.children.reduce((sum, child) => sum + heightOf(child), 0);
 }
@@ -784,16 +789,20 @@ function* ancestors(node, within) {
   }
 }
 
-/** A Rendered body: its blocks and its front matter, without what is hidden. */
+/** A rendered body: its blocks and its front matter, without what is hidden. */
 function renderedBody(article) {
   const shown = [];
   for (const node of article.children) {
     if (node.hidden) {
       continue;
     }
-    if (node.tagName === "DETAILS") {
-      const [summary] = node.children;
-      shown.push(`[${summary.textContent}${node.open ? ", open" : ""}]`);
+    if (node.classList.contains("fold-expander")) {
+      const open = node.getAttribute("aria-expanded") === "true";
+      shown.push(`[${node.textContent}${open ? ", open" : ""}]`);
+    } else if (node.classList.contains("diff-fold-group")) {
+      shown.push(...renderedBody(node).map((line) => `  ${line}`));
+    } else if (node.classList.contains("diff-markdown-spacer")) {
+      shown.push(`[blocks ${node.dataset.span} not drawn yet]`);
     } else if (node.classList.contains("diff-markdown-frontmatter")) {
       const list = node.querySelector("dl");
       const parts = list.children.filter((part) => !part.hidden);
@@ -892,7 +901,7 @@ function drawing(section) {
   if (structured !== undefined && !structured.hidden) {
     return { rendered: treeBody(structured) };
   }
-  return body.hidden ? { nothing: "while its Rendered loads" } : { source: codeBody(body) };
+  return body.hidden ? { nothing: "while its rendered view loads" } : { source: codeBody(body) };
 }
 
 // ── The story ───────────────────────────────────────────────────────────────
@@ -977,8 +986,14 @@ async function main() {
     const handle = view.mountDiffView(host, structuredClone(comparison), api, {
       showSummary: false,
       markdownViews,
-      renderMarkdown: async (fileId) =>
-        structuredClone(fileId === "f6" ? trees["config/app.yaml"] : recorded.answers.f1),
+      // As the route answers each view the page asks for: Docs asks for Full where the
+      // document is short enough (`prefer-full`), and gets it for this one.
+      renderMarkdown: async (fileId, _signal, ask) =>
+        structuredClone(
+          fileId === "f6"
+            ? trees["config/app.yaml"]
+            : recorded.answers.f1[`view=${ask?.view ?? "concise"}`],
+        ),
       markdownTargets: markdownViews.markdownTargets(recorded.image_route, () => true),
       markdownHoldMs: 0,
       ...options,
@@ -1027,7 +1042,7 @@ async function main() {
       }
       return child.className;
     };
-    /** What each file bar's end group holds: Rendered | Source, or nothing. */
+    /** What each file bar's end group holds: Full | Concise | Source, or nothing. */
     const barEnds = () =>
       Object.fromEntries(
         sections().map((section, index) => {
@@ -1143,7 +1158,7 @@ async function main() {
 
   // Changes, a commit's page or a patch, opened by a reader who never chose: Diff, as before
   // Current existed. Diff | Current is in the toolbar, before Split | Unified, and a file
-  // bar's end group holds Rendered | Source alone.
+  // bar's end group holds Full | Concise | Source alone.
   const diff = mount({ "diff.layout": "unified" });
   steps.push(diff.line("a reader who never chose opens Diff, today's view"));
   reveal();
@@ -1172,8 +1187,10 @@ async function main() {
 
   await diff.click("diff-markdown-control", "source", "docs/guide.md");
   steps.push(diff.line("the Markdown file's Source in Current: the new file's lines alone"));
-  await diff.click("diff-markdown-control", "rendered", "docs/guide.md");
-  steps.push(diff.line("and its Rendered again: Rendered | Source is the file's own, unstored"));
+  await diff.click("diff-markdown-control", "concise", "docs/guide.md");
+  steps.push(
+    diff.line("and its Concise again: Full | Concise | Source is the file's own, unstored"),
+  );
 
   // Layout is Diff's: in Current its chips say why, and neither they nor L change anything.
   await diff.click("diff-layout-control", "split");
