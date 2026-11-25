@@ -337,10 +337,11 @@ The commands below read everything without a browser or a port.
 With `--format json`, `--api` prints one JSON document.
 Each recipe writes it to a file in `<tmp>`, a folder of your own such as one `mktemp -d`
 made and never the user’s checkout, and reads the file with `jq` only when `metab`
-succeeded. When the repository’s own rules say where scratch files go, as a
-durable-storage rule may, use that place instead.
-So a recipe that fails exits nonzero, and standard error says why; a pipe from `metab`
-into `jq` would end with `jq`’s status and hide the failure.
+succeeded.
+So a recipe that fails exits nonzero, and standard error says why; a pipe from
+`metab` into `jq` would end with `jq`’s status and hide the failure.
+When the repository’s own rules name a place for scratch files, as a durable-storage
+rule may, use that place, even an ignored folder inside the checkout.
 
 ### From a Pull-Request URL
 
@@ -827,12 +828,12 @@ first step. Give it these groups and steps, in this order:
 | Open questions | One step, titled “Open questions: …” | What a person must decide | The code in doubt |
 | Testing and merging | One or two | Automated, agent-checked, and needs a person; the merge order, while a layer is open; deferred work with its tracker IDs | Tests, the plan |
 
-- Write eight to twelve steps.
+- Write nine to thirteen steps, as the table adds up to.
   A group of one step stays a step of its own, whose title names its group, as in a pull
   request’s guide.
 - Keep each note to five lines, in the present tense, about the end state.
 - Cite at most three references a step, except in the layers step, which cites every
-  layer.
+  layer; split the Documents step when its documents would pass three.
 - Never write narration by layer or by commit, a file inventory (the page lists every
   file the stack changes), anything a layer’s guide says (cite its `{pull}`), how the
   design evolved, review rounds, commit IDs, or counts the page’s header shows.
@@ -901,9 +902,14 @@ echo '{"retry": true}' > <tmp>/retry.json &&
 <invocation> <url> --api /api/plugin/github/stacks-refresh --data <tmp>/retry.json --format json > <tmp>/refresh.json
 ```
 
+When the stack is still missing, the list’s `.last_refresh.outcome` says how that
+refresh ended. A pull request in two stacks prints both numbers: take the one you are
+writing the guide for.
+
 Read the stack: its state, its pins, and its layers, bottom up.
-The last layer, `.members[-1].number`, is the top layer, whose description carries the
-stack guide:
+The last layer, `.members[-1].number`, is the top layer, where a new stack guide goes;
+`.guide.number` names the layer whose description carries the guide now, which a layer
+added above it leaves in place:
 
 ```shell
 <invocation> <url> --api '/api/plugin/github/stack?number=<s>' --format json > <tmp>/stack.json &&
@@ -972,8 +978,10 @@ Write the top layer’s whole description to a file, its own prose and guide and
 `stack-review` block, and publish it with `gh pr edit <top> --body-file <tmp>/body.md`.
 An edit of a description moves no head, so it starts no CI run and leaves the layer’s
 own guide current. As for a pull request’s guide, nothing checks the block before it is
-published: refresh the top layer’s record as in
-[Publish and Confirm It](#publish-and-confirm-it), read the guide’s outline from
+published: refresh the record of the layer you published to with
+`<invocation> <layer-url> --no-serve`, `<layer-url>` being its pull-request URL, since
+`--no-serve` fetches a record only for a pull-request URL, and check it as in
+[Publish and Confirm It](#publish-and-confirm-it); then read the guide’s outline from
 `/api/plugin/github/guided-review?stack=<s>` with that section’s outline recipe, then
 read each step, with `<k>` from 1 to `.step_count`, and fix and publish again until
 every step reads as below:
@@ -983,7 +991,8 @@ every step reads as below:
   jq -r '.state, .carrier, (.message // .reason // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
 ```
 
-- `.carrier` is the layer whose block the page reads, which should be the top layer.
+- `.carrier` is the layer whose block the page reads, which should be the layer you
+  published to: the top layer, unless a layer was added above it since.
 - `.state` and each reference’s state read as for a pull request’s guide: every one
   `ready`, or `not_cached` for a pull request this copy has not read.
 - `not_cached` for the whole guide means a layer is still being fetched, and

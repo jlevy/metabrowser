@@ -29,7 +29,7 @@ commit, the build the skill is written for:
    ``tests/test_cli_github_checkout_golden.py`` posts its body, :func:`refresh_body`, and
    :func:`refresh_findings` holds every field its filter reads to the answer that test
    pins. Nor do the recipes under "Publish and Confirm a Stack Guide" run there, since
-   that transcript's stand-in has no stack: checks 1 to 3 and 5 hold them, and
+   that transcript's stand-in has no stack: checks 1 to 3, 5, and 9 hold them, and
    ``tests/test_cli_github_stack_golden.py`` pins the answers of the routes they read.
 5. **Names.** A code span of prose that is a field path, such as
    ``.last_refresh.outcome``, or a name with an underscore, such as
@@ -61,6 +61,12 @@ commit, the build the skill is written for:
    in groups, as a longer one does. The block under "Write the Stack’s Block" is a stack
    guide ``parse_stack_guide`` reads, in groups, with the same two YAML rules and a step
    that cites every layer as a ``{pull}``.
+9. **Filters without a golden.** Each ``jq`` filter under "Publish and Confirm a Stack
+   Guide" that reads the list of stacks or a stack's answer runs over the answer
+   ``tests/golden/cli-github-stacks.txt`` or ``cli-github-stack.txt`` pins and prints
+   something, so a renamed field fails here. The two range recipes under "From a
+   Pull-Request URL" number the lines of, and test ranges against, an answer of two
+   hunks with a deleted line, which the transcript of check 4 lacks.
 
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
 2, 3, and 5 read it too. Outside every check: the names of query parameters, page
@@ -76,6 +82,7 @@ import ast
 import json
 import re
 import shlex
+import subprocess
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
@@ -178,6 +185,62 @@ STACK_SKELETON_SECTION: Final = "Write the Stack’s Block"
 STACK_SKELETON_SPELLING: Final = {
     "<full ID of the stack's base>": "3" * 40,
     "<full ID of the top layer's head>": "4" * 40,
+}
+# The section of the stack guide's recipes, and for each file its filters read, the stack
+# golden and route whose pinned answer stands in for it: the list of stacks, and stack 70
+# once both its layers are read. `<n>` there is a layer's number, read as 8, a layer of
+# stack 70 in both goldens, whose stand-ins differ otherwise.
+STACK_CONFIRM_SECTION: Final = "Publish and Confirm a Stack Guide"
+STACK_ANSWERS: Final = {
+    "<tmp>/stacks.json": (
+        REPO_ROOT / "tests" / "golden" / "cli-github-stacks.txt",
+        "/api/plugin/github/stacks",
+    ),
+    "<tmp>/stack.json": (
+        REPO_ROOT / "tests" / "golden" / "cli-github-stack.txt",
+        "/api/plugin/github/stack?number=70",
+    ),
+}
+STACK_LAYER: Final = "8"
+# A file's answer of two hunks, the second with a deleted line, for the two range recipes
+# of "From a Pull-Request URL", and the new side's lines as the first numbers them.
+RANGE_ANSWER: Final = {
+    "patches": {
+        "f1": {
+            "hunks": [
+                {
+                    "old_start": 1,
+                    "old_count": 1,
+                    "new_start": 1,
+                    "new_count": 2,
+                    "lines": [
+                        {"op": "context", "text": "one", "no_newline": False},
+                        {"op": "add", "text": "two", "no_newline": False},
+                    ],
+                },
+                {
+                    "old_start": 9,
+                    "old_count": 3,
+                    "new_start": 10,
+                    "new_count": 2,
+                    "lines": [
+                        {"op": "context", "text": "nine", "no_newline": False},
+                        {"op": "del", "text": "ten", "no_newline": False},
+                        {"op": "context", "text": "eleven", "no_newline": False},
+                    ],
+                },
+            ]
+        }
+    }
+}
+RANGE_NUMBERED: Final = "--\n1   one\n2 + two\n--\n10   nine\n11   eleven\n"
+# What the range test says for a side and lines of that answer: inside one hunk, or not.
+RANGE_VERDICTS: Final = {
+    ("new", 1, 2): "inside",
+    ("new", 10, 11): "inside",
+    ("new", 2, 10): "outside",
+    ("old", 9, 11): "inside",
+    ("old", 11, 12): "outside",
 }
 # A skeleton is the guide's own Markdown inside a four-backtick `markdown` fence, as the
 # format reference shows it, so the `guided-review` fence is part of what an agent copies.
@@ -302,7 +365,11 @@ def code_pieces(text: str) -> list[Code]:
         number = index + 1 + offset
         if fence is not None:
             if _closes(line, fence):
+                # A logical line ends with its block. Without this, an apostrophe in the
+                # stack skeleton's YAML left a quote open, and every block after it joined
+                # that one unfinished line, so no check read them.
                 fence = None
+                pending.clear()
                 continue
             if not pending:
                 pending_line = number
@@ -982,6 +1049,71 @@ def stack_skeleton_findings(text: str) -> list[str]:
     return found
 
 
+def pinned_answer(transcript: str, route: str) -> Any:
+    """The last answer to ``--api`` *route* in a stack golden that reads as ``current``."""
+
+    found = None
+    for command, _status, stdout in transcript_blocks(transcript):
+        if command.endswith((f"--api {route}", f"--api '{route}'")) and "{" in stdout:
+            answer, _end = json.JSONDecoder().raw_decode(stdout, stdout.index("{"))
+            if answer.get("state") == "current":
+                found = answer
+    assert found is not None, f"the transcript has no current answer to {route}"
+    return found
+
+
+def _jq(words: list[str], answer: Any) -> subprocess.CompletedProcess[str]:
+    """``jq`` with *words*, its arguments without the file, reading *answer*."""
+
+    return subprocess.run(
+        ["jq", *words], input=json.dumps(answer), capture_output=True, text=True, check=False
+    )
+
+
+def stack_filter_findings(text: str) -> tuple[list[str], list[str]]:
+    """Filters of :data:`STACK_CONFIRM_SECTION` that fail or print nothing on the answers
+    the stack goldens pin, with ``<n>`` read as the stack's top layer, and what each printed.
+    """
+
+    answers = {
+        path: pinned_answer(golden.read_text(encoding="utf-8"), route)
+        for path, (golden, route) in STACK_ANSWERS.items()
+    }
+    found: list[str] = []
+    printed: list[str] = []
+    for piece in code_pieces(text):
+        if not piece.block or piece.section != STACK_CONFIRM_SECTION:
+            continue
+        for words, _read in _segments(_tokens(piece.text)):
+            if words[0] != "jq" or words[-1] not in answers:
+                continue
+            ran = _jq(
+                [word.replace("<n>", STACK_LAYER) for word in words[1:-1]], answers[words[-1]]
+            )
+            printed.append(ran.stdout.strip())
+            if ran.returncode != 0 or not ran.stdout.strip():
+                found.append(
+                    f"SKILL.md:{piece.line}: {' '.join(words)} prints nothing from the pinned "
+                    f"answer: {ran.stderr.strip()}"
+                )
+    return found, printed
+
+
+def range_recipe(text: str, needle: str) -> list[str]:
+    """The arguments, without the file, of the one ``jq`` recipe of :data:`GOLDEN_SECTION`
+    that holds *needle*."""
+
+    found = [
+        words[1:-1]
+        for piece in code_pieces(text)
+        if piece.block and piece.section == GOLDEN_SECTION and needle in piece.text
+        for words, _read in _segments(_tokens(piece.text))
+        if words[0] == "jq"
+    ]
+    assert len(found) == 1, f"SKILL.md has {len(found)} recipes with {needle!r}"
+    return found[0]
+
+
 # ── The skill as it is ──────────────────────────────────────────────
 
 
@@ -1022,6 +1154,10 @@ RECIPE_ROUTES: Final = frozenset(
         REFRESH_ROUTE,
         "/api/plugin/github/guided-review?number=<n>&step=<k>",
         "/api/plugin/github/guided-review?number=<n>",
+        # The stack guide's, which come after the stack skeleton, so the reader must read
+        # past its YAML.
+        "/api/plugin/github/stack?number=<s>",
+        "/api/plugin/github/guided-review?stack=<s>&step=<k>",
     }
 )
 PROSE_ROUTES: Final = frozenset({"/api/routes", "/api/file?path=<log>", "/api/git/log?limit=<n>"})
@@ -1105,6 +1241,23 @@ def test_the_block_skeletons_are_guides_the_page_reads(skill: str) -> None:
 
 def test_the_stack_skeleton_is_a_stack_guide_the_page_reads(skill: str) -> None:
     assert stack_skeleton_findings(skill) == []
+
+
+def test_the_stack_filters_read_the_pinned_stack_answers(skill: str) -> None:
+    findings, printed = stack_filter_findings(skill)
+    assert findings == []
+    # The stack the top layer is in, and each changed file with the layers that change it.
+    assert "70" in printed and "docs/draft.md → 10" in printed, printed
+
+
+def test_the_range_recipes_number_lines_and_test_ranges(skill: str) -> None:
+    numbering = range_recipe(skill, "reduce .lines[]")
+    assert _jq(numbering, RANGE_ANSWER).stdout == RANGE_NUMBERED
+    test = range_recipe(skill, "--argjson start_line")
+    for (side, start, end), verdict in RANGE_VERDICTS.items():
+        spelled = {"<side>": side, "<start>": str(start), "<end>": str(end)}
+        words = [spelled.get(word, word) for word in test]
+        assert _jq(words, RANGE_ANSWER).stdout == f"{verdict}\n", (side, start, end)
 
 
 # ── Each check fails its mutation ───────────────────────────────────
@@ -1348,6 +1501,19 @@ def test_a_stack_skeleton_the_page_does_not_read_fails(skill: str) -> None:
         skill, STACK_SKELETON_FENCE, f"{STACK_SKELETON_FENCE}```\n{STACK_SKELETON_FENCE}"
     )
     assert stack_skeleton_findings(doubled)[0].startswith("the page refuses the stack skeleton")
+
+
+@pytest.mark.parametrize(
+    ("old", "new"), [(".pulls | index", ".pull | index"), (".layers[].number", ".layer[].number")]
+)
+def test_a_stack_filter_the_answer_does_not_hold_fails(skill: str, old: str, new: str) -> None:
+    findings, _printed = stack_filter_findings(_mutated(skill, old, new))
+    assert len(findings) == 1 and new in findings[0], findings
+
+
+def test_a_range_recipe_that_numbers_deleted_lines_fails(skill: str) -> None:
+    mutated = _mutated(skill, 'if $l.op == "del" then .', 'if $l.op == "add" then .')
+    assert _jq(range_recipe(mutated, "reduce .lines[]"), RANGE_ANSWER).stdout != RANGE_NUMBERED
 
 
 PRESENT: Final = "<invocation> --present <target> --format json\n"
