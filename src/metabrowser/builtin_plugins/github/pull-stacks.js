@@ -58,7 +58,16 @@ export function namedStackPosition(position, stack) {
  * @param {NativeStack} stack @param {number} at
  */
 export function stackPositionHint(stack, at) {
-  return `${stackLabel(stack.number)}, position ${at + 1} of ${stack.pulls.length}`;
+  return stackPlaceHint(stack.number, at, stack.pulls.length);
+}
+
+/** The same tip from a stack's number and length alone, for a surface that has a
+ * member's place and not the stack's list, as a guide's pull request row does.
+ * @param {number} number @param {number} at The member's index, base first.
+ * @param {number} length
+ */
+export function stackPlaceHint(number, at, length) {
+  return `${stackLabel(number)}, position ${at + 1} of ${length}`;
 }
 
 /** The order every surface lists a stack's members in: the top of the stack first.

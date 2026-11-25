@@ -12,6 +12,7 @@ import asyncio
 import re
 import threading
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeGuard
@@ -1083,7 +1084,9 @@ async def _commit_target(location: GitLocation, commit: str) -> _Target:
     committed, or `commit_unavailable` when the store has no such commit.
 
     One bounded `git log`, sized as :func:`_commits_since` sizes one commit's line. Git
-    prints a subject whole, so one past the bound answers the commit with neither.
+    prints a subject whole, so one past the bound answers the commit with neither. The time
+    is read as epoch seconds and written in UTC with a `Z`, as GitHub writes a time, since
+    `%cI` keeps the committer's offset and Git 2.43 writes UTC's as `+00:00`.
     """
     href = format_commit_href(commit)
     try:
@@ -1093,7 +1096,7 @@ async def _commit_target(location: GitLocation, commit: str) -> _Target:
                 *GIT_NO_DRIVER_ARGS,
                 "-1",
                 "--no-walk",
-                "--format=%cI%x00%s",
+                "--format=%ct%x00%s",
                 f"{commit}^{{commit}}",
                 "--",
             ],
@@ -1110,9 +1113,17 @@ async def _commit_target(location: GitLocation, commit: str) -> _Target:
         href,
         {
             "subject": cut_text(subject, MAX_STALE_SUBJECT_BYTES)[0] or None,
-            "committed_at": when or None,
+            "committed_at": _utc_text(when),
         },
     )
+
+
+def _utc_text(epoch: str) -> str | None:
+    """*epoch*, Git's `%ct`, as an ISO 8601 UTC time, or ``None`` when it is not a time."""
+    try:
+        return datetime.fromtimestamp(int(epoch), tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 async def _step_references(carrier: _Carrier, step: CollectionItem) -> list[dict[str, object]]:

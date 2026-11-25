@@ -289,7 +289,7 @@ it.
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
 | Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, and raw JSON, at the controls’ size |
 | Ref chip | `--git-ref-font-size` | `--git-ref-font-scale` of the size it inherits, so slightly smaller than the text it sits in: the ramp’s one relative size, because a chip sits in text of several sizes and reads as part of it ([Branch Chips](#branch-chips)) |
-| Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu and in a Pulls row |
+| Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu and in a Pulls row, and between a guide’s pull request row’s number and title |
 
 A path reads at its region’s size, and its metadata with it.
 The navigation column’s header path is list text, the size of the rows it heads, in a
@@ -3492,6 +3492,8 @@ that shows a number takes it:
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
 | The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
+| A guide’s pull request row | `.github-pull-guide-row-number`, after the state icon |
+| A guide’s file of another pull request | `.github-pull-guide-reference-pull`, before the path |
 
 The GitHub plugin’s two are one rule.
 A stack menu’s member shows no number: its place and title name it on its one line

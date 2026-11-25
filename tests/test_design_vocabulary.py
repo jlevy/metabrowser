@@ -2628,6 +2628,8 @@ _PULL_NUMBERS = frozenset(
         ".github-pulls-number",
         ".github-pull-stack-position",
         ".github-pull-stack-member-position",
+        ".github-pull-guide-row-number",
+        ".github-pull-guide-reference-pull",
         ".search-palette-pull-number",
         ".source-ref-selector-pull-number",
     }

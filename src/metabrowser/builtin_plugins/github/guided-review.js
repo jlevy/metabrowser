@@ -1,6 +1,6 @@
 // Loaded when Guided Review opens. Only the visible step asks for excerpts.
 
-import { stackLabel, stackPosition } from "./pull-stacks.js";
+import { stackLabel, stackPlaceHint, stackPosition } from "./pull-stacks.js";
 import { pullStateIcon } from "./pull-state.js";
 
 /**
@@ -456,10 +456,10 @@ function pullRow(reference, openPull) {
   }
   const title = target?.title ?? `Pull request #${number}`;
   const copy = element("span", "", "github-pull-guide-row-copy");
-  const dot = element("span", "·", "github-pull-guide-row-dot");
+  const dot = element("span", "·", "github-pull-stack-dot");
   dot.setAttribute("aria-hidden", "true");
   copy.append(
-    element("strong", `#${number}`, "github-pull-guide-row-id"),
+    element("strong", `#${number}`, "github-pull-guide-row-id github-pull-guide-row-number"),
     " ",
     dot,
     " ",
@@ -475,7 +475,7 @@ function pullRow(reference, openPull) {
       `${stackLabel(stack.number)} ${stackPosition(stack.place - 1, stack.count)}`,
       "github-pull-guide-row-place",
     );
-    place.dataset.tipText = `${stackLabel(stack.number)}, position ${stack.place} of ${stack.count}`;
+    place.dataset.tipText = stackPlaceHint(stack.number, stack.place - 1, stack.count);
     link.append(" ", place);
   }
   const section = element("section", "", "github-pull-guide-reference github-pull-guide-row");

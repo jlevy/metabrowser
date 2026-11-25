@@ -1295,11 +1295,17 @@ $ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../..
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json | jq -r .message
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.end_line.
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "c45e40d11fbc230d39524aff52ffa37f378017259dde655aa23a909f91802bd3",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.end_line."
+}
 ? 0
 ```
 
@@ -1309,11 +1315,17 @@ $ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../..
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json | jq -r .message
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.path.
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "0ce2d3510d198ed3b03078eca300f119df0ed8cc7f7f5af79bfbb5c9ff9caaee",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.path."
+}
 ? 0
 ```
 
@@ -1323,11 +1335,17 @@ $ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../..
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json | jq -r .message
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.pull.
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "e14cf2d1446e0c28e8f103be8d021fe69c95d3c54dc7ccdc11d5d2e8e97873f6",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.pull."
+}
 ? 0
 ```
 
@@ -1337,11 +1355,17 @@ $ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../..
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json | jq -r .message
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.commit.
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "2b982a9c15ef3d15368f831ebe65701b7e459949f32411cd0e7457e7354df853",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.commit."
+}
 ? 0
 ```
 

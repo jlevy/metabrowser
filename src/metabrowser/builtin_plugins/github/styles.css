@@ -2181,7 +2181,7 @@
   color: var(--text);
   text-decoration: none;
 }
-a.github-pull-guide-row-link:hover {
+.github-pull-guide-row-link[href]:hover {
   background: var(--hover-bg);
 }
 .github-pull-guide-row-copy {
@@ -2194,14 +2194,18 @@ a.github-pull-guide-row-link:hover {
 .github-pull-guide-row-id {
   flex: none;
   color: var(--text);
-  font-weight: var(--pull-number-weight);
-  font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
-.github-pull-guide-row-dot {
+/* A pull request's number, in a pull request number's weight (docs/design-system.md, "Pull
+   Request Numbers"). */
+.github-pull-guide-row-number {
+  font-weight: var(--pull-number-weight);
+  font-variant-numeric: var(--tabular-numerals);
+}
+/* The dot is a stack menu's (`.github-pull-stack-dot`), and keeps its width as the number
+   does. */
+.github-pull-guide-row-copy > .github-pull-stack-dot {
   flex: none;
-  color: var(--muted);
-  font-size: var(--micro-font-size);
 }
 .github-pull-guide-row-title {
   min-width: 0;
