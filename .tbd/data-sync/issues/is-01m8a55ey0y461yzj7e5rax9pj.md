@@ -3,9 +3,9 @@ type: is
 id: is-01m8a55ey0y461yzj7e5rax9pj
 title: "Address PR #848 review A: stack guide skill recipes"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 delegate: claude-code@spud10.local
 labels: []
@@ -21,6 +21,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T20:08:16.063Z
-updated_at: 2026-11-25T20:08:36.353Z
+updated_at: 2026-11-25T20:38:03.363Z
 started_at: 2026-11-25T20:08:36.352Z
+closed_at: 2026-11-25T20:38:03.361Z
+close_reason: "review A addressed on PR #848 (94750bc4e, 5ad6a7e5d)"
+resolution: null
+duplicate_of: null
 ---

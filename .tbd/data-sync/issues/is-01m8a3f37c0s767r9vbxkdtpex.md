@@ -5,7 +5,7 @@ title: "Skill and agent guide: cover guided reviews of a whole stack (addresses,
 kind: task
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 refs:
   - kind: pr
@@ -17,9 +17,10 @@ dependencies: []
 parent_id: is-01m8806zrnxn9jwj89hffd2yv7
 child_order_hints:
   - is-01m8a55ey0y461yzj7e5rax9pj
+  - is-01m8a6v7pxsz5v3zekndx1wq0r
 hold: null
 hold_until: null
 created_at: 2026-11-25T19:38:34.602Z
-updated_at: 2026-11-25T20:08:16.063Z
+updated_at: 2026-11-25T20:37:38.139Z
 started_at: 2026-11-25T19:38:38.151Z
 ---
