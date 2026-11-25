@@ -192,11 +192,10 @@ const LIST = `(() => {
     memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
-  // A pull request's row (mb-pw8t): its run, one flow of the state icon, the title, a
-  // member's place, the number, and the toggle, the lines and the chevron, every line of it in
-  // the text column, from the row's inset to its end; and under it its last line, the author
-  // in the text column and the age at the row's end. Each row's parts, from its link's content
-  // box.
+  // A pull request's row (mb-pw8t, mb-rb3n): its run, one flow of the state icon, the title, a
+  // member's place, the number, the author, and the age, every line of it in the text column,
+  // from the row's inset to its end; and under it its last line, the toggle, the lines and the
+  // chevron, in the text column. Each row's parts, from its link's content box.
   const lines = Object.fromEntries(
     [10, 9, 106].map((number) => {
       const row = list.querySelector('a.github-pulls-row[data-number="' + number + '"]');
@@ -212,21 +211,21 @@ const LIST = `(() => {
       const lh = parseFloat(getComputedStyle(headingBox).lineHeight);
       const column = heading.left + parseFloat(getComputedStyle(headingBox).paddingInlineStart);
       const icon = of(".github-pull-state-icon");
-      const byline = of(".github-pulls-byline");
-      const by = of(".github-pulls-by");
+      const tail = of(":scope > .github-pulls-tail");
+      const change = of(".github-pulls-change");
       const age = of(".github-pulls-age");
       const toggle = row.querySelector(".github-pulls-toggle")?.getBoundingClientRect() ?? null;
       const round = (value) => Math.round(value * 100) / 100;
       return [number, {
         text: row.querySelector(".github-pulls-number").textContent,
         // The run is as tall as its lines, never cut short (mb-pw8t), above the last line.
-        runAbove: heading.bottom <= byline.top + 0.5 && heading.bottom <= age.top + 0.5,
+        runAbove: heading.bottom <= tail.top + 0.5,
         runLines: Math.round(heading.height / lh),
         runFits: Math.abs(heading.height - Math.round(heading.height / lh) * lh) < 0.5,
-        // The last line's author starts in the text column, under the title's first text;
-        // the age ends at the row's end.
-        byFromText: round(by.left - textStart(row)),
-        ageToEnd: round(end - age.right),
+        // The last line's toggle starts in the text column, under the title's first text; the
+        // age is on the run's last line (mb-rb3n).
+        lastFromText: round(change.left - textStart(row)),
+        ageOnLast: age.top >= heading.bottom - lh - 0.5 && age.bottom <= heading.bottom + 0.5,
         // The run runs from the row's inset to its end, its text in the text column, after the
         // state icon's slot.
         runToEnd: round(end - heading.right),
@@ -238,13 +237,13 @@ const LIST = `(() => {
         // The state icon is the run's first line's start, one line of it tall.
         withTitle: Math.abs(icon.top - heading.top) < 0.5 && Math.abs(icon.height - lh) < 0.5,
         iconFromInset: round(icon.left - inset),
-        // The link's one toggle ends its run, on its last line.
+        // The link's one toggle is its last line, under the run (mb-rb3n).
         linkToggles: row.querySelectorAll(".github-pulls-toggle").length,
-        toggleEndsRun:
-          headingBox.lastElementChild?.classList.contains("github-pulls-tail") === true &&
+        toggleOnLast:
+          headingBox.lastElementChild?.classList.contains("github-pulls-by") === true &&
           toggle !== null &&
-          toggle.bottom <= heading.bottom + 0.5 &&
-          toggle.top >= heading.bottom - lh - 0.5,
+          toggle.top >= tail.top - 0.5 &&
+          toggle.bottom <= tail.bottom + 0.5,
         // A closed row's item is its link.
         itemIsRow: Math.abs(item.getBoundingClientRect().height - r.height) < 0.5,
         runWidth: round(heading.width),
@@ -262,13 +261,13 @@ const LIST = `(() => {
     stackToggle: left(stackRow?.querySelector(".github-pulls-toggle")),
     stackLabel: left(stackRow?.querySelector(".github-pull-stack-label")),
     stackIcon: left(stackRow?.querySelector(".github-pull-stack-icon")),
-    // The text column: the run's first text, the title's, and the last line's, the author's.
+    // The text column: the run's first text, the title's, and the last line's, the toggle's.
     flatTitle: textStart(flat),
     flatIcon: left(flat?.querySelector(".github-pull-state-icon")),
     memberTitle: textStart(member),
     memberIcon: left(member?.querySelector(".github-pull-state-icon")),
-    memberBy: left(member?.querySelector(".github-pulls-by")),
-    flatBy: left(flat?.querySelector(".github-pulls-by")),
+    memberLast: left(member?.querySelector(".github-pulls-change")),
+    flatLast: left(flat?.querySelector(".github-pulls-change")),
     slotWidth: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")),
     rowGap: parseFloat(getComputedStyle(flat ?? document.body).columnGap),
     // A member's indent: one icon slot and the rows' column gap (mb-3vil).
@@ -278,9 +277,9 @@ const LIST = `(() => {
     stackRowHeight: box(stackRow)?.height ?? null,
     rowHeightToken: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")),
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
-    // The label's room ends at the row's content end, where a row's age ends.
+    // The label's room ends at the row's content end, where a pull request's run ends.
     labelRoomRight: box(stackRow?.querySelector(".github-pulls-stack-heading"))?.right ?? null,
-    flatAgeRight: box(flat?.closest("li").querySelector(".github-pulls-age"))?.right ?? null,
+    flatRunRight: box(flat?.querySelector(".github-pulls-heading"))?.right ?? null,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
     // the filters and Refresh, which sits at the line's end.
     toolbar: (() => {
@@ -719,16 +718,17 @@ try {
     // The title took two lines, and the number's line joined the change line (mb-85op,
     // mb-lqkb): before, the title was alone on the first line and the number's line, with the
     // age, the second. Then the number and the lines joined the title's run, and the author
-    // and the age are the last line (mb-pw8t).
+    // and the age were the last line (mb-pw8t). Now the author and the age end the run, and the
+    // lines and the chevron are the last line (mb-rb3n).
     check(
-      "a pull request's run is its first lines, the icon on the row's inset and the text from the text column to the row's end, ending with its toggle, and its last line the author under the title's first text and the age at the row's end",
+      "a pull request's run is its first lines, the icon on the row's inset and the text from the text column to the row's end, ending with the author and the age, and its last line the toggle under the title's first text",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
           row?.runAbove &&
           row.runFits &&
-          Math.abs(row.byFromText) < 0.5 &&
-          Math.abs(row.ageToEnd) < 0.5 &&
+          Math.abs(row.lastFromText) < 0.5 &&
+          row.ageOnLast &&
           Math.abs(row.runToEnd) < 0.5 &&
           Math.abs(row.runFromInset) < 0.5 &&
           Math.abs(row.textFromInset - row.textColumn) < 0.5 &&
@@ -736,7 +736,7 @@ try {
           row.withTitle &&
           Math.abs(row.iconFromInset) < 0.5 &&
           row.linkToggles === 1 &&
-          row.toggleEndsRun &&
+          row.toggleOnLast &&
           row.itemIsRow &&
           // Rows whose runs take as many lines are as tall as each other.
           [10, 9, 106].every((other) => {
@@ -784,22 +784,22 @@ try {
       near(list.stackToggle, list.flatIcon),
       `${list.stackToggle} ${list.flatIcon} ${list.flatTitle}`,
     );
-    // A row's lines share one text column (the owner, 2026-11-18; mb-3vil, mb-pw8t): the
-    // title's first text and the last line's author, the rows' one column gap after the state
-    // icon's slot, and every line of the run between (`rowShape` in
+    // A row's lines share one text column (the owner, 2026-11-18; mb-3vil, mb-pw8t, mb-rb3n):
+    // the title's first text and the last line's toggle, the rows' one column gap after the
+    // state icon's slot, and every line of the run between (`rowShape` in
     // tests/dom/github-pulls-row-lines-chrome.mjs).
     check(
-      "a row's lines start at one x: the title's first text over the author, one column gap after the icon's slot",
+      "a row's lines start at one x: the title's first text over the lines, one column gap after the icon's slot",
       [
-        [list.flatIcon, list.flatTitle, list.flatBy],
-        [list.memberIcon, list.memberTitle, list.memberBy],
+        [list.flatIcon, list.flatTitle, list.flatLast],
+        [list.memberIcon, list.memberTitle, list.memberLast],
       ].every(
-        ([icon, title, by]) =>
-          near(title, by) && near(title - (icon + list.slotWidth), list.rowGap),
+        ([icon, title, last]) =>
+          near(title, last) && near(title - (icon + list.slotWidth), list.rowGap),
       ),
       JSON.stringify({
-        flat: [list.flatIcon, list.flatTitle, list.flatBy],
-        member: [list.memberIcon, list.memberTitle, list.memberBy],
+        flat: [list.flatIcon, list.flatTitle, list.flatLast],
+        member: [list.memberIcon, list.memberTitle, list.memberLast],
         slot: list.slotWidth,
         gap: list.rowGap,
       }),
@@ -820,9 +820,9 @@ try {
       `${list.stackRowHeight} ${list.rowHeightToken}`,
     );
     check(
-      "its heading has the row to where a row's age ends",
-      near(list.labelRoomRight, list.flatAgeRight),
-      `${list.labelRoomRight} ${list.flatAgeRight}`,
+      "its heading has the row to where a pull request's run ends",
+      near(list.labelRoomRight, list.flatRunRight),
+      `${list.labelRoomRight} ${list.flatRunRight}`,
     );
     // The tab always groups by stack, so its toolbar holds no Group by stack chip, and at
     // the default pane width its one line fits, with room to spare (mb-vmwh): the worded
@@ -1486,9 +1486,26 @@ try {
           place: weight(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
         };
       })(),
+      // The Whole stack row (mb-7cn4): its glyph and its words, measured as a member's are.
+      whole: (() => {
+        const row = menu.querySelector(".github-pull-stack-whole");
+        if (row === null) return null;
+        const [icon, copy] = row.children;
+        const words = copy?.firstElementChild ?? null;
+        const r = (value) => Math.round(value * 100) / 100;
+        return {
+          parts: [...row.children].map((el) => el.className),
+          glyph: icon?.querySelector("svg") !== null,
+          ink: icon ? getComputedStyle(icon).color : null,
+          iconLeft: r(icon.getBoundingClientRect().left),
+          iconWidth: r(icon.getBoundingClientRect().width),
+          titleLeft: words === null ? null : r(words.getBoundingClientRect().left),
+          text: row.textContent,
+        };
+      })(),
       // Each member's one line (mb-as06): its state icon, then its title, and at the line's end
-      // its bold place, the muted dot, and its number (mb-1kzu, mb-pw8t), measured part by
-      // part, with the Pulls row of the same pull request.
+      // its bold place, the muted dot, its number, and another dot and its author (mb-1kzu,
+      // mb-pw8t, mb-x0z1), measured part by part, with the Pulls row of the same pull request.
       lines: (() => {
         const probe = document.createElement("span");
         probe.style.color = "var(--muted)";
@@ -1499,11 +1516,12 @@ try {
         return [...menu.querySelectorAll(".github-pull-stack-member")].map((link) => {
           const number = new URL(link.href).pathname.split("/")[2];
           const [icon, copy] = link.children;
-          const [title, position, dot, shown] = copy?.children ?? [];
+          const [title, position, dot, shown, by] = copy?.children ?? [];
           // The row's state icon starts its run (mb-85op, mb-pw8t).
           const row = document.querySelector(\`a.github-pulls-row[data-number="\${number}"] > .github-pulls-heading > .github-pull-state-icon\`);
-          // The row's number is in its run, after its title and place.
+          // The row's number is in its run, after its title and place, and its author after it.
           const rowNumber = document.querySelector(\`li.github-pulls-item[data-number="\${number}"] .github-pulls-number\`);
+          const rowAuthor = document.querySelector(\`li.github-pulls-item[data-number="\${number}"] .github-pulls-author\`);
           const face = (el) => el === null ? null : {
             color: getComputedStyle(el).color,
             weight: getComputedStyle(el).fontWeight,
@@ -1540,12 +1558,25 @@ try {
               text: shown.textContent,
               whole: shown.scrollWidth <= shown.clientWidth,
               width: Math.round(box(shown).width * 100) / 100,
-              endGap: Math.round((box(copy).right - box(shown).right) * 100) / 100,
               afterTitle: box(shown).left >= box(title).right - 0.5,
               face: face(shown),
               rowText: rowNumber?.textContent ?? null,
               rowFace: face(rowNumber),
               titleSize: getComputedStyle(title).fontSize,
+            },
+            // The author, after a dot after the number, ends the line (mb-x0z1).
+            by: by === undefined ? null : {
+              parts: [...by.children].map((el) => el.className),
+              hidden: by.hidden,
+              name: by.querySelector(".github-pull-stack-member-author")?.textContent ?? null,
+              rowName: rowAuthor?.textContent ?? null,
+              afterNumber: box(by).left >= box(shown).right - 0.5,
+              endGap: Math.round((box(copy).right - box(by).right) * 100) / 100,
+              dot: by.firstElementChild ? getComputedStyle(by.firstElementChild).color : null,
+              whole: (() => {
+                const name = by.querySelector(".github-pull-stack-member-author");
+                return name !== null && name.scrollWidth <= name.clientWidth;
+              })(),
             },
             current: link.getAttribute("aria-current") === "page",
           };
@@ -1555,7 +1586,8 @@ try {
   })()`);
   measured.menu = menu;
   // Each member's name as Chrome computes it for assistive technology: its state and title,
-  // then its place and its number, which the line shows at its end (mb-1kzu, mb-pw8t).
+  // then its place, its number, and its author, which the line shows at its end (mb-1kzu,
+  // mb-pw8t, mb-x0z1).
   if (!before) {
     await send("Accessibility.enable");
     menu.names = [];
@@ -1621,7 +1653,7 @@ try {
     const lines = menu.lines;
     const first = lines[0];
     check(
-      "every stack member is the state icon, then the title, and the place, the dot, and the number",
+      "every stack member is the state icon, then the title, and the place, the dot, the number, and the author",
       lines.length === menu.members.length &&
         lines.every(
           (line) =>
@@ -1633,24 +1665,62 @@ try {
                 "github-pull-stack-member-position",
                 "github-pull-stack-dot",
                 "github-pull-stack-member-number",
+                "github-pull-stack-member-by",
               ]) &&
             line.placeAfterTitle &&
             line.placeBeforeNumber,
         ),
       JSON.stringify(lines),
     );
-    // Each member shows its number as its Pulls row does, "#455" (mb-1kzu): whole, after the
-    // title and the place and at the line's end, in the row's number's ink, weight, and
-    // numerals at the title's size, and the member's name ends in its title, place, and number.
+    // Each member's author is its Pulls row's, whole, after a muted dot after the number, and
+    // ends the line, as a Pulls row's run has it after the number (mb-x0z1).
     check(
-      "each member's number is shown whole at the line's end, as its Pulls row's, and ends its name",
+      "each member's author is its Pulls row's, after the number and a muted dot, whole at the line's end",
+      lines.every(
+        (line) =>
+          line.by !== null &&
+          !line.by.hidden &&
+          JSON.stringify(line.by.parts) ===
+            JSON.stringify(["github-pull-stack-dot", "actor-identity github-pull-identity"]) &&
+          line.by.name !== null &&
+          line.by.name === line.by.rowName &&
+          line.by.afterNumber &&
+          Math.abs(line.by.endGap) <= 0.5 &&
+          line.by.dot === line.muted &&
+          line.by.whole,
+      ),
+      JSON.stringify(lines.map(({ number, by }) => ({ number, by }))),
+    );
+    // The Whole stack row is in the members' row grid (mb-7cn4): the stack's Layers glyph,
+    // muted, in the state icon's slot, where every member's icon starts, and its words where
+    // every member's title starts. With the menu row's own gap and an empty slot, its words
+    // started 2 px past the titles.
+    check(
+      "the Whole stack row's glyph and words start where the members' icons and titles do",
+      menu.whole !== null &&
+        menu.whole.text === "Whole stack" &&
+        menu.whole.glyph &&
+        menu.whole.ink === first.muted &&
+        Math.abs(menu.whole.iconLeft - first.iconLeft) <= 0.5 &&
+        Math.abs(menu.whole.iconWidth - first.iconWidth) <= 0.5 &&
+        Math.abs(menu.whole.titleLeft - first.titleLeft) <= 0.5,
+      JSON.stringify({
+        whole: menu.whole,
+        first: { iconLeft: first.iconLeft, iconWidth: first.iconWidth, titleLeft: first.titleLeft },
+      }),
+    );
+    // Each member shows its number as its Pulls row does, "#455" (mb-1kzu): whole, after the
+    // title and the place, before the author, in the row's number's ink, weight, and
+    // numerals at the title's size, and the member's name ends in its title, place, number,
+    // and author.
+    check(
+      "each member's number is shown whole, as its Pulls row's, and its name ends in it and the author",
       lines.every(
         (line, at) =>
           line.shown?.text === `#${line.number}` &&
           line.shown.rowText === line.shown.text &&
           line.shown.whole &&
           line.shown.width > 1 &&
-          Math.abs(line.shown.endGap) <= 0.5 &&
           line.shown.afterTitle &&
           line.shown.rowFace !== null &&
           line.shown.face.color === line.shown.rowFace.color &&
@@ -1659,7 +1729,9 @@ try {
           line.shown.face.numerals === line.shown.rowFace.numerals &&
           line.shown.face.size === line.shown.titleSize &&
           typeof menu.names[at] === "string" &&
-          menu.names[at].endsWith(`${line.titleText} ${line.positionText} #${line.number}`),
+          menu.names[at].endsWith(
+            `${line.titleText} ${line.positionText} #${line.number} ${line.by?.name}`,
+          ),
       ),
       JSON.stringify({
         shown: lines.map(({ number, shown }) => ({ number, shown })),

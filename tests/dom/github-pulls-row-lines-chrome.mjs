@@ -1,5 +1,5 @@
-// Each Pulls row's run and last line (mb-d0a3, mb-85op, mb-lqkb, mb-zuy0, mb-pw8t), laid out by
-// headless Chrome: the production panel module, the shell's SDK, icon registry, and
+// Each Pulls row's run and last line (mb-d0a3, mb-85op, mb-lqkb, mb-zuy0, mb-pw8t, mb-rb3n),
+// laid out by headless Chrome: the production panel module, the shell's SDK, icon registry, and
 // stylesheets, mounted on recorded answers.
 //
 //   CHROME_BIN=/path/to/chrome KPRESS_STATIC=/dir/with/css/and/fonts \
@@ -20,36 +20,41 @@
 // 180 px minimum, in the light theme and the dark, it holds that:
 //
 // - each pull request's row is its link: its run, one flow of the state icon, the title, the
-//   number, and the toggle, the lines and the chevron after them, a muted dot before each part
-//   after the title, every line of it starting in the text column, past the icon, which is
-//   centered on its first line, as tall as its lines and never cut short, so it ends with the
-//   chevron (mb-pw8t); then its last line, the author in the text column and the age at the
-//   row's end;
-// - a closed row is `ROW_ESTIMATE_PX` tall with a run of three lines, a typical row's at the
-//   default pane, and a line shorter or taller for each line fewer or more;
+//   number, the author, and the age, a muted dot before each part after the title, every line
+//   of it starting in the text column, past the icon, which is centered on its first line, as
+//   tall as its lines and never cut short, so it ends with the age, the author's name on the
+//   run's baseline (mb-rb3n); then its last line, the toggle alone, the lines and the chevron
+//   after them, starting in the text column, one line tall;
+// - a closed row is `ROW_ESTIMATE_PX` tall with a run of `ESTIMATE_LINES`, a typical row's at
+//   the default pane, and a line shorter or taller for each line fewer or more;
 // - nothing moves when the lines arrive: the item, the link, the run, the title, the state
-//   icon, the number, the toggle's box, the last line, the author, and the age; the chevron
-//   keeps its line and follows the lines, which start where the placeholder did;
+//   icon, the number, the author, the age, and the last line; the chevron keeps its line and
+//   follows the lines, which start where the placeholder did;
 // - the lines and the chevron are one line, the lines whole and in the row, never cut short;
 //   the line counts no files by status; nothing scrolls sideways;
 // - the lines' inks and weights are the component's, part for part, as the same line drawn by
 //   the SDK outside the row resolves them in that theme, and its item's name says it in words;
-// - #104 and #103, whose lists cannot be had, end their runs with the number, the dot, and the
-//   chevron, in the same box, and show no lines and no placeholder, once answered;
+// - #104 and #103, whose lists cannot be had, have the chevron alone on their last line, and
+//   show no lines and no placeholder, once answered;
 // - the open row's highlight is its item's: one ground under its run and its last line, and
 //   its left bar down the link's edge.
+//
+// #106's and #104's authors have an avatar's address, which the page's policy keeps from
+// loading, so their box holds the person glyph, as an avatar that fails does; #105's and
+// #103's have none, and no box.
 //
 // At 299 px, the default pane, in each theme, with real pointer and keyboard input, it holds
 // that a pull request is one item (mb-1z7j): the pointer anywhere on it hovers the item's one
 // ground, and on its toggle, the lines or the chevron, the chevron's plate too, the inner
 // target's own hover, which no other part shows; Tab's stop is the row's link, whose ring is
 // drawn round the whole item, and the toggle is no stop. A press on a row's title, its number,
-// or its author opens the pull request and expands nothing; a press on the chevron or on the
-// lines opens or closes the files under the row, and opens no page (docs/design-system.md, "A
-// Click on the Toggle's Line Toggles"). The keys need the shell's registry, which this page
-// has not: tests/dom/github-pulls-stacks-chrome.mjs holds them in the running app; here the
-// handle's `expand` and `collapse`, which Right and Left call, act on the focused item. With
-// SHOTS_DIR set, it saves the item's hover and the inner target's, at 299 px in each theme.
+// its author, or its last line past the chevron opens the pull request and expands nothing; a
+// press on the chevron or on the lines opens or closes the files under the row, and opens no
+// page (docs/design-system.md, "A Click on the Toggle's Line Toggles"). The keys need the
+// shell's registry, which this page has not: tests/dom/github-pulls-stacks-chrome.mjs holds
+// them in the running app; here the handle's `expand` and `collapse`, which Right and Left
+// call, act on the focused item. With SHOTS_DIR set, it saves the item's hover and the inner
+// target's, at 299 px in each theme.
 //
 // It then mounts the rows again, in each theme at every width, with #106's change of no lines
 // and #105's of additions alone (mb-efum): a zero total is left out, "+3", and no lines are a
@@ -57,8 +62,9 @@
 //
 // It also lays out the lines changed of this repository's own pull requests (`REAL_LINES`), to
 // say how wide a typical row's lines are, which the placeholder's width is judged against, and
-// their titles (`REAL_TITLES`) in a closed row at every width, to say how many lines a typical
-// row's run takes and how tall the row is, which `ROW_ESTIMATE_PX` is held to.
+// their titles (`REAL_TITLES`) in a closed row at every width, their author's name and avatar
+// box beside them, to say how many lines a typical row's run takes and how tall the row is,
+// which `ROW_ESTIMATE_PX` is held to.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -79,6 +85,12 @@ const check = (label, ok, detail = "") => {
 const TOLERANCE_PX = 0.5;
 const near = (a, b) =>
   typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= TOLERANCE_PX;
+/** Whether *inner*'s box is within *outer*'s, top to bottom. */
+const within = (inner, outer) =>
+  inner != null &&
+  outer != null &&
+  inner.top >= outer.top - TOLERANCE_PX &&
+  inner.bottom <= outer.bottom + TOLERANCE_PX;
 const started = Date.now();
 const lap = (what) => process.stderr.write(`${Date.now() - started} ms: ${what}\n`);
 
@@ -94,15 +106,22 @@ const twoFiles = fixture("github-pull-files-responses.json").comparison;
 // Titles of three lengths among the rows checked: #106's and #104's are short, #105's runs
 // past two lines at every width, and #103's is one unbroken word longer than the row.
 const TITLES = {
-  105: "feat(pulls): one run for a row, its title, its place, its number, and its lines with the chevron after them, wrapping in the text column past the state icon at every width",
+  105: "feat(pulls): one run for a row, its title, its place, its number, its author, and its age, wrapping in the text column past the state icon at every width",
   103: "docs:" + "x".repeat(160),
 };
+// An avatar's address for #106's and #104's authors, as GitHub gives one: the page's policy
+// (`PAGE`) keeps it from loading, so the box holds the person glyph, and the box is what the
+// run lays out. #105's and #103's authors have none, and no box.
+const AVATAR = "https://avatars.githubusercontent.com/u/1?s=40";
+const AVATARS = new Set([106, 104]);
 const ANSWERS = {
   list: {
     ...lists.current.body,
-    rows: rowsOf(lists.current.body.rows).map((row) =>
-      row.number in TITLES ? { ...row, title: TITLES[row.number] } : row,
-    ),
+    rows: rowsOf(lists.current.body.rows).map((row) => ({
+      ...row,
+      ...(row.number in TITLES ? { title: TITLES[row.number] } : {}),
+      ...(AVATARS.has(row.number) ? { author_avatar_url: AVATAR } : {}),
+    })),
   },
   stacks: fixture("github-stacks-responses.json").empty.body,
   summed: fixture("github-pull-files-summary-responses.json").summed.body,
@@ -278,7 +297,9 @@ const SDK = [
   "plugin-sdk.js",
   "plugin-sdk-views.js",
 ];
+// Images only from the page's own server: an avatar's address asks nothing of the network.
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>row lines</title>
+<meta http-equiv="Content-Security-Policy" content="img-src 'self' data:">
 <link rel="stylesheet" href="/kpress/css/style-tokens.css">
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/github/styles.css">
@@ -423,11 +444,13 @@ const READ = `(() => {
     const title = row.querySelector(".github-pulls-title");
     const place = row.querySelector(".github-pulls-place");
     const shown = row.querySelector(".github-pulls-number");
-    const tail = heading?.querySelector(":scope > .github-pulls-tail") ?? null;
-    const change = row.querySelector(".github-pulls-change");
+    const by = heading?.querySelector(":scope > .github-pulls-by") ?? null;
+    const name = by?.querySelector(".github-pulls-author") ?? null;
+    const when = by?.querySelector(":scope > .github-pulls-when") ?? null;
+    const age = when?.querySelector(".github-pulls-age") ?? null;
+    const tail = row.querySelector(":scope > .github-pulls-tail");
+    const change = tail?.querySelector(".github-pulls-change") ?? null;
     const line = change?.querySelector(".github-pulls-change-line") ?? null;
-    const byline = row.querySelector(".github-pulls-byline");
-    const by = byline?.querySelector(".github-pulls-by") ?? null;
     const pending = line?.querySelector(".github-pulls-change-pending") ?? null;
     const said = line?.querySelector(".change-line") ?? null;
     const stats = said?.querySelector(".change-line-stats") ?? null;
@@ -444,7 +467,7 @@ const READ = `(() => {
     // outermost. The dots are left out: a line never starts with one, and a dot's trailing
     // space hangs past the end of a line it ends.
     const lines = [];
-    for (const piece of [title, place, shown, tail]) {
+    for (const piece of [title, place, shown, by, age]) {
       for (const rect of piece?.getClientRects() ?? []) {
         if (rect.width === 0) continue;
         const at = lineOf(rect);
@@ -455,6 +478,14 @@ const READ = `(() => {
       }
     }
     const on = (el) => el ? lineOf(el.getBoundingClientRect()) : null;
+    // A text's own box, its glyphs' line box, whatever box holds it.
+    const glyphs = (el) => {
+      const text = el ? [...el.childNodes].find((node) => node.nodeType === Node.TEXT_NODE) : null;
+      if (!text) return null;
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      return box(range);
+    };
     rows[number] = {
       item: box(item), row: box(row), heading: box(heading), title: box(title), lh,
       runLines: Array.from(lines, (each) => each ?? null),
@@ -463,18 +494,21 @@ const READ = `(() => {
       column: run ? run.left + parseFloat(runStyle.paddingInlineStart) : null,
       icon: box(row.querySelector(".github-pull-state-icon")),
       place: box(place),
-      dots: heading?.querySelectorAll(":scope > .github-pulls-sep").length ?? 0,
+      dots: heading?.querySelectorAll(".github-pulls-sep").length ?? 0,
       last: heading?.lastElementChild?.className ?? null,
       rowToggles: row.querySelectorAll(".github-pulls-toggle").length,
       inset: inset(row),
       slot: parseFloat(style.getPropertyValue("--tree-icon-slot")), gap: parseFloat(style.columnGap),
-      number: box(shown), numberLine: on(shown),
-      tail: box(tail), tailLine: on(tail),
-      change: box(change), toggle: box(toggle), chevron: box(chevron), chevronLine: on(chevron),
-      byline: box(byline), by: box(by), age: box(byline?.querySelector(".github-pulls-age") ?? null),
+      number: box(shown), numberLine: on(shown), numberText: glyphs(shown),
+      by: box(by), byLine: on(by), nameText: glyphs(name),
+      avatar: box(by?.querySelector(".actor-avatar") ?? null),
+      age: box(age), ageLine: on(age), ageShown: when !== null && !when.hidden,
+      tail: box(tail), tailHeight: tail ? parseFloat(getComputedStyle(tail).height) : null,
+      lastStart: tail ? tail.getBoundingClientRect().left + parseFloat(getComputedStyle(tail).paddingInlineStart) : null,
+      change: box(change), toggle: box(toggle), chevron: box(chevron),
       changeLine: box(line), pending: box(pending), block: box(pending?.querySelector(".tally-pending")),
       pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
-      line: box(said), linesLine: on(said ?? pending), stats: box(stats), said: said?.textContent ?? null,
+      line: box(said), stats: box(stats), said: said?.textContent ?? null,
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
       // The line counts no files by status (mb-lqkb).
       statuses: said?.querySelectorAll(".change-line-statuses, .change-line-group, .file-change-status").length ?? 0,
@@ -533,16 +567,17 @@ const TOKEN = `((name) => {
 })`;
 
 // In the page: how tall each real pull request's closed row is at the pane's width, its title in
-// a copy of #104's row, drawn and gone at once, and how many lines its run takes. #104's lines
-// cannot be had, so its toggle is the chevron in the placeholder's room, as a row's whose lines
-// are no wider than the room is.
-const REAL_ROWS = `((titles) => {
+// a copy of #104's row, drawn and gone at once, and how many lines its run takes. The copy's
+// author is this repository's pull requests' own, `REAL_AUTHOR`, with #104's avatar box, and
+// its age the page's "1m", as wide as most. Its last line is one line tall whatever it holds.
+const REAL_ROWS = `((titles, author) => {
   const item = document.querySelector('li.github-pulls-item[data-number="104"]');
   const round = (value) => Math.round(value * 100) / 100;
   const rows = titles.map(([number, title]) => {
     const copy = item.cloneNode(true);
     copy.removeAttribute("data-number");
     copy.querySelector(".github-pulls-title").textContent = title;
+    copy.querySelector(".github-pulls-author").textContent = author;
     item.parentElement.append(copy);
     const heading = copy.querySelector(".github-pulls-heading");
     const lh = parseFloat(getComputedStyle(heading).lineHeight);
@@ -563,6 +598,39 @@ const REAL_ROWS = `((titles) => {
     byLines,
   };
 })`;
+
+// In the page: a copy of #104's row whose author has GitHub's longest login, 39 characters, and
+// whose age is the longest compact age, "12mo", drawn and gone at once: where its author, its
+// age, and the dot between them are, whether its name is cut short and had to be, and how wide
+// the dot and the age are, in the run's em.
+const LONG_AUTHOR = `(() => {
+  const item = document.querySelector('li.github-pulls-item[data-number="104"]');
+  const copy = item.cloneNode(true);
+  copy.removeAttribute("data-number");
+  copy.querySelector(".github-pulls-author").textContent = "a".repeat(39);
+  copy.querySelector(".github-pulls-age").textContent = "12mo";
+  item.parentElement.append(copy);
+  const box = (el) => el.getBoundingClientRect().toJSON();
+  const heading = copy.querySelector(".github-pulls-heading");
+  const name = copy.querySelector(".github-pulls-author");
+  const when = copy.querySelector(".github-pulls-when");
+  const em = parseFloat(getComputedStyle(heading).fontSize);
+  const run = box(heading);
+  const by = box(copy.querySelector(".github-pulls-by"));
+  const column = run.left + parseFloat(getComputedStyle(heading).paddingInlineStart);
+  const right = run.right - parseFloat(getComputedStyle(heading).paddingRight);
+  const read = {
+    run: { ...run, right },
+    by,
+    age: box(copy.querySelector(".github-pulls-age")),
+    cut: name.scrollWidth > name.clientWidth + 0.5,
+    // Whether the author and the age, the name whole, are wider than a line of the run.
+    wider: by.width + (name.scrollWidth - name.clientWidth) > right - column + 0.5,
+    room: Math.round((when.getBoundingClientRect().width / em) * 100) / 100,
+  };
+  copy.remove();
+  return read;
+})()`;
 
 // In the page: how wide each real pull request's lines changed are in the run's type, whole,
 // as the row draws them, its totals alone.
@@ -596,34 +664,42 @@ const REAL = `((lines) => {
   };
 })`;
 
+// The room, in em, a row leaves the age and the dot before it after the author: the stylesheet's
+// `--github-pulls-age-room` (github/styles.css).
+const AGE_ROOM_EM = 3.1;
+// The author of this repository's pull requests 440 to 488 (`REAL_TITLES`).
+const REAL_AUTHOR = "jlevy";
 const WIDTHS = [420, 380, 340, 299, 260, 220, 200, 180];
 // The default pane's width, where the hover and the focus are held.
 const DEFAULT_PANE = 299;
 const THEMES = ["light", "dark"];
-// The parts that do not move when lines no wider than the placeholder arrive, or none.
-const PARTS = ["item", "row", "heading", "title", "icon", "number", "tail", "byline", "by", "age"];
-// The parts before the toggle, which do not move whatever arrives.
-const BEFORE_TOGGLE = ["title", "icon", "number"];
+// The parts that do not move when the lines arrive, whatever their width, since the lines are
+// alone on the row's last line, under the run (mb-rb3n).
+const PARTS = ["item", "row", "heading", "title", "icon", "number", "by", "age", "tail"];
+// How many lines a typical row's run takes at the default pane, which a closed row placed at
+// `ROW_ESTIMATE_PX` has.
+const ESTIMATE_LINES = 3;
 
-/** Whether *r* is its run, which ends with the chevron, and its last line (mb-pw8t). */
+/** Whether *r* is its run, which ends with the age, and its last line, the toggle (mb-rb3n). */
 function rowShape(r) {
   if (
     !r?.heading ||
     !r.icon ||
     !r.number ||
-    !r.tail ||
-    !r.chevron ||
-    !r.byline ||
     !r.by ||
     !r.age ||
+    !r.tail ||
+    !r.chevron ||
     r.runLines.length === 0
   ) {
     return { ok: false, why: "a part is missing" };
   }
   const lines = r.runLines;
   const n = lines.length;
-  const within = (inner, outer) =>
-    inner.top >= outer.top - TOLERANCE_PX && inner.bottom <= outer.bottom + TOLERANCE_PX;
+  /** Whether *a*, on line *at*, is before *b*, on line *to*, in the run: on an earlier
+   * line, or on its line and to its left. */
+  const before = (a, at, b, to) =>
+    at !== null && to !== null && (at < to || (at === to && a.right <= b.left + TOLERANCE_PX));
   const parts = {
     // The run is as tall as its lines, and never cut short (mb-pw8t).
     runIsItsLines:
@@ -641,34 +717,42 @@ function rowShape(r) {
       near(r.icon.left, r.inset) &&
       near(r.icon.width, r.slot) &&
       near(r.column, r.icon.right + r.gap),
-    // No stack in this list: no place, and so two dots, before the number and the toggle.
-    noPlace: r.place !== null && r.place.width === 0 && r.dots === 2,
-    // The toggle is the run's last part, on its last line, and the link's one: the lines,
-    // then the chevron at the line's end.
-    endsWithToggle:
-      r.last === "github-pulls-tail" &&
-      r.rowToggles === 1 &&
-      r.tailLine === n - 1 &&
-      r.chevronLine === n - 1 &&
-      near(lines[n - 1].right, r.tail.right) &&
-      r.chevron.left >= r.tail.left - TOLERANCE_PX &&
-      r.chevron.right <= r.tail.right + TOLERANCE_PX &&
-      (r.linesLine === null || r.linesLine === n - 1) &&
-      (r.changeLine === null || r.chevron.left >= r.changeLine.right - TOLERANCE_PX),
-    // The number is on the run, before the toggle.
-    numberBeforeToggle:
-      r.numberLine !== null &&
-      r.numberLine <= r.tailLine &&
-      (r.numberLine < r.tailLine || r.number.right <= r.tail.left + TOLERANCE_PX),
-    // The last line is under the run: the author in the text column, and the age at the row's
-    // end, on the line, after the author.
+    // No stack in this list: no place, and so three dots, before the number, the author, and
+    // the age.
+    noPlace: r.place !== null && r.place.width === 0 && r.dots === 3,
+    // The number, then the author and the age, one part, the age at its end on its line, which
+    // ends the run, on its last line.
+    inOrder:
+      before(r.number, r.numberLine, r.by, r.byLine) &&
+      r.ageLine === r.byLine &&
+      near(r.age.right, r.by.right),
+    endsWithAge:
+      r.last === "github-pulls-by" &&
+      r.ageShown &&
+      r.ageLine === n - 1 &&
+      near(lines[n - 1].right, r.age.right),
+    // The author's name is on the run's baseline: on the number's line, its glyphs' box is the
+    // number's, top and bottom, and wherever it is, its box is its line's.
+    authorOnBaseline:
+      r.nameText !== null &&
+      within(r.by, {
+        top: r.heading.top + r.byLine * r.lh,
+        bottom: r.heading.top + (r.byLine + 1) * r.lh,
+      }) &&
+      (r.byLine !== r.numberLine ||
+        (near(r.nameText.top, r.numberText.top) && near(r.nameText.bottom, r.numberText.bottom))),
+    // The last line is under the run, one line tall, to the row's foot, and the toggle alone:
+    // the lines, then the chevron, starting in the text column, on the line.
     lastLine:
-      near(r.byline.top, r.heading.bottom) &&
-      near(r.byline.bottom, r.row.bottom) &&
-      near(r.by.left, r.column) &&
-      within(r.age, r.byline) &&
-      r.by.right <= r.age.left + TOLERANCE_PX &&
-      r.age.right <= r.byline.right + TOLERANCE_PX,
+      near(r.tail.top, r.heading.bottom) &&
+      near(r.tail.bottom, r.row.bottom) &&
+      near(r.tail.height, r.tailHeight) &&
+      r.rowToggles === 1 &&
+      near(r.lastStart, r.column) &&
+      near(r.change.left, r.column) &&
+      within(r.chevron, r.tail) &&
+      r.chevron.right <= r.tail.right + TOLERANCE_PX &&
+      (r.changeLine === null || r.chevron.left >= r.changeLine.right - TOLERANCE_PX),
     // A closed row's item is its link.
     itemIsRow: near(r.item.height, r.row.height),
   };
@@ -718,7 +802,7 @@ async function main() {
       const el = document.querySelector(${JSON.stringify(selector)});
       if (el === null) return null;
       const r = ${at === "first" ? "el.getClientRects()[0] ?? el.getBoundingClientRect()" : "el.getBoundingClientRect()"};
-      return { x: ${at === "start" ? "r.left + 4" : "r.left + r.width / 2"}, y: r.top + r.height / 2 };
+      return { x: ${at === "start" ? "r.left + 4" : at === "end" ? "r.right - 4" : "r.left + r.width / 2"}, y: r.top + r.height / 2 };
     })()`);
     if (point === null) {
       return false;
@@ -844,13 +928,13 @@ async function main() {
           ),
           placeholder: before.rows[106]?.block?.width ?? null,
         };
-        // A closed row is its run and its last line: a run of three lines makes the height the
-        // panel places an unmeasured row at (`ROW_ESTIMATE_PX`), and each line fewer or more a
-        // row a line shorter or taller.
+        // A closed row is its run and its last line: a run of `ESTIMATE_LINES` makes the height
+        // the panel places an unmeasured row at (`ROW_ESTIMATE_PX`), and each line fewer or more
+        // a row a line shorter or taller.
         const estimate = await browser.evaluate(`window.__module.ROW_ESTIMATE_PX`);
-        const expected = (r) => (r ? estimate + (r.runLines.length - 3) * r.lh : null);
+        const expected = (r) => (r ? estimate + (r.runLines.length - ESTIMATE_LINES) * r.lh : null);
         check(
-          `${at}: a closed row is ROW_ESTIMATE_PX tall with a run of three lines, and a line shorter or taller for each line fewer or more, waiting and shown`,
+          `${at}: a closed row is ROW_ESTIMATE_PX tall with a run of ${ESTIMATE_LINES} lines, and a line shorter or taller for each line fewer or more, waiting and shown`,
           [...SHOWN, ...NONE].every(
             (number) =>
               near(before.rows[number]?.item?.height, expected(before.rows[number])) &&
@@ -858,9 +942,28 @@ async function main() {
           ),
           JSON.stringify({ estimate, lh: after.rows[SHOWN[0]]?.lh, heights: measured[at].heights }),
         );
+        // GitHub's longest login ends in an ellipsis where, and only where, the author and the
+        // age are wider than the line, and leaves the dot and the whole age in the row, on the
+        // author's line.
+        const long = await browser.evaluate(LONG_AUTHOR);
+        check(
+          `${at}: the longest login gives way to the age, whole, on its line and in the row`,
+          long.by.right <= long.run.right + TOLERANCE_PX &&
+            long.age.right <= long.by.right + TOLERANCE_PX &&
+            near(long.age.top + long.age.height / 2, long.by.top + long.by.height / 2) &&
+            long.cut === long.wider,
+          JSON.stringify(long),
+        );
+        // The age's room holds the dot and the longest age (`--github-pulls-age-room`).
+        check(
+          `${at}: the age's room holds the dot and the longest age`,
+          long.room <= AGE_ROOM_EM,
+          JSON.stringify({ room: long.room, AGE_ROOM_EM }),
+        );
+        measured[at].ageRoom = long.room;
         if (theme === THEMES[0]) {
           measured[at].realTitles = await browser.evaluate(
-            `(${REAL_ROWS})(${JSON.stringify(REAL_TITLES)})`,
+            `(${REAL_ROWS})(${JSON.stringify(REAL_TITLES)}, ${JSON.stringify(REAL_AUTHOR)})`,
           );
         }
         for (const number of [...SHOWN, ...NONE]) {
@@ -876,16 +979,21 @@ async function main() {
           ]) {
             const shape = rowShape(r);
             check(
-              `${at}: #${number}'s row is its run, ending with the toggle, and its last line (${phase})`,
+              `${at}: #${number}'s row is its run, ending with the age, and its last line, the toggle (${phase})`,
               shape.ok,
-              JSON.stringify(shape.parts ?? shape.why),
+              JSON.stringify({
+                ...(shape.parts ?? { why: shape.why }),
+                lines: r?.runLines,
+                column: r?.column,
+                run: r?.heading,
+                by: r?.by,
+                age: r?.age,
+              }),
             );
           }
-          // Lines no wider than the placeholder arrive in its room, and so does no line: nothing
-          // moves but the chevron, which keeps its line and follows them. Wider lines may take
-          // the toggle to a line of its own, and move nothing before it.
-          const inRoom = now?.line === null || now?.line?.width <= was?.block?.width + TOLERANCE_PX;
-          for (const part of inRoom ? PARTS : BEFORE_TOGGLE) {
+          // Lines of any width, and no line, arrive on the last line, alone: nothing moves but
+          // the chevron, which keeps its line and follows them.
+          for (const part of PARTS) {
             check(
               `${at}: #${number}'s ${part} does not move when its lines arrive`,
               ["left", "top", "width", "height"].every((side) =>
@@ -894,14 +1002,12 @@ async function main() {
               `${JSON.stringify(was?.[part])} ${JSON.stringify(now?.[part])}`,
             );
           }
-          if (inRoom) {
-            check(
-              `${at}: #${number}'s chevron keeps its line when its lines arrive`,
-              near(was?.chevron?.top, now?.chevron?.top) &&
-                near(was?.chevron?.height, now?.chevron?.height),
-              `${JSON.stringify(was?.chevron)} ${JSON.stringify(now?.chevron)}`,
-            );
-          }
+          check(
+            `${at}: #${number}'s chevron keeps its line when its lines arrive`,
+            near(was?.chevron?.top, now?.chevron?.top) &&
+              near(was?.chevron?.height, now?.chevron?.height),
+            `${JSON.stringify(was?.chevron)} ${JSON.stringify(now?.chevron)}`,
+          );
           // The title is never cut short: #105's and #103's take the run past two lines, and
           // #103's one word breaks inside the row (rowShape holds every line in the row).
           if (number === 105 || number === 103) {
@@ -913,18 +1019,16 @@ async function main() {
           }
           if (NONE.includes(number)) {
             check(
-              `${at}: #${number}'s run ends with the number, the dot, and the chevron, and shows no lines and no placeholder`,
+              `${at}: #${number}'s last line is the chevron alone, with no lines and no placeholder`,
               now.nodes === 0 &&
                 now.pending === null &&
                 now.chevron !== null &&
                 now.text === "" &&
-                now.dots === 2 &&
-                (now.chevronLine > now.numberLine || now.chevron.left > now.number.right),
+                now.chevron.left <= now.column + now.slot,
               JSON.stringify({
                 nodes: now.nodes,
                 text: now.text,
-                dots: now.dots,
-                number: now.number,
+                column: now.column,
                 chevron: now.chevron,
               }),
             );
@@ -937,17 +1041,17 @@ async function main() {
             continue;
           }
           check(
-            `${at}: #${number}'s lines are whole, before the chevron on its line, and in the row`,
+            `${at}: #${number}'s lines are whole, before the chevron on the last line, and in the row`,
             now.line !== null &&
               now.statsWhole &&
-              now.linesLine === now.chevronLine &&
+              within(now.line, now.tail) &&
               now.stats.right <= now.chevron.left + TOLERANCE_PX &&
-              now.chevron.right <= now.heading.right + TOLERANCE_PX,
+              now.chevron.right <= now.tail.right + TOLERANCE_PX,
             JSON.stringify({
               line: now.line,
               stats: now.stats,
               chevron: now.chevron,
-              heading: now.heading,
+              tail: now.tail,
             }),
           );
           check(
@@ -955,13 +1059,11 @@ async function main() {
             now.statuses === 0 && !/[ADMR],|\b\d+ [ADMR]\b/.test(now.text ?? ""),
             JSON.stringify({ text: now.text }),
           );
-          if (inRoom) {
-            check(
-              `${at}: #${number}'s lines start where its placeholder did`,
-              near(now.line.left, was.pending.left),
-              `${now.line.left} ${was.pending.left}`,
-            );
-          }
+          check(
+            `${at}: #${number}'s lines start where its placeholder did`,
+            near(now.line.left, was.pending.left),
+            `${now.line.left} ${was.pending.left}`,
+          );
           measured[at][number] = { runLines: now.runLines.length, lines: now.line?.width ?? null };
         }
         check(
@@ -1089,16 +1191,16 @@ async function main() {
           JSON.stringify({ ink, muted }),
         );
         check(
-          `${at} zero totals: "0 lines" is whole in the run, before the chevron on its line`,
+          `${at} zero totals: "0 lines" is whole on the last line, before the chevron`,
           none.statsWhole &&
-            none.linesLine === none.chevronLine &&
+            within(none.line, none.tail) &&
             none.stats.right <= none.chevron.left + TOLERANCE_PX &&
-            none.chevron.right <= none.heading.right + TOLERANCE_PX,
-          JSON.stringify({ stats: none.stats, chevron: none.chevron, heading: none.heading }),
+            none.chevron.right <= none.tail.right + TOLERANCE_PX,
+          JSON.stringify({ stats: none.stats, chevron: none.chevron, tail: none.tail }),
         );
         const shape = rowShape(none);
         check(
-          `${at} zero totals: #106's row is its run, ending with the toggle, and its last line`,
+          `${at} zero totals: #106's row is its run, ending with the age, and its last line, the toggle`,
           shape.ok,
           JSON.stringify(shape.parts ?? shape.why),
         );
@@ -1138,8 +1240,8 @@ async function main() {
 
   /**
    * Real pointer and keyboard input on the panel mounted at 299 px: the item's hover and the
-   * inner target's, the item's focus ring, presses on the title, the number, and the author,
-   * and presses on the chevron and the lines.
+   * inner target's, the item's focus ring, presses on the title, the number, the author,
+   * and the last line past the chevron, and presses on the chevron and the lines.
    */
   async function interact(at, tokens) {
     const result = {};
@@ -1276,7 +1378,7 @@ async function main() {
       JSON.stringify(result.number),
     );
     result.authorShown = await browser.evaluate(
-      `(() => { const by = document.querySelector(${JSON.stringify(`${ROW} .github-pulls-author`)}); const line = by?.closest(".github-pulls-byline"); return by !== null && line !== null && by.getBoundingClientRect().left < line.getBoundingClientRect().right; })()`,
+      `(() => { const by = document.querySelector(${JSON.stringify(`${ROW} .github-pulls-author`)}); const run = by?.closest(".github-pulls-heading"); return by !== null && run !== null && by.getBoundingClientRect().left < run.getBoundingClientRect().right; })()`,
     );
     await pointAt(`${ROW} .github-pulls-author`, true, "start");
     await pause(250);
@@ -1287,6 +1389,21 @@ async function main() {
         opens(result.author, result.number.opened) &&
         Math.abs(result.author.row.top - result.title.row.top) <= TOLERANCE_PX,
       JSON.stringify({ shown: result.authorShown, author: result.author }),
+    );
+    // A press on the last line past the chevron, the item's link's, opens the pull request too
+    // (mb-rb3n).
+    result.lastPastChevron = await browser.evaluate(
+      `(() => { const tail = document.querySelector(${JSON.stringify(`${ROW} > .github-pulls-tail`)}); const chevron = tail?.querySelector(".github-pulls-toggle"); return tail !== null && chevron !== null && tail.getBoundingClientRect().right - 4 > chevron.getBoundingClientRect().right; })()`,
+    );
+    await pointAt(`${ROW} > .github-pulls-tail`, true, "end");
+    await pause(250);
+    result.last = await browser.evaluate(state);
+    check(
+      `${at}: a press on a row's last line past the chevron opens the pull request and expands nothing`,
+      result.lastPastChevron &&
+        opens(result.last, result.author.opened) &&
+        Math.abs(result.last.row.top - result.title.row.top) <= TOLERANCE_PX,
+      JSON.stringify({ past: result.lastPastChevron, last: result.last }),
     );
     // A press on the chevron opens the files, under the row, and opens no page.
     await pointAt(`${CHANGE} > .github-pulls-toggle`, true);
@@ -1305,7 +1422,7 @@ async function main() {
         result.chevron.files !== null &&
         result.chevron.files.top >= result.chevron.row.bottom - TOLERANCE_PX &&
         result.chevron.turned !== result.title.turned &&
-        result.chevron.opened.length === result.author.opened.length,
+        result.chevron.opened.length === result.last.opened.length,
       JSON.stringify(result.chevron),
     );
     // The row pressed stays under the pointer: its files open below it, even above the row a
@@ -1326,7 +1443,7 @@ async function main() {
       result.line.expanded === "false" &&
         result.line.files === null &&
         result.line.turned === result.title.turned &&
-        result.line.opened.length === result.author.opened.length &&
+        result.line.opened.length === result.last.opened.length &&
         result.line.row !== null &&
         Math.abs(result.line.row.top - result.title.row.top) <= TOLERANCE_PX,
       JSON.stringify(result.line),
@@ -1406,7 +1523,7 @@ async function main() {
         const where = (el) => el ? { top: el.getBoundingClientRect().top, bottom: el.getBoundingClientRect().bottom } : null;
         return {
           view, numbers, above: where(zoneOf(above)), zone: where(zone),
-          last: where(zone.querySelector(".github-pulls-byline")),
+          last: where(zone.querySelector(".github-pulls-tail")),
           link: where(below), focused: document.activeElement === below,
         };
       })()`);

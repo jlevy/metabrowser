@@ -11,10 +11,10 @@
 // The list is a tree: a row is one anchor in the role of a tree's item, in a list item with no
 // role of its own, and the row's changed files hang off it as a folder's children do
 // (pull-files-view.js): a `.tree-children[role="group"]` after it, which it owns, and
-// `aria-expanded` on it. A pull request is one item, its anchor (mb-1z7j, mb-pw8t): a run of
-// its title, a stack member's place, its number, and its brief change line (row-lines.js,
-// mb-lqkb) with the chevron after it, one flow that wraps with every line after the first in
-// the text column, then its last line, the author and the age. The item is one hover, one
+// `aria-expanded` on it. A pull request is one item, its anchor (mb-1z7j, mb-pw8t, mb-rb3n): a
+// run of its title, a stack member's place, its number, its author, and its age, one flow
+// that wraps with every line after the first in the text column, then its last line, its
+// brief change line (row-lines.js, mb-lqkb) with the chevron after it. The item is one hover, one
 // selection, and one keyboard stop (`.github-pulls-entry`). Its toggle is the brief change
 // line and the chevron after it, the summary the chevron expands (docs/design-system.md, "A
 // Click on the Toggle's Line Toggles"): a click on them toggles the files and opens no page,
@@ -159,15 +159,16 @@ const PAGE_AHEAD_PX = 240;
 export const PULL_ROWS_OVERSCAN = 40;
 // The height a row not yet measured is placed at: a typical pull request's closed row at the
 // default pane, a run of three lines and its last line, the 2 px pad, three 19.5 px lines, and
-// 20 px of last line, whether its lines wait or are shown (mb-pw8t). Measured in headless
-// Chrome 152 with KPress's faces at the nav's 13 px type, on this repository's pull requests
-// 440 to 488 in a closed row (tests/dom/github-pulls-row-lines-chrome.mjs, `REAL_TITLES`): at
-// 299 px their runs take two lines for 4 of 45, three for 30, four for 10, and five for 1, a
-// mean row of 84 px; at 380 px, two lines for 28 of 45 and three for 15; at 420 px, two for
-// 35. Each line of the run fewer or more makes a row a line shorter or taller, and the list
-// places each row drawn by its measured height. When the run was the title alone, cut short
-// at its second line, and the number and the lines were on the line under it, a row was at
-// most 61 px (mb-85op, mb-lqkb).
+// 20 px of last line, whether its lines wait or are shown (mb-pw8t, mb-rb3n). Measured in
+// headless Chrome 152 with KPress's faces at the nav's 13 px type, on this repository's pull
+// requests 440 to 488 in a closed row, each run the title, the number, the author's avatar box
+// and name, and an age of "1m" (tests/dom/github-pulls-row-lines-chrome.mjs, `REAL_TITLES`):
+// at 299 px their runs take two lines for 4 of 45, three for 31, four for 9, and five for 1, a
+// mean row of 83.5 px; at 380 px, one line for 1, two for 29, three for 14, and four for 1; at
+// 420 px, one for 2, two for 34, and three for 9. Each line of the run fewer or more makes a
+// row a line shorter or taller, and the list places each row drawn by its measured height.
+// When the run was the title alone, cut short at its second line, and the number and the
+// lines were on the line under it, a row was at most 61 px (mb-85op, mb-lqkb).
 export const ROW_ESTIMATE_PX = 80.5;
 // How long a walk waits for a next key before it opens the row it reached, once a key is
 // repeating. A key's release opens it at once, so this is only for a release the page does
@@ -3799,8 +3800,9 @@ export function mountPullsPanel(container, ctx, mb) {
    *   title: HTMLElement,
    *   icon: HTMLElement,
    *   number: HTMLElement,
-   *   byline: HTMLElement,
    *   by: HTMLElement,
+   *   author: HTMLElement,
+   *   when: HTMLElement,
    *   change: HTMLElement,
    *   changeLine: HTMLElement,
    *   changeWords: HTMLElement,
@@ -4276,9 +4278,9 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The dot before a part of a row's run after its title, the place, the number, and the
-   * lines (mb-pw8t): a no-break space before it and a text space after it, so the run breaks
-   * after the dot as after a word and never before it (github/styles.css,
+   * The dot before a part of a row's run after its title, the place, the number, the author,
+   * and the age (mb-pw8t, mb-rb3n): a no-break space before it and a text space after it, so
+   * the run breaks after the dot as after a word and never before it (github/styles.css,
    * `.github-pulls-heading`). It is the stack menu's dot (`.github-pull-stack-dot`), so the
    * two surfaces read alike.
    */
@@ -4290,29 +4292,27 @@ export function mountPullsPanel(container, ctx, mb) {
     ]);
 
   /**
-   * The author, which starts the row's last line, before the age; its name ends in an
-   * ellipsis where the line has no room for it (github/styles.css, `.github-pulls-by`).
+   * The author, its avatar and its name, in the row's run after the number and before the age
+   * (mb-rb3n; github/styles.css, `.github-pulls-by`).
    *
    * @param {PullRow} row
    */
   function rowAuthor(row) {
-    return h("span", { class: "github-pulls-by" }, [
-      // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so this
-      // asks for no avatar outside that window, and a row the window mounts again as the list
-      // scrolls back draws its avatar at once: WebKit fetches a new lazy image again
-      // (docs/design-system.md, "A Repaint Keeps Its Images"). A dense row draws no box for an
-      // author with no avatar: its avatar comes with the row.
-      authorLabel(mb, row.author, row.avatar, "github-pulls-author", {
-        loading: "eager",
-        placeholder: false,
-      }),
-    ]);
+    // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so this asks
+    // for no avatar outside that window, and a row the window mounts again as the list scrolls
+    // back draws its avatar at once: WebKit fetches a new lazy image again
+    // (docs/design-system.md, "A Repaint Keeps Its Images"). A dense row draws no box for an
+    // author with no avatar: its avatar comes with the row.
+    return authorLabel(mb, row.author, row.avatar, "github-pulls-author", {
+      loading: "eager",
+      placeholder: false,
+    });
   }
 
   /**
    * The number, the author, and the age said in words for the row's link, "#455 · jlevy ·
-   * 3d": the number and the last line, which show them, are hidden from assistive
-   * technology, so the link's name says them once, after its title and place.
+   * 3d", in the order the run shows them: the run's own number, author, and age are hidden
+   * from assistive technology, so the link's name says them once, after its title and place.
    *
    * @param {PullRow} row
    * @param {string} age
@@ -4340,12 +4340,12 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.label = when.label;
       entry.age.textContent = when.label;
       entry.age.className = `github-pulls-age ${when.className}`;
+      entry.when.hidden = when.label === "";
     }
     if (row.avatar !== before.avatar || row.meta !== before.meta) {
-      const by = rowAuthor(row);
-      entry.byline.insertBefore(by, entry.by);
-      entry.by.remove();
-      entry.by = by;
+      const author = rowAuthor(row);
+      entry.by.replaceChild(author, entry.author);
+      entry.author = author;
     }
     entry.said.textContent = rowSaid(row, entry.label);
     entry.info = row;
@@ -4376,14 +4376,14 @@ export function mountPullsPanel(container, ctx, mb) {
     ]);
     const changeId = `github-pull-change-${row.number}`;
     // The lines the pull request changes (`paintChange`), then the registry's chevron, after
-    // the summary it expands, as every toggle of a diff summary has it (mb-f0pz): the run's
-    // last part, and the item's inner target. A press on it opens or closes the changed files
-    // and opens no page, where a press anywhere else on the item opens the pull request
-    // (mb-pw8t). It is for the pointer alone: Space, Right, and Left on the row are its keys,
-    // and the row's `aria-expanded` its state, so it is hidden from assistive technology, and
-    // the tree holds only its items and their groups (mb-1z7j). Its words, the lines said in
-    // full, stay out of view in it, and describe the row, which reads them though they are
-    // hidden. Its `.expanded` follows the files.
+    // the summary it expands, as every toggle of a diff summary has it (mb-f0pz): the row's
+    // last line, and the item's inner target. A press on it opens or closes the changed files
+    // and opens no page, where a press anywhere else on the item, the rest of its line too,
+    // opens the pull request (mb-pw8t, mb-rb3n). It is for the pointer alone: Space, Right,
+    // and Left on the row are its keys, and the row's `aria-expanded` its state, so it is
+    // hidden from assistive technology, and the tree holds only its items and their groups
+    // (mb-1z7j). Its words, the lines said in full, stay out of view in it, and describe the
+    // row, which reads them though they are hidden. Its `.expanded` follows the files.
     const changeLine = h("span", { class: "github-pulls-change-line" });
     const changeWords = h("span", { class: "github-pulls-change-words", id: changeId, hidden: "" });
     const change = h(
@@ -4396,11 +4396,22 @@ export function mountPullsPanel(container, ctx, mb) {
       ],
     );
     change.dataset.number = String(row.number);
-    // The lines and the chevron never part, and take the pending placeholder's room
-    // (github/styles.css, `.github-pulls-tail`).
+    // The row's last line, the lines and the chevron alone, in the text column under the run:
+    // one line tall whether the lines are shown, waited for, or cannot be had, so nothing
+    // moves when they arrive (github/styles.css, `.github-pulls-tail`).
     const tail = h("span", { class: "github-pulls-tail" }, [change]);
-    // The row's run (mb-pw8t): the state icon, then the title, the place, the number, and the
-    // lines with their chevron, a dot between each two, one flow that wraps with every line
+    // The author, then the age, its dot with it, so a row with no age has neither: one part of
+    // the run, which never breaks, as a line may break after an author's box, an atomic inline,
+    // whatever follows it (github/styles.css, `.github-pulls-by`). No tooltip, as nothing in
+    // the Pulls column has one: the page has the exact time (docs/design-system.md, "Tooltips
+    // Add Information"). The link's name says them (`rowSaid`).
+    const author = rowAuthor(row);
+    const updated = h("span", { class: `github-pulls-age ${when.className}` }, [when.label]);
+    const dated = h("span", { class: "github-pulls-when" }, [separator(), updated]);
+    dated.hidden = when.label === "";
+    const by = h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [author, dated]);
+    // The row's run (mb-pw8t, mb-rb3n): the state icon, then the title, the place, the number,
+    // the author, and the age, a dot between each two, one flow that wraps with every line
     // after the first in the text column, past the icon, as a tree's title does
     // (github/styles.css, `.github-pulls-heading`).
     const heading = h("span", { class: "github-pulls-heading" }, [
@@ -4410,16 +4421,7 @@ export function mountPullsPanel(container, ctx, mb) {
       separator(),
       number,
       separator(),
-      tail,
-    ]);
-    // The last line: the author, and the age at the row's end. No tooltip, as nothing in the
-    // Pulls column has one: the page has the exact time (docs/design-system.md, "Tooltips Add
-    // Information"). The link's name says them (`rowSaid`).
-    const by = rowAuthor(row);
-    const updated = h("span", { class: `github-pulls-age ${when.className}` }, [when.label]);
-    const byline = h("span", { class: "github-pulls-byline", "aria-hidden": "true" }, [
       by,
-      updated,
     ]);
     const said = h("span", { class: "sr-only" }, [rowSaid(row, when.label)]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
@@ -4441,7 +4443,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-describedby": changeId,
           tabindex: "-1",
         },
-        [heading, byline, said],
+        [heading, tail, said],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -4468,8 +4470,9 @@ export function mountPullsPanel(container, ctx, mb) {
       title,
       icon,
       number,
-      byline,
       by,
+      author,
+      when: dated,
       change,
       changeLine,
       changeWords,
@@ -4483,16 +4486,16 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The lines a row's pull request changes, as it is now (row-lines.js), after its number:
-   * "+1,234 −567", the shell's brief change line of its line totals alone, with no file total
-   * and no file statuses (mb-lqkb), a total of zero left out, "+1,234" where it only adds
-   * lines, and "0 lines" where it changes none (mb-efum); the shell's pending placeholder
-   * while it is read or its list is listed, so nothing moves when it arrives; or nothing
-   * where it cannot be had. A dot comes before them and the chevron after them, in a box that
-   * keeps the placeholder's room whatever it holds (github/styles.css, `.github-pulls-tail`),
-   * so a row whose lines cannot be had ends with the dot and the chevron, "#455 · ›", and
-   * moves nothing when its list is listed and its lines are read after all: a row goes from
-   * none to waiting to shown as the prefetch lane lists its files. The lines are said in
+   * The lines a row's pull request changes, as it is now (row-lines.js), on the row's last
+   * line: "+1,234 −567", the shell's brief change line of its line totals alone, with no file
+   * total and no file statuses (mb-lqkb), a total of zero left out, "+1,234" where it only
+   * adds lines, and "0 lines" where it changes none (mb-efum); the shell's pending
+   * placeholder while it is read or its list is listed; or nothing where it cannot be had.
+   * The chevron comes after them, on a line one line tall whatever it holds
+   * (github/styles.css, `.github-pulls-tail`), so a row whose lines cannot be had has the
+   * chevron alone there, and moves nothing when its list is listed and its lines are read
+   * after all: a row goes from none to waiting to shown as the prefetch lane lists its files
+   * (mb-rb3n). The lines are said in
    * words, as a stack's row says its line (`rowLineHint`), in the hidden text that describes
    * the row, so the row is read with them.
    *
@@ -5127,6 +5130,7 @@ export function mountPullsPanel(container, ctx, mb) {
         entry.label = label;
         entry.age.textContent = label;
         entry.age.className = `github-pulls-age ${className}`;
+        entry.when.hidden = label === "";
         entry.said.textContent = rowSaid(entry.info, label);
       }
     }
@@ -5654,9 +5658,9 @@ export function mountPullsPanel(container, ctx, mb) {
         return;
       }
       const row = rowOf(event.target);
-      // A press anywhere else on the item, its title, its place, its number, or its last line,
-      // opens the pull request, and its changed files stay as they were. A new tab and a
-      // copied address are the browser's own.
+      // A press anywhere else on the item, its title, its place, its number, its author, its
+      // age, or its last line past the chevron, opens the pull request, and its changed files
+      // stay as they were. A new tab and a copied address are the browser's own.
       if (row !== null && isPlainClick(event)) {
         event.preventDefault();
         controller.activate(Number(row.dataset.number));

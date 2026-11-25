@@ -3008,24 +3008,27 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # A Pulls row names no branches (the pull request's page does) (mb-lkkt, mb-pw8t): its
-    # run is the title, the place, the number, and the lines, the number never breaking, and
-    # its last line the author, in the row's type, then the age, the author's name ending in
-    # an ellipsis where the line has no room for it.
+    # A Pulls row names no branches (the pull request's page does) (mb-lkkt, mb-pw8t, mb-rb3n):
+    # its run is the title, the place, the number, the author, and the age, the number and the
+    # author with the age never breaking, the author in the row's type and its name ending in
+    # an ellipsis only where the author and the age are wider than a line; its last line is the
+    # lines.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     assert ".github-pulls-meta" not in github and ".github-pulls-line" not in github
     assert github[".github-pulls-number"]["white-space"] == "nowrap", "the number never breaks"
-    byline = github[".github-pulls-byline"]
-    assert (byline["height"], byline["grid-template-columns"]) == (
-        "var(--github-pulls-change-line)",
-        "minmax(0, 1fr) 5ch",
+    assert ".github-pulls-byline" not in github, "the author and the age are in the run"
+    assert github[".github-pulls-row > .github-pulls-tail"]["height"] == (
+        "var(--github-pulls-change-line)"
     )
-    # The author is the last line's secondary metadata, at its size, which it inherits.
+    # The author is the run's secondary metadata, at its size, which it inherits.
     assert "font-size" not in github[".github-pulls-by"]
     assert ".github-pulls-id" not in github, "the run names the number once"
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
     by = github[".github-pulls-by"]
-    assert (by["min-width"], by["overflow"]) == ("0", "hidden"), "the author gives way to the age"
+    assert by["white-space"] == "nowrap", "the author and the age never part"
+    assert github[".github-pulls-by > .github-pull-identity"]["max-width"] == (
+        "calc(100% - var(--github-pulls-age-room))"
+    ), "the author gives way to the age"
     assert ".github-pulls-by:has(.actor-avatar)" not in github
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
@@ -3117,8 +3120,12 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # The events the line joins: the description, each comment and review, and each commit.
     assert page.count("github-pull-event") == 3, "the description, a card, and a commit"
     # Every author there is the shell's identity, whose avatar's box is there for an author
-    # without one, the person glyph in it (mb-nunw); only a Pulls row asks for none.
-    assert page.count("authorLabel(mb, ") == 4, "the header, the description, a card, a reply"
+    # without one, the person glyph in it (mb-nunw); only a Pulls row and a stack menu member
+    # (mb-x0z1) ask for none.
+    assert page.count("authorLabel(mb, ") == 5, (
+        "the header, the description, a card, a reply, a member"
+    )
+    assert page.count("{ placeholder: false }") == 1, "a stack menu member"
     assert "{ slot: true }" not in page and "github-pull-avatar-slot" not in github
     shell = dict(_rules_of(STATIC / "styles.css"))
     avatar = shell[".actor-avatar"]

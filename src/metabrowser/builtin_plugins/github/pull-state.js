@@ -52,11 +52,11 @@ export function displayState(pull) {
 
 /**
  * What the repository's lists of pull requests last said of each row, by source and number:
- * its state, when GitHub last updated it, and its title. The Pulls tab writes it as rows
- * arrive, and a page writes its own record back over it when the record is fresher
- * (`noteRecord`); a page reads it, so a cached record older than the list paints the list's
- * state at once, a page with no record yet titles its cold header as the record will be
- * titled, and a stack menu draws each member's state.
+ * its state, when GitHub last updated it, its title, and its author and the author's avatar's
+ * address. The Pulls tab writes it as rows arrive, and a page writes its own record back over
+ * it when the record is fresher (`noteRecord`); a page reads it, so a cached record older than
+ * the list paints the list's state at once, a page with no record yet titles its cold header as
+ * the record will be titled, and a stack menu draws each member's state and author (mb-x0z1).
  *
  * An answer takes back what the entries claim of the rows it no longer holds and would hold
  * in that state (`listHolds`): a pull request the Open list noted open and then left out, as
@@ -65,7 +65,8 @@ export function displayState(pull) {
  * prefix only scrolled past is forgotten too, which costs its cold title and nothing a reader
  * sees as wrong. A merged entry stays, since a merge is never undone.
  *
- * @type {Map<string, Map<number, {state: PullState, updatedAt: string, title: string | null}>>}
+ * @typedef {{state: PullState, updatedAt: string, title: string | null, author: string | null, avatar: string | null}} ListedRow
+ * @type {Map<string, Map<number, ListedRow>>}
  */
 const listedStates = new Map();
 // A source is a served repository: a page has one, and a few at most across a session.
@@ -111,7 +112,7 @@ function listHolds(list, state) {
  *
  * @param {string} source
  * @param {string} list The filter the answer is for: "open", "closed", or "all".
- * @param {{number: number, state: PullState, updatedAt: string | null, title?: string}[]} rows
+ * @param {{number: number, state: PullState, updatedAt: string | null, title?: string, author?: string, avatar?: string | null}[]} rows
  */
 export function noteListed(source, list, rows) {
   const held = heldFor(source);
@@ -126,6 +127,8 @@ export function noteListed(source, list, rows) {
       state: row.state,
       updatedAt: row.updatedAt,
       title: typeof row.title === "string" && row.title !== "" ? row.title : null,
+      author: typeof row.author === "string" && row.author !== "" ? row.author : null,
+      avatar: typeof row.avatar === "string" ? row.avatar : null,
     });
   }
   for (const [number, entry] of held) {
@@ -158,6 +161,10 @@ export function noteRecord(source, pull) {
     updatedAt: pull.updated_at,
     title:
       typeof pull.title === "string" && pull.title !== "" ? pull.title : (entry?.title ?? null),
+    author:
+      typeof pull.author === "string" && pull.author !== "" ? pull.author : (entry?.author ?? null),
+    avatar:
+      typeof pull.author_avatar_url === "string" ? pull.author_avatar_url : (entry?.avatar ?? null),
   });
 }
 
@@ -179,7 +186,7 @@ export function listedState(source, number) {
  * @param {number} number
  */
 export function listedAnywhere(number) {
-  /** @type {{state: PullState, updatedAt: string, title: string | null} | null} */
+  /** @type {ListedRow | null} */
   let found = null;
   for (const held of listedStates.values()) {
     const row = held.get(number);

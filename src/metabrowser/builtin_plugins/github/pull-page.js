@@ -4315,6 +4315,25 @@ export function stackMemberState(source, target, number, current) {
 }
 
 /**
+ * A stack member's author for the stack menu's line (mb-x0z1): the page's own for the pull
+ * request it shows, and what the repository's list of pull requests last said of any other
+ * (`listedState`), or null where the list has not said, as for a member it has not reached.
+ *
+ * @param {string | null} source
+ * @param {number} target
+ * @param {number} number The page's pull request.
+ * @param {{login: string, avatar: string | null} | null} current The page's author for it.
+ * @returns {{login: string, avatar: string | null} | null}
+ */
+export function stackMemberAuthor(source, target, number, current) {
+  if (target === number) {
+    return current;
+  }
+  const listed = listedState(source, target);
+  return listed?.author ? { login: listed.author, avatar: listed.avatar } : null;
+}
+
+/**
  * The native stack's compact trigger and lazy, keyboard-navigable member menu. Its words
  * are the shared stack design's (docs/design-system.md, "Stacks"): the trigger is the
  * position badge, the menu's heading is the stack's label, and its members come in
@@ -4322,11 +4341,13 @@ export function stackMemberState(source, target, number, current) {
  *
  * Every member is one line in one layout (mb-as06): the pull request's state icon, its title,
  * the SDK's `titleNodes` (docs/design-system.md, "Titles"), cut short with the whole title in
- * its tip, and at the line's end its place in the stack in bold, "14/15", a muted dot, and its
- * number, in a Pulls row's order (mb-pw8t). The state is `deps.state`'s, read again each time the menu
- * opens or the page repaints, and a member whose state is not known yet keeps the icon's
- * slot empty, so every member's place starts at one edge. The current member is marked by
- * the Pulls list's current-row mark and `aria-current`, not by a check before its icon.
+ * its tip, and at the line's end its place in the stack in bold, "14/15", a muted dot, its
+ * number, and another dot and its author, in a Pulls row's order (mb-pw8t, mb-x0z1). The state
+ * and the author are `deps.state`'s and `deps.author`'s, read again each time the menu opens or
+ * the page repaints; a member whose state is not known yet keeps the icon's slot empty, so
+ * every member's place starts at one edge, and one whose author is not known yet has no dot
+ * and no author. The current member is marked by the Pulls list's current-row mark and
+ * `aria-current`, not by a check before its icon.
  *
  * A pull request in more than one stack has a trigger for each, and each then names its
  * stack before its position, "300 2/2", as a Pulls row's place names every stack but its
@@ -4337,10 +4358,11 @@ export function stackMemberState(source, target, number, current) {
  * trigger.
  *
  * With `wholeStack`, the menu's first row, **Whole stack**, opens the stack's own page
- * (`/stack/<n>`, stack-page.js), before the members.
+ * (`/stack/<n>`, stack-page.js), before the members, in a member's row grid: the stack's
+ * Layers glyph in the icon's slot, and its words where every member's title starts (mb-7cn4).
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, menus?: MetabrowserMenus}} deps
+ * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, author?(number: number): {login: string, avatar: string | null} | null, identity?(login: string, avatar: string | null): HTMLElement, menus?: MetabrowserMenus}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -4398,8 +4420,9 @@ export function createStackMenu(initial, number, deps) {
   const links = [];
   /**
    * Each member's line, and what it last drew, so a repaint that changes nothing changes no
-   * node: `text` and `state` are the title and state shown, `state` undefined before any.
-   * @type {Map<number, {link: HTMLElement, icon: HTMLElement, position: HTMLElement, title: HTMLElement, copy: HTMLElement, shown: {text: string | null, state: import("./pull-state.js").PullState | null | undefined}}>}
+   * node: `text`, `state`, and `author` are the title, the state, and the author shown, `state`
+   * and `author` undefined before any.
+   * @type {Map<number, {link: HTMLElement, icon: HTMLElement, position: HTMLElement, title: HTMLElement, copy: HTMLElement, by: HTMLElement, shown: {text: string | null, state: import("./pull-state.js").PullState | null | undefined, author: string | undefined}}>}
    */
   const rows = new Map();
   // The members under the heading that names them and the menu: the host's group
@@ -4416,8 +4439,9 @@ export function createStackMenu(initial, number, deps) {
   let whole = null;
   let populated = false;
 
-  // The Whole stack row's state slot is empty, as an unknown member's is, so its words
-  // start where every member's place does.
+  // The Whole stack row is in a member's row grid (github/styles.css,
+  // `.github-pull-stack-whole`; mb-7cn4): the stack's Layers glyph in the state icon's slot,
+  // as a Pulls stack's row has it, and its words where every member's title starts.
   function wholeRow() {
     if (whole === null && deps.wholeStack) {
       whole = deps.wholeStack(stack.number);
@@ -4425,7 +4449,9 @@ export function createStackMenu(initial, number, deps) {
       whole.setAttribute("role", "menuitem");
       whole.setAttribute("tabindex", "-1");
       whole.replaceChildren(
-        h("span", { class: "github-pull-state-icon", "aria-hidden": "true" }),
+        h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
+          deps.icon === null ? null : document.importNode(deps.icon, true),
+        ]),
         h("span", { class: "github-pull-stack-member-copy" }, [
           h("span", { class: "github-pull-stack-member-title" }, ["Whole stack"]),
         ]),
@@ -4466,6 +4492,24 @@ export function createStackMenu(initial, number, deps) {
         row.link.replaceChildren(row.icon, row.copy);
         row.shown.state = state;
       }
+      const author = deps.identity === undefined ? null : (deps.author?.(target) ?? null);
+      const said = author === null ? "" : `${author.login}\n${author.avatar ?? ""}`;
+      if (row.shown.author !== said) {
+        // After the number, a muted dot and the author, as a Pulls row's run has them
+        // (mb-x0z1); nothing, not even the space before them, where the author is not known.
+        row.by.replaceChildren(
+          ...(author === null || deps.identity === undefined
+            ? []
+            : [
+                " ",
+                h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
+                " ",
+                deps.identity(author.login, author.avatar),
+              ]),
+        );
+        row.by.hidden = author === null;
+        row.shown.author = said;
+      }
     }
   }
 
@@ -4500,14 +4544,16 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
-        // The state icon, then the title, and at the line's end the place, a muted dot, and
-        // the number, "14/15 · #N", in a Pulls row's order, the title, the place, and the
-        // number (mb-1kzu, mb-pw8t): the place, the dot, and the number never give way, and
-        // the title is cut short before them.
+        // The state icon, then the title, and at the line's end the place, a muted dot, the
+        // number, and another dot and the author, "14/15 · #N · jlevy", in a Pulls row's order,
+        // the title, the place, the number, and the author (mb-1kzu, mb-pw8t, mb-x0z1): the
+        // place, the dot, and the number never give way, the author gives way only past its
+        // share of the line, and the title is cut short before them.
         const title = h("span", { class: "github-pull-stack-member-title" });
         const position = h("strong", { class: "github-pull-stack-member-position" });
         const dot = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
         const shown = h("span", { class: "github-pull-stack-member-number" }, [`#${target}`]);
+        const by = h("span", { class: "github-pull-stack-member-by", hidden: "" });
         const copy = h("span", { class: "github-pull-stack-member-copy" }, [
           title,
           " ",
@@ -4516,10 +4562,19 @@ export function createStackMenu(initial, number, deps) {
           dot,
           " ",
           shown,
+          by,
         ]);
         const icon = h("span", { class: "github-pull-state-icon", "aria-hidden": "true" });
         link.append(icon, copy);
-        row = { link, icon, position, title, copy, shown: { text: null, state: undefined } };
+        row = {
+          link,
+          icon,
+          position,
+          title,
+          copy,
+          by,
+          shown: { text: null, state: undefined, author: undefined },
+        };
         rows.set(target, row);
       }
       links.push(row.link);
@@ -4939,6 +4994,9 @@ export function mountPullPage(container, ctx, mb) {
   /** The state the page shows, which its stack menus give its own member: the header's.
    * @type {import("./pull-state.js").PullState | null} */
   let stackPullState = null;
+  /** The author the page shows, which its stack menus give its own member (mb-x0z1).
+   * @type {{login: string, avatar: string | null} | null} */
+  let stackPullAuthor = null;
   /** @type {Map<number, ReturnType<typeof createStackMenu>>} */
   const stackMenus = new Map();
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
@@ -5849,6 +5907,8 @@ export function mountPullPage(container, ctx, mb) {
     // In more than one stack, each chip names its stack, as a Pulls row's place does.
     const named = memberships.length > 1;
     stackPullState = model.pull?.state ?? null;
+    stackPullAuthor =
+      model.pull === null ? null : { login: model.pull.author, avatar: model.pull.avatar };
     const nodes = memberships.map((stack) => {
       let menu = stackMenus.get(stack.number);
       if (menu) {
@@ -5865,6 +5925,12 @@ export function mountPullPage(container, ctx, mb) {
         menus: mb.menus,
         state: (target) =>
           stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
+        author: (target) =>
+          stackMemberAuthor(stackIdentity?.source ?? null, target, number, stackPullAuthor),
+        // A member's author as a Pulls row draws it: no box where it has no avatar, and its
+        // avatar asked for once the menu draws it (docs/design-system.md, "Actor Identity").
+        identity: (login, avatar) =>
+          authorLabel(mb, login, avatar, "github-pull-stack-member-author", { placeholder: false }),
         onOpen() {
           preferredStack = stack.number;
           for (const [other, view] of stackMenus) {

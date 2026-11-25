@@ -1010,7 +1010,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-describedby=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
     "its parts": [
       "span .github-pulls-heading",
-      "span .github-pulls-byline aria-hidden=\"true\"",
+      "span .github-pulls-tail",
       "span .sr-only"
     ],
     "its text leads with its title": true,

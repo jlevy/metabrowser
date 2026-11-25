@@ -1402,16 +1402,16 @@ async function paintStory(panel, selection = false) {
     /** @param {any} parent @param {string} name */
     const child = (parent, name) =>
       parent.childNodes.find((node) => node.classList?.contains(name));
-    // The row's run holds the title, a stack member's place, the number, and the lines changed
-    // with the chevron after them; its last line, the author and the age (mb-pw8t). A row
-    // names no branches; the pull request's page does.
+    // The row's run holds the title, a stack member's place, the number, the author, and the
+    // age; its last line, the lines changed with the chevron after them (mb-rb3n). A row names
+    // no branches; the pull request's page does.
     const heading = child(row(hostile), "github-pulls-heading");
     const numberLabel = child(heading, "github-pulls-number");
-    const byline = child(row(hostile), "github-pulls-byline");
-    const by = child(byline, "github-pulls-by");
-    // The stylesheet lays the run out as one flow (mb-85op, mb-pw8t): the state icon, then the
-    // title, the place, the number, and the toggle, a dot before each part after the title,
-    // every line of it in the text column; then the last line, the author and the age.
+    const by = child(heading, "github-pulls-by");
+    const tail = child(row(hostile), "github-pulls-tail");
+    // The stylesheet lays the run out as one flow (mb-85op, mb-pw8t, mb-rb3n): the state icon,
+    // then the title, the place, the number, and the author with the age, a dot before each part
+    // after the title, every line of it in the text column; then the last line, the toggle.
     // tests/dom/github-pulls-row-lines-chrome.mjs lays these rows out in Chrome.
     const classesOf = (node) =>
       node.childNodes
@@ -1423,7 +1423,7 @@ async function paintStory(panel, selection = false) {
         );
     assert(
       JSON.stringify(classesOf(row(hostile))) ===
-        JSON.stringify(["github-pulls-heading", "github-pulls-byline", "sr-only"]),
+        JSON.stringify(["github-pulls-heading", "github-pulls-tail", "sr-only"]),
       `the row's link is its run, its last line, and its number, author, and age in words: ${classesOf(row(hostile))}`,
     );
     const order = classesOf(heading);
@@ -1436,17 +1436,28 @@ async function paintStory(panel, selection = false) {
           "github-pulls-sep",
           "github-pulls-number",
           "github-pulls-sep",
-          "github-pulls-tail",
+          "github-pulls-by",
         ]),
-      `the run is the state icon, the title, the place, a dot and the number, and a dot and the toggle: ${order}`,
+      `the run is the state icon, the title, the place, a dot and the number, and a dot and the author with the age: ${order}`,
     );
-    // The number holds its text alone, and the toggle is the tail's one part: the lines, then
-    // the chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t).
-    const toggle = child(child(heading, "github-pulls-tail"), "github-pulls-change");
+    // The author and the age are one part, its dot with the age, so a row with no age has
+    // neither (mb-rb3n).
+    const when = child(by, "github-pulls-when");
+    assert(
+      JSON.stringify(classesOf(by)) ===
+        JSON.stringify(["github-pull-identity", "github-pulls-when"]) &&
+        JSON.stringify(classesOf(when)) ===
+          JSON.stringify(["github-pulls-sep", "github-pulls-age"]) &&
+        by.getAttribute("aria-hidden") === "true" &&
+        !when.hidden,
+      `the author is its identity, then the dot and the age: ${classesOf(by)} ${classesOf(when)}`,
+    );
+    // The number holds its text alone, and the toggle is the last line's one part: the lines,
+    // then the chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t).
+    const toggle = child(tail, "github-pulls-change");
     assert(
       classesOf(numberLabel).length === 0 &&
-        JSON.stringify(classesOf(child(heading, "github-pulls-tail"))) ===
-          JSON.stringify(["github-pulls-change"]) &&
+        JSON.stringify(classesOf(tail)) === JSON.stringify(["github-pulls-change"]) &&
         JSON.stringify(classesOf(toggle)) ===
           JSON.stringify([
             "github-pulls-change-line",
@@ -1464,10 +1475,8 @@ async function paintStory(panel, selection = false) {
             "github-pulls-change-line",
             "github-pulls-toggle",
             "github-pulls-change-words",
-          ]) &&
-        JSON.stringify(classesOf(byline)) ===
-          JSON.stringify(["github-pulls-by", "github-pulls-age"]),
-      "one zone, the link: its run ends with the toggle, the lines, the chevron after them, and their words, which describe the row, and its last line is the author and the age",
+          ]),
+      "one zone, the link: its run ends with the author and the age, and its last line is the toggle, the lines, the chevron after them, and their words, which describe the row",
     );
     assert(
       heading.childNodes[2].hidden && heading.childNodes[2].textContent === "",
@@ -1476,17 +1485,17 @@ async function paintStory(panel, selection = false) {
     assert(
       numberLabel.firstChild.textContent === `#${first.body.rows[0].number}` &&
         by.textContent.includes(first.body.rows[0].author),
-      "the run shows the number, and the last line the author, and neither names a branch",
+      "the run shows the number and the author, and names no branch",
     );
     assert(
-      !heading.textContent.includes("→") && !byline.textContent.includes("→"),
+      !heading.textContent.includes("→") && !tail.textContent.includes("→"),
       "the row names no merge",
     );
     assert(
       child(row(hostile), "sr-only").textContent.startsWith(
         `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
       ),
-      "the link says the number, the author, and the age, which its run and last line show hidden",
+      "the link says the number, the author, and the age, which its run shows hidden",
     );
     assert(
       heading.childNodes[3].classList.contains("github-pulls-sep") &&
