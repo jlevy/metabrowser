@@ -62,6 +62,8 @@ And of every workflow file:
   ``"$NAME"``, which the runner does not paste into the script;
 - every setup-uv step comes just after ``INSTALL_UV`` with its own version and
   checksum, which puts that uv where setup-uv finds it without fetching anything.
+- every setup-node step comes just after ``INSTALL_NODE`` with its own version, which
+  unpacks that Node where setup-node finds it without downloading or copying it.
 
 ``devtools/check_supply_chain.py`` holds the ``plan`` job's ``ADMITTED_GITS`` to both
 Git floors and ``publish.yml`` to trusted publishing, and ``tests/test_ci_plan.py``
@@ -207,6 +209,12 @@ MAKE_WORD: Final = re.compile(r"\bmake\b")
 # fixed 5 s limit, and one slow answer failed a job (devtools/install_uv.sh).
 SETUP_UV: Final = "astral-sh/setup-uv@"
 INSTALL_UV: Final = "bash devtools/install_uv.sh {version} {checksum}"
+# The step every setup-node step follows, with setup-node's own version: it unpacks that
+# Node into the tool cache, because setup-node otherwise downloads it with no limit on a
+# slow transfer and copies it in file by file, and each has stalled for over a minute
+# (devtools/install_node.sh).
+SETUP_NODE: Final = "actions/setup-node@"
+INSTALL_NODE: Final = "bash devtools/install_node.sh {version}"
 
 Json = dict[str, object]
 
@@ -708,14 +716,19 @@ def check_workflow(name: str, workflow: Json) -> list[str]:
         job_steps = steps(job)
         for index, step in enumerate(job_steps):
             inputs = step.get("with")
+            given = _mapping(inputs)
+            before = job_steps[index - 1].get("run") if index else None
+            ran = before.strip() if isinstance(before, str) else None
             if str(step.get("uses", "")).startswith(SETUP_UV):
-                given = _mapping(inputs)
                 wanted = INSTALL_UV.format(
                     version=given.get("version"), checksum=given.get("checksum")
                 )
-                before = job_steps[index - 1].get("run") if index else None
-                if not isinstance(before, str) or before.strip() != wanted:
+                if ran != wanted:
                     errors.append(f"{where} must run `{wanted}` just before setup-uv")
+            if str(step.get("uses", "")).startswith(SETUP_NODE):
+                wanted = INSTALL_NODE.format(version=given.get("node-version"))
+                if ran != wanted:
+                    errors.append(f"{where} must run `{wanted}` just before setup-node")
             checkout = str(step.get("uses", "")).startswith("actions/checkout@")
             if checkout and _mapping(inputs).get("persist-credentials") is not False:
                 errors.append(f"{where} must check out with persist-credentials: false")

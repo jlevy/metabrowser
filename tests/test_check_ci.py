@@ -626,6 +626,42 @@ def test_every_setup_uv_follows_the_install_of_its_own_uv(
     )
 
 
+INSTALL_NODE_STEP = (
+    "      - name: Install Node\n        run: bash devtools/install_node.sh 24.18.0\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "version"),
+    [
+        pytest.param(INSTALL_NODE_STEP + "\n", "", "24.18.0", id="dropped"),
+        pytest.param(
+            INSTALL_NODE_STEP + "\n",
+            INSTALL_NODE_STEP + "\n      - name: Between\n        run: true\n\n",
+            "24.18.0",
+            id="not-just-before",
+        ),
+        # setup-node moved on to a release the step before it does not install.
+        pytest.param(
+            '          node-version: "24.18.0"\n',
+            '          node-version: "24.19.0"\n',
+            "24.19.0",
+            id="another-version",
+        ),
+    ],
+)
+def test_every_setup_node_follows_the_install_of_its_own_node(
+    tmp_path: Path, old: str, new: str, version: str
+) -> None:
+    """Without it setup-node downloads and copies Node itself, and either can stall."""
+
+    wanted = f"bash devtools/install_node.sh {version}"
+
+    assert _errors(tmp_path, old, new) == (
+        f"ci.yml job lint must run `{wanted}` just before setup-node"
+    )
+
+
 @pytest.mark.parametrize(
     "expression", ["github.event.pull_request.title", "github.head_ref", "github.event.issue.body"]
 )

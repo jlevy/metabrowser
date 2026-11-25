@@ -304,6 +304,17 @@ more, reviewed on November 17, 2026:
   downloads uv nor fetches its version manifest.
   The manifest fetch has a fixed 5 s limit and no retry, and one slow answer failed a
   job; the script retries instead.
+- **Node.** Before each setup-node step, `devtools/install_node.sh` fetches the archive
+  setup-node would download from an `actions/node-versions` release, over HTTPS, refuses
+  it unless its SHA-256 is the one the script pins for the runner’s platform, and
+  unpacks it into the runner’s tool cache, so setup-node neither downloads Node nor
+  copies it there. setup-node checks no checksum, so the pins are new.
+  Reviewed on November 25, 2026: for Node 24.18.0 the script pins release
+  `24.18.0-28070977815`, the one setup-node v6.4.0’s manifest names, published June 24,
+  2026, and each archive’s SHA-256 is the digest GitHub records for that release asset.
+  The download had no limit on a slow transfer and the copy went file by file, and each
+  stalled for over a minute (mb-z4i7); the script ends a stalled transfer and retries,
+  and unpacks in place.
 
 `devtools/check_ci.py`, in `make lint-check`, fails:
 
@@ -320,7 +331,9 @@ more, reviewed on November 17, 2026:
 - an expression in a `run:` line that reads `env`, which the shell reads as `"$NAME"`
   instead;
 - a setup-uv step that does not come just after `devtools/install_uv.sh` with its own
-  version and checksum.
+  version and checksum;
+- a setup-node step that does not come just after `devtools/install_node.sh` with its
+  own version.
 
 ## Apple Developer ID Intermediate (November 17, 2026)
 
