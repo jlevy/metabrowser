@@ -1,0 +1,17 @@
+created_at: 2026-11-25T00:12:28.587Z
+ops:
+  - bead_id: is-01m7tv7gz4yk6tygqfexgtw0s2
+    block: |-
+      ⟦tbd⟧
+      `mb-lra6` · epic · open · P2
+      Spec: [plan-2026-11-19-tabular-data-and-live-sqlite.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md)
+      Children: 16 (4 ready)
+      Bead: `tbd show mb-lra6`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: da4dab2f-0682-4c31-8c9a-29da1bda661e
+    kind: splice_description
+provider: linear
+run_id: 01m880qx1a3ykbdkfc82gxtw82
+type: in
