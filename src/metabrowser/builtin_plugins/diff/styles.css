@@ -681,12 +681,6 @@
   white-space: nowrap;
 }
 
-.metabrowser-diff-host .diff-fold-chevron {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-}
-
 .metabrowser-diff-host .diff-fold-group {
   interpolate-size: allow-keywords;
   height: auto;

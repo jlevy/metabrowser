@@ -7,8 +7,8 @@
 // which fills the group when it opens and empties it when it closes.
 
 /**
- * The shell's icon of that name, or nothing outside the shell. The diff view's other
- * glyphs take theirs from here too.
+ * The shell's icon of that name, or nothing outside the shell. The diff view's glyphs
+ * take theirs from here.
  *
  * @param {string} name
  * @returns {string}
@@ -54,19 +54,14 @@ export function foldExpander({ id, expanded, label, onToggle, groupClass = "" })
   control.className = "fold-expander diff-fold-control disclosure-toggle";
   control.type = "button";
   control.setAttribute("aria-controls", id);
-  const chevron = document.createElement("span");
-  chevron.className = "diff-fold-chevron";
-  const icon = shellIcon("toggle");
-  if (icon !== "") {
-    chevron.innerHTML = icon;
-  }
+  // Its glyph, the expand/contract pair, is the shell's `.fold-expander`'s, drawn from
+  // `aria-expanded`, so the bar holds only its words.
   const text = document.createElement("span");
   text.className = "diff-fold-label";
-  control.append(chevron, text);
+  control.append(text);
 
   function draw() {
     control.setAttribute("aria-expanded", String(open));
-    control.classList.toggle("expanded", open);
     group.classList.toggle("diff-fold-collapsed", !open);
     text.textContent = label(open);
   }

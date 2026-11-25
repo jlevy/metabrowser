@@ -5744,19 +5744,11 @@ export function mountPullPage(container, ctx, mb) {
     ]);
 
   /** Only shell-owned icon constants enter this parser, never pull-request content.
-   * @param {"toggle" | "layers"} name
+   * @param {"layers"} name
    */
   const registryIcon = (name) =>
     new DOMParser().parseFromString(mb.icons[name] || "", "text/html").body.firstElementChild;
-  const chevronSvg = registryIcon("toggle");
   const stackSvg = registryIcon("layers");
-  function chevron() {
-    return chevronSvg === null
-      ? null
-      : h("span", { class: "github-pull-fold-chevron", "aria-hidden": "true" }, [
-          document.importNode(chevronSvg, true),
-        ]);
-  }
 
   /** One link per tab, kept across paints so a poll does not take focus from one. */
   const tabLinks = PULL_TABS.map(({ id, label }) => {
@@ -6865,9 +6857,9 @@ export function mountPullPage(container, ctx, mb) {
           // Native, so the browser opens and closes it and a repaint just closes it.
           const lines = `line${earlierLines === 1 ? "" : "s"}`;
           const plain = hunkLines([{ kind: "context", text: earlier }]);
+          // The fold's glyph is `.fold-expander`'s, drawn from `details[open]`.
           const disclosure = h("details", { class: "github-pull-hunk-earlier" }, [
             h("summary", { class: "fold-expander disclosure-toggle" }, [
-              chevron(),
               h("span", { class: "github-pull-fold-closed" }, [`${earlierLines} earlier ${lines}`]),
               h("span", { class: "github-pull-fold-open" }, [`Hide ${earlierLines} ${lines}`]),
             ]),
