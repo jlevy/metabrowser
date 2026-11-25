@@ -444,6 +444,7 @@ class GitError(ContentReadError):
 
     code = "git_failed"
     http_status = 500
+    reader_message = "Could not read this from Git."
 
 
 class GitUnavailableError(GitError):
@@ -452,6 +453,8 @@ class GitUnavailableError(GitError):
     Not an error condition for the user: the Git tab is simply hidden,
     exactly as it is outside a repository.
     """
+
+    reader_message = "Git is not available on this machine."
 
 
 class GitCommandError(GitError):
@@ -486,6 +489,7 @@ class GitTimeoutError(GitError):
 
     code = "git_timeout"
     http_status = 504
+    reader_message = "Git took too long to answer. Try again."
 
     def __init__(self, message: str = "git command timed out") -> None:
         super().__init__(message)
@@ -493,6 +497,8 @@ class GitTimeoutError(GitError):
 
 class GitOutputTooLargeError(GitError):
     """``git`` produced more than :data:`GIT_SUBPROCESS_MAX_BYTES` on stdout."""
+
+    reader_message = "This is too large to read from Git."
 
 
 class GitOutputCutError(GitOutputTooLargeError):
@@ -513,6 +519,8 @@ class UnsupportedGitVersionError(GitError):
     usable, and ``None`` when no ``git`` is on ``PATH``: that has no version to blame,
     so it says what is missing and which release to install.
     """
+
+    reader_message = "Git on this machine is too old for this."
 
     def __init__(self, detected: str | None, required: str) -> None:
         super().__init__(
@@ -1627,11 +1635,17 @@ async def spawn_git_process(
         # spawn, then kill the whole group before the cancellation continues.
         await kill_when_spawned(spawning)
         raise
+    except ProcessGroupsStoppedError as exc:
+        # Not a failed spawn: none was tried, and the words are this module's own.
+        raise GitUnavailableError(f"could not run git: {exc}") from exc
     except OSError as exc:
         # Spawn itself failed — a missing cwd, a permissions problem, or
         # process-table exhaustion. Nothing downstream can distinguish
-        # these usefully, so they collapse into one typed failure.
-        raise GitUnavailableError(f"could not run git: {exc}") from exc
+        # these usefully, so they collapse into one typed failure. The
+        # operating system's words can name the working directory, so they
+        # reach the log and the cause, never the error's text.
+        log.warning("could not run git: %s", exc)
+        raise GitUnavailableError("could not run git") from exc
 
 
 async def kill_when_spawned(spawn: asyncio.Future[asyncio.subprocess.Process]) -> None:

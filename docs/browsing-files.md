@@ -197,6 +197,12 @@ Links resolve the way GitHub resolves them:
 - **Published sites:** when an MkDocs, Docusaurus, or Jekyll configuration sits at the
   served root, a link to a published page such as `/guide/` opens the source file behind
   it, if no file has that exact path.
+- **PDFs:** a link to a `.pdf` opens the PDF’s own page in Metabrowser.
+  An embedded one, such as `![](report.pdf)`, `<img src="report.pdf">`, or
+  `![[report.pdf]]`, is a card with the PDF’s first page, its name, and its page count,
+  or why there is no image, and a View link to that page; a document never opens the
+  PDF’s viewer itself.
+  A PDF named without `.pdf` embeds as any other file does.
 
 Obsidian wiki links work too:
 
@@ -210,7 +216,8 @@ Obsidian wiki links work too:
   block in the document.
   Embeds nest, within limits on depth, count, size, and time; past them, or in a cycle,
   the embed says why it stopped.
-- `![[image.png]]` and other media embed the file.
+- `![[image.png]]` and other media embed the file, and `![[report.pdf]]` shows a PDF’s
+  first page, as an embedded PDF does above.
 
 HTML a README writes for its layout on GitHub lays it out here as github.com does:
 `align` on a paragraph, `div`, heading, image, or table cell or row, and `width` and
@@ -256,7 +263,10 @@ folder’s Markdown is not changed.
   **Table** (`A`) shows a file whose top level is a list of mappings as a table, one row
   a mapping and one column a key, with the CSV table’s sort, filters, search, and
   records; a nested value is its JSON in the table and a collapsible tree in the record.
-  Any other document says there that it is not a list of records.
+  A YAML file of several documents that are mappings is a table of them, one row each.
+  Only such a file has the tab: Metabrowser decides from the file’s start, so a list
+  that begins with a mapping but holds something else further on has the tab, which then
+  says why it shows no table.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
   text, tool calls, and tool results, and each row expands to its raw JSON. For the
   session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in

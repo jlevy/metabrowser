@@ -187,7 +187,8 @@ $ metab checkout --ref main --api /api/events/watch --data table.json
 api: /api/events/watch
 status: 409
 {
-  "error": "source does not support watcher",
+  "error": "This is not available here.",
+  "detail": "source does not support watcher",
   "code": "unsupported_for_subject",
   "capability": "watcher"
 }

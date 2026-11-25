@@ -218,31 +218,32 @@ export function describeViewFile(side, href, page) {
 /**
  * Why a switch did not happen, in the ref selector's words for the same answers.
  *
- * @param {string} commit
- * @param {number} status
  * @param {unknown} body
  */
-export function switchRefusal(commit, status, body) {
+export function switchRefusal(body) {
   const record = /** @type {{code?: unknown} | null} */ (
     body !== null && typeof body === "object" ? body : null
   );
   const code = record !== null && typeof record.code === "string" ? record.code : "";
-  const at = short(commit);
+  // The sentence names no commit and no code: the control says which commit, and the
+  // answer's code is an agent's (docs/design-system-messages.md).
   if (code === "selection_pending") {
-    return `The mirror is fetching ${at}; try again when the fetch ends.`;
+    return "This commit is still being fetched. Try again shortly.";
   }
   if (code === "selection_not_found") {
-    return `Commit ${at} is not in the mirror, and its origin does not have it.`;
+    return "This commit is not on the origin.";
   }
   if (code === "selection_fetch_failed") {
-    return `Commit ${at} is not in the mirror, and fetching it failed.`;
+    return "This commit could not be fetched. Try again.";
   }
   if (code === "ref_moved") {
     // Only a pull request's switch names the ref it is served under (`under`), and the
     // server says it moved when the page was drawn for an earlier head than its ref's.
-    return "This pull request's head has moved; reload to see the newer changes.";
+    return "This pull request's head has moved; reload the page to see the newer changes.";
   }
-  return `Could not switch to ${at} (${code || `HTTP ${status}`}).`;
+  // The answer's status and code are in its JSON, which the network panel and
+  // `metab --api` show.
+  return "Could not open this commit. Try again.";
 }
 
 /**
@@ -306,7 +307,7 @@ export function createPinSwitch(host) {
       holding = false;
       return {
         kind: "refused",
-        message: switchRefusal(selection.oid, response.status, response.body),
+        message: switchRefusal(response.body),
       };
     }
     const answer = /** @type {{view_href?: unknown} | null} */ (response.body);

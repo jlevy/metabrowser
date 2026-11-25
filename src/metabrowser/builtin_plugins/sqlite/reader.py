@@ -1346,8 +1346,9 @@ def _read[T](
         library = sqlite_access.library_report()
         raise sqlite_access.SqliteAccessError(
             "unsupported",
-            f"Browsing tables and schema requires SQLite {library['minimum']} or later "
-            f"for bounded value reads. This reader uses SQLite {library['version']}.",
+            f"Browsing tables and schema needs SQLite {library['minimum']} or later.",
+            detail=f"Bounded value reads need SQLite {library['minimum']}; "
+            f"this reader uses SQLite {library['version']}.",
         )
     virtual_ok = bool(args.get("virtual_ok"))
 
@@ -1374,8 +1375,8 @@ def _read[T](
     if access.plan.state == "without_log":
         raise sqlite_access.SqliteAccessError(
             "without_log",
-            f"Cannot browse tables or schema {access.plan.reason}. "
-            "Open Info for the database's access details.",
+            "This database's tables cannot be read without its log. Open Info for details.",
+            detail=f"Cannot browse tables or schema {access.plan.reason}.",
         )
     if expected_generation is not None:
         _require_generation(path, str(expected_generation))

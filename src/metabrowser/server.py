@@ -92,6 +92,7 @@ from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.checkout_store import checkout_store, lifespan_checkout_store
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
+from metabrowser.content_errors import ContentReadError
 from metabrowser.content_sniff import (
     MEDIA_SIGNATURE_BYTES,
     SNIFF_PREFIX_BYTES,
@@ -130,6 +131,7 @@ from metabrowser.file_kinds import (
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.file_type_legend import build_file_type_legend
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.frontmatter_yaml import frontmatter_error_fields, shown_frontmatter_error
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
@@ -190,7 +192,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     assemble_tree_pages,
 )
 from metabrowser.inventory_rollup import RollupEncoding, RollupIgnored, RollupOptions, RollupRank
-from metabrowser.jsonl_view import _parse_jsonl_file
+from metabrowser.jsonl_view import JsonlParseLimitError, _parse_jsonl_file
 from metabrowser.keymap import check_view_keys, live_view_keys
 from metabrowser.mirror_refresh import lifespan_refresh, mirror_session
 
@@ -992,12 +994,14 @@ class _HostValidationMiddleware:
         # An absent Host header (HTTP/1.0 clients) is allowed: rebinding
         # requires a browser, and browsers always send Host.
         if hostname and hostname not in allowed:
+            # One statement and one remedy (docs/design-system-messages.md). Why the
+            # guard exists, DNS rebinding, is this class's docstring. The remedy is the
+            # setting, not `--host NAME`, which also admits a name: binding to it fails
+            # for a name a tunnel or proxy reaches this machine by.
             response = PlainTextResponse(
-                f"Host {hostname!r} is not a permitted name for this local server. "
-                "This guard blocks DNS-rebinding attacks. If this name is a "
-                "trusted way to reach this machine, restart with "
-                f"--host {hostname} or add it to the METABROWSER_ALLOWED_HOSTS "
-                "environment variable (comma-separated).\n",
+                f"{hostname!r} is not a permitted name for this local server. "
+                "If it is a trusted way to reach this machine, restart with it in "
+                "METABROWSER_ALLOWED_HOSTS.\n",
                 status_code=421,
             )
             await response(scope, receive, send)
@@ -2516,7 +2520,7 @@ async def index(
     <div class="tree-pane" id="tree-pane">
       <header class="app-header" data-kbd-badge-anchor>
         <!-- data-served-root is the one place the absolute root is written:
-             the file header reads it back to render its dimmed prefix, so
+             the file header reads it back to render the root's address, so
              the two headers cannot disagree about what the root is. The
              details disclosure uses it for the root's address.
 
@@ -2784,7 +2788,7 @@ async def commit_shell(request: Request) -> Response:
 
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
-        return PlainTextResponse("Invalid commit route.", status_code=400)
+        return PlainTextResponse("This address is not a commit.", status_code=400)
     return await index(request, commit_page=True)
 
 
@@ -2799,7 +2803,7 @@ async def pull_shell(request: Request) -> Response:
 
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_pull_route(raw_path) is None:
-        return PlainTextResponse("Invalid pull-request route.", status_code=400)
+        return PlainTextResponse("This address is not a pull request.", status_code=400)
     return await index(request, pull_page=True)
 
 
@@ -3361,7 +3365,10 @@ async def api_rollup(request: Request) -> Response:
             _query_choice(request, "encoding", "json", frozenset({"json", "compact"})),
         )
     except ValueError as error:
-        return JSONResponse({"error": str(error)}, status_code=400)
+        return JSONResponse(
+            {"error": "This folder summary could not be made.", "detail": str(error)},
+            status_code=400,
+        )
     nodes = _query_bounded_int(
         request, "nodes", ROLLUP_DEFAULT_NODES, minimum=1, maximum=ROLLUP_MAX_NODES
     )
@@ -3719,6 +3726,18 @@ def _compression_envelope_fields(artifact: ArtifactPath, logical_size: int) -> d
     return {"size_uncompressed": logical_size, **identity}
 
 
+def _jsonl_failure_message(exc: OSError | TypeError | ValueError) -> str:
+    """The reader's sentence for a JSONL log that could not be parsed; the failure's own
+    account is the answer's ``detail``."""
+    if isinstance(exc, JsonlParseLimitError):
+        return "This log is too large to show here."
+    if isinstance(exc, ContentReadError):
+        return exc.reader_message
+    if isinstance(exc, OSError):
+        return "This file cannot be read."
+    return "This log could not be read."
+
+
 def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONResponse:
     """Return a renderable file-error envelope instead of bubbling a 500."""
     target = resolve_session_identity(subpath)
@@ -3736,7 +3755,8 @@ def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONRespo
             "views": [],
             "path": subpath,
             "size": size,
-            "error": (f"Internal error while rendering this file. {type(exc).__name__}: {exc}"),
+            "error": "An unexpected error stopped this preview.",
+            "detail": f"Internal error while rendering this file. {type(exc).__name__}: {exc}",
             "warning": (
                 "Metabrowser returned a degraded error view instead of a server 500. "
                 "Check the server log for the traceback."
@@ -3972,7 +3992,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "path": subpath,
                     "size": disk_size,
                     **_mtime_field(file_mtime),
-                    "error": str(exc),
+                    "error": exc.reader_message,
+                    "detail": str(exc),
                     **_compression_identity_fields(artifact),
                 }
             )
@@ -4017,7 +4038,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             {
                 "type": "error",
                 "path": subpath,
-                "error": "Requested preview window exceeds the decompression budget",
+                "error": "This part of the file is past what can be shown here.",
+                "detail": "Requested preview window exceeds the decompression budget",
                 "max_offset": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             },
             status_code=416,
@@ -4075,7 +4097,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "kind": "error",
                     "views": [],
                     "path": subpath,
-                    "error": str(exc),
+                    "error": _jsonl_failure_message(exc),
+                    "detail": str(exc),
                 }
             )
 
@@ -4139,7 +4162,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "path": subpath,
                     "size": disk_size,
                     **_mtime_field(file_mtime),
-                    "error": str(exc),
+                    "error": exc.reader_message,
+                    "detail": str(exc),
                     **compression_fields,
                 }
             )
@@ -4226,8 +4250,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         }
         if frontmatter is not None:
             result["frontmatter"] = frontmatter
-        if frontmatter_error is not None:
-            result["frontmatter_error"] = frontmatter_error
+        result |= frontmatter_error_fields(frontmatter_error)
         # Rendered Markdown is fetched separately through the KPress route.
         # Keeping this payload source-only avoids duplicating the rendered
         # document in the normal file response.
@@ -4286,6 +4309,30 @@ _KPRESS_EXPORT_REQUEST_MAX_BYTES = 64 * 1024
 MAX_REQUEST_BODY_BYTES: Final = _KPRESS_RENDER_REQUEST_MAX_BYTES
 
 
+def _kpress_render_refusal(detail: str) -> JSONResponse:
+    """A render request the route cannot read: the reader's sentence, and *detail* for
+    the request's author."""
+    return JSONResponse(
+        {
+            "type": "kpress_render_error",
+            "error": kpress_adapter.RENDER_FAILED_MESSAGE,
+            "detail": detail,
+        },
+        status_code=400,
+    )
+
+
+def _unreadable_file(exc: OSError) -> JSONResponse:
+    """A file that cannot be read; the operating system's words are the detail."""
+    return JSONResponse({"error": "This file cannot be read.", "detail": str(exc)}, status_code=404)
+
+
+def _frontmatter_detail(reason: str | None) -> dict[str, str]:
+    """A render's ``frontmatter_error_detail``: why front matter KPress was told could not
+    be read was refused, beside the reader's sentence its ``frontmatter_error`` holds."""
+    return {} if reason is None else {"frontmatter_error_detail": reason}
+
+
 @log_async_calls(if_slower_than=0.1)
 async def api_kpress_render(request: Request) -> Response:
     """Render a safe served-root-relative file through the KPress adapter."""
@@ -4299,21 +4346,16 @@ async def api_kpress_render(request: Request) -> Response:
             return JSONResponse(
                 {
                     "type": "kpress_render_error",
-                    "error": "Render request exceeds safety limits",
+                    "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                    "detail": "Render request exceeds safety limits",
                     "max_size": _KPRESS_RENDER_REQUEST_MAX_BYTES,
                 },
                 status_code=413,
             )
         except (_json.JSONDecodeError, UnicodeDecodeError) as exc:
-            return JSONResponse(
-                {"type": "kpress_render_error", "error": "Invalid JSON body", "detail": str(exc)},
-                status_code=400,
-            )
+            return _kpress_render_refusal(f"Invalid JSON body: {exc}")
         if not isinstance(body, dict):
-            return JSONResponse(
-                {"type": "kpress_render_error", "error": "Request body must be a JSON object"},
-                status_code=400,
-            )
+            return _kpress_render_refusal("Request body must be a JSON object")
         subpath = body.get("path", "")
         view = body.get("view", "document")
         profile_value = body.get("profile")
@@ -4326,27 +4368,18 @@ async def api_kpress_render(request: Request) -> Response:
             or not isinstance(source_override, str)
             or (profile_value is not None and not isinstance(profile_value, str))
         ):
-            return JSONResponse(
-                {"type": "kpress_render_error", "error": "Invalid render body fields"},
-                status_code=400,
-            )
+            return _kpress_render_refusal("Invalid render body fields")
         profile = profile_value or None
         try:
             source_size = len(source_override.encode())
         except UnicodeEncodeError as exc:
-            return JSONResponse(
-                {
-                    "type": "kpress_render_error",
-                    "error": "Invalid transformed source encoding",
-                    "detail": str(exc),
-                },
-                status_code=400,
-            )
+            return _kpress_render_refusal(f"Invalid transformed source encoding: {exc}")
         if source_size > _TEXT_PREVIEW_MAX_CHUNK_BYTES:
             return JSONResponse(
                 {
                     "type": "kpress_render_error",
-                    "error": "Transformed source exceeds safety limits",
+                    "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                    "detail": "Transformed source exceeds safety limits",
                     "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
                 },
                 status_code=413,
@@ -4366,7 +4399,7 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Invalid toc",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": f"Invalid toc: {include_toc!r}; expected 'auto', 'on', or 'off'",
                 "diagnostics": [],
             },
@@ -4398,7 +4431,7 @@ async def api_kpress_render(request: Request) -> Response:
     try:
         disk_size = artifact.disk_size
     except OSError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=404)
+        return _unreadable_file(exc)
 
     try:
         if artifact.is_compressed and source_override is None:
@@ -4414,7 +4447,8 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "File is too large for full document rendering",
+                "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                "detail": "File is too large for full document rendering",
                 "path": subpath,
                 "size": disk_size,
                 "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
@@ -4425,8 +4459,8 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Compressed source exceeds safety limits",
-                "detail": str(exc),
+                "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                "detail": f"Compressed source exceeds safety limits: {exc}",
                 "path": subpath,
                 "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             },
@@ -4434,23 +4468,24 @@ async def api_kpress_render(request: Request) -> Response:
         )
     except ArtifactCompressionError as exc:
         if artifact.is_gzip:
-            return JSONResponse({"error": str(exc)}, status_code=404)
+            return JSONResponse({"error": exc.reader_message, "detail": str(exc)}, status_code=404)
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Unable to read compressed source",
-                "detail": str(exc),
+                "error": exc.reader_message,
+                "detail": f"Unable to read compressed source: {exc}",
                 "path": subpath,
             },
             status_code=400,
         )
     except OSError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=404)
+        return _unreadable_file(exc)
     if ext not in BROWSER_TEXT_EXTS and not await asyncio.to_thread(_prefers_text_body, target):
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "KPress render supports text-like files only",
+                "error": kpress_adapter.RENDER_TEXT_ONLY_MESSAGE,
+                "detail": "KPress render supports text-like files only",
                 "path": subpath,
                 "ext": ext,
                 "size": disk_size,
@@ -4461,7 +4496,8 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "File is too large for full document rendering",
+                "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                "detail": "File is too large for full document rendering",
                 "path": subpath,
                 "size": disk_size,
                 "logical_size": logical_size,
@@ -4475,7 +4511,7 @@ async def api_kpress_render(request: Request) -> Response:
             with server_timing.phase("read"):
                 content = await asyncio.to_thread(target.read_text, errors="replace")
     except OSError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=404)
+        return _unreadable_file(exc)
 
     ctx = FileContext(target, ext)
 
@@ -4499,7 +4535,7 @@ async def api_kpress_render(request: Request) -> Response:
                     mtime_hash=mtime_hash,
                     size=logical_size,
                     frontmatter=frontmatter,
-                    frontmatter_error=frontmatter_error,
+                    frontmatter_error=shown_frontmatter_error(frontmatter_error),
                     profile=profile,
                     include_toc=include_toc,
                 )
@@ -4522,7 +4558,7 @@ async def api_kpress_render(request: Request) -> Response:
                             mtime_hash=mtime_hash,
                             size=logical_size,
                             frontmatter=frontmatter,
-                            frontmatter_error=frontmatter_error,
+                            frontmatter_error=shown_frontmatter_error(frontmatter_error),
                             profile=profile,
                             include_toc=include_toc,
                         )
@@ -4541,7 +4577,7 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Invalid KPress render request",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": str(exc),
                 "diagnostics": [str(exc)],
             },
@@ -4551,7 +4587,7 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "KPress render failed",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": str(exc),
                 "diagnostics": [str(exc)],
             },
@@ -4566,7 +4602,12 @@ async def api_kpress_render(request: Request) -> Response:
             _raw_versions, str(rendered.get("html") or ""), subpath
         )
     return JSONResponse(
-        {**rendered, "raw_versions": raw_versions}, headers={"cache-control": "no-cache"}
+        {
+            **rendered,
+            **_frontmatter_detail(frontmatter_error),
+            "raw_versions": raw_versions,
+        },
+        headers={"cache-control": "no-cache"},
     )
 
 
@@ -5095,10 +5136,11 @@ async def raw_file(request: Request) -> Response:
     # can fail only after a 200 response and a partial body reach the client.
     try:
         await asyncio.to_thread(lambda: artifact.logical_size)
-    except ArtifactDecompressionLimitError as exc:
-        return PlainTextResponse(str(exc), status_code=413)
     except ArtifactCompressionError as exc:
-        return PlainTextResponse(str(exc), status_code=400)
+        # A plain-text answer has no field for the detail, so the log keeps it.
+        LOG.info("raw: a compressed file is not served: %s", exc)
+        status = 413 if isinstance(exc, ArtifactDecompressionLimitError) else 400
+        return PlainTextResponse(exc.reader_message, status_code=status)
 
     # Identity fallback: client refuses gzip (rare, e.g. ``curl`` without
     # ``--compressed``). Stream-decompress so the client gets plain
@@ -5131,6 +5173,7 @@ async def raw_file(request: Request) -> Response:
 # server run) is deliberately deferred.
 
 from metabrowser.plugin_loader.classify import (
+    CONTENT_PREDICATE_MAX_BYTES,
     CompiledKindRule,
     build_classifier,
     classify_magic,
@@ -5144,10 +5187,12 @@ from metabrowser.plugin_loader.manifest import (
     view_entry,
 )
 from metabrowser.plugin_loader.static_assets import (
+    FileOffer,
     FolderOffer,
     build_plugin_routes,
     plugin_asset_prefix,
     plugin_asset_trees,
+    resolve_file_offers,
     resolve_folder_offers,
 )
 from metabrowser.tree import (
@@ -5201,6 +5246,10 @@ for _idx, _plugin in enumerate(_LOADED_PLUGINS):
 
 # Folder views a plugin offers only where its predicate accepts the folder, by view id.
 _FOLDER_OFFERS: dict[str, FolderOffer | None] = resolve_folder_offers(_LOADED_PLUGINS)
+# File views a plugin offers only where its predicate accepts the file's leading bytes,
+# by kind and view id, and the kinds that have one.
+_FILE_OFFERS: dict[tuple[str, str], FileOffer | None] = resolve_file_offers(_LOADED_PLUGINS)
+_FILE_OFFER_KINDS: frozenset[str] = frozenset(kind for kind, _view in _FILE_OFFERS)
 
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
 _PLUGIN_CLASSIFY_BINARY = build_classifier(_PLUGIN_BINARY_KIND_RULES)
@@ -5432,7 +5481,11 @@ install_table_sources(
 
 
 def _views_for_kind(
-    kind: str, *, target: Path | None = None, active_content: bool | None = None
+    kind: str,
+    *,
+    target: Path | None = None,
+    prefix: tuple[bytes, str] | None = None,
+    active_content: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
@@ -5453,11 +5506,24 @@ def _views_for_kind(
     no folder in hand no offered view is kept. The predicates touch the disk, so a
     caller on the event loop runs this in a thread when :data:`_FOLDER_OFFERS` is
     not empty.
+
+    For a file kind, :func:`_offered_file_views` keeps a plugin's offered view only
+    where its predicate accepts the file's leading bytes: *prefix*, the bytes and the
+    logical extension, when the caller holds them, as a pinned blob's does, or else
+    read from *target*. Only a file served as text passes either, `/api/file`'s text
+    answer and a pinned text blob's; an image, a binary, a JSONL log, or a container's
+    entry passes neither, so its kind's offered views are never kept, and the first such
+    answer logs a warning for the plugin's author. Reading *target* touches the disk, so
+    a caller on the event loop that passes it runs this in a thread.
     """
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
     if kind == "folder" and _FOLDER_OFFERS:
         out = _offered_folder_views(out, target)
+    elif kind in _FILE_OFFER_KINDS:
+        if prefix is None and target is None:
+            _warn_offers_never_read(kind)
+        out = _offered_file_views(kind, out, prefix if prefix is not None else _file_prefix(target))
     if kind == "html":
         out = _html_kind_views(out, target, active_content=active_content)
     elif out and not any(v.get("default") for v in out):
@@ -5496,6 +5562,64 @@ def _offered_folder_views(views: list[dict[str, Any]], target: Path | None) -> l
             offered_default = view_id
     if offered_default is not None:
         kept = [{**view, "default": view["id"] == offered_default} for view in kept]
+    return kept
+
+
+@functools.cache
+def _warn_offers_never_read(kind: str) -> None:
+    """Say once that *kind*'s offered views are left out of an answer that reads no
+    leading bytes, since an offer is decided only for a file served as text."""
+
+    LOG.warning(
+        "%s views declare an offer, but a %s file is not served as text, so no leading "
+        "bytes are read and those views are never offered",
+        kind,
+        kind,
+    )
+
+
+def _file_prefix(target: Path | None) -> tuple[bytes, str] | None:
+    """The leading logical bytes every file offer reads, one past the largest content
+    predicate's cap, and the logical extension; None with no file in hand or none that
+    can be read."""
+
+    if target is None:
+        return None
+    artifact = ArtifactPath(target)
+    try:
+        with artifact.open_binary(max_output_bytes=CONTENT_PREDICATE_MAX_BYTES + 1) as source:
+            data = source.read(CONTENT_PREDICATE_MAX_BYTES + 1)
+    except (ArtifactCompressionError, OSError):
+        return None
+    return data, artifact.logical_ext
+
+
+def _offered_file_views(
+    kind: str, views: list[dict[str, Any]], prefix: tuple[bytes, str] | None
+) -> list[dict[str, Any]]:
+    """Keep each of *kind*'s offered views only where its predicate accepts *prefix*.
+
+    A predicate that raises is logged and its view left out, as a folder's is. A view
+    left out that was the default leaves the default to the caller's fallback, the
+    first view.
+    """
+
+    kept: list[dict[str, Any]] = []
+    for view in views:
+        key = (kind, view["id"])
+        if key not in _FILE_OFFERS:
+            kept.append(view)
+            continue
+        predicate = _FILE_OFFERS[key]
+        if prefix is None or predicate is None:
+            continue
+        try:
+            offered = bool(predicate(*prefix))
+        except Exception:
+            LOG.exception("%s view %s offer failed; leaving the view out", kind, view["id"])
+            continue
+        if offered:
+            kept.append(view)
     return kept
 
 

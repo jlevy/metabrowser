@@ -42,11 +42,11 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "header": "first",
                 "rebuilt": "first",
                 # The header: the branches (mb-fon5) and the state and its ages (mb-4ydo) have
-                # rows of their own, and the author's row ends in the stack's slot, not a strut
-                # of its own (mb-cf0l); the Diff summary's row ends it, built once and kept
-                # by every repaint below (mb-pb35), with its pending placeholder, a reveal and
-                # its block, built once at mount and kept across the waits (mb-onr2). The
-                # author is the shell's identity, its avatar in a box of its own (mb-nunw).
+                # rows of their own, and the row of ages ends in the stack's slot (mb-646g), no
+                # row in a strut of its own (mb-cf0l); the Diff summary's row ends it, built once
+                # and kept by every repaint below (mb-pb35), with its pending placeholder, a
+                # reveal and its block, built once at mount and kept across the waits (mb-onr2).
+                # The author is the shell's identity, its avatar in a box of its own (mb-nunw).
                 # The author's row's lead holds the sentence and the freshness note, its dot,
                 # slot, and sizer (mb-ne91); the row of ages its ages, a span of their own so
                 # they give way before Browse code's span, which this record has none of (B4 of

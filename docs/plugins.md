@@ -57,9 +57,9 @@ problem, including a discovery error beside plugins that loaded, so a script can
 mistake a partial registry for a complete one.
 
 The Mac app shows the same discovery inventory for its selected runtime under **Settings
-→ Information → Plugins**. This is what a new app server discovers.
+→ Plugins**. This is what a new app server discovers.
 Browser renderers load as their views are needed.
-See [Mac app settings](macos-app.md#choosing-a-metab).
+See [Mac app settings](macos-app.md#settings).
 
 ## Built-in Agent Support
 
@@ -76,7 +76,7 @@ payloads. The Codex provider reads known tables using Python’s SQLite library.
 The `sqlite` plugin separately provides general-purpose database browsing and requires
 `table`. The bundled `fsqlite` plugin adds store-specific views and requires both
 `sqlite` and `table`. `metab --plugins` lists these edges in its `REQUIRES` column.
-The Mac app shows them in Settings alongside each plugin.
+The Mac app shows them in Settings → Plugins alongside each plugin.
 
 The [agent browsing guide](working-with-agents.md#browsing-agent-history) explains what
 Agents reads and how the session lists work.
@@ -314,14 +314,28 @@ kind declared by another plugin, which is useful for composing generic renderers
 `render_runtime` documents whether the client or KPress renders the view, and a
 printable view declares a `print_profile` suited to documents or source code.
 
-A view of the `folder` kind may set `offer = "module:function"`, a Python predicate that
-receives the folder’s path.
-The view is served only on folders where it returns true, and an offered view with
-`default = true` is then the folder’s only default, so the page opens on it.
-The predicate runs for every folder page, off the event loop, and should read no more
-than a few directory entries; one that raises is logged and its view left out.
-A Git revision’s folders never offer a view, and an operator directory’s JavaScript-only
-plugin cannot declare one.
+A view may set `offer = "module:function"`, a Python predicate that decides where the
+view is served; one that raises is logged and its view left out, and an operator
+directory’s JavaScript-only plugin cannot declare one.
+
+- **A `folder` view’s predicate** receives the folder’s path.
+  The view is served only on folders where it returns true, and an offered view with
+  `default = true` is then the folder’s only default, so the page opens on it.
+  The predicate runs for every folder page, off the event loop, and should read no more
+  than a few directory entries.
+  A Git revision’s folders never offer a view.
+
+- **A text kind’s view’s predicate** receives the file’s leading logical bytes, at most
+  `CONTENT_PREDICATE_MAX_BYTES` + 1 of them (`plugin_loader/classify.py`), and its
+  logical extension, and the view is served only on files where it returns true.
+  It runs for every response that lists a text file’s views, the hover prefetch
+  included, for a pinned revision’s blobs as for a folder’s files, so it decides from
+  those bytes and never parses the whole file.
+  Only a file served as text is asked: an image, a binary, a JSONL log, or a container’s
+  entry reads no leading bytes for it, so a view of such a kind that declares `offer` is
+  never served, and the server logs a warning the first time it leaves one out.
+  The structured kind offers its Table view this way, only on a file that starts as a
+  list of records (`structured/offer.py`).
 
 `key` is an optional one-letter key for the view’s tab.
 A kind with more than one view should give each view one: `v` for a rendered view, `s`
@@ -642,8 +656,17 @@ A plugin offers helpers to others by exporting them from its `index.js`, which i
 module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`,
 structured data exports `renderInlineTree` and the tree’s helpers, diff exports
 `mountFilePatch`, which draws one file’s hunks as Changes does and which GitHub’s Guided
-Review draws its excerpts with, and GitHub exports `pullStateIcon`, which the shell’s
-ref selector draws a branch’s pull request with.
+Review draws its excerpts with, GitHub exports `pullStateIcon`, which the shell’s ref
+selector draws a branch’s pull request with, and PDF exports `mountPdfCard`, which draws
+a PDF’s first page, name, and page count where a viewer does not belong, as a diff’s
+binary `.pdf` change and a Markdown document’s embedded `.pdf` do.
+`mountPdfCard(host, {path | oid, name, links?})` asks the PDF plugin’s
+`/api/plugin/pdf/preview` route when the card nears the viewport and shows the image it
+names, or the route’s reason when there is none; it never starts a viewer, and its
+`dispose()` stops the request and removes the card.
+The server draws the image with PDFium in a bounded child process, and for an untrusted
+source only inside an operating-system sandbox
+([T7](project/architecture/arch-threat-model.md#t7-parsing-browsed-bytes-exhausts-or-takes-over-the-server)).
 A plugin that uses them names the provider in its manifest and asks for its exports:
 
 ```toml

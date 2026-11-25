@@ -259,7 +259,9 @@ def test_malformed_zlib_surfaces_endpoint_errors(tmp_path: Path) -> None:
     )
     file_body = _json_response(file_response)
     assert file_body["type"] == "error"
-    assert "zlib" in file_body["error"].lower()
+    # The reader's sentence, with the decoder's own words kept as the detail.
+    assert file_body["error"] == "This compressed file is damaged."
+    assert "zlib" in file_body["detail"].lower()
 
     render_response = asyncio.run(
         server.api_kpress_render(  # pyright: ignore[reportArgumentType]

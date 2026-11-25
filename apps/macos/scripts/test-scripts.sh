@@ -48,6 +48,71 @@ else
   fail "quietly stopped without the command's output: $(cat "$work/out")"
 fi
 
+# swift-test.sh: a stand-in swift prints $SWIFT_STAND_IN_OUTPUT and exits with
+# $SWIFT_STAND_IN_STATUS, so each case is a test process's output and status.
+cat >"$work/swift" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$SWIFT_STAND_IN_OUTPUT"
+exit "$SWIFT_STAND_IN_STATUS"
+EOF
+chmod +x "$work/swift"
+swift_test_with() {
+  SWIFT="$work/swift" SWIFT_STAND_IN_OUTPUT="$1" SWIFT_STAND_IN_STATUS="$2" scripts/swift-test.sh --filter Suite \
+    >"$work/out" 2>&1
+}
+if swift_test_with $'◇ Test a() started.\n✔ Test run with 41 tests in 5 suites passed after 0.630 seconds.' 0 &&
+  grep -q '^◇ Test a() started.$' "$work/out"; then
+  pass "swift-test.sh passes a run that reports it passed, and shows its output"
+else
+  fail "swift-test.sh on a passed run: $(cat "$work/out")"
+fi
+if swift_test_with '✔ Test run with 1 test in 1 suite passed after 4.172 seconds.' 0; then
+  pass "swift-test.sh passes a run of one test"
+else
+  fail "swift-test.sh on a run of one test: $(cat "$work/out")"
+fi
+if swift_test_with $'◇ Suite SettingsWindowTests started.\n◇ Test a() started.' 0; then
+  fail "swift-test.sh passed a process that exited 0 before its tests finished"
+elif grep -q 'exited 0 without reporting a passed run' "$work/out"; then
+  pass "swift-test.sh fails a process that exits 0 before its tests finish"
+else
+  fail "swift-test.sh failed an unfinished run without saying why: $(cat "$work/out")"
+fi
+if swift_test_with '✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.' 0; then
+  fail "swift-test.sh passed a run of no tests"
+else
+  pass "swift-test.sh fails a run whose filters match nothing"
+fi
+swift_test_status=0
+swift_test_with '✘ Test run with 2 tests in 1 suite failed after 1.0 seconds with 1 issue.' 1 || swift_test_status=$?
+if [[ "$swift_test_status" == 1 ]]; then
+  pass "swift-test.sh keeps a failed run's status"
+else
+  fail "swift-test.sh exited $swift_test_status for a run that exited 1: $(cat "$work/out")"
+fi
+# A SWIFT of two words, as `make test SWIFT="xcrun swift"` gives one, runs the first with
+# the second as its argument: called directly, and as the line `make test` runs.
+cat >"$work/runner" <<'EOF'
+#!/usr/bin/env bash
+echo "runner got: $*"
+echo "✔ Test run with 1 test in 1 suite passed after 0.1 seconds."
+EOF
+chmod +x "$work/runner"
+if SWIFT="$work/runner swift" scripts/swift-test.sh --filter Suite >"$work/out" 2>&1 &&
+  grep -qx 'runner got: swift test --filter Suite' "$work/out"; then
+  pass "swift-test.sh runs a SWIFT of two words"
+else
+  fail "swift-test.sh with a SWIFT of two words: $(cat "$work/out")"
+fi
+make_line="$(env -u MAKEFLAGS -u MFLAGS -u MAKELEVEL make --no-print-directory -n test SWIFT="$work/runner swift" |
+  grep -- '--filter ExitObservationStressTests' || true)"
+if bash -c "$make_line" >"$work/out" 2>&1 &&
+  grep -qx 'runner got: swift test --filter ExitObservationStressTests' "$work/out"; then
+  pass "make test hands a SWIFT of two words to swift-test.sh whole"
+else
+  fail "make test's line ($make_line) with a SWIFT of two words: $(cat "$work/out")"
+fi
+
 # require_no_entitlements:
 # A failed read, a clean signature, and a signature with entitlements, on copies of a
 # system binary.

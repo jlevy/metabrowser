@@ -227,7 +227,7 @@ $ node tests/dom/source-ref-selector-session.js
         "switching": false,
         "rows": [],
         "note": "",
-        "error": "The tags could not be listed (HTTP 400)."
+        "error": "The tags could not be listed. Try again."
       }
     },
     {
@@ -346,7 +346,7 @@ $ node tests/dom/source-ref-selector-session.js
           "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
-        "error": "That ref is no longer in the mirror."
+        "error": "That branch or tag is no longer in the mirror."
       }
     },
     {
@@ -694,7 +694,7 @@ $ node tests/dom/source-ref-selector-session.js
             "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
-          "error": "That ref is no longer in the checkout."
+          "error": "That branch or tag is no longer in the checkout."
         }
       },
       {
@@ -704,7 +704,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": false,
-          "stale": "The server now shows another revision [Reload]"
+          "stale": "The server now shows another revision [Reload page]"
         }
       },
       {
@@ -714,7 +714,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Branch: feature",
           "open": false,
-          "stale": "The server now shows the working tree [Reload]"
+          "stale": "The server now shows the working tree [Reload page]"
         }
       },
       {
@@ -728,7 +728,7 @@ $ node tests/dom/source-ref-selector-session.js
         }
       },
       {
-        "step": "an older Git is refused in the server's words",
+        "step": "an older Git is refused, and the page says so",
         "requests": [
           "GET /api/source/refs?kind=branch"
         ],
@@ -748,7 +748,7 @@ $ node tests/dom/source-ref-selector-session.js
           "switching": false,
           "rows": [],
           "note": "",
-          "error": "showing a branch or tag of a checkout needs Git 2.43.7 or newer, which is known never to fetch into it; this is git version 2.39.2"
+          "error": "Git on this machine is too old to list these. Update Git to see them."
         }
       },
       {

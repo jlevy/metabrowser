@@ -2,7 +2,7 @@ import Foundation
 
 /// Which `metab` the app starts for folders, and the searches and choices that change it.
 ///
-/// Find Again (a discovery) and Choose metab… (validating the chosen file) both wait on
+/// Refresh (a discovery) and Choose metab… (validating the chosen file) both wait on
 /// subprocesses, so one can start while the other is still running. Each takes a ticket
 /// when it starts, and only the newest one's result applies: an older search that
 /// finishes after a newer choice changes nothing, not the setup, the saved settings,
@@ -82,7 +82,7 @@ public final class RuntimeSelection {
 
     /// Whether a search was overtaken by a choice that adopted nothing, so nothing running
     /// will answer it: its own result no longer counts, and the folders and the restore
-    /// waiting for it would wait for Find Again. The caller searches again, with a fresh
+    /// waiting for it would wait for a Refresh. The caller searches again, with a fresh
     /// ticket, so the overtaken search's late result still changes nothing.
     public var needsSearch: Bool { isSearchUnanswered && operation == nil }
 

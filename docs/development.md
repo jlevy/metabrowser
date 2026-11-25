@@ -76,7 +76,9 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 [End-to-End Testing](e2e-testing.md) covers the test layers, the four parts of
 `make test` and the markers that choose them, the outer tiers (`make test-admitted-git`,
 `make test-macos`, and `make test-live-github`), the skips each tier allows, and
-`make test-report`, `make ci-report`, and `make shard-weights`.
+`make test-report`, `make ci-report`, and `make shard-weights`. Its
+[Transient Output](e2e-testing.md#transient-output) says where a run’s temporary files
+live and when they are removed.
 `tests/golden/cli-check-api.tryscript.md` pins a normalized transcript of the
 `--check-api` sequence against a small fixture.
 
@@ -484,6 +486,11 @@ do not combine an unrelated rewrite with a release fix.
   The registries in `file_extensions.py` and the bound in `settings.py` are injected
   together as the browser’s authority; `test_plugin_sdk_syntax_token_contracts` checks
   every mapping against the vendored grammar registry.
+- A message the page shows a reader, whether a notice, an empty state, or an error,
+  follows [Reader Messages](design-system-messages.md): one statement and at most one
+  remedy, with the detail left in the route’s JSON and the console.
+  `tests/test_reader_messages.py` holds what a machine can check of it, in the browser
+  scripts and in the server’s answers.
 - First-party JavaScript and TypeScript filenames use lowercase kebab-case, because the
   same names appear in imports, manifests, URLs, documents, and test shims.
   Standard dotted roles such as `types.d.ts` are valid, and vendored assets keep their

@@ -15,7 +15,24 @@ from metabrowser.diff.format import ChangeSetManifest, FilePatch, ResolvedCompar
 
 
 class DiffSourceError(Exception):
-    """A source could not resolve or produce; the message is user-facing."""
+    """A source could not resolve or produce.
+
+    ``str()`` is the detail an agent, the CLI, and the log read: it names the revision or
+    file asked for. ``reader_message`` is the one sentence a page shows in their place
+    (docs/design-system-messages.md), and ``code``, when set, names the refusal for a
+    caller that tells refusals apart.
+    """
+
+    def __init__(
+        self,
+        detail: str,
+        *,
+        reader_message: str = "This comparison cannot be shown.",
+        code: str = "",
+    ) -> None:
+        super().__init__(detail)
+        self.reader_message = reader_message
+        self.code = code
 
 
 class DiffSource(Protocol):

@@ -227,7 +227,7 @@ export function mountHome(container, ctx, mb) {
     ];
     if (answer.cache.state === "unavailable") {
       parts.push(
-        '<span class="agents-muted">No private cache folder is available, so summaries are kept in memory and read again after a restart.</span>',
+        '<span class="agents-muted">Summaries are not saved, so they are read again after a restart.</span>',
       );
     }
     const element = slot("progress", "agents-progress");

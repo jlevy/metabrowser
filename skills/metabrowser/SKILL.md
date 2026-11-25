@@ -229,8 +229,8 @@ its code included, such as one `uv tool install` made, which keeps the command i
 `metab` in a folder you can write: a source checkout’s `.venv/bin/metab` runs the
 checkout’s own code, so in a checkout you work in, a rule naming it runs code you can
 change, unsandboxed.
-For a source build, the rule, and the app’s Settings > Choose metab…, name a separate
-checkout you never work in.
+For a source build, the rule, and the app’s Settings > Runtime > Choose metab…, name a
+separate checkout you never work in.
 Otherwise, rerun with `--open-in app` and the user’s approval each time, or serve the
 page. The
 [guide](https://github.com/jlevy/metabrowser/blob/main/docs/working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)

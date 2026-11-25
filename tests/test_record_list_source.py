@@ -527,12 +527,14 @@ def test_a_file_that_does_not_parse_or_is_too_large_says_so(
     (tmp_path / "bad.json").write_text('[{"a": ')
     status, body = _get(client, "schema", "bad.json")
     assert (status, body["code"]) == (422, "source_unreadable")
-    assert body["error"].startswith("This file could not be parsed: ")
+    assert body["error"] == "This file could not be parsed."
+    assert body["detail"].startswith("ValueError: ")
     monkeypatch.setattr(structured, "STRUCTURED_PARSE_MAX_BYTES", 4)
     _write(tmp_path, "big.json", [{"a": 1}])
     status, body = _get(client, "schema", "big.json")
     assert (status, body["code"]) == (422, "source_unreadable")
-    assert "larger than the" in body["error"]
+    assert body["error"] == "This file is too large to show as a table."
+    assert "larger than the" in body["detail"]
 
 
 def test_a_yaml_stream_of_mappings_is_a_list_of_records(client: TestClient, tmp_path: Path) -> None:

@@ -304,7 +304,7 @@ $ node tests/dom/source-ref-selector-pulls-session.js
         "rows": [
           "feature c7ae2a3 2026-01-01T02:00:00Z | #18 closed Try the first design"
         ],
-        "note": "Pull requests are not all cached yet, so a number or title may match more branches.",
+        "note": "Some pull requests are still loading, so more branches may match.",
         "error": null
       },
       "pullsPending": true
@@ -325,7 +325,7 @@ $ node tests/dom/source-ref-selector-pulls-session.js
         "loading": false,
         "switching": false,
         "rows": [],
-        "note": "No branches match. Pull requests are not all cached yet, so a number or title may match more branches.",
+        "note": "No branches match. Some pull requests are still loading, so more branches may match.",
         "error": null
       },
       "pullsPending": true

@@ -89,9 +89,9 @@ async function run() {
     },
     { ...options, comparisonAttempted: true },
   );
-  assert.equal(failed.canRefresh, false, "only Retry changes can prepare the missing store");
+  assert.equal(failed.canRefresh, false, "only Changes' Retry can prepare the missing store");
   assert.equal(failed.canRetryComparison, true);
-  // What holds the automatic comparison for Retry changes: an outcome a new visit would
+  // What holds the automatic comparison for Changes' Retry: an outcome a new visit would
   // only repeat, recorded since the record was written, or a rate limit before its reset.
   const nowMs = Date.parse("2026-09-17T12:00:30Z");
   const outcome = (name, at, resetAt = null) => ({

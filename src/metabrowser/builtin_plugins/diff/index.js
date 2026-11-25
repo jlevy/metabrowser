@@ -479,6 +479,9 @@ function wholeFiles(document_, summaryTotals) {
   return typeof manifest?.totals?.files === "number" ? manifest.totals.files : 0;
 }
 
+// What a diff document that breaks the format says; where it breaks is the console's.
+const INVALID_DOCUMENT = "This diff document is not valid.";
+
 /**
  * A comparison narrowed to some file types (`types=`, sorted and joined), validated, with
  * the revision beside it for the deferred loader, as the whole comparison's.
@@ -497,7 +500,9 @@ async function loadNarrowed(revision, types, signal) {
   );
   const result = validateDocument(payload);
   if (!result.ok) {
-    throw new Error(`This diff document is not valid: ${result.error}`);
+    // Where the document breaks the format rides as the cause, for the console
+    // (docs/design-system-messages.md).
+    throw new Error(INVALID_DOCUMENT, { cause: result.error });
   }
   Object.defineProperty(result.document, "__revision", { value: revision, enumerable: false });
   return result.document;
@@ -652,7 +657,7 @@ mb.registerView("diff", "diff", {
       const message =
         typeof failure?.payload?.message === "string" && failure.payload.message
           ? failure.payload.message
-          : "Could not load this diff. Refresh the page to try again.";
+          : "Could not load this diff. Reload the page to try again.";
       console.error(
         "metabrowser diff: view load failed",
         {
@@ -672,7 +677,8 @@ mb.registerView("diff", "diff", {
         })
       : validateDocument(payload);
     if (!result.ok) {
-      return renderFailure(container, `This diff document is not valid: ${result.error}`);
+      console.warn("metabrowser diff: the document is not valid", result.error);
+      return renderFailure(container, INVALID_DOCUMENT);
     }
     let viewFile;
     try {
@@ -691,7 +697,7 @@ mb.registerView("diff", "diff", {
         },
         error,
       );
-      return renderFailure(container, "Could not load this diff. Refresh the page to try again.");
+      return renderFailure(container, "Could not load this diff. Reload the page to try again.");
     }
     if (signal?.aborted) {
       return null;

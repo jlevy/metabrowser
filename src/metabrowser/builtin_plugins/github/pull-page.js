@@ -45,7 +45,13 @@ import {
   createComparisonPrefetch,
   diffComparisonLoader,
 } from "./comparison-prefetch.js";
-import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
+import {
+  rateLimitText,
+  refreshFailureText,
+  refreshRefusedText,
+  setupHelp,
+  unavailableText,
+} from "./copy.js";
 import {
   createStackIndex,
   memberRoute,
@@ -61,6 +67,7 @@ import {
   displayState,
   listedAnywhere,
   listedState,
+  noteRecord,
   PULL_STATES,
   pullStateIcon,
   withListedState,
@@ -385,15 +392,18 @@ const ABSENCE = Object.freeze({
   unreadable: "The saved copy of this pull request could not be read.",
 });
 
-/** @type {Readonly<Record<string, string>>} */
-const SETUP_FAILURES = Object.freeze({
-  gh_missing:
-    "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
-  gh_too_old:
-    "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
-  not_logged_in:
-    "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+/**
+ * What the page says of a refresh's outcome that it words itself, beside copy.js's shared
+ * words, and of any other, in one sentence each beside Refresh. The job's own message stays
+ * in the envelope's `last_refresh.message`, and the failure's Details shows what the event
+ * log holds of it.
+ * @type {Readonly<Record<string, string>>}
+ */
+const REFRESH_FAILURES = Object.freeze({
+  not_found_or_private: "GitHub could not find this pull request, or this account cannot read it.",
+  lender_missing: "The checkout cannot supply these changes.",
 });
+const REFRESH_FAILED = "Could not refresh this pull request.";
 
 /**
  * A review's state, said by a chip after its heading where the verb does not say it
@@ -422,9 +432,9 @@ const MERGEABLE = Object.freeze({
 
 /** @type {Readonly<Record<string, string>>} */
 const UNAVAILABLE = Object.freeze({
-  check_runs: "Check runs",
-  status: "Commit statuses",
-  comparison: "Changes",
+  check_runs: "check runs",
+  status: "commit statuses",
+  comparison: "changes",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -1233,62 +1243,87 @@ function checks(record, base) {
   return { counts, items };
 }
 
-/** @param {Record<string, any>} record @param {boolean} forChecks */
+/**
+ * "a", "a and b", or "a, b, and c".
+ *
+ * @param {string[]} words
+ */
+function joinedWords(words) {
+  return words.length < 3
+    ? words.join(" and ")
+    : `${words.slice(0, -1).join(", ")}, and ${words.at(-1)}`;
+}
+
+/**
+ * The one note over the conversation, or over the checks, when part of it is missing or
+ * cut short: at most one sentence, never one per part. A part that could not be read at
+ * all outweighs a list or text that was cut, which still shows what it holds. Why a part
+ * could not be read stays in the record's `unavailable`, and Files changed says why its
+ * Changes are missing (`filesUnavailableText`).
+ *
+ * @param {Record<string, any>} record
+ * @param {boolean} forChecks
+ * @returns {string[]}
+ */
 function notes(record, forChecks) {
-  /** @type {string[]} */
-  const said = [];
   const truncated = record.truncated ?? {};
   const checkPart = (/** @type {string} */ name) =>
     name === "check_runs" || name === "status" || name === "statuses";
+  const missing = Object.entries(record.unavailable ?? {})
+    .filter(
+      ([part, why]) =>
+        checkPart(part) === forChecks && !(part === "comparison" && why === "no_store"),
+    )
+    .map(([part]) => (Object.hasOwn(UNAVAILABLE, part) ? UNAVAILABLE[part] : "some details"));
+  if (missing.length > 0) {
+    const parts = joinedWords([...new Set(missing)]);
+    return [`${parts.charAt(0).toUpperCase()}${parts.slice(1)} could not be loaded.`];
+  }
   const cut = Object.keys(TRUNCATED).filter(
     (name) => checkPart(name) === forChecks && truncated[name] === true,
   );
+  const textCut = !forChecks && truncated.text === true;
+  if (cut.length > 0 && textCut) {
+    return ["Only part of this conversation is shown."];
+  }
   if (cut.length > 0) {
-    said.push(
-      `Only some ${cut.map((name) => TRUNCATED[name]).join(", ")} are shown: the list was longer than what is kept.`,
-    );
+    return [`Only some ${joinedWords(cut.map((name) => TRUNCATED[name]))} are shown.`];
   }
-  if (!forChecks && truncated.text === true) {
-    said.push("Some text was cut to keep this pull request’s data within its size limit.");
-  }
-  for (const [part, why] of Object.entries(record.unavailable ?? {})) {
-    if (checkPart(part) !== forChecks || (part === "comparison" && why === "no_store")) {
-      continue;
-    }
-    said.push(
-      `${UNAVAILABLE[part] ?? part} could not be read (${String(why).replaceAll("_", " ")}).`,
-    );
-  }
-  return said;
+  return textCut ? ["Some long text is shortened."] : [];
 }
 
 /**
  * What Files changed says in place of a diff, from the state the record names. Pure.
  *
- * A merge base the store's shallow history cannot settle is not a failure to read: the
- * diff could be computed and would be a guess, so the page says that it does not guess
- * and what would settle it.
+ * One statement in a reader's terms, with the one remedy that can work. A merge base the
+ * store's shallow history cannot settle is not a failure to read: the diff could be
+ * computed and would be a guess, so the page shows none, and a refresh fetches the history
+ * that settles it. The reason itself stays in the record's `unavailable.comparison`, which
+ * docs/reviewing-pull-requests.md explains.
  *
  * @param {unknown} why The record's `unavailable.comparison`.
  * @returns {string}
  */
 export function filesUnavailableText(why) {
   if (why === "base_uncertain") {
-    return "Changes are not shown: this checkout’s history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
+    return "Changes need more of this checkout’s history. Refresh to fetch it.";
   }
   if (why === "no_store") {
     return "Changes could not be fetched.";
   }
   if (why === "comparison_timeout") {
-    return "Changes are unavailable: checking this pull request’s history took too long. Refresh to try again.";
+    return "Changes took too long to prepare. Refresh to try again.";
   }
   if (why === "comparison_too_large") {
-    return "Changes are unavailable: checking this pull request’s history exceeded the comparison limit.";
+    return "Changes are too large to show here. GitHub shows them.";
   }
   if (why === "commits_unavailable") {
-    return "Changes are unavailable: a commit of this pull request’s history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
+    return "Changes need commits that are missing here. Refresh to fetch them.";
   }
-  return "Changes are unavailable: the pull request’s base could not be compared with its head.";
+  if (why === "no_merge_base") {
+    return "Changes cannot be shown because this pull request’s branches share no history.";
+  }
+  return "Changes could not be shown.";
 }
 
 /** What Changes says for a record without a store before anything has failed. */
@@ -1308,7 +1343,7 @@ const HELD_COMPARISON_FAILURES = new Set([
 
 /**
  * Whether the recorded outcome holds Changes' automatic comparison attempt for the
- * reader's Retry changes: GitHub's rate limit before it lifts, which the job's metadata
+ * reader's Retry of Changes: GitHub's rate limit before it lifts, which the job's metadata
  * read would meet, or one of `HELD_COMPARISON_FAILURES` recorded since the record was
  * written, which a new visit would only repeat. A request with `retry` bypasses the
  * server's own guards, so the page holds itself. Pure.
@@ -1533,16 +1568,13 @@ export function describePull(envelope, page) {
       Number.isFinite(heldUntil) ? (page.formatHold ?? holdLiftText)(heldUntil, page.nowMs) : null,
     );
   } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
-    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? OUTCOME_FALLBACK}`;
+    // The pull request shown stays, so the sentence says only what went wrong.
+    model.failure = refreshFailureText(last.outcome, REFRESH_FAILURES, REFRESH_FAILED);
     // When it ended, which the failure's Details reads the event log around (mb-9zp5).
     model.failureAt = last.at ?? null;
-    if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
-      model.failure += `${model.failure.endsWith(".") ? "" : "."} You can still browse local files and any cached pull requests.`;
-      if (last.outcome === "gh_missing") {
-        model.failureHelp = "install";
-      } else if (last.outcome === "gh_too_old") {
-        model.failureHelp = "update";
-      }
+    const help = setupHelp(last.outcome);
+    if (help !== undefined) {
+      model.failureHelp = help;
     }
   }
   const record = envelope.record;
@@ -1616,7 +1648,7 @@ export function describePull(envelope, page) {
   // A stale record the page is refreshing by itself offers nothing to press: Refresh is for a
   // failure, Changes, or a stale record whose automatic refresh did not run. A rate limit's
   // hold offers none either: the page names when it asks again and asks then, as the Pulls
-  // tab's Reload waits out the same hold, and a press would only meet the limit.
+  // tab's Refresh waits out the same hold, and a press would only meet the limit.
   model.canRefresh =
     !envelope.refreshing &&
     !model.revalidating &&
@@ -1680,8 +1712,8 @@ export function describePull(envelope, page) {
   }
   model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
   if (record.unavailable?.comparison === "no_store" && diffTab(page.tab)) {
-    // Progress only for an attempt running or still to be sent, Retry changes only once one
-    // failed or a recorded outcome holds it, and Fetch changes only when nothing will ask.
+    // Progress only for an attempt running or still to be sent, Retry only once one
+    // failed or a recorded outcome holds it, and Fetch only when nothing will ask.
     // A failed read before any attempt waits for the next good one, which then asks.
     const queued = comparisonQueued(envelope, page);
     const failed = page.comparisonAttempted === true || comparisonHeld(envelope, page.nowMs);
@@ -1695,6 +1727,7 @@ export function describePull(envelope, page) {
       model.filesUnavailable = CHANGES_NOT_FETCHED;
     } else if (typeof page.comparisonRefusal === "string") {
       // A later read clears the refusal's error; its reason stays until the page asks again.
+      // Each refusal is one sentence (copy.js), so the two make the message's limit of two.
       model.filesUnavailable = `${model.filesUnavailable} ${page.comparisonRefusal}`;
     }
   }
@@ -1820,7 +1853,10 @@ export function isEnvelope(value) {
  * text stays plain until the newer record's is asked for. The server renders a text in
  * its Markdown child under a deadline (`pull_markdown.render_part`), and refuses one that
  * runs past it, whose renderer stops, whose renderer cannot start, or that arrives while
- * the renderer has as many other texts as it takes; KPress can also fail on a text. Each shows the text as plain text, with this line saying why.
+ * the renderer has as many other texts as it takes; KPress can also fail on a text. Each
+ * shows the text as written, with this line saying so, and a reload only where the next
+ * attempt can differ: a renderer that could not start or was busy. The code and the
+ * deadline stay in the route's answer.
  *
  * @param {number} status
  * @param {Record<string, any> | null} body
@@ -1831,20 +1867,14 @@ export function refusedTextNote(status, body) {
     return null;
   }
   switch (body.code) {
-    case "render_deadline": {
-      const seconds = typeof body.deadline_ms === "number" ? body.deadline_ms / 1000 : null;
-      const took =
-        seconds === null ? "too long" : `longer than ${seconds} second${seconds === 1 ? "" : "s"}`;
-      return `This text took ${took} to render, so it is shown as plain text.`;
-    }
+    case "render_deadline":
+      return "This text took too long to render, so it is shown as written.";
     case "renderer_exited":
-      return "The renderer stopped while rendering this text, so it is shown as plain text.";
-    case "renderer_unavailable":
-      return "The renderer could not start, so this text is shown as plain text. Reload to try again.";
-    case "renderer_busy":
-      return "The renderer is busy with other texts, so this text is shown as plain text. Reload to try again.";
     case "render_failed":
-      return "This text could not be rendered, so it is shown as plain text.";
+      return "This text could not be rendered, so it is shown as written.";
+    case "renderer_unavailable":
+    case "renderer_busy":
+      return "This text could not be rendered, so it is shown as written. Reload the page to try again.";
     default:
       return null;
   }
@@ -2053,6 +2083,7 @@ export function renderedTextsHeld() {
  *   renderMarkdown(part: string, rendered: Record<string, any>, text: string): void,
  *   textUnavailable?(part: string, text: string, note?: string | null): void,
  *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
+ *   noteRecord?(source: string, pull: Record<string, any>): void,
  *   timelineStateChanged?(): void,
  *   switchPin(selection: {oid: string, under: string, view?: string}, wanted: () => boolean): Promise<{kind: "switched", href: string | null} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}>,
  *   navigate(href: string): void,
@@ -2464,6 +2495,12 @@ export function createPullController(deps, options) {
   }
 
   function render() {
+    // The record's state, noted back over a list's older word, so another member's stack
+    // menu draws what this record holds rather than what the list said before it changed.
+    const recorded = envelope?.record?.pull;
+    if (recorded && typeof envelope?.source === "string") {
+      deps.noteRecord?.(envelope.source, recorded);
+    }
     const next = model();
     const owner = envelope?.record ?? envelope?.core_preview;
     const identity = owner
@@ -2566,7 +2603,7 @@ export function createPullController(deps, options) {
   /**
    * How long until a rate limit stops holding this page's automatic comparison or its stale
    * record's refresh, or null when none holds either. The page reads again then, so it asks
-   * without waiting for a slow poll and does not keep a hold or a Retry changes painted past it.
+   * without waiting for a slow poll and does not keep a hold or a Retry painted past it.
    */
   function untilHoldLifts() {
     const last = envelope?.last_refresh;
@@ -2936,7 +2973,7 @@ export function createPullController(deps, options) {
     let reread = false;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
-      const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
+      const body = /** @type {{pull?: unknown, code?: unknown} | null} */ (response.body);
       const pull = body === null ? null : withHeldRecord(body.pull);
       if (
         (response.status === 202 || response.status === 200) &&
@@ -2972,8 +3009,8 @@ export function createPullController(deps, options) {
           errorFromComparison = false;
         }
       } else if (ask.retry) {
-        const said = body !== null && typeof body.error === "string" ? body.error : null;
-        error = refreshRefusedText("The refresh", said);
+        const code = body !== null && typeof body.code === "string" ? body.code : null;
+        error = refreshRefusedText("The refresh", code);
         errorFromComparison = ask.comparison === true;
         if (ask.comparison) {
           comparisonRefusal = error;
@@ -3134,7 +3171,7 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * A reader's Retry changes or Fetch changes, which the address need not name. What the
+   * A reader's Retry or Fetch of Changes, which the address need not name. What the
    * button was painted from can be older than the model: a hold lifts by the clock alone,
    * and a failed read stops the automatic attempt without repainting. So the click sends
    * whenever the record still lacks its store and nothing else is on its way.
@@ -3887,8 +3924,9 @@ export function followedFrom(last, from, next) {
 /**
  * What Changes says over a diff that replaced another, or null when it replaced none. Pure.
  *
- * `head` names the head it showed and the head it shows; `base` is the same head compared
- * from another merge base, where the two commits to name would read the same.
+ * `head` is a diff of another head, which the note calls newer commits; `base` is the same
+ * head compared from another merge base. Both heads stay on the note, as its identity and in
+ * history (`rememberedChanges`), and never in its sentence.
  *
  * @param {{left: string, right: string} | null} from
  * @param {{left: string, right: string}} to
@@ -4229,22 +4267,45 @@ function outside(mb, href, base, children, className = "") {
 let stackMenuSerial = 0;
 
 /**
+ * A stack member's state for the stack menu's line: the page's own for the pull request it
+ * shows, as its header says it, and what the repository's list of pull requests last said of
+ * any other (`listedState`), or null where the list has not said, as for a member it has not
+ * reached.
+ *
+ * @param {string | null} source
+ * @param {number} target
+ * @param {number} number The page's pull request.
+ * @param {import("./pull-state.js").PullState | null} current The page's state for it.
+ * @returns {import("./pull-state.js").PullState | null}
+ */
+export function stackMemberState(source, target, number, current) {
+  return target === number ? current : (listedState(source, target)?.state ?? null);
+}
+
+/**
  * The native stack's compact trigger and lazy, keyboard-navigable member menu. Its words
  * are the shared stack design's (docs/design-system.md, "Stacks"): the trigger is the
  * position badge, the menu's heading is the stack's label, and its members come in
- * `stackMenuOrder`, the order the Pulls tab's stack groups list them in. A member's title
- * is the SDK's `titleNodes` (docs/design-system.md, "Titles").
+ * `stackMenuOrder`, the order the Pulls tab's stack groups list them in.
+ *
+ * Every member is one line in one layout, as a Pulls row's first line is (mb-as06): the pull
+ * request's state icon, its place in the stack in bold, "14/15", a muted dot, and its title,
+ * the SDK's `titleNodes` (docs/design-system.md, "Titles"), cut short at the line's end with
+ * the whole title in its tip. The state is `deps.state`'s, read again each time the menu
+ * opens or the page repaints, and a member whose state is not known yet keeps the icon's
+ * slot empty, so every member's place starts at one edge. The current member is marked by
+ * the Pulls list's current-row mark and `aria-current`, not by a check before its icon.
  *
  * A pull request in more than one stack has a trigger for each, and each then names its
  * stack before its position, "300 2/2", as a Pulls row's place names every stack but its
  * own (`named`, and `update`'s): two bare positions told the stacks apart only by their
  * tips. However it opens, by a press, Enter, Space, `↓`, or `↑`, focus lands on the
- * current member, the row checked, as a filter's menu opens on its checked row
+ * current member, the row marked, as a filter's menu opens on its checked row
  * (docs/design-system.md, "Keys in a Menu"); Escape closes it and gives focus back to the
  * trigger.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean}} deps
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -4292,7 +4353,11 @@ export function createStackMenu(initial, number, deps) {
   const signal = listening.signal;
   /** @type {HTMLElement[]} */
   const links = [];
-  /** @type {Map<number, {link: HTMLElement, title: HTMLElement, position: HTMLElement, number: HTMLElement}>} */
+  /**
+   * Each member's line, and what it last drew, so a repaint that changes nothing changes no
+   * node: `text` and `state` are the title and state shown, `state` undefined before any.
+   * @type {Map<number, {link: HTMLElement, icon: HTMLElement, position: HTMLElement, title: HTMLElement, copy: HTMLElement, shown: {text: string | null, state: import("./pull-state.js").PullState | null | undefined}}>}
+   */
   const rows = new Map();
   // The members under the heading that names them and the menu: the host's group
   // look, with no group role, since a menu of one group is named by its heading. The
@@ -4304,18 +4369,37 @@ export function createStackMenu(initial, number, deps) {
   const group = h("div", { class: "menu-group" });
   let populated = false;
 
-  function updateTitles() {
+  /** Each drawn member's state icon, place, and title, from the stack and `deps.state`. */
+  function updateMembers() {
     for (let at = 0; at < stack.pulls.length; at += 1) {
       const target = stack.pulls[at];
       const row = rows.get(target);
-      if (row) {
-        row.title.replaceChildren(
-          ...deps.titleNodes(
-            stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`),
-          ),
-        );
-        row.position.textContent = stackPosition(at, stack.pulls.length);
-        row.number.textContent = `#${target}`;
+      if (!row) {
+        continue;
+      }
+      const title =
+        stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
+      if (row.shown.text !== title) {
+        row.title.replaceChildren(...deps.titleNodes(title));
+        // The whole title, which the shell shows only while the line cuts it short
+        // (docs/design-system.md, "Tooltips Add Information").
+        row.link.setAttribute("data-tip-text", title);
+        row.shown.text = title;
+      }
+      const place = stackPosition(at, stack.pulls.length);
+      if (row.position.textContent !== place) {
+        row.position.textContent = place;
+      }
+      const state = deps.state?.(target) ?? null;
+      if (row.shown.state !== state) {
+        // Named, as a Pulls row's icon is, since nothing else on the line says the state; an
+        // unknown state keeps the icon's slot, empty.
+        row.icon =
+          state === null
+            ? h("span", { class: "github-pull-state-icon", "aria-hidden": "true" })
+            : pullStateIcon(state);
+        row.link.replaceChildren(row.icon, row.copy);
+        row.shown.state = state;
       }
     }
   }
@@ -4323,6 +4407,8 @@ export function createStackMenu(initial, number, deps) {
   /** @param {boolean} [reorder] */
   function populate(reorder = false) {
     if (populated && !reorder) {
+      // Opened again: the members as they are now, a state the Pulls list has learned since.
+      updateMembers();
       return;
     }
     const focused = document.activeElement;
@@ -4345,31 +4431,30 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
+        // The state icon, then the place, a muted dot, and the title: the place and the dot
+        // never give way, and the title is cut short at the line's end. The number is said and
+        // not shown, so a screen reader still tells two members of one title apart.
         const title = h("span", { class: "github-pull-stack-member-title" });
         const position = h("strong", { class: "github-pull-stack-member-position" });
-        const identity = h("span", { class: "github-pull-stack-member-number" });
-        link.append(
-          h("span", { class: "chip-menu-check", "aria-hidden": "true" }, [
-            target === number ? "✓" : "",
-          ]),
-          h("span", { class: "github-pull-stack-member-copy" }, [
-            position,
-            " ",
-            h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-            " ",
-            title,
-            " ",
-            h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-            " ",
-            identity,
-          ]),
-        );
-        row = { link, title, position, number: identity };
+        const dot = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
+        const said = h("span", { class: "visually-hidden" }, [`#${target}`]);
+        const copy = h("span", { class: "github-pull-stack-member-copy" }, [
+          position,
+          " ",
+          dot,
+          " ",
+          title,
+          " ",
+          said,
+        ]);
+        const icon = h("span", { class: "github-pull-state-icon", "aria-hidden": "true" });
+        link.append(icon, copy);
+        row = { link, icon, position, title, copy, shown: { text: null, state: undefined } };
         rows.set(target, row);
       }
       links.push(row.link);
     }
-    updateTitles();
+    updateMembers();
     group.replaceChildren(label, ...links);
     if (!populated) {
       menu.append(group);
@@ -4543,12 +4628,15 @@ export function createStackMenu(initial, number, deps) {
     element: root,
     close,
     /** A title or membership update keeps the menu open and retains surviving link focus.
+     * A repaint with neither still draws a member's state anew where it changed, as the
+     * page's own does when another actor merges it.
      * @param {import("./pull-stacks.js").NativeStack} next
      * @param {string} title
      * @param {boolean} [nextNamed] Whether the pull request is in another stack too.
      */
     update(next, title, nextNamed = false) {
       if (next === stack && title === currentTitle && nextNamed === named) {
+        updateMembers();
         return;
       }
       const reordered =
@@ -4564,7 +4652,7 @@ export function createStackMenu(initial, number, deps) {
       if (populated && reordered) {
         populate(true);
       } else {
-        updateTitles();
+        updateMembers();
       }
     },
     dispose() {
@@ -4698,11 +4786,14 @@ export function mountPullPage(container, ctx, mb) {
       [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
     );
   // A stack's chip arrives from its own /stacks answer, so it has a slot at the right end of
-  // the author's row, under the title's end (mb-cf0l): arriving, it lands in the row's
-  // empty end and moves nothing, and where the row has no room left the sentence is cut
-  // short at its end, never moved. With no stack the slot holds a strut, which gives the row
-  // a chip's height. At the end of the row that also held the branches, a chip took its
-  // width from the sentence and the merge, which slid up to 35 px.
+  // the row of ages, under the title's end, just before Refresh's slot, which ends the row
+  // (mb-646g): arriving, it lands in the row's empty end and moves nothing, Refresh
+  // included, and where the row has no room left the ages give way, cut short at their end
+  // as in a narrow pane, and the row never takes a second line. With no stack the slot holds
+  // a strut, which gives the row a chip's height. At the end of the author's row (mb-cf0l)
+  // it was a row below the state and ages it belongs with; at the end of the row that also
+  // held the branches, a chip took its width from the sentence and the merge, which slid up
+  // to 35 px.
   const stackStrut = strut();
   const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
   const labelList = h("div", { class: "github-pull-label-list" });
@@ -4720,7 +4811,8 @@ export function mountPullPage(container, ctx, mb) {
   // not at all. The sentence and the note share the row's lead (`stateLead`), which the note
   // leaves whole, dot and all, where it cannot be whole beside the sentence, so the sentence
   // never gives up width to it; alone on the row, before a record, it is cut short with its
-  // text as a tooltip. Refresh is not in the note, which can leave: it ends the row of ages.
+  // text as a tooltip. Refresh is not in the note, which can leave: it ends the row of ages,
+  // with the stack's chip just before it. The author's row is its lead alone, a line tall.
   const freshnessLine = tipWhenCut(
     h("span", { class: "github-pull-freshness mb-refreshing-muted" }),
   );
@@ -4735,15 +4827,12 @@ export function mountPullPage(container, ctx, mb) {
   const freshnessSep = h("span", { class: "github-pull-note-sep", "aria-hidden": "true" }, ["·"]);
   const freshnessNote = h("span", { class: "github-pull-note" }, [freshnessSep, freshnessSlot]);
   const stateLead = h("span", { class: "github-pull-meta-lead" }, [stateDetails, freshnessNote]);
-  const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [
-    stateLead,
-    stackColumn,
-  ]);
+  const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [stateLead]);
   // The head and base branches, on a line of their own under the author's sentence: a line
   // tall, the merge's arrow's, while no record is shown too.
   const branchesRow = h("div", { class: "github-pull-branches page-header-line" });
   // The pull request's state leads the row of its ages: its badge, then when it was
-  // opened, updated, merged, or closed.
+  // opened, updated, merged, or closed, then the stack's slot and Refresh's at its end.
   const openedRow = h("div", { class: "github-pull-opened page-header-line" });
   // The pull request's Diff summary, the header's last row, above the tabs and on every one
   // of them (mb-pb35): its header the change set's file and line totals, its tree the
@@ -4797,9 +4886,9 @@ export function mountPullPage(container, ctx, mb) {
   let detailsOpen = null;
   header.append(stateRow);
   // The status line: what the page has to say beyond the note, a failure and its remedy, a
-  // message, and the offers, one of the header's metadata lines, under the row of ages and as
-  // tall as it, there only while it has something to say. Its controls are text actions, a
-  // line tall (mb-2u08).
+  // message, and the offers, one of the header's metadata lines, a line tall as the author's
+  // row is, there only while it has something to say. Its controls are text actions, a line
+  // tall (mb-2u08). The row of ages is a stack chip's height (mb-646g).
   const status = h("div", { class: "github-pull-status page-header-line" });
   /** Commits of the conversation are being read from GitHub for the record shown. */
   let timelineBusy = false;
@@ -4808,6 +4897,9 @@ export function mountPullPage(container, ctx, mb) {
   let stackIdentity = null;
   let stackKey = "";
   let preferredStack = 0;
+  /** The state the page shows, which its stack menus give its own member: the header's.
+   * @type {import("./pull-state.js").PullState | null} */
+  let stackPullState = null;
   /** @type {Map<number, ReturnType<typeof createStackMenu>>} */
   const stackMenus = new Map();
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
@@ -5687,6 +5779,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     // In more than one stack, each chip names its stack, as a Pulls row's place does.
     const named = memberships.length > 1;
+    stackPullState = model.pull?.state ?? null;
     const nodes = memberships.map((stack) => {
       let menu = stackMenus.get(stack.number);
       if (menu) {
@@ -5699,6 +5792,8 @@ export function mountPullPage(container, ctx, mb) {
         currentTitle: model.pull?.title ?? "",
         named,
         titleNodes: mb.titleNodes,
+        state: (target) =>
+          stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
         onOpen() {
           preferredStack = stack.number;
           for (const [other, view] of stackMenus) {
@@ -5922,16 +6017,6 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * A commit named in a sentence, as every line names one: its short ID in the commit-ID
-   * face (docs/design-system.md, "Short Commit IDs").
-   *
-   * @param {string} commit
-   */
-  function commitId(commit) {
-    return h("span", { class: "git-commit-sha" }, [mb.shortCommit(commit)]);
-  }
-
-  /**
    * An offer at the status row's end: its sentence is cut short before its control is,
    * so a narrow pane still shows the control inside the header (styles.css, "The offers").
    *
@@ -6055,7 +6140,8 @@ export function mountPullPage(container, ctx, mb) {
      * @type {Map<string, {element: HTMLElement, run: () => unknown}>} */
     const numbered = new Map();
     // Refresh, or Fetch before a record, ends the row of ages, its slot held hidden when there
-    // is nothing to refresh: it came and went with the tab, moving the tab bar 8 px. It is a
+    // is nothing to refresh: it came and went with the tab, moving the tab bar 8 px. A stack's
+    // chip lands just before it (mb-646g), so a chip arriving moves it not at all. It is a
     // text action, as Browse code before it is, so its line is a metadata line's height: as a
     // bordered .btn it was 26 px where the line's text is 18 (mb-2u08). Numbers go in reading
     // order, so it takes the number after Browse code's and renumbers it neither as it comes
@@ -6077,7 +6163,7 @@ export function mountPullPage(container, ctx, mb) {
     });
     // A Refresh that shows waits while a refresh of what is shown runs or is due, or a rate
     // limit holds it: still shown, marked disabled, it keeps its slot and its number, and a
-    // press does nothing, as its click does (`refreshShown`), as the Pulls tab's Reload waits.
+    // press does nothing, as its click does (`refreshShown`), as the Pulls tab's Refresh waits.
     // Hidden as it waited, it gave its number to the offer after it, so a second 3 switched the
     // served pin (B2 of review B on #506). One that was not showing stays hidden, so a refresh
     // the page runs by itself numbers nothing new.
@@ -6163,7 +6249,7 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      placeChildren(openedRow, [stateBadge, opened.row, refresh]);
+      placeChildren(openedRow, [stateBadge, opened.row, stackColumn, refresh]);
       children.push(title, counterpartCorner, openedRow, paintStateRow(pull), branchesRow);
       // The labels follow the branches and take no row or gap if absent. They come
       // with its record or core, so the row is decided with the record's first paint; a
@@ -6209,6 +6295,7 @@ export function mountPullPage(container, ctx, mb) {
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
+          stackColumn,
           refresh,
         ]);
         placeChildren(labelList, []);
@@ -7733,7 +7820,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       const view = mb.getRegisteredView("diff", "diff");
       if (!view) {
-        host.textContent = "The diff plugin is unavailable.";
+        host.textContent = "Changes could not be shown. Reload the page to try again.";
         if (!docs) {
           summaryUnavailable(comparison);
         }
@@ -7995,7 +8082,7 @@ export function mountPullPage(container, ctx, mb) {
             type: "button",
             class: `btn ${retry ? "github-pull-retry-changes" : "github-pull-fetch-changes"}`,
           },
-          [retry ? "Retry changes" : "Fetch changes"],
+          [retry ? "Retry" : "Fetch"],
         );
         ask.addEventListener("click", () => void controller.requestComparison());
         message.append(ask);
@@ -8022,10 +8109,11 @@ export function mountPullPage(container, ctx, mb) {
         paintFollowed();
       });
       body.querySelector(".github-pull-newer-offer")?.remove();
+      // The heads are on the record and the diff's own header, never in the sentence.
       const said = notice(null, [
-        ...(diffFor?.right === comparison.right
-          ? ["The comparison has changed. "]
-          : ["The pull request now ends at ", commitId(comparison.right), ". "]),
+        diffFor?.right === comparison.right
+          ? "The comparison has changed. "
+          : "This pull request has newer commits. ",
         offer,
       ]);
       said.classList.add("github-pull-newer-offer");
@@ -8175,7 +8263,7 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * The note over a diff that replaced another by itself: both heads, and the way back.
+   * The note over a diff that replaced another by itself, and the way back.
    * Kept as painted while it says the same, so focus on its button survives a repaint.
    */
   function paintFollowed() {
@@ -8199,15 +8287,9 @@ export function mountPullPage(container, ctx, mb) {
       }
     });
     const said = notice(null, [
-      ...(note.kind === "head"
-        ? [
-            "The pull request’s head moved from ",
-            commitId(note.from),
-            " to ",
-            commitId(note.to),
-            ". ",
-          ]
-        : ["The comparison has changed. "]),
+      note.kind === "head"
+        ? "Changes now show this pull request’s newer commits. "
+        : "The comparison has changed. ",
       back,
     ]);
     said.classList.add("github-pull-followed");
@@ -8859,6 +8941,7 @@ export function mountPullPage(container, ctx, mb) {
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
       listed: listedState,
+      noteRecord,
       textUnavailable(part, text, note) {
         if (note) {
           refusedText(part, text, note);

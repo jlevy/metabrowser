@@ -63,7 +63,7 @@ SURFACES = (
     ),
     (
         PLUGINS / "github" / "pull-page.js",
-        "row.title.replaceChildren(\n          ...deps.titleNodes(",
+        "row.title.replaceChildren(...deps.titleNodes(title));",
     ),
     (PLUGINS / "github" / "pull-page.js", "titleNodes: mb.titleNodes,"),
     (

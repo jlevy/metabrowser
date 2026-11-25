@@ -310,7 +310,7 @@ $ node tests/dom/diff-view-file-session.js
       ],
       "busy": [],
       "notices": {
-        "M README.md": "[role=status] This pull request's head has moved; reload to see the newer changes."
+        "M README.md": "[role=status] This pull request's head has moved; reload the page to see the newer changes."
       }
     },
     {
@@ -398,7 +398,7 @@ $ node tests/dom/diff-view-file-session.js
       ],
       "busy": [],
       "notices": {
-        "M README.md": "[role=status] The mirror is fetching 6ac4c8b; try again when the fetch ends."
+        "M README.md": "[role=status] This commit is still being fetched. Try again shortly."
       }
     },
     {
@@ -407,7 +407,7 @@ $ node tests/dom/diff-view-file-session.js
         "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Commit 6ac4c8b is not in the mirror, and its origin does not have it."
+        "M README.md": "[role=status] This commit is not on the origin."
       }
     },
     {
@@ -416,7 +416,7 @@ $ node tests/dom/diff-view-file-session.js
         "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Commit 6ac4c8b is not in the mirror, and fetching it failed."
+        "M README.md": "[role=status] This commit could not be fetched. Try again."
       }
     },
     {
@@ -425,7 +425,7 @@ $ node tests/dom/diff-view-file-session.js
         "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Could not switch to 6ac4c8b (unsupported_for_subject)."
+        "M README.md": "[role=status] Could not open this commit. Try again."
       }
     },
     {
@@ -479,7 +479,7 @@ $ node tests/dom/diff-view-file-session.js
       "requests": [],
       "bars": {},
       "failure": [
-        "Could not load this diff. Refresh the page to try again."
+        "Could not load this diff. Reload the page to try again."
       ],
       "logged": [
         "metabrowser diff: view load failed · diff/view-file · Failed to fetch dynamically imported module"

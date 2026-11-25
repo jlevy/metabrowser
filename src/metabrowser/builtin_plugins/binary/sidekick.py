@@ -173,7 +173,7 @@ def _read_failure(subpath: str, exc: ContentReadError, ceiling: int) -> JSONResp
     if exc.http_status == 413:
         return _error("Preview unavailable.", 413, path=subpath, max_preview_bytes=ceiling)
     if exc.http_status == 422:
-        return _error("This file could not be decompressed.", 422, path=subpath)
+        return _error("This compressed file could not be read.", 422, path=subpath)
     return _unavailable(subpath)
 
 

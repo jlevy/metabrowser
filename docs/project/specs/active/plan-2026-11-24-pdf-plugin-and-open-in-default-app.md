@@ -276,7 +276,9 @@ In `apps/macos`, beside `PagePrintRequests` and `WebViewRequests`:
 ### What Stays Unchanged
 
 - `/raw`, its sandbox, and the untrusted shell policy.
-- Markdown embeds of a PDF, which stay links; see [Open Questions](#open-questions).
+- A Markdown link to a PDF, which already opened the file’s view.
+  A Markdown embed of one changed in Phase 2 (`mb-x0a6`): see
+  [Decisions for Phase 2](#decisions-for-phase-2) and Open Question 2.
 - The shell’s file header, which keeps Copy path in its eyebrow and View on GitHub in
   its corner (design system, View Headers).
 
@@ -306,6 +308,8 @@ and its pull request showed a PDF as a binary file’s line and a note.
   assigned or the host cannot open files.
   Download is always offered.
   On the file page it stands in while the viewer starts.
+  In a Markdown document the card links to the PDF’s view in Metabrowser instead, by the
+  owner’s rule that default links keep the reader in Metabrowser’s views (`mb-8nnc`).
 - **No PDF JavaScript.** No PDF.js or other JavaScript PDF library: the browser’s viewer
   draws the file page, and the preview is a static image.
   The preview is rendered by `pypdfium2` (PDFium) in a bounded subprocess.
@@ -383,13 +387,54 @@ After the threat model:
   pinned by the policy tests, the surfaces golden showing `viewer` on every surface, and
   the Chrome test loading it untrusted with no violation while an object at another
   address is refused
-- [ ] The preview (`mb-7tcl`): a plugin route that renders the first page with
-  `pypdfium2` in a subprocess bounded in time and memory, a `previews` area of the cache
-  root keyed by content hash, renderer version, and size, written atomically and bounded
-  by a measured size, the card in diffs and overviews and on the file page, and a golden
-  for render, reuse, a changed file, and a failed render
-- [ ] Links (`mb-x0a6`): Markdown links and embeds to a PDF open its view and draw the
-  card
+- [x] The preview (`mb-7tcl`): `/api/plugin/pdf/preview` (by `path`, or a blob by `oid`)
+  and `/api/plugin/pdf/preview-image`, which render the first page with `pypdfium2` in a
+  child process bounded in time, CPU, input, and output (and address space on Linux),
+  and keep the PNG in the cache keyed by content, renderer version, and size, written
+  atomically and evicted least recently used past a measured bound.
+  Where it differs from the plan:
+  - The child runs `python -I -B render_child.py` by its path, not `-m`: importing the
+    package cost about 200 ms of every render.
+  - The area is `plugins/pdf/previews/`, inside the plugin cache directory
+    `plugin_api.plugin_cache_directory` keeps owner-only, not a new top-level area.
+  - Where the probe finds a sandbox, a trusted folder’s PDFs are rendered in it too; the
+    T7 rule decides only what happens without one (`preview_isolation.isolation_for`).
+  - The card is drawn in a diff’s binary `.pdf` change (its new side, or the old one for
+    a deletion, by blob) and as the first page behind the file page’s viewer.
+    Folder overviews have no thumbnail mechanism to draw it in, so they have none; a PDF
+    named without `.pdf` gets no diff card, since the comparison does not sniff a side;
+    and a diff’s card has no Open or Download of its own, since `/raw` serves only the
+    served tree, so the file bar’s View file reaches them.
+  - The evidence is `cli-api-pdf-preview.tryscript.md` (render, reuse, the same bytes
+    under another name, a changed file, no PDF, an unreadable one, the refusals), the
+    surfaces golden’s first-page and card lines, and `tests/test_pdf_preview*.py`.
+- [x] Links (`mb-x0a6`): Markdown links and embeds to a PDF open its view and draw the
+  card. A link (`[x](report.pdf)`, `[[report.pdf]]`) already reached the view.
+  An embed (`![](report.pdf)` and `<img src="report.pdf">`, which KPress keeps as an
+  image, `![[report.pdf]]`, and an `<object data="report.pdf">` should one reach the
+  enhancer) is a slot holding a plain link to the view, named by the file, until
+  `mb.plugins.load("pdf")` answers, then the card (`mountPdfCard`) with one View link to
+  the view (`link-enhancer.js` `mountPdfEmbed`; `markdown` now requires `pdf`). The kind
+  is decided by the authored `.pdf` extension, as an image’s is; a PDF named without it
+  embeds as before, through `/raw`. Where it differs from the plan:
+  - The card in a document links to the view, not the default app (Decisions for Phase
+    2), and its image is not a link, as `card.js` draws it everywhere.
+  - KPress drops `<object>`, `<embed>`, and `<iframe>` under both profiles and says so
+    in `sanitizer_diagnostics`, so neither profile can hand the page a viewer; only the
+    image forms and the wiki embed reach the enhancer.
+  - Under the untrusted profile the inert allowlist drops the wiki placeholders’
+    attributes, so `![[report.pdf]]` is its text there, as every wiki link is; the image
+    forms draw the card in both profiles.
+  - A card prints its first page only once it has asked for it, which it does near the
+    viewport; `print-ready.js` then makes the image eager.
+    One the reader never neared prints as its name and View link.
+  - Where the plugin cannot load the slot keeps its link, and a document replaced before
+    the plugin answers mounts no card.
+  - The evidence is the `pdfEmbeds` block of `cli-ui-markdown-functional.tryscript.md`,
+    the PDF section of `cli-api-untrusted-markdown.tryscript.md` (what KPress keeps of
+    each form, trusted and untrusted), the wiki enhancer’s replacement checks in
+    `tests/dom/markdown-wiki-enhancer-behavior.js`, and the resolver fixtures’ `pdf`
+    media kind.
 
 ## Testing Strategy
 
@@ -445,7 +490,8 @@ descriptor.
 2. **Markdown embeds.** `![[report.pdf]]` stays a link to `/raw`, which replaces the
    page. Should it instead link to the file’s view in Metabrowser, or draw the plugin’s
    card? Either is a change to the Markdown plugin.
-   **Decided:** the view, with the card for an embed (`mb-x0a6`).
+   **Decided:** the view, with the card for an embed (`mb-x0a6`). Landed in Phase 2: the
+   embed is the card, whose one link opens the view.
 3. **The viewer’s title.** Chrome’s viewer titles its toolbar with the address’s last
    segment, `raw`, since the plugin uses `/raw`’s query form, the one a pin answers.
    The path form would show the file’s name for a folder.

@@ -17,7 +17,14 @@ import pytest
 
 import metabrowser.builtin_plugins.agents.adapters  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
+from tests import (
+    chrome_starts,
+    suite_gates,
+    suite_tiers,
+    suite_timing,
+    suite_workers,
+    transient_output,
+)
 from tests.file_ages_git import (  # noqa: F401
     file_ages_git,  # pyright: ignore[reportUnusedImport]
     fixed_file_ages_git,  # pyright: ignore[reportUnusedImport]
@@ -293,24 +300,105 @@ def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, objec
     return (yield)
 
 
-def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
-    """Say which tests would have run gh, so a new one is noticed, and how the run's
-    Chrome starts went (``tests/chrome_starts.py``)."""
+_SUMMARY_LINES = pytest.StashKey[list[str]]()
+_TMP_PATH = pytest.StashKey[Path]()
+_FAILED = pytest.StashKey[bool]()
 
-    basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+
+@pytest.hookimpl(wrapper=True)
+def pytest_fixture_setup(
+    fixturedef: pytest.FixtureDef[object], request: pytest.FixtureRequest
+) -> Generator[None, object, object]:
+    """Note the test's ``tmp_path``, however it was asked for, for its reports below."""
+
+    result = yield
+    if fixturedef.argname == "tmp_path" and isinstance(result, Path):
+        request.node.stash[_TMP_PATH] = result
+    return result
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_makereport(item: pytest.Item) -> Generator[None, pytest.TestReport, object]:
+    """Empty the test's ``tmp_path`` after its teardown report, unless one of its reports
+    failed (``tests/transient_output.py``).
+
+    The teardown report is made after every fixture's teardown, so a test whose setup
+    errored, or whose teardown failed after its call passed, keeps its directory, as one
+    whose call failed does. Outermost, so that the report seen is the one pytest records,
+    after an expected failure is marked as one.
+    """
+
+    report = yield
+    failed = item.stash.get(_FAILED, False) or report.failed
+    item.stash[_FAILED] = failed
+    path = item.stash.get(_TMP_PATH, None)
+    if report.when == "teardown" and path is not None and not failed:
+        transient_output.empty(path)
+    return report
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Read what the terminal summary reports from the run's base directory, then release
+    the locks of sessions whose process has gone and remove a passing run's base directory
+    (``tests/transient_output.py``).
+
+    First, because pytest's own ``pytest_sessionfinish`` then prunes older sessions'
+    directories, and the terminal summary is written only after that. A base directory
+    given with ``--basetemp``, as pytest-xdist gives each worker its own, is not this
+    session's to remove. Nothing here raises: from this hook an exception would replace the
+    run's report, its failures included, with pytest's internal error.
+    """
+
+    config = session.config
+    try:
+        basetemp = config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+    except OSError as error:
+        config.stash[_SUMMARY_LINES] = [f"transient output: no base directory: {error}"]
+        return
+    config.stash[_SUMMARY_LINES] = _summary_lines(basetemp)
+    if config.option.basetemp is None:
+        transient_output.end_session(basetemp, passed=exitstatus == 0)
+
+
+def _summary_lines(basetemp: Path) -> list[str]:
+    try:
+        return [*_gh_guard_lines(basetemp), *chrome_starts.summary(basetemp)]
+    except Exception as error:
+        # An error in reading the logs would otherwise replace the run's whole report
+        # (pytest_sessionfinish above), which matters more than these lines.
+        return [f"summary: the run's logs could not be read: {error!r}"]
+
+
+def _gh_guard_lines(basetemp: Path) -> list[str]:
     # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
     # Under pytest-xdist each worker's base is ``popen-gw<N>`` in this one, with its own
     # stand-in and log, and the summary this process prints reads them all.
     patterns = ("no-real-gh*/calls.log", "popen-gw*/no-real-gh*/calls.log")
     logs = {log.resolve() for pattern in patterns for log in basetemp.glob(pattern)}
-    calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
+    lines: list[str] = []
+    calls: list[str] = []
+    for log in sorted(logs):
+        try:
+            # The stand-in logs a call's arguments as they were given, in any encoding.
+            calls += log.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as error:
+            lines.append(f"gh guard: {log} could not be read: {error}")
     if calls:
         tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
-        terminalreporter.write_line(
+        lines.append(
             f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
             f"from {len(tests)} test(s): " + ", ".join(tests)
         )
-    for line in chrome_starts.summary(basetemp):
+    return lines
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Say which tests would have run gh, so a new one is noticed, and how the run's
+    Chrome starts went (``tests/chrome_starts.py``), as ``pytest_sessionfinish`` read
+    them."""
+
+    for line in terminalreporter.config.stash.get(_SUMMARY_LINES, []):
         terminalreporter.write_line(line)
 
 

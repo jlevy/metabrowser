@@ -55,7 +55,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | The file’s text as one `mermaid` fence through `/api/kpress/render`, drawn as a document’s diagrams are |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
-| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Table `A`, Source `S` | File envelope and the `structured/parsed` hook; Table reads a top-level list of mappings as one table through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)) |
+| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Table `A` on a file that starts as a list of records (`structured/offer.py`), Source `S` | File envelope and the `structured/parsed` hook; Table reads a top-level list of mappings as one table through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `sqlite` | Any file that would otherwise be binary and starts with SQLite’s magic number, whatever its name (`magic`); `.sqlite`, `.sqlite3`, `.db`, `.db3`, and `.s3db` give the tree its chevron | Table `V`, Schema `S`, Info `I` | A container: the `sqlite/children` hook lists its tables, each at `<database>/<segment>`. Table is the overview at the database’s address, from `table/tables`, and the table plugin’s view at a table’s, through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)); Schema reads `sqlite/schema` and Info `sqlite/info`, each read in a reader process |
@@ -65,7 +65,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
 | `event-log` | A `.jsonl` file named `events-*.jsonl`, in a served folder (`path_glob`; a Git blob of that name is generic JSONL) | Timeline `V`, Latency `L`, By kind `B`, Errors `E`, Raw JSON `S` | File envelope and the `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors` hooks over one segment of [the event log](../../realtime-debugging.md#event-log) |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
-| `pdf` | A file that starts with `%PDF-` and would otherwise be binary (`magic`), whatever its name, and any `.pdf` | PDF | File envelope; the raw asset in the browser’s own viewer, with Open (in the macOS app), Download, and Open in new tab ([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)) |
+| `pdf` | A file that starts with `%PDF-` and would otherwise be binary (`magic`), whatever its name, and any `.pdf` | PDF | File envelope; the raw asset in the browser’s own viewer, with Open (in the macOS app), Download, and Open in new tab, and the first page behind it while it loads; a diff’s binary `.pdf` change, and a Markdown document’s embed of a `.pdf`, show the first-page card instead of a viewer, the document’s with a link to the PDF’s view. The first page is a PNG the server draws: `/api/plugin/pdf/preview` (by `path`, or a blob by `oid`) and `/api/plugin/pdf/preview-image` ([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)) |
 | `sqlite` | A file that would be `binary` and starts with `SQLite format 3\0` (a `magic` rule), whatever its name | Info | The `sqlite/info` hook: the database as a reader process read it ([Reading SQLite Databases](arch-plugin-system.md#reading-sqlite-databases)) |
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
 | `comparison` | No file; the Commits tab selects it for `/commit/<rev>[/<inner>]` | The `diff` kind’s views | `diff/comparison` document in File Diff Format |
@@ -246,7 +246,9 @@ Claude Code and Codex sessions under a served folder ([Agent Catalog](#agent-cat
 ([Table Sources](arch-plugin-system.md#table-sources)); `sqlite/info`, `sqlite/schema`,
 and `sqlite/children`, a SQLite database’s Info and Schema views and its tables as
 container children
-([Navigation Containers](arch-plugin-system.md#navigation-containers)); and
+([Navigation Containers](arch-plugin-system.md#navigation-containers)); `pdf/preview`
+and `pdf/preview-image`, a PDF’s first page as a PNG the server draws
+([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)); and
 `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
 `github/pull-size`, `github/pull-timeline`, `github/pull-markdown`,
