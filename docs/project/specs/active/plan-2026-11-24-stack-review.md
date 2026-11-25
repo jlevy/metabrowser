@@ -222,7 +222,7 @@ does.
 | --- | --- |
 | `GET /api/plugin/github/stack?number=<n>` | The pointer, which changes as members move: the members with their state, title, and place; the comparison’s two commits and its key; the members the top lacks; the members still `pending`; the totals; each path’s layers; whether a member carries a stack guide; and the address of the comparison below |
 | `GET /api/plugin/github/stack-comparison?…` | The comparison document, immutable at its address, through `comparison_at` with the stack’s manifest loader, so `group=type:docs`, `file=`, `types=`, and `view=types` work as on a pull request |
-| `pull-rendered-diff`, `pull-image` | Take `stack=<n>` in place of `number`, and `_decide` admits the stack’s current pair, computed as the `stack` route computes it |
+| `pull-rendered-diff`, `pull-image` | Take `stack=<n>` in place of `number`, and `_decide` admits the stack’s current pair, computed as the `stack` route computes it, and the earlier pairs the `stack` route answered that are still kept |
 
 - `stack` is `current`, or `pending` while a member has no record, or `absent` with a
   reason (`not_github`, `not_stacked`, `not_linear`), following `stack-change`.
@@ -239,7 +239,10 @@ does.
 
 `/stack/<n>` is a page of its own, registered beside `PULL_ROUTE_TABS` in
 `view_routes.py`. Its number is GitHub’s label for the stack, which does not change when
-a layer is added, and **View on GitHub** opens the stack’s page there.
+a layer is added.
+**View on GitHub** was to open the stack’s page there; phase 1 does not
+build that, and opens the top pull request, since the plugin knows no address for
+GitHub’s own page of a stack.
 
 - **Header:** the stack’s name and base branch, its members from top to base with state
   and title as the stack menu lists them, the totals, and the line about members the top
@@ -248,8 +251,8 @@ a layer is added, and **View on GitHub** opens the stack’s page there.
   changed-files tree (`static/changed-files-tree.js`), which a diff’s Diff summary draws
   too. A file opens Changes at that file.
 - **Docs** (`/stack/<n>/docs`): the stack’s documents as the top head has them, drawn
-  with the options a pull request’s Docs has (`DOCS_DRAWING` in `pull-page.js`), so it
-  opens on Current.
+  with the options a pull request’s Docs has (`DOCS_DRAWING` in `diff-drawing.js`, which
+  `pull-page.js` shares), so it opens on Current.
 - **Changes** (`/stack/<n>/changes`, and `/stack/<n>/changes/<path>` at one file): the
   consolidated diff, mounted with the diff plugin’s `mountDiffView` on the one
   comparison, as a commit’s page mounts its own, with the choices and preferences a pull
@@ -258,8 +261,9 @@ a layer is added, and **View on GitHub** opens the stack’s page there.
 - **The front page** `/stack/<n>` is Guided Review when the stack has a guide, and Files
   otherwise. The `stack` answer says which, from the server’s reading of the
   descriptions, so the page needs no hint of its own.
-- **Entry points:** the Pulls tab’s **Stack #N** heading, and a first row, **Whole
-  stack**, in each member’s stack menu.
+- **Entry points:** a first row, **Whole stack**, in each member’s stack menu.
+  The Pulls tab’s **Stack #N** heading was planned as one too; phase 1 does not build
+  it, since that heading is the stack row’s disclosure toggle.
   Opening a GitHub stack link with `metab` or in the app, as a pull request’s link
   opens, is left for later.
 - **Layer chips.** Each file’s row and file bar names the layers that change it by their
@@ -268,6 +272,9 @@ a layer is added, and **View on GitHub** opens the stack’s page there.
   view.
 - **A new comparison while reading** is offered, not swapped in under the reader, as a
   pull request’s page offers a new head.
+  The drawn one stays while a member is fetched, and the server keeps answering it after
+  the stack moves, as it keeps a pull request’s earlier pairs
+  (`pull_stack_retained.py`).
 
 **Why a page and not a switch on each pull request.** A pull request’s Changes and Docs
 carry a state machine that follows one comparison’s head (`filesAction`, `followedFrom`,
@@ -278,13 +285,18 @@ A stack is also no single pull request, so its address should not be one’s.
 
 The page reads `stack` again on its poll, as a pull request’s page reads `pull`. Members
 move through the catalog: a member whose row names a head its record lacks is `pending`,
-and the page asks `pull-refresh` for it once for that head.
+and the page asks `pull-refresh` for it at that head.
 It asks for a member with no record as the reader’s own open of it (`retry`), as a pull
 request’s page opened by a link does, since an automatic ask refreshes only a record the
-server holds. While a stack’s page is all that is open, it sends a visible pull request
-page’s automatic ask for its top member, which keeps the repository’s list probed
+server holds. An ask the server refuses, which it does past `MAX_PULL_JOBS` fetches at
+once, or whose fetch ends with the member still pending, is sent again after a backoff
+(`ASK_BACKOFF_MS` in `stack-page.js`); a member with no record whose fetch ended without
+one is named, with a Retry.
+While a stack’s page is all that is open, it sends a visible pull request page’s
+automatic ask for its top member, which keeps the repository’s list probed
 (`attend_list` in `pull_list_route.py`), so the catalog keeps reporting every member’s
-head. The page adds no probe and no clock of its own;
+head. The page adds no probe of its own and, as a pull request’s page, reads nothing
+while hidden;
 [Pull Request Update Cadence](plan-2026-11-22-pull-request-update-cadence.md#cadence-by-what-is-visible)
 has the cadences it inherits.
 
