@@ -51,9 +51,10 @@ commit, the build the skill is written for:
    subsections, such as ``ready`` or ``side``, is a string ``guided_review.py`` spells, a
    state its route answers or a value it compares, or a field of the block's models, so
    a state renamed in prose fails here though check 5 leaves one-word values alone.
-8. **The block skeleton.** The block under "Write the Block", its commit IDs filled in,
-   is a guide ``parse_guide`` reads, with a quoted title holding ``: `` and a note whose
-   list keeps its lines, the two YAML rules the section states.
+8. **The block skeletons.** Each block under "Write the Block", its commit IDs filled
+   in, is a guide ``parse_guide`` reads, with a quoted title holding ``: `` and a note
+   whose list keeps its lines, the two YAML rules the section states. The first is flat,
+   as a short guide is, and the second puts its steps in groups, as a longer one does.
 
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
 2, 3, and 5 read it too. Outside every check: the names of query parameters, page
@@ -144,15 +145,16 @@ GOLDEN_SPELLING: Final = {
 }
 
 # The section on writing a guided review and its subsections, whose one-word code spans
-# check 7 holds to the guided-review module, and the subsection with the block skeleton.
+# check 7 holds to the guided-review module, and the subsection with the block skeletons.
 GUIDE_SECTIONS: Final = frozenset(
     {"Write a Guided Review", "Write the Block", GUIDE_CONFIRM_SECTION, GUIDE_REFRESH_SECTION}
 )
 SKELETON_SECTION: Final = "Write the Block"
-# The skeleton is the guide's own Markdown inside a four-backtick `markdown` fence, as the
+# A skeleton is the guide's own Markdown inside a four-backtick `markdown` fence, as the
 # format reference shows it, so the `guided-review` fence is part of what an agent copies.
+# The section has two, a flat guide and one in groups, in that order.
 _SKELETON: Final = re.compile(r"^````markdown\n(.*?)^````$", re.MULTILINE | re.DOTALL)
-# Full commit IDs for the skeleton's placeholders, which a pin must be.
+# Full commit IDs for a skeleton's placeholders, which a pin must be.
 SKELETON_SPELLING: Final = {
     "<full merge-base commit ID>": "1" * 40,
     "<full head commit ID>": "2" * 40,
@@ -837,6 +839,7 @@ def guide_values() -> frozenset[str]:
     models = (
         guided_review.Collection,
         guided_review.CollectionComparison,
+        guided_review.CollectionGroup,
         guided_review.CollectionItem,
         guided_review.CollectionReference,
     )
@@ -856,35 +859,52 @@ def guide_value_findings(text: str, values: frozenset[str]) -> list[str]:
     ]
 
 
-def skeleton(text: str) -> str:
-    """The description the block skeleton of :data:`SKELETON_SECTION` makes, IDs filled in."""
+# What each skeleton under SKELETON_SECTION shows, in order: whether its steps are grouped.
+SKELETONS: Final = {"flat": False, "grouped": True}
+
+
+def skeletons(text: str) -> list[str]:
+    """The descriptions the block skeletons of :data:`SKELETON_SECTION` make, IDs filled in."""
 
     found = _SKELETON.findall(_section(text, SKELETON_SECTION))
-    assert len(found) == 1, f"SKILL.md has {len(found)} block skeletons under {SKELETON_SECTION!r}"
-    body = found[0]
-    for placeholder, value in SKELETON_SPELLING.items():
-        assert placeholder in body, f"the skeleton has no {placeholder}"
-        body = body.replace(placeholder, value)
-    return body
+    assert len(found) == len(SKELETONS), (
+        f"SKILL.md has {len(found)} block skeletons under {SKELETON_SECTION!r}, "
+        f"not {len(SKELETONS)}"
+    )
+    bodies: list[str] = []
+    for body in found:
+        for placeholder, value in SKELETON_SPELLING.items():
+            assert placeholder in body, f"a skeleton has no {placeholder}"
+            body = body.replace(placeholder, value)
+        bodies.append(body)
+    return bodies
 
 
 def skeleton_findings(text: str) -> list[str]:
-    """Why the skeleton is not a guide the page reads, or does not show the rules it states."""
+    """Why a skeleton is not a guide the page reads, or does not show the rules it states."""
 
-    try:
-        guide = parse_guide(skeleton(text))
-    except GuideError as refusal:
-        return [f"the page refuses the skeleton: {refusal}"]
-    if guide is None:
-        return ["the skeleton has no guided-review block the page reads"]
     found: list[str] = []
-    pins = (guide.comparison.merge_base, guide.comparison.head)
-    if pins != tuple(SKELETON_SPELLING.values()):
-        found.append(f"the skeleton's pins read as {pins}, not its placeholders")
-    if not any(": " in item.title for item in guide.items):
-        found.append("no title of the skeleton holds ': ', so it does not show the quoting rule")
-    if not any("\n- " in item.note for item in guide.items):
-        found.append("no note of the skeleton keeps a list's lines")
+    for (name, grouped), body in zip(SKELETONS.items(), skeletons(text), strict=True):
+        try:
+            guide = parse_guide(body)
+        except GuideError as refusal:
+            found.append(f"the page refuses the {name} skeleton: {refusal}")
+            continue
+        if guide is None:
+            found.append(f"the {name} skeleton has no guided-review block the page reads")
+            continue
+        pins = (guide.comparison.merge_base, guide.comparison.head)
+        if pins != tuple(SKELETON_SPELLING.values()):
+            found.append(f"the {name} skeleton's pins read as {pins}, not its placeholders")
+        steps = guide.flat_items()
+        if not any(": " in step.title for step in steps):
+            found.append(
+                f"no title of the {name} skeleton holds ': ', so it hides the quoting rule"
+            )
+        if not any("\n- " in step.note for step in steps):
+            found.append(f"no note of the {name} skeleton keeps a list's lines")
+        if (steps != guide.items) != grouped:
+            found.append(f"the {name} skeleton {'has no' if grouped else 'has a'} group")
     return found
 
 
@@ -1004,7 +1024,7 @@ def test_every_guide_value_is_one_the_module_spells(skill: str) -> None:
     assert guide_value_findings(skill, guide_values()) == []
 
 
-def test_the_block_skeleton_is_a_guide_the_page_reads(skill: str) -> None:
+def test_the_block_skeletons_are_guides_the_page_reads(skill: str) -> None:
     assert skeleton_findings(skill) == []
 
 
@@ -1189,20 +1209,45 @@ def test_a_guide_recipe_the_golden_does_not_run_fails(skill: str) -> None:
 
 
 SKELETON_TITLE: Final = '"Keystone: the snapshot is served before the worker ends"'
+# The grouped skeleton's two group heads, which a mutation takes out to leave its steps
+# ungrouped.
+SKELETON_DECISIONS_GROUP: Final = "    - title: Decisions\n      items:\n"
+SKELETON_TESTING_GROUP: Final = "    - title: Testing\n      items:\n"
+# The testing step's list note and its reference, at the flat skeleton's indent; the grouped
+# skeleton's lines are these with four more spaces. Each begins at a line's start, so a
+# mutation of the flat one cannot match inside the grouped one.
+SKELETON_LIST_NOTE: Final = "\n      note: |-\n"
+SKELETON_TESTING_REFERENCE: Final = "\n      references:\n        - {path: tests/test_cache.py}\n"
+
+
+def _indented(lines: str) -> str:
+    """*lines*, each that holds text four spaces deeper, as the grouped skeleton has them."""
+    return "\n".join(f"    {line}" if line else line for line in lines.split("\n"))
 
 
 def test_a_skeleton_the_page_refuses_fails(skill: str) -> None:
+    # The flat skeleton comes first, so a mutation applied once reaches it.
     unquoted = _mutated(skill, SKELETON_TITLE, SKELETON_TITLE.strip('"'))
     assert skeleton_findings(unquoted) == [
-        "the page refuses the skeleton: The guided-review block contains invalid YAML."
+        "the page refuses the flat skeleton: The guided-review block contains invalid YAML."
     ]
-    folded = _mutated(skill, "      note: |-\n", "      note: >-\n")
-    assert skeleton_findings(folded) == ["no note of the skeleton keeps a list's lines"]
-    bare = _mutated(skill, "      references:\n        - {path: tests/test_cache.py}\n", "")
-    assert skeleton_findings(bare) == [
-        "the page refuses the skeleton: The guided-review block does not satisfy the v1 "
-        "SoftSchema at items.1."
-    ]
+    for name, note in (("flat", SKELETON_LIST_NOTE), ("grouped", _indented(SKELETON_LIST_NOTE))):
+        folded = _mutated(skill, note, note.replace("|-", ">-"))
+        assert skeleton_findings(folded) == [f"no note of the {name} skeleton keeps a list's lines"]
+    for name, at in (("flat", "items.1."), ("grouped", "items.1.items.0.")):
+        reference = SKELETON_TESTING_REFERENCE
+        bare = _mutated(skill, reference if name == "flat" else _indented(reference), "\n")
+        assert skeleton_findings(bare) == [
+            f"the page refuses the {name} skeleton: The guided-review block does not satisfy "
+            f"the v1 SoftSchema at {at}"
+        ]
+    # Without their groups' heads, the steps are one list, which YAML reads at any indent.
+    ungrouped = _mutated(skill, SKELETON_TESTING_GROUP, "")
+    ungrouped = _mutated(ungrouped, SKELETON_DECISIONS_GROUP, "")
+    assert skeleton_findings(ungrouped) == ["the grouped skeleton has no group"]
+    # The grouped skeleton in the flat one's place shows no flat guide.
+    flat, grouped = _SKELETON.findall(_section(skill, SKELETON_SECTION))
+    assert skeleton_findings(_mutated(skill, flat, grouped)) == ["the flat skeleton has a group"]
 
 
 PRESENT: Final = "<invocation> --present <target> --format json\n"

@@ -72,6 +72,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Guided review groups, rationale, rendered documents, and stack rollups](specs/active/plan-2026-11-24-guided-review-groups.md):
+  optional groups of steps, a rationale step, documents drawn rendered in steps, and the
+  design for a stack-wide rollup
 - [Guided reviews in the agent skill](specs/active/plan-2026-11-24-guided-reviews-skill.md):
   the skill section that writes, publishes, and refreshes a pull request’s guided
   review, now shipped, and a `metab` check of a draft guide, still to build

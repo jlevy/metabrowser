@@ -979,7 +979,11 @@ A guided review is the pull-request carrier of the
 describes what the carrier adds.
 `guided_review.py` extracts a top-level fence from the raw, bounded PR description and
 validates its artifact against the installed `Collection/v1` SoftSchema
-(`metabrowser.collection:Collection/v1`), whose ordered `items` are the guide’s steps.
+(`metabrowser.collection:Collection/v1`), whose ordered `items` are the guide’s steps
+and groups of them, one level deep.
+The steps are numbered 1 to the step count in reading order, through the groups
+(`Collection.flat_items`), so `step=<k>`, the page’s step addresses, and a stale guide’s
+`changed_steps` count them alike.
 An undeclared key or a list past its bound is refused before the schema runs
 (`_outside_shape`), since softschema’s refusal costs time quadratic in the number of
 undeclared keys, and a record for each element of a long list.
@@ -1012,11 +1016,12 @@ It marks each changed step, in the step list and on the step, and says above
 a changed file’s excerpt, or in its place, that the file changed, and when what changed
 is unknown that it may have; it names no commit, head, merge base, path, or count.
 The limits in `guided_review.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`,
-and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt
-text, and a step’s whole files, each with the measurement that set it beside the
-constant. The parse is kept for each pull request by record revision, so a step click
-reads the guide the first request parsed and an edited description is parsed once, by
-the first of the requests that ask for it at once.
+and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps and groups together, the per-step
+hydration, the excerpt text, and a step’s whole files, each with the measurement that
+set it beside the constant.
+The parse is kept for each pull request by record revision, so a step click reads the
+guide the first request parsed and an edited description is parsed once, by the first of
+the requests that ask for it at once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
 Guide text and diff lines are inserted as text, in the design system’s existing parts:
@@ -1028,9 +1033,31 @@ in `guided-review.js`), so its hunk bars, folds, type, row height, gutter, and c
 fills are Changes’. A range is one hunk in the diff model’s shape (`_rows_hunk` in
 `guided_review.py`), and a path alone is its file’s whole patch, within the step’s
 budget for whole files; a file past it, or past what the diff source reads in one run,
-is answered `patch_too_large`. A ready step carries KPress’s stylesheet manifest, as the
-description’s Markdown route does, and the page loads it and the diff plugin’s styles
-before drawing the step, so the tab reads the same when it is the first thing opened.
+is answered `patch_too_large`. A path alone of a file the rendered route renders, by
+that route’s own rule on both sides of the change (`rendered_format` in
+`pull_rendered_diff.py`: Markdown, YAML, JSON), is a document instead: the guided route
+answers its format as `rendered`, reads no patch for it, gives it no hunks, and charges
+it nothing against the step’s budget for whole files (`_step_references` in
+`guided_review.py`), so a large document is bounded only by the rendered route’s own
+bounds. The page draws it (`referenceDrawing` in `guided-review.js`) with the diff
+plugin’s own view of that file (`mountRenderedFile` in `diff/index.js`): a Markdown file
+with the options the Docs tab gives its documents (`DOCS_DRAWING` in `pull-page.js`),
+and a YAML or JSON file, which Docs does not list, with the options Changes draws with
+(`CHANGES_DRAWING`), so its file bar, its rendered layer and that layer’s chooser, and
+its Diff and Current are that tab’s, and whatever the tab learns to draw a file with,
+the step’s document draws with too.
+The view reads the comparison route’s one-file answer by path, whose manifest entry
+carries the id the rendered route asks for.
+The page draws a document only while its own comparison is the one the step was read at;
+at another, the reference says its file’s diff is unavailable, and with no rendered
+route the view draws the file without the rendered layer.
+A document the view could not draw keeps the guide’s bar for it, with its name and its
+Open full diff, above the view’s one-sentence notice.
+Each document is in the step’s list of drawn views, so a step change, or the page
+ending, disposes it and aborts its read.
+A ready step carries KPress’s stylesheet manifest, as the description’s Markdown route
+does, and the page loads it and the diff plugin’s styles before drawing the step, so the
+tab reads the same when it is the first thing opened.
 Guided Review is the first tab when the description has a guide: it is the author’s
 reading order. `/pull/<n>` is then the guide, and Conversation is
 `/pull/<n>/conversation` (`shownTabFor` in `pull-page.js`); without a guide `/pull/<n>`
@@ -1050,6 +1077,17 @@ it. The description is the guide’s step 0, its overview (`createGuideNavigatio
 `guided-review.js`): the page draws it from the description it already has, under a list
 of the steps that a step answer’s `titles` fill, and it keeps the answer for step 1 that
 it read for those titles, so the first move reads nothing.
+Each answer with a step carries the guide’s `outline` (`_outline` in
+`guided_review.py`), a tree in reading order of group nodes, each a title, a note or
+null, and its steps, and step nodes, each its number and title; the step’s own `group`
+is the index of its group’s node, or null.
+The step list draws each group as the shell’s group heading, with no number and nothing
+to press, above its steps, which keep their flat numbers, built once for each outline as
+the rows are; a step’s card names its group before its place (`groupedPlace`), and a
+group’s note shows above its first step.
+A guide without groups is an outline of steps alone, which draws as it did before
+groups. The tree is the shape a stack’s rollup would answer one level deeper
+([the plan](../specs/active/plan-2026-11-24-guided-review-groups.md#phase-3-stack-rollups-mb-ri96-designed-only)).
 Each answer with a step is kept for its record revision, and a new revision or a moved
 head drops them. A step whose read is refused or fails keeps the guide’s steps, so the
 reader can move on, and is read again when chosen again.

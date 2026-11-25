@@ -16,7 +16,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeGuard
 
 from markdown_it import MarkdownIt
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    ValidationError,
+    model_validator,
+)
 from softschema.models import Contract, SchemaProfile, SchemaStatus
 from softschema.validate import parse_yaml_text, validate_artifact
 
@@ -48,7 +56,12 @@ from metabrowser.git.process import (
 from metabrowser.view_routes import format_pull_href
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from markdown_it.token import Token
+    from pydantic import GetJsonSchemaHandler
+    from pydantic.json_schema import JsonSchemaValue
+    from pydantic_core.core_schema import CoreSchema
 
     from metabrowser.builtin_plugins.github.pull_record import Comparison
     from metabrowser.builtin_plugins.github.pull_route import PullHost
@@ -69,8 +82,14 @@ _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 # Each item hydrates at most as many paths as the measured first paint of Changes
 # (INITIAL_PULL_FILES in sidekick.py), in one run of the diff source. A ranged reference
 # renders its lines (MAX_EXCERPT_BYTES), and a path alone its file's whole patch
-# (MAX_STEP_PATCH_BYTES).
+# (MAX_STEP_PATCH_BYTES), or, for a file the rendered route renders, nothing at all.
 MAX_REFERENCES = 8
+# Every entry of a collection's items counts: an item at the top, a group, and each item in a
+# group, so a group holds at most MAX_ITEMS - 1 items. A group is a title and an optional
+# note, which parse as an item without its references does, so counting it as an item keeps
+# the bound an upper bound on the parse: interleaved, best of nine, at a load average near
+# 205 on 10 cores (2026-11-24), 40 items of MAX_REFERENCES ranged references took 139 ms,
+# four groups of nine such items (40 entries) 128 ms, and one group of 39 137 ms.
 # A reviewer reads a guide one item at a time, and parse_guide costs by the item: markdown-it,
 # YAML, JSON Schema and pydantic, in Python that holds the GIL, take 3.3 ms an item of
 # MAX_REFERENCES references and 0.6 ms a KiB of text on top. Warm, best of nine, on a
@@ -116,7 +135,9 @@ MAX_EXCERPT_BYTES = MAX_BODY_BYTES
 # its own where Changes serializes them. So this bounds the drawing just under the largest
 # step measured to draw within about 200 ms here, the 1,956,140 bytes of charge. A file past
 # what is left says its diff is too large to show in the step, beside its Open full diff
-# link.
+# link. A file the rendered route renders (Markdown, YAML, JSON) cited whole charges
+# nothing here: the page draws it from its own reads, which that route's bounds and the
+# comparison route's one-file read bound, as Docs and Changes draw it (_step_references).
 MAX_STEP_PATCH_BYTES: Final = 1_950_000
 
 # A stale guide's answer names the commits after the guide's head, newest first, and counts
@@ -183,8 +204,56 @@ class CollectionItem(_Model):
     references: list[CollectionReference] = Field(min_length=1, max_length=MAX_REFERENCES)
 
 
+class CollectionGroup(_Model):
+    """A titled run of items, read in its place: a title, an optional note, and its items.
+
+    A group's items are items, never groups, so a collection nests one level. A group is
+    an entry of the collection as each of its items is.
+    """
+
+    title: Prose
+    note: Prose | None = None
+    items: list[CollectionItem] = Field(min_length=1, max_length=MAX_ITEMS - 1)
+
+
+def _entry_kind(value: object) -> str:
+    """Which an entry of a collection's items is: a group has items of its own, an item none."""
+    if isinstance(value, CollectionGroup) or (isinstance(value, dict) and "items" in value):
+        return "group"
+    return "item"
+
+
+# The tags pydantic adds to an error's location inside an entry, which no field is named.
+_ENTRY_TAGS: Final = frozenset({"item", "group"})
+
+
+class _GroupWhenItHasItems:
+    """The compiled schema's statement of :func:`_entry_kind`: an entry is a group when it
+    has `items`, and an item otherwise.
+
+    Pydantic writes the union as a `oneOf`, whose refusal jsonschema places at the entry
+    alone, so a range starting at 0 would be refused at `items.0`. As an `if`, the refusal
+    is at its place inside the entry, `items.0.references.0.start_line`, as before groups.
+    """
+
+    def __get_pydantic_json_schema__(
+        self, schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        written = handler(schema)
+        item, group = written.pop("oneOf")
+        return {**written, "if": {"required": ["items"]}, "then": group, "else": item}
+
+
+type CollectionEntry = Annotated[
+    Annotated[CollectionItem, Tag("item")] | Annotated[CollectionGroup, Tag("group")],
+    Discriminator(_entry_kind),
+    _GroupWhenItHasItems(),
+]
+
+
 class Collection(_Model):
-    """Ordered annotated items, each a title, a note, and the references it is about.
+    """Ordered annotated items, each a title, a note, and the references it is about, which
+    may be gathered in titled groups.
 
     The format is general: a guided review is one use, a collection carried in a
     `guided-review` fence and pinned to a comparison. A collection has no prose of its own:
@@ -193,7 +262,29 @@ class Collection(_Model):
     """
 
     comparison: CollectionComparison
-    items: list[CollectionItem] = Field(min_length=1, max_length=MAX_ITEMS)
+    items: list[CollectionEntry] = Field(min_length=1, max_length=MAX_ITEMS)
+
+    @model_validator(mode="after")
+    def _bounded(self) -> Collection:
+        # No one list's bound states it, so the schema cannot (MAX_ITEMS).
+        if _entry_count(self.items) > MAX_ITEMS:
+            raise ValueError(f"a collection has at most {MAX_ITEMS} items and groups")
+        return self
+
+    def flat_items(self) -> list[CollectionItem]:
+        """The items in reading order, a group's in its place: a guided review's steps."""
+        return [
+            item
+            for entry in self.items
+            for item in (entry.items if isinstance(entry, CollectionGroup) else [entry])
+        ]
+
+
+def _entry_count(entries: list[CollectionItem | CollectionGroup]) -> int:
+    """Every entry MAX_ITEMS counts: each of *entries*, and each item in a group among them."""
+    return len(entries) + sum(
+        len(entry.items) for entry in entries if isinstance(entry, CollectionGroup)
+    )
 
 
 def _guide_fence(body: str) -> tuple[Token, list[str]] | None:
@@ -271,21 +362,28 @@ def _collection(fence: Token) -> Collection:
         "status": _CONTRACT.status,
     }:
         raise GuideError("The guided-review block needs the enforced Collection/v1 contract.")
-    outside = _outside_shape(document["collection"])
-    if outside is not None:
-        raise GuideError(_schema_refusal(outside))
+    refusal = _outside_shape(document["collection"])
+    if refusal is not None:
+        raise GuideError(refusal)
     result = validate_artifact(Path("guided-review"), contract=_CONTRACT, document=document)
     if not result.ok:
         raise GuideError(_schema_refusal(result.structural.errors[0].get("path")))
     try:
         return Collection.model_validate(result.values)
     except ValidationError as exc:
-        location = ".".join(str(part) for part in exc.errors()[0]["loc"])
+        location = ".".join(str(part) for part in exc.errors()[0]["loc"] if part not in _ENTRY_TAGS)
         raise GuideError(f"Invalid guided-review reference at {location}.") from exc
 
 
-def _outside_shape(collection: object) -> list[str | int] | None:
-    """Where *collection* leaves the shape the v1 schema closes, or ``None`` within it.
+# The refusal of a guide past MAX_ITEMS. No one list's bound states the total, so the
+# compiled schema admits such a block, and a refusal in the schema's name would send an
+# author who checks the block against it nowhere (A6 of review A on #807).
+_TOO_MANY: Final = f"This guide has more than {MAX_ITEMS} steps and groups."
+
+
+def _outside_shape(collection: object) -> str | None:
+    """The refusal of *collection* where it leaves the shape the v1 schema closes, or
+    ``None`` within it.
 
     The shape is each object a mapping of its declared keys and each list within its
     bound. softschema's refusal of undeclared keys is quadratic in their number: it writes
@@ -298,27 +396,58 @@ def _outside_shape(collection: object) -> list[str | int] | None:
     `test_the_shape_walk_reaches_every_nested_model` (tests/test_guided_review.py) fails
     when a model gains one this walk does not visit. The values inside the shape are the
     schema's to judge, at a cost linear in their size.
+
+    An entry is a group or an item as :func:`_entry_kind` tells them apart, as the schema
+    does. One bound is the models' alone, since no one list states it: MAX_ITEMS counts a
+    group's items with the entries. A block past it is refused in plain words, as soon as
+    the count passes it, so a group's long list is never walked; a list past its own
+    bound, the entries' or a group's, passes the total too.
     """
     if not _closed(collection, Collection):
-        return []
+        return _schema_refusal([])
     if "comparison" in collection and not _closed(collection["comparison"], CollectionComparison):
-        return ["comparison"]
+        return _schema_refusal(["comparison"])
     if "items" not in collection:
         return None
-    items = collection["items"]
-    if not isinstance(items, list) or len(items) > MAX_ITEMS:
-        return ["items"]
-    for at, item in enumerate(items):
-        if not _closed(item, CollectionItem):
-            return ["items", at]
-        if "references" not in item:
-            continue
-        references = item["references"]
-        if not isinstance(references, list) or len(references) > MAX_REFERENCES:
-            return ["items", at, "references"]
-        for to, reference in enumerate(references):
-            if not _closed(reference, CollectionReference):
-                return ["items", at, "references", to]
+    entries = collection["items"]
+    if not isinstance(entries, list):
+        return _schema_refusal(["items"])
+    counted = len(entries)
+    if counted > MAX_ITEMS:
+        return _TOO_MANY
+    for at, entry in enumerate(entries):
+        if _entry_kind(entry) == "item":
+            outside = _outside_item(entry, ["items", at])
+        elif not _closed(entry, CollectionGroup):
+            return _schema_refusal(["items", at])
+        else:
+            items = entry["items"]
+            if not isinstance(items, list):
+                return _schema_refusal(["items", at, "items"])
+            counted += len(items)
+            if counted > MAX_ITEMS:
+                return _TOO_MANY
+            places = (
+                _outside_item(item, ["items", at, "items", to]) for to, item in enumerate(items)
+            )
+            outside = next((place for place in places if place is not None), None)
+        if outside is not None:
+            return _schema_refusal(outside)
+    return None
+
+
+def _outside_item(item: object, at: list[str | int]) -> list[str | int] | None:
+    """Where *item*, an item at *at*, leaves the shape the v1 schema closes, or ``None``."""
+    if not _closed(item, CollectionItem):
+        return at
+    if "references" not in item:
+        return None
+    references = item["references"]
+    if not isinstance(references, list) or len(references) > MAX_REFERENCES:
+        return [*at, "references"]
+    for to, reference in enumerate(references):
+        if not _closed(reference, CollectionReference):
+            return [*at, "references", to]
     return None
 
 
@@ -508,22 +637,34 @@ def _references(
     *,
     truncated: bool,
     too_large: frozenset[str] = frozenset(),
+    documents: Mapping[str, str] | None = None,
 ) -> list[dict[str, object]]:
-    """Each reference of a step as the page draws it, its excerpt or its file's patch.
+    """Each reference of a step as the page draws it: its excerpt, its file's patch, or
+    the format the page draws the whole file in.
 
     *too_large* are the changes whose patches the diff source left out for their size,
-    alone or beside the step's other files.
+    alone or beside the step's other files. *documents* are the files the step cites whole
+    that the rendered route renders, each with its format: such a reference answers
+    `rendered`, the format, and no hunks, since the page draws that file whole from the
+    comparison route's one-file answer and the rendered route, within their own bounds,
+    so it charges nothing to the step's budget for whole files. Every other reference
+    answers `rendered` null.
     """
     output: list[dict[str, object]] = []
     remaining = MAX_EXCERPT_BYTES
     whole = MAX_STEP_PATCH_BYTES
+    formats = documents or {}
     for reference in references:
         change = changes.get(reference.path)
         href = None
         hunks: list[dict[str, object]] = []
         cut = False
+        rendered = formats.get(reference.path) if reference.side is None else None
         if change is None:
             state = "manifest_truncated" if truncated else "path_not_changed"
+        elif rendered is not None:
+            href = format_pull_href(number, "files", reference.path)
+            state = "ready"
         else:
             href = format_pull_href(number, "files", reference.path)
             patch = patches.get(change.id)
@@ -546,6 +687,7 @@ def _references(
             {
                 **reference.model_dump(),
                 "state": state,
+                "rendered": rendered,
                 "href": href,
                 "hunks": hunks,
                 "truncated": cut,
@@ -563,7 +705,15 @@ async def _step_references(
     rebase, or a force push, whether or not the store still has the commits it was written
     for: a reference that still resolves shows what the pull request changes now, and one
     that does not says so in its place.
+
+    A file the step cites whole that the rendered route renders, by that route's own rule
+    on the manifest's change, both its sides (`rendered_format`), is not read here: the
+    page draws it whole as the diff view does, from that file's own reads.
     """
+    # The rendered route's module, imported with the step's read rather than this module:
+    # the description's render imports this module, and never needs the projections.
+    from metabrowser.builtin_plugins.github.pull_rendered_diff import rendered_format
+
     base, head = comparison.base, comparison.head
     # The record's own comparison is the pull request's kept manifest (pull_manifest.py),
     # the one Changes reads.
@@ -574,12 +724,21 @@ async def _step_references(
         for change in manifest.files
         if (side := change.new or change.old) is not None and side.path_b64 is None
     }
+    documents = {
+        ref.path: rendered
+        for ref in step.references
+        if ref.side is None
+        and (change := changes.get(ref.path)) is not None
+        and (rendered := rendered_format(change)) is not None
+    }
     ranged = {ref.path for ref in step.references if ref.side is not None}
     wanted: dict[str, None] = {}
     skipped: set[str] = set()
     for ref in step.references:
         change = changes.get(ref.path)
         if change is None or change.availability is not Availability.ready:
+            continue
+        if ref.side is None and ref.path in documents:
             continue
         # A file whose changed lines alone charge past a step's whole files is never drawn
         # whole, so it is not read for that: every row charges at least 80 bytes.
@@ -607,6 +766,7 @@ async def _step_references(
         patches,
         truncated=manifest.truncated,
         too_large=too_large,
+        documents=documents,
     )
 
 
@@ -755,11 +915,11 @@ async def _staleness(
     except GitError:
         return answer
     if changed is not None:
-        referenced = {ref.path for item in guide.items for ref in item.references}
+        referenced = {ref.path for item in guide.flat_items() for ref in item.references}
         answer["changed_paths"] = sorted(referenced & changed)
         answer["changed_steps"] = [
             at
-            for at, item in enumerate(guide.items, start=1)
+            for at, item in enumerate(guide.flat_items(), start=1)
             if any(ref.path in changed for ref in item.references)
         ]
     return answer
@@ -769,6 +929,33 @@ def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
     return record_freshness(
         record, *catalog_member(store.home, store.slug, record.number), now=pulls.utc_now()
     ).head_moved
+
+
+def _outline(guide: Collection) -> tuple[list[dict[str, object]], list[int | None]]:
+    """The guide in reading order, as the route answers it, and each step's group.
+
+    The outline is a tree: a group node holds its steps, and a step outside a group is a
+    node of its own. Steps are numbered 1 to the step count through the groups, as
+    ``step=<k>`` and ``changed_steps`` number them. Each step's group is the index of its
+    group's node in the outline, or ``None`` outside one.
+    """
+    outline: list[dict[str, object]] = []
+    groups: list[int | None] = []
+
+    def step(item: CollectionItem, group: int | None) -> dict[str, object]:
+        groups.append(group)
+        return {"kind": "step", "step": len(groups), "title": item.title}
+
+    for entry in guide.items:
+        if isinstance(entry, CollectionGroup):
+            at = len(outline)
+            children = [step(item, at) for item in entry.items]
+            outline.append(
+                {"kind": "group", "title": entry.title, "note": entry.note, "children": children}
+            )
+        else:
+            outline.append(step(entry, None))
+    return outline, groups
 
 
 async def guided_review(host: PullHost, number: int, step_number: int) -> dict[str, object]:
@@ -813,23 +1000,28 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
     diagnostics: dict[str, object] = {} if staleness is None else {"stale": staleness}
     if published is None or comparison is None:
         return {**identity, "state": "comparison_unavailable", **diagnostics}
-    if step_number > len(guide.items):
+    steps = guide.flat_items()
+    if step_number > len(steps):
         return {**identity, "state": "step_not_found", **diagnostics}
-    step = guide.items[step_number - 1]
+    step = steps[step_number - 1]
     try:
         references = await _step_references(published, number, comparison, step)
     except (DiffSourceError, GitError):
         return {**identity, "state": "comparison_unavailable", **diagnostics}
+    outline, groups = _outline(guide)
     return {
         **identity,
         "state": "ready" if staleness is None else "stale",
         **diagnostics,
         # The comparison the excerpts are read from: the pull request's current one.
         "comparison": {"merge_base": comparison.base, "head": comparison.head},
-        "step_count": len(guide.items),
-        # Every step's title, so the page lists the guide's steps above the one it shows.
-        "titles": [item.title for item in guide.items],
+        "step_count": len(steps),
+        # Every step's title, so the page names each step it can move to.
+        "titles": [item.title for item in steps],
+        # The guide's groups and steps, which the page lists above the step it shows.
+        "outline": outline,
         "step": step_number,
+        "group": groups[step_number - 1],
         "title": step.title,
         "note": step.note,
         "references": references,
