@@ -3,7 +3,6 @@ base:
   description_hash: sha256v7:994ad831f65ac242d361ffead27ec25b1b8c24fc8ff9e90cfb7ce181df949291
   labels:
     - simplification
-    - linear
     - Improvement
   priority: 3
   slot: todo
@@ -15,7 +14,7 @@ external_key: OS-606
 external_url: https://linear.app/finterm-ai/issue/OS-606/simplify-catalog-feed-file-preview-and-markdown-engines-per-release
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T19:20:30.045Z
+remote_updated_at: 2026-11-25T03:55:59.164Z
 state: linked
-synced_at: 2026-11-20T19:21:07.162Z
+synced_at: 2026-11-25T03:55:59.418Z
 type: lk

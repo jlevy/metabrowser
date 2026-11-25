@@ -5,7 +5,7 @@ title: "A minimal built-in PDF plugin: native viewer, click-to-load in embedded 
 kind: epic
 status: in_progress
 priority: 2
-version: 26
+version: 27
 spec_path: docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md
 refs:
   - kind: pr
@@ -54,12 +54,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-24T18:03:18.453Z
-updated_at: 2026-11-25T03:55:51.644Z
+updated_at: 2026-11-25T03:56:11.064Z
 started_at: 2026-11-24T18:18:56.884Z
 extensions:
   linear:
     id: 78d2f6ac-e82a-4191-9213-8e1b1bcf07c9
-    linked_at: 2026-11-25T03:55:51.644Z
+    linked_at: 2026-11-25T03:56:11.064Z
 ---
 Findings (2026-11-24 survey of origin/main d95398297):
 

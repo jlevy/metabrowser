@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:fcc21cf86c487f15560aed2ce133ddcf55eddea80ed326f9f498f3bfdde7b36f
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  status: open
+  title: "Treemap: deeper nesting, containment fix, compact map on Overview"
+bead_id: is-01m82yzrw40w07dnw6zhsg8jep
+external_id: a1f2ad9a-4950-49f4-a746-607f45b67213
+external_key: OS-631
+external_url: https://linear.app/finterm-ai/issue/OS-631/treemap-deeper-nesting-containment-fix-compact-map-on-overview
+remote_updated_at: 2026-11-25T03:56:10.230Z
+state: linked
+synced_at: 2026-11-25T03:56:10.485Z
+type: lk

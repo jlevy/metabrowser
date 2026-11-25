@@ -1,0 +1,18 @@
+base:
+  assignee: null
+  description_hash: sha256v7:83e09e48b84508023e55ad523f03f1d178d85f07c3f9ad9a0ed2cc3317d97678
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  status: in_progress
+  title: "A minimal built-in PDF plugin: native viewer, click-to-load in embedded
+    contexts, Open in Preview from the macOS app"
+bead_id: is-01m87bky1pb8rhr10p26bsp6w6
+external_id: 78d2f6ac-e82a-4191-9213-8e1b1bcf07c9
+external_key: OS-632
+external_url: https://linear.app/finterm-ai/issue/OS-632/a-minimal-built-in-pdf-plugin-native-viewer-click-to-load-in-embedded
+remote_updated_at: 2026-11-25T03:56:11.837Z
+state: linked
+synced_at: 2026-11-25T03:56:12.097Z
+type: lk

@@ -1,0 +1,18 @@
+base:
+  assignee: null
+  description_hash: sha256v7:13dab23e841afca0a2365c7e2c0c1429b64de5205732b032452ea7f19c9b7609
+  labels:
+    - linear
+    - Improvement
+  priority: 1
+  status: in_progress
+  title: "Reader-facing notices and errors: a short warning and one simple remedy, never
+    internals"
+bead_id: is-01m87ky2a36j5yg4pf9827xxd6
+external_id: 01c43e85-79cd-458a-9674-6e9c92bf7e74
+external_key: OS-633
+external_url: https://linear.app/finterm-ai/issue/OS-633/reader-facing-notices-and-errors-a-short-warning-and-one-simple-remedy
+remote_updated_at: 2026-11-25T03:56:14.615Z
+state: linked
+synced_at: 2026-11-25T03:56:14.931Z
+type: lk

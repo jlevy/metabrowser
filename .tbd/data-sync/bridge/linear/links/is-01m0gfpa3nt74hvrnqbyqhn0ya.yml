@@ -2,7 +2,6 @@ base:
   assignee: null
   description_hash: sha256v7:b56fd10b9055298271ace3529f24aabf00ec40e74ced95a28be1874ece5dcab5
   labels:
-    - linear
     - Improvement
   priority: 3
   slot: todo
@@ -14,7 +13,7 @@ external_key: OS-600
 external_url: https://linear.app/finterm-ai/issue/OS-600/aggregate-delivery-compute-once-push-incrementally
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T19:20:29.515Z
+remote_updated_at: 2026-11-25T03:55:57.036Z
 state: linked
-synced_at: 2026-11-20T19:21:05.729Z
+synced_at: 2026-11-25T03:55:57.454Z
 type: lk
