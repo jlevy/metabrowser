@@ -30,7 +30,7 @@
 // every tab, row by row, and the tab bar under it starts at one place; a record with no
 // labels has no labels row, and lays out to that height less the row and its gap (mb-2u08).
 // The status line is there only while it has something to say, here an offer, and is then
-// a metadata line, as tall as the row of ages above it, one line and one gap more; a rate
+// a metadata line, as tall as the author's row above it, one line and one gap more; a rate
 // limit's hold is said in the freshness note's place and adds none (mb-ne91). The note is
 // whole beside the author's sentence or out of view, and the sentence whole while it shows;
 // a hold is never out of view, cut short instead. That is layout, which no browserless DOM
@@ -321,9 +321,10 @@ const MEASURE = `async (name, change, tab, width) => {
         ),
       )
     : null;
-  // Where the state row's parts and the labels are, and every row's height.
+  // Where the rows' parts and the labels are, and every row's height: the row of ages' badge,
+  // ages, Browse code, and Refresh, the author's sentence, and the branches.
   const places = () => ({
-    parts: [".github-pull-badge", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
+    parts: [".github-pull-badge", ".github-pull-ages", ".github-pull-ages-links", ".github-pull-refresh", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
       [...header.querySelectorAll(selector)].map((node) => [selector, Math.round(box(node).left * 100) / 100, Math.round(box(node).width * 100) / 100]),
     ),
     rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
@@ -399,11 +400,12 @@ const MEASURE = `async (name, change, tab, width) => {
     }
   }
   // A stack's chip arrives late, from its own answer, through the page's own builder, at
-  // the right end of the author's row (mb-cf0l): one stack, "⧉2/3", or two, "⧉286 4/4" and
-  // "⧉300 2/2", each named by its stack, as the page names a chip in more than one stack.
-  // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
-  // The strut that holds the author's row at a chip's height, read before a chip replaces it.
-  const heldBy = header.querySelector(".github-pull-meta .github-pull-stack-strut");
+  // the right end of the row of ages, just before Refresh's slot, which ends the row
+  // (mb-646g): one stack, "⧉2/3", or two, "⧉286 4/4" and "⧉300 2/2", each named by its
+  // stack, as the page names a chip in more than one stack. Its Layers glyph is a bare svg at
+  // the glyph's size, so the chip is as wide as the page's. The strut that holds the row of
+  // ages at a chip's height, read before a chip replaces it.
+  const heldBy = header.querySelector(".github-pull-opened > .github-pull-stacks > .github-pull-stack-strut");
   const strutHeight = heldBy ? Math.round(box(heldBy).height * 100) / 100 : null;
   let chipMoves = null;
   if (change.stackChip && group) {
@@ -431,36 +433,56 @@ const MEASURE = `async (name, change, tab, width) => {
     column.replaceChildren(...menus.map((menu) => menu.element));
     await frames();
     const after = places();
-    // Nothing moves: every part keeps its start, every row its height, the tab bar its place.
-    // The sentence alone, the author then the action, may give up width at its end where the
-    // row has none left: the action is cut first, to nothing, and then the author, so the
-    // sentence keeps its start and only the action's start, past a shorter name, moves.
-    const sentence = new Set([".github-pull-action", ".github-pull-identity"]);
+    // Nothing moves: every part keeps its start, every row its height, the tab bar its place,
+    // and Refresh, which ends the row the chip lands on, its start and its width. The ages
+    // alone may give up width at their end where the row has none left, and Browse code after
+    // them, kept whole while any age shows (B4 of review B on #506), follows their end, as the
+    // action followed a shorter author on the author's row (mb-cf0l).
     const kept = (shape) => ({
       parts: shape.parts.map(([selector, left, width]) => [
         selector,
-        selector === ".github-pull-action" ? null : left,
-        sentence.has(selector) ? null : width,
+        selector === ".github-pull-ages-links" ? null : left,
+        selector === ".github-pull-ages" ? null : width,
       ]),
       rows: shape.rows,
       tabBar: shape.tabBar,
     });
-    const details = header.querySelector(".github-pull-meta-details");
-    const contentRight = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+    const agesWidth = (shape) =>
+      shape.parts.find(([selector]) => selector === ".github-pull-ages")?.[2] ?? 0;
+    const row = header.querySelector(".github-pull-opened");
+    const quiet = row.querySelector(":scope > .github-pull-quiet");
+    const refreshSlot = row.querySelector(":scope > .github-pull-refresh");
+    const ages = quiet.querySelector(".github-pull-ages");
+    const links = quiet.querySelector(".github-pull-ages-links");
+    const r = (value) => Math.round(value * 100) / 100;
     chipMoves = {
       chips: stacks.length,
       moved: JSON.stringify(kept(before)) === JSON.stringify(kept(after)) ? null : { before, after },
-      cut:
-        Math.round(
-          before.parts
-            .filter(([selector]) => sentence.has(selector))
-            .reduce((sum, [, , width], at) => sum + width - after.parts.filter(([s]) => sentence.has(s))[at][2], 0) *
-            100,
-        ) / 100,
+      // How much of the ages' width the chip took.
+      cut: r(agesWidth(before) - agesWidth(after)),
       chipShown: Math.min(...menus.map((menu) => shown(menu.element))),
-      overlap: Math.round((box(details).right - box(column).left) * 100) / 100,
-      rightEdge: Math.round((box(column).right - contentRight) * 100) / 100,
-      chipWidth: Math.round(box(column).width * 100) / 100,
+      // The slot is the row of ages' own, between the ages and Refresh's slot, and the chip
+      // sits on that row's line.
+      onAgesRow:
+        column.parentElement === row &&
+        column.nextElementSibling === refreshSlot &&
+        refreshSlot === row.lastElementChild &&
+        menus.every((menu) => {
+          const chip = box(menu.element);
+          return chip.top >= box(row).top - 0.5 && chip.bottom <= box(row).bottom + 0.5;
+        }),
+      overlap: r(box(quiet).right - box(column).left),
+      // From the chip's end to Refresh's start, which is the row's gap.
+      beforeRefresh: r(box(refreshSlot).left - box(column).right),
+      rowGap: parseFloat(getComputedStyle(row).columnGap),
+      chipWidth: r(box(column).width),
+      // A chip's position cut short, and whether the ages and Browse code had any width left
+      // when it was.
+      positionCut: menus.some((menu) => {
+        const position = menu.element.querySelector(".github-pull-stack-trigger > .github-pull-stack-position");
+        return position !== null && position.scrollWidth > position.clientWidth;
+      }),
+      textLeft: r(box(ages).width) >= 1 || (links !== null && shown(links) > 0.01),
     };
     // Its member menu heads its rows with the host's menu group, whose heading starts
     // on the rows' inset (docs/design-system.md, "Groups in a Menu"). A second menu of
@@ -516,7 +538,8 @@ const MEASURE = `async (name, change, tab, width) => {
   const badge = opened?.querySelector(".github-pull-badge");
   const centre = (r) => r.top + r.height / 2;
   // The title's icon and text start at the header's left edge and its number ends on the
-  // right one, over the stack's slot that ends the author's row (mb-z416).
+  // right one, over Refresh's slot, which ends the row of ages with the stack's chip just
+  // before it (mb-z416, mb-646g).
   const heading = header.querySelector(".github-pull-title-with-state");
   const edges = (() => {
     if (!heading) return null;
@@ -529,7 +552,7 @@ const MEASURE = `async (name, change, tab, width) => {
     const numberRange = document.createRange();
     numberRange.selectNodeContents(heading.querySelector(".github-pull-number"));
     const number = numberRange.getBoundingClientRect();
-    const slot = header.querySelector(".github-pull-meta .github-pull-stacks");
+    const slot = header.querySelector(".github-pull-opened > .github-pull-refresh");
     const r = (v) => Math.round(v * 100) / 100;
     // The room the title leaves the corner's button where the reading column reaches it
     // (github/styles.css), which its number ends short of.
@@ -540,13 +563,13 @@ const MEASURE = `async (name, change, tab, width) => {
       gap: r(parseFloat(getComputedStyle(heading).columnGap)),
       room: r(room),
       numberRight: r(number.right + room - right),
-      numberOverSlot: slot ? r(number.right + room - box(slot).right) : null,
+      numberOverRefresh: slot ? r(number.right + room - box(slot).right) : null,
       numberBelowText: r(number.bottom - text.bottom),
     };
   })();
   // Where each row shown starts and ends, from the header's top, and the header's one gap
   // between rows: the status line, while it has something to say, is one of the metadata
-  // lines under the title, as tall as the row of ages and one gap under the row before it,
+  // lines under the title, as tall as the author's row and one gap under the row before it,
   // with no empty labels row between (mb-2u08); with nothing to say it is not there (mb-ne91).
   const lines = headerRows
     .map((row, at) => ({
@@ -662,6 +685,9 @@ const MEASURE = `async (name, change, tab, width) => {
     lead: leadShape,
     statusShown: !header.querySelector(".github-pull-status").hidden,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
+    // The author's row is its lead alone, a line tall (mb-646g).
+    metaLead: lead ? Math.round(box(lead).height * 100) / 100 : null,
+    agesRowHeight: opened ? Math.round(box(opened).height * 100) / 100 : null,
     strut: strutHeight,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
     // The offers drawn where a reader sees them: laid out, with some of each in view.
@@ -1916,11 +1942,14 @@ async function main() {
         for (const [name, change] of RECORDS) {
           const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
           for (const tab of TABS) {
-            // The author's row is the same on every tab, so its stack chip arrives on one: one
-            // stack, and two for the records with an avatar, the longest rows.
+            // The row of ages is the same on every tab but for Refresh, held hidden on
+            // Conversation and shown on Changes, so its stack chip arrives on those two: one
+            // stack, and two for the records with an avatar, the longest rows (mb-646g).
             // The Diff summary is the header's last row on every tab, so it is measured on each.
             const measured = {
-              ...(tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change),
+              ...(tab === "" || tab === "files"
+                ? { ...change, stackChip: change.avatar ? 2 : 1 }
+                : change),
               summary: true,
             };
             const shape = await browser.evaluate(
@@ -1978,25 +2007,36 @@ async function main() {
               }
             }
             if (shape.chipMoves !== null) {
+              const chip = shape.chipMoves;
               check(
-                `${where}: a late stack chip moves nothing in the header`,
-                shape.chipMoves.moved === null,
-                JSON.stringify(shape.chipMoves.moved),
+                `${where}: a late stack chip moves nothing in the header, Refresh and every row included`,
+                chip.moved === null,
+                JSON.stringify(chip.moved),
               );
               check(
                 `${where}: a late stack chip shows whole`,
-                shape.chipMoves.chipShown >= 0.99,
-                String(shape.chipMoves.chipShown),
+                chip.chipShown >= 0.99,
+                String(chip.chipShown),
+              );
+              // On the row of ages, at its end, one gap before Refresh's slot, which ends the
+              // row on the header's content edge (checked below) (mb-646g).
+              check(
+                `${where}: the stack chip is on the row of ages, one gap before Refresh's slot`,
+                chip.onAgesRow && Math.abs(chip.beforeRefresh - chip.rowGap) <= 0.5,
+                JSON.stringify(chip),
               );
               check(
-                `${where}: the stack chip ends on the header's content edge`,
-                Math.abs(shape.chipMoves.rightEdge) <= 0.5,
-                String(shape.chipMoves.rightEdge),
+                `${where}: the stack chip and the ages do not overlap`,
+                chip.overlap <= 0.5,
+                String(chip.overlap),
               );
+              // The ages and Browse code give way before a chip does: its position is cut
+              // short only where they have no width left, as two stacks' named chips at
+              // 320 px are.
               check(
-                `${where}: the stack chip and the sentence do not overlap`,
-                shape.chipMoves.overlap <= 0.5,
-                String(shape.chipMoves.overlap),
+                `${where}: a chip's position is cut short only once the ages and Browse code have no width left`,
+                !chip.positionCut || !chip.textLeft,
+                JSON.stringify(chip),
               );
               check(
                 `${where}: the stack menu's heading starts on its rows' inset`,
@@ -2068,7 +2108,9 @@ async function main() {
                 shape.agesRow.linksShown >= 0.99 || shape.agesRow.agesWidth < 1,
                 JSON.stringify(shape.agesRow),
               );
-              if (width >= 420) {
+              // Two stacks' named chips, 156.31 px, leave Browse code whole down to 560 px; one
+              // stack's chip, 54.75 px, down to 420 px, as no chip does (mb-646g).
+              if (width >= (shape.chipMoves?.chips === 2 ? 560 : 420)) {
                 check(
                   `${where}: Browse code shows whole`,
                   shape.agesRow.linksShown >= 0.99,
@@ -2096,24 +2138,34 @@ async function main() {
               );
             }
             if (shape.edges !== null) {
-              const { iconLeft, textAfterIcon, gap, numberRight, numberOverSlot } = shape.edges;
+              const { iconLeft, textAfterIcon, gap, numberRight, numberOverRefresh } = shape.edges;
               check(
                 `${where}: the title's icon starts on the header's left edge, its text just after it`,
                 Math.abs(iconLeft) <= 0.5 && Math.abs(textAfterIcon - gap) <= 1,
                 JSON.stringify(shape.edges),
               );
               check(
-                `${where}: the title's number ends on the header's right edge, over the stack slot's end, less the room it leaves the corner's button`,
+                `${where}: the title's number ends on the header's right edge, over the end of Refresh's slot that ends the row of ages, less the room it leaves the corner's button`,
                 Math.abs(numberRight) <= 0.5 &&
-                  numberOverSlot !== null &&
-                  Math.abs(numberOverSlot) <= 0.5,
+                  numberOverRefresh !== null &&
+                  Math.abs(numberOverRefresh) <= 0.5,
                 JSON.stringify(shape.edges),
               );
             }
+            // The stack's strut holds the row of ages at a chip's height, so a chip arriving
+            // changes no row's height; the author's row is its lead, a line (mb-646g).
             check(
-              `${where}: the state row is as tall as the stack strut`,
-              shape.strut !== null && Math.abs(shape.meta - shape.strut) <= 0.5,
-              JSON.stringify({ meta: shape.meta, strut: shape.strut }),
+              `${where}: the row of ages is as tall as the stack strut, and the author's row one line`,
+              shape.strut !== null &&
+                Math.abs(shape.agesRowHeight - shape.strut) <= 0.5 &&
+                shape.metaLead !== null &&
+                Math.abs(shape.meta - shape.metaLead) <= 0.5,
+              JSON.stringify({
+                agesRow: shape.agesRowHeight,
+                strut: shape.strut,
+                meta: shape.meta,
+                lead: shape.metaLead,
+              }),
             );
             check(
               `${where}: nothing ends past the header, and the pane does not scroll sideways`,
@@ -2125,19 +2177,21 @@ async function main() {
               }),
             );
             // The status line is one of the header's metadata lines (mb-2u08), there only
-            // while it has something to say: as tall as the row of ages above it, and every
-            // row one gap under the row before it. Refresh, shown or held, ends the row of
-            // ages (A1 of review A on #506), no taller than that row. As a bordered .btn,
+            // while it has something to say: a line tall, as the author's row above it is, and
+            // every row one gap under the row before it. Refresh, shown or held, ends the row
+            // of ages (A1 of review A on #506), no taller than that row. As a bordered .btn,
             // Refresh made its line 26 px against the row of ages' 18, and an empty labels row
-            // stood between them.
+            // stood between them. The row of ages is a chip's height since the stack's slot
+            // came to it (mb-646g), so the line the status line matches is the author's.
             const line = (row) => shape.lines.find((each) => each.row === row);
             const opened = line("opened");
+            const author = line("meta");
             const statusLine = line("status");
             const tall = (each) => Math.round((each.bottom - each.top) * 100) / 100;
             check(
-              `${where}: the status line, when there, is as tall as the row of ages`,
-              opened !== undefined &&
-                (statusLine === undefined || Math.abs(tall(statusLine) - tall(opened)) <= 0.5),
+              `${where}: the status line, when there, is as tall as the author's row, a line`,
+              author !== undefined &&
+                (statusLine === undefined || Math.abs(tall(statusLine) - tall(author)) <= 0.5),
               JSON.stringify(shape.lines),
             );
             check(
@@ -2217,16 +2271,16 @@ async function main() {
           rows: reference.rows.filter((row) => row.row !== "labels"),
         };
         // The status line is there only while it has something to say (mb-ne91), here an
-        // offer: then it is one metadata line, as tall as the row of ages, and one gap more,
+        // offer: then it is one metadata line, as tall as the author's row, and one gap more,
         // and moves nothing above it. Without one it is not there, a hold included. The
-        // expectation is the empty record's row of ages, never the line measured (A4 of review A
-        // on #506).
-        const agesHeight = reference.rows.find((row) => row.row === "opened").height;
+        // expectation is the empty record's author's row, never the line measured (A4 of
+        // review A on #506); the row of ages is a chip's height, the stack's strut's (mb-646g).
+        const lineHeight = reference.rows.find((row) => row.row === "meta").height;
         for (const [key, shape] of Object.entries(seen)) {
           const none = shape.recordLabels === 0;
           const base = none ? unlabelled : reference;
           const offered = OFFERED.has(shape.label);
-          const extra = offered ? agesHeight + shape.rowGap : 0;
+          const extra = offered ? lineHeight + shape.rowGap : 0;
           // A record's one-line title gives back the second line the cold title holds, and
           // moves the rows under it up by that line (mb-wcbc).
           const title = titleGivesBack(shape, reference);
@@ -2235,7 +2289,7 @@ async function main() {
             tabBar: base.tabBar + extra + title.delta,
             rows: base.rows.map((row) => {
               if (row.row === "status") {
-                return { ...row, height: offered ? agesHeight : 0 };
+                return { ...row, height: offered ? lineHeight : 0 };
               }
               if (row.row === "title") {
                 return { ...row, height: title.title };

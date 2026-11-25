@@ -618,6 +618,24 @@ sentence by 34.88 px, and at 360 px two stacks cut “forker wants to merge 2 co
 sentence, and at 560 px two stacks cut a long author’s sentence by 77.69 px, and at 360
 px “forker wants to merge 2 commits” by 80.85 px.
 
+Recorded on 2026-11-24, when the chip moved to the end of the row of ages, just before
+Refresh’s slot (mb-646g): measured in Chrome 152.0.7977.83 at 980 to 320 px with the
+header session’s records, on Conversation, where Refresh is held hidden, and on Changes,
+where it shows. The header and the tab bar laid out to the same heights as before in all
+306 shapes measured, six widths, 17 records, and three tabs: the row of ages is 26 px,
+the strut’s, and the author’s row 21 px, where they had been 21 and 26. A late chip
+moved no part’s start, no row, and not Refresh, which ends the row on the content edge,
+and sat 8 px before Refresh.
+It took its width from the ages: one stack’s chip cut them by up to 54.75 px and two
+stacks’ by up to 155.3 px.
+Browse code stayed whole down to 360 px beside one stack’s chip, 96.8% of it shown at
+320 px, and down to 560 px beside two stacks’, 94.9% shown at 420 px and 23.2% at 360
+px. At 320 px two stacks’ chips, the ages and Browse code gone, first ran 20.61 px past
+the header and took Refresh with them; the chips now give way last, their positions cut
+short, the slot 135.7 of its 156.31 px.
+The held slot’s gap leaves a pull request in no stack 8 px less for its ages in a narrow
+pane: 92.05 px at 360 px, where it had 100.05.
+
 For
 [Stack Groups in the Pulls Tab](../../docs/design-system.md#stack-groups-in-the-pulls-tab):
 at the default pane width, 299 px, a worded group-by-stack chip reached 36 px past the
