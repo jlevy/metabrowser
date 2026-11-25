@@ -120,8 +120,8 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    The next launch opens a window for `a` and one for `b`, `b`’s in front with its page
    loaded, and `a`’s page loads when its window is brought forward.
 6. **Protected locations.** Open `~/Documents/mb-check` in a window behind the others,
-   quit, and launch again: its window says Metabrowser opens it when you bring it
-   forward, and `pgrep -fl 'Documents/mb-check'` finds no server until you do.
+   quit, and launch again: its window says “Metabrowser opens mb-check when you bring it
+   forward.”, and `pgrep -fl 'Documents/mb-check'` finds no server until you do.
    Once Documents access is granted, no prompt appears either way.
    To see that the restore raises none, the person at the Mac first resets that grant
    (`tccutil reset SystemPolicyDocumentsFolder io.github.jlevy.metabrowser.dev`) and
@@ -131,7 +131,7 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
 7. **A folder replaced by a link.** With `d` in a window behind `a`’s and `e` not open,
    quit, then
    `mv /tmp/mb-check/d /tmp/mb-check/d-old; ln -s /tmp/mb-check/e /tmp/mb-check/d`, and
-   launch: `d`’s window says Metabrowser opens it when you bring it forward.
+   launch: `d`’s window says “Metabrowser opens d when you bring it forward.”
    Bring it forward: the app log says it “now leads to /private/tmp/mb-check/e”, the
    window shows `e`, and `open -a "$APP" /tmp/mb-check/e` and
    `open -a "$APP" /tmp/mb-check/d` bring that window forward, while

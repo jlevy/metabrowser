@@ -719,7 +719,8 @@ def _metab(
         False,
         "--recent",
         help="List the recent targets: the folders and repositories opened lately, "
-        "most recent first. Every serve records its ROOT.",
+        "most recent first. A serve records its ROOT when run at a terminal or with "
+        "METABROWSER_RECORD_RECENT=1.",
         rich_help_panel=_PANEL_MODES,
     ),
     recent_add: bool = typer.Option(

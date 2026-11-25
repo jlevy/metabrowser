@@ -236,4 +236,30 @@ import Testing
         let unset = RecentTargets.spec(RecentTargets.listArguments, with: setup, inherited: [:])
         #expect(unset.environment[RecentTargets.recordVariable] == nil)
     }
+
+    /// Changes run one at a time, in the order they were asked for, so of two opens in quick
+    /// succession the later is listed first; one asked for while another runs waits for it.
+    @Test func changesRunOneAtATimeInTheOrderAskedFor() {
+        var changes = RecentTargets.Changes()
+        #expect(changes.isIdle)
+        #expect(changes.next() == nil)
+        let first = RecentTargets.addArguments("/Volumes/Home/src/fdu/")
+        let second = RecentTargets.addArguments("https://github.com/jlevy/tbd")
+        changes.ask(first)
+        changes.ask(second)
+        #expect(changes.hasNext)
+        #expect(changes.next() == first)
+        // The second waits while the first runs.
+        #expect(!changes.hasNext)
+        #expect(changes.next() == nil)
+        changes.ask(RecentTargets.clearArguments)
+        #expect(!changes.isIdle)
+        changes.finished()
+        #expect(changes.next() == second)
+        changes.finished()
+        #expect(changes.next() == RecentTargets.clearArguments)
+        changes.finished()
+        #expect(changes.isIdle)
+        #expect(!changes.hasNext)
+    }
 }

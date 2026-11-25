@@ -299,8 +299,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// With `inOwnFolder`, a file opens in its own folder even inside an open one, as
     /// `metab FILE` would serve it (Help > Open Event Log, `EventLogLocation`). With
-    /// `remember` false, the folder is not added to Open Recent, by the app or by the
-    /// server it starts.
+    /// `remember` false, the folder is not added to Open Recent (`showOpened`): the event
+    /// log's directory is not a folder the user chose to open.
     func request(
         _ url: URL, into window: BrowserWindowController? = nil, inOwnFolder: Bool = false,
         remember: Bool = true
@@ -317,10 +317,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let reason = CLIServeLaunch.unservableReason(root) {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
-        let open = sessions[SessionRoot.folder(root).key] as? FolderSession
-        if remember { recentFolders.noteOpened(root, isOpen: open != nil) }
-        if let session = open {
-            showOpened(session, in: .front(page: target.page))
+        if let session = sessions[SessionRoot.folder(root).key] as? FolderSession {
+            showOpened(session, in: .front(page: target.page), remember: remember)
             return
         }
         recheckChangedRuntime()
@@ -331,11 +329,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !selection.isBusy { showRuntimeSettings() }
             return
         }
-        showOpened(session, in: window.map { .window($0, page: target.page) } ?? .front(page: target.page))
-        Task {
-            await session.startServer(recording: remember)
-            if remember { self.recentFolders.refreshAfterOpen() }
-        }
+        showOpened(
+            session, in: window.map { .window($0, page: target.page) } ?? .front(page: target.page),
+            remember: remember)
+        Task { await session.startServer() }
     }
 
     /// Where a folder that opens is shown (`showOpened`).
@@ -357,12 +354,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// folder chooser and Switch Folder panel. A folder that has no window yet gets one of
     /// its own, never a tab (`FolderWindows.place`).
     ///
+    /// Each records the folder as the most recent target, once, unless `remember` is
+    /// false (`RecentTargetsMenu.noteOpened`). This is where the app records an open, so
+    /// that what Open Recent lists is what the user opened, most recent first; the server
+    /// an open starts records nothing (mb-1q02). A sent link into a repository already
+    /// open is the one open shown without this, and records with the same call.
+    ///
     /// Three ways a window appears do not come through here. Reopening the last session
     /// (`FolderWindows.restore`) puts the saved windows back, each alone, rather than
     /// opening folders the user chose now. A Dock click with no window on screen brings
     /// forward a folder already open. A page's link that opens a new window
     /// (`FolderSession.openWindow(at:)`) opens another window of its own folder.
-    private func showOpened(_ session: FolderSession, in window: WindowForOpen) {
+    private func showOpened(_ session: FolderSession, in window: WindowForOpen, remember: Bool = true) {
+        if remember { recentFolders.noteOpened(session.root) }
         switch window {
         case .front(let page):
             if session.pages.isEmpty {
@@ -570,7 +574,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func open(_ plan: PresentPlan, with setup: RuntimeSetup) async {
         let root = SessionRoot.repository(plan.repository)
         if let session = sessions[root.key] as? FolderSession {
-            recentFolders.noteOpened(root.url, isOpen: true)
+            // Shown in the window it is in already, not through `showOpened`, so recorded here.
+            recentFolders.noteOpened(session.root)
             return session.open(link: plan.link)
         }
         let name = root.identity().fullName
@@ -635,15 +640,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// whether a window was shown. A sent link waits for a missing runtime and is
     /// resolved again. A native choice can handle that wait itself.
     ///
-    /// Either is an open, so the repository moves to the front of the recent targets: a
-    /// new session's server records it as it starts, and the app records one already open
-    /// itself, since opening a link in its server records nothing.
+    /// Either is an open, so the repository moves to the front of the recent targets
+    /// (`showOpened`).
     @discardableResult
     private func openRepository(
         _ root: SessionRoot, on link: URL, waitForRuntime: Bool = true
     ) -> Bool {
         if let session = sessions[root.key] as? FolderSession {
-            recentFolders.noteOpened(root.url, isOpen: true)
             showOpened(session, in: .link(link, showingProgress: !waitForRuntime))
             return true
         }
@@ -653,10 +656,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
         showOpened(session, in: .link(link, showingProgress: !waitForRuntime))
-        Task {
-            await session.startServer()
-            self.recentFolders.refreshAfterOpen()
-        }
+        Task { await session.startServer() }
         return true
     }
 

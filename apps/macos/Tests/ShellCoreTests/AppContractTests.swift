@@ -136,10 +136,11 @@ nonisolated enum ContractGolden {
     /// and one it loses must be taken out, so the two lists cannot drift.
     private static let read: Set<String> = [
         "version-probe", "version", "unknown-option", "plugins",
-        "serve/folder", "serve/not-an-open", "serve/repository-cloned", "serve/repository-cached",
+        "serve/folder", "serve/repository-cloned", "serve/repository-cached",
         "serve-path/file",
         "recent-list/empty", "recent-list/after-an-open", "recent-list/listed", "recent-list/problem",
-        "recent-add/repository", "recent-add/checkout", "recent-forget/folder", "recent-clear",
+        "recent-add/folder", "recent-add/repository", "recent-add/checkout", "recent-forget/folder",
+        "recent-clear",
         "identity/folder", "identity/under-home", "identity/checkout", "identity/mirror",
         "source-status/folder", "source-status/mirror", "source-link/repository", "source-link/elsewhere",
         "present-dry-run/repository", "present-dry-run/pull-request", "present-dry-run/commit",
@@ -241,18 +242,12 @@ nonisolated enum ContractGolden {
         let launch = CLIServeLaunch(basePort: LaunchLane.folders.basePort)
         let folder = try block("serve/folder")
         #expect(folder.words == launch.arguments(serving: served))
-        #expect(folder.environment.isEmpty)
+        // Told not to record: the app records the open itself (`theListIsChangedWithTheRecordedCommands`).
+        #expect(folder.environment == [RecentTargets.recordVariable: RecentTargets.serverRecords])
         #expect(folder.stdout.count == 1)
         let origin = try #require(URL(string: "http://127.0.0.1:\(LaunchLane.folders.basePort)"))
         #expect(launch.endpoint(announcedBy: folder.stdout[0])
             == ServerEndpoint(origin: origin, entryURL: origin.appending(path: "view/")))
-
-        // A server that is not the start of something the user opened is told not to record.
-        let quiet = try block("serve/not-an-open")
-        let other = URL(filePath: ContractGolden.sandbox + "/other", directoryHint: .notDirectory)
-        #expect(quiet.words == launch.arguments(serving: other))
-        #expect(quiet.environment == [RecentTargets.recordVariable: "0"])
-        #expect(launch.endpoint(announcedBy: quiet.stdout[0]) != nil)
     }
 
     @Test func aRepositorysStartSaysWhatItsCloneReportSays() throws {
@@ -321,6 +316,10 @@ nonisolated enum ContractGolden {
     }
 
     @Test func theListIsChangedWithTheRecordedCommands() throws {
+        // An open of a folder, as `RecentTargetsMenu.noteOpened` records it.
+        let opened = try block("recent-add/folder")
+        let folder = URL(filePath: ContractGolden.served, directoryHint: .isDirectory)
+        #expect(opened.words == RecentTargets.addArguments(RecentTargets.target(folder)))
         let add = try block("recent-add/repository")
         let target = try #require(add.words.first)
         #expect(add.words == RecentTargets.addArguments(target))
@@ -329,7 +328,7 @@ nonisolated enum ContractGolden {
         #expect(forget.words == RecentTargets.forgetArguments(ContractGolden.served))
         let clear = try block("recent-clear")
         #expect(clear.words == RecentTargets.clearArguments)
-        for block in [add, forget, clear] { #expect(block.result.succeeded) }
+        for block in [opened, add, forget, clear] { #expect(block.result.succeeded) }
     }
 
     // MARK: - Routes

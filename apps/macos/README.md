@@ -187,7 +187,8 @@ decide, is checked by hand against a built development app with the
   session, a release’s too, since both variants share it, and File > Open Recent > Clear
   Menu the recent targets, which `metab` keeps for both.
   `make run` starts the app with `METABROWSER_RECORD_RECENT=0`, so what a development
-  run opens stays out of that list; a copy that is already running keeps the setting it
+  run opens stays out of that list: agents start the app this way for hand checks, and
+  their folders are not the user’s. A copy that is already running keeps the setting it
   started with.
 
 ### The WebKit Gate
