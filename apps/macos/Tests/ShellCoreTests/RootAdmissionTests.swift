@@ -165,13 +165,13 @@ private final class Fixture {
     }
 
     /// Review D2: a root admitted at launch is checked again when its turn to start comes.
-    /// One replaced by a link while an earlier server was starting waits for its tab.
+    /// One replaced by a link while an earlier server was starting waits for its window.
     @Test func aQueuedRootReplacedWhileAnEarlierStartIsSuspendedWaits() throws {
         let fixture = try Fixture()
         let first = fixture.home + "/other/leaf"
         let second = fixture.home + "/wrk/app"
         let window = SavedWindow(
-            tabs: [SavedTab(root: first, page: nil), SavedTab(root: second, page: nil)], selected: 0, frame: nil)
+            pages: [SavedPage(root: first, page: nil), SavedPage(root: second, page: nil)], selected: 0, frame: nil)
         let admitted = SavedSession(windows: [window]).admitted { fixture.admit($0) }
         #expect(admitted.deferred.isEmpty)
         var queue = RestoreQueue(admitted.session, isProtected: admitted.deferred.contains)
@@ -185,15 +185,15 @@ private final class Fixture {
         #expect(held == nil)
         #expect(queue.deferred == [second])
         #expect(!fixture.documentsLooked)
-        // Selecting its tab starts it: that is the user's choice.
+        // Selecting its window starts it: that is the user's choice.
         let selected = queue.select(second)
         let chosen = queue.next(stillOpen: { _ in false })
         #expect(selected && chosen == second)
     }
 
-    /// The front tab is selected, so it starts without being checked again.
-    @Test func theFrontTabIsNotHeldBack() {
-        let window = SavedWindow(tabs: [SavedTab(root: "/front", page: nil)], selected: 0, frame: nil)
+    /// The front window is selected, so it starts without being checked again.
+    @Test func theFrontWindowIsNotHeldBack() {
+        let window = SavedWindow(pages: [SavedPage(root: "/front", page: nil)], selected: 0, frame: nil)
         var queue = RestoreQueue(SavedSession(windows: [window]), isProtected: { _ in false })
         let front = queue.next(stillOpen: { _ in false })
         #expect(front == "/front")
@@ -229,7 +229,7 @@ private final class Fixture {
     }
 
     /// Review E2: a home folder in a protected place (a network home under `/Volumes`) is
-    /// not looked at to classify another root; every root then waits for its tab.
+    /// not looked at to classify another root; every root then waits for its window.
     @Test func aProtectedHomeIsNotLookedAtToClassifyAnotherRoot() throws {
         let fixture = try Fixture()
         var looked: [String] = []
@@ -258,8 +258,8 @@ private final class Fixture {
     }
 
     /// Review E4: only proven absence, or proof that the entry is not a folder, drops a
-    /// tab; a link, a folder, or a failed second lookup defers it.
-    @Test func onlyProvenAbsenceDropsATab() {
+    /// page; a link, a folder, or a failed second lookup defers it.
+    @Test func onlyProvenAbsenceDropsAPage() {
         let saved = "/r"
         #expect(RootAdmission.refusedComponent(.failure(ENOENT), saved) == .gone)
         #expect(RootAdmission.refusedComponent(.success(S_IFREG), saved) == .gone)

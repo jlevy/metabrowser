@@ -77,12 +77,12 @@ import Testing
         ]))
     }
 
-    /// The windows on screen take the folders shown most recently; a tab hidden behind
-    /// another of its group comes after them, whatever order it was given in.
-    @Test func windowsOnScreenComeBeforeHiddenTabs() {
+    /// The windows on screen take the folders shown most recently; a minimized window
+    /// comes after them, whatever order it was given in.
+    @Test func windowsOnScreenComeBeforeMinimizedOnes() {
         let open = folders(["/a", "/b", "/d"])
-        let plan = open.closing("/d", windows: [window("hidden", onScreen: false), window("shown")], background: ["/a", "/b"])
-        #expect(plan == .steps([Step(window: "shown", showing: "/b"), Step(window: "hidden", showing: "/a")]))
+        let plan = open.closing("/d", windows: [window("minimized", onScreen: false), window("shown")], background: ["/a", "/b"])
+        #expect(plan == .steps([Step(window: "shown", showing: "/b"), Step(window: "minimized", showing: "/a")]))
     }
 
     /// A repository is keyed by its URL, which is no path, and is a replacement like any
@@ -98,8 +98,8 @@ import Testing
     /// stays open in some windows and closes in others.
     @Test func aSheetOnAnyOfItsWindowsHoldsUpTheClose() {
         let open = folders(["/a", "/d"])
-        let windows = [window("w"), window("sheet", sheet: true), window("tab", onScreen: false, sheet: true)]
-        #expect(open.closing("/d", windows: windows, background: ["/a"]) == .refused(["sheet", "tab"]))
+        let windows = [window("w"), window("sheet", sheet: true), window("minimized", onScreen: false, sheet: true)]
+        #expect(open.closing("/d", windows: windows, background: ["/a"]) == .refused(["sheet", "minimized"]))
     }
 }
 
@@ -125,9 +125,9 @@ import Testing
         #expect(FolderSwitch.decide(window(), showsFolder: false, leftFolderPages: 2) == .show(left: .close, countsAsShown: true))
     }
 
-    /// A hidden tab switches without counting its new folder as shown, so it revives no
-    /// page and starts no restored folder until its tab is selected.
-    @Test func aHiddenTabSwitchesWithoutCountingAsShown() {
+    /// A minimized window switches without counting its new folder as shown, so it revives
+    /// no page and starts no restored folder until the window is brought forward.
+    @Test func aMinimizedWindowSwitchesWithoutCountingAsShown() {
         #expect(FolderSwitch.decide(window(onScreen: false), showsFolder: false, leftFolderPages: 3)
             == .show(left: .close, countsAsShown: false))
     }
@@ -167,10 +167,25 @@ import Testing
 
 @Suite struct BackgroundFoldersInTheSavedSessionTests {
     private func window(_ roots: [String], selected: Int = 0) -> SavedWindow {
-        SavedWindow(tabs: roots.map { SavedTab(root: $0, page: nil) }, selected: selected, frame: nil)
+        SavedWindow(pages: roots.map { SavedPage(root: $0, page: nil) }, selected: selected, frame: nil)
     }
 
-    private func tab(_ root: String) -> SavedTab { SavedTab(root: root, page: nil) }
+    private func savedPage(_ root: String) -> SavedPage { SavedPage(root: root, page: nil) }
+
+    /// An earlier build saved a window's folder tabs under `tabs`. Such a window reads as
+    /// one of several pages, which `FolderWindows.restore` reopens as a window each, and a
+    /// window saved now is written under the same key.
+    @Test func anEarlierBuildsWindowOfTabsReadsAsOneOfSeveralPages() throws {
+        let json = #"{"windows":[{"tabs":[{"root":"/a"},{"root":"/b","page":"/view/notes.md"}],"selected":1}]}"#
+        let session = try JSONDecoder().decode(SavedSession.self, from: Data(json.utf8))
+        #expect(session.windows.count == 1)
+        #expect(session.windows[0].pages.map(\.root) == ["/a", "/b"])
+        #expect(session.windows[0].selected == 1)
+        let written = try JSONEncoder().encode(SavedSession(windows: [window(["/a"])]))
+        let object = try #require(try JSONSerialization.jsonObject(with: written) as? [String: Any])
+        let windows = try #require(object["windows"] as? [[String: Any]])
+        #expect(windows.first?.keys.contains("tabs") == true)
+    }
 
     @Test func aFileSavedBeforeBackgroundFoldersReadsAsHavingNone() throws {
         let json = #"{"windows":[{"tabs":[{"root":"/a"}],"selected":0}]}"#
@@ -184,7 +199,7 @@ import Testing
         let store = SessionStore(directory: directory)
         let session = SavedSession(
             windows: [window(["/a"])],
-            background: [SavedTab(root: "/b", page: .view(of: "notes.md")), tab("/c")])
+            background: [SavedPage(root: "/b", page: .view(of: "notes.md")), savedPage("/c")])
         try store.save(session)
         #expect(try store.load() == session)
     }
@@ -192,7 +207,7 @@ import Testing
     @Test func backgroundFoldersAreAdmittedAndDroppedWhenGoneShownOrRepeated() {
         let session = SavedSession(
             windows: [window(["/a"])],
-            background: [tab("/b"), tab("/gone"), tab("/a"), tab("/alias-of-b"), tab("/protected"), tab("/c")])
+            background: [savedPage("/b"), savedPage("/gone"), savedPage("/a"), savedPage("/alias-of-b"), savedPage("/protected"), savedPage("/c")])
         let admitted = session.admitted { root in
             switch root {
             case "/gone": .gone
@@ -207,29 +222,29 @@ import Testing
 
     @Test func theBudgetCountsBackgroundFoldersAfterEveryWindowTab() {
         let session = SavedSession(
-            windows: [window(["/a", "/b"]), window(["/c"])], background: [tab("/d"), tab("/e"), tab("/f")])
-        #expect(session.tabCount == 6)
-        let limited = session.limited(to: RestoreBudget(windows: 5, tabs: 4))
+            windows: [window(["/a", "/b"]), window(["/c"])], background: [savedPage("/d"), savedPage("/e"), savedPage("/f")])
+        #expect(session.pageCount == 6)
+        let limited = session.limited(to: RestoreBudget(windows: 5, pages: 4))
         #expect(limited.windows.count == 2)
         #expect(limited.background.map(\.root) == ["/d"])
-        #expect(session.limited(to: RestoreBudget(windows: 5, tabs: 2)).background.isEmpty)
+        #expect(session.limited(to: RestoreBudget(windows: 5, pages: 2)).background.isEmpty)
     }
 
     @Test func theFoldersOpenInTheOrderTheWindowsStandInThenTheBackgroundOnes() {
         let session = SavedSession(
-            windows: [window(["/a", "/b", "/a"]), window(["/c", "/b"])], background: [tab("/d"), tab("/e")])
+            windows: [window(["/a", "/b", "/a"]), window(["/c", "/b"])], background: [savedPage("/d"), savedPage("/e")])
         #expect(session.roots == ["/a", "/b", "/c", "/d", "/e"])
     }
 
     /// A session with folders in the background and no window would open to nothing: the
     /// background folder shown most recently, listed first, gets a window and starts first.
     @Test func aSessionWithNoWindowShowsItsFirstBackgroundFolder() {
-        let saved = SavedSession(windows: [], background: [SavedTab(root: "/b", page: .view(of: "notes.md")), tab("/c")])
+        let saved = SavedSession(windows: [], background: [SavedPage(root: "/b", page: .view(of: "notes.md")), savedPage("/c")])
         let session = saved.withFrontWindow
         #expect(session == SavedSession(
-            windows: [SavedWindow(tabs: [SavedTab(root: "/b", page: .view(of: "notes.md"))], selected: 0, frame: nil)],
-            background: [tab("/c")]))
-        #expect(session.tabCount == saved.tabCount)
+            windows: [SavedWindow(pages: [SavedPage(root: "/b", page: .view(of: "notes.md"))], selected: 0, frame: nil)],
+            background: [savedPage("/c")]))
+        #expect(session.pageCount == saved.pageCount)
         var queue = RestoreQueue(session, isProtected: { _ in true })
         #expect(queue.selected == ["/b"])
         #expect(queue.deferred == ["/c"])
@@ -239,20 +254,20 @@ import Testing
 
     /// Every saved window's folder gone, the background ones remain: one of them is shown.
     @Test func aSessionWhoseWindowsAreAllGoneShowsABackgroundFolder() {
-        let saved = SavedSession(windows: [window(["/gone"])], background: [tab("/b")])
+        let saved = SavedSession(windows: [window(["/gone"])], background: [savedPage("/b")])
         let admitted = saved.admitted { $0 == "/gone" ? .gone : .open($0) }
-        #expect(admitted.session.withFrontWindow.windows.map { $0.tabs.map(\.root) } == [["/b"]])
+        #expect(admitted.session.withFrontWindow.windows.map { $0.pages.map(\.root) } == [["/b"]])
         #expect(admitted.session.withFrontWindow.background.isEmpty)
     }
 
     @Test func aSessionWithAWindowOrNothingIsLeftAsItIs() {
-        let session = SavedSession(windows: [window(["/a"])], background: [tab("/b")])
+        let session = SavedSession(windows: [window(["/a"])], background: [savedPage("/b")])
         #expect(session.withFrontWindow == session)
         #expect(SavedSession(windows: []).withFrontWindow == SavedSession(windows: []))
     }
 
     @Test func aBackgroundFolderWaitsForAWindowToShowIt() {
-        let session = SavedSession(windows: [window(["/a", "/b"])], background: [tab("/c"), tab("/d")])
+        let session = SavedSession(windows: [window(["/a", "/b"])], background: [savedPage("/c"), savedPage("/d")])
         var queue = RestoreQueue(session, isProtected: { _ in false })
         var started: [String] = []
         while let next = queue.next() {

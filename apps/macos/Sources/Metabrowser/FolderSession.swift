@@ -6,10 +6,10 @@ import WebKit
 /// (`FolderPage`), each shown in a window or, for a folder open in the background, in
 /// none (`OpenFolders`).
 ///
-/// The first page opens before the server starts and shows its progress; pages the page
-/// opens (`target=_blank`, Command-click) join it as tabs. When the last page closes, the
-/// server stops: a closed folder keeps no process running, while a folder in the
-/// background keeps its server for a switch back. A restored folder's pages open before
+/// The first page opens before the server starts and shows its progress; a page the page
+/// opens (`target=_blank`, Command-click) has a window of its own. When the last page
+/// closes, the server stops: a closed folder keeps no process running, while a folder in
+/// the background keeps its server for a switch back. A restored folder's pages open before
 /// its server starts, which `FolderWindows` schedules.
 final class FolderSession: ManagedServer {
     /// What the session serves, which keys it.
@@ -52,7 +52,7 @@ final class FolderSession: ManagedServer {
     private var restartsInFlight = 0
     /// Whether the start waits for another repository's, which the status view says, and
     /// the windows that asked for a restart, which say so while the old server serves the
-    /// other tabs.
+    /// other windows.
     private var restartWait = RestartWait<FolderPage>()
     /// Asks the ready server to open a link into the repository (`SourceLink`).
     private var linkRequest: Task<Void, Never>?
@@ -61,18 +61,19 @@ final class FolderSession: ManagedServer {
     var onTitleChange: ((FolderSession) -> Void)?
     /// The folder's last page closed, shown or in the background: the folder closes.
     var onAllPagesClosed: ((FolderSession) -> Void)?
-    /// A window showing one of the folder's pages became key, which is how a tab is
-    /// selected.
+    /// A window showing one of the folder's pages became key, as when the user brings it
+    /// forward.
     var onWindowShown: ((FolderSession, BrowserWindowController) -> Void)?
     /// A window opened or closed, or a page changed: what the saved session records.
     var onLayoutChange: (() -> Void)?
     /// A start or restart is waiting for a runtime the app accepts.
     var onWaitingForRuntime: (() -> Void)?
-    /// A page of the folder's needs a window of its own, placed as a newly opened folder's
-    /// is: a folder in the background was opened again, or a link brought it forward.
-    var onPlaceWindow: ((BrowserWindowController, Bool) -> Void)?
+    /// A page of the folder's needs a window of its own (`FolderWindows.place`): a folder in
+    /// the background was opened again, a link brought it forward, or a page opened a link
+    /// in a new window.
+    var onPlaceWindow: ((BrowserWindowController) -> Void)?
     /// A restart or a resumed start of a restored background folder was refused by its
-    /// root check: it now waits for one of its tabs to be selected (`FolderWindows`).
+    /// root check: it now waits for one of its windows to be brought forward (`FolderWindows`).
     var onRootRefused: ((FolderSession) -> Void)?
     /// A repository's mirror has nothing a link into it names, even after a refresh: the
     /// window stays where it was (`SourceLink`).
@@ -125,7 +126,7 @@ final class FolderSession: ManagedServer {
             supervisor.onGateWait = { [weak self] waiting in
                 guard let self else { return }
                 // A restart of the ready server waits while it serves: the window that
-                // asked stops showing the old page and says it waits; the other tabs serve on.
+                // asked stops showing the old page and says it waits; the other windows serve on.
                 restartWait.gateWait(waiting, state: self.supervisor.state).forEach { $0.showStarting() }
                 pages.forEach { $0.showWaitingAtGate(waiting) }
             }
@@ -150,7 +151,7 @@ final class FolderSession: ManagedServer {
     }
 
     /// Whether the session serves a folder on this Mac. Only a folder is a root that a file
-    /// opens in (`OpenTarget`), a recent folder, or a tab of the saved session.
+    /// opens in (`OpenTarget`), a recent folder, or a page of the saved session.
     var isLocal: Bool { served.isLocal }
 
     /// The session's one key (`SessionRoot.key`), which every lookup of an open folder
@@ -167,7 +168,7 @@ final class FolderSession: ManagedServer {
     var childPIDs: [pid_t] { supervisor.childPIDs }
 
     /// The runtime the server last spawned from, which an upgrade compares with; nil for
-    /// a folder whose server has not spawned, such as a restored one waiting for its tab.
+    /// a folder whose server has not spawned, such as a restored one waiting to be brought forward.
     var startedRuntime: Runtime? { server.startedRuntime }
 
     /// Whether a start or restart the user asked for is waiting for a runtime the app
@@ -179,16 +180,11 @@ final class FolderSession: ManagedServer {
 
     /// A folder the user opened: starts its server from the runtime accepted when it
     /// spawns, unless one is starting, running, or stopping, and returns once that start
-    /// is ready or has failed. That server records the folder as a recent target, which no
-    /// other start does (`FolderServer.start`): not a restored folder's, a reload's, a
-    /// retry's, or a restart's. Without an accepted runtime the windows say so, and the
-    /// start waits for `resume()`.
-    ///
-    /// With `recording` false the server records nothing, as for a restored folder: Help >
-    /// Open Event Log opens the log's directory, which is not a folder the user chose to
-    /// open, so it stays out of Open Recent.
-    func startServer(recording: Bool = true) async {
-        settle(await server.start(recordsOpen: recording))
+    /// is ready or has failed. Without an accepted runtime the windows say so, and the
+    /// start waits for `resume()`. The app records the open as it shows it
+    /// (`RecentTargetsMenu.noteOpened`), and the server records nothing.
+    func startServer() async {
+        settle(await server.start())
     }
 
     /// Command-R in a window whose server has not started, such as a restored folder's
@@ -209,8 +205,8 @@ final class FolderSession: ManagedServer {
 
     /// For a restored folder, the root check made just before its server would spawn,
     /// after the launch gate and beside the runtime check (`FolderServer`, `RestoreRun`):
-    /// a background one's admission, and once one of its tabs is selected, that its
-    /// saved path still names its own folder.
+    /// a background one's admission, and once one of its windows is brought forward, that
+    /// its saved path still names its own folder.
     var launchCheck: (() -> Bool)? {
         get { server.rootCheck }
         set { server.rootCheck = newValue }
@@ -256,7 +252,7 @@ final class FolderSession: ManagedServer {
         case .waitingForRuntime: waitForRuntime()
         case .refusedByRoot:
             AppLog.app.info(
-                "\(self.root.lastPathComponent, privacy: .public) changed since it was restored; it starts when its tab is selected")
+                "\(self.root.lastPathComponent, privacy: .public) changed since it was restored; it starts when its window is brought forward")
             pages.forEach { $0.showWaitingForSelection() }
             onRootRefused?(self)
         }
@@ -282,25 +278,25 @@ final class FolderSession: ManagedServer {
     /// Brings the folder's front window forward, showing `page` in it if one is given,
     /// and checks that its server still answers: a hung one is stopped, and its windows
     /// say so and offer Retry.
-    func showFrontWindow(page address: PageAddress? = nil, separately: Bool = false) {
+    func showFrontWindow(page address: PageAddress? = nil) {
         let front = frontPage
         if let address, let front {
             front.show(address)  // which checks before it loads
         } else {
             Task { _ = await checkHealth() }
         }
-        bringForward(front, separately: separately)
+        bringForward(front)
     }
 
     /// Brings forward the window showing `page`, or places it in a window of its own if
     /// none does, as for a folder in the background.
-    private func bringForward(_ page: FolderPage?, separately: Bool) {
+    private func bringForward(_ page: FolderPage?) {
         guard let page else { return }
         if let window = page.host?.window {
             if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
         } else {
-            onPlaceWindow?(BrowserWindowController(page: page), separately)
+            onPlaceWindow?(BrowserWindowController(page: page))
         }
     }
 
@@ -317,8 +313,8 @@ final class FolderSession: ManagedServer {
     /// to its end first, and the newest link sent meanwhile opens then; a failed or
     /// stopped server starts again, and the link opens once it is ready
     /// (`RepositoryLinks`).
-    func open(link: URL, showingProgress: Bool = false, separately: Bool = false) {
-        bringForward(frontPage, separately: separately)
+    func open(link: URL, showingProgress: Bool = false) {
+        bringForward(frontPage)
         let name = root.lastPathComponent
         switch links.receive(link, state: supervisor.state, restarting: restartsInFlight > 0) {
         case .open:
@@ -378,22 +374,22 @@ final class FolderSession: ManagedServer {
         NSWorkspace.shared.activateFileViewerSelecting([logURL])
     }
 
-    /// Command-click on a link to this folder's server. The new tab holds the page before
-    /// the health check runs, so a server that fails the check, and comes back with Retry,
-    /// still shows it.
-    func openWindow(at url: URL, besides parent: FolderPage) {
+    /// Command-click on a link to this folder's server: a new window of this folder, which
+    /// shares its server. The window holds the page before the health check runs, so a
+    /// server that fails the check, and comes back with Retry, still shows it.
+    func openWindow(at url: URL) {
         let address = PageAddress(url)
         let controller = makeWindow(page: address)
-        addTab(controller, besides: parent)
+        onPlaceWindow?(controller)
         if let address { controller.page.show(address) }
     }
 
     /// `target=_blank` and `window.open`: WebKit loads the request into the view returned,
     /// at once, so it cannot wait for a health check; the page asking for it was just
-    /// served.
-    func openChildWindow(configuration: WKWebViewConfiguration, besides parent: FolderPage) -> WKWebView {
+    /// served. Like a Command-click, it opens a new window of this folder.
+    func openChildWindow(configuration: WKWebViewConfiguration) -> WKWebView {
         let controller = makeWindow(configuration: configuration)
-        addTab(controller, besides: parent)
+        onPlaceWindow?(controller)
         return controller.page.webView
     }
 
@@ -436,12 +432,6 @@ final class FolderSession: ManagedServer {
         if isWaitingForRuntime, endpoint == nil { page.showWaitingForRuntime() }
         if restartWait.isWaiting { page.showWaitingAtGate(true) }
         return page
-    }
-
-    private func addTab(_ controller: BrowserWindowController, besides parent: FolderPage) {
-        guard let window = controller.window else { return }
-        parent.host?.window?.addTabbedWindow(window, ordered: .above)
-        window.makeKeyAndOrderFront(nil)
     }
 
     /// Every window showing one of the folder's pages takes the folder's title.

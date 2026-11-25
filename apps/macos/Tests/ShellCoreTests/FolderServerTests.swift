@@ -40,8 +40,8 @@ import Testing
     /// so stopping them takes the whole grace period.
     private final class Children: @unchecked Sendable {
         let launched = Recorder<String>()
-        /// What each launch's environment says of recording a recent target: nil when the
-        /// server may record, "0" when it is told not to.
+        /// What each launch's environment says of recording a recent target: "0" when the
+        /// server is told not to.
         let recording = Recorder<String?>()
         private(set) var made: [FakeProcess] = []
         var line: String
@@ -64,11 +64,13 @@ import Testing
 
     private func server(
         createdWith created: RuntimeSetup, accepted: @escaping () -> RuntimeSetup?, children: Children,
-        gate: LaunchGate? = nil, grace: Duration = .milliseconds(100)
+        gate: LaunchGate? = nil, grace: Duration = .milliseconds(100), inherited: [String: String] = [:]
     ) -> FolderServer {
         let root = URL(filePath: "/tmp/root", directoryHint: .isDirectory)
         let launch = CLIServeLaunch()
-        let spec = { (setup: RuntimeSetup) in launch.spec(serving: root, with: setup, inherited: [:], logURL: nil) }
+        let spec = { (setup: RuntimeSetup) in
+            launch.spec(serving: root, with: setup, inherited: inherited, logURL: nil)
+        }
         let supervisor = ServerSupervisor(
             spec: spec(created), launch: launch, policy: fastPolicy(grace: grace), gate: gate,
             makeProcess: { children.make($0) },
@@ -76,23 +78,26 @@ import Testing
         return FolderServer(supervisor: supervisor, accepted: accepted, spec: spec)
     }
 
-    /// The recent targets change only when the user opens something (mb-40k4): the server
-    /// of a folder the user just opened records it, and no later launch of that folder
-    /// does, since Retry, Restart Server, and an upgrade's restart are not opens.
-    @Test func onlyTheStartOfAnOpenLetsItsServerRecordARecentTarget() async {
-        let children = Children(line: servingLine)
+    /// No server the app starts records a recent target (mb-1q02). The app records each
+    /// open itself, once, as it shows it (`RecentTargetsMenu.noteOpened`), so a folder's
+    /// first start, Retry, Restart Server, and the restart an upgrade offers are each told
+    /// not to, whatever the app itself was started with: its value is passed on to the
+    /// `metab` commands it runs (`ChildEnvironment.passedThrough`), not to its servers.
+    @Test func noServerTheAppStartsRecordsARecentTarget() async {
         let now = setup("/opt/metab", "0.12.1")
-        let subject = server(createdWith: now, accepted: { now }, children: children)
-        #expect(await subject.start(recordsOpen: true) == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(children.recording.all == [nil, "0", "0"])
+        for inherited in [nil, "", "0", "1"] {
+            let children = Children(line: servingLine)
+            let environment = inherited.map { [RecentTargets.recordVariable: $0] } ?? [:]
+            let subject = server(createdWith: now, accepted: { now }, children: children, inherited: environment)
+            #expect(await subject.start() == .launched)
+            #expect(await subject.restart() == .launched)
+            #expect(children.recording.all == ["0", "0"], "started with \(inherited ?? "nothing")")
+        }
+        #expect(RecentTargets.serverRecords == "0")
     }
 
-    /// An open whose first server dies before it announces itself has recorded nothing,
-    /// so the Retry that follows still carries the open; once a server is ready it does
-    /// not (review A7).
-    @Test func anOpenWhoseFirstServerDiedIsRecordedByTheRetry() async {
+    /// A server whose first start dies is told the same on the Retry that follows.
+    @Test func aRetryAfterAServerDiedRecordsNothing() async {
         let children = Children(line: "Error: no free port")
         let now = setup("/opt/metab", "0.12.1")
         let subject = server(createdWith: now, accepted: { now }, children: children)
@@ -101,56 +106,36 @@ import Testing
             while children.made.isEmpty { await Task.yield() }
             children.made[0].exitOnItsOwn()
         }
-        #expect(await subject.start(recordsOpen: true) == .launched)
+        #expect(await subject.start() == .launched)
         guard case .failed = subject.supervisor.state else {
             Issue.record("expected the first start to fail, got \(subject.supervisor.state)")
             return
         }
         children.line = servingLine
         #expect(await subject.restart() == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(children.recording.all == [nil, nil, "0"])
-    }
-
-    /// A start that is not an open joins the same server and records nothing: Command-R
-    /// in a restored window still waiting its turn starts its server this way (review A6).
-    @Test func aStartThatIsNotAnOpenIsToldNotToRecord() async {
-        let children = Children(line: servingLine)
-        let now = setup("/opt/metab", "0.12.1")
-        let subject = server(createdWith: now, accepted: { now }, children: children)
-        #expect(await subject.start() == .launched)
-        #expect(await subject.start(recordsOpen: true) == .launched)  // already running: joined
-        #expect(await subject.restart() == .launched)
         #expect(children.recording.all == ["0", "0"])
     }
 
-    /// A restored folder's start is not an open, whenever its turn comes, and neither is
-    /// anything that follows it.
-    @Test func aRestoredFoldersServerIsToldNotToRecord() async {
+    /// A restored folder's start, and a start held for a runtime, are told the same.
+    @Test func aRestoredOrHeldStartRecordsNothing() async {
         let children = Children(line: servingLine)
         let now = setup("/opt/metab", "0.12.1")
-        let subject = server(createdWith: now, accepted: { now }, children: children)
-        #expect(await subject.start(holding: false) == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(children.recording.all == ["0", "0"])
-    }
+        let restored = server(createdWith: now, accepted: { now }, children: children)
+        #expect(await restored.start(holding: false) == .launched)
+        #expect(children.recording.all == ["0"])
 
-    /// An open that had to wait for a runtime is still an open when its server starts.
-    @Test func anOpenHeldForARuntimeRecordsWhenItStarts() async {
-        let children = Children(line: servingLine)
+        let held = Children(line: servingLine)
         let old = setup("/opt/metab", "0.12.1")
         let runtime = selection(with: old)
         let recheck = runtime.startRecheck()
         _ = runtime.finishRecheck(recheck, fingerprint: stamp(2), result: .tooOld(version: "0.12.0"))
-        let subject = server(createdWith: old, accepted: { runtime.launchableSetup }, children: children)
-        #expect(await subject.start(recordsOpen: true) == .waitingForRuntime)
-        #expect(children.recording.all == [])
+        let subject = server(createdWith: old, accepted: { runtime.launchableSetup }, children: held)
+        #expect(await subject.start() == .waitingForRuntime)
         let search = runtime.startSearch()
         let found = setup("/opt/new/metab", "0.13.0", 3)
         _ = runtime.finishSearch(search, with: DiscoveryReport(setup: found, tried: []))
         #expect(await subject.resume() == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(children.recording.all == [nil, "0"])
+        #expect(held.recording.all == ["0"])
     }
 
     @Test func aStartRunsTheRuntimeAcceptedWhenItStartsNotTheOneTheFolderWasMadeWith() async {
@@ -242,7 +227,7 @@ import Testing
         var queue = RestoreQueue(
             SavedSession(windows: [
                 SavedWindow(
-                    tabs: [SavedTab(root: notes, page: nil), SavedTab(root: documents, page: nil)], selected: 0,
+                    pages: [SavedPage(root: notes, page: nil), SavedPage(root: documents, page: nil)], selected: 0,
                     frame: nil),
             ]),
             isProtected: { $0.hasPrefix("/Volumes/Home/Documents") })
@@ -366,7 +351,7 @@ import Testing
         #expect(await subject.start(holding: false) == .refusedByRoot)
         #expect(asked.count == 1)
         #expect(children.launched.all == [])
-        subject.rootCheck = nil  // a selected tab starts it as the user's choice
+        subject.rootCheck = nil  // a window brought forward starts it as the user's choice
         #expect(await subject.start(holding: false) == .launched)
         #expect(children.launched.count == 1)
     }
@@ -374,11 +359,11 @@ import Testing
 
 /// A restore that paused for want of a runtime (mb-nwr5): the root goes back to the
 /// front of the queue, so it is admitted again before it starts, keeps its place, can
-/// still be selected first, and is dropped if its tabs close.
+/// still be selected first, and is dropped if its windows close.
 @Suite struct RestorePauseTests {
     private func queue(_ roots: [String], selectedFront: Bool = true) -> RestoreQueue {
         RestoreQueue(
-            SavedSession(windows: roots.map { SavedWindow(tabs: [SavedTab(root: $0, page: nil)], selected: 0, frame: nil) }),
+            SavedSession(windows: roots.map { SavedWindow(pages: [SavedPage(root: $0, page: nil)], selected: 0, frame: nil) }),
             isProtected: { _ in false })
     }
 
@@ -388,11 +373,11 @@ import Testing
         #expect(subject.next() == "/r/b")
         subject.putBack("/r/b")
         #expect(subject.pending == ["/r/b", "/r/c"])
-        // Selecting another tab while the restore waits puts it first.
+        // Bringing another window forward while the restore waits puts it first.
         let selectedC = subject.select("/r/c")
         #expect(selectedC)
         #expect(subject.pending == ["/r/c", "/r/b"])
-        // Closing a waiting root's tabs drops it.
+        // Closing a waiting root's windows drops it.
         subject.remove("/r/b")
         #expect(subject.pending == ["/r/c"])
         #expect(subject.next() == "/r/c")
@@ -400,7 +385,7 @@ import Testing
     }
 
     /// A background root that waited for a runtime and was replaced meanwhile by a link
-    /// into Documents waits for its tab instead, as at any other turn.
+    /// into Documents waits for its window to come forward instead, as at any other turn.
     @Test func aRootPutBackIsAdmittedAgainWhenItsTurnComes() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -434,7 +419,7 @@ import Testing
 
     // MARK: - Selections while a root's start is outstanding (mb-ql6f)
 
-    /// Another tab selected while a root waited at the gate stays ahead of it when the
+    /// Another root selected while a root waited at the gate stays ahead of it when the
     /// root is put back, and the root is admitted again in its turn.
     @Test func aRootSelectedWhileAnotherWaitedStaysAheadOfIt() {
         var subject = queue(["/r/a", "/r/b", "/r/c"])
@@ -454,7 +439,7 @@ import Testing
         #expect(asked.all == ["/r/b"])  // only the background root is admitted again
     }
 
-    /// The root's own tab selected while it waited is the user's choice once it is put
+    /// The root's own window brought forward while it waited is the user's choice once it is put
     /// back: it is not admitted again, so it starts even if it became protected.
     @Test func theRootSelectedWhileItWaitedIsSelectedWhenPutBack() {
         var subject = queue(["/r/a", "/r/b", "/r/c"])
@@ -468,7 +453,7 @@ import Testing
         #expect(subject.next(stillOpen: { _ in false }) == "/r/b")
     }
 
-    /// Both: the root selected first, then another tab; the later selection leads.
+    /// Both: the root selected first, then another; the later selection leads.
     @Test func theLaterOfTwoSelectionsDuringTheWaitLeads() {
         var subject = queue(["/r/a", "/r/b", "/r/c", "/r/d"])
         _ = subject.next()
@@ -482,7 +467,7 @@ import Testing
     // MARK: - A root-refused restart (mb-g77m)
 
     /// A started restored folder whose root became protected before an upgrade restart:
-    /// the restart spawns nothing, the root waits for its tab, and selecting it starts
+    /// the restart spawns nothing, the root waits for its window to come forward, and selecting it starts
     /// exactly one new server.
     @Test func aRootRefusedRestartWaitsForItsTabAndStartsOnceSelected() async throws {
         let directory = try temporaryDirectory()
@@ -526,10 +511,10 @@ import Testing
         let recheck = runtime.startRecheck()
         _ = runtime.finishRecheck(recheck, fingerprint: nil, result: .valid(version: "0.13.0"))
         #expect(await subject.restart() == .refusedByRoot)
-        #expect(spawned.count == 1)  // no replacement before the tab is selected
+        #expect(spawned.count == 1)  // no replacement before the window comes forward
         restore.hold(background)  // as FolderWindows does with a root-refused restart
         #expect(restore.deferred == [background])
-        // Selecting its tab: the user's choice, so the root check is cleared.
+        // Bringing its window forward: the user's choice, so the root check is cleared.
         let selected = restore.select(background)
         #expect(selected)
         subject.rootCheck = nil

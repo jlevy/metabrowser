@@ -449,11 +449,14 @@ def _serve_on(
     # Recorded once the root is attached and a port is found, so a root that cannot be
     # served never enters the list, and before the line a shell waits for. It never
     # raises, and waits for another writer for at most `recent_targets.LOCK_WAIT_S`.
+    # Only an open someone asked for records (`recent_targets.serve_records`): one told to,
+    # or a person's at a terminal; an agent's, a test's, or a tool's serve does not, and
+    # neither does one the macOS app starts, as the app records each open itself.
     # Imported here, as the server is: owner-only storage is serve mode's alone.
     from metabrowser import recent_targets
     from metabrowser.repository_context import is_checkout_root
 
-    if recent_targets.recording_enabled():
+    if recent_targets.serve_records():
         # Asked first, so a server told not to record does not resolve its root either.
         if mode == "folder":
             recent_targets.record_quietly(

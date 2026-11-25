@@ -681,12 +681,6 @@
   white-space: nowrap;
 }
 
-.metabrowser-diff-host .diff-fold-chevron {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-}
-
 /* A gap's bar stands where its hunk's `@@` separator stood and keeps it after the label, in
    the plain separator's muted tone, size, and sans face (`.diff-hunk-header`; chrome is sans,
    tests/test_chrome_typography.py), as `renderGapFold` in diff-view.js draws it; a long

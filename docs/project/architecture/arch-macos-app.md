@@ -10,14 +10,14 @@ The WebKit measurement gate failed on 2026-11-11 (`mb-gvtw`), and its rerun is o
 (`mb-76nv`).
 
 The app finds a command-line install of `metab`, starts one server per folder or GitHub
-repository the user opens, and shows each in a native window or tab.
+repository the user opens, and shows each in a native window of its own.
 Everything a window shows comes from that server, apart from its web pane, the popover
 View on GitHub opens ([Web Panes and View on GitHub](#web-panes-and-view-on-github)):
 the page talks to the server over HTTP and server-sent events and never calls into the
 app, so any shell can replace another.
 The app adds what a browser tab cannot: a Dock icon, folders opened with Open With or
-dropped on it, native menus, windows, and tabs, a session that comes back at the next
-launch, and server lifetimes it controls.
+dropped on it, native menus and windows, a session that comes back at the next launch,
+and server lifetimes it controls.
 [Using the app](../../macos-app.md) is a user guide, and building, testing, and
 releasing it is [the app’s README](../../../apps/macos/README.md).
 
@@ -30,7 +30,7 @@ Paths are under `apps/macos/`.
 | `Sources/ShellCore/Supervision/` | Spawning a server, what it says as it starts, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
 | `Sources/ShellCore/Setup/` | The version floor, the first-run discovery status, the doctor’s report for Check Setup…, file watches, the restart offer after an upgrade, and the launch notice |
-| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, downloads, the host descriptor, Open links and the files they open, and the web panes’ sites, policy, state, popover layout, and data store |
+| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, and the saved session; the navigation policy, web view configuration, background page discards, reloads, downloads, the host descriptor, Open links and the files they open, and the web panes’ sites, policy, state, popover layout, and data store |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
 | `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views, and `TitleLineMenuItem`, the chooser’s menu item, which the tests reach here because `ShellCore` imports no AppKit |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views |
@@ -48,7 +48,7 @@ before one exists, windows, menus, the Dock, and file events.
 
 1. **Open.** File > Open Folder…, Open Recent, the Dock menu, a drop, Open With,
    `open -a`, and the restore all reach one `FolderSession` per folder, keyed by its
-   canonical path, so a root has one server however many windows and tabs show it.
+   canonical path, so a root has one server however many windows show it.
    That path is also the folder’s key among the
    [recent targets](arch-recent-targets.md).
    [Open Modes](arch-open-modes.md#what-keys-on-the-root) designs that key as the open
@@ -178,8 +178,8 @@ and the server, which resolves the link against its mirror, announces the right 
   starts again, and the link opens once it is ready.
   A restart of a ready server waits for the launch gate before it stops anything
   (`ServerSupervisor.restart`), so while another repository’s first clone holds the gate
-  the repository’s other tabs go on with the old server, and the window that asked for
-  the restart says it waits instead of showing the old revision (`RestartWait`): the
+  the repository’s other windows go on with the old server, and the window that asked
+  for the restart says it waits instead of showing the old revision (`RestartWait`): the
   window File > Restart Server was chosen in, or the front window for an upgrade’s
   restart. The supervisor reports only its first waiter (`onGateWait`), so a restart
   asked for while another waits shows its window at once.
@@ -189,18 +189,9 @@ and the server, which resolves the link against its mirror, announces the right 
   `SourceLink.attempts` times, and then the link route once more with `"fetch": false`,
   which opens the page or answers `404`. A link the mirror still lacks is said in the
   burst’s alert (`LinkAlert.linkNotFound`), and the window stays where it was.
-- **Beside an open checkout.** A new session’s window joins the window of an open
-  checkout of the same repository as a tab (`CheckoutWindow`,
-  `FolderWindows.place(_:besides:)`), whatever the placement preference says, since the
-  link names the repository that window shows; with none, it is placed as a new
-  folder’s. A checkout’s repository is the `repository` its server reports in
-  `GET /api/identity`, the GitHub repository its `origin` names, compared with the
-  plan’s `root`; a folder name never decides it.
-  Of several matches the one shown most recently wins (`OpenFolders.byRecency`), and its
-  window shown most recently among its own.
-  A checkout with no window on screen, or no answer yet, is passed over.
-  The checkout’s `.git/config` can name any repository, so a planted one can at most
-  choose which window a mirror’s tab joins; what the tab serves is still the mirror.
+- **A window of its own.** A new session’s window is placed as any new folder’s
+  (`FolderWindows.place`), also while a window shows a checkout of the same repository.
+  An earlier build put it in a tab of that checkout’s window, which no window takes now.
 - **Asking before a clone.** An external link that would start a new session asks first
   unless `metab`’s cache holds the repository (`RepositoryCache`), which the app learns
   from `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the
@@ -295,9 +286,8 @@ and the server, which resolves the link against its mirror, announces the right 
 - **Titles.** Until the server answers `/api/identity`, the window is named for the
   repository (`FolderIdentity.repository`), a cached mirror.
   Only a local folder’s window gets a path menu, whatever identity its port answers.
-- **Not restored.** `FolderWindows.snapshot` leaves a repository’s tabs out of the saved
-  session, whose roots are paths that the restore admits again (`RootAdmission`); a tab
-  group whose shown tab is a repository’s is saved showing its first folder tab.
+- **Not restored.** `FolderWindows.snapshot` leaves a repository’s windows out of the
+  saved session, whose roots are paths that the restore admits again (`RootAdmission`).
 - **The version floor.** `RuntimeDiscovery.validate` probes `--present` with
   `--exit-on-eof`, so a `metab` without it is too old at setup
   ([The Version Floor](#the-version-floor)).
@@ -338,7 +328,7 @@ only shows its state and passes on edits, Open, and Cancel.
   An unreadable response identifies `metab` and the failure in the panel and sends its
   output to the app log.
   When the dry run returns a plan, the panel shows “Opening repository…” until
-  `openEntered` places a new window or tab or brings the existing one forward.
+  `openEntered` places a new window or brings the existing one forward.
   The repository window shows its own progress while the server starts, clones, or
   resolves the link.
 - **Waiting for the runtime.** When runtime discovery or verification is in progress,
@@ -545,8 +535,8 @@ Applications.
   `NSWindow`. The page left behind stays in the background, or closes if its folder has
   another page (`SwitchedAwayPage`), so a folder has at most one background page.
   Every switch goes through `switchWindow`, which `FolderSwitch` decides: a window with
-  a sheet open keeps its page, and a tab hidden behind another of its group switches
-  without counting its new folder as shown until the tab is selected.
+  a sheet open keeps its page, and a minimized window switches without counting its new
+  folder as shown until it is brought forward.
   File > Close Folder switches each window showing the folder to the next background
   folder, the one shown most recently first, or closes it, then closes the folder’s
   pages (`OpenFolders.closing`); a sheet open on any of those windows holds it all up,
@@ -595,17 +585,33 @@ Applications.
   server, as Retry does.
   A sheet the page opened is cancelled first (`PageSheets`).
 
-### Tabs, Files, and Recents
+### Windows, Files, and Recents
 
-- **Tabs.** Every folder window shares one tabbing identifier, so Merge All Windows and
-  tab dragging combine any folders.
-  `FolderPlacement` puts a new folder in a tab, a window, or as System Settings prefers.
-- **Background tabs.** Each window’s shown tab keeps its page, and so do the most
-  recently shown background pages, of tabs and of folders in the background, up to
-  [`TabDiscardPolicy`](../../../apps/macos/Sources/ShellCore/Web/TabDiscardPolicy.swift)’s
+- **A window per folder.** Every way a folder opens reaches `AppDelegate.showOpened`,
+  which brings an open folder’s window forward, switches the window the user chose, or
+  places a new window (`FolderWindows.place`): File > Open Folder…, `open -a`, a Dock
+  drop, Open With, `metab --present`, a sent GitHub link, File > Open URL…, Open Recent,
+  the Dock menu, and the folder chooser and Switch Folder panel.
+  Three ways a window appears open no folder and do not pass through it: the restore
+  puts the saved windows back (`FolderWindows.restore`), a Dock click with no window on
+  screen brings an open folder forward, and a page’s Command-click or `target=_blank`
+  opens another window of the same folder, sharing its server
+  (`FolderSession.openWindow(at:)`). Every new window but the restore’s is placed by
+  `FolderWindows.place`, alone.
+- **No tabs.** Each folder window sets `tabbingMode = .disallowed` and names no tabbing
+  identifier, and the app sets `NSWindow.allowsAutomaticWindowTabbing` to false before
+  it builds its menus (`BrowserWindowController.refuseTabs`), so AppKit offers no Merge
+  All Windows, tab bar, or tab items, and System Settings’ “Prefer tabs when opening
+  documents” does not apply.
+  No code adds a tabbed window (`NoFolderTabsSourceTests`); `FolderWindowTests` pins the
+  windows on screen. An earlier build saved a placement preference, `newFolderPlacement`,
+  in the app’s user defaults, which nothing reads now.
+- **Background pages.** Each window keeps its page, minimized or not, and so do the most
+  recently shown pages of folders in the background, up to
+  [`PageDiscardPolicy`](../../../apps/macos/Sources/ShellCore/Web/PageDiscardPolicy.swift)’s
   limit, whose comment holds its measurement.
-  Every other background tab gives up its web view, which ends its WebContent process,
-  and reloads from the running server when shown, keeping only its address.
+  Every other background page gives up its web view, which ends its WebContent process,
+  and reloads from the running server when a window shows it, keeping only its address.
 - **Files.** A file opens in the most specific open folder that contains it, or else in
   its own folder, as `metab FILE` does (`OpenTarget`), at the view route `metab` spells
   (`PageAddress.view`). A page requested while the server is not ready loads once it is
@@ -613,16 +619,17 @@ Applications.
   repository root, and a file with no such folder opens its open root
   ([Open Modes](arch-open-modes.md#what-keys-on-the-root)).
 - **Recents.** File > Open Recent, and the folder chooser’s Recent section, list
-  `metab`’s [recent targets](arch-recent-targets.md#the-macos-app), which every server
-  records as it starts, so the app decides nothing about the list and keeps none of its
-  own. The Dock menu lists the same targets (`applicationDockMenu`), and a restored
-  folder’s server, like any restart, is told not to record.
+  `metab`’s [recent targets](arch-recent-targets.md#the-macos-app).
+  The app keeps none of its own: it records each open once, as `showOpened` shows it,
+  with `metab ROOT --recent-add`, and tells every server it starts not to record, so a
+  restored folder, a restart, and a server nobody opened leave the list as it was.
+  The Dock menu lists the same targets (`applicationDockMenu`).
 
 ### Session Restore
 
-`SessionStore` saves the folder windows, front first, with each window’s tabs, shown
-tab, and frame and each tab’s folder and page, then the folders open in the background
-with their pages, the one shown most recently first, to `session.json` in
+`SessionStore` saves the folder windows, front first, then the minimized ones, with each
+window’s frame, folder, and page, then the folders open in the background with their
+pages, the one shown most recently first, to `session.json` in
 `AppIdentity.supportDirectory`, `FolderWindows.saveDelay` after a change and at quit
 before the servers stop.
 Each save renames a private temporary file over the old one, so a launch after a crash
@@ -632,15 +639,19 @@ A launch reads the file once, as a regular file of at most `SessionStore.byteLim
 rebuilds at most
 [`RestoreBudget.standard`](../../../apps/macos/Sources/ShellCore/Folders/SavedSession.swift),
 whose comment holds its measurement.
-Only each window’s shown tab loads its page.
+The file keeps an earlier build’s names for a window’s pages, `tabs` and `selected`
+(`SavedWindow`), so the same reader reads a window that an earlier build saved with
+several folder tabs: it reopens as a window per tab, the one it showed at the saved
+frame and in front, and only that one loads its page at launch; each of the others loads
+when it is brought forward.
 A folder in the background reopens with its page and no window, and its server waits, as
 a protected folder’s does, until a window shows it.
 A session with background folders and no window, as a quit after the last window closed
 saves, shows the first of them in a window of its own (`SavedSession.withFrontWindow`),
 so a launch never opens to nothing.
 Servers start one at a time, each after the one before is ready or has failed: the front
-tab’s first, then the tabs the other windows show, then the rest (`RestoreQueue`,
-`RestoreRun`). A tab selected meanwhile starts next.
+window’s first, then the other windows’ shown pages, then the rest (`RestoreQueue`,
+`RestoreRun`). A window brought forward meanwhile starts next.
 
 The file may have been edited, and a folder on a path replaced or relinked, so every
 root is admitted again before anything starts (`RootAdmission`). Only a root whose
@@ -648,14 +659,14 @@ identity is certain warms in the background: a walk from `/` opens each componen
 `O_NOFOLLOW`, enters no mount but the system’s and the Data volume’s, and never opens a
 protected location (`ProtectedLocations`); the folder it reaches must be on the home
 folder’s volume, and the kernel’s name for it is the root’s identity.
-Anything less certain waits for its tab under its saved spelling, and selecting the tab
-resolves the path then (`RootActivation`), moving its tabs to the folder it now leads
-to; its page in the background moves too, unless that folder has one or is shown
-(`MovedPage`). A folder in a protected location starts only when one of its tabs is
-selected, so a launch raises no privacy prompt for a folder nobody is looking at.
-A background root is admitted again at its turn and just before its server spawns; a
-process that changes the path after that check can still win, and macOS enforces its
-privacy grants regardless.
+Anything less certain waits for its window to be brought forward under its saved
+spelling, which resolves the path then (`RootActivation`), moving its pages to the
+folder it now leads to; its page in the background moves too, unless that folder has one
+or is shown (`MovedPage`). A folder in a protected location starts only when one of its
+windows is brought forward, so a launch raises no privacy prompt for a folder nobody is
+looking at. A background root is admitted again at its turn and just before its server
+spawns; a process that changes the path after that check can still win, and macOS
+enforces its privacy grants regardless.
 
 ### Web Panes and View on GitHub
 
@@ -735,7 +746,7 @@ pane (bead `mb-4wqh`, which replaced the in-window GitHub view first built for
 - **One store, as a browser profile.** Every pane’s web view, for every site, uses
   `WebDataStore.shared`, one persistent `WKWebsiteDataStore` named by a fixed
   identifier, the one GitHub’s popover had, so signing in to a site once holds in every
-  window and tab and after a relaunch.
+  window and after a relaunch.
   WebKit keeps each site’s cookies and storage apart within it, as a browser does.
   The pages keep the default store, whose host-only cookies hold Metabrowser’s
   preferences across ports and whose local storage stays per origin, so a page a
@@ -759,7 +770,7 @@ pane (bead `mb-4wqh`, which replaced the in-window GitHub view first built for
   nothing without a committed page.
   The `NSPopover` holds its content, the pane, so `WebPopover` makes one each time the
   popover opens and lets it go when it closes, and a closed page frees both.
-  The pane’s WebContent process is outside `TabDiscardPolicy`. Unsent text keeps it
+  The pane’s WebContent process is outside `PageDiscardPolicy`. Unsent text keeps it
   again and again, so time alone does not bound it: there is at most one per live page,
   as a page the policy discards, or that closes, lets its pane’s web view go.
   The constant’s comment holds what one github.com page costs, measured, and notes that

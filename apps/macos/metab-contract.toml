@@ -200,9 +200,9 @@ id = "identity"
 route = "/api/identity"
 literal = "api/identity"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
-json = ["short_name", "full_name", "kind", "kind_label", "title", "repository"]
+json = ["short_name", "full_name", "kind", "kind_label", "title"]
 values = { kind = ["folder", "git", "mirror"] }
-note = "Names each window, and which of the three kinds of root it shows, which picks its mark (`RootMark`). Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
+note = "Names each window, and which of the three kinds of root it shows, which picks its mark (`RootMark`). Status 200, or the window keeps the name it derived."
 
 [[route]]
 id = "source-status"
@@ -302,7 +302,7 @@ note = "Read only by the app's live test of the stdin lifeline."
 name = "METABROWSER_RECORD_RECENT"
 source = "Sources/ShellCore/Folders/RecentTargets.swift"
 metab = "src/metabrowser/recent_targets.py"
-note = "Set to 0 for every server that is not the first start of something the user just opened."
+note = "Set to 0 for every server the app starts: the app records each open itself, as it shows it, with `--recent-add`. Any other `metab` the app runs gets the app's own value, so a development build started with 0 (`make run`) records nothing."
 
 [[env]]
 name = "METABROWSER_DOCTOR_APP"
@@ -393,12 +393,6 @@ id = "prompt-stop"
 source = "Sources/ShellCore/Supervision/ServerSupervisor.swift"
 what = "A server ends within `SupervisorPolicy.shutdownGrace` of SIGTERM, because it waits for no open connection."
 pinned_by = "tests/test_cli_main.py::test_serve_expands_home_relative_root"
-
-[[behavior]]
-id = "recorded-before-announced"
-source = "Sources/ShellCore/Setup/FolderServer.swift"
-what = "A server records its root as a recent target before it prints the Serving line, so a ready server has recorded the open."
-pinned_by = "tests/test_recent_targets.py::test_a_serve_records_its_folder_before_it_announces_itself"
 
 [[behavior]]
 id = "entry-page-answers"

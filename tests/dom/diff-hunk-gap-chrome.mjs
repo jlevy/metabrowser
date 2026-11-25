@@ -19,8 +19,9 @@
 // rest, and that bar opens 250 more.
 //
 // What it measures is layout and the browser's own scrolling, which no browserless DOM has
-// (docs/design-system.md, "Fold Expanders"): every gap's bar, the nested one too, computes
-// as the changed run's fold bar does, at rest and under the pointer, in Unified and in
+// (docs/design-system.md, "Fold Expanders"): every gap's bar, the nested one too, draws the
+// fold's expand/contract pair for its state from its ::before and computes as the changed
+// run's fold bar does, at rest and under the pointer, in Unified and in
 // Split, and spans its file; the separator it keeps is in the muted tone and the bar's own
 // sans face, on one line, and gives way to an ellipsis at 320 px while the label stays whole; the
 // keyboard reaches a gap's bar with the ring the changed run's bar draws, and Enter opens
@@ -312,9 +313,25 @@ const BAR_STYLE = [
   "user-select",
 ];
 
+// The fold's two glyphs, KPress's table-of-contents pair, each known by a path only it has
+// (tests/dom/diff-markdown-fold-chrome.mjs).
+const CLOSED_GLYPH = "m7 15 5 5 5-5";
+const OPEN_GLYPH = "m7 20 5-5 5 5";
+// A mask's URL as computed may keep the stylesheet's percent escapes.
+const decoded = (/** @type {string} */ value) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 // In the page: every gap's bar and the changed run's, each with its computed style, its box
-// against its file's, where its chevron and label are, and its separator's face, tone, and
-// whether it is cut; and the shell's muted tone resolved in the diff.
+// against its file's, where its glyph and label are and which glyph it draws, and its
+// separator's face, tone, and whether it is cut; and the shell's muted tone resolved in the
+// diff. The glyph is the bar's ::before, whose box a pseudo-element does not report, so it
+// starts where the label does, less the bar's gap and the glyph's width, as GLYPH_OF in
+// tests/dom/diff-markdown-fold-chrome.mjs reads it.
 const READ_BARS = inPage(`
   const names = ${JSON.stringify(BAR_STYLE)};
   const read = (node) => {
@@ -322,7 +339,7 @@ const READ_BARS = inPage(`
     const fileRect = file.getBoundingClientRect();
     const rect = node.getBoundingClientRect();
     const style = getComputedStyle(node);
-    const chevron = node.querySelector(".diff-fold-chevron").getBoundingClientRect();
+    const glyph = getComputedStyle(node, "::before");
     const labelNode = node.querySelector(".diff-fold-label");
     const label = labelNode.getBoundingClientRect();
     const detail = node.querySelector(".diff-fold-detail");
@@ -338,8 +355,12 @@ const READ_BARS = inPage(`
       startInFile: rect.left - fileRect.left - file.clientLeft,
       fileWidth: file.clientWidth,
       overflows: node.scrollWidth > node.clientWidth,
-      chevronStart: chevron.left - rect.left,
-      chevronWidth: chevron.width,
+      glyphStart:
+        label.left - rect.left - parseFloat(style.columnGap) - parseFloat(glyph.width),
+      glyphWidth: parseFloat(glyph.width),
+      glyphMask: glyph.maskImage,
+      expanded: node.getAttribute("aria-expanded"),
+      drawn: node.querySelectorAll("svg, img").length,
       labelStart: label.left - rect.left,
       labelMiddle: (label.top + label.bottom) / 2 - rect.top,
       labelCut: labelNode.scrollWidth > labelNode.clientWidth,
@@ -584,7 +605,13 @@ function lookChecks(/** @type {any} */ read, /** @type {string} */ at, /** @type
         `${gap.style[property]} against ${value}`,
       );
     }
-    for (const part of ["chevronStart", "chevronWidth", "labelStart", "labelMiddle", "height"]) {
+    const pair = gap.expanded === "true" ? OPEN_GLYPH : CLOSED_GLYPH;
+    check(
+      `${name} draws the fold's pair for its state, from its ::before, and no glyph of its own`,
+      decoded(gap.glyphMask).includes(pair) && gap.drawn === 0,
+      `${gap.expanded} ${gap.drawn} ${gap.glyphMask.slice(0, 80)}`,
+    );
+    for (const part of ["glyphStart", "glyphWidth", "labelStart", "labelMiddle", "height"]) {
       check(
         `${name}: its ${part} is the changed run's bar's`,
         near(gap[part], read.run[part]),

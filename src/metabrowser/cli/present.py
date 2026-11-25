@@ -1279,10 +1279,17 @@ def serve_detached(
     rest), so neither this command's exit nor its terminal's hangup reaches it, and
     nothing reading this command's output waits on the server.
     It is serve mode, which opens the page in a browser once it answers: what a user who
-    ran ``metab ROOT`` would get, in the same working directory and environment.
+    ran ``metab ROOT`` would get, in the same working directory and environment, with one
+    variable set. Its stdin is never a terminal, so it is told whether to record the root
+    as a recent target: as this command would itself (``recent_targets.serve_records``),
+    so a person's ``--present`` at a terminal records it and an agent's does not.
     """
 
+    # Imported here: a dry run, which never starts a server, loads little.
+    from metabrowser.recent_targets import RECORD_ENV, serve_records
+
     argv = _serve_arguments(value, path)
+    environment = {**os.environ, RECORD_ENV: "1" if serve_records() else "0"}
     if os.name != "posix":
         return Delivery(
             "none",
@@ -1313,6 +1320,7 @@ def serve_detached(
             stdin=subprocess.DEVNULL,
             stdout=descriptor,
             stderr=descriptor,
+            env=environment,
             # setsid() in the child, which every POSIX Python has. Not os.posix_spawn's
             # setsid, which a Python built without POSIX_SPAWN_SETSID refuses ("setsid
             # unavailable on this platform"), as the Linux 3.13 in CI did on 2026-11-18.

@@ -187,7 +187,8 @@ decide, is checked by hand against a built development app with the
   session, a release’s too, since both variants share it, and File > Open Recent > Clear
   Menu the recent targets, which `metab` keeps for both.
   `make run` starts the app with `METABROWSER_RECORD_RECENT=0`, so what a development
-  run opens stays out of that list; a copy that is already running keeps the setting it
+  run opens stays out of that list: agents start the app this way for hand checks, and
+  their folders are not the user’s. A copy that is already running keeps the setting it
   started with.
 
 ### The WebKit Gate
@@ -647,7 +648,7 @@ Do not hand one out as a release.
 | `scripts/check-release.sh`, `check-release-lib.sh`, `launch-release.sh`, `quarantine.swift` | The download check, its decisions, the launch check, and the helper that quarantines a download as a browser does |
 | `scripts/test-release-logic.sh`, `scripts/fixtures/` | The release scripts’ decisions on stand-ins for Apple’s tools, which Linux CI runs too, and their inputs |
 | `scripts/check-setup-flows.sh`, `scripts/setup-check/` | The hand checks of the first-run screens and the launch notice, and their stand-ins |
-| `scripts/measure-web-views.swift` | The measurement behind `TabDiscardPolicy` |
+| `scripts/measure-web-views.swift` | The measurement behind `PageDiscardPolicy` |
 | `webkit-gate/` | The WebKit measurement gate: `run.mjs`, the in-page `probe.js`, `summary.mjs` for its verdicts, `processes.mjs` and `static-server.mjs`, and `driver/`, the `WebKitDriver` target |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release |
 | `packaging/DeveloperIDG2CA.cer` | Apple’s Developer ID G2 intermediate, reviewed in [Supply-Chain Security](../../SUPPLY-CHAIN-SECURITY.md#apple-developer-id-intermediate-november-17-2026) |

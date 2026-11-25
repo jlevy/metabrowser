@@ -1,14 +1,11 @@
 import AppKit
 import ShellCore
 
-/// One folder window: the window and its chrome (the title, the mark, placement, and
-/// tabbing), showing one folder's page at a time (`FolderPage`). The page belongs to its
+/// One folder window: the window and its chrome (the title, the mark, and placement),
+/// showing one folder's page at a time (`FolderPage`). The page belongs to its
 /// folder's session; the window only hosts it, so it can show another page in its place
 /// without becoming another window.
 final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
-    /// Shared by every folder window, so macOS merges folders into one window's tabs.
-    static let tabbingIdentifier = "io.github.jlevy.metabrowser.folder"
-
     /// The page the window shows.
     private(set) var page: FolderPage
     /// Holds the page's view, filling the window. The page is not the window's content view
@@ -38,7 +35,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         window.titleVisibility = .hidden  // TitleAccessoryController draws the title
         window.addTitlebarAccessoryViewController(titleAccessory)
         window.addTitlebarAccessoryViewController(markAccessory)
-        window.tabbingIdentifier = Self.tabbingIdentifier
+        // A window of its own, always: Merge All Windows, the tab bar, and System Settings'
+        // "Prefer tabs when opening documents" leave it alone (`refuseTabs`).
+        window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
         Self.place(window)
         super.init(window: window)
@@ -54,10 +53,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("unused") }
 
+    /// Turns off AppKit's automatic window tabbing for the whole app, which the app does
+    /// before it builds its menus: AppKit then adds no Show Tab Bar, Show All Tabs, Merge
+    /// All Windows, or Move Tab to New Window, and puts no new window in another's tabs
+    /// when System Settings prefers tabs. Every folder opens in a window of its own, and
+    /// each folder window disallows tabbing itself too (`init`).
+    static func refuseTabs() {
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     /// Sizes a new window for the screen it opens on, the one with the key window (or
     /// else the menu bar), and places it a step down and right from the window placed
     /// before it, all of it on that screen (`NewWindowFrame`). A restored window then
-    /// takes its saved frame, and a new tab the frame of the window it joins.
+    /// takes its saved frame.
     private static func place(_ window: NSWindow) {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let visible = screen.visibleFrame
@@ -79,8 +87,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     /// Shows `newPage` in place of the page the window shows now, which is left with no
     /// window: the caller decides whether it stays open in the background or closes
-    /// (`FolderWindows.switchWindow`). The window itself stays: its frame, Space, full
-    /// screen, and place among its tabs.
+    /// (`FolderWindows.switchWindow`). The window itself stays: its frame, Space, and full
+    /// screen.
     func show(_ newPage: FolderPage) {
         guard newPage !== page else { return }
         let old = page
@@ -103,16 +111,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         // Only a folder on this Mac has a path menu: a repository's root is a URL, whose path
         // names no folder here, whatever identity its port answered.
         window.representedURL = title.hasPathMenu && session?.isLocal == true ? session?.root : nil
-        window.tab.title = title.tabTitle
-        window.tab.toolTip = title.tabToolTip
         titleAccessory.show(title, representing: window.representedURL)
-        let named = "window title \(window.title), tab \(window.tab.title ?? ""), subtitle \(window.subtitle)"
+        let named = "window title \(window.title), subtitle \(window.subtitle)"
         AppLog.app.debug("\(named, privacy: .public)")
     }
 
     // MARK: - Window events
 
-    /// Selecting a tab makes its window key.
+    /// A window brought forward becomes key.
     func windowDidBecomeKey(_ notification: Notification) {
         page.shown()
     }
