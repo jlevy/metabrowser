@@ -3,13 +3,17 @@ type: is
 id: is-01m88a0b48m7t8avjx2d5pre4a
 title: "Docs draws a far file's whole Source body at load while its rendered view waits: #31's 17k-line book builds 72k nodes, 4 s of task"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-11-25T02:54:22.342Z
-updated_at: 2026-11-25T02:55:50.775Z
+updated_at: 2026-11-25T03:48:23.352Z
+started_at: 2026-11-25T03:48:23.350Z
 ---
 Measured 2026-11-24 on finterm-ai/investment-research #31 (one new 876,516-byte, 17,177-line Markdown book among 13 files), headless Chrome 152 at 1,280 x 900, load average 270-330, two back-to-back pairs, origin/main runtime against claude/rendered-markdown-modes (PR #811): the Docs tab's load is unchanged by #811, 72,430-72,435 DOM nodes and 4.0-4.2 s of main-thread task in both builds, with long tasks totalling 0.65-1.31 s.
 
