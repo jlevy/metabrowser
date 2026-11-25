@@ -3399,8 +3399,11 @@ the colon:
 - The scope is one or more characters other than parentheses, so a list such as
   `fix(ui, git):` counts, as conventional-changelog’s parser reads one, and an empty
   `()` does not.
-- It counts only at 16 characters or fewer, colon included, counted in code points:
-  `refactor(stack):` counts, and `refactor(stacks):` is part of the title.
+- It counts only up to `TITLE_PREFIX_MAX_CHARS` in `static/formatters.js`, colon
+  included, counted in code points, set from the prefixes of real commit subjects as
+  `tests/dom/title-prefix-session.js` records: `feat(view-on-github):` counts, and a
+  parenthetical sentence such as
+  `note(this is how the cache and the scroller keep a row):` is part of the title.
 - Whitespace and more of the title follow the colon.
   `fix:keep` and a title that ends at its colon have no prefix.
 
