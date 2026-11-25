@@ -142,7 +142,7 @@ def test_runtime_dependencies_reads_names_from_requirements(tmp_path: Path) -> N
 
 def test_the_real_package_passes(capsys: pytest.CaptureFixture[str]) -> None:
     assert check_plugin_deps.main() == 0
-    assert "plugin-only: prettyfmt (agents)." in capsys.readouterr().out
+    assert "plugin-only: prettyfmt (agents); pypdfium2 (pdf)." in capsys.readouterr().out
 
 
 # ── The manifest field ───────────────────────────────────────

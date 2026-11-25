@@ -663,6 +663,111 @@ async function loadModule() {
   );
   transitionHandle.dispose();
 
+  // `![[report.pdf]]` is the card the link enhancer's `embedPdf` draws, replaced and
+  // disposed when a later catalog revision changes its result; without `embedPdf` it is a
+  // link to the PDF's view. Neither is ever an address under /raw.
+  const pdfEmbedElement = () =>
+    new FakeElement(
+      "span",
+      { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "report.pdf#page=2" },
+      "report.pdf",
+    );
+  const pdfContainer = new FakeContainer([pdfEmbedElement()]);
+  const pdfScheduler = createScheduler();
+  let pdfSnapshot = { complete: false, files: catalogFiles(["docs/report.pdf"]) };
+  let pdfListener = null;
+  const pdfDrawn = [];
+  const pdfHandle = module.enhanceWikiLinks(
+    pdfContainer,
+    "docs/current.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => pdfSnapshot,
+        subscribe: (listener) => {
+          pdfListener = listener;
+          return () => {
+            pdfListener = null;
+          };
+        },
+      },
+    },
+    () => {},
+    {
+      ...pdfScheduler,
+      embedPdf: (template, target, name) => {
+        const drawn = { disposed: 0, name, target, template };
+        pdfDrawn.push(drawn);
+        return {
+          element: new FakeElement("span", { class: "metabrowser-pdf-embed" }),
+          dispose: () => {
+            drawn.disposed += 1;
+          },
+        };
+      },
+    },
+  );
+  pdfScheduler.runAll();
+  const firstSlot = pdfContainer.elements[0];
+  check(
+    "an embedded PDF is the card embedPdf draws, for its view and its name",
+    pdfDrawn.length === 1 &&
+      pdfDrawn[0].target.path === "docs/report.pdf" &&
+      pdfDrawn[0].target.fragment === undefined &&
+      pdfDrawn[0].name === "report.pdf" &&
+      firstSlot.getAttribute("class") === "metabrowser-pdf-embed" &&
+      firstSlot.getAttribute("data-metabrowser-link-syntax") === "wiki-embed",
+  );
+  pdfSnapshot = { complete: false, files: catalogFiles(["docs/report.pdf"]) };
+  pdfListener();
+  pdfScheduler.runAll();
+  check(
+    "the same PDF across revisions keeps its card",
+    pdfContainer.elements[0] === firstSlot && pdfDrawn.length === 1 && pdfDrawn[0].disposed === 0,
+  );
+  pdfSnapshot = { complete: true, files: [] };
+  pdfListener();
+  pdfScheduler.runAll();
+  const missingPdf = pdfContainer.elements[0];
+  check(
+    "a PDF that converges to missing disposes its card for a new placeholder",
+    pdfDrawn[0].disposed === 1 &&
+      missingPdf !== firstSlot &&
+      missingPdf.getAttribute("class") !== "metabrowser-pdf-embed" &&
+      missingPdf.getAttribute("data-metabrowser-link-status") === "missing",
+  );
+  pdfHandle.dispose();
+  check("disposing the document disposes no card twice", pdfDrawn[0].disposed === 1);
+
+  const linkedPdfContainer = new FakeContainer([pdfEmbedElement()]);
+  const linkedPdfRegistered = [];
+  const linkedPdfScheduler = createScheduler();
+  const linkedPdfHandle = module.enhanceWikiLinks(
+    linkedPdfContainer,
+    "docs/current.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => ({ complete: true, files: catalogFiles(["docs/report.pdf"]) }),
+        subscribe: () => () => {},
+      },
+    },
+    (element, target) => linkedPdfRegistered.push({ element, target }),
+    linkedPdfScheduler,
+  );
+  linkedPdfScheduler.runAll();
+  const linkedPdf = linkedPdfContainer.elements[0];
+  check(
+    "without embedPdf an embedded PDF links to its view, not /raw",
+    linkedPdf.tagName === "A" &&
+      linkedPdf.getAttribute("href") === "/view/docs/report.pdf" &&
+      linkedPdf.getAttribute("data-metabrowser-link-syntax") === "wiki-embed" &&
+      linkedPdfRegistered.length === 1 &&
+      linkedPdfRegistered[0].element === linkedPdf,
+    `${linkedPdf.tagName} ${linkedPdf.getAttribute("href")}`,
+  );
+  linkedPdfHandle.dispose();
+
   const lateElement = new FakeElement(
     "span",
     { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Later" },

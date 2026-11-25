@@ -339,11 +339,12 @@ metab --doctor: 17 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
-  diff: requires structured
+  diff: requires structured, pdf
   event-log: requires agents
   folder: requires markdown
   fsqlite: requires sqlite, table
   github: requires markdown, diff
+  markdown: requires pdf
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents
@@ -361,11 +362,12 @@ metab --doctor: 17 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
-  diff: requires structured
+  diff: requires structured, pdf
   event-log: requires agents
   folder: requires markdown
   fsqlite: requires sqlite, table
   github: requires markdown, diff
+  markdown: requires pdf
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents
@@ -415,11 +417,12 @@ metab --doctor: 17 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
-  diff: requires structured
+  diff: requires structured, pdf
   event-log: requires agents
   folder: requires markdown
   fsqlite: requires sqlite, table
   github: requires markdown, diff
+  markdown: requires pdf
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents

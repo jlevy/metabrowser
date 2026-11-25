@@ -2520,7 +2520,7 @@ async def index(
     <div class="tree-pane" id="tree-pane">
       <header class="app-header" data-kbd-badge-anchor>
         <!-- data-served-root is the one place the absolute root is written:
-             the file header reads it back to render its dimmed prefix, so
+             the file header reads it back to render the root's address, so
              the two headers cannot disagree about what the root is. The
              details disclosure uses it for the root's address.
 
