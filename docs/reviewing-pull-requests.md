@@ -382,7 +382,7 @@ guide on screen stays, and a step you have not read yet says why in its place.
 When the stack moves, as when its layers’ records arrive one by one on a page just
 opened, the page shows the new comparison at once until you scroll, click, press a key,
 or open a tab or a file; after that it shows one that would look different only when you
-ask: the status line says what changed, such as “#845 has 2 new commits, and #843 was
+ask: the status line says what changed, such as “#845 has 2 new commits and #843 was
 merged.”, with **Show the new comparison**, and while a layer it waits on is fetched it
 says so instead. A new comparison with the same two commits and the same files changes
 nothing on the page.

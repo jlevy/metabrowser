@@ -1032,14 +1032,21 @@ measurements that set them:
   page; after the reader’s move, it is held while a member it waits on is fetched and
   then offered, the notice saying what changed in each member (`answerAction` and
   `changeText`). The poll asks `stack` with `since`, the key of the comparison drawn.
-  The write of a new pair keeps that one just before it (`retain_stack_pair`), so the
-  pair a page draws stays admitted however often the stack moves while the page asks.
+  The write of a new pair keeps that one just before it (`retain_stack_pair`), and a
+  poll that names another pair than the last write kept writes again, so with two pages
+  open on one stack each keeps its own; the pair a page draws stays admitted unless more
+  than `MAX_RETAINED_STACK_PAIRS` moves come between two of its polls, as they can while
+  it is out of sight. An answer without `moved` says the pair drawn is gone: the page
+  draws the new comparison in its place if it looks the same and otherwise offers it at
+  once, and a guide step the route refuses as `stack_moved` makes the page read the
+  stack then rather than at its next poll.
   The answer’s `moved` gives, for each member in both whose head moved, the commits its
   new head adds that the comparison drawn did not show, in neither the earlier head’s
   history nor its top’s, nor its merge base, or `null` when the earlier head is not in
-  its history (`stack_moves`, read against the pair `pull_stack_retained.py` keeps for
-  that key and counted once each, `MAX_KEPT_COUNTS`). A file the reader opens is
-  scrolled to when its diff is drawn, never on a later answer (`bodyPlan`).
+  its history, or 0 when the top drawn already holds the new head (`stack_moves`, read
+  against the pair `pull_stack_retained.py` keeps for that key and counted once each,
+  `MAX_KEPT_COUNTS`). A file the reader opens is scrolled to when its diff is drawn,
+  never on a later answer (`bodyPlan`).
 - **The guide.** When a member’s description carries the stack’s guide, the answer’s
   `guide` names that member and its record revision, Guided Review leads the tabs, and
   `/stack/<n>` opens on it; without one the front page is Changes

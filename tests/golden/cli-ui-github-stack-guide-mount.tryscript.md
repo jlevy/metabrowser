@@ -35,14 +35,21 @@ page’s glue between them.
   Its note is inserted against the page of the member that carries the guide, here 8’s,
   and its outside link is marked.
   Each file’s Open full diff opens it where it is a change: the stack’s Changes, or 9’s.
-- `edited`: a member’s record catches up, so the stack’s key changes while its two
-  commits and its files stay, and the carrier’s record has a new revision.
+- `edited`: a member’s record catches up, to a head the comparison drawn already shows,
+  so the stack’s key changes while its two commits and its files stay, and the carrier’s
+  record has a new revision.
   Nothing the reader sees changes, so the comparison drawn stays, with no notice and the
   guide’s view kept, and the step on screen is read again at that comparison.
-- `moved`: after the reader has pressed on the page, another member moves the stack.
-  The new comparison is offered, not swapped in, saying what changed: nothing is read
-  again, and the next step is read at the comparison still drawn.
+- `below_moved`: after the reader has pressed on the page, that member gains commits
+  past the head its record caught up to.
+  The new comparison is offered, not swapped in, its notice naming the member: nothing
+  is read again, and the next step is read at the comparison still drawn.
   An answer read at another comparison draws no document whole.
+- `carrier_moved`: the carrier moves with the stack and is pinned again, so a step not
+  read yet is refused in the stack’s words, under the steps the guide keeps.
+  The route’s own `stack_moved` says the comparison drawn may be gone, so the page reads
+  the stack at once (`route_refused_reads_stack`), not at its next poll, and offers the
+  new comparison.
 - `taken`: the reader takes the new comparison, and the guide is mounted again, its
   earlier views disposed, and read at the comparison now drawn.
 - `left`: leaving the tab for Changes while a read is on its way disposes the view,
@@ -147,6 +154,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
     "step_refused": "This stack has moved since its comparison was drawn. Show the new comparison to read its guide.",
     "steps_kept": 3,
     "route_refused_step": "3",
+    "route_refused_reads_stack": 1,
     "reopened_reads": 0,
     "reopened_steps": 0
   },

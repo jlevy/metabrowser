@@ -48,12 +48,15 @@
 // pair it gave, and keeps the one each poll names `since` (pull_stack_retained.py); a new
 // one is drawn, kept from, or offered by one rule (`answerAction`). One the reader would see
 // no difference in, the same two commits and the same files, is no change: the drawn one
-// stays, and nothing is drawn again. Any other, until the reader does anything on the page,
-// is drawn in its place silently, since a stack whose members' records arrive one by one
-// catches up and has not changed; after that it is offered, its notice saying what changed
-// in each member (`changeText`), from the members of the two answers and the commits each
-// new head adds (`moved`, which the poll asks `since` the comparison drawn), or, while a
-// member it waits on is fetched, held until it arrives.
+// stays, nothing is drawn again, and a later notice says what changed since that answer.
+// Any other, until the reader does anything on the page, is drawn in its place silently,
+// since a stack whose members' records arrive one by one catches up and has not changed;
+// after that it is offered, its notice saying what changed in each member (`changeText`),
+// from the members of the two answers and the commits each new head adds (`moved`, which
+// the poll asks `since` the comparison drawn), naming no member whose new head the drawn
+// comparison already shows, or, while a member it waits on is fetched, held until it
+// arrives. An answer without `moved` says the server no longer keeps the comparison drawn:
+// the new one is drawn in its place if it looks the same, and otherwise offered at once.
 // `bodyPlan` decides what the body does with each answer, and a file is scrolled to once,
 // when the reader opens it, never again by a later answer. Guided Review stays with it
 // (`guideShown`): the guide is read again when the reader takes the comparison offered, or
@@ -200,6 +203,12 @@ export function comparisonLook(envelope) {
  * has done anything on the page, is held, `hold`, while a member it waits on is fetched, and
  * is otherwise offered, `offer`, for the reader to take.
  *
+ * The server keeps the comparison drawn while the page's poll names it (`since`), and says
+ * so in `moved`, which it answers only for a comparison it keeps. An answer with another
+ * comparison and no `moved` says the drawn one is gone, so the reads of what is drawn would
+ * be refused: one that looks the same is drawn in its place at once, and any other is
+ * offered without waiting for a member's fetch, so the reader always has a way on.
+ *
  * @param {StackBody} body
  * @param {StackEnvelope | null} envelope
  * @param {boolean} interacted Whether the reader has scrolled, clicked, pressed a key, or
@@ -215,11 +224,18 @@ export function answerAction(body, envelope, interacted, failed) {
   if (body.drawn === null) {
     return "show";
   }
-  if (next.key === body.drawn.key || comparisonLook(envelope) === comparisonLook(body.answer)) {
+  if (next.key === body.drawn.key) {
     return "keep";
+  }
+  const kept = envelope.moved !== null;
+  if (comparisonLook(envelope) === comparisonLook(body.answer)) {
+    return kept ? "keep" : "adopt";
   }
   if (!interacted) {
     return "adopt";
+  }
+  if (!kept) {
+    return "offer";
   }
   return envelope.pending.some((number) => !failed.includes(number)) ? "hold" : "offer";
 }
@@ -264,7 +280,11 @@ function memberChange(was, now, added) {
   }
   if (was.head !== now.head) {
     const commits = added?.get(now.number);
-    if (typeof commits === "number" && commits > 0) {
+    if (commits === 0) {
+      // Its new head adds nothing the comparison drawn did not show: its record caught up.
+      return null;
+    }
+    if (typeof commits === "number") {
       return `${pull} has ${commits} new ${commits === 1 ? "commit" : "commits"}`;
     }
     return commits === null ? `${pull} was rewritten` : `${pull} was updated`;
@@ -609,7 +629,9 @@ export const NO_BODY = Object.freeze({
  * The body after a new answer: its first comparison is drawn, and a later one is drawn in
  * its place when `answerAction` adopts it; otherwise the drawn one stays, while the stack is
  * pending or absent, while a new one looks the same, and while a new one is held or
- * offered.
+ * offered. An answer kept from, the drawn one's or one that looks the same, becomes what a
+ * later notice says changed since: the answer, at the comparison drawn, so a member whose
+ * record caught up meanwhile is not named as a change.
  *
  * @param {StackBody} body
  * @param {StackEnvelope | null} envelope
@@ -619,9 +641,20 @@ export const NO_BODY = Object.freeze({
  */
 export function bodyAnswered(body, envelope, interacted, failed) {
   const action = answerAction(body, envelope, interacted, failed);
-  return envelope !== null && (action === "show" || action === "adopt")
-    ? { ...body, drawn: envelope.comparison, answer: envelope }
-    : body;
+  if (envelope === null) {
+    return body;
+  }
+  if (action === "show" || action === "adopt") {
+    return { ...body, drawn: envelope.comparison, answer: envelope };
+  }
+  const next = envelope.state === "current" ? envelope.comparison : null;
+  if (action !== "keep" || next === null || body.drawn === null || body.answer === envelope) {
+    return body;
+  }
+  return {
+    ...body,
+    answer: next.key === body.drawn.key ? envelope : { ...envelope, comparison: body.drawn },
+  };
 }
 
 /**
@@ -656,6 +689,28 @@ export function drawnCurrent(body, envelope) {
     return null;
   }
   return current.key === body.drawn.key || comparisonLook(envelope) === comparisonLook(body.answer);
+}
+
+// Keys pressed alone that begin a chord, as one that leaves the page for another window or
+// tab does, and so are not the reader's move on the page.
+const MODIFIER_KEYS = Object.freeze(new Set(["Shift", "Control", "Alt", "AltGraph", "Meta"]));
+
+/**
+ * Whether a key the document hears is the reader's move on the page: one pressed with focus
+ * in the page, or on nothing in particular, the document's body or root, and not a modifier
+ * pressed alone. A key typed into the shell's own fields is not.
+ *
+ * @param {{key: string, target: unknown}} event
+ * @param {{contains(node: unknown): boolean}} container The page's own element.
+ * @param {{body: unknown, documentElement: unknown}} doc
+ * @returns {boolean}
+ */
+export function readerKey(event, container, doc) {
+  if (MODIFIER_KEYS.has(event.key)) {
+    return false;
+  }
+  const { target } = event;
+  return target === doc.body || target === doc.documentElement || container.contains(target);
 }
 
 /**
@@ -1819,9 +1874,10 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   // What the reader does on the page: a wheel, a finger, a click, or a scrollbar in the pane
-  // that scrolls it, and a key, as a pull request's page tells the reader's own scroll from
-  // the browser's; opening a tab or a file is the reader's too (`setTab`, `showFile`). From
-  // then on a new comparison that looks different is offered, not drawn (`answerAction`).
+  // that scrolls it, and a key on the page (`readerKey`), as a pull request's page tells the
+  // reader's own scroll from the browser's; opening a tab or a file is the reader's too
+  // (`setTab`, `showFile`). From then on a new comparison that looks different is offered,
+  // not drawn (`answerAction`).
   const pane = /** @type {HTMLElement} */ (
     container.closest("[data-kpress-viewport]") ?? container
   );
@@ -1835,7 +1891,15 @@ export function mountStackPage(container, ctx, mb) {
       signal: listening.signal,
     });
   }
-  document.addEventListener("keydown", interact, { capture: true, signal: listening.signal });
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (readerKey(event, container, document)) {
+        interacted = true;
+      }
+    },
+    { capture: true, signal: listening.signal },
+  );
 
   function disposeBody() {
     handle?.dispose?.();
@@ -1962,6 +2026,9 @@ export function mountStackPage(container, ctx, mb) {
           };
         },
         refusalNote: textRefusalNote,
+        // The comparison drawn has moved, and may be gone: the stack is read now, so the
+        // page draws its own comparison in its place or offers it (`answerAction`).
+        moved: () => void controller.start(),
       },
     );
     return view;

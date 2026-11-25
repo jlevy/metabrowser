@@ -4124,8 +4124,12 @@ to a redraw. One rule decides each answer (`answerAction` in `stack-page.js`):
   totals (`comparisonLook`), is no change, before or after that move: Docs, Changes, and
   the Diff summary are drawn from those alone, so the page goes on drawing the one it
   has, and the reader keeps their place.
-  The server keeps that one admitted while the page’s poll names it (`since`), however
-  many times the stack moves.
+  The server keeps the one drawn admitted while the page’s poll names it (`since`),
+  unless the stack moves more than `MAX_RETAINED_STACK_PAIRS` times between two polls,
+  as it can while the page is out of sight; an answer then says it no longer keeps it
+  (no `moved`), and the page draws the new one in its place if it looks the same and
+  otherwise offers it at once, so a refusal of what the page draws always has a remedy
+  in reach.
 - **While a member it waits on is fetched**, it is held, and the status line says
   “Fetching #10 before its new comparison can be shown.”
 - **Otherwise it is offered** on the status line, with Show the new comparison, which
@@ -4133,12 +4137,16 @@ to a redraw. One rule decides each answer (`answerAction` in `stack-page.js`):
 
 The notice says what became of each member since the comparison drawn, top first, in one
 sentence (`changeText`): “#845 has 2 new commits, #843 was merged, and #848 joined the
-stack.”, naming at most three changes, or two and a count of the rest, “and 2 more pull
-requests changed”. A member whose branch no longer holds the head drawn “was rewritten”;
-one that moved where no count is known “was updated”; and when only the order changed,
-the notice says so.
-The new commits, those the comparison drawn did not show, are counted
-by the stack route, which the page asks `since` the comparison it draws (`moved` on
+stack.”, naming at most `CHANGES_NAMED` changes, or one fewer and a count of the rest,
+“and 2 more pull requests changed”.
+A member whose branch no longer holds the head drawn “was rewritten”; one that moved
+where no count is known “was updated”; one whose new head the comparison drawn already
+shows, its record catching up, is named nowhere; and when only the order changed, the
+notice says so. The answer an unchanged-looking comparison came in becomes the one the
+notice counts from, so a record that caught up while the page kept its comparison is not
+named later.
+The new commits, those the comparison drawn did not show, are counted by the
+stack route, which the page asks `since` the comparison it draws (`moved` on
 `GET stack`); the rest it reads from the two answers’ members.
 The notice names no commit and no branch; a title or an author in it would take the
 shared order of a pull request’s fields, and it has neither.

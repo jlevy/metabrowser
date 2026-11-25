@@ -13,7 +13,7 @@
 // 1. Before the reader does anything on the page, 8 leaves: the page is catching up, so the
 //    new comparison is drawn with no notice.
 // 2. The reader scrolls the page, then 8 joins again: the comparison looks different, so it
-//    is offered, not drawn, and the notice says "#8 joined the stack."
+//    is offered, not drawn, and the notice names #8. Its words are the browserless golden's.
 // 3. The reader presses Show the new comparison: the body is drawn at it, and the notice
 //    goes.
 //
@@ -164,8 +164,8 @@ try {
   phase("offered");
   measured.offered = await shown();
   check(
-    "after the reader's move, the notice says what changed and offers the new comparison",
-    measured.offered.status === "#8 joined the stack. Show the new comparison",
+    "after the reader's move, a notice names 8 and offers the new comparison",
+    measured.offered.status?.includes("#8") === true && measured.offered.offered,
     JSON.stringify(measured.offered),
   );
   check(

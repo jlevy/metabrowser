@@ -42,6 +42,10 @@ them.
   the page, since a stack whose members’ records arrive one by one is catching up, not
   changing. After the reader’s move, it is held while a member it waits on is fetched,
   and then offered rather than swapped in under the reader.
+  An answer asked `since` the comparison drawn has `moved` while the server keeps that
+  comparison; one without it (`gone`) says the server no longer does, so what the body
+  reads at it would be refused: one that looks the same is drawn in its place, and one
+  that looks different is offered at once, though a member it waits on is fetched.
 - `guide_current` is whether Guided Review reads an edit of its guide at the comparison
   drawn (`drawnCurrent`): when the stack’s comparison is the one drawn or looks the
   same, and not when the stack has moved past it.
@@ -49,15 +53,28 @@ them.
   each member since the comparison drawn, top first, in one sentence, its new commits
   counted from the answer’s `moved`, or said to be rewritten when its branch no longer
   holds the head drawn; with no `moved` for the comparison drawn, a moved member was
-  updated. It names at most three changes, two and a count once there are more, says when
-  only the order changed, and otherwise that the stack changed.
+  updated. A member whose new head the comparison drawn already shows, its record caught
+  up, adds no commit and is named nowhere (`caught_up`). It names at most
+  `CHANGES_NAMED` changes, one fewer and a count once there are more, says when only the
+  order changed, and otherwise that the stack changed.
 - `notices` is a reader on Changes of 70 while the stack moves: a comparison that looks
   the same leaves 70’s drawn, before the reader does anything on the page and after;
   before, one that looks different is drawn at once with no notice; after they scroll,
   one that looks different is held while 10 is fetched, then offered with what changed,
   and drawn when the reader takes it, which clears the notice.
+  Once the server no longer keeps 70’s, one that looks the same is drawn in its place
+  without a word, and one that looks different is offered while 10 is still fetched.
   `since` is the key each next read asks the route `since`: the comparison drawn, which
   the server keeps while the page asks.
+- `caught_up` is a reader on Changes of 70 whose page draws it; 8’s record then catches
+  up to a head the comparison drawn already shows, an answer that looks the same, and
+  after the reader scrolls, 10 gains two commits.
+  The notice names 10 alone: the answer kept from is what it says changed since, and the
+  route counts no commit for 8.
+- `reader_keys` is which keys the document hears count as the reader’s move on the page
+  (`readerKey`): one pressed in the page, or with focus on nothing in particular, the
+  body or the document’s root, and not a key typed into the shell’s own fields, nor a
+  modifier pressed alone, which may begin a chord that leaves the page.
 - `header` is the page’s header, row by row (`stackHeader`), a pull request’s header
   made of the rows a stack has: its title, the View on GitHub corner, its members top
   first, the merge it makes, the status line while it has something to say, the size
@@ -83,7 +100,7 @@ them.
   of sight (`null`): a hidden page reads the stack again when it is shown.
 - `sent` and `rendered` are the controller over a scripted poll: pending, current, an
   unchanged answer, then another comparison that looks the same (71’s answer standing in
-  for 70 moved), which leaves 70’s drawn.
+  for 70 moved, asked `since` 70’s), which leaves 70’s drawn.
   Each read after a comparison is drawn asks `since` it.
   Each pending member is asked for at its head, a member with no record as the reader’s
   own open of it (`retry`), and the top member’s automatic ask is sent at its interval
@@ -230,6 +247,10 @@ $ node tests/dom/github-stack-page-session.js
       "keep"
     ],
     [
+      "drawn, another that looks the same, gone",
+      "adopt"
+    ],
+    [
       "drawn, another, before the reader's move",
       "adopt"
     ],
@@ -243,6 +264,10 @@ $ node tests/dom/github-stack-page-session.js
     ],
     [
       "drawn, another, once 10's fetch failed",
+      "offer"
+    ],
+    [
+      "drawn, another, while 10 is fetched, gone",
       "offer"
     ]
   ],
@@ -274,6 +299,7 @@ $ node tests/dom/github-stack-page-session.js
     "one_new_commit": "#7 has 1 new commit.",
     "rewritten": "#7 was rewritten.",
     "not_asked_since": "#7 was updated.",
+    "caught_up": "This stack has changed since its comparison was drawn.",
     "three": "#11 joined the stack, #10 has 2 new commits, and #7 was closed.",
     "four": "#12 joined the stack, #11 joined the stack, and 2 more pull requests changed.",
     "reordered": "The stack’s order changed.",
@@ -285,7 +311,7 @@ $ node tests/dom/github-stack-page-session.js
       "do": "mount changes",
       "drawn": "70",
       "notices": [],
-      "since": "ebfe45cd812c6d00f8d4a921576b31d7"
+      "since": "70"
     },
     {
       "step": "looks the same, before the reader's move: 70's stays",
@@ -294,21 +320,21 @@ $ node tests/dom/github-stack-page-session.js
       "notices": [
         "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
       ],
-      "since": "ebfe45cd812c6d00f8d4a921576b31d7"
+      "since": "70"
     },
     {
       "step": "looks different, before the reader's move: drawn at once",
       "do": "mount changes",
       "drawn": "70 without 8",
       "notices": [],
-      "since": "e61d32617b4ee2599eb969c3a0d201b0"
+      "since": "70 without 8"
     },
     {
       "step": "70 again, drawn",
       "do": "mount changes",
       "drawn": "70",
       "notices": [],
-      "since": "ebfe45cd812c6d00f8d4a921576b31d7"
+      "since": "70"
     },
     {
       "step": "looks the same, after the reader scrolls: 70's stays",
@@ -317,14 +343,14 @@ $ node tests/dom/github-stack-page-session.js
       "notices": [
         "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
       ],
-      "since": "ebfe45cd812c6d00f8d4a921576b31d7"
+      "since": "70"
     },
     {
       "step": "70's again",
       "do": "keep",
       "drawn": "70",
       "notices": [],
-      "since": "ebfe45cd812c6d00f8d4a921576b31d7"
+      "since": "70"
     },
     {
       "step": "looks different while 10 is fetched: held",
@@ -333,7 +359,7 @@ $ node tests/dom/github-stack-page-session.js
       "notices": [
         "Fetching #10 before its new comparison can be shown."
       ],
-      "since": "ebfe45cd812c6d00f8d4a921576b31d7"
+      "since": "70"
     },
     {
       "step": "looks different, 10 fetched: offered",
@@ -342,15 +368,114 @@ $ node tests/dom/github-stack-page-session.js
       "notices": [
         "#8 left the stack. [take]"
       ],
-      "since": "ebfe45cd812c6d00f8d4a921576b31d7"
+      "since": "70"
     },
     {
       "step": "the reader takes it",
       "do": "mount changes",
       "drawn": "70 without 8",
       "notices": [],
-      "since": "e61d32617b4ee2599eb969c3a0d201b0"
+      "since": "70 without 8"
+    },
+    {
+      "step": "70 once more, drawn",
+      "do": "mount changes",
+      "drawn": "70",
+      "notices": [],
+      "since": "70"
+    },
+    {
+      "step": "looks the same, 70's gone: drawn in its place",
+      "do": "mount changes",
+      "drawn": "71",
+      "notices": [
+        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
+      ],
+      "since": "71"
+    },
+    {
+      "step": "70 drawn again",
+      "do": "mount changes",
+      "drawn": "70",
+      "notices": [],
+      "since": "70"
+    },
+    {
+      "step": "looks different while 10 is fetched, 70's gone: offered",
+      "do": "keep",
+      "drawn": "70",
+      "notices": [
+        "#8 left the stack. [take]"
+      ],
+      "since": "70"
+    },
+    {
+      "step": "the reader takes it, 70's gone",
+      "do": "mount changes",
+      "drawn": "70 without 8",
+      "notices": [],
+      "since": "70 without 8"
     }
+  ],
+  "caught_up": [
+    {
+      "step": "70, drawn",
+      "action": "show",
+      "drawn": "70",
+      "notices": []
+    },
+    {
+      "step": "8's record catches up, looks the same: kept",
+      "action": "keep",
+      "drawn": "70",
+      "notices": []
+    },
+    {
+      "step": "the reader scrolls; 10 gains two commits: offered",
+      "action": "offer",
+      "drawn": "70",
+      "notices": [
+        "#10 has 2 new commits. [take]"
+      ]
+    }
+  ],
+  "reader_keys": [
+    [
+      "j in the page",
+      true
+    ],
+    [
+      "Enter on the page's link",
+      true
+    ],
+    [
+      "j on the body",
+      true
+    ],
+    [
+      "Escape on the root",
+      true
+    ],
+    [
+      "a in the shell's search field",
+      false
+    ],
+    [
+      "Meta alone in the page",
+      false
+    ],
+    [
+      "Shift alone on the body",
+      false
+    ],
+    [
+      "Control alone on the body",
+      false
+    ],
+    [
+      "Alt alone on the body",
+      false
+    ]
   ],
   "header": {
     "first_paint": {
