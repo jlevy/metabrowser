@@ -975,9 +975,9 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 The plugin registers three views: `pull-request`, which the shell mounts at `/pull/<n>`,
 `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, and `/pull/<n>/checks`
 (`pull-page.js`); `pull-stack`, a native stack’s page at `/stack/<n>`,
-`/stack/<n>/guided`, `/stack/<n>/files`, `/stack/<n>/docs`, and
-`/stack/<n>/changes[/<path>]` (`stack-page.js`); and `pull-request-list`, the Pulls tab
-and `/pulls` (`pulls-panel.js`). Their visual rules are in the
+`/stack/<n>/guided`, `/stack/<n>/docs`, and `/stack/<n>/changes[/<path>]`
+(`stack-page.js`); and `pull-request-list`, the Pulls tab and `/pulls`
+(`pulls-panel.js`). Their visual rules are in the
 [design system](../../design-system.md#the-pulls-tab).
 
 ### The Stack Page
@@ -1007,13 +1007,18 @@ measurements that set them:
   the reader whose records named them, as `pull_snapshot_cache.py` keeps a pull
   request’s. A pair no longer kept answers `stack_moved` or `snapshot_expired`, and a
   file that cannot be read now answers `snapshot_unavailable` (409).
-- **The page** (`stack-page.js`) draws Files with the diff plugin’s Diff summary open,
-  Docs with `DOCS_DRAWING` and Changes with `CHANGES_DRAWING` (`diff-drawing.js`, which
-  `pull-page.js` shares), and puts each file’s layers on its row and bar through the
-  diff view’s `fileMarks`. It polls `stack`, asks `pull-refresh` for each pending member
-  at its head, a member with no record as the reader’s own open of it (`retry`), since
-  an automatic ask refreshes only a record the server holds, and sends the top member’s
-  automatic ask the answer’s `probe` names.
+- **The page** (`stack-page.js`) is a pull request’s page for the whole stack
+  ([The Stack Page](../../design-system.md#the-stack-page)): a page header whose
+  members, top first, are the stack menu’s rows (`stack-member-row.js`) and whose last
+  line is the Diff summary, closed; then Docs with `DOCS_DRAWING` and Changes with
+  `CHANGES_DRAWING` (`diff-drawing.js`, which `pull-page.js` shares), with no layer
+  marks. Every header row but the status line is decided at first paint from the stack
+  snapshot (`stackHeader`), and Docs and Changes are laid out out of sight until their
+  first screen is ready, as a pull request’s are.
+  Its View on GitHub is the counterpart route’s, GitHub’s `stack/<n>`. It polls `stack`,
+  asks `pull-refresh` for each pending member at its head, a member with no record as
+  the reader’s own open of it (`retry`), since an automatic ask refreshes only a record
+  the server holds, and sends the top member’s automatic ask the answer’s `probe` names.
   An ask the server refuses (429, past `MAX_PULL_JOBS`), that fails, or whose fetch ends
   with the member still pending is sent again after `ASK_BACKOFF_MS`; each member’s
   `fetching` says whether its fetch was running before its record was read (asked on the
@@ -1027,7 +1032,7 @@ measurements that set them:
   (`bodyPlan`).
 - **The guide.** When a member’s description carries the stack’s guide, the answer’s
   `guide` names that member and its record revision, Guided Review leads the tabs, and
-  `/stack/<n>` opens on it; without one the front page is Files
+  `/stack/<n>` opens on it; without one the front page is Changes
   ([The Stack’s Guide](#the-stacks-guide)).
 
 ### Guided Review
@@ -1133,18 +1138,19 @@ A step can also cite past its pull request, with the format’s other
 and every field, null where its kind has none (`_references` in `guided_review.py`), and
 each read from this copy alone, never stale, and never counted in `changed_steps`
 (`_own_paths`), except a `{pull, path}` that names the guide’s own pull request, which
-is a `{path}` (`_carried`). A `{pull}` is that pull request’s title and state, from its
-cached record or else its row in the list of pull requests, and its place in a stack
-from the stack snapshot, preferring the stack that holds the guide’s own pull request
-(`_pull_targets`), or `not_cached` when this copy knows neither; its address is the pull
-request’s page. A `{pull, path}` is that file at that pull request’s current comparison,
-read from its record’s kept manifest with one run of the diff source for each pull
-request the step cites, within the step’s one budget (`_pull_files`): the answer carries
-that comparison’s pins and the routes that answer it, which the page draws a document
-from, and is `comparison_unavailable` when this copy cannot read it, or `not_cached`
-when it has no record or no manifest kept for the record’s comparison, which a refresh
-keeps (`prepare_pull_manifest`) and this route never lists; its address is the file in
-that pull request’s Changes, which loads it.
+is a `{path}` (`_carried`). A `{pull}` is that pull request’s title, state, and author,
+from its cached record or else its row in the list of pull requests, and its place in a
+stack from the stack snapshot, preferring the stack that holds the guide’s own pull
+request (`_pull_targets`), or `not_cached` when this copy knows neither; its address is
+the pull request’s page.
+A `{pull, path}` is that file at that pull request’s current comparison, read from its
+record’s kept manifest with one run of the diff source for each pull request the step
+cites, within the step’s one budget (`_pull_files`): the answer carries that
+comparison’s pins and the routes that answer it, which the page draws a document from,
+and is `comparison_unavailable` when this copy cannot read it, or `not_cached` when it
+has no record or no manifest kept for the record’s comparison, which a refresh keeps
+(`prepare_pull_manifest`) and this route never lists; its address is the file in that
+pull request’s Changes, which loads it.
 A `{commit}` is its subject and committer date, read for every commit of the step by one
 bounded `git log` in the store (`_commit_targets`), or `commit_unavailable`; its address
 is `/commit/<sha>`, which the page opens as a plain link, unless the server browses a
@@ -1245,18 +1251,18 @@ member’s own guide current.
   description that carries the guide introduces its member, not the stack, so the
   navigation starts at step 1 (`first` in `createGuideNavigation`), and the refusals
   speak of the stack (`STACK_MESSAGES` in `guided-review.js`). The guide is read at the
-  comparison the page draws, so it shows what Files, Docs, and Changes show, and follows
-  the offer and take they follow: it is mounted again only when the reader takes the
-  comparison offered. The guide shown stays while the stack is pending or cannot be
-  shown, as the drawn comparison does (`guideShown`), and a step read then says so in
-  its place, under the guide’s steps.
-  A new revision of the carrier’s record is read in place while the comparison drawn is
-  the current one. While it is not, the navigation is held at the revision read there
-  (`behind` in `createGuideNavigation`): a step answer for another revision, which the
-  carrier moving with the stack gives, is that step’s `stack_moved`, never a new guide,
-  and the guide’s steps stay.
-  A whole document a step cites is drawn from the comparison the page drew while that is
-  the one the step was read at.
+  comparison the page draws, so it shows what the Diff summary, Docs, and Changes show,
+  and follows the offer and take they follow: it is mounted again only when the reader
+  takes the comparison offered.
+  The guide shown stays while the stack is pending or cannot be shown, as the drawn
+  comparison does (`guideShown`), and a step read then says so in its place, under the
+  guide’s steps. A new revision of the carrier’s record is read in place while the
+  comparison drawn is the current one.
+  While it is not, the navigation is held at the revision read there (`behind` in
+  `createGuideNavigation`): a step answer for another revision, which the carrier moving
+  with the stack gives, is that step’s `stack_moved`, never a new guide, and the guide’s
+  steps stay. A whole document a step cites is drawn from the comparison the page drew
+  while that is the one the step was read at.
   `tests/dom/github-stack-guide-mount-session.js` runs this glue on the production page.
 - **The member’s page.** `render_part` leaves a block that reads as a stack’s guide out
   of the description, as it leaves a guide’s, and Conversation puts a card in its place

@@ -794,7 +794,16 @@ Useful helpers include:
   renderer, such as a diff, projects tokens itself;
 - `formatSize`, `formatInteger`, `formatFileCount`, `formatAge`, `formatTimestamp`, and
   `sizeHtml`; `formatAge(epochSeconds, {style: "relative"})` returns labels such as
-  `2h ago`, while its default compact style suits dense navigation;
+  `2h ago`, while its default compact style suits dense navigation, and its label is for
+  words, such as an accessible name; `{now}` tells an age as of a time in epoch seconds
+  rather than the clock’s;
+- `ageLabel(epochSeconds, options)` and `ageLabelHtml(epochSeconds, options)` for an age
+  a view shows, the host’s one age builder: a span of its label in its freshness class,
+  which alone sets its color, weight, and numerals, after `options.className`, your own
+  class, which places it and sets none of those; `options.tip` is its `data-tip-text`,
+  and `style` and `now` are `formatAge`’s; an unknown time is an empty span, or “” as
+  markup. `retellAge(element, epochSeconds, options)` tells a drawn age again as time
+  passes and returns its label ([Age](design-system.md#age));
 - `titleNodes(title)` for a commit’s or a pull request’s title, as the nodes its element
   holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
   which the host draws at regular weight, then the rest, which keeps the element’s

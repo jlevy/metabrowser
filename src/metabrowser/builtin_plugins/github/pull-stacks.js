@@ -5,12 +5,13 @@
 // Pulls row's place, and the Pulls tab's stack groups say one thing one way
 // (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N" every heading, menu
 // and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row, and
-// `namedStackPosition` the "300 2/2" of one that names its stack; `stackPositionHint` is
+// `namedStackPosition` the "300 2/2" of one that names its stack, which
+// `namedStackPositionNodes` draws; `stackPositionHint` is
 // the tip that names both; and `stackMenuOrder` is the one member order, top of the stack
 // first. `groupByStack` is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
-/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[]}} NativeStack */
+/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[]}} NativeStack */
 /** @typedef {{
  * state: "absent" | "current" | "stale", reason: string | null,
  * source: string | null, reader: string | null, fetched_at: string | null,
@@ -54,6 +55,27 @@ export function namedStackPosition(position, stack) {
   return stack === null ? position : `${stack} ${position}`;
 }
 
+/** `namedStackPosition` as a row draws it: the position bare, or after the Layers glyph and
+ * the stack's number, the glyph hidden from assistive technology, so the words read as the
+ * text does, "300 2/2".
+ * @param {string} position @param {number | null} stack The stack to name, or null.
+ * @param {() => Node | null} glyph A new copy of the Layers glyph, or null where there is none.
+ * @returns {Array<Node | string>}
+ */
+export function namedStackPositionNodes(position, stack, glyph) {
+  if (stack === null) {
+    return [position];
+  }
+  const mark = document.createElement("span");
+  mark.setAttribute("class", "github-pull-stack-other");
+  mark.setAttribute("aria-hidden", "true");
+  const drawn = glyph();
+  if (drawn !== null) {
+    mark.append(drawn);
+  }
+  return [mark, `${stack} `, position];
+}
+
 /** The tip that names a member's stack and place: "Stack #286, position 2 of 4".
  * @param {NativeStack} stack @param {number} at
  */
@@ -71,7 +93,7 @@ export function stackPlaceHint(number, at, length) {
 }
 
 /** The order every surface lists a stack's members in: the top of the stack first.
- * @param {NativeStack} stack @returns {number[]}
+ * @param {Pick<NativeStack, "pulls">} stack @returns {number[]}
  */
 export function stackMenuOrder(stack) {
   return stack.pulls.slice().reverse();
@@ -180,6 +202,23 @@ export function stackRowKey(number) {
   return -number;
 }
 
+/** The row key of a stack's Whole stack row in the Pulls list, under its members: half a step
+ * past its stack's row's key, so it collides with no stack's row and no pull request's, and
+ * it is negative, as every row that is not a pull request's is (docs/design-system.md, "Stack
+ * Groups in the Pulls Tab").
+ * @param {number} number
+ */
+export function wholeStackRowKey(number) {
+  return -number - 0.5;
+}
+
+/** The stack whose Whole stack row *key* is, or null for any other row's key.
+ * @param {number} key
+ */
+export function wholeStackOfKey(key) {
+  return key < 0 && !Number.isInteger(key) ? -(key + 0.5) : null;
+}
+
 /**
  * @typedef {{
  *   kind: "stack", key: number, stack: NativeStack, label: string, hint: string,
@@ -190,7 +229,11 @@ export function stackRowKey(number) {
  *   kind: "pull", key: number, number: number, level: 1 | 2, stack: number | null,
  *   posinset: number, setsize: number,
  * }} PullGroupRow
- * @typedef {StackGroupRow | PullGroupRow} GroupedRow
+ * @typedef {{
+ *   kind: "whole", key: number, stack: number, level: 2, posinset: number, setsize: number,
+ * }} WholeStackRow A stack's Whole stack row, the last under its open stack, which opens the
+ *   stack's own page.
+ * @typedef {StackGroupRow | PullGroupRow | WholeStackRow} GroupedRow
  */
 
 /**
@@ -204,6 +247,10 @@ export function stackRowKey(number) {
  * A pull request in more than one stack sits once, under the first of them in that order;
  * a stack whose listed pull requests all sit under earlier stacks has no row; their
  * places name it. Pull requests in no stack follow the stacks, in the list's order.
+ *
+ * Under an open stack's pull requests, at their level, is its Whole stack row, which opens
+ * the stack's own page (`/stack/<n>`, stack-page.js), as the stack menu's first row does;
+ * it is one of the stack's rows, so they count it in their set.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that
@@ -282,9 +329,17 @@ export function groupByStack(numbers, index, identity, options = {}) {
           level: 2,
           stack: stack.number,
           posinset: place + 1,
-          setsize: members.length,
+          setsize: members.length + 1,
         });
       }
+      rows.push({
+        kind: "whole",
+        key: wholeStackRowKey(stack.number),
+        stack: stack.number,
+        level: 2,
+        posinset: members.length + 1,
+        setsize: members.length + 1,
+      });
     }
   }
   for (const [at, number] of rest.entries()) {
@@ -367,6 +422,16 @@ function isEnvelope(value) {
         stack.titles.length !== stack.pulls.length ||
         stack.titles.some(
           (title) => title !== null && (typeof title !== "string" || title.length > 2048),
+        ) ||
+        // Each member's author and the author's avatar, from the same cached row as its
+        // title (pull_stacks_route.py), which the page's stack menu draws.
+        ![stack.authors, stack.avatars].every(
+          (values) =>
+            Array.isArray(values) &&
+            values.length === stack.pulls.length &&
+            values.every(
+              (value) => value === null || (typeof value === "string" && value.length <= 2048),
+            ),
         )
       ) {
         return false;

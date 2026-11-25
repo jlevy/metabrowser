@@ -547,7 +547,10 @@ function ownPointOf(cells, index) {
     formatTimestamp: () => "2023-11-14",
     // The age the SDK's formatter gives the fixtures' 2023-11-14 timestamps, fixed so the
     // session reads the same on any day.
-    formatAge: () => ({ label: "3y ago", className: "age-old" }),
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "3y ago",
+      className: "age-old",
+    })),
     navigation: {
       open: async (target, options) => {
         navigation.push(options ? [target.path, options.viewId] : [target.path]);

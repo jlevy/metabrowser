@@ -2,23 +2,38 @@
 //
 // The stack route (`GET stack`, pull_stack.py) answers the stack's members and its combined
 // comparison: from the bottom member's merge base to the top member's head, restricted to
-// the files some layer changes, with each file's layers. The page draws it with the diff
-// plugin's views, as a pull request's page does, in three tabs, and in a fourth when a
-// member's description carries the stack's guide:
+// the files some layer changes. The page is a pull request's page made of the same parts
+// (docs/design-system.md, "Stacks" and "Page Headers"): a header, a tab bar, and a body.
+//
+// The header is a page header, in a pull request's order: the Layers glyph in the state
+// icon's slot, "Stack", and the number, with the View on GitHub button in its corner (the
+// SDK's `mountCounterpart`, which asks the server where `/stack/<n>` goes: GitHub's page of
+// the whole stack); the members as a stack, top first, each the stack menu's member row
+// (stack-member-row.js), in a card; the merge the stack makes, the top member's head → the
+// base; the status line while the page has something to say; the size line, "1 file
+// changed"; and the Diff summary as the last line, drawn from the comparison the page shows,
+// closed, as a pull request's page draws its own. Every row is decided at first paint
+// (`stackHeader`): the members come from the shared stack snapshot (pull-stacks.js) before
+// the stack's own answer, and the size line and the summary hold the shell's pending
+// placeholder until theirs, so nothing under the title moves as the answer lands.
+//
+// Its tabs are a pull request's Guided Review, Docs, and Changes, with Guided Review only
+// when a member's description carries the stack's guide; Conversation and Checks are each
+// member's own, and the list of files is the header's Diff summary, as on a pull request's:
 //
 // - **Guided Review** (`/stack/<n>/guided`), the front page when the stack has a guide: the
 //   guide's steps (guided-review.js), read against the stack's comparison
 //   (`guided-review?stack=`), opening on its first step, since no member's description
 //   introduces the stack.
-// - **Files** (`/stack/<n>/files`), the front page otherwise: every file in the shell's
-//   changed-files tree, the Diff summary drawn open, each row with its layers. A file opens
-//   Changes there.
 // - **Docs** (`/stack/<n>/docs`): the documents alone, drawn as a pull request's Docs draws
 //   them (`DOCS_DRAWING`, diff-drawing.js).
-// - **Changes** (`/stack/<n>/changes[/<path>]`): every file, as a pull request's Changes.
+// - **Changes** (`/stack/<n>/changes[/<path>]`), the front page otherwise: every file, as a
+//   pull request's Changes.
 //
-// Each file's bar and row carries a mark for each layer that changes it, "2/4", which
-// opens the file in that layer's own Changes (`/pull/<n>/files/<path>`).
+// Docs and Changes draw the combined diff exactly as a pull request's tabs draw its own:
+// the same drawings, and, as there, laid out out of sight until the first screen's Markdown
+// waits no more, at most `CHANGES_FIRST_SCREEN_MS`, so the first screen the reader sees is
+// the one that stays.
 //
 // The page reads the stack route on a poll, as a pull request's page reads its own, while
 // it is in sight. It asks `pull-refresh` for each member the answer names as pending, a
@@ -31,7 +46,7 @@
 //
 // A comparison drawn stays drawn while the stack moves: one that changes is offered, not
 // swapped in, and while a new member is fetched or the stack cannot be shown, the drawn
-// one stays beneath the status line, since the server keeps answering a pair it gave
+// one stays under the status line, since the server keeps answering a pair it gave
 // (pull_stack_retained.py). `bodyPlan` decides what the body does with each answer, and a
 // file is scrolled to once, when the reader opens it, never again by a later answer.
 // Guided Review stays with it (`guideShown`): the guide is read again when the reader takes
@@ -41,9 +56,24 @@
 // the command line.
 
 import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
-import { FAST_POLL_MS, h, isPlainClick, SLOW_POLL_MS, textRefusalNote } from "./pull-page.js";
-import { stackLabel, stackMenuOrder, stackPosition } from "./pull-stacks.js";
-import { pullStateIcon } from "./pull-state.js";
+import {
+  attachTabKeys,
+  authorLabel,
+  CHANGES_FIRST_SCREEN_MS,
+  changesDocuments,
+  FAST_POLL_MS,
+  h,
+  isPlainClick,
+  manifestFiles,
+  noFiles,
+  pullAge,
+  SLOW_POLL_MS,
+  stackMemberAuthor,
+  textRefusalNote,
+} from "./pull-page.js";
+import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
+import { listedState } from "./pull-state.js";
+import { stackMemberRow } from "./stack-member-row.js";
 
 export const STACK_ROUTE = "/api/plugin/github/stack";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -58,16 +88,17 @@ export const ASK_BACKOFF_MS = Object.freeze([2000, 4000, 8000, 16000, SLOW_POLL_
 export const UNREADABLE = "Could not read this stack.";
 
 /** The tabs, in the order the bar shows them; their ids are the route's segments. Guided
- * Review shows only for a stack with a guide, and leads, as the author's reading order. */
+ * Review shows only for a stack with a guide, and leads, as the author's reading order. The
+ * change set's files are the header's Diff summary, as on a pull request's page, so no tab
+ * lists them. */
 export const STACK_TABS = Object.freeze([
   Object.freeze({ id: "guided", label: "Guided Review" }),
-  Object.freeze({ id: "files", label: "Files" }),
   Object.freeze({ id: "docs", label: "Docs" }),
   Object.freeze({ id: "changes", label: "Changes" }),
 ]);
 
 /**
- * @typedef {{number: number, place: number, title: string | null, state: "open" | "draft" | "merged" | "closed" | null, base: string | null, head: string | null, in_top: boolean | null, pending: boolean, fetching?: boolean}} StackMember
+ * @typedef {{number: number, place: number, title: string | null, state: "open" | "draft" | "merged" | "closed" | null, author: string | null, avatar: string | null, base: string | null, head: string | null, in_top: boolean | null, pending: boolean, fetching?: boolean}} StackMember
  * @typedef {{left: string, right: string, key: string, route: string, image_route: string, rendered_route: string}} StackComparison
  * @typedef {{path: string, layers: Array<{number: number, place: number, path: string}>}} StackFile
  * @typedef {{
@@ -75,6 +106,7 @@ export const STACK_TABS = Object.freeze([
  *   reason: string | null,
  *   number: number,
  *   base_ref: string | null,
+ *   head_ref: string | null,
  *   open: boolean | null,
  *   members: StackMember[],
  *   pending: number[],
@@ -112,9 +144,9 @@ export function guideShown(kept, envelope) {
 
 /**
  * The tab a route shows: its own, or the front page's, Guided Review when a member's
- * description carries the stack's guide (`guideShown`) and Files otherwise. Before the
+ * description carries the stack's guide (`guideShown`) and Changes otherwise. Before the
  * stack is read, the front page shows none, so no tab is marked that the answer then moves
- * from; Guided Review's own address shows Files for a stack with no guide.
+ * from; Guided Review's own address shows Changes for a stack with no guide.
  *
  * @param {string} tab The route's tab, "" for the front page.
  * @param {StackEnvelope | null} envelope
@@ -122,13 +154,13 @@ export function guideShown(kept, envelope) {
  * @returns {StackTab}
  */
 export function shownTab(tab, envelope, guide) {
-  if (tab === "docs" || tab === "changes" || tab === "files") {
+  if (tab === "docs" || tab === "changes") {
     return tab;
   }
   if (envelope === null) {
     return tab === "guided" ? "guided" : "";
   }
-  return guide === null ? "files" : "guided";
+  return guide === null ? "changes" : "guided";
 }
 
 /**
@@ -269,30 +301,6 @@ export function failedMembers(envelope, asks) {
 }
 
 /**
- * A file's marks: one for each layer that changes it, by its place, "2/4", which opens the
- * file in that layer's Changes.
- *
- * @param {StackEnvelope | null} envelope
- * @param {string} path
- * @param {(number: number, path: string) => string} href
- * @returns {Array<{number: number, path: string, text: string, label: string, href: string}>}
- */
-export function layerMarks(envelope, path, href) {
-  const file = envelope?.files.find((entry) => entry.path === path);
-  if (envelope === null || file === undefined) {
-    return [];
-  }
-  const count = envelope.members.length;
-  return file.layers.map((layer) => ({
-    number: layer.number,
-    path: layer.path,
-    text: stackPosition(layer.place - 1, count),
-    label: `Layer ${layer.place} of ${count}, #${layer.number}: this file’s changes there`,
-    href: href(layer.number, layer.path),
-  }));
-}
-
-/**
  * *numbers* as a reader reads a list of them: "#7", "#7 and #9", "#7, #8, and #9".
  *
  * @param {number[]} numbers
@@ -363,9 +371,10 @@ export function pollDelay(envelope, visible, busy = false) {
 }
 
 /**
- * A notice the page shows above the body: a failed read, a comparison it offers, the stack
- * moving or ceasing to be one comparison while one stays drawn, or members it could not
- * fetch. `take` shows the new comparison; `retry` asks again for the members named.
+ * A notice on the header's status line: a failed read, a comparison it offers, the stack
+ * moving or ceasing to be one comparison while one stays drawn, members its top lacks, or
+ * members it could not fetch. `take` shows the new comparison; `retry` asks again for the
+ * members named.
  *
  * @typedef {{text: string, severity: "error" | "warning" | null, action: "take" | "retry" | null}} StackNotice
  */
@@ -386,8 +395,9 @@ function fetchText(fetching, failed, until) {
 }
 
 /**
- * The notices above the body, in order: the read's failure, then what became of the stack
- * since the drawn comparison. With nothing drawn, the body says why itself (`bodyPlan`).
+ * What the header's status line says, in order: the read's failure, then what became of
+ * the stack since the drawn comparison, the members its top lacks, and its members'
+ * fetches. With nothing drawn, the body says why itself (`bodyPlan`).
  *
  * @param {StackEnvelope | null} envelope
  * @param {string | null} drawnKey The key of the comparison drawn, or null.
@@ -415,6 +425,10 @@ export function statusNotices(envelope, drawnKey, error, failed) {
   if (envelope.state === "absent") {
     notices.push({ text: absentText(envelope.reason), severity: "warning", action: null });
     return notices;
+  }
+  const lacking = lackingText(envelope);
+  if (lacking !== null) {
+    notices.push({ text: lacking, severity: "warning", action: null });
   }
   const waiting = envelope.pending.filter((number) => !failed.includes(number));
   const said = fetchText(
@@ -482,10 +496,26 @@ export function bodyOpened(body, file) {
 }
 
 /**
- * @typedef {{do: "wait"} | {do: "notice", text: string, retry: boolean} | {do: "keep"} | {do: "scroll", file: string} | {do: "mount", key: string, tab: "guided" | "files" | "docs" | "changes", comparison: StackComparison}} BodyAction
- * @typedef {"" | "guided" | "files" | "docs" | "changes"} StackTab The tab the page shows, ""
+ * @typedef {{do: "wait"} | {do: "notice", text: string, retry: boolean} | {do: "keep"} | {do: "scroll", file: string} | {do: "mount", key: string, tab: "guided" | "docs" | "changes", comparison: StackComparison}} BodyAction
+ * @typedef {"" | "guided" | "docs" | "changes"} StackTab The tab the page shows, ""
  * while the front page waits for the stack's answer to choose one.
  */
+
+/**
+ * Whether the body is set in the reading column, as a pull request's is (pull-page.js, where
+ * Conversation, Guided Review, Checks, and a page with no record take the column, and Docs
+ * and Changes the full pane): Guided Review, a notice, and a body with nothing drawn yet
+ * start and end where the header and the tab bar do, and Docs and Changes keep the full
+ * pane so a diff has room for Split. In the full pane Guided Review's cards ran 233.75 px
+ * past the header's end in a 1280 px window with the navigation pane shown (Chrome 152,
+ * 2026-11-25; docs/design-system.md, "The Stack Page").
+ *
+ * @param {StackBody} body
+ * @param {StackTab} tab
+ */
+export function bodyInColumn(body, tab) {
+  return body.drawn === null || (tab !== "docs" && tab !== "changes");
+}
 
 /**
  * What the body does now, and the body once it has: `wait` before any answer or a tab, a
@@ -814,13 +844,145 @@ export function isStackEnvelope(value) {
 }
 
 /**
+ * @typedef {import("./pull-stacks.js").NativeStack} NativeStack
+ * @typedef {import("./stack-member-row.js").StackMemberLine} StackMemberLine
+ * @typedef {{state: import("./pull-state.js").PullState, title?: string | null} | null} ListedPull
+ */
+
+/**
+ * The stack numbered *number* in the Pulls tab's snapshot of the repository's stacks
+ * (`watchStacks`), or null where the snapshot does not hold it.
+ *
+ * @param {import("./pull-stacks.js").StackIndex} index
+ * @param {number} number
+ * @returns {NativeStack | null}
+ */
+export function knownStack(index, number) {
+  for (const stacks of index.byPull.values()) {
+    const found = stacks.find((stack) => stack.number === number);
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * The members as the header lists them, top first, each a member row's line
+ * (stack-member-row.js): the stack's answer's once it names them, and before that the
+ * stack the Pulls tab knows (*known*), titled and stated as its lists last read them
+ * (*listed*), so the list the answer lands on is the list the first paint drew. Null while
+ * neither names a member.
+ *
+ * A member's author is the answer's, its record's or else its cached list row's
+ * (pull_stack.py), and before the answer the one the stack menu draws, the stacks route's
+ * (`stackMemberAuthor`), read from the same cached list. The answer's falls back to the
+ * stacks route's too, so an answer never takes away an author the first paint drew; neither
+ * names one for a member with no record and no cached row.
+ *
+ * @param {StackEnvelope | null} envelope
+ * @param {NativeStack | null} known
+ * @param {(number: number) => ListedPull} listed
+ * @returns {StackMemberLine[] | null}
+ */
+export function memberLines(envelope, known, listed) {
+  const members = envelope?.members ?? [];
+  /** @param {number} number */
+  const knownTitle = (number) => known?.titles?.[known.pulls.indexOf(number)] ?? null;
+  /** @param {number} number */
+  const author = (number) => {
+    const at = known === null ? -1 : known.pulls.indexOf(number);
+    return known === null || at < 0 ? null : stackMemberAuthor(known, at, null);
+  };
+  if (members.length > 0) {
+    // A member whose record the server has not read yet keeps the title and the state the
+    // Pulls tab gave it, so the answer that says it is being fetched blanks no row.
+    return topFirst(envelope).map((member) => ({
+      number: member.number,
+      place: stackPosition(member.place - 1, members.length),
+      title: member.title ?? knownTitle(member.number) ?? listed(member.number)?.title ?? null,
+      state: member.state ?? listed(member.number)?.state ?? null,
+      author: member.author
+        ? { login: member.author, avatar: member.avatar ?? null }
+        : author(member.number),
+    }));
+  }
+  if (known === null || known.pulls.length === 0) {
+    return null;
+  }
+  return stackMenuOrder(known).map((number) => {
+    const at = known.pulls.indexOf(number);
+    const row = listed(number);
+    return {
+      number,
+      place: stackPosition(at, known.pulls.length),
+      title: knownTitle(number) ?? row?.title ?? null,
+      state: row?.state ?? null,
+      author: author(number),
+    };
+  });
+}
+
+/**
+ * The header a paint draws, row by row, a pull request's page's header made of the parts a
+ * stack has (docs/design-system.md, "Stacks", "The Stack Page"): its title, the View on
+ * GitHub corner, the members, the merge the stack makes, the status line, the size line,
+ * and the Diff summary. *rows* names them in order; `members` and `merge` are what those
+ * rows hold, `status` the status line's notices, there only while it has something to say,
+ * and `comparison` whether the size line and the Diff summary hold the comparison's
+ * pending placeholder (`pending`), their lines (`drawn`), or are not there (`none`), for a
+ * stack that cannot be shown as one comparison and has none drawn.
+ *
+ * Every row but the status line is decided at first paint, from what the Pulls tab knows of
+ * the stack: the members, and the merge's row held a line tall until the answer names the
+ * top member's head. So the answer lands moving nothing under the title, as a pull request's
+ * record does. With neither the answer nor the Pulls tab naming a member, the page is
+ * `cold`, held out of sight for the quiet period as a pull request's page with no record in
+ * hand is (`.github-pull-cold`).
+ *
+ * @param {number} number
+ * @param {StackEnvelope | null} envelope
+ * @param {NativeStack | null} known
+ * @param {(number: number) => ListedPull} listed
+ * @param {StackNotice[]} status
+ * @param {boolean} drawn Whether a comparison is drawn.
+ */
+export function stackHeader(number, envelope, known, listed, status, drawn) {
+  const members = memberLines(envelope, known, listed);
+  const base = envelope?.base_ref ?? known?.base_ref ?? null;
+  const head = envelope?.head_ref ?? null;
+  /** @type {"pending" | "drawn" | "none"} */
+  const comparison = drawn
+    ? "drawn"
+    : envelope === null || envelope.state !== "absent"
+      ? "pending"
+      : "none";
+  return {
+    title: stackLabel(number),
+    cold: envelope === null && members === null,
+    rows: [
+      "title",
+      "corner",
+      ...(members === null ? [] : ["members"]),
+      "merge",
+      ...(status.length === 0 ? [] : ["status"]),
+      ...(comparison === "none" ? [] : ["size", "summary"]),
+    ],
+    members,
+    merge: head === null || base === null ? null : { head, base },
+    status,
+    comparison,
+  };
+}
+
+/**
  * The diff view's comparison for the stack's: direct, since the bottom's merge base is an
  * ancestor of the top's head, at the routes the answer names, and with no View file controls,
  * since no one branch holds a stack.
  *
  * @param {StackComparison} comparison
  */
-function diffComparison(comparison) {
+export function diffComparison(comparison) {
   return {
     left: comparison.left,
     right: comparison.right,
@@ -832,8 +994,53 @@ function diffComparison(comparison) {
   };
 }
 
-/** How long the first screen's Markdown waits for Rendered, as a pull request's Changes. */
-const FIRST_SCREEN_MS = 300;
+/**
+ * What the page passes the diff view's `summary` for its header's Diff summary: the
+ * comparison read, and where a file the summary opens goes, as a pull request's page
+ * passes, so the summary starts collapsed, as every Diff summary does.
+ *
+ * @param {unknown} raw
+ * @param {(path: string) => void} openFile
+ */
+export function summaryDrawing(raw, openFile) {
+  return { raw, openFile };
+}
+
+/**
+ * What the page passes the diff view's `render` for Docs or Changes: a pull request's Docs
+ * and Changes drawings (diff-drawing.js), with no summary of the diff's own, since the
+ * header has it, and the first screen's Markdown waiting for Rendered at most
+ * `CHANGES_FIRST_SCREEN_MS`, while the page holds the diff out of sight. Changes takes the
+ * comparison the Diff summary read (*raw*) and keeps the reader's File type choice across
+ * tabs; Docs reads its documents itself.
+ *
+ * @param {"docs" | "changes"} tab
+ * @param {StackComparison} comparison
+ * @param {{signal: AbortSignal, raw?: unknown, types?: string[] | null,
+ *   onTypes?: (types: string[] | null) => void,
+ *   onDocument?: (document: unknown) => void}} using
+ */
+export function diffDrawing(tab, comparison, using) {
+  return {
+    comparisonSignal: using.signal,
+    comparison: diffComparison(comparison),
+    ...(using.raw === undefined ? {} : { raw: using.raw }),
+    summary: false,
+    ...(tab === "docs"
+      ? {
+          group: DOCS_GROUP,
+          ...DOCS_DRAWING,
+          emptyText: "No documents changed in this stack.",
+        }
+      : {
+          ...CHANGES_DRAWING,
+          ...(using.types === undefined ? {} : { types: using.types }),
+          ...(using.onTypes === undefined ? {} : { onTypes: using.onTypes }),
+        }),
+    ...(using.onDocument === undefined ? {} : { onDocument: using.onDocument }),
+    markdownHoldMs: CHANGES_FIRST_SCREEN_MS,
+  };
+}
 
 /**
  * Mount a stack's page.
@@ -854,50 +1061,7 @@ export function mountStackPage(container, ctx, mb) {
         )
       : async () => undefined;
   const listening = new AbortController();
-  const header = h("div", { class: "github-pull-header page-header page-reading-column" });
-  const status = h("div", { class: "github-pull-stack-page-status" });
-  const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Stack" });
-  const body = h("div", { class: "github-pull-body github-pull-stack-page-body" });
-  container.replaceChildren(
-    header,
-    status,
-    h("div", { class: "page-reading-column" }, [tabBar]),
-    body,
-  );
-  container.classList.add("github-pull-stack-page");
-
-  // The route's tab, "" for the front page, and the tab it shows, which the front page's
-  // choice decides once the stack is read.
-  let routeTab = typeof ctx.tab === "string" ? ctx.tab : "";
-  /** The guide the page shows (`guideShown`). @type {StackGuide | null} */
-  let guide = null;
-  let tab = shownTab(routeTab, null, guide);
-  /** @type {StackEnvelope | null} */
-  let envelope = null;
-  /** @type {string | null} */
-  let error = null;
-  /** @type {number[]} */
-  let failed = [];
-  /** What the body shows (`bodyPlan`). @type {StackBody} */
-  let shown = NO_BODY;
-  /** @type {{dispose?: () => void, scrollToFile?: (path: string) => unknown} | null} */
-  let handle = null;
-  /** The guide's view while Guided Review is drawn, told each revision of the description
-   * that carries the guide, and whether the stack has moved past the comparison drawn.
-   * @type {{show: (revision: string | null, moved: boolean) => void,
-   *   behind: (at: string | null) => void} | null} */
-  let guidedView = null;
-  /** The revision of the guide read at the comparison drawn while that comparison was the
-   * stack's current one. @type {string | null} */
-  let guideRead = null;
-  /** The allowlist a guide's notes are inserted through, loaded with the first guide.
-   * @type {Promise<MetabrowserInertHtmlRuntime | null> | null} */
-  let inertReady = null;
-  let resolveReady = () => {};
-  /** @type {Promise<void>} */
-  const ready = new Promise((resolve) => {
-    resolveReady = () => resolve(undefined);
-  });
+  container.classList.add("github-pull", "github-pull-stack-page");
 
   /** @param {{number: number, tab: string, file?: string, stack?: boolean}} route */
   const open = (route) => void openRoute(route);
@@ -924,32 +1088,487 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   /**
-   * @param {string} label
-   * @param {() => void} action
+   * Give *node* its own text as a tooltip whenever it is cut short, as the pull request's
+   * status line does.
+   *
+   * @template {HTMLElement} T
+   * @param {T} node
+   * @returns {T}
    */
-  function button(label, action) {
-    const node = h("button", { type: "button", class: "btn github-pull-stack-page-take" }, [label]);
-    node.addEventListener("click", action, { signal: listening.signal });
+  function tipWhenCut(node) {
+    node.addEventListener(
+      "pointerenter",
+      () => {
+        if (node.scrollWidth > node.clientWidth) {
+          node.dataset.tipText = node.textContent ?? "";
+        } else {
+          delete node.dataset.tipText;
+        }
+      },
+      { signal: listening.signal },
+    );
     return node;
   }
 
-  /** @param {number} member @param {string} path */
-  function memberFileHref(member, path) {
-    try {
-      return (
-        window.MetabrowserPullRoute?.pullHref(member, "files", path) ?? `/pull/${member}/files`
-      );
-    } catch {
-      return `/pull/${member}/files`;
+  /**
+   * Put *nodes* in *parent* when they are not what it holds already, so a paint that
+   * changes nothing moves no node and takes no focus.
+   *
+   * @param {HTMLElement} parent
+   * @param {Array<Node>} nodes
+   */
+  function place(parent, nodes) {
+    const held = [...parent.childNodes];
+    if (held.length !== nodes.length || held.some((node, at) => node !== nodes[at])) {
+      parent.replaceChildren(...nodes);
     }
   }
 
-  /** @param {string} path */
-  function marksFor(path) {
-    return layerMarks(envelope, path, memberFileHref).map((mark) => ({
-      ...mark,
-      open: () => open({ number: mark.number, tab: "files", file: mark.path }),
-    }));
+  // The header: a pull request's page's (docs/design-system.md, "Page Headers"), made of
+  // the rows a stack has, in the order a pull request's come (`stackHeader`).
+  const header = h("div", { class: "github-pull-header page-header page-reading-column" });
+  // The Layers glyph in the title's icon slot, where a pull request's state is, then the
+  // stack's label, its number where a pull request's is.
+  const layers = mb.icons?.layers
+    ? new DOMParser().parseFromString(mb.icons.layers, "text/html").body.firstElementChild
+    : null;
+  const title = h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
+    h(
+      "span",
+      { class: "github-pull-state-icon github-pull-stack-title-icon", "aria-hidden": "true" },
+      [layers === null ? null : document.importNode(layers, true)],
+    ),
+    h("span", { class: "github-pull-title-text" }, ["Stack"]),
+    " ",
+    h("span", { class: "github-pull-number" }, [`#${number}`]),
+  ]);
+  // The header's corner, which holds View on GitHub: the SDK's control, which asks the
+  // server where this page's address goes (`/api/counterpart`), the stack's own page.
+  const corner = h("span", { class: "view-header-end", "data-counterpart": "" });
+  // The members, top first, each the stack menu's member row, so the stack reads here as
+  // it does under a pull request's stack button, in a page card, as every card on a pull
+  // request's page is. No member is this page, so none is marked.
+  const memberList = h("ol", {
+    class: "github-pull-stack-members page-card",
+    "aria-label": `Pull requests in ${stackLabel(number)}`,
+  });
+  // The merge the stack makes, its top member's head → its base, a line tall while the
+  // answer that names the head is on its way.
+  const branchesRow = h("div", { class: "github-pull-branches page-header-line" });
+  const status = h("div", { class: "github-pull-status page-header-line" });
+  status.hidden = true;
+  const sizeRow = h("div", { class: "github-pull-size page-header-line page-header-size" });
+  const summaryRow = h("div", {
+    class: "github-pull-summary metabrowser-diff-host page-header-line",
+  });
+  const summaryPending = h(
+    "span",
+    {
+      class: "mb-delayed-loading github-pull-summary-pending",
+      role: "status",
+      "aria-label": "Loading the summary of changes",
+    },
+    [h("span", { class: "tally-pending", "aria-hidden": "true" })],
+  );
+  const sizePending = h("span", { class: "mb-delayed-loading github-pull-size-pending" }, [
+    h("span", { class: "tally-pending", "aria-hidden": "true" }),
+  ]);
+  const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Stack" });
+  const tabColumn = h("div", { class: "page-reading-column" }, [tabBar]);
+  // In the reading column until a diff tab draws (`bodyInColumn`), as a pull request's is.
+  const body = h("div", { class: "github-pull-body page-reading-column" });
+  const live = h("span", { class: "sr-only", "aria-live": "polite" });
+  container.replaceChildren(header, tabColumn, body, live);
+
+  // The route's tab, "" for the front page, and the tab it shows, which the front page's
+  // choice decides once the stack is read.
+  let routeTab = typeof ctx.tab === "string" ? ctx.tab : "";
+  /** The guide the page shows (`guideShown`). @type {StackGuide | null} */
+  let guide = null;
+  let tab = shownTab(routeTab, null, guide);
+  /** @type {StackEnvelope | null} */
+  let envelope = null;
+  /** @type {string | null} */
+  let error = null;
+  /** @type {number[]} */
+  let failed = [];
+  /** The stack as the Pulls tab knows it, and the repository its lists are of.
+   * @type {NativeStack | null} */
+  let known = null;
+  /** @type {string | null} */
+  let knownSource = null;
+  /** What the body shows (`bodyPlan`). @type {StackBody} */
+  let shown = NO_BODY;
+  /** @type {{dispose?: () => void, scrollToFile?: (path: string) => unknown} | null} */
+  let handle = null;
+  /** The guide's view while Guided Review is drawn, told each revision of the description
+   * that carries the guide, and whether the stack has moved past the comparison drawn.
+   * @type {{show: (revision: string | null, moved: boolean) => void,
+   *   behind: (at: string | null) => void} | null} */
+  let guidedView = null;
+  /** The revision of the guide read at the comparison drawn while that comparison was the
+   * stack's current one. @type {string | null} */
+  let guideRead = null;
+  /** The allowlist a guide's notes are inserted through, loaded with the first guide.
+   * @type {Promise<MetabrowserInertHtmlRuntime | null> | null} */
+  let inertReady = null;
+  /** Whether the page is held out of sight as cold: null before the first paint.
+   * @type {boolean | null} */
+  let coldHeld = null;
+  let membersKey = "";
+  /**
+   * Each member's item and row (`stackMemberRow`), by number, kept while the member is, so
+   * an answer that changes a line changes only its nodes and an author's avatar keeps its
+   * image (docs/design-system.md, "A Repaint Keeps Its Images").
+   * @type {Map<number, {item: HTMLElement, row: import("./stack-member-row.js").StackMemberRow}>}
+   */
+  const memberRows = new Map();
+  let mergeKey = "";
+  let statusKey = "";
+  /** The comparison read once for the Diff summary and Changes, by its key.
+   * @type {{key: string, read: Promise<unknown>} | null} */
+  let comparisonRead = null;
+  /** The Diff summary: the comparison it is drawn for, the claim of its latest draw, its
+   * mount, its file count for the size line, and whether its last draw failed. */
+  let summary = {
+    key: "",
+    claim: 0,
+    handle: /** @type {{dispose: () => void} | null} */ (null),
+    files: /** @type {number | null} */ (null),
+    failed: false,
+  };
+  /** Whether the drawn comparison changes a document (`changesDocuments`), null while not
+   * known, so Docs is offered as a pull request's page offers it. @type {boolean | null} */
+  let docsChanged = null;
+  let docsFor = "";
+  /** The reader's File type choice in Changes, kept across tabs as a pull request's is.
+   * @type {string[] | null} */
+  let diffTypes = null;
+  let resolveReady = () => {};
+  /** @type {Promise<void>} */
+  const ready = new Promise((resolve) => {
+    resolveReady = () => resolve(undefined);
+  });
+
+  const take = h(
+    "button",
+    { type: "button", class: "github-pull-text-action github-pull-stack-take" },
+    ["Show the new comparison"],
+  );
+  take.addEventListener("click", () => takeComparison(), { signal: listening.signal });
+  const retry = h(
+    "button",
+    { type: "button", class: "github-pull-text-action github-pull-remedy" },
+    ["Retry"],
+  );
+  retry.addEventListener("click", () => void controller.retry(), { signal: listening.signal });
+
+  /** @param {number} member */
+  function listed(member) {
+    return listedState(knownSource, member);
+  }
+
+  function followCounterpart() {
+    if (typeof mb.mountCounterpart === "function") {
+      void mb.mountCounterpart(corner, window.location.pathname);
+    }
+  }
+
+  /** @param {StackMemberLine[] | null} lines */
+  function paintMembers(lines) {
+    const key = JSON.stringify(lines);
+    if (key === membersKey) {
+      return;
+    }
+    membersKey = key;
+    const drawn = (lines ?? []).map((line) => {
+      let member = memberRows.get(line.number);
+      if (member === undefined) {
+        const anchor = link(
+          { number: line.number, tab: "" },
+          `/pull/${line.number}`,
+          "menu-item",
+          [],
+        );
+        // The stack menu's member row, its author drawn as the menu draws it: no box where it
+        // has no avatar (docs/design-system.md, "Actor Identity").
+        const row = stackMemberRow(anchor, mb.titleNodes, (login, avatar) =>
+          authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
+            placeholder: false,
+          }),
+        );
+        member = { item: h("li", { class: "github-pull-stack-members-item" }, [anchor]), row };
+        memberRows.set(line.number, member);
+      }
+      member.row.show(line);
+      return member.item;
+    });
+    const listed = new Set((lines ?? []).map((line) => line.number));
+    for (const number of [...memberRows.keys()]) {
+      if (!listed.has(number)) {
+        memberRows.delete(number);
+      }
+    }
+    const shown = [...memberList.children];
+    if (shown.length !== drawn.length || shown.some((item, at) => item !== drawn[at])) {
+      memberList.replaceChildren(...drawn);
+    }
+  }
+
+  /** @param {{head: string, base: string} | null} merge */
+  function paintMerge(merge) {
+    const key = JSON.stringify(merge);
+    if (key === mergeKey) {
+      return;
+    }
+    mergeKey = key;
+    branchesRow.replaceChildren(
+      ...(merge === null || typeof mb.mergeRefs !== "function"
+        ? []
+        : [
+            mb.mergeRefs(
+              { name: merge.head, ref: `refs/remotes/origin/${merge.head}` },
+              { name: merge.base, ref: `refs/remotes/origin/${merge.base}` },
+              { kind: "remote" },
+            ),
+          ]),
+    );
+  }
+
+  /**
+   * The status line, a pull request's (docs/design-system.md, "The Pull Request Page"):
+   * a message muted, a failure or a warning in the warning's ink, and at its end what it
+   * asks of the reader, Retry first, then the offer of a new comparison.
+   *
+   * @param {StackNotice[]} notices
+   */
+  function paintStatus(notices) {
+    const key = JSON.stringify(notices);
+    if (key === statusKey) {
+      return;
+    }
+    statusKey = key;
+    const said = notices.filter((notice) => notice.action !== "take");
+    const offered = notices.find((notice) => notice.action === "take");
+    const asksRetry = notices.some((notice) => notice.action === "retry");
+    /** @type {HTMLElement[]} */
+    const ending = [
+      ...(asksRetry ? [retry] : []),
+      ...(offered === undefined
+        ? []
+        : [
+            h("span", { class: "github-pull-offer" }, [
+              tipWhenCut(h("span", { class: "github-pull-offer-text" }, [offered.text])),
+              " ",
+              take,
+            ]),
+          ]),
+    ];
+    status.classList.toggle(
+      "github-pull-status-failed",
+      said.some((notice) => notice.severity !== null),
+    );
+    status.replaceChildren(
+      ...said.map((notice) =>
+        tipWhenCut(
+          h(
+            "span",
+            {
+              class: notice.severity === null ? "github-pull-message" : "github-pull-failure",
+            },
+            [notice.text],
+          ),
+        ),
+      ),
+      ...(ending.length === 0 ? [] : [h("span", { class: "github-pull-status-end" }, ending)]),
+    );
+    status.hidden = notices.length === 0;
+    live.textContent = notices.map((notice) => notice.text).join(" ");
+  }
+
+  /**
+   * Hold the header and the tab bar out of sight for the quiet period while nothing names a
+   * member, and show them at once with the first paint that does, or with the answer.
+   *
+   * @param {boolean} cold
+   */
+  function holdCold(cold) {
+    if (coldHeld === null) {
+      coldHeld = cold;
+    } else if (coldHeld && !cold) {
+      coldHeld = false;
+    } else {
+      return;
+    }
+    for (const part of [header, tabColumn]) {
+      part.classList.toggle("github-pull-cold", coldHeld);
+    }
+  }
+
+  function paintHeader() {
+    const notices = statusNotices(envelope, shown.drawn?.key ?? null, error, failed);
+    const model = stackHeader(number, envelope, known, listed, notices, shown.drawn !== null);
+    holdCold(model.cold);
+    paintMembers(model.members);
+    paintMerge(model.merge);
+    paintStatus(model.status);
+    paintSummaryWait(model.comparison);
+    /** @type {Record<string, HTMLElement>} */
+    const rows = {
+      title,
+      corner,
+      members: memberList,
+      merge: branchesRow,
+      status,
+      size: sizeRow,
+      summary: summaryRow,
+    };
+    // The status line stays in the header while hidden, as a pull request's does.
+    const names = model.rows.includes("status")
+      ? model.rows
+      : model.rows.flatMap((name) => (name === "merge" ? [name, "status"] : [name]));
+    place(
+      header,
+      names.map((name) => rows[name]),
+    );
+    followCounterpart();
+  }
+
+  /**
+   * The size line and the Diff summary's row while no summary is drawn: the shell's pending
+   * placeholder while a comparison is on its way, as on a pull request's page, and empty
+   * once a read of it failed or none is coming.
+   *
+   * @param {"pending" | "drawn" | "none"} comparison
+   */
+  function paintSummaryWait(comparison) {
+    if (summary.handle !== null) {
+      return;
+    }
+    const waits = comparison !== "none" && !summary.failed;
+    if (waits) {
+      if (summaryRow.firstChild !== summaryPending) {
+        summaryRow.replaceChildren(summaryPending);
+      }
+      if (sizeRow.firstChild !== sizePending) {
+        sizeRow.replaceChildren(sizePending);
+      }
+    } else {
+      summaryRow.replaceChildren();
+      sizeRow.replaceChildren();
+    }
+  }
+
+  /** The size line once the summary is drawn: its file count, "3 files changed". */
+  function paintSize() {
+    if (
+      summary.handle === null ||
+      typeof mb.changeSizeLine !== "function" ||
+      typeof mb.changeSizeLineNodes !== "function"
+    ) {
+      return;
+    }
+    sizeRow.replaceChildren(...mb.changeSizeLineNodes(mb.changeSizeLine({ files: summary.files })));
+  }
+
+  /**
+   * The comparison's read, once per comparison, which the Diff summary and Changes share.
+   *
+   * @param {{prefetch: (comparison: unknown, signal: AbortSignal) => Promise<unknown>}} view
+   * @param {StackComparison} comparison
+   */
+  function readComparison(view, comparison) {
+    if (comparisonRead?.key !== comparison.key) {
+      const read = Promise.resolve(view.prefetch(diffComparison(comparison), listening.signal));
+      read.catch(() => {});
+      comparisonRead = { key: comparison.key, read };
+    }
+    return comparisonRead.read;
+  }
+
+  /**
+   * Ask once per comparison whether it changes a document, through the diff view's
+   * `typeCounts`, so Docs is offered as a pull request's page offers it.
+   *
+   * @param {MetabrowserPublicViewSpec} view
+   * @param {StackComparison} comparison
+   */
+  function askDocs(view, comparison) {
+    if (docsFor === comparison.key || typeof view.typeCounts !== "function") {
+      return;
+    }
+    docsFor = comparison.key;
+    docsChanged = null;
+    void Promise.resolve(view.typeCounts(diffComparison(comparison), listening.signal)).then(
+      (counts) => {
+        if (!listening.signal.aborted && docsFor === comparison.key) {
+          docsChanged = changesDocuments(counts);
+          paintTabs();
+        }
+      },
+      // A count that did not come leaves Docs shown, as before it was asked.
+      () => {},
+    );
+  }
+
+  /**
+   * Draw the header's Diff summary for the comparison the body shows, once per comparison:
+   * out of sight, then in the row's place in one step, so it moves nothing; a newer
+   * comparison's replaces it the same way. One that draws nothing empties the row.
+   *
+   * @param {StackComparison} comparison
+   */
+  async function showSummary(comparison) {
+    if (listening.signal.aborted || summary.key === comparison.key) {
+      return;
+    }
+    const claim = summary.claim + 1;
+    summary = { ...summary, key: comparison.key, claim, failed: false };
+    const owns = () => !listening.signal.aborted && summary.claim === claim;
+    const unavailable = () => {
+      if (owns()) {
+        summary.handle?.dispose();
+        summary = { ...summary, handle: null, files: null, failed: true };
+        paintSummaryWait("none");
+      }
+    };
+    try {
+      await mb.ensureKindAssets("diff");
+      const view = /** @type {any} */ (mb.getRegisteredView("diff", "diff"));
+      if (!owns()) {
+        return;
+      }
+      if (typeof view?.summary !== "function" || typeof view?.prefetch !== "function") {
+        unavailable();
+        return;
+      }
+      askDocs(view, comparison);
+      const raw = await readComparison(view, comparison);
+      if (!owns()) {
+        return;
+      }
+      const stage = h("div", {});
+      const mounted = await view.summary(
+        stage,
+        summaryDrawing(raw, (/** @type {string} */ path) =>
+          open({ number, tab: "changes", file: path, stack: true }),
+        ),
+      );
+      if (!owns()) {
+        mounted?.dispose();
+        return;
+      }
+      if (mounted === null) {
+        unavailable();
+        return;
+      }
+      summary.handle?.dispose();
+      summary = { ...summary, handle: mounted, files: manifestFiles(raw) };
+      summaryRow.replaceChildren(...stage.childNodes);
+      paintSize();
+    } catch {
+      unavailable();
+    }
   }
 
   const tabLinks = STACK_TABS.map(({ id, label }) => {
@@ -960,130 +1579,61 @@ export function mountStackPage(container, ctx, mb) {
     tabBar.append(anchor);
     return { id, anchor };
   });
+  // The tab keys a pull request's page gives its own tabs: Guided Review's R, Docs's D, and
+  // Changes's G, Changes being the pull request's `files` tab.
+  attachTabKeys(
+    mb.shortcuts,
+    tabLinks.map(({ id, anchor }) => ({ id: id === "changes" ? "files" : id, link: anchor })),
+    (id) => {
+      // A hidden tab's key does nothing, as its link offers nothing; the shell lands the
+      // page on the tab, as a press of its link does.
+      const next = id === "files" ? "changes" : id;
+      if (!tabLinks.some((entry) => entry.id === next && entry.anchor.hidden)) {
+        open({ number, tab: next, stack: true });
+      }
+    },
+    listening.signal,
+    "stack",
+  );
 
   function paintTabs() {
     for (const { id, anchor } of tabLinks) {
-      anchor.hidden = id === "guided" && guide === null;
+      anchor.hidden =
+        (id === "guided" && guide === null) ||
+        (id === "docs" && docsChanged === false && tab !== "docs");
       anchor.classList.toggle("active", tab === id);
       anchor.setAttribute("aria-selected", String(tab === id));
     }
   }
 
-  function paintHeader() {
-    const title = h("h1", { class: "page-heading github-pull-title" }, [
-      stackLabel(number),
-      ...(envelope?.base_ref
-        ? [h("span", { class: "github-pull-stack-page-base" }, [` into ${envelope.base_ref}`])]
-        : []),
-    ]);
-    const count = envelope?.members.length ?? 0;
-    const members = h("ol", { class: "github-pull-stack-page-members", reversed: "" });
-    for (const member of topFirst(envelope)) {
-      members.append(
-        h("li", { class: "github-pull-stack-page-member" }, [
-          h("span", { class: "github-pull-stack-position" }, [
-            stackPosition(member.place - 1, count),
-          ]),
-          ...(member.state === null ? [] : [pullStateIcon(member.state)]),
-          link(
-            { number: member.number, tab: "" },
-            `/pull/${member.number}`,
-            "github-pull-number github-pull-stack-page-link",
-            [`#${member.number}`],
-          ),
-          h("span", { class: "github-pull-stack-page-member-title" }, [
-            ...(member.title === null ? ["Not fetched yet"] : mb.titleNodes(member.title)),
-          ]),
-          ...(member.in_top === false
-            ? [h("span", { class: "github-pull-stack-page-note" }, ["not in the top"])]
-            : failed.includes(member.number)
-              ? [h("span", { class: "github-pull-stack-page-note" }, ["could not fetch"])]
-              : member.pending
-                ? [h("span", { class: "github-pull-stack-page-note" }, ["fetching"])]
-                : []),
-        ]),
-      );
-    }
-    const totals = envelope?.totals ?? null;
-    const lines = [
-      h("div", { class: "page-header-line github-pull-stack-page-line" }, [
-        `${count} pull request${count === 1 ? "" : "s"}`,
-        ...(totals === null
-          ? []
-          : [
-              " · ",
-              `${totals.files} file${totals.files === 1 ? "" : "s"} changed`,
-              ...(totals.additions === null
-                ? []
-                : [" ", h("span", { class: "diff-stat-add" }, [`+${totals.additions}`])]),
-              ...(totals.deletions === null
-                ? []
-                : [" ", h("span", { class: "diff-stat-del" }, [`−${totals.deletions}`])]),
-            ]),
-        ...(envelope?.github_url
-          ? [
-              " · ",
-              h(
-                "a",
-                {
-                  href: envelope.github_url,
-                  class: "github-pull-stack-page-github",
-                  target: "_blank",
-                  rel: "noopener noreferrer",
-                },
-                ["View on GitHub"],
-              ),
-            ]
-          : []),
-      ]),
-    ];
-    const lacking = lackingText(envelope);
-    if (lacking !== null) {
-      lines.push(h("div", { class: "page-header-line github-pull-stack-page-lacking" }, [lacking]));
-    }
-    header.replaceChildren(title, ...lines, members);
-  }
-
   /**
-   * A notice as the page draws it, with its action's button.
+   * A notice in the body, for a stack with no comparison drawn, with its Retry.
    *
-   * @param {StackNotice} notice
+   * @param {string} text
+   * @param {boolean} retries
    */
-  function noticeNode(notice) {
-    const severity = notice.severity;
-    return h(
+  function noticeNode(text, retries) {
+    const node = h(
       "div",
-      {
-        class: "notice github-pull-notice",
-        ...(severity === null
-          ? {}
-          : { "data-severity": severity, role: severity === "error" ? "alert" : "status" }),
-      },
-      [
-        notice.text,
-        ...(notice.action === "take"
-          ? [" ", button("Show the new comparison", take)]
-          : notice.action === "retry"
-            ? [" ", button("Retry", retry)]
-            : []),
-      ],
+      retries
+        ? { class: "notice github-pull-notice", "data-severity": "warning", role: "status" }
+        : { class: "notice github-pull-notice" },
+      [text],
     );
+    if (retries) {
+      const again = h("button", { type: "button", class: "btn" }, ["Retry"]);
+      again.addEventListener("click", () => void controller.retry(), {
+        signal: listening.signal,
+      });
+      node.append(" ", again);
+    }
+    return node;
   }
 
-  function paintStatus() {
-    status.replaceChildren(
-      ...statusNotices(envelope, shown.drawn?.key ?? null, error, failed).map(noticeNode),
-    );
-  }
-
-  function take() {
+  function takeComparison() {
     shown = bodyTaken(shown, envelope);
-    paintStatus();
+    paintHeader();
     void paintBody();
-  }
-
-  function retry() {
-    void controller.retry();
   }
 
   function disposeBody() {
@@ -1095,12 +1645,12 @@ export function mountStackPage(container, ctx, mb) {
   /**
    * The stack's guide (guided-review.js): its steps, read against *comparison*, the one this
    * page drew (`guided-review?stack=` with its commits and key), so the guide shows what
-   * Files, Docs, and Changes show, and follows the reader to a new comparison only when they
-   * take it. A file a step cites opens in this page's Changes, and another pull request, or
-   * a file of it, in that pull request's page. A file the rendered route renders is drawn
-   * whole from *comparison* while that is the one the step was read at, or, a file of
-   * another pull request, from that one's. A note's links are absolute against the page of
-   * the member that carries the guide, and marked as a description's are.
+   * the Diff summary, Docs, and Changes show, and follows the reader to a new comparison only
+   * when they take it. A file a step cites opens in this page's Changes, and another pull
+   * request, or a file of it, in that pull request's page. A file the rendered route renders
+   * is drawn whole from *comparison* while that is the one the step was read at, or, a file
+   * of another pull request, from that one's. A note's links are absolute against the page
+   * of the member that carries the guide, and marked as a description's are.
    *
    * @param {StackComparison} comparison
    * @param {() => boolean} owns Whether the body still shows what this was drawn for.
@@ -1145,23 +1695,17 @@ export function mountStackPage(container, ctx, mb) {
               ? { number: target, tab: "" }
               : { number: target, tab: "files", file: path },
           ),
-        age: (iso) => {
-          const at = Date.parse(iso);
-          if (!Number.isFinite(at)) {
-            return h("span", {}, [iso]);
-          }
-          const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-          return h(
-            "span",
-            {
-              class: `github-pull-age ${className}`,
-              "data-tip-text": mb.formatTimestamp(at / 1000),
-              "data-age-at": String(at),
-            },
-            [label],
-          );
-        },
+        // A pull request's page's age, in its freshness ink.
+        age: (iso) => pullAge(mb, iso),
         shortCommit: (sha) => mb.shortCommit(sha),
+        // A cited pull request's title and author, as a stack menu's member draws them, and
+        // the Layers glyph that names a stack other than the guide's.
+        titleNodes: mb.titleNodes,
+        stackGlyph: () => (layers === null ? null : document.importNode(layers, true)),
+        identity: (login, avatar) =>
+          authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
+            placeholder: false,
+          }),
         loadStyles: (assets) =>
           Promise.all([
             mb.loadKpressAssets(
@@ -1193,7 +1737,7 @@ export function mountStackPage(container, ctx, mb) {
               }
               return diff.mountRenderedFile(body, shown, path, {
                 ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
-                markdownHoldMs: FIRST_SCREEN_MS,
+                markdownHoldMs: CHANGES_FIRST_SCREEN_MS,
               });
             },
           };
@@ -1222,16 +1766,154 @@ export function mountStackPage(container, ctx, mb) {
     return view;
   }
 
+  /**
+   * Docs or Changes, drawn as a pull request's page draws its own (`mountDiff` in
+   * pull-page.js): the diff laid out out of sight (`.github-pull-diff-holding`) from its
+   * first draw until its first screen's Markdown waits no more, at most
+   * `CHANGES_FIRST_SCREEN_MS`, with the shell's delayed loading block below it, so the first
+   * screen the reader sees is the one that stays.
+   *
+   * @param {"docs" | "changes"} which
+   * @param {StackComparison} comparison
+   * @param {() => boolean} owns
+   * @param {(mounted: {dispose?: () => void, scrollToFile?: (path: string) => unknown} | null) => void} adopt
+   */
+  async function paintDiff(which, comparison, owns, adopt) {
+    const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
+    const loading = h(
+      "div",
+      {
+        class: "loading mb-delayed-loading github-pull-diff-loading",
+        role: "status",
+        "aria-label": "Loading changes",
+      },
+      [h("span", { class: "spinner", "aria-hidden": "true" })],
+    );
+    body.replaceChildren(host, loading);
+    const docs = which === "docs";
+    /** A view the diff drew and the page has not adopted yet, which a failure disposes.
+     * @type {{dispose?: () => void} | null} */
+    let unadopted = null;
+    try {
+      await mb.ensureKindAssets("diff");
+      const view = /** @type {any} */ (mb.getRegisteredView("diff", "diff"));
+      if (!owns()) {
+        return;
+      }
+      if (!view) {
+        loading.remove();
+        host.textContent = "Changes could not be shown. Reload the page to try again.";
+        return;
+      }
+      const raw =
+        docs || typeof view.prefetch !== "function"
+          ? undefined
+          : await readComparison(view, comparison).catch(() => undefined);
+      if (!owns()) {
+        return;
+      }
+      host.classList.add("github-pull-diff-holding");
+      let emptied = false;
+      const mounted = await view.render(
+        host,
+        diffDrawing(which, comparison, {
+          signal: listening.signal,
+          ...(raw === undefined ? {} : { raw }),
+          ...(docs
+            ? {
+                onDocument: (/** @type {unknown} */ document_) => {
+                  emptied = noFiles(document_);
+                },
+              }
+            : {
+                types: diffTypes,
+                onTypes: (/** @type {string[] | null} */ types) => {
+                  diffTypes = types;
+                },
+              }),
+        }),
+      );
+      if (!owns()) {
+        loading.remove();
+        mounted?.dispose?.();
+        return;
+      }
+      unadopted = mounted;
+      if (emptied) {
+        host
+          .querySelector(".diff-type-empty")
+          ?.append(
+            " ",
+            link({ number, tab: "changes", stack: true }, `/stack/${number}/changes`, "", [
+              "Show every change",
+            ]),
+          );
+      }
+      // Landed before the wait, so the first screen the Markdown layer reports is the one
+      // the reader lands on: a file the address names, not the top of the diff.
+      adopt(mounted);
+      unadopted = null;
+      const firstScreen = /** @type {{firstScreen?: () => Promise<void>} | null} */ (mounted)
+        ?.firstScreen;
+      if (typeof firstScreen === "function") {
+        /** @type {ReturnType<typeof window.setTimeout> | undefined} */
+        let bound;
+        await Promise.race([
+          firstScreen.call(mounted),
+          new Promise((resolve) => {
+            bound = window.setTimeout(resolve, CHANGES_FIRST_SCREEN_MS);
+          }),
+        ]);
+        window.clearTimeout(bound);
+      }
+      loading.remove();
+      if (owns()) {
+        host.classList.remove("github-pull-diff-holding");
+      }
+    } catch (failure) {
+      unadopted?.dispose?.();
+      if (owns()) {
+        console.error("metabrowser github: the stack's diff could not load", failure);
+        loading.remove();
+        host.classList.remove("github-pull-diff-holding");
+        // A pull request's error notice and its Retry, in its words (`mountDiff` in
+        // pull-page.js), not a bare sentence in the diff's host. Retry disposes what the
+        // failed draw adopted before it draws again, as `paintBody` does before every draw.
+        const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
+        retry.addEventListener(
+          "click",
+          () => {
+            if (owns()) {
+              disposeBody();
+              void paintDiff(which, comparison, owns, adopt);
+            }
+          },
+          { signal: listening.signal },
+        );
+        host.replaceChildren(
+          h("div", { class: "notice github-pull-notice", "data-severity": "error" }, [
+            docs ? "Docs could not load. " : "Changes could not load. ",
+            retry,
+          ]),
+        );
+      }
+    }
+  }
+
   async function paintBody() {
     const plan = bodyPlan(shown, envelope, tab, failed);
     shown = plan.body;
     const action = plan.action;
+    body.classList.toggle("page-reading-column", bodyInColumn(shown, tab));
+    if (shown.drawn !== null) {
+      void showSummary(shown.drawn);
+    }
     if (action.do === "keep") {
       // An edit of the description that carries the guide is read again while the
       // comparison drawn is the stack's current one. A new comparison is offered, not
       // swapped in: until the reader takes it, the guide stays as it was read at the drawn
-      // one, as Files, Docs, and Changes stay, and a guide its carrier's move changed is
-      // not read there (`behind` in guided-review.js).
+      // one, as Docs and Changes stay, and a guide its carrier's move changed is not read
+      // there (`behind` in guided-review.js).
       const current = envelope?.state === "current" ? (envelope.comparison?.key ?? null) : null;
       if (current !== null && current === shown.drawn?.key) {
         guidedView?.behind(null);
@@ -1253,13 +1935,7 @@ export function mountStackPage(container, ctx, mb) {
     }
     if (action.do === "notice") {
       disposeBody();
-      body.replaceChildren(
-        noticeNode({
-          text: action.text,
-          severity: action.retry ? "warning" : null,
-          action: action.retry ? "retry" : null,
-        }),
-      );
+      body.replaceChildren(noticeNode(action.text, action.retry));
       return;
     }
     const key = action.key;
@@ -1313,63 +1989,7 @@ export function mountStackPage(container, ctx, mb) {
       }
       return;
     }
-    const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
-    body.replaceChildren(host);
-    try {
-      await mb.ensureKindAssets("diff");
-      const view = /** @type {any} */ (mb.getRegisteredView("diff", "diff"));
-      if (!owns()) {
-        return;
-      }
-      if (!view) {
-        host.textContent = "Changes could not be shown. Reload the page to try again.";
-        return;
-      }
-      const comparison = diffComparison(action.comparison);
-      if (action.tab === "files") {
-        const raw = await view.prefetch(comparison, listening.signal);
-        if (!owns()) {
-          return;
-        }
-        host.classList.add("github-pull-summary");
-        adopt(
-          await view.summary(host, {
-            raw,
-            open: true,
-            fileMarks: marksFor,
-            openFile: (/** @type {string} */ path) =>
-              open({ number, tab: "changes", file: path, stack: true }),
-          }),
-        );
-        return;
-      }
-      const docs = action.tab === "docs";
-      adopt(
-        await view.render(host, {
-          comparisonSignal: listening.signal,
-          comparison,
-          summary: false,
-          fileMarks: marksFor,
-          markdownHoldMs: FIRST_SCREEN_MS,
-          ...(docs
-            ? {
-                group: DOCS_GROUP,
-                ...DOCS_DRAWING,
-                emptyText: "No documents changed in this stack.",
-              }
-            : {
-                ...CHANGES_DRAWING,
-                openFile: (/** @type {string} */ path) =>
-                  open({ number, tab: "changes", file: path, stack: true }),
-              }),
-        }),
-      );
-    } catch (failure) {
-      if (owns()) {
-        console.error("metabrowser github: the stack's diff could not load", failure);
-        host.textContent = "Could not load this stack’s changes. Reload the page to try again.";
-      }
-    }
+    await paintDiff(action.tab, action.comparison, owns, adopt);
   }
 
   const controller = createStackController(
@@ -1413,13 +2033,21 @@ export function mountStackPage(container, ctx, mb) {
         tab = shownTab(routeTab, envelope, guide);
         paintHeader();
         paintTabs();
-        paintStatus();
         void paintBody();
         resolveReady();
       },
     },
     { number },
   );
+  // The stack as the Pulls tab knows it, which the first paint lists its members from; told
+  // synchronously, so the first paint below has it.
+  const stacks = watchStacks((index) => {
+    known = knownStack(index, number);
+    knownSource = index.source;
+    if (!listening.signal.aborted) {
+      paintHeader();
+    }
+  });
   paintHeader();
   paintTabs();
   void controller.start().finally(resolveReady);
@@ -1448,6 +2076,12 @@ export function mountStackPage(container, ctx, mb) {
     void paintBody();
   }
 
+  function stop() {
+    listening.abort();
+    controller.dispose();
+    stacks.dispose();
+  }
+
   return {
     ready,
     setTab,
@@ -1461,14 +2095,11 @@ export function mountStackPage(container, ctx, mb) {
     },
     showFile,
     flush() {},
-    cancelPending() {
-      listening.abort();
-      controller.dispose();
-    },
+    cancelPending: stop,
     dispose() {
-      listening.abort();
-      controller.dispose();
+      stop();
       disposeBody();
+      summary.handle?.dispose();
     },
   };
 }

@@ -62,13 +62,13 @@ Metabrowser fetches the repository’s list of pull requests in the background a
 each page as it arrives; scroll toward the end to load more, and a spinner below the
 last row says how many have been fetched so far.
 
-Each row reads as one run: the title, the number, and the lines the pull request adds
-and deletes, with a chevron after them, such as **Fix the reader · #455 · +1,234 −567
-›**, wrapping as far as it needs, each line starting under the title, so walking the
-list shows the size of each change.
-The author and the age are on the line below.
-At the Pulls tab’s default width most rows take four lines, and a short title three; a
-wider tab fits more rows in three.
+Each row reads as one run: the title, the number, and the author, such as **Fix the
+reader · #455 · jlevy**, wrapping as far as it needs, each line starting under the
+title. The lines the pull request adds and deletes are on the line below, with a chevron
+after them, such as **+1,234 −567 ›**, so walking the list shows the size of each
+change, and the age, such as **3d**, is at that line’s right end, where every row’s age
+lines up. At the Pulls tab’s default width most rows take four lines, and a short title
+three; a wider tab fits more rows in three.
 The lines sum the same list of changed files the row’s tree shows, as a stack’s heading
 sums its pull requests’, and ask GitHub for nothing: the lists come from what the Pulls
 tab already reads behind you for the rows in view and from trees you open, and a gray
@@ -98,20 +98,31 @@ tab groups the pull requests of each native GitHub stack under a **Stack #N** ro
 by default, top of the stack first; pull requests in no stack follow, and a stack’s row
 opens and closes like a folder.
 A member’s row shows its place after its title and before its number, such as **Fix the
-reader · 1/6 · #455**; a pull request in no stack shows no place.
+reader · 1/6 · #455 · jlevy**; a pull request in no stack shows no place.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
 On the page, a stack button at the end of the line of state and dates shows the same
 position, and a pull request in two stacks has a button for each, which names its stack,
 such as **⧉300 2/2**. The button opens a menu of the stack’s members, from top to base,
-each on one line: its state and its title, then its position and its number at the
-line’s end, such as **Fix the reader 1/6 · #455**, the order a row in the Pulls tab has.
-On macOS, Control-N goes to the next member toward the top and Control-P to the previous
-one toward the base; on Windows and Linux, where those keys are the browser’s, use the
-menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
-and the list stays flat, unless stacks are cached.
-Metabrowser reads stacks and never changes them.
+each on one line: its state and its title, then its position, its number, and its author
+at the line’s end, such as **Fix the reader 1/6 · #455 · jlevy**, the order a row in the
+Pulls tab has. On macOS, Control-N goes to the next member toward the top and Control-P
+to the previous one toward the base; on Windows and Linux, where those keys are the
+browser’s, use the menu.
+Without the extension, or when GitHub cannot answer, pull requests read as usual and the
+list stays flat, unless stacks are cached.
+
+**Whole stack**, the menu’s first row, and the last row under each open stack in the
+Pulls tab, opens the stack’s own page, laid out as a pull request’s page for the whole
+stack: its members under the title, top first, each as the menu lists it; the top
+member’s head branch → the stack’s base; the files changed and the Diff summary of the
+stack’s combined change; and **Docs** and **Changes** of that change, with **Guided
+Review** first when the stack has a guide.
+**View on GitHub** there opens the stack on github.com.
+While that page is open, the stack’s **Whole stack** row in the Pulls tab is marked as
+the current row, as a pull request’s row is on its page; J and K stop on it and open the
+page, as they open a pull request’s. Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
 
@@ -284,13 +295,16 @@ references:
   - {commit: "<full commit ID>"}     # a commit
 ```
 
-A pull request shows as a row the way the stack menu lists a member: its state, number,
-and title, and its place in a stack when it has one; it opens that pull request.
+A pull request shows as a row the way the stack menu lists a member: its state, its
+title, its place in a stack when it has one, its number, and its author; it opens that
+pull request.
+The place is bare in the guide’s own stack and names any other stack, “⧉300
+2/2”, and hovering it names the stack in words.
 A file of another pull request is drawn as a file of this one is, from that pull
 request’s own changes, under a bar that names the pull request, and its **Open full
 diff** opens the file there.
 It takes no line range, since that pull request may move after the guide is written.
-A commit shows as a row of its subject, when it was made, and its short ID, and opens
+A commit shows as a row of its short ID, its subject, and when it was made, and opens
 the commit.
 These are read from what this copy already has: a pull request not loaded yet
 shows by its number, a file of one not loaded yet says to open it, and a commit the copy
@@ -346,7 +360,7 @@ another fence, as in the example above, is not a guide even where the tab appear
 A native stack can have a guide of its own: one guided review of the whole stack, read
 against the stack’s comparison, from its bottom layer’s merge base to its top layer’s
 head. The stack’s page, which **Whole stack** in the stack menu opens, then leads with a
-**Guided Review** tab and opens on it; without a guide it opens on Files.
+**Guided Review** tab and opens on it; without a guide it opens on Changes.
 
 To publish one, add one top-level `stack-review` block, in the format above, to a
 layer’s description, usually the top layer’s, beside that layer’s own `guided-review`
@@ -361,11 +375,12 @@ guide opens on its first step, and its first steps orient the reader.
 On that layer’s page, Conversation leaves the block out and shows a card that says it
 has a stack guide and opens the page of each stack the layer belongs to.
 A step’s files open in the stack’s Changes, and a step can cite each layer as
-`{pull: <n>}`. The guide is read at the comparison the page shows, as Files, Docs, and
-Changes are. While a layer is being fetched, or the stack cannot be shown as one
-comparison, the guide on screen stays, and a step you have not read yet says why in its
-place; when the stack moves, the page offers its new comparison, and the guide is read
-again there, out of date where a layer moved past its pins, when you take it.
+`{pull: <n>}`. The guide is read at the comparison the page shows, as the Diff summary,
+Docs, and Changes are.
+While a layer is being fetched, or the stack cannot be shown as one comparison, the
+guide on screen stays, and a step you have not read yet says why in its place; when the
+stack moves, the page offers its new comparison, and the guide is read again there, out
+of date where a layer moved past its pins, when you take it.
 Until you take it, a step written for the new comparison, as one is once the guide’s
 layer moved and its author pinned it again, says the stack has moved, and the guide’s
 steps stay. The same answer is the `guided-review` route’s, by stack, at the current

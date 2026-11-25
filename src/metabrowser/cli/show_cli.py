@@ -186,6 +186,9 @@ def _describe_stack(payload: dict[str, Any], tab: str, file: str) -> str:
     parts = [f"state={payload.get('state')}"]
     if payload.get("reason") is not None:
         parts.append(f"reason={payload['reason']}")
+    # The merge the page's header shows, the top member's head into the base.
+    if payload.get("head_ref") is not None and payload.get("base_ref") is not None:
+        parts.append(f"merge={payload['head_ref']}->{payload['base_ref']}")
     members = payload.get("members")
     if isinstance(members, list) and members:
         parts.append(
@@ -237,10 +240,8 @@ def _describe_stack(payload: dict[str, Any], tab: str, file: str) -> str:
     if carrier is not None:
         parts.append(f"guide=#{carrier}")
     # The tab the page shows (stack-page.js, `shownTab`): its own, or Guided Review for a
-    # stack whose member carries its guide and Files for one with none.
-    shown = (
-        tab if tab in ("files", "docs", "changes") else "guided" if carrier is not None else "files"
-    )
+    # stack whose member carries its guide and Changes for one with none.
+    shown = tab if tab in ("docs", "changes") else "guided" if carrier is not None else "changes"
     parts.append(f"tab={shown}")
     comparison = payload.get("comparison")
     if isinstance(comparison, dict):

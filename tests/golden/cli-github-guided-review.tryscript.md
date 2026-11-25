@@ -1253,10 +1253,10 @@ when the store lacks it.
 ```console
 $ jq -c '.state, (.references[] | {kind, pull, commit, state, href, target})' kinds.json
 "ready"
-{"kind":"pull","pull":8,"commit":null,"state":"ready","href":"/pull/8","target":{"title":"Say more in the guide","state":"merged","stack":null}}
+{"kind":"pull","pull":8,"commit":null,"state":"ready","href":"/pull/8","target":{"title":"Say more in the guide","state":"merged","stack":null,"author":"maintainer","avatar":null}}
 {"kind":"pull_file","pull":10,"commit":null,"state":"ready","href":"/pull/10/files/docs/draft.md","target":null}
 {"kind":"pull_file","pull":9,"commit":null,"state":"ready","href":"/pull/9/files/src/app.txt","target":null}
-{"kind":"pull","pull":50,"commit":null,"state":"ready","href":"/pull/50","target":{"title":"Work item 50","state":"open","stack":null}}
+{"kind":"pull","pull":50,"commit":null,"state":"ready","href":"/pull/50","target":{"title":"Work item 50","state":"open","stack":null,"author":"contributor","avatar":null}}
 {"kind":"pull","pull":2000,"commit":null,"state":"not_cached","href":"/pull/2000","target":null}
 {"kind":"commit","pull":null,"commit":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","state":"ready","href":"/commit/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","target":{"subject":"count to two","committed_at":"2026-08-29T14:40:00Z"}}
 {"kind":"commit","pull":null,"commit":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","state":"commit_unavailable","href":null,"target":null}

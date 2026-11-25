@@ -131,7 +131,9 @@ export function progressView(progress, formatInteger) {
 
 /**
  * How long ago, in the one unit a reader wants: seconds under a minute, then minutes,
- * hours, and days.
+ * hours, and days, for a freshness sentence, "Checked 3 min ago." An age a row or a fact
+ * shows is the shell's one age builder's, `metabrowser.ageLabelHtml`, in its freshness ink
+ * (docs/design-system.md, "Age").
  *
  * @param {number | null | undefined} then Unix seconds.
  * @param {number} now Unix seconds.

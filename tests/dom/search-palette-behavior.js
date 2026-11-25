@@ -1441,7 +1441,7 @@ async function pullSearchSession() {
   equal("a late PR is appended after the file rows", mixed, [
     "render.js",
     "src/renderer.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged",
+    "Fix <em>renderer</em>, pull request #123, Merged",
   ]);
   equal("a late PR leaves every painted file row in place", mixed.slice(0, 2), firstPaint);
   const mixedPull = mixed[2];
@@ -1477,7 +1477,7 @@ async function pullSearchSession() {
   equal("newly cached PRs update the standing title query", grown, [
     "render.js",
     "src/renderer.js",
-    "Pull request #124, Render the latest state, Closed",
+    "Render the latest state, pull request #124, Closed",
     mixedPull,
   ]);
   const grownPull = grown[2];
@@ -1549,7 +1549,7 @@ async function pullSearchSession() {
   const prefix = choices();
   const selectedAfterPrefixGrowth = currentChoice();
   equal("the exact PR precedes the other numeric prefix matches", prefix, [
-    "Pull request #12, Exact number, Draft",
+    "Exact number, pull request #12, Draft",
     grownPull,
     mixedPull,
   ]);
@@ -1593,7 +1593,7 @@ async function pullSearchSession() {
     "span.search-palette-label"
   ];
   equal("a prefixed title is one pull request", prefixedChoices, [
-    "Pull request #125, feat(chart): chart the strategies, Open",
+    "feat(chart): chart the strategies, pull request #125, Open",
   ]);
   equal("each part of a prefixed title marks its own match", prefixedTitle, [
     { "span.title-prefix": ["feat(", { mark: "chart" }, "):"] },
@@ -1639,7 +1639,7 @@ async function pullSearchSession() {
   await warmComplete;
   const cold = choices();
   equal("an empty cold catalog can populate within one query", cold, [
-    "Pull request #77, Cold catalog match, Open",
+    "Cold catalog match, pull request #77, Open",
   ]);
   key("Enter");
   await settle();

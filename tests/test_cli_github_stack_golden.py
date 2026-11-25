@@ -28,7 +28,9 @@ member's that has one (mb-ri96). 10's block is pinned to stack 70's pair, so 70'
 guide reads ready, and it is left out of 10's rendered description; 8's, pinned to 8's own
 head, is below 10 there and is 73's guide, out of date, since 73's top is 9. The guide's
 answers, each under the step of the stack's story it is read at, are
-``cli-github-stack-guide.txt``, so each transcript stays inside the review budget.
+``cli-github-stack-guide.txt``. Stack 70's comparison and the routes that admit it are
+``cli-github-stack.txt``; 71, 72, 73, a number no stack has, and 70's move are
+``cli-github-stack-states.txt``. So each transcript stays inside the review budget.
 """
 
 from __future__ import annotations
@@ -184,6 +186,9 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     # The stack's guide (mb-ri96) has a transcript of its own, cli-github-stack-guide.txt,
     # which these collect, so each stays inside the review budget (devtools/check_goldens.py).
     guide_blocks: list[str] = []
+    # The stacks other than 70 whole, and 70's move, have one of their own too,
+    # cli-github-stack-states.txt, which these collect.
+    states: list[str] = []
     into = [blocks]
 
     def run(*args: str, gh_free: bool = True) -> Any:
@@ -201,11 +206,12 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     def in_guide(heading: str, *args: str, gh_free: bool = True) -> Any:
         """Run `metab` on *args* into the guide's transcript under *heading*."""
         guide_blocks.append(heading)
+        main = into[0]
         into[0] = guide_blocks
         try:
             return run(CANONICAL, *args, gh_free=gh_free)
         finally:
-            into[0] = blocks
+            into[0] = main
 
     def read_guide(heading: str, route: str) -> Any:
         """Read *route*, a guide's, into the guide's transcript under *heading*."""
@@ -362,6 +368,9 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     )
     assert "snapshot_expired" in image_stale.stdout
 
+    # From here on, the stacks' other states, and 70's move, are their own transcript's.
+    first_blocks, blocks = blocks, states
+    into[0] = blocks
     blocks.append(
         "## A member the top's head lacks: 7's fork head is in no history of 10's, so it adds"
         " no file and is named in `lacking`.\n"
@@ -425,20 +434,26 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "status: 400" in refused.stdout
 
     shown = in_guide(
-        "## The stack's page, as `--show` reports it: its guide, Guided Review as its front"
-        " page's tab, and Files at Files' own address.\n",
+        "## The stack's page, as `--show` reports it: the merge its header shows, its guide,"
+        " Guided Review as its front page's tab, and Changes at Changes' own address. Its files"
+        " are its header's Diff summary, so there is no Files tab to show.\n",
         "--show",
         "/stack/70",
     )
     assert "kind: pull-stack" in shown.stdout
     assert "guide=#10 tab=guided" in shown.stdout
+    changes_shown = in_guide("", "--show", "/stack/70/changes")
+    assert "tab=changes" in changes_shown.stdout
     files_shown = in_guide("", "--show", "/stack/70/files")
-    assert "tab=files" in files_shown.stdout
+    assert files_shown.exit_code != 0
     guided_shown = in_guide("", "--show", "/stack/70/guided")
     assert "guide=#10 tab=guided" in guided_shown.stdout
 
-    blocks.append("## The stack's page at a file, as `--show` reports it: its kind and layers.\n")
-    file_shown = run(CANONICAL, "--show", "/stack/70/changes/docs/draft.md")
+    file_shown = in_guide(
+        "## The stack's page at a file, as `--show` reports it: its kind and layers.\n",
+        "--show",
+        "/stack/70/changes/docs/draft.md",
+    )
     assert "kind: pull-stack" in file_shown.stdout
     assert "layers=2/2:#10" in file_shown.stdout
 
@@ -473,9 +488,9 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "status: 410" not in kept_rendered.stdout
     never = api(comparison["route"].replace(comparison["key"], "0" * 32))
     assert "status: 410" in never.stdout
-    # The guide follows the comparison the page draws, as Files, Docs, and Changes do: at the
-    # current pair, 10 alone, its pins are behind; at the pair the page still draws, it reads
-    # as it did, until the reader takes the new comparison.
+    # The guide follows the comparison the page draws, as the Diff summary, Docs, and Changes
+    # do: at the current pair, 10 alone, its pins are behind; at the pair the page still
+    # draws, it reads as it did, until the reader takes the new comparison.
     now = run_metab((CANONICAL, "--api", f"{GUIDE}?stack=70&step=2")).payload()
     assert (now["state"], now["comparison"]["merge_base"]) == ("stale", pull_origin["topic"])
     still = read_guide(
@@ -558,7 +573,8 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert refused_twice["message"] == "Use one stack-review block in the pull request description."
 
     for name, written in (
-        ("cli-github-stack.txt", blocks),
+        ("cli-github-stack.txt", first_blocks),
+        ("cli-github-stack-states.txt", states),
         ("cli-github-stack-guide.txt", guide_blocks),
     ):
         rendered_text = _scoped("".join(written))

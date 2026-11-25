@@ -46,24 +46,21 @@ pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 # Each surface that shows a commit's or a pull request's title, and how its source draws
 # the title: through the SDK's titleNodes, the shell's titleNodes, or titleHtml.
 SURFACES = (
-    # A Pulls row, drawn and patched.
+    # A Pulls row, drawn and patched by the member row's builder (stack-member-row.js, below).
     (
         PLUGINS / "github" / "pulls-panel.js",
-        'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))',
+        "stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN)",
     ),
-    (
-        PLUGINS / "github" / "pulls-panel.js",
-        "entry.title.replaceChildren(...mb.titleNodes(row.title));",
-    ),
-    # The pull request page's title, the record's or, cold, its Pulls row's; its stack menu's
-    # members; and its Conversation's commits.
+    # The pull request page's title, the record's or, cold, its Pulls row's; the member row of
+    # its stack menu and of a stack's page (stack-member-row.js); and its Conversation's
+    # commits.
     (
         PLUGINS / "github" / "pull-page.js",
         'h("span", { class: "github-pull-title-text" }, mb.titleNodes(title))',
     ),
     (
-        PLUGINS / "github" / "pull-page.js",
-        "row.title.replaceChildren(...deps.titleNodes(title));",
+        PLUGINS / "github" / "stack-member-row.js",
+        "title.replaceChildren(...titleNodes(words));",
     ),
     (PLUGINS / "github" / "pull-page.js", "titleNodes: mb.titleNodes,"),
     (

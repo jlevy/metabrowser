@@ -581,7 +581,10 @@ async function run() {
     whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     ...require("./sdk-ref-fixture.js").refHelpers(document),
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
     formatTimestamp: () => "now",
     navigation: { href: () => "/view/" },
     sourceKind: () => "filesystem",

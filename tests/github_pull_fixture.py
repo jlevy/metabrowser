@@ -41,6 +41,7 @@ the QA runbook's pull-request page walkthrough does::
     github_pull_fixture.py <directory> --serve <number> <port>
 
 With ``--guided`` the descriptions of 7 and 8 carry guides, and 9's two blocks;
+``--guided-stack`` adds a native stack's guide to 10's, for a stack whose top is 10;
 ``--describe`` then writes one of ``GUIDE_VARIANTS`` or ``BUILT_VARIANTS`` into a cached
 description, pinned as the guide already there is::
 
@@ -1323,6 +1324,7 @@ def build_home(
     guided: bool = False,
     documents: bool = False,
     large: bool = False,
+    stack_guide: bool = False,
 ) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
@@ -1331,7 +1333,8 @@ def build_home(
     *documents* too, pull request 7 also adds a YAML file, and its guide ends on a step that
     cites it and a Markdown file whole. With *large* as well, it adds a Markdown file whose
     whole patch charges past a step's budget for whole files, which that step cites too
-    (:data:`_DOCUMENT_FILES`).
+    (:data:`_DOCUMENT_FILES`). With *stack_guide*, 10's description also carries the guide
+    of a native stack whose top it is (:data:`_STACK_GUIDE_ITEMS`).
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -1351,6 +1354,8 @@ def build_home(
     answers = scenario(origin)
     if guided:
         _add_guides(origin, answers, documents=kept if documents else ())
+    if stack_guide:
+        _add_stack_guide(origin, answers)
     environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
@@ -1630,6 +1635,45 @@ def _document_step(paths: tuple[str, ...]) -> str:
     )
 
 
+# The guide of a stack whose bottom's merge base is the stand-in's base and whose top is 10,
+# as stack 70 (8, then 10) reads it: a group with a note over the layers, then the draft
+# whole, as tests/test_cli_github_stack_golden.py's top guide reads them without the group.
+_STACK_GUIDE_ITEMS: Final = """\
+    - title: Orientation
+      note: The stack's two layers, bottom first.
+      items:
+        - title: The layers
+          note: 8 extends the guide; 10 starts a draft on top of it.
+          references:
+            - {pull: 8}
+            - {pull: 10}
+    - title: The draft
+      note: Read the draft whole.
+      references:
+        - {path: docs/draft.md}
+"""
+
+
+def _add_stack_guide(origin: Origin, answers: dict[str, Any]) -> None:
+    """10's description, with a `stack-review` block pinned to the base and 10's head after
+    what it says: the guide of a stack whose top is 10, which 10 carries."""
+    pull = answers["api"]["repos/octo/demo/pulls/10"]["body"]
+    pull["body"] = f"""{pull["body"]}
+
+```stack-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "{origin["base"]}"
+    head: "{origin["draft_head"]}"
+  items:
+{_STACK_GUIDE_ITEMS}```
+"""
+
+
 def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: tuple[str, ...]) -> None:
     fence = guide_body(origin)
     api = answers["api"]
@@ -1779,13 +1823,18 @@ def write_damaged_records(home: Path) -> None:
     write_private_file_atomic(home, source_pull_record(slug, 13), b"{not json")
 
 
-def serve_stand_in(directory: Path, number: int, port: int, *, exit_on_eof: bool = False) -> None:
+def serve_stand_in(
+    directory: Path, number: int, port: int, *, exit_on_eof: bool = False, checkout: bool = False
+) -> None:
     """Serve pull request *number* from a home :func:`build_home` wrote, for a browser.
 
     The same seams as :func:`build_home`, with the real clock, so the records read as
     stale and a refresh through the page asks the fake ``gh`` again. Nothing leaves
     ``127.0.0.1``: the mirror refreshes from the ``file://`` origin. With *exit_on_eof* the
-    server stops when its standard input closes, as a test that owns it needs.
+    server stops when its standard input closes, as a test that owns it needs. With
+    *checkout* it serves a reader's clone of the origin (:func:`clone_checkout`), made beside
+    the home, which lacks 7's head, so a guide's commit row names that commit, fetched with
+    its pull request, as not in this checkout.
     """
 
     from metabrowser.cache import acquire
@@ -1802,13 +1851,16 @@ def serve_stand_in(directory: Path, number: int, port: int, *, exit_on_eof: bool
     def remote_url_for(source: GitSource) -> str:
         return local if source.normalized == CANONICAL else source.normalized
 
+    served = f"{CANONICAL}/pull/{number}"
+    if checkout:
+        origin = Origin(directory / "github-pull-origin.git", {})
+        served = str(clone_checkout(origin, directory / "checkout"))
     with (
         _patched(acquire, "remote_url_for", remote_url_for),
         _patched(acquire, "require_acquisition_git", lambda: version),
     ):
         _run_cli(
-            [f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)]
-            + (["--exit-on-eof"] if exit_on_eof else [])
+            [served, "--no-open", "--port", str(port)] + (["--exit-on-eof"] if exit_on_eof else [])
         )
 
 
@@ -1892,20 +1944,23 @@ if __name__ == "__main__":
     elif len(sys.argv) == 3 and sys.argv[2] == "--checkout":
         build_checkout_home(Path(sys.argv[1]).resolve())
     elif (
-        len(sys.argv) in (5, 6)
+        len(sys.argv) in (5, 6, 7)
         and sys.argv[2] == "--serve"
-        and sys.argv[5:] in ([], ["--exit-on-eof"])
+        and sys.argv[5:] in ([], ["--exit-on-eof"], ["--checkout"], ["--checkout", "--exit-on-eof"])
     ):
         serve_stand_in(
             Path(sys.argv[1]).resolve(),
             int(sys.argv[3]),
             int(sys.argv[4]),
-            exit_on_eof=sys.argv[5:] == ["--exit-on-eof"],
+            exit_on_eof="--exit-on-eof" in sys.argv[5:],
+            checkout="--checkout" in sys.argv[5:],
         )
     elif len(sys.argv) == 3 and sys.argv[2] == "--files":
         build_home(Path(sys.argv[1]).resolve(), files=True)
     elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
         build_home(Path(sys.argv[1]).resolve(), guided=True)
+    elif len(sys.argv) == 3 and sys.argv[2] == "--guided-stack":
+        build_home(Path(sys.argv[1]).resolve(), guided=True, stack_guide=True)
     elif len(sys.argv) == 3 and sys.argv[2] in ("--guided-documents", "--guided-large-document"):
         build_home(
             Path(sys.argv[1]).resolve(),
@@ -1924,8 +1979,9 @@ if __name__ == "__main__":
     else:
         raise SystemExit(
             "usage: github_pull_fixture.py <directory> "
-            "[--files | --guided | --guided-documents | --guided-large-document | --checkout "
-            "| --serve <number> <port> [--exit-on-eof] "
+            "[--files | --guided | --guided-stack | --guided-documents "
+            "| --guided-large-document | --checkout "
+            "| --serve <number> <port> [--checkout] [--exit-on-eof] "
             f"| --describe <number> {{{','.join([*GUIDE_VARIANTS, *BUILT_VARIANTS])}}}] "
             "or --files-refresh <metab arguments>"
         )

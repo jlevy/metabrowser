@@ -32,8 +32,13 @@
 // clamped at two lines carries the whole title in its tooltip.
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+
+// The SDK's age builder over the ages a fake plays (sdk-ref-fixture.js), its source
+// interpolated into a page script, so a page draws the labels the session chose.
+const { agesFrom } = createRequire(import.meta.url)("./sdk-ref-fixture.js");
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -228,8 +233,8 @@ const MEASURE = `async (titles) => {
     await document.fonts.ready;
     await frames();
     out.pullsRow = { prefixed: read(title(rows[0].number)), plain: read(title(rows[1].number)) };
-    // The row's run (mb-pw8t): the title, the number, and the toggle, wrapping in as many lines
-    // as they take, never cut short.
+    // The row's run (mb-pw8t, mb-rb3n): the title, the number, and the author, wrapping in as
+    // many lines as they take, never cut short.
     const heading = title(rows[0].number).closest(".github-pulls-heading");
     const lineHeight = parseFloat(getComputedStyle(heading).lineHeight);
     out.pullsHeading = {
@@ -284,7 +289,7 @@ const MEASURE = `async (titles) => {
         shortCommit: mb.shortCommit,
         countPartsNodes: mb.countPartsNodes,
         formatInteger: mb.formatInteger,
-        formatAge: () => ({ label: "2mo ago", className: "age-old" }),
+        ...(${agesFrom})(document, () => ({ label: "2mo ago", className: "age-old" })),
         formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
         navigation: { href: () => "/view/" },
         sourceKind: () => "filesystem",

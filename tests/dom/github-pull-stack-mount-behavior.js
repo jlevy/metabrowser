@@ -177,7 +177,10 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     getRegisteredView: () => ({ render: async () => ({ dispose() {} }) }),
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
     formatTimestamp: () => "now",
     navigation: { href: () => "/view/" },
     sourceKind: () => "git_revision",
@@ -313,13 +316,19 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(allLinks()[0].textContent, "Whole stack");
   assert.deepEqual(
     memberLinks().map((item) => item.textContent),
-    ["Stack change 8 3/3 · #8", "Stack change 7 2/3 · #7", "Stack change 6 1/3 · #6"],
+    [
+      "Stack change 8 3/3 · #8 · contributor",
+      "Stack change 7 2/3 · #7 · forker",
+      "Stack change 6 1/3 · #6 · contributor",
+    ],
   );
   // Every member is one line in one layout (mb-as06): the state icon, then the title, whose
   // whole is the member's tip, then, together at the line's end, the bold place, a muted dot,
-  // and the number, in a Pulls row's order, the title, the place, and the number (mb-1kzu,
-  // mb-pw8t), so a reader and a screen reader alike tell two members of one title apart. The page's own member has the header's state; a member
-  // the Pulls list has not listed keeps the icon's slot, empty.
+  // the number, and another dot and the author, in a Pulls row's order, the title, the place,
+  // the number, and the author (mb-1kzu, mb-pw8t, mb-x0z1), so a reader and a screen reader
+  // alike tell two members of one title apart. The page's own member has the header's state and
+  // author; a member the Pulls list has not listed keeps the icon's slot empty, and every other
+  // member has the author the stacks route read with its title.
   const classOf = (node) => node.className || node.getAttribute("class");
   const layout = (link) => ({
     parts: link.children.map(classOf),
@@ -335,6 +344,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "strong.github-pull-stack-member-position",
     "span.github-pull-stack-dot",
     "span.github-pull-stack-member-number",
+    "span.github-pull-stack-member-by",
   ];
   const parts = ["github-pull-state-icon", "github-pull-stack-member-copy"];
   assert.deepEqual(memberLinks().map(layout), [
@@ -343,9 +353,18 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     { parts, line, state: null, named: null, tip: "Stack change 6" },
   ]);
   assert.deepEqual(
-    memberLinks().map((link) => link.children[1].children.at(-1).textContent),
-    ["#8", "#7", "#6"],
-    "each member's number ends its line",
+    memberLinks().map((link) =>
+      link.children[1].children
+        .filter((node) => typeof node === "object")
+        .slice(-2)
+        .map((node) => node.textContent),
+    ),
+    [
+      ["#8", " · contributor"],
+      ["#7", " · forker"],
+      ["#6", " · contributor"],
+    ],
+    "each member's number is followed by its author, which ends its line",
   );
   // Once the Pulls list has said the others' states, the menu opened again draws them.
   pullState.noteListed(source, "all", [
@@ -466,6 +485,29 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert(previous);
   assert(following);
   assert.equal(anchors[2].getAttribute("aria-current"), "page");
+  // Each member's author follows its number, after a dot (mb-x0z1): the page's own for the pull
+  // request it shows, and the stack's for the others, #6 and #8 here. The Whole stack row has
+  // the stack's glyph in the icon's slot (mb-7cn4).
+  const byOf = (anchor) =>
+    [...anchor.descendants()].find(
+      (element) => element.getAttribute("class") === "github-pull-stack-member-by",
+    );
+  assert.equal(byOf(anchors[2]).hidden, false);
+  assert.equal(byOf(anchors[2]).textContent, " · forker");
+  assert.deepEqual(
+    [anchors[1], anchors[3]].map((anchor) => [byOf(anchor).hidden, byOf(anchor).textContent]),
+    [
+      [false, " · contributor"],
+      [false, " · contributor"],
+    ],
+  );
+  assert.deepEqual(
+    anchors[0].children.map((node) => node.getAttribute("class")),
+    ["github-pull-stack-icon", "github-pull-stack-member-copy"],
+  );
+  // This fake parser makes no glyph, so the slot stands empty here and keeps the column; the
+  // stacks Chrome check pins the glyph itself and where it and the words start.
+  assert.equal(anchors[0].children[0].children.length, 0, "the slot stands without a glyph");
   next.activate();
   assert.equal(next.hasStack(), true);
   assert.equal(next.moveStack(-1), true);

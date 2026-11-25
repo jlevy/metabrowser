@@ -722,44 +722,6 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
         assert "data-copy-path" not in source, "a local path-copy contract reappeared"
 
 
-def test_age_is_one_primitive_everywhere() -> None:
-    """An age is an age: one formatter, one styling rule, and call sites
-    that add positioning only."""
-    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
-    assert "function age(epochSeconds, options = {})" in formatters, (
-        "the shared age primitive moved"
-    )
-    for name in ("git-panel.js", "app.js"):
-        consumer = (STATIC / name).read_text(encoding="utf-8")
-        assert "MetabrowserFormatters" in consumer and "age(" in consumer, (
-            f"{name} must take its ages from the shared primitive"
-        )
-    tiers = _rule(
-        styles, ":is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
-    )
-    for declaration in ("color:", "font-weight:", "font-variant-numeric:"):
-        assert declaration in tiers, f"the age primitive lost {declaration}"
-    # An age is secondary metadata, which reads at the size of the text it sits in
-    # ("Type Scale"; mb-ctlu): the primitive sets no size, and no rule sets one on an age.
-    assert "font-size" not in tiers, "an age takes the size of the text it sits in"
-    # The classes an age's own element carries: the primitive's tiers and each call site's.
-    age_selector = re.compile(
-        r"\.(age-(live|sec|min|hr|day|wk|old)|tree-item-age|git-graph-age|git-commit-age"
-        r"|git-history-summary-age|github-pulls?-age)(?![\w-])"
-    )
-    for sheet in _stylesheets():
-        for selector, declarations in _rules_of(sheet):
-            assert not (age_selector.search(selector) and "font-size" in declarations), (
-                f"{sheet.name}: {selector} sizes an age"
-            )
-    # A call site that restates color or weight has forked the vocabulary.
-    graph_age = _rule(styles, ".git-graph-age")
-    assert "color:" not in graph_age and "font-weight:" not in graph_age, (
-        ".git-graph-age must carry positioning only"
-    )
-
-
 def test_branch_chips_have_their_own_ground() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert "background: var(--git-ref-bg)" in _rule(styles, ".git-ref")
@@ -1285,11 +1247,14 @@ _PAGE_HEADER_LINES = (
 
 
 def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
-    """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
+    """A commit's, a pull request's, and a stack's page have one header ("Page Headers").
+
+    One since mb-26zj, and the stack's since mb-cm31.
 
     Each is a `.page-header`, with its first line `--page-title-gap` under the title and
     the common line gap beneath it. The pull request adds half a gap on each side of its
-    size line. Every line under the title but the labels is a `.page-header-line` at
+    size line. Every line under the title but the labels and a stack's members card is a
+    `.page-header-line` at
     `--body-font-size`, including the ages and Diff summary, whose text the diff plugin sets at the
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
@@ -1325,7 +1290,7 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
         "var(--page-header-size-margin)"
     )
     # An age in a line takes the line's size because the age primitive sets none
-    # (test_age_is_one_primitive_everywhere), so no rule restates it here.
+    # (tests/test_age_single_source.py), so no rule restates it here.
     assert not any(":is(.age-live" in selector for selector in shell if ".page-header" in selector)
     diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     assert diff[".metabrowser-diff-host .diff-summary"]["font-size"] == "var(--body-font-size)"
@@ -1366,6 +1331,28 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     ):
         assert f'class: "{row} page-header-line"' in page, row
     assert 'class: "github-pull-labels"' in page, "the labels row is a row of chips"
+    # A native stack's page is a pull request's header for the whole stack ("The Stack
+    # Page"): the same header and lines, every line under the title but its members, the
+    # stack menu's member rows in a page card, at the menu's size and a card's inset, which
+    # tests/dom/github-stack-page-chrome.mjs measures against the menu's and
+    # tests/dom/github-stack-page-layout-chrome.mjs against a card's head.
+    stack = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-page.js").read_text(encoding="utf-8")
+    assert 'class: "github-pull-header page-header page-reading-column"' in stack
+    for row in (
+        "github-pull-branches",
+        "github-pull-status",
+        "github-pull-size",
+        "github-pull-summary metabrowser-diff-host",
+    ):
+        assert f'class: "{row} page-header-line' in stack, row
+    assert 'class: "github-pull-stack-members page-card",' in stack, "the members are a card"
+    assert github[".github-pull-stack-members .github-pull-stack-member"] == {
+        "padding-inline": "var(--github-pull-text-inset)"
+    }, "a member row is inset as a card's head and text are"
+    # Its body takes a pull request's columns ("The Stack Page's Spacing"): it starts in the
+    # reading column, and `bodyInColumn` decides it with each plan, as `diffTab` does there.
+    assert 'class: "github-pull-body page-reading-column"' in stack
+    assert 'body.classList.toggle("page-reading-column", bodyInColumn(shown, tab));' in stack
 
 
 def test_a_person_is_one_identity_on_every_page() -> None:
@@ -1695,7 +1682,6 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
     ("agents/agent-log.css", ".log-event-kind"): "a badge",
-    ("diff/styles.css", ".diff-file-marks"): "a row of layer chips, each a link (fileMarks)",
     ("github/styles.css", ".github-pull-labels"): "a row of label chips",
     ("github/styles.css", ".github-pull-label"): "a label chip",
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
@@ -2618,11 +2604,14 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         assert f'"{name}"' in state
         assert name not in icons, f"{name} is back in the shell's eager icon registry"
     assert 'fill="none" stroke="currentColor"' in state, "a state's glyph takes its color"
-    # A row and its page match: one state's icon, from one module.
-    assert "pullStateIcon(" in panel and "pullStateIcon(" in page
+    # A row and its page match: one state's icon, from one module; a Pulls row draws its
+    # icon with its fields (stack-member-row.js).
+    member_row = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-member-row.js").read_text(
+        encoding="utf-8"
+    )
+    assert "pullStateIcon(" in member_row and "pullStateIcon(" in page
     assert 'aria-label", PULL_STATES[state].label' in state
-    # Ages, filters, buttons, and the spinner are the shell's.
-    assert "mb.formatAge(" in panel
+    # Filters, buttons, and the spinner are the shell's.
     assert "controls.groupHtml(" in panel
     assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
     assert 'class: "github-pulls-status nav-metadata"' in panel
@@ -2667,8 +2656,13 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
-    assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
-    assert 'h("span", { class: "github-pull-stack-member-title" })' in page
+    # A Pulls row, the stack menu, a stack's page, and a guide's pull request row draw a pull
+    # request's fields with one builder (stack-member-row.js), its title through the SDK's
+    # titleNodes.
+    assert "stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN)" in panel
+    assert "stackMemberRow(link, deps.titleNodes, deps.identity)" in page
+    assert 'title: "github-pulls-title"' in member_row
+    assert 'title: "github-pull-stack-member-title"' in member_row
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:
         assert github[title]["color"] == "var(--text)", title
@@ -2715,7 +2709,6 @@ _PULL_NUMBERS = frozenset(
         ".github-pull-stack-position",
         ".github-pull-stack-member-position",
         ".github-pull-stack-member-number",
-        ".github-pull-guide-row-number",
         ".github-pull-guide-reference-pull",
         ".search-palette-pull-number",
         ".source-ref-selector-pull-number",
@@ -3008,24 +3001,26 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # A Pulls row names no branches (the pull request's page does) (mb-lkkt, mb-pw8t): its
-    # run is the title, the place, the number, and the lines, the number never breaking, and
-    # its last line the author, in the row's type, then the age, the author's name ending in
-    # an ellipsis where the line has no room for it.
+    # A Pulls row names no branches (the pull request's page does) (mb-lkkt, mb-pw8t, mb-rb3n):
+    # its run is the title, the place, the number, and the author, the number never breaking,
+    # the author in the row's type and its name ending in an ellipsis only where it is wider
+    # than a line; its last line is the lines, and the age at the row's end.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     assert ".github-pulls-meta" not in github and ".github-pulls-line" not in github
     assert github[".github-pulls-number"]["white-space"] == "nowrap", "the number never breaks"
-    byline = github[".github-pulls-byline"]
-    assert (byline["height"], byline["grid-template-columns"]) == (
-        "var(--github-pulls-change-line)",
-        "minmax(0, 1fr) 5ch",
+    assert ".github-pulls-byline" not in github, "the author is in the run"
+    assert github[".github-pulls-row > .github-pulls-tail"]["height"] == (
+        "var(--github-pulls-change-line)"
     )
-    # The author is the last line's secondary metadata, at its size, which it inherits.
+    assert github[".github-pulls-tail > .github-pulls-age"]["justify-self"] == "end"
+    # The author is the run's secondary metadata, at its size, which it inherits.
     assert "font-size" not in github[".github-pulls-by"]
     assert ".github-pulls-id" not in github, "the run names the number once"
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
-    by = github[".github-pulls-by"]
-    assert (by["min-width"], by["overflow"]) == ("0", "hidden"), "the author gives way to the age"
+    assert github[".github-pulls-by"]["--actor-avatar-size"] == (
+        "var(--github-pull-row-avatar-size)"
+    ), "a list row's avatar"
+    assert github[".github-pulls-by > .github-pull-identity"]["max-width"] == "100%"
     assert ".github-pulls-by:has(.actor-avatar)" not in github
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
@@ -3044,8 +3039,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # Branch names and file paths are chrome: no `<code>` for either.
     assert 'h("code"' not in page
     assert "mb.mergeRefs(" in page and 'kind: "remote"' in page
-    # One age, not a timestamp at each call site.
-    assert "mb.formatAge(" in page
+    # One exact time, in the age's tooltip, not a timestamp at each call site.
     assert page.count("mb.formatTimestamp(") == 1, "the exact time belongs in the age's tooltip"
     assert "`file-header-badge github-pull-badge github-pull-${kind}`" in page
     assert 'class: "notice github-pull-notice"' in page
@@ -3117,8 +3111,15 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # The events the line joins: the description, each comment and review, and each commit.
     assert page.count("github-pull-event") == 3, "the description, a card, and a commit"
     # Every author there is the shell's identity, whose avatar's box is there for an author
-    # without one, the person glyph in it (mb-nunw); only a Pulls row asks for none.
-    assert page.count("authorLabel(mb, ") == 4, "the header, the description, a card, a reply"
+    # without one, the person glyph in it (mb-nunw); only a Pulls row, a stack menu member, and
+    # a guide's pull request row (mb-x0z1) ask for none.
+    assert page.count("authorLabel(mb, ") == 6, (
+        "the header, the description, a card, a reply, a member, a guide's pull request row"
+    )
+    # Biome sets the guide's on lines of their own, so its braces are read past white space.
+    assert len(re.findall(r"\{\s*placeholder: false,?\s*\}", page)) == 2, (
+        "a stack menu member and a guide's pull request row"
+    )
     assert "{ slot: true }" not in page and "github-pull-avatar-slot" not in github
     shell = dict(_rules_of(STATIC / "styles.css"))
     avatar = shell[".actor-avatar"]

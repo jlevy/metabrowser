@@ -1133,9 +1133,12 @@ async def _pull_files(
 
 def _stack_place(
     stacks: Sequence[NativeStack], number: int, within: int | None
-) -> dict[str, int] | None:
-    """Pull request *number*'s place in stack *within* when it is a member, else in the
-    first stack that holds it, as `{number, place, count}`, or ``None`` in none."""
+) -> dict[str, int | bool] | None:
+    """Pull request *number*'s place in stack *within*, the guide's own, when it is a
+    member, else in the first stack that holds it, as `{number, place, count, own}`, or
+    ``None`` in none. *own* says the place is in the guide's own stack, which goes without
+    saying, so its row shows the position bare, and another stack's it names
+    (`namedStackPosition` in pull-stacks.js; docs/design-system.md, "Stacks")."""
     holding = [stack for stack in stacks if number in stack.pulls]
     if not holding:
         return None
@@ -1144,12 +1147,13 @@ def _stack_place(
         "number": stack.number,
         "place": stack.pulls.index(number) + 1,
         "count": len(stack.pulls),
+        "own": stack.number == within,
     }
 
 
 def _pull_targets(carrier: _Carrier, cited: Sequence[tuple[int, int]]) -> dict[int, _Target]:
-    """Each `{pull}` of *cited*, by its place in the step and its number: its title and
-    state, from its cached record or else its catalog row, and its place in its stack, from
+    """Each `{pull}` of *cited*, by its place in the step and its number: its title, state,
+    and author, from its cached record or else its catalog row, and its place in its stack, from
     the stack snapshot, or `not_cached` when this copy knows neither. Blocking and bounded:
     the snapshot once, and a record and a catalog row for each, through their parse caches.
     """
@@ -1169,6 +1173,16 @@ def _pull_targets(carrier: _Carrier, cited: Sequence[tuple[int, int]]) -> dict[i
             found[at] = ("not_cached", href, None)
             continue
         title = held.pull.title if held is not None else row.title if row is not None else None
+        # Its author follows its number wherever it is named (docs/design-system.md, "Authors
+        # Follow Pull Requests").
+        author = held.pull.author if held is not None else row.author if row is not None else None
+        avatar = (
+            held.pull.author_avatar_url
+            if held is not None
+            else row.author_avatar_url
+            if row is not None
+            else None
+        )
         state = member_state(
             held,
             row.state if row is not None else None,
@@ -1176,7 +1190,11 @@ def _pull_targets(carrier: _Carrier, cited: Sequence[tuple[int, int]]) -> dict[i
             row.merged if row is not None else False,
         )
         place = _stack_place(stacks, number, within)
-        found[at] = ("ready", href, {"title": title, "state": state, "stack": place})
+        found[at] = (
+            "ready",
+            href,
+            {"title": title, "state": state, "stack": place, "author": author, "avatar": avatar},
+        )
     return found
 
 
@@ -1819,7 +1837,7 @@ async def stack_guided_review(
     (:func:`stack_guide_carrier`), and the answer names that member as ``carrier``, its
     page, which the notes' links were made absolute against, as ``carrier_url``, and its
     record's revision as ``record_revision``. Its references are read against a combined
-    comparison of the stack, the one its page's Files, Docs, and Changes draw, and its pins
+    comparison of the stack, the one its page's Diff summary, Docs, and Changes draw, and its pins
     against that comparison's pair: the bottom member's merge base and the top member's
     head. *drawn* names the comparison the page draws, by its two commits and its key, as
     ``stack-comparison`` takes it: the stack's current pair, or one the stack route gave

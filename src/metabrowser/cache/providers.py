@@ -173,6 +173,10 @@ class CounterpartHost(Protocol):
         """The page that lists the pull requests of the repository at *clone_url*."""
         ...
 
+    def stack_url(self, clone_url: str, number: int) -> str | None:
+        """The page of native stack *number* of the repository at *clone_url*."""
+        ...
+
     def file_anchor(self, path: bytes) -> FileAnchor:
         """The anchor of the changed file at repository path *path* on a comparison's page."""
         ...

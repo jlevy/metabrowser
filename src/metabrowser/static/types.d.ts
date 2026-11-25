@@ -27,11 +27,6 @@ type MetabrowserRenderContext = {
   /** How the host opens one of a comparison's changed files at its own address, as a pull
    *  request's Changes does at `/pull/<n>/files/<path>`; absent where a file has none. */
   openFile?: (path: string) => void;
-  /** A host's marks on each file's bar and Diff summary row, each a short link, as a stack's
-   *  page names the layers that change a file ("2/4"); a plain press takes *open* if given. */
-  fileMarks?: (
-    path: string,
-  ) => ReadonlyArray<{ text: string; label: string; href: string; open?: () => void }>;
   /** How long a comparison's first screen of Markdown files waits for Rendered, for a page
    *  that keeps the comparison out of sight until its handle's `firstScreen` settles. */
   markdownHoldMs?: number;
@@ -152,9 +147,11 @@ type MetabrowserPullsPanelHandle = Readonly<{
     /**
      * *preserveScroll* keeps the list where the reader left it; *again* shows the pull
      * request again when the address names the one already current, for an open of the
-     * pull request shown (docs/design-system.md, "Navigation Reveals the Item").
+     * pull request shown (docs/design-system.md, "Navigation Reveals the Item"). *stack*,
+     * with no pull request, is the native stack whose own page the address names, whose
+     * Whole stack row the list marks.
      */
-    options?: { preserveScroll?: boolean; again?: boolean },
+    options?: { preserveScroll?: boolean; again?: boolean; stack?: number | null },
   ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
@@ -681,15 +678,25 @@ type MetabrowserRequestErrorRuntime = Readonly<{
 }>;
 
 type MetabrowserFormatterRuntime = Readonly<{
-  /** Abbreviated age and its freshness class — the one age primitive. */
-  age(
-    epochSeconds: number,
-    options?: { style?: "compact" | "relative" },
-  ): { label: string; className: string };
-  ageClass(epochSeconds: number): string;
+  /** Abbreviated age and its freshness class — the one age primitive. Its label is for words;
+   *  a drawn age is `ageLabel`'s or `ageLabelHtml`'s. */
+  age(epochSeconds: number, options?: MetabrowserAgeOptions): { label: string; className: string };
+  /** An age as every surface draws one: a span of its label in its freshness class, after
+   *  the call site's own class; empty where the time is not known. */
+  ageLabel(
+    doc: Document,
+    epochSeconds: number | null | undefined,
+    options?: MetabrowserAgeLabelOptions,
+  ): HTMLSpanElement;
+  /** `ageLabel` as escaped markup, or "" where the time is not known. */
+  ageLabelHtml(
+    epochSeconds: number | null | undefined,
+    options?: MetabrowserAgeLabelOptions,
+  ): string;
   countClass(value: number): "" | "count-large";
   /** What a change set's summary says, in a count summary's parts: "35 files changed · 2 A,
-   *  3 D, 30 M · +1,234 −3,423", its text, and its words for a screen reader. */
+   *  3 D, 30 M · +1,234 −3,423", its file count and its brief change line, its text, and its
+   *  words for a screen reader (docs/design-system.md, "Diff Summary"). */
   changeSummary(
     totals: {
       files: number | null;
@@ -700,7 +707,10 @@ type MetabrowserFormatterRuntime = Readonly<{
     entries: MetabrowserChangeLineInput["statuses"],
     formatCount: (count: number) => string,
   ): MetabrowserChangedFilesSummary;
-  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from statuses and line totals. */
+  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from statuses and line totals, each
+   *  count written with `formatCount` and an unknown one as "?": `text` as it reads, and
+   *  `label` in words, "10 added, 5 deleted, 4 modified; 1,234 lines added, 567 deleted". A
+   *  total of zero is left out; a change of no lines reads "0 lines". */
   changeLine(
     change: MetabrowserChangeLineInput,
     formatCount: (count: number) => string,
@@ -1723,8 +1733,6 @@ type FolderOverviewRegistry = Readonly<{
   registerPanel<T>(id: string, spec: FolderOverviewPanelSpec<T>): () => void;
 }>;
 
-type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
-
 type MetabrowserDirectoryTotals = Readonly<{
   path: string;
   revision: number;
@@ -1788,7 +1796,22 @@ type MetabrowserTreemapLayoutApi = {
 
 type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
-  ageLabelHtml(mtimeSeconds: number | null | undefined): string;
+  /** An age as every surface draws one (`MetabrowserFormatters.ageLabel`): its label in its
+   *  freshness class, after `options.className`, which places it. */
+  ageLabel(
+    secondsSinceEpoch: number | null | undefined,
+    options?: MetabrowserAgeLabelOptions,
+  ): HTMLSpanElement;
+  ageLabelHtml(
+    secondsSinceEpoch: number | null | undefined,
+    options?: MetabrowserAgeLabelOptions,
+  ): string;
+  /** Tell a drawn age as of now, its freshness class swapped in place; returns its label. */
+  retellAge(
+    element: Element,
+    secondsSinceEpoch: number | null | undefined,
+    options?: MetabrowserAgeOptions,
+  ): string;
   bench?: MetabrowserBench;
   debug?: MetabrowserDebug;
   errors: MetabrowserRequestErrorRuntime;
@@ -1867,9 +1890,10 @@ type MetabrowserSdk = {
     anchor: T,
     options?: { icon?: Element | "github"; position?: "before" | "after" },
   ): T;
+  /** An age in words, for a sentence or an accessible name; a drawn age is `ageLabel`'s. */
   formatAge(
     secondsSinceEpoch: number,
-    options?: { style?: "compact" | "relative" },
+    options?: MetabrowserAgeOptions,
   ): { label: string; className: string };
   formatTimestamp(secondsSinceEpoch: number): string;
   /** A commit's or pull request's title as nodes for its element: a conventional-commit
@@ -3337,6 +3361,14 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
+  /** An age's freshness tier, as a treemap's fill reads it. */
+  type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
+  /** How an age is told: `now`, epoch seconds, is the time it is told as of, by default the
+   *  clock's. */
+  type MetabrowserAgeOptions = { style?: "compact" | "relative"; now?: number };
+  /** How an age is drawn: `className` is the call site's own class, which places it and sets
+   *  nothing of its ink; `tip` is its `data-tip-text`, the exact time. */
+  type MetabrowserAgeLabelOptions = MetabrowserAgeOptions & { className?: string; tip?: string };
   /** Why a menu closed: a press outside it, focus or the window leaving it, Escape, or another menu opening. */
   type MetabrowserMenuClose = "outside" | "away" | "escape" | "other";
   /** One menu, as `metabrowser.menus.dismissible` closes it (docs/design-system.md, "Every Menu Closes Alike"). */

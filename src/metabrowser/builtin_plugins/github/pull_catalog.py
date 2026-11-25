@@ -827,12 +827,12 @@ def catalog_members(
         return None, {}
 
 
-def catalog_titles(
+def catalog_rows(
     repository: ListedRepository, reader: str, numbers: tuple[int, ...]
-) -> dict[int, str]:
-    """Read one indexed title batch, using the catalog's existing window bound."""
+) -> dict[int, PullListRow]:
+    """Read one indexed batch of rows, using the catalog's existing window bound."""
     if not numbers or len(numbers) > MAX_WINDOW:
-        raise ValueError("invalid catalog title request")
+        raise ValueError("invalid catalog row request")
     try:
         with _database(repository.home, repository.slug) as db:
             db.execute("BEGIN")
@@ -843,13 +843,13 @@ def catalog_titles(
             rows = db.execute(
                 f"SELECT number,body FROM pulls WHERE number IN ({placeholders})", numbers
             )
-            titles: dict[int, str] = {}
+            found: dict[int, PullListRow] = {}
             for number, body in rows:
                 row = PullListRow.model_validate_json(body)
                 if row.number != number:
                     return {}
-                titles[number] = row.title
-            return titles
+                found[number] = row
+            return found
     except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
         return {}
 

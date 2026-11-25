@@ -10,7 +10,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
-const { refHelpers } = require("./sdk-ref-fixture.js");
+const { agesFrom, refHelpers } = require("./sdk-ref-fixture.js");
 
 const pagePath = path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js");
 const GUIDE_ROUTE = "/api/plugin/github/guided-review";
@@ -292,7 +292,7 @@ function host({ allowlist = true } = {}) {
           ensureAsset: async () => {},
           loadKpressAssets: async () => {},
           ...refHelpers(document),
-          formatAge: () => ({ label: "now", className: "age" }),
+          ...agesFrom(document, () => ({ label: "now", className: "age" })),
           formatTimestamp: () => "now",
           navigation: { href: () => "/view/" },
           sourceKind: () => "git_revision",
@@ -389,8 +389,10 @@ function host({ allowlist = true } = {}) {
             .map((section) => {
               const row = section.querySelector(".github-pull-guide-row-link");
               if (row !== null) {
-                const place = row.querySelector(".github-pull-guide-row-place");
-                const tip = place?.dataset.tipText;
+                // A pull request's place is a stack member's, whose tip names its stack.
+                const tip = row
+                  .querySelector(".github-pull-stack-member-position")
+                  ?.getAttribute("data-tip-text");
                 return `${row.tag === "a" ? `row to ${row.href}` : "row"}: ${row.textContent.replace(/\s+/g, " ").trim()}${tip ? ` (tip: ${tip})` : ""}`;
               }
               const pull = section.querySelector(".github-pull-guide-reference-pull");
@@ -805,7 +807,25 @@ async function run() {
           target: {
             title: "Say <b>more</b>",
             state: "merged",
-            stack: { number: 71, place: 1, count: 3 },
+            // In the guide's own stack, so its place is bare.
+            stack: { number: 71, place: 1, count: 3, own: true },
+            // Its author, drawn by the page's `identity` in a stack member's row
+            // (stack-member-row.js).
+            author: "maintainer",
+            avatar: null,
+          },
+        }),
+        // In another stack, which its place names (A2 of review A on #853).
+        cited({
+          kind: "pull",
+          pull: 50,
+          href: "/pull/50",
+          target: {
+            title: "Work item 50",
+            state: "open",
+            stack: { number: 300, place: 2, count: 2, own: false },
+            author: "contributor",
+            avatar: null,
           },
         }),
         cited({ kind: "pull", pull: 2000, state: "not_cached", href: "/pull/2000" }),
@@ -842,6 +862,13 @@ async function run() {
           kind: "commit",
           commit: "f".repeat(40),
           target: { subject: "Fetched with its pull request", committed_at: null },
+        }),
+        // One with its time, which still ends its row, after the note
+        // (docs/design-system.md, "Ages End the Row").
+        cited({
+          kind: "commit",
+          commit: "d".repeat(40),
+          target: { subject: "Fetched and dated", committed_at: "2026-08-29T14:40:00Z" },
         }),
       ],
     });
@@ -1391,6 +1418,7 @@ async function run() {
         openPull() {},
         age: () => new Element("span"),
         shortCommit: (sha) => sha.slice(0, 7),
+        identity: (login) => Object.assign(new Element("span"), { textContent: login }),
         loadStyles: async () => {},
         loadDrawPatch: async () => () => ({ dispose() {} }),
         loadDrawDocument: async () => null,
@@ -1473,6 +1501,7 @@ async function run() {
         openPull() {},
         age: () => new Element("span"),
         shortCommit: (sha) => sha.slice(0, 7),
+        identity: (login) => Object.assign(new Element("span"), { textContent: login }),
         loadStyles: async () => {},
         loadDrawPatch: async () => () => ({ dispose() {} }),
         loadDrawDocument: async () => null,

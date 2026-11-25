@@ -44,8 +44,13 @@
 // header as a run's status badge changes its label in place (RUN_BADGE below).
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+
+// The SDK's age builder over the ages a fake plays (sdk-ref-fixture.js), its source
+// interpolated into a page script, so a page draws the labels the session chose.
+const { agesFrom } = createRequire(import.meta.url)("./sdk-ref-fixture.js");
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -273,14 +278,17 @@ const MEASURE = `async (name, change, tab, width) => {
       // two read the same and the row of ages is as long as a real one: "now" for all of them
       // made a 275 px row, whole to 480 px, that never reached the links (B4 of review B on
       // #506).
-      formatAge: (() => {
-        const labels = ["12d ago", "5h ago", "3d ago"];
-        const given = new Map();
-        return (seconds) => {
-          if (!given.has(seconds)) given.set(seconds, labels[given.size % labels.length]);
-          return { label: given.get(seconds), className: "age" };
-        };
-      })(),
+      ...(${agesFrom})(
+        document,
+        (() => {
+          const labels = ["12d ago", "5h ago", "3d ago"];
+          const given = new Map();
+          return (seconds) => {
+            if (!given.has(seconds)) given.set(seconds, labels[given.size % labels.length]);
+            return { label: given.get(seconds), className: "age" };
+          };
+        })(),
+      ),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
@@ -969,7 +977,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       changeLine: mb.changeLine,
       changeLineNodes: mb.changeLineNodes,
       formatInteger: mb.formatInteger,
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
@@ -1146,7 +1154,7 @@ const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
     titleNodes: mb.titleNodes,
     shortCommit: mb.shortCommit,
     countPartsNodes: mb.countPartsNodes,
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
     formatInteger: (value) => Number(value).toLocaleString("en-US"),
     navigation: { href: () => "/view/" },
@@ -1351,7 +1359,7 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       titleNodes: mb.titleNodes,
       shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
@@ -1463,11 +1471,11 @@ const CORNER_DONE = `(() => {
 })()`;
 
 // Pulls rows built as pulls-panel.js#buildRow builds them, whose order
-// github-pulls-panel-session.js pins (mb-pw8t): the row's link, its run, one flow of the
-// state icon in the row's one slot, the title, a stack member's place after a dot, the number
-// after a dot, and the toggle after a dot, the lines and the chevron, here with no lines yet,
-// every line of it in the text column; then its last line, the author and the age at the
-// row's end. Each row is a member, a level in under its stack's row.
+// github-pulls-panel-session.js pins (mb-pw8t, mb-rb3n): the row's link, its run, one flow of
+// the state icon in the row's one slot, the title, a stack member's place after a dot, the
+// number after a dot, and the author after a dot, every line of it in the text column; then
+// its last line, the lines and the chevron in the text column, here with no lines yet, and the
+// age at the row's end. Each row is a member, a level in under its stack's row.
 // The icon and the title's first box are read, from the row's top, before and after each
 // row's place arrives: the place is after the title, so nothing before it moves, and the
 // number and the toggle after it move along the run, to a next line where it takes one, which
@@ -1524,7 +1532,9 @@ const PULLS_ROWS = `async (rows, width) => {
       toggle,
       h("span", { class: "github-pulls-change-words", hidden: "" }),
     ]);
-    const tail = h("span", { class: "github-pulls-tail" }, [change]);
+    const age = h("span", { class: "github-pulls-age", "aria-hidden": "true" }, ["12mo"]);
+    const tail = h("span", { class: "github-pulls-tail" }, [change, age]);
+    const by = h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [identity]);
     const heading = h("span", { class: "github-pulls-heading" }, [
       icon,
       title,
@@ -1532,23 +1542,20 @@ const PULLS_ROWS = `async (rows, width) => {
       separator(),
       number,
       separator(),
-      tail,
+      by,
     ]);
-    const by = h("span", { class: "github-pulls-by" }, [identity]);
-    const age = h("span", { class: "github-pulls-age" }, ["12mo"]);
-    const byline = h("span", { class: "github-pulls-byline", "aria-hidden": "true" }, [by, age]);
     // As pulls-panel.js#buildRow draws a pull request's item, its run and its last line in
-    // its link (mb-1z7j, mb-pw8t).
+    // its link (mb-1z7j, mb-pw8t, mb-rb3n).
     const anchor = h("a", { class: "github-pulls-row", href: "#", role: "treeitem", "aria-expanded": "false" }, [
       heading,
-      byline,
+      tail,
       h("span", { class: "sr-only" }, ["#" + row.number + " · " + row.author + " · 12mo"]),
     ]);
     const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [
       h("div", { class: "github-pulls-entry" }, [anchor]),
     ]);
     list.append(item);
-    return { item, anchor, heading, toggle, icon, by, byline, place, number, title, tail, age, row };
+    return { item, anchor, heading, toggle, change, icon, by, place, number, title, tail, age, row };
   });
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -1596,7 +1603,7 @@ const PULLS_ROWS = `async (rows, width) => {
   }
   await frames();
   const after = read();
-  return built.map(({ item, anchor, heading, toggle, icon, by, byline, place, number, title, tail, age, row }, at) => {
+  return built.map(({ item, anchor, heading, toggle, change, icon, by, place, number, title, tail, age, row }, at) => {
     const moved = ["icon", "title"].flatMap((name, index) =>
       JSON.stringify(before[at][index]) === JSON.stringify(after[at][index])
         ? []
@@ -1622,7 +1629,7 @@ const PULLS_ROWS = `async (rows, width) => {
     const lineOf = (r) => Math.floor((r.top + r.height / 2 - hd.top) / lh);
     // The run's lines, from its parts' fragments: a line's start is its first fragment's.
     const lines = [];
-    for (const piece of [title, place, number, tail]) {
+    for (const piece of [title, place, number, by]) {
       for (const r of piece.getClientRects()) {
         if (r.width === 0) continue;
         const k = lineOf(r);
@@ -1660,23 +1667,34 @@ const PULLS_ROWS = `async (rows, width) => {
       itemGrew: round(item.getBoundingClientRect().height - itemHeights[at]),
       height: round(box.height),
       itemHeight: round(item.getBoundingClientRect().height),
-      // The run is as tall as its lines, and ends with the toggle on its last line; the last
-      // line follows it, and the closed item is its link.
+      // The run is as tall as its lines, and ends with the author on its last line; the last
+      // line follows it, the chevron on it and the age at its end, past the chevron, and the
+      // closed item is its link.
       headingHeight: round(hd.height),
       lineHeight: round(lh),
       drawnLines: lines.length,
-      endsWithToggle: heading.lastElementChild === tail && lineOf(t) === lines.length - 1,
+      endsWithAuthor: heading.lastElementChild === by && lineOf(b) === lines.length - 1,
       lastLine:
-        Math.abs(byline.getBoundingClientRect().top - hd.bottom) < 0.5 &&
+        Math.abs(tail.getBoundingClientRect().top - hd.bottom) < 0.5 &&
+        t.top >= hd.bottom - 0.5 &&
+        a.top >= hd.bottom - 0.5 &&
+        Math.abs(a.right - (box.right - parseFloat(getComputedStyle(anchor).paddingRight))) < 0.5 &&
+        t.right <= a.left + 0.5 &&
         Math.abs(item.getBoundingClientRect().height - box.height) < 0.5,
+      tailFrom: round(change.getBoundingClientRect().left - inset),
       textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
       // The icon is the run's first line's start, one line tall, on the row's inset (mb-3vil).
       iconOnFirst: i.height > 0 && Math.abs(i.top - hd.top) < 0.5 && Math.abs(i.height - lh) < 0.5,
       iconFrom: round(i.left - inset),
-      // The author starts the last line in the text column, and its name, cut short where
-      // the line has no room, ends before the age.
-      byFrom: round(b.left - inset),
-      authorEnds: b.right <= a.left + 0.5 && name.left < b.right,
+      // The author follows the number, after its dot, and its name, one line, cut short only
+      // where it is wider than a line and never broken after a hyphen, ends the run.
+      byAfter: lineOf(b) > lineOf(n) || b.left >= n.right - 0.5,
+      authorEnds:
+        name.left < name.right &&
+        name.right <= hd.right + 0.5 &&
+        name.height < 1.5 * lh &&
+        lineOf(name) === lines.length - 1,
+      authorAt: { left: round(name.left), right: round(name.right), runRight: round(hd.right), line: lineOf(name), top: round(name.top - hd.top), height: round(name.height) },
       title: Math.round(titleBoxes.reduce((sum, r) => sum + r.width, 0) * 10) / 10,
     };
   });
@@ -2983,14 +3001,16 @@ async function main() {
             JSON.stringify(row),
           );
           // The run is as tall as its lines, never cut short, every line of it in the text
-          // column, and it ends with the toggle; the last line follows it (mb-pw8t).
+          // column, and it ends with the author; the last line follows it, the toggle on it in
+          // the text column and the age at its end (mb-pw8t, mb-rb3n).
           check(
-            `${where}: the run is as tall as its lines, each in the text column, and ends with the toggle, the last line under it`,
+            `${where}: the run is as tall as its lines, each in the text column, and ends with the author, the last line under it, the toggle and then the age at the row's end`,
             Math.abs(row.headingHeight - row.drawnLines * row.lineHeight) < 0.5 &&
               row.starts.every((start) => start !== null && Math.abs(start) < 0.5) &&
               Math.abs(row.columnFrom - row.textColumn) < 0.5 &&
-              row.endsWithToggle &&
-              row.lastLine,
+              row.endsWithAuthor &&
+              row.lastLine &&
+              Math.abs(row.tailFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
           );
           // The icon leads the run's first line, in its slot, on the row's inset (mb-3vil).
@@ -3000,8 +3020,8 @@ async function main() {
             JSON.stringify(row),
           );
           check(
-            `${where}: the author starts the last line in the text column, and ends before the age`,
-            Math.abs(row.byFrom - row.textColumn) < 0.5 && row.authorEnds,
+            `${where}: the author follows the number, and its name ends the run inside the row`,
+            row.byAfter && row.authorEnds,
             JSON.stringify(row),
           );
           check(

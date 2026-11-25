@@ -274,6 +274,13 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # main's 225,777 at 862b960c6, 14 under, with their comments already moved to types.d.ts.
 # Only a view reads them and every view mounts through the compositor, so they moved to
 # static/view-composition.js, an on-demand bundle, and the shell is back at 225,777.
+# Measured with it on 2026-11-25: the one age builder (#852) put the folder's shell at
+# 226,744 bytes, 953 over, against 225,777 at b2b88ee1c, 14 under: formatters.js gained the
+# builders and their comments, plugin-sdk.js a comment. The tree draws its ages as markup,
+# so only `ageLabelHtml` and the element form the shell's own lines use stay in
+# formatters.js, sharing the count summary's painter; `retellAge`, which only a view that
+# keeps its ages calls, moved to static/plugin-sdk-views.js, and the builders' comments and
+# the change line's moved to types.d.ts. The shell is at 225,682 bytes, 109 under.
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220
