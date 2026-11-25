@@ -1930,7 +1930,8 @@ type MetabrowserSdk = {
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
   /** How every menu closes (docs/plugins.md, "Menus"); feature-detect `menus?.dismissible`.
-   *  static/filter-controls.js sets it in every shell, so the shell's own code relies on it. */
+   *  static/filter-controls.js sets it, so a load where that script failed has none, and
+   *  the shell's own callers feature-detect it too (tests/test_menu_dismissal.py). */
   menus?: MetabrowserMenus;
   filterState?: MetabrowserFilterState;
   /** A view's letter keys and badges (SDK 0.7); feature-detect `shortcuts?.attach`. */
