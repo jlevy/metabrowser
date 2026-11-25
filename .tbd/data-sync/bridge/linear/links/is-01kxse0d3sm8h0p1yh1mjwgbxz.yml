@@ -13,9 +13,9 @@ bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
 external_key: OS-281
 external_url: https://linear.app/finterm-ai/issue/OS-281/general-diff-rendering-source-agnostic-comparison-model-renderer-and
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
 remote_updated_at: 2026-11-25T02:19:56.117Z
 state: linked
-synced_at: 2026-11-25T02:19:56.343Z
+synced_at: 2026-11-25T02:24:41.017Z
 type: lk
