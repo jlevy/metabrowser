@@ -3,9 +3,9 @@ type: is
 id: is-01m88dfdf96exb192c9gb46hfz
 title: "Address PR #811 review A: rendered Markdown views, chunked drawing, and fetched folds"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 16
+version: 17
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -27,7 +27,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T03:55:01.986Z
-updated_at: 2026-11-25T03:59:28.121Z
+updated_at: 2026-11-25T05:20:35.441Z
 started_at: 2026-11-25T03:59:28.119Z
+closed_at: 2026-11-25T05:20:35.302Z
+close_reason: "Review A addressed: 12 fixed, A12 (mb-h62j) and A13 (mb-ft4o) deferred and open. Dispositions: https://github.com/jlevy/metabrowser/pull/811#issuecomment-7153635595"
+resolution: null
+duplicate_of: null
 ---
 Review A of PR #811 (senior, round 1, head 2b90604): https://github.com/jlevy/metabrowser/pull/811#pullrequestreview-6051579395. 0 Blocker, 0 High, 3 Medium (A1-A3), 8 Low (A4-A11), 3 suggestions (A12-A14). One child bead per finding.
