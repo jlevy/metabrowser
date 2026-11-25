@@ -1299,8 +1299,7 @@ root’s view header, each of a pull request’s tabs and the changed file Chang
 commit’s page, and each of a native stack’s tabs.
 A stack’s page, each of its tabs, and each file its Changes is at open GitHub’s page of
 the whole stack, `stack/<n>`: the stack is the page’s subject, and its top member’s pull
-request, which the page’s link opened before, is one member of it
-([The Stack Page](#the-stack-page)).
+request is one member of it ([The Stack Page](#the-stack-page)).
 
 ## Control Families
 
@@ -3853,10 +3852,11 @@ never pushes the columns after it out of reach.
 **A native GitHub stack is named, placed, and listed one way wherever it appears:** the
 pull request page’s stack button and menu, a Pulls row’s place, the Pulls tab’s stack
 groups, and the stack’s own page ([The Stack Page](#the-stack-page)). The words come
-from one place, `builtin_plugins/github/pull-stacks.js` (`stackLabel`, `stackPosition`,
-`stackPositionHint`, `stackCaption` for a Pulls row’s place, `stackGroupHint` for a
-stack group’s row, and `stackMenuOrder`), and the look from one set of classes in the
-GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy of either.
+from one place, `builtin_plugins/github/pull-stacks.js` (`stackLabel`, `WHOLE_STACK`,
+`stackPosition`, `stackPositionHint`, `stackCaption` for a Pulls row’s place,
+`stackGroupHint` for a stack group’s row, and `stackMenuOrder`), and the look from one
+set of classes in the GitHub plugin’s stylesheet on the shell’s tokens, so no surface
+keeps a copy of either.
 
 | Part | Primitive | Where |
 | --- | --- | --- |
@@ -3966,9 +3966,11 @@ the same header, tab bar, and body, made of the same parts, with what a stack do
 have left out and nothing added but its members.
 It shows the stack’s combined comparison, from the bottom member’s merge base to the top
 member’s head (`GET stack`, `pull_stack.py`), and is reached from the stack menu’s Whole
-stack row. `builtin_plugins/github/stack-page.js` draws it, and
-`builtin_plugins/github/stack-member-row.js` draws its members with the stack menu’s
-classes.
+stack row. `builtin_plugins/github/stack-page.js` draws it with the pull request page’s
+own builders, exported from `pull-page.js`: `pageHeaderParts`, `titleHeading`,
+`statusLine`, `summaryPlaceholders`, and `holdDiff`; and
+`builtin_plugins/github/stack-member-row.js`, the stack menu’s builder, draws its
+members.
 
 ```text
  [Layers] Stack  #70                              ( [GitHub] View on GitHub | v )
@@ -4019,21 +4021,23 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   changed since its comparison was drawn.”
   with Show the new comparison, members the top does not contain, and members being
   fetched or that could not be, with Retry.
+  Retry and Show the new comparison are numbered, as a pull request’s status line’s
+  controls are (`numberHeaderControls`).
 - **Size line:** adapted.
   The [change size line](#change-size-line) of the files alone, “1 file changed”, since
   the stack’s answer counts no commits or bytes yet.
 - **Diff summary:** kept.
   The header’s last line, drawn from the stack’s comparison, closed at first paint as
   every Diff summary is.
-  Its rows carry the tree’s marks alone: the layer chips the page’s Files tab drew
-  beside every file, the gray places of the members that change it, “2/4”, each opening
-  the file in that member, were no part of this system and crowded a combined diff, and
-  the diff view no longer draws them.
+  Its rows carry the tree’s marks alone, as every Diff summary’s do; which members
+  change a file is each member’s page’s to say.
+  A read of it that fails leaves its row empty, and Changes’s read or Retry draws it
+  again, as a pull request’s Changes does.
 - **Tab bar:** adapted.
   The pull request’s tabs and keys, Guided Review (only when a member’s description
   carries the stack’s guide), Docs, and Changes; Conversation and Checks are each
-  member’s, and the Files tab the page had is gone, since the Diff summary lists the
-  files, as on a pull request’s page.
+  member’s, and there is no Files tab, since the Diff summary lists the files, as on a
+  pull request’s page.
 - **Guided Review, Docs, and Changes:** kept.
   A pull request’s tab bodies and drawings, in its columns, held out of sight until the
   first screen is ready, with the loading block under the hidden diff, and Docs’ Show
@@ -4055,13 +4059,15 @@ answer lands moving nothing under the title.
 settled, and the drawings the page asks for against the stack route’s recorded answers;
 `tests/dom/github-stack-guide-mount-session.js` mounts the page and holds that the rows
 of its first paint are its settled rows and that the Diff summary is closed.
-`tests/test_github_stack_page_chrome.py` measures in headless Chrome that nothing on the
-page moves from its first paint, opening the page or its tabs; that every member names
-its author; and that View on GitHub opens the whole stack.
-A member row is not measured there: the page draws it with the stack menu’s builder,
-`stackMemberRow` in `stack-member-row.js`, so it is the menu’s row by construction, and
-its ages are a pull request’s page’s, `pullAge` in `pull-page.js`, in their freshness
-ink.
+`tests/test_github_stack_page_chrome.py` measures in headless Chrome that, on a stack
+whose members’ records are read, nothing on the page moves from its first paint, opening
+the page or its tabs; that every member names its author; and that View on GitHub opens
+the whole stack. On a stack still being fetched, the status line says what is being
+fetched and then goes, moving the lines under it; that is not measured.
+A member row is not measured either: the page draws it with the stack menu’s builder,
+`stackMemberRow` in `stack-member-row.js`, so it is the menu’s row by construction.
+The guide’s ages are a pull request’s page’s, `pullAge` in `pull-page.js`, in their
+freshness ink.
 
 #### The Stack Page’s Spacing
 
