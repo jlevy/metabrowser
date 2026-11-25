@@ -1465,9 +1465,9 @@ const CORNER_DONE = `(() => {
 // Pulls rows built as pulls-panel.js#buildRow builds them, whose order
 // github-pulls-panel-session.js pins (mb-pw8t, mb-rb3n): the row's link, its run, one flow of
 // the state icon in the row's one slot, the title, a stack member's place after a dot, the
-// number after a dot, and the author and the age after a dot, every line of it in the text
-// column; then its last line, the lines and the chevron alone in the text column, here with
-// no lines yet. Each row is a member, a level in under its stack's row.
+// number after a dot, and the author after a dot, every line of it in the text column; then
+// its last line, the lines and the chevron in the text column, here with no lines yet, and the
+// age at the row's end. Each row is a member, a level in under its stack's row.
 // The icon and the title's first box are read, from the row's top, before and after each
 // row's place arrives: the place is after the title, so nothing before it moves, and the
 // number and the toggle after it move along the run, to a next line where it takes one, which
@@ -1524,10 +1524,9 @@ const PULLS_ROWS = `async (rows, width) => {
       toggle,
       h("span", { class: "github-pulls-change-words", hidden: "" }),
     ]);
-    const tail = h("span", { class: "github-pulls-tail" }, [change]);
-    const age = h("span", { class: "github-pulls-age" }, ["12mo"]);
-    const when = h("span", { class: "github-pulls-when" }, [separator(), age]);
-    const by = h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [identity, when]);
+    const age = h("span", { class: "github-pulls-age", "aria-hidden": "true" }, ["12mo"]);
+    const tail = h("span", { class: "github-pulls-tail" }, [change, age]);
+    const by = h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [identity]);
     const heading = h("span", { class: "github-pulls-heading" }, [
       icon,
       title,
@@ -1660,25 +1659,34 @@ const PULLS_ROWS = `async (rows, width) => {
       itemGrew: round(item.getBoundingClientRect().height - itemHeights[at]),
       height: round(box.height),
       itemHeight: round(item.getBoundingClientRect().height),
-      // The run is as tall as its lines, and ends with the author and the age on its last
-      // line; the last line follows it, the chevron on it, and the closed item is its link.
+      // The run is as tall as its lines, and ends with the author on its last line; the last
+      // line follows it, the chevron on it and the age at its end, past the chevron, and the
+      // closed item is its link.
       headingHeight: round(hd.height),
       lineHeight: round(lh),
       drawnLines: lines.length,
-      endsWithAge: heading.lastElementChild === by && lineOf(a) === lines.length - 1,
+      endsWithAuthor: heading.lastElementChild === by && lineOf(b) === lines.length - 1,
       lastLine:
         Math.abs(tail.getBoundingClientRect().top - hd.bottom) < 0.5 &&
         t.top >= hd.bottom - 0.5 &&
+        a.top >= hd.bottom - 0.5 &&
+        Math.abs(a.right - (box.right - parseFloat(getComputedStyle(anchor).paddingRight))) < 0.5 &&
+        t.right <= a.left + 0.5 &&
         Math.abs(item.getBoundingClientRect().height - box.height) < 0.5,
       tailFrom: round(change.getBoundingClientRect().left - inset),
       textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
       // The icon is the run's first line's start, one line tall, on the row's inset (mb-3vil).
       iconOnFirst: i.height > 0 && Math.abs(i.top - hd.top) < 0.5 && Math.abs(i.height - lh) < 0.5,
       iconFrom: round(i.left - inset),
-      // The author follows the number, after its dot, and its name, cut short where the line
-      // has no room, ends before the age, which ends the run.
+      // The author follows the number, after its dot, and its name, one line, cut short only
+      // where it is wider than a line and never broken after a hyphen, ends the run.
       byAfter: lineOf(b) > lineOf(n) || b.left >= n.right - 0.5,
-      authorEnds: name.right <= a.left + 0.5 && name.left < name.right && lineOf(name) === lineOf(a),
+      authorEnds:
+        name.left < name.right &&
+        name.right <= hd.right + 0.5 &&
+        name.height < 1.5 * lh &&
+        lineOf(name) === lines.length - 1,
+      authorAt: { left: round(name.left), right: round(name.right), runRight: round(hd.right), line: lineOf(name), top: round(name.top - hd.top), height: round(name.height) },
       title: Math.round(titleBoxes.reduce((sum, r) => sum + r.width, 0) * 10) / 10,
     };
   });
@@ -2985,14 +2993,14 @@ async function main() {
             JSON.stringify(row),
           );
           // The run is as tall as its lines, never cut short, every line of it in the text
-          // column, and it ends with the author and the age; the last line follows it, the
-          // toggle on it in the text column (mb-pw8t, mb-rb3n).
+          // column, and it ends with the author; the last line follows it, the toggle on it in
+          // the text column and the age at its end (mb-pw8t, mb-rb3n).
           check(
-            `${where}: the run is as tall as its lines, each in the text column, and ends with the age, the toggle's last line under it`,
+            `${where}: the run is as tall as its lines, each in the text column, and ends with the author, the last line under it, the toggle and then the age at the row's end`,
             Math.abs(row.headingHeight - row.drawnLines * row.lineHeight) < 0.5 &&
               row.starts.every((start) => start !== null && Math.abs(start) < 0.5) &&
               Math.abs(row.columnFrom - row.textColumn) < 0.5 &&
-              row.endsWithAge &&
+              row.endsWithAuthor &&
               row.lastLine &&
               Math.abs(row.tailFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
@@ -3004,7 +3012,7 @@ async function main() {
             JSON.stringify(row),
           );
           check(
-            `${where}: the author follows the number, and its name ends before the age on its line`,
+            `${where}: the author follows the number, and its name ends the run inside the row`,
             row.byAfter && row.authorEnds,
             JSON.stringify(row),
           );

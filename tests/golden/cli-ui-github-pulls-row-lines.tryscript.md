@@ -582,13 +582,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-sep",
               {
                 "github-pulls-by": [
-                  "actor-identity github-pull-identity",
-                  {
-                    "github-pulls-when": [
-                      "github-pulls-sep",
-                      "github-pulls-age age-min"
-                    ]
-                  }
+                  "actor-identity github-pull-identity"
                 ]
               }
             ],
@@ -597,7 +591,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-toggle",
               "github-pulls-change-words"
             ],
-            "shown": "Work item 106 · #106 · contributor · 1m",
+            "end": "github-pulls-age age-min",
+            "shown": "Work item 106 · #106 · contributor",
             "spoken": "#106 · contributor · 1m",
             "text": "",
             "line": [
@@ -624,13 +619,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-sep",
               {
                 "github-pulls-by": [
-                  "actor-identity github-pull-identity",
-                  {
-                    "github-pulls-when": [
-                      "github-pulls-sep",
-                      "github-pulls-age age-min"
-                    ]
-                  }
+                  "actor-identity github-pull-identity"
                 ]
               }
             ],
@@ -639,7 +628,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-toggle",
               "github-pulls-change-words"
             ],
-            "shown": "Work item 105 · #105 · contributor · 1m",
+            "end": "github-pulls-age age-min",
+            "shown": "Work item 105 · #105 · contributor",
             "spoken": "#105 · contributor · 1m",
             "text": "",
             "words": "Changed files",
@@ -655,13 +645,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-sep",
               {
                 "github-pulls-by": [
-                  "actor-identity github-pull-identity",
-                  {
-                    "github-pulls-when": [
-                      "github-pulls-sep",
-                      "github-pulls-age age-min"
-                    ]
-                  }
+                  "actor-identity github-pull-identity"
                 ]
               }
             ],
@@ -670,7 +654,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-toggle",
               "github-pulls-change-words"
             ],
-            "shown": "Work item 104 · #104 · contributor · 1m",
+            "end": "github-pulls-age age-min",
+            "shown": "Work item 104 · #104 · contributor",
             "spoken": "#104 · contributor · 1m",
             "text": "",
             "words": "Changed files",
@@ -686,13 +671,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-sep",
               {
                 "github-pulls-by": [
-                  "actor-identity github-pull-identity",
-                  {
-                    "github-pulls-when": [
-                      "github-pulls-sep",
-                      "github-pulls-age age-min"
-                    ]
-                  }
+                  "actor-identity github-pull-identity"
                 ]
               }
             ],
@@ -701,7 +680,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-toggle",
               "github-pulls-change-words"
             ],
-            "shown": "Work item 103 · #103 · contributor · 1m",
+            "end": "github-pulls-age age-min",
+            "shown": "Work item 103 · #103 · contributor",
             "spoken": "#103 · contributor · 1m",
             "text": "",
             "words": "Changed files",
@@ -723,13 +703,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-sep",
               {
                 "github-pulls-by": [
-                  "actor-identity github-pull-identity",
-                  {
-                    "github-pulls-when": [
-                      "github-pulls-sep",
-                      "github-pulls-age age-min"
-                    ]
-                  }
+                  "actor-identity github-pull-identity"
                 ]
               }
             ],
@@ -738,7 +712,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-toggle",
               "github-pulls-change-words"
             ],
-            "shown": "Work item 106 · #106 · contributor · 1m",
+            "end": "github-pulls-age age-min",
+            "shown": "Work item 106 · #106 · contributor",
             "spoken": "#106 · contributor · 1m",
             "text": "+1,093−493",
             "line": [
@@ -778,13 +753,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-sep",
               {
                 "github-pulls-by": [
-                  "actor-identity github-pull-identity",
-                  {
-                    "github-pulls-when": [
-                      "github-pulls-sep",
-                      "github-pulls-age age-min"
-                    ]
-                  }
+                  "actor-identity github-pull-identity"
                 ]
               }
             ],
@@ -793,7 +762,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-toggle",
               "github-pulls-change-words"
             ],
-            "shown": "Work item 105 · #105 · contributor · 1m",
+            "end": "github-pulls-age age-min",
+            "shown": "Work item 105 · #105 · contributor",
             "spoken": "#105 · contributor · 1m",
             "text": "+3−1",
             "words": "Changed files: 3 lines added, 1 deleted",
@@ -809,13 +779,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-sep",
               {
                 "github-pulls-by": [
-                  "actor-identity github-pull-identity",
-                  {
-                    "github-pulls-when": [
-                      "github-pulls-sep",
-                      "github-pulls-age age-min"
-                    ]
-                  }
+                  "actor-identity github-pull-identity"
                 ]
               }
             ],
@@ -824,7 +788,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-toggle",
               "github-pulls-change-words"
             ],
-            "shown": "Work item 104 · #104 · contributor · 1m",
+            "end": "github-pulls-age age-min",
+            "shown": "Work item 104 · #104 · contributor",
             "spoken": "#104 · contributor · 1m",
             "text": "",
             "words": "Changed files",
@@ -840,13 +805,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-sep",
               {
                 "github-pulls-by": [
-                  "actor-identity github-pull-identity",
-                  {
-                    "github-pulls-when": [
-                      "github-pulls-sep",
-                      "github-pulls-age age-min"
-                    ]
-                  }
+                  "actor-identity github-pull-identity"
                 ]
               }
             ],
@@ -855,7 +814,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-toggle",
               "github-pulls-change-words"
             ],
-            "shown": "Work item 103 · #103 · contributor · 1m",
+            "end": "github-pulls-age age-min",
+            "shown": "Work item 103 · #103 · contributor",
             "spoken": "#103 · contributor · 1m",
             "text": "",
             "words": "Changed files",

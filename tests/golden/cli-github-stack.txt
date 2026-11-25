@@ -79,6 +79,14 @@ status: 200
       "titles": [
         null,
         null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -91,6 +99,16 @@ status: 200
         10
       ],
       "titles": [
+        null,
+        null,
+        null
+      ],
+      "authors": [
+        null,
+        null,
+        null
+      ],
+      "avatars": [
         null,
         null,
         null
@@ -107,6 +125,14 @@ status: 200
       "titles": [
         null,
         null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -118,6 +144,14 @@ status: 200
         9
       ],
       "titles": [
+        null,
+        null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
         null,
         null
       ]
@@ -149,6 +183,8 @@ status: 200
       "place": 1,
       "title": null,
       "state": null,
+      "author": null,
+      "avatar": null,
       "base": null,
       "head": null,
       "in_top": null,
@@ -160,6 +196,8 @@ status: 200
       "place": 2,
       "title": null,
       "state": null,
+      "author": null,
+      "avatar": null,
       "base": null,
       "head": null,
       "in_top": null,
@@ -244,6 +282,8 @@ status: 200
       "place": 1,
       "title": "Say more in the guide",
       "state": "merged",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<base>",
       "head": "<merged_head>",
       "in_top": true,
@@ -255,6 +295,8 @@ status: 200
       "place": 2,
       "title": "WIP: draft the next page",
       "state": "draft",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<topic>",
       "head": "<draft_head>",
       "in_top": true,
@@ -978,556 +1020,4 @@ status: 410
 }
 --- stderr ---
 Error: /api/plugin/github/pull-image?stack=70&left=<base>&right=<merged_head>&store=<STORE>&path=g1-ZG9jcw/g1-c2hvdC5wbmc returned HTTP 410
---- gh ---
-## A member the top's head lacks: 7's fork head is in no history of 10's, so it adds no file and is named in `lacking`.
-# metab https://github.com/octo/demo/pull/7 --no-serve
-exit: 0
---- stdout ---
-acquired: https://github.com/octo/demo
-slug: github-com-octo-demo-9vhngza0oa1
-store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
-revision: <topic>
-selection: pull_request
-pin: <fork_head> (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
---- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
---- gh ---
-gh api user
-gh api repos/octo/demo/pulls/7
-gh api repos/octo/demo/commits/<fork_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<fork_head>/status?per_page=100&page=1
-gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh api user (If-None-Match)
-# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=71'
-exit: 0
---- stdout ---
-api: /api/plugin/github/stack?number=71
-status: 200
-{
-  "state": "current",
-  "reason": null,
-  "number": 71,
-  "base_ref": "topic",
-  "head_ref": "wip",
-  "open": true,
-  "members": [
-    {
-      "number": 8,
-      "place": 1,
-      "title": "Say more in the guide",
-      "state": "merged",
-      "base": "<base>",
-      "head": "<merged_head>",
-      "in_top": true,
-      "pending": false,
-      "fetching": false
-    },
-    {
-      "number": 7,
-      "place": 2,
-      "title": "Count to two in the app",
-      "state": "open",
-      "base": "<base>",
-      "head": "<fork_head>",
-      "in_top": false,
-      "pending": false,
-      "fetching": false
-    },
-    {
-      "number": 10,
-      "place": 3,
-      "title": "WIP: draft the next page",
-      "state": "draft",
-      "base": "<topic>",
-      "head": "<draft_head>",
-      "in_top": true,
-      "pending": false,
-      "fetching": false
-    }
-  ],
-  "pending": [],
-  "lacking": [
-    7
-  ],
-  "comparison": {
-    "left": "<base>",
-    "right": "<draft_head>",
-    "key": "4477f6ee951f57617055456af12caf4e",
-    "route": "/api/plugin/github/stack-comparison?number=71&left=<base>&right=<draft_head>&base_policy=direct&key=4477f6ee951f57617055456af12caf4e&build=<BUILD>&store=<STORE>",
-    "image_route": "/api/plugin/github/pull-image?stack=71&left=<base>&right=<draft_head>&store=<STORE>",
-    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=71&left=<base>&right=<draft_head>&store=<STORE>"
-  },
-  "totals": {
-    "files": 1,
-    "additions": 1,
-    "deletions": 0,
-    "exact": true
-  },
-  "truncated": false,
-  "files": [
-    {
-      "path": "docs/draft.md",
-      "layers": [
-        {
-          "number": 10,
-          "place": 3,
-          "path": "docs/draft.md"
-        }
-      ]
-    }
-  ],
-  "guide": {
-    "number": 10,
-    "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
-  },
-  "github_url": "https://github.com/octo/demo/pull/10",
-  "probe": {
-    "number": 10,
-    "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
-    "every_s": 5.0
-  },
-  "moved": null
-}
---- stderr ---
---- gh ---
-## Not linear: 10's merge base is not in 8's history.
-# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=72'
-exit: 0
---- stdout ---
-api: /api/plugin/github/stack?number=72
-status: 200
-{
-  "state": "absent",
-  "reason": "not_linear",
-  "number": 72,
-  "base_ref": "topic",
-  "head_ref": "guide-more",
-  "open": true,
-  "members": [
-    {
-      "number": 10,
-      "place": 1,
-      "title": "WIP: draft the next page",
-      "state": "draft",
-      "base": "<topic>",
-      "head": "<draft_head>",
-      "in_top": null,
-      "pending": false,
-      "fetching": false
-    },
-    {
-      "number": 8,
-      "place": 2,
-      "title": "Say more in the guide",
-      "state": "merged",
-      "base": "<base>",
-      "head": "<merged_head>",
-      "in_top": null,
-      "pending": false,
-      "fetching": false
-    }
-  ],
-  "pending": [],
-  "lacking": [],
-  "comparison": null,
-  "totals": null,
-  "truncated": false,
-  "files": [],
-  "guide": null,
-  "github_url": null,
-  "probe": null,
-  "moved": null
-}
---- stderr ---
---- gh ---
-## A member with no record leaves its stack pending.
-# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=73'
-exit: 0
---- stdout ---
-api: /api/plugin/github/stack?number=73
-status: 200
-{
-  "state": "pending",
-  "reason": null,
-  "number": 73,
-  "base_ref": "topic",
-  "head_ref": null,
-  "open": true,
-  "members": [
-    {
-      "number": 8,
-      "place": 1,
-      "title": "Say more in the guide",
-      "state": "merged",
-      "base": "<base>",
-      "head": "<merged_head>",
-      "in_top": null,
-      "pending": false,
-      "fetching": false
-    },
-    {
-      "number": 9,
-      "place": 2,
-      "title": null,
-      "state": null,
-      "base": null,
-      "head": null,
-      "in_top": null,
-      "pending": true,
-      "fetching": false
-    }
-  ],
-  "pending": [
-    9
-  ],
-  "lacking": [],
-  "comparison": null,
-  "totals": null,
-  "truncated": false,
-  "files": [],
-  "guide": null,
-  "github_url": "https://github.com/octo/demo/pull/9",
-  "probe": null,
-  "moved": null
-}
---- stderr ---
---- gh ---
-## The page's ask for that member. An automatic ask refreshes only a record the server holds, so the page asks as the reader's own open of it, which fetches 9, and the stack is current.
-# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data ask.json
-exit: 0
---- stdout ---
-api: /api/plugin/github/pull-refresh
-status: 200
-{
-  "refresh": "not_cached",
-  "pull": {
-    "state": "absent",
-    "reason": "not_cached",
-    "source": "https://github.com/octo/demo",
-    "number": 9,
-    "pin": "<topic>",
-    "pin_ref": "refs/remotes/origin/topic",
-    "fetched_at": null,
-    "verified_at": null,
-    "verified_by": null,
-    "head_moved": false,
-    "checks_pending": false,
-    "record_revision": null,
-    "fresh_for_s": 60.0,
-    "probe_every_s": null,
-    "refreshing": false,
-    "last_refresh": null,
-    "comparison_route": null,
-    "image_route": null,
-    "rendered_route": null,
-    "size_route": null,
-    "record": null,
-    "core_preview": null,
-    "repository_labels": [],
-    "labels_pending": false
-  },
-  "status_route": "/api/plugin/github/pull?number=9"
-}
---- stderr ---
---- gh ---
-# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data ask.json
-exit: 0
---- stdout ---
-api: /api/plugin/github/pull-refresh
-status: 202
-{
-  "refresh": "started",
-  "pull": {
-    "state": "pending",
-    "reason": null,
-    "source": "https://github.com/octo/demo",
-    "number": 9,
-    "pin": "<topic>",
-    "pin_ref": "refs/remotes/origin/topic",
-    "fetched_at": null,
-    "verified_at": null,
-    "verified_by": null,
-    "head_moved": false,
-    "checks_pending": false,
-    "record_revision": null,
-    "fresh_for_s": 60.0,
-    "probe_every_s": null,
-    "refreshing": true,
-    "last_refresh": null,
-    "comparison_route": null,
-    "image_route": null,
-    "rendered_route": null,
-    "size_route": null,
-    "record": null,
-    "core_preview": null,
-    "repository_labels": [],
-    "labels_pending": false
-  },
-  "status_route": "/api/plugin/github/pull?number=9"
-}
-after: /api/plugin/github/pull?number=9
-status: 200
-{
-  "state": "current",
-  "reason": null,
-  "source": "https://github.com/octo/demo",
-  "number": 9,
-  "pin": "<topic>",
-  "pin_ref": "refs/remotes/origin/topic",
-  "fetched_at": "2026-09-17T12:00:00Z",
-  "verified_at": "2026-09-17T12:00:00Z",
-  "verified_by": "fetch",
-  "head_moved": false,
-  "checks_pending": false,
-  "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
-  "fresh_for_s": 60.0,
-  "probe_every_s": 5.0,
-  "refreshing": false,
-  "last_refresh": {
-    "outcome": "succeeded",
-    "message": null,
-    "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
-  },
-  "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=<base>&right=<closed_head>&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-  "image_route": "/api/plugin/github/pull-image?number=9&left=<base>&right=<closed_head>&store=<STORE>",
-  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=<base>&right=<closed_head>&store=<STORE>",
-  "size_route": "/api/plugin/github/pull-size?number=9&left=<base>&right=<closed_head>&store=<STORE>",
-  "record": {
-    "schema_version": 2,
-    "projection_version": 2,
-    "source": "https://github.com/octo/demo",
-    "number": 9,
-    "fetched_at": "2026-09-17T12:00:00Z",
-    "reader": "gh:octo-reader",
-    "etags": {
-      "repos/octo/demo/pulls/9": "W/\"bd0a1535019ba33ca5d652f1e47b79467f9530f4108d8188308766a528b0938a\"",
-      "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
-      "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
-      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
-      "repos/octo/demo/commits/<closed_head>/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
-      "repos/octo/demo/commits/<closed_head>/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
-    },
-    "pull": {
-      "number": 9,
-      "title": "spam",
-      "body": "",
-      "body_truncated": false,
-      "state": "closed",
-      "draft": false,
-      "merged": false,
-      "merged_by": null,
-      "merged_by_avatar_url": null,
-      "commits": 1,
-      "merge_commit_sha": null,
-      "mergeable": "unknown",
-      "labels": [
-        {
-          "name": "invalid",
-          "color": "e4e669",
-          "description": null
-        }
-      ],
-      "author": null,
-      "author_avatar_url": null,
-      "created_at": "2026-09-16T10:57:23Z",
-      "updated_at": "2026-09-16T17:39:01Z",
-      "merged_at": null,
-      "closed_at": "2026-09-16T19:00:00Z",
-      "base": {
-        "ref": "topic",
-        "sha": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
-        "repository": "octo/demo"
-      },
-      "head": {
-        "ref": "spam",
-        "sha": "<closed_head>",
-        "repository": null
-      },
-      "html_url": "https://github.com/octo/demo/pull/9"
-    },
-    "issue_comments": [],
-    "reviews": [],
-    "review_comments": [],
-    "check_runs": [
-      {
-        "id": 51401654787,
-        "name": "tests (3.13)",
-        "status": "completed",
-        "conclusion": "success",
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-        "app": "GitHub Actions"
-      },
-      {
-        "id": 51401654788,
-        "name": "docs",
-        "status": "in_progress",
-        "conclusion": null,
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "app": "GitHub Actions"
-      }
-    ],
-    "status": {
-      "state": "success",
-      "statuses": [
-        {
-          "context": "docs/readthedocs.org:demo",
-          "state": "success",
-          "description": "Read the Docs build succeeded!",
-          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
-        }
-      ]
-    },
-    "comparison": {
-      "base": "<base>",
-      "head": "<closed_head>",
-      "base_commit": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
-      "base_from": "base_sha"
-    },
-    "truncated": {
-      "issue_comments": false,
-      "reviews": false,
-      "review_comments": false,
-      "check_runs": false,
-      "statuses": false,
-      "text": false
-    },
-    "unavailable": {}
-  },
-  "core_preview": null,
-  "repository_labels": [],
-  "labels_pending": false
-}
---- stderr ---
---- gh ---
-gh api user
-gh api repos/octo/demo/pulls/9
-gh api repos/octo/demo/commits/<closed_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<closed_head>/status?per_page=100&page=1
-gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
-gh api user (If-None-Match)
-# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=73'
-exit: 0
---- stdout ---
-api: /api/plugin/github/stack?number=73
-status: 200
-{
-  "state": "current",
-  "reason": null,
-  "number": 73,
-  "base_ref": "topic",
-  "head_ref": "spam",
-  "open": true,
-  "members": [
-    {
-      "number": 8,
-      "place": 1,
-      "title": "Say more in the guide",
-      "state": "merged",
-      "base": "<base>",
-      "head": "<merged_head>",
-      "in_top": false,
-      "pending": false,
-      "fetching": false
-    },
-    {
-      "number": 9,
-      "place": 2,
-      "title": "spam",
-      "state": "closed",
-      "base": "<base>",
-      "head": "<closed_head>",
-      "in_top": true,
-      "pending": false,
-      "fetching": false
-    }
-  ],
-  "pending": [],
-  "lacking": [
-    8
-  ],
-  "comparison": {
-    "left": "<base>",
-    "right": "<closed_head>",
-    "key": "e21776cd095d1c341f23ffc4b08869ad",
-    "route": "/api/plugin/github/stack-comparison?number=73&left=<base>&right=<closed_head>&base_policy=direct&key=e21776cd095d1c341f23ffc4b08869ad&build=<BUILD>&store=<STORE>",
-    "image_route": "/api/plugin/github/pull-image?stack=73&left=<base>&right=<closed_head>&store=<STORE>",
-    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=73&left=<base>&right=<closed_head>&store=<STORE>"
-  },
-  "totals": {
-    "files": 1,
-    "additions": 1,
-    "deletions": 0,
-    "exact": true
-  },
-  "truncated": false,
-  "files": [
-    {
-      "path": "src/app.txt",
-      "layers": [
-        {
-          "number": 9,
-          "place": 2,
-          "path": "src/app.txt"
-        }
-      ]
-    }
-  ],
-  "guide": {
-    "number": 8,
-    "revision": "caf5688c2a840aba4d52b5a0cb7e639e80b007d1d98fed8876c4934d5147292a"
-  },
-  "github_url": "https://github.com/octo/demo/pull/9",
-  "probe": {
-    "number": 9,
-    "held": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
-    "every_s": 5.0
-  },
-  "moved": null
-}
---- stderr ---
---- gh ---
-## A number no stack has, and a request that names more than it.
-# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=99'
-exit: 0
---- stdout ---
-api: /api/plugin/github/stack?number=99
-status: 200
-{
-  "state": "absent",
-  "reason": "not_stacked",
-  "number": 99,
-  "base_ref": null,
-  "head_ref": null,
-  "open": null,
-  "members": [],
-  "pending": [],
-  "lacking": [],
-  "comparison": null,
-  "totals": null,
-  "truncated": false,
-  "files": [],
-  "guide": null,
-  "github_url": null,
-  "probe": null,
-  "moved": null
-}
---- stderr ---
---- gh ---
-# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=70&left=main'
-exit: 1
---- stdout ---
-api: /api/plugin/github/stack?number=70&left=main
-status: 400
-{
-  "error": "a stack names itself by \"number\", and \"since\" alone besides",
-  "code": "invalid_request"
-}
---- stderr ---
-Error: /api/plugin/github/stack?number=70&left=main returned HTTP 400
 --- gh ---

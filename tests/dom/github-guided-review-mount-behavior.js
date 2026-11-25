@@ -339,6 +339,25 @@ function host({ allowlist = true } = {}) {
                     .join(" ")}`,
             )
             .join(" | "),
+        /** The step list's rows outside any group, which start on a group heading's edge:
+         * each by its number, the overview's by its title, since it has none, then how many
+         * digits wide their numbers' column is (`--github-pull-guide-loose-digits`). */
+        loose() {
+          const list = container.querySelector(".github-pull-guide-steps");
+          const rows = list.children
+            .filter((item) => item.classes?.has("github-pull-guide-steps-item"))
+            .map((item) => {
+              const isElement = (node) => typeof node !== "string";
+              const [first] = item.children.find(isElement).children.filter(isElement);
+              return first.classes.has("github-pull-guide-steps-number")
+                ? first.textContent
+                : `${first.textContent}, no number`;
+            });
+          const digits = /--github-pull-guide-loose-digits: (\d+)/.exec(
+            list.getAttribute("style") ?? "",
+          );
+          return `${rows.join(" | ")}; column ${digits?.[1] ?? "unset"}`;
+        },
         /** The shown step's card head, and the group's note above the card, if any. */
         card() {
           const detail = container.querySelector(".github-pull-guide-step");
@@ -527,6 +546,9 @@ async function run() {
     steps.push(
       `the guide opens on: ${view.position()}; ${view.outline()}; step shown ${view.shown()}`,
     );
+    // No row is in a group, so each starts on a group heading's edge: the overview's title,
+    // with no number, and each step's number, in a column one digit wide (mb-420k).
+    steps.push(`its rows outside a group: ${view.loose()}`);
     // A guide without groups draws its list as it did before groups: an item for the overview
     // and one for each step, each holding its button, and no group's heading, list, or item.
     const nodes = (parent) => parent.children.filter((node) => typeof node !== "string");
@@ -784,6 +806,10 @@ async function run() {
             title: "Say <b>more</b>",
             state: "merged",
             stack: { number: 71, place: 1, count: 3 },
+            // Its author follows its title (docs/design-system.md, "Authors Follow Pull
+            // Requests"), drawn by the page's `identity`.
+            author: "maintainer",
+            avatar: null,
           },
         }),
         cited({ kind: "pull", pull: 2000, state: "not_cached", href: "/pull/2000" }),
@@ -945,6 +971,40 @@ async function run() {
     view.handle.dispose();
   }
 
+  // Rows outside any group start on a group heading's edge, numbered in a column as wide as
+  // the widest of their numbers (mb-420k): two digits for a guide of twelve steps in no
+  // group, and one for a guide whose one step outside a group is its first, though its
+  // group's steps run to 11, since a group's steps keep a column of their own.
+  for (const [name, count, outline] of [
+    ["a guide of twelve steps", 12, null],
+    [
+      "a step, then a group of ten",
+      11,
+      [
+        { kind: "step", step: 1, title: "Step 1" },
+        {
+          kind: "group",
+          title: "The rest",
+          note: null,
+          children: Array.from({ length: 10 }, (_, index) => ({
+            kind: "step",
+            step: index + 2,
+            title: `Step ${index + 2}`,
+          })),
+        },
+      ],
+    ],
+  ]) {
+    const long = host();
+    const view = long.mount(page, "guided", envelope(1));
+    await settle();
+    const answer = step(1, 1, count);
+    long.pending()[0].answer(outline === null ? answer : { ...answer, outline });
+    await settle();
+    steps.push(`${name}, its rows outside a group: ${view.loose()}`);
+    view.handle.dispose();
+  }
+
   // A guide in groups: each group is a heading in the step list, with no number and nothing
   // to press, above its steps, which keep their numbers through the groups; a step outside
   // a group sits between them. A step's card names its group before its place, and a
@@ -988,6 +1048,7 @@ async function run() {
     grouped.pending()[0].answer({ ...answer(1), state: "stale", stale });
     await settle();
     steps.push(`a guide in groups opens on: ${view.position()}; ${view.outline()}`);
+    steps.push(`its rows outside a group: ${view.loose()}`);
     const headings = view.container.querySelectorAll(".github-pull-guide-steps-heading");
     assert.ok(
       headings.every((heading) => heading.tag !== "button" && heading.events.size === 0),
@@ -1334,6 +1395,7 @@ async function run() {
         openPull() {},
         age: () => new Element("span"),
         shortCommit: (sha) => sha.slice(0, 7),
+        identity: (login) => Object.assign(new Element("span"), { textContent: login }),
         loadStyles: async () => {},
         loadDrawPatch: async () => () => ({ dispose() {} }),
         loadDrawDocument: async () => null,
@@ -1416,6 +1478,7 @@ async function run() {
         openPull() {},
         age: () => new Element("span"),
         shortCommit: (sha) => sha.slice(0, 7),
+        identity: (login) => Object.assign(new Element("span"), { textContent: login }),
         loadStyles: async () => {},
         loadDrawPatch: async () => () => ({ dispose() {} }),
         loadDrawDocument: async () => null,

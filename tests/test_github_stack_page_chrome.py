@@ -4,14 +4,15 @@ What the stack's page says is browserless, against the stack route's recorded an
 header's rows at first paint and settled, its member rows, and the Diff summary and diff
 drawings it asks for, in ``tests/dom/github-stack-page-session.js`` and
 ``tests/dom/github-stack-guide-mount-session.js``. What only a browser can tell is held here
-(docs/design-system.md, "The Stack Page"): that the header's rows are a pull request's, in
-its order, with the members as one card between the title and the merge line; that a member
-row is one line laid out as the stack menu's member row is, its number at the line's end and
-no member marked current, since none is the page; that the Diff summary is closed and the
-combined diff has no layer marks; that View on GitHub opens the whole stack; that the tabs
-are a pull request's without Files; and that nothing on the page moves from its first paint,
-opening the page or its Docs and Changes, while the delayed loading block, on this page and
-on a pull request's, stays where it shows.
+(docs/design-system.md, "The Stack Page"): that nothing on the page moves from its first
+paint, opening the page or its Docs and Changes, while the delayed loading block, on this
+page and on a pull request's, stays where it shows; that the running app gives every member
+its author, merged 8 too, and marks no member current, since none is the page; that the Diff
+summary is closed; that View on GitHub opens the whole stack; that the tabs are a pull
+request's without Files; and that the Pulls tab's Whole stack row is current and in view
+while the page is open and opens it. A member row is not measured against the menu's: the
+page draws it with the stack menu's builder (`stackMemberRow`), so it is the menu's by
+construction; only its inset in the members' card, the page's own rule, is measured below.
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh`` whose ``gh stack``
 answers native stacks over the stand-in's pull requests, #70 (8, then 10) and #71 (8, 7,
@@ -22,10 +23,11 @@ running app. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its screensh
 The second test serves the stand-in with guides (``--guided-stack``): 7 carries its own, and
 10 the guide of #70, whose top it is. ``tests/dom/github-stack-page-layout-chrome.mjs`` holds
 each part the stack's page shares with a pull request's at a pull request's edges and padding,
-border and ground, within half a pixel: the header, the tab bar, Guided Review's step list and
-step card against 7's, and the Docs and Changes bodies against 10's, in the light and the
-dark scheme at a desktop width and a phone's; and the members' card a page card whose rows
-are inset as a card's head is. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its
+border and ground, within the module's ``NEAR``: the header, the tab bar, Guided Review's
+step list and step card against 7's, and the Docs and Changes bodies against 10's, in the
+light and the dark scheme at a desktop width and a phone's, each tab loaded and after the
+reader switches tabs in place; and the members' card a page card whose rows are inset as a
+card's head is. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its
 screenshots too.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns

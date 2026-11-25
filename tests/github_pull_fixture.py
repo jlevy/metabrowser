@@ -1496,6 +1496,7 @@ _REFUSED_REFERENCES: Final[dict[str, str]] = {
 # The guides `--describe` writes into a cached description: the stand-in guide's steps each
 # in a group, the first with a note; groups mixed with a step; a longer guide, two groups
 # of two steps each, which tells numbering through the groups from numbering by entry;
+# ten steps in no group, whose numbers run to two digits from the list's edge;
 # notes in Markdown, a group's of two steps and the first step's; a note too slow to
 # render; and blocks the page refuses: an empty group, a group inside a group, and each
 # reference of `_REFUSED_REFERENCES` after the count's step.
@@ -1516,6 +1517,7 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "      items:\n" + _in_group(_COUNT_STEP + _OLD_COUNT_STEP) + "    - title: The docs\n"
         "      items:\n" + _in_group(_DOCS_STEP + _WHOLE_STEP)
     ),
+    "ten-steps": (_COUNT_STEP + _DOCS_STEP) * 5,
     "markdown": (
         "    - title: The count\n"
         "      note: Read the `count` before *its* explanation.\n"

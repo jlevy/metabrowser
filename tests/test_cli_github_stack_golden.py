@@ -28,13 +28,15 @@ member's that has one (mb-ri96). 10's block is pinned to stack 70's pair, so 70'
 guide reads ready, and it is left out of 10's rendered description; 8's, pinned to 8's own
 head, is below 10 there and is 73's guide, out of date, since 73's top is 9. The guide's
 answers, each under the step of the stack's story it is read at, are
-``cli-github-stack-guide.txt``, so each transcript stays inside the review budget.
+``cli-github-stack-guide.txt``. Stack 70's comparison and the routes that admit it are
+``cli-github-stack.txt``; 71, 72, 73, a number no stack has, and 70's move are
+``cli-github-stack-states.txt``. So each transcript stays inside the review budget.
 
-What a page sees after its stack moves is ``cli-github-stack-moves.txt``: the comparison it
-drew keeps answering, and asked with ``since``, that comparison's key, the stack route says
-how each member's head moved from it (``moved``), which the page's notice of a new comparison
-says (docs/reviewing-pull-requests.md, "A Stack's Guide"). 70 loses 8, and then 74's one
-member, 7, is rewritten to its earlier commit and gains a commit again.
+A page that drew a comparison asks with ``since``, its key, and the stack route says how
+each member's head moved from it (``moved``), which the page's notice of a new comparison
+says (docs/reviewing-pull-requests.md, "A Stack's Guide"). The states transcript holds it
+after 70 loses 8, and as 74's one member, 7, is rewritten to its earlier commit and then
+gains a commit again.
 """
 
 from __future__ import annotations
@@ -205,8 +207,9 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     # The stack's guide (mb-ri96) has a transcript of its own, cli-github-stack-guide.txt,
     # which these collect, so each stays inside the review budget (devtools/check_goldens.py).
     guide_blocks: list[str] = []
-    # What moved since a drawn comparison, `since`'s answers, cli-github-stack-moves.txt.
-    moves_blocks: list[str] = []
+    # The stacks other than 70 whole, and 70's move, have one of their own too,
+    # cli-github-stack-states.txt, which these collect.
+    states: list[str] = []
     into = [blocks]
 
     def run(*args: str, gh_free: bool = True) -> Any:
@@ -224,25 +227,16 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     def in_guide(heading: str, *args: str, gh_free: bool = True) -> Any:
         """Run `metab` on *args* into the guide's transcript under *heading*."""
         guide_blocks.append(heading)
+        main = into[0]
         into[0] = guide_blocks
         try:
             return run(CANONICAL, *args, gh_free=gh_free)
         finally:
-            into[0] = blocks
+            into[0] = main
 
     def read_guide(heading: str, route: str) -> Any:
         """Read *route*, a guide's, into the guide's transcript under *heading*."""
         return in_guide(heading, "--api", route)
-
-    def read_moves(heading: str, route: str) -> Any:
-        """Read *route* into the transcript of `since`'s answers under *heading*."""
-        if heading:
-            moves_blocks.append(heading)
-        into[0] = moves_blocks
-        try:
-            return run(CANONICAL, "--api", route)
-        finally:
-            into[0] = blocks
 
     def stack(number: int) -> dict[str, Any]:
         return api(f"{ROUTE}?number={number}").payload()
@@ -395,6 +389,9 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     )
     assert "snapshot_expired" in image_stale.stdout
 
+    # From here on, the stacks' other states, and 70's move, are their own transcript's.
+    first_blocks, blocks = blocks, states
+    into[0] = blocks
     blocks.append(
         "## A member the top's head lacks: 7's fork head is in no history of 10's, so it adds"
         " no file and is named in `lacking`.\n"
@@ -481,9 +478,7 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "kind: pull-stack" in file_shown.stdout
     assert "layers=2/2:#10" in file_shown.stdout
 
-    # The stack moves, into the transcript of what a page sees after a move.
-    into[0] = moves_blocks
-    moves_blocks.append(
+    blocks.append(
         "## The stack moves: 70 is now 10 alone. A page still draws the comparison it was"
         " given, so that comparison keeps answering and its rendered documents keep being"
         " admitted, while an address the route never gave is still refused. Asked `since` that"
@@ -517,7 +512,6 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "status: 410" not in kept_rendered.stdout
     never = api(comparison["route"].replace(comparison["key"], "0" * 32))
     assert "status: 410" in never.stdout
-    into[0] = blocks
     # The guide follows the comparison the page draws, as the Diff summary, Docs, and Changes
     # do: at the current pair, 10 alone, its pins are behind; at the pair the page still
     # draws, it reads as it did, until the reader takes the new comparison.
@@ -628,44 +622,42 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         # The read asked GitHub, as the transcripts above show a page's own ask does.
         assert logged_gh_calls(tmp_path)
 
-    drawn_74 = read_moves("## 74 is 7 alone, drawn at 7's head.\n", f"{ROUTE}?number=74").payload()
+    blocks.append("## 74 is 7 alone, drawn at 7's head.\n")
+    drawn_74 = stack(74)
     assert drawn_74["state"] == "current" and drawn_74["moved"] is None
     move_seven(pull_origin["fork_earlier"])
-    rewritten = read_moves(
+    blocks.append(
         "## 7's branch is rewritten to its earlier commit, which lacks the head the page drew:"
-        " 7 moved, and no count says what is new.\n",
-        f"{ROUTE}?number=74&since={drawn_74['comparison']['key']}",
-    ).payload()
+        " asked `since` the comparison the page drew, 7 moved, and no count says what is new.\n"
+    )
+    rewritten = api(f"{ROUTE}?number=74&since={drawn_74['comparison']['key']}").payload()
     assert rewritten["moved"] == {
         "since": drawn_74["comparison"]["key"],
         "members": [{"number": 7, "commits": None}],
     }
     move_seven(pull_origin["fork_head"])
-    grown = read_moves(
+    blocks.append(
         "## 7 gains a commit on top of the earlier one, so asked `since` the comparison a page"
-        " drew there, 7 has one new commit.\n",
-        f"{ROUTE}?number=74&since={rewritten['comparison']['key']}",
-    ).payload()
+        " drew there, 7 has one new commit.\n"
+    )
+    grown = api(f"{ROUTE}?number=74&since={rewritten['comparison']['key']}").payload()
     assert grown["moved"] == {
         "since": rewritten["comparison"]["key"],
         "members": [{"number": 7, "commits": 1}],
     }
     assert grown["comparison"]["key"] == drawn_74["comparison"]["key"]
-    same = read_moves(
+    blocks.append(
         "## `since` the comparison it answers names no move, and nor does a key the route"
-        " never gave; one that is not a key is refused.\n",
-        f"{ROUTE}?number=74&since={grown['comparison']['key']}",
-    ).payload()
-    assert same["moved"] is None
-    unknown = read_moves("", f"{ROUTE}?number=74&since={'0' * 32}")
-    assert unknown.payload()["moved"] is None
-    malformed = read_moves("", f"{ROUTE}?number=74&since=main")
-    assert "status: 400" in malformed.stdout
+        " never gave; one that is not a key is refused.\n"
+    )
+    assert api(f"{ROUTE}?number=74&since={grown['comparison']['key']}").payload()["moved"] is None
+    assert api(f"{ROUTE}?number=74&since={'0' * 32}").payload()["moved"] is None
+    assert "status: 400" in api(f"{ROUTE}?number=74&since=main").stdout
 
     for name, written in (
-        ("cli-github-stack.txt", blocks),
+        ("cli-github-stack.txt", first_blocks),
+        ("cli-github-stack-states.txt", states),
         ("cli-github-stack-guide.txt", guide_blocks),
-        ("cli-github-stack-moves.txt", moves_blocks),
     ):
         rendered_text = _scoped("".join(written))
         # A rendered document's anchors are named by its sandbox-derived namespace.

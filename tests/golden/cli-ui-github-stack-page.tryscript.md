@@ -30,6 +30,8 @@ them.
   stay, as the drawn comparison does, and the guide is mounted again only when the
   reader takes the comparison offered; a description that no longer carries the guide
   turns the front page to Changes.
+  `column` is the body’s column (`bodyInColumn`): the reading column, as a pull
+  request’s body takes it, except on a drawn Docs or Changes, which take the full pane.
 - `comparison` is what a new answer does to the comparison drawn: the first is shown,
   the same one kept, and another offered rather than swapped in under the reader.
 - `header` is the page’s header, row by row (`stackHeader`), a pull request’s header
@@ -37,15 +39,17 @@ them.
   first, the merge it makes, the status line while it has something to say, the size
   line, and the Diff summary.
   The first paint draws the members from the stack the Pulls tab knows, titled as its
-  lists last read them, and holds the merge’s row and the size line and summary pending,
-  so each answer after it lands in the same rows: a member being fetched keeps its row’s
-  title, and only the status line comes and goes, as the members 71’s top lacks are said
-  there. A stack the Pulls tab does not know is held cold for the quiet period until its
-  answer names the members, and one that cannot be shown as one comparison, with none
-  drawn, has no size line or summary.
+  lists last read them and authored as the stacks route names them, and holds the
+  merge’s row and the size line and summary pending, so each answer after it lands in
+  the same rows: a member being fetched keeps its row’s title, the answer names the
+  author of a member whose record has one where the stacks route named none (10’s), and
+  only the status line comes and goes, as the members 71’s top lacks are said there.
+  A stack the Pulls tab does not know is held cold for the quiet period until its answer
+  names the members, and one that cannot be shown as one comparison, with none drawn,
+  has no size line or summary.
 - `drawing` is what the page passes the diff view, as a pull request’s page passes it:
   for the Diff summary only the comparison read and where a file opens, so it starts
-  collapsed with no layer marks on its rows; and for Docs and Changes the pull request’s
+  collapsed, as every Diff summary does; and for Docs and Changes the pull request’s
   drawings, with no summary of their own and the first screen’s Markdown held at most
   `CHANGES_FIRST_SCREEN_MS`.
 - `said` is the line about members the top lacks, and what the page says for a stack it
@@ -86,6 +90,8 @@ them.
   reader takes the new one.
   A stack that can no longer be shown as one keeps the comparison drawn; with nothing
   drawn, the body says what is missing.
+  `column` is the body’s column, as under `guided`: the full pane once Changes is drawn,
+  and the reading column for a notice or a wait with nothing drawn.
 - `order` is the header’s order of 71’s members, the top first, as every stack menu
   lists them.
 
@@ -204,7 +210,7 @@ $ node tests/dom/github-stack-page-session.js
       "rows": "title, corner, members, merge, size, summary",
       "members": [
         "(unknown) WIP: draft the next page 2/2 · #10",
-        "merged Say more in the guide 1/2 · #8 · octo"
+        "merged Say more in the guide 1/2 · #8 · maintainer"
       ],
       "merge": null,
       "status": [],
@@ -215,7 +221,7 @@ $ node tests/dom/github-stack-page-session.js
       "rows": "title, corner, members, merge, size, summary",
       "members": [
         "(unknown) WIP: draft the next page 2/2 · #10",
-        "merged Say more in the guide 1/2 · #8 · octo"
+        "merged Say more in the guide 1/2 · #8 · maintainer"
       ],
       "merge": null,
       "status": [],
@@ -225,8 +231,8 @@ $ node tests/dom/github-stack-page-session.js
       "cold": false,
       "rows": "title, corner, members, merge, size, summary",
       "members": [
-        "draft WIP: draft the next page 2/2 · #10",
-        "merged Say more in the guide 1/2 · #8 · octo"
+        "draft WIP: draft the next page 2/2 · #10 · maintainer",
+        "merged Say more in the guide 1/2 · #8 · maintainer"
       ],
       "merge": "wip → topic",
       "status": [],
@@ -236,9 +242,9 @@ $ node tests/dom/github-stack-page-session.js
       "cold": false,
       "rows": "title, corner, members, merge, status, size, summary",
       "members": [
-        "draft WIP: draft the next page 3/3 · #10",
-        "open Count to two in the app 2/3 · #7",
-        "merged Say more in the guide 1/3 · #8 · octo"
+        "draft WIP: draft the next page 3/3 · #10 · maintainer",
+        "open Count to two in the app 2/3 · #7 · forker",
+        "merged Say more in the guide 1/3 · #8 · maintainer"
       ],
       "merge": "wip → topic",
       "status": [
@@ -258,8 +264,8 @@ $ node tests/dom/github-stack-page-session.js
       "cold": false,
       "rows": "title, corner, members, merge",
       "members": [
-        "merged Say more in the guide 2/2 · #8",
-        "draft WIP: draft the next page 1/2 · #10"
+        "merged Say more in the guide 2/2 · #8 · maintainer",
+        "draft WIP: draft the next page 1/2 · #10 · maintainer"
       ],
       "merge": "guide-more → topic",
       "status": [],
