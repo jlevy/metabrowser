@@ -243,6 +243,12 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       refreshing.getAttribute("aria-busy") === null,
     "the cached page's age breathes, and is the one thing busy, while it refreshes",
   );
+  // The header's rows and the row of ages' parts before the stack arrives: its chip lands in
+  // the slot that row holds before Refresh's (mb-646g), so it adds, takes, and reorders no
+  // row or part. tests/dom/github-pull-header-chrome.mjs measures that nothing moves.
+  const agesRow = warm.querySelector(".github-pull-opened");
+  const rowsBefore = [...warm.querySelector(".github-pull-header").children];
+  const partsBefore = [...agesRow.children];
   resolveStacks({
     status: optionalStacks.current.status,
     headers: { get: () => optionalStacks.current.etag },
@@ -256,8 +262,24 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert(
-    warm.querySelector(".github-pull-meta").children.at(-1).contains(trigger),
-    "stack control ends the author's row (mb-cf0l)",
+    agesRow.children.at(-2).contains(trigger) && agesRow.children.at(-1) === refresh,
+    "stack control ends the row of ages, just before Refresh's slot (mb-646g)",
+  );
+  // The same nodes, by identity, in the same order.
+  const same = (now, before) =>
+    now.length === before.length && now.every((node, at) => node === before[at]);
+  assert(
+    same([...warm.querySelector(".github-pull-header").children], rowsBefore),
+    "the chip arriving adds, takes, and reorders no header row",
+  );
+  assert(
+    same([...agesRow.children], partsBefore),
+    "the chip lands in the row of ages' own slot, Refresh still last",
+  );
+  assert.deepEqual(
+    warm.querySelector(".github-pull-meta").children.map((node) => node.getAttribute("class")),
+    ["github-pull-meta-lead"],
+    "the author's row holds no stack control",
   );
   assert(warm.querySelector(".github-pull-author"), "page actor uses semantic username treatment");
   const disclosure = warm.querySelector(".github-pull-stack-disclosure");

@@ -4698,11 +4698,14 @@ export function mountPullPage(container, ctx, mb) {
       [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
     );
   // A stack's chip arrives from its own /stacks answer, so it has a slot at the right end of
-  // the author's row, under the title's end (mb-cf0l): arriving, it lands in the row's
-  // empty end and moves nothing, and where the row has no room left the sentence is cut
-  // short at its end, never moved. With no stack the slot holds a strut, which gives the row
-  // a chip's height. At the end of the row that also held the branches, a chip took its
-  // width from the sentence and the merge, which slid up to 35 px.
+  // the row of ages, under the title's end, just before Refresh's slot, which ends the row
+  // (mb-646g): arriving, it lands in the row's empty end and moves nothing, Refresh
+  // included, and where the row has no room left the ages give way, cut short at their end
+  // as in a narrow pane, and the row never takes a second line. With no stack the slot holds
+  // a strut, which gives the row a chip's height. At the end of the author's row (mb-cf0l)
+  // it was a row below the state and ages it belongs with; at the end of the row that also
+  // held the branches, a chip took its width from the sentence and the merge, which slid up
+  // to 35 px.
   const stackStrut = strut();
   const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
   const labelList = h("div", { class: "github-pull-label-list" });
@@ -4720,7 +4723,8 @@ export function mountPullPage(container, ctx, mb) {
   // not at all. The sentence and the note share the row's lead (`stateLead`), which the note
   // leaves whole, dot and all, where it cannot be whole beside the sentence, so the sentence
   // never gives up width to it; alone on the row, before a record, it is cut short with its
-  // text as a tooltip. Refresh is not in the note, which can leave: it ends the row of ages.
+  // text as a tooltip. Refresh is not in the note, which can leave: it ends the row of ages,
+  // with the stack's chip just before it. The author's row is its lead alone, a line tall.
   const freshnessLine = tipWhenCut(
     h("span", { class: "github-pull-freshness mb-refreshing-muted" }),
   );
@@ -4735,15 +4739,12 @@ export function mountPullPage(container, ctx, mb) {
   const freshnessSep = h("span", { class: "github-pull-note-sep", "aria-hidden": "true" }, ["·"]);
   const freshnessNote = h("span", { class: "github-pull-note" }, [freshnessSep, freshnessSlot]);
   const stateLead = h("span", { class: "github-pull-meta-lead" }, [stateDetails, freshnessNote]);
-  const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [
-    stateLead,
-    stackColumn,
-  ]);
+  const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [stateLead]);
   // The head and base branches, on a line of their own under the author's sentence: a line
   // tall, the merge's arrow's, while no record is shown too.
   const branchesRow = h("div", { class: "github-pull-branches page-header-line" });
   // The pull request's state leads the row of its ages: its badge, then when it was
-  // opened, updated, merged, or closed.
+  // opened, updated, merged, or closed, then the stack's slot and Refresh's at its end.
   const openedRow = h("div", { class: "github-pull-opened page-header-line" });
   // The pull request's Diff summary, the header's last row, above the tabs and on every one
   // of them (mb-pb35): its header the change set's file and line totals, its tree the
@@ -6055,7 +6056,8 @@ export function mountPullPage(container, ctx, mb) {
      * @type {Map<string, {element: HTMLElement, run: () => unknown}>} */
     const numbered = new Map();
     // Refresh, or Fetch before a record, ends the row of ages, its slot held hidden when there
-    // is nothing to refresh: it came and went with the tab, moving the tab bar 8 px. It is a
+    // is nothing to refresh: it came and went with the tab, moving the tab bar 8 px. A stack's
+    // chip lands just before it (mb-646g), so a chip arriving moves it not at all. It is a
     // text action, as Browse code before it is, so its line is a metadata line's height: as a
     // bordered .btn it was 26 px where the line's text is 18 (mb-2u08). Numbers go in reading
     // order, so it takes the number after Browse code's and renumbers it neither as it comes
@@ -6163,7 +6165,7 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      placeChildren(openedRow, [stateBadge, opened.row, refresh]);
+      placeChildren(openedRow, [stateBadge, opened.row, stackColumn, refresh]);
       children.push(title, counterpartCorner, openedRow, paintStateRow(pull), branchesRow);
       // The labels follow the branches and take no row or gap if absent. They come
       // with its record or core, so the row is decided with the record's first paint; a
@@ -6209,6 +6211,7 @@ export function mountPullPage(container, ctx, mb) {
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
+          stackColumn,
           refresh,
         ]);
         placeChildren(labelList, []);
