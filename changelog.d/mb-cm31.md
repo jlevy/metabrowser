@@ -9,6 +9,13 @@
   The combined diff no longer marks each file with the places of the members that change
   it ([The Stack Page](docs/design-system.md#the-stack-page)).
 
+- **The Pulls tab lists a stack’s page under its members.** Each open stack’s last row,
+  **Whole stack**, with the stack’s Layers glyph, opens the stack’s page, as the stack
+  menu’s first row does, and is the current row while that page is open.
+  J and K stop on it and open the page, Enter and Space open it, and Left goes to the
+  stack’s row
+  ([Stack Groups in the Pulls Tab](docs/design-system.md#stack-groups-in-the-pulls-tab)).
+
 - **View on GitHub on a stack’s page opens the stack.** The page, each of its tabs, and
   each file of its Changes open GitHub’s page of the whole stack, `stack/<n>`, through
   the shared View on GitHub button, where a link in the page’s summary line opened the
