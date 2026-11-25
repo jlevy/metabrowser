@@ -104,11 +104,11 @@
 
   // A title's conventional-commit prefix, "feat(ledger):", is drawn regular and the rest at
   // the title's weight (docs/design-system.md, "Titles"): a type of lowercase letters, an
-  // optional scope of anything but parentheses, an optional "!", and the colon, at most 16
-  // code points, then whitespace and more of the title. The match is linear: each part is a
-  // run of one class, which the first character outside it ends.
+  // optional scope of anything but parentheses, an optional "!", and the colon, at most 32
+  // code points (mb-htmy), then whitespace and more of the title. The match is linear: each
+  // part is a run of one class, which the first character outside it ends.
   const TITLE_PREFIX = /^[a-z]+(?:\([^()]+\))?!?:(?=\s+\S)/u;
-  const TITLE_PREFIX_MAX_CHARS = 16;
+  const TITLE_PREFIX_MAX_CHARS = 32;
   /** The one class that sets a prefix's weight (static/styles.css). */
   const TITLE_PREFIX_CLASS = "title-prefix";
   /** @type {Record<string, string>} */
