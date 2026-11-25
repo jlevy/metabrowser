@@ -679,11 +679,20 @@ def _lines_ask(request: Request) -> tuple[str, str, str] | str:
     side = request.query_params.get("side", "") or "new"
     if side not in _LINE_SIDES:
         return "side is new or old."
-    start = request.query_params.get("start", "")
-    count = request.query_params.get("count", "")
-    if not (start.isdigit() and count.isdigit() and int(start) >= 1 and int(count) >= 1):
+    start = _whole(request.query_params.get("start", ""))
+    count = _whole(request.query_params.get("count", ""))
+    if start is None or count is None:
         return "start and count are whole numbers from 1."
-    return side, str(int(start)), str(min(int(count), DIFF_GAP_LINES))
+    return side, str(start), str(min(count, DIFF_GAP_LINES))
+
+
+def _whole(value: str) -> int | None:
+    """*value* as a whole number from 1, in ASCII digits and short enough to be a line's
+    number, or None."""
+
+    if not (value.isascii() and value.isdigit() and len(value) <= 12) or int(value) < 1:
+        return None
+    return int(value)
 
 
 async def _lines_answer(

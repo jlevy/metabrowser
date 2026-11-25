@@ -15,7 +15,7 @@ registerHooks({
         format: "module",
         shortCircuit: true,
         source:
-          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} }); export const mountDiffSummary = (_slot, document, _api, options) => ({ document, options, dispose() {} }); export const mountFilePatch = () => ({ dispose() {} });",
+          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const setGapLoader = (load) => { globalThis.gapLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} }); export const mountDiffSummary = (_slot, document, _api, options) => ({ document, options, dispose() {} }); export const mountFilePatch = () => ({ dispose() {} });",
       };
     }
     return nextLoad(url, context);
@@ -62,6 +62,24 @@ async function main() {
   assert.deepEqual(requests[2].params, { ...requests[0].params, file: " lead\nfile " });
   assert.equal(requests[0].signal, signal);
   assert.equal(requests[2].signal, signal);
+  // A gap's lines are asked for from the same route, the file and the run beside its own
+  // parameters (`view=lines`, tests/golden/cli-api-diff-lines.tryscript.md).
+  await globalThis.gapLoader(
+    rendered.document.__revision,
+    "src/app.py",
+    { start: 9, count: 25 },
+    { signal },
+  );
+  const gap = requests.pop();
+  assert.equal(`${gap.plugin}/${gap.hook}`, "github/pull-comparison");
+  assert.deepEqual(gap.params, {
+    ...requests[0].params,
+    file: "src/app.py",
+    view: "lines",
+    start: "9",
+    count: "25",
+  });
+  assert.equal(gap.signal, signal);
   for (const route of [
     "https://example.org/api/plugin/github/pull-comparison",
     "//example.org/api/plugin/github/pull-comparison",
