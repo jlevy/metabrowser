@@ -78,6 +78,7 @@ plugin requirements:
   folder: requires markdown
   fsqlite: requires sqlite, table
   github: requires markdown, diff
+  markdown: requires pdf
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents
@@ -290,6 +291,7 @@ plugin requirements:
   folder: requires markdown
   fsqlite: requires sqlite, table
   github: requires markdown, diff
+  markdown: requires pdf
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents

@@ -12,7 +12,8 @@ before: >-
   cp -R "$TRYSCRIPT_TEST_DIR/../fixtures/github-layout" layout &&
   mkdir slow && (printf '[%.0s' $(seq 1 100); head -c 61440 /dev/zero | tr '\0' '%')
   > slow/slow.md &&
-  mkdir diagrams && printf '# Diagrams\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```svg\n<svg viewBox="0 0 1 1"></svg>\n```\n' > diagrams/README.md
+  mkdir diagrams && printf '# Diagrams\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```svg\n<svg viewBox="0 0 1 1"></svg>\n```\n' > diagrams/README.md &&
+  mkdir pdfs && printf '[the report](report.pdf)\n\n![The report](report.pdf)\n\n<img src="report.pdf" alt="html">\n\n<object data="report.pdf"></object>\n\n<embed src="report.pdf">\n\n<iframe src="report.pdf"></iframe>\n' > pdfs/README.md
 ---
 # Golden Test: Markdown From an Untrusted Source
 
@@ -332,5 +333,49 @@ $ metab diagrams --api '/api/kpress/render?path=README.md&view=document' > diagr
 ```console
 $ grep -oE 'data-kpress-diagram=\\"[a-z]+\\"' diagrams-trusted.txt
 data-kpress-diagram=\"mermaid\"
+? 0
+```
+
+## Test: a PDF a document embeds reaches the page as an image’s address
+
+A document can name a PDF as a link, as a Markdown or HTML image, or as an `<object>`,
+`<embed>`, or `<iframe>`. KPress keeps the link and the images and drops the other
+three, trusted or untrusted, so no render hands the page a viewer to start.
+The link enhancer then draws each image of a `.pdf` as the pdf plugin’s card, with a
+link to the PDF’s view (`pdfEmbeds` in cli-ui-markdown-functional.tryscript.md).
+
+```console
+$ metab pdfs --api '/api/kpress/render?path=README.md&view=document' > pdfs-trusted.txt
+? 0
+```
+
+```console
+$ grep '^  "html":' pdfs-trusted.txt | grep -oE '<(a|img|object|embed|iframe)( [^>]*)?>'
+<a href=\"report.pdf\">
+<img src=\"report.pdf\" alt=\"The report\" class=\"kpress-image\" data-kpress-image=\"true\" loading=\"lazy\">
+<img src=\"report.pdf\" alt=\"html\" class=\"kpress-image\" data-kpress-image=\"true\" loading=\"lazy\">
+? 0
+```
+
+KPress names each tag it removed in `sanitizer_diagnostics`.
+
+```console
+$ grep -oE 'Removed raw HTML tag <[a-z]+>' pdfs-trusted.txt
+Removed raw HTML tag <object>
+Removed raw HTML tag <embed>
+Removed raw HTML tag <iframe>
+? 0
+```
+
+```console
+$ metab pdfs --untrusted --api '/api/kpress/render?path=README.md&view=document' > pdfs-inert.txt
+? 0
+```
+
+```console
+$ grep '^  "html":' pdfs-inert.txt | grep -oE '<(a|img|object|embed|iframe)( [^>]*)?>'
+<a href=\"report.pdf\">
+<img loading=\"lazy\" src=\"report.pdf\" alt=\"The report\">
+<img loading=\"lazy\" src=\"report.pdf\" alt=\"html\">
 ? 0
 ```

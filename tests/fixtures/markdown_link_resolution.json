@@ -93,8 +93,23 @@
     },
     {
       "id": "generic-resource",
-      "intent": { "syntax": "html", "authoredTarget": "../assets/report.pdf", "action": "embed" },
-      "expected": { "status": "internal", "path": "assets/report.pdf", "mediaKind": "resource" }
+      "intent": { "syntax": "html", "authoredTarget": "../assets/archive.zip", "action": "embed" },
+      "expected": { "status": "internal", "path": "assets/archive.zip", "mediaKind": "resource" }
+    },
+    {
+      "id": "pdf-embed",
+      "intent": { "syntax": "markdown", "authoredTarget": "../assets/Report.PDF#page=2", "action": "embed" },
+      "expected": {
+        "status": "internal",
+        "path": "assets/Report.PDF",
+        "fragment": "page=2",
+        "mediaKind": "pdf"
+      }
+    },
+    {
+      "id": "pdf-without-extension-is-a-resource",
+      "intent": { "syntax": "html", "authoredTarget": "../assets/report", "action": "embed" },
+      "expected": { "status": "internal", "path": "assets/report", "mediaKind": "resource" }
     },
     {
       "id": "https-external",

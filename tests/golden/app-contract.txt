@@ -116,7 +116,9 @@ exit: 0
       "display_name": "<text>",
       "version": "<text>",
       "source": "<text>",
-      "requires": []
+      "requires": [
+        "pdf"
+      ]
     },
     {
       "name": "pdf",
