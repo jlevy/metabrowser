@@ -4329,7 +4329,7 @@ export function stackMemberState(source, target, number, current) {
  * trigger.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, menus: MetabrowserMenus}} deps
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, menus?: MetabrowserMenus}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -4376,7 +4376,7 @@ export function createStackMenu(initial, number, deps) {
   const listening = new AbortController();
   const signal = listening.signal;
   // It closes as every menu does (docs/design-system.md, "Every Menu Closes Alike").
-  const dismissal = deps.menus.dismissible({
+  const dismissal = deps.menus?.dismissible({
     name: "github-pull-stack-menu",
     trigger,
     inside: (node) => menu.contains(node),
@@ -4505,7 +4505,7 @@ export function createStackMenu(initial, number, deps) {
   /** @param {boolean} [focus] */
   function close(focus = false) {
     root.open = false;
-    dismissal.closed();
+    dismissal?.closed();
     trigger.setAttribute("aria-expanded", "false");
     if (focus && trigger.isConnected) {
       trigger.focus({ preventScroll: true });
@@ -4539,7 +4539,7 @@ export function createStackMenu(initial, number, deps) {
     () => {
       trigger.setAttribute("aria-expanded", String(root.open));
       if (root.open && !signal.aborted) {
-        dismissal.opened();
+        dismissal?.opened();
         populate();
         deps.onOpen();
         // A press opens the menu here, with focus on the trigger; a key that opened it
@@ -4568,7 +4568,7 @@ export function createStackMenu(initial, number, deps) {
         } else {
           root.open = true;
           trigger.setAttribute("aria-expanded", "true");
-          dismissal.opened();
+          dismissal?.opened();
           populate();
           deps.onOpen();
           focusCurrent();
@@ -4599,7 +4599,7 @@ export function createStackMenu(initial, number, deps) {
       if (at < 0) {
         root.open = true;
         trigger.setAttribute("aria-expanded", "true");
-        dismissal.opened();
+        dismissal?.opened();
         populate();
         deps.onOpen();
         focusCurrent();
@@ -4656,7 +4656,7 @@ export function createStackMenu(initial, number, deps) {
     dispose() {
       listening.abort();
       close();
-      dismissal.dispose();
+      dismissal?.dispose();
     },
   });
 }
@@ -5783,7 +5783,7 @@ export function mountPullPage(container, ctx, mb) {
         currentTitle: model.pull?.title ?? "",
         named,
         titleNodes: mb.titleNodes,
-        menus: /** @type {MetabrowserMenus} */ (mb.menus),
+        menus: mb.menus,
         state: (target) =>
           stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
         onOpen() {

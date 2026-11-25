@@ -8,13 +8,17 @@ has: a ``dismissible({ name: "<surface>", ... })`` call there, through
 class. A new menu fails this until it is wired so; a menu that went fails its stale entry.
 
 Its behavior is ``tests/dom/menu-dismissal-session.js``'s and
-``tests/test_menu_dismissal_chrome.py``'s.
+``tests/test_menu_dismissal_chrome.py``'s. ``metabrowser.menus`` is optional, since a
+load whose ``filter-controls.js`` failed has none, and the shell still starts without it.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+
+from devtools import check_startup_scripts as check
+from tests.required_tools import needs_node
 
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "metabrowser"
 
@@ -99,3 +103,17 @@ def test_the_check_reads_the_shapes_menus_are_drawn_in() -> None:
         "menu" in match.group(2).split()
         for match in _CLASS_LIST.finditer('<div class="menu-separator">')
     )
+
+
+@needs_node
+def test_a_load_whose_filter_controls_failed_still_starts() -> None:
+    # The shell holds its tree only until a bound while filter-controls.js has not run
+    # (tests/test_files_totals_stable_chrome.py, `failOpen`), and that script is what sets
+    # `metabrowser.menus`. A gear that read the helper unguarded threw at
+    # DOMContentLoaded, and nothing after it ran: no tree request, no tally.
+    html = check.render_folder_shell()
+    tag = re.search(r'<script\b[^>]*src="/static/filter-controls\.js[^"]*"[^>]*>\s*</script>', html)
+    assert tag, "the folder shell loads filter-controls.js"
+    report = check.run_startup_session(html.replace(tag.group(0), ""), check.FOLDER_ADDRESS)
+    assert report["errors"] == []
+    assert "/api/tree" in report["fetches"]

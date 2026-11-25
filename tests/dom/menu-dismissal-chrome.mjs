@@ -112,7 +112,8 @@ try {
   await page.send("Page.enable");
   await page.send("Runtime.enable");
   await page.send("Page.navigate", { url: `${base}/` });
-  await page.waitFor(`document.documentElement.dataset.shellToolsReady === "true"`, 60000);
+  // Asked while the navigation commits, the new document has no root element yet.
+  await page.waitFor(`document.documentElement?.dataset.shellToolsReady === "true"`, 60000);
   await page.waitFor(
     `!!document.querySelector('[data-chip-menu-toggle="group"]') && !!document.querySelector("button.source-ref-selector-toggle") && !!window.MetabrowserMenus`,
     30000,
