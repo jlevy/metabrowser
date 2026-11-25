@@ -881,6 +881,13 @@ async function run() {
     });
     // A deleted file has nothing to open at the current revision.
     assertContains("file row: deleted is inert", deleted, "git-commit-file-inert");
+    // Its lines are the brief change line of its totals, the zero one left out (mb-ox6a).
+    assertContains(
+      "file row: a file's lines leave out a zero total",
+      deleted,
+      '<span class="change-line"><span class="change-line-stats"><span class="diff-stat-del">−9</span></span></span>',
+    );
+    assertNotContains("file row: no +0", deleted, "+0");
     assertNotContains("file row: deleted has no data-path", deleted, "data-path");
 
     const binary = internals.renderFileRow({
@@ -1098,13 +1105,9 @@ async function run() {
         deletions: 1,
       },
     });
-    assertEqual("tooltip: one file", changeLineText(one), "1 D·+0−1");
+    assertEqual("tooltip: one file", changeLineText(one), "1 D·−1");
     assertEqual("tooltip: one file, its size line", sizeLineText(one), "1 file changed");
-    assertContains(
-      "tooltip: one file, in words",
-      one,
-      ">1 deleted; 0 lines added, 1 deleted</span>",
-    );
+    assertContains("tooltip: one file, in words", one, ">1 deleted; 1 line deleted</span>");
     const empty = internals.renderCommitTooltip({
       ...detail,
       stats: {
@@ -1116,7 +1119,7 @@ async function run() {
         deletions: 0,
       },
     });
-    assertEqual("tooltip: no files", changeLineText(empty), "+0−0");
+    assertEqual("tooltip: no files", changeLineText(empty), "0 lines");
     assertEqual("tooltip: no files, its size line", sizeLineText(empty), "0 files changed");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });

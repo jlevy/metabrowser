@@ -263,7 +263,7 @@ const INKS = `(() => {
   // The line totals alone, a zero one left out, as the heading draws them (mb-lqkb, mb-efum).
   const said = window.metabrowser.changeLine({
     statuses: [], additions: answers.additions, deletions: answers.deletions,
-  }, { omitZeroTotals: true });
+  });
   reference.replaceChildren(...window.metabrowser.changeLineNodes(said));
   const dot = heading?.querySelector(":scope > .summary-punctuation");
   const probe = document.createElement("span");
@@ -285,7 +285,7 @@ const REAL = `((lines) => {
   const widths = lines.map((line) => {
     const said = window.metabrowser.changeLine({
       statuses: [], additions: line.additions, deletions: line.deletions,
-    }, { omitZeroTotals: true });
+    });
     host.replaceChildren(...window.metabrowser.countPartsNodes([{ separator: "·" }]), ...window.metabrowser.changeLineNodes(said));
     const em = parseFloat(getComputedStyle(host).fontSize);
     const width = host.querySelector(".change-line").getBoundingClientRect().width;

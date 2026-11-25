@@ -78,6 +78,15 @@ DIFF_FOLD_THRESHOLD = 40
 # Lines of the run shown above the expander, so a fold always starts by
 # showing what the change is before offering the rest.
 DIFF_FOLD_VISIBLE = 20
+# The unchanged lines one open of a hunk's gap shows (diff-view.js, `renderGapFold`), and the
+# most one `view=lines` answer of the comparison route holds (builtin_plugins/diff/sidekick.py).
+# A longer gap opens this many nearest its hunk, behind a bar for the rest. Measured 2026-11-24
+# in headless Chrome 152 on a Mac at a load average near 140, opening the gap above a hunk of a
+# 20,000-line Python file, answered in the page, through the production view and highlighter:
+# 1,000 lines were all drawn 104-111 ms after the click, in batches of 100, and highlighted in
+# one 14 ms lexer call, with no task of 50 ms; 2,000 took 227-232 ms, past the 200 ms an
+# interaction may take, and 4,000 570-618 ms, with a 46-68 ms lexer call and a 71 ms task.
+DIFF_GAP_LINES = 1000
 
 TEXT_PREVIEW_CHUNK_BYTES = 2 * 1024 * 1024
 # Each Load more asks for twice the last chunk, capped here, so reaching a
@@ -659,6 +668,7 @@ def client_settings_dict(
         "ROLLUP_WATCH_DEBOUNCE_MS": ROLLUP_WATCH_DEBOUNCE_MS,
         "DIFF_FOLD_THRESHOLD": DIFF_FOLD_THRESHOLD,
         "DIFF_FOLD_VISIBLE": DIFF_FOLD_VISIBLE,
+        "DIFF_GAP_LINES": DIFF_GAP_LINES,
         "SYNTAX_HIGHLIGHT_MAX_BYTES": syntax_highlight_max_bytes,
         "SYNTAX_LANGUAGE_BY_BASENAME": dict(SYNTAX_LANGUAGE_BY_BASENAME),
         "SYNTAX_LANGUAGE_BY_EXTENSION": dict(SYNTAX_LANGUAGE_BY_EXTENSION),

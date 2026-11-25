@@ -305,13 +305,12 @@
   /**
    * A brief change line, each count written with *formatCount* and an unknown one as "?":
    * `text` as it reads, and `label` in words, "10 added, 5 deleted, 4 modified; 1,234 lines
-   * added, 567 deleted". *options.omitZeroTotals* leaves out a total of zero (mb-efum).
+   * added, 567 deleted". A total of zero is left out; a change of no lines reads "0 lines".
    * @param {MetabrowserChangeLineInput} change
    * @param {(count: number) => string} formatCount
-   * @param {MetabrowserChangeLineBuildOptions} [options]
    * @returns {MetabrowserChangeLine}
    */
-  function changeLine(change, formatCount, options = {}) {
+  function changeLine(change, formatCount) {
     /** @param {number | null} count */
     const written = (count) => (count === null ? "?" : formatCount(count));
     /** @type {MetabrowserCountParts} */
@@ -325,7 +324,7 @@
     const additions = `+${added}`;
     const deletions = `${MINUS}${deleted}`;
     const shownTotals = /** @type {const} */ (["additions", "deletions"]).filter(
-      (side) => !options.omitZeroTotals || change[side] !== 0,
+      (side) => change[side] !== 0,
     );
     const shown = { additions, deletions };
     const totals = shownTotals.map((side) => shown[side]).join(" ") || NO_LINES;

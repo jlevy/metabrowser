@@ -586,10 +586,10 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     assert transcript["hunks"] and transcript["place"]
 
 
-# What the header's Refresh asks for in the mount session: a refresh that recovers the
-# comparison on screen.
-_REFRESH_BODY = (
-    '{"number":7,"retry":true,"recovery":'
+# What the Pulls tab's Refresh asks of the page in the mount session (mb-ablv): a refresh
+# that recovers the comparison on screen.
+_PULLS_REFRESH = (
+    'POST /api/plugin/github/pull-refresh {"number":7,"retry":true,"recovery":'
     '{"base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",'
     '"head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"}}'
 )
@@ -745,6 +745,8 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             'a record of the list\'s head, its comparison not yet read: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             'the comparison\'s read fails: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             "no list cached: the pending placeholder; 1 reads",
+            # A list that deleted nothing says no zero total (mb-ox6a).
+            'a record of a list that only adds lines: the brief line "1 A, 2 M \u00b7 +3,893"; 1 reads',
             'opened from a Pulls row that drew its line: the brief line "1 M \u00b7 +12 \u22124"; 0 reads',
             'opened from a Pulls row whose line the lane marked out of date, read again: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             "a page that went before its read answered, its summary drawn: the summary; 1 reads",
@@ -808,28 +810,31 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "C: showed Conversation",
             "G: opened the files route",
             "the route arrives: Changes",
-            "numbered on Changes: 1 Browse code, 2 Refresh",
-            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered after a refresh serves the head: 1 Browse code, 2 Refresh",
-            "1: navigation.open /view/",
-            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered after a refresh with no pin: 1 Refresh",
-            f"1: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "2: not handled",
-            # While the refresh 2 asks for runs, Refresh waits, shown and disabled, and keeps
-            # 2, so a second 2 asks nothing (B2 of review B on #506). Code on the pull
+            # The page has no Refresh of its own (mb-ablv): Changes numbers Browse code alone,
+            # and the Pulls tab's Refresh runs the page's `refresh`, which names the comparison
+            # on screen. While a refresh runs the page offers none, and says so to the Pulls
+            # tab, which waits while the list cannot refresh either. Code on the pull
             # request's head numbers no switch to it: the server follows that head.
-            f"1: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered with the code on the head: 1 Browse code, 2 Refresh",
-            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered while that refresh runs: 1 Browse code, 2 Refresh",
-            "2: nothing asked",
-            # Once the refresh ends Refresh is offered again on Changes; on Conversation
-            # nothing is left to refresh, so Refresh is not shown (C2 of review C on #506,
-            # accepted).
-            "numbered once the refresh ends: 1 Browse code, 2 Refresh",
+            "numbered on Changes: 1 Browse code",
+            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            "numbered after a refresh serves the head: 1 Browse code",
+            "1: navigation.open /view/",
+            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            "numbered after a refresh with no pin: none",
+            "1: not handled",
+            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            "numbered with the code on the head: 1 Browse code",
+            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            "while that refresh runs, the page can refresh: false",
+            "the Pulls tab's Refresh, the page not offering one: nothing asked",
+            # Once the refresh ends the page offers one again on Changes; on Conversation
+            # nothing is left to refresh.
+            "once the refresh ends, the page can refresh: true",
+            "on Conversation once the refresh ends, the page can refresh: false",
             "numbered on Conversation once the refresh ends: 1 Browse code",
-            "3: not handled",
+            "the page told the Pulls tab it can refresh: "
+            "false, true, false, true, false, true, false, true, false, true",
+            "2: not handled",
             "Shift+H: not handled",
             "Shift+E: opened the checks route",
             "Shift+C: opened the conversation route",
@@ -902,6 +907,31 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # that arrives ends it ok and closes the panel, and a failed refresh's Details read the
         # failures around when it ended (mb-9zp5).
         "eventLogDetails": _event_log_details_steps(),
+        # The page has no Refresh of its own (mb-ablv): a status line that says what to retry
+        # or fetch ends in its remedy, which waits, muted, until the refresh it asked for runs.
+        "statusRemedies": [
+            'a current record whose last refresh failed: status "Could not reach '
+            'GitHub.DetailsRetry"; remedy Retry; note shown; asked nothing; the Pulls tab '
+            "may refresh it",
+            'Retry pressed, its refresh not yet started: status "Could not reach '
+            'GitHub.DetailsRetry"; remedy Retry (waiting); note shown; asked POST '
+            '/api/plugin/github/pull-refresh {"number":8,"retry":true}; the Pulls tab has '
+            "nothing to refresh",
+            'Retry pressed again while it waits: status "Could not reach GitHub.DetailsRetry"; '
+            "remedy Retry (waiting); note shown; asked nothing; the Pulls tab has nothing to "
+            "refresh",
+            "the refresh runs: status none; remedy none; note shown; asked nothing; the Pulls "
+            "tab has nothing to refresh",
+            'a direct link to a pull request whose fetch failed: status "This pull request has '
+            'not been fetched yet.Could not reach GitHub.DetailsFetch"; remedy Fetch; note '
+            "none; asked nothing; the Pulls tab may refresh it",
+            'Fetch pressed: status "Fetching the pull request…Could not reach GitHub.Details"; '
+            "remedy none; note none; asked POST /api/plugin/github/pull-refresh "
+            '{"number":7,"retry":true,"wait_core":true}; the Pulls tab has nothing to refresh',
+            'a direct link to a copy saved by another version: status "The saved copy of this '
+            'pull request is from another version.Fetch"; remedy Fetch; note none; asked '
+            "nothing; the Pulls tab may refresh it",
+        ],
     }
 
 

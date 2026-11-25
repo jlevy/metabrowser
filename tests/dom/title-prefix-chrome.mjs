@@ -228,14 +228,14 @@ const MEASURE = `async (titles) => {
     await document.fonts.ready;
     await frames();
     out.pullsRow = { prefixed: read(title(rows[0].number)), plain: read(title(rows[1].number)) };
-    // The title's two lines (mb-85op): its heading, cut short at the second line's end, past
-    // which the rest of the title runs.
+    // The row's run (mb-pw8t): the title, the number, and the toggle, wrapping in as many lines
+    // as they take, never cut short.
     const heading = title(rows[0].number).closest(".github-pulls-heading");
     const lineHeight = parseFloat(getComputedStyle(heading).lineHeight);
     out.pullsHeading = {
       clamped: heading.scrollHeight > heading.clientHeight + 1,
       lineClamp: getComputedStyle(heading).webkitLineClamp,
-      lines: Math.round((heading.clientHeight / lineHeight) * 100) / 100,
+      lines: Math.round((heading.getBoundingClientRect().height / lineHeight) * 100) / 100,
     };
     handle?.dispose?.();
   }
@@ -342,17 +342,26 @@ const MEASURE = `async (titles) => {
     const members = [...holder.querySelectorAll(".github-pull-stack-member")];
     const member = (title) => members.map((link) => link.querySelector(".github-pull-stack-member-title")).find((node) => node.textContent === title);
     out.stackMember = { prefixed: read(member(PULL)), plain: read(member(PULL_PLAIN)) };
-    // Each member's line and the shell's tip (mb-as06): one line, the long title cut short,
-    // and the whole title in the member's tip, which the shell shows only while it is cut.
-    out.stackMemberLines = members.map((link) => ({
-      height: Math.round(link.getBoundingClientRect().height * 100) / 100,
-      title: link.querySelector(".github-pull-stack-member-title").textContent,
-      tip: link.dataset.tipText ?? null,
-      clipped: (() => {
-        const title = link.querySelector(".github-pull-stack-member-title");
-        return title.scrollWidth > title.clientWidth;
-      })(),
-    }));
+    // Each member's line and the shell's tip (mb-as06): one line, the long title cut short
+    // before the number, which stays whole at the line's end (mb-1kzu), and the whole title
+    // in the member's tip, which the shell shows only while it is cut.
+    out.stackMemberLines = members.map((link) => {
+      const title = link.querySelector(".github-pull-stack-member-title");
+      const number = link.querySelector(".github-pull-stack-member-number");
+      const copy = link.querySelector(".github-pull-stack-member-copy");
+      return {
+        height: Math.round(link.getBoundingClientRect().height * 100) / 100,
+        title: title.textContent,
+        tip: link.dataset.tipText ?? null,
+        clipped: title.scrollWidth > title.clientWidth,
+        number: number === null ? null : {
+          text: number.textContent,
+          whole: number.scrollWidth <= number.clientWidth,
+          afterTitle: number.getBoundingClientRect().left >= title.getBoundingClientRect().right - 0.5,
+          endGap: Math.round((copy.getBoundingClientRect().right - number.getBoundingClientRect().right) * 100) / 100,
+        },
+      };
+    });
     menu.dispose();
   }
 
@@ -576,15 +585,17 @@ async function main() {
           bare.rest.weight,
         );
       }
-      // A Pulls row's title cut short at its second line ends in the clamp's ellipsis, with all
-      // of its title its text (mb-85op): it was one line, cut short by text-overflow.
+      // A Pulls row's long title wraps in its run and is never cut short, all of its title its
+      // text (mb-pw8t): it was one line, cut short by text-overflow, and then two, cut short
+      // by a line clamp's ellipsis (mb-85op).
       const row = measured.pullsRow?.prefixed;
       const heading = measured.pullsHeading;
       check(
-        "a Pulls row's long title is cut short at two lines with an ellipsis, whole in its text",
-        heading?.clamped === true &&
-          heading.lineClamp === "2" &&
-          heading.lines === 2 &&
+        "a Pulls row's long title wraps in its run, never cut short, whole in its text",
+        heading?.clamped === false &&
+          heading.lineClamp === "none" &&
+          heading.lines >= 2 &&
+          Math.abs(heading.lines - Math.round(heading.lines)) < 0.01 &&
           row?.text === PULL,
         JSON.stringify({ row, heading }),
       );
@@ -604,6 +615,20 @@ async function main() {
           memberLines.find((line) => line.title === PULL)?.clipped === true &&
           memberLines.some((line) => !line.clipped),
         JSON.stringify({ member, memberLines }),
+      );
+      // Its number is never cut (mb-1kzu): whole at the line's end, after the title, the long
+      // title's too, which is cut short before it.
+      check(
+        "a stack member's number stays whole at the line's end, the long title cut short before it",
+        memberLines.length === 3 &&
+          memberLines.every(
+            (line) =>
+              /^#\d+$/.test(line.number?.text ?? "") &&
+              line.number.whole &&
+              line.number.afterTitle &&
+              Math.abs(line.number.endGap) <= 0.5,
+          ),
+        JSON.stringify(memberLines),
       );
       // The pull request's heading, clamped at two lines, carries the whole title in its tip.
       const clamped = measured.pullTitleClamped;

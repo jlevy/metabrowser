@@ -346,7 +346,10 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     # centering puts on its baseline, with its own text on one baseline.
     facts = box(
         "diff-file-facts",
-        text("diff-file-stats", el("diff-stat-add"), el("diff-stat-del")),
+        text(
+            "diff-file-stats",
+            el("change-line", el("change-line-stats", el("diff-stat-add"), el("diff-stat-del"))),
+        ),
         text("diff-file-note"),
     )
     # The bar is a centered row of boxes: the name's group, the toggle with the copy control
@@ -498,17 +501,11 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
 
 
 def test_inline_change_stats_are_bold() -> None:
+    # Every lines summary is the brief change line, a file's and a folder's too, so its one
+    # rule inks and weighs every +N and −N (mb-ox6a).
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
-        encoding="utf-8"
-    )
-    for css, selector in (
-        (diff_css, ".metabrowser-diff-host .diff-stat-add"),
-        (diff_css, ".metabrowser-diff-host .diff-stat-del"),
-        (styles, ".git-stat-add"),
-        (styles, ".git-stat-del"),
-    ):
-        assert "font-weight: var(--weight-bold)" in _rule(css, selector), f"{selector} not bold"
+    for selector in (".change-line-stats > .diff-stat-add", ".change-line-stats > .diff-stat-del"):
+        assert "font-weight: var(--weight-bold)" in _rule(styles, selector), f"{selector} not bold"
 
 
 def test_branch_chips_are_bold_and_square() -> None:
@@ -1738,8 +1735,6 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".git-history-page-placeholder"),
     ("styles.css", ".git-panel-empty"),
     ("styles.css", ".git-commit-files-summary"),
-    ("styles.css", ".git-stat-add"),
-    ("styles.css", ".git-stat-del"),
     ("styles.css", ".git-stat-binary"),
     ("styles.css", ".file-header-path"),
     ("styles.css", ".file-header-mirror"),
@@ -2582,8 +2577,8 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "test_the_pulls_tab_carries_the_shells_primitives" in doc
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring. A
-    # pull request's three lines are one item (mb-1z7j): its zone hovers, carries the current
-    # mark, and takes the ring of the link inside it, as a Files row's `.tree-item` does.
+    # pull request's run and last line are one item (mb-1z7j): its zone hovers, carries the
+    # current mark, and takes the ring of the link inside it, as a Files row's `.tree-item` does.
     row = github[".github-pulls-row"]
     assert row["min-height"] == "var(--ui-row-height)"
     item = ".github-pulls-entry"
@@ -2601,8 +2596,9 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         == "var(--focus-ring-width) solid var(--focus-ring-color)"
     )
     assert github[f"{item} > .github-pulls-row:focus-visible"]["outline"] == "none"
-    # The change line is the item's inner target: no ground of its own, and only its chevron's
-    # plate answers the pointer, so its status inks keep the grounds their contrast is held on.
+    # The toggle, the lines and the chevron, is the item's inner target: no ground of its own,
+    # and only its chevron's plate answers the pointer, so its status inks keep the grounds
+    # their contrast is held on.
     assert ".github-pulls-change:hover" not in github
     assert github[".github-pulls-change:hover > .github-pulls-toggle"]["background"] == (
         "var(--border)"
@@ -2688,15 +2684,15 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
     # A pull request's number is bold wherever it names the pull request, the weight of a
     # stack's position, through one token (mb-vrvs): one rule in the GitHub plugin for the
-    # title's and a Pulls row's, and the shell's Quick Search result and ref selector; no
-    # other rule sets a number's weight. A stack menu's member shows no number (mb-as06).
-    # In headless Chrome each computes to 700 (github-pulls-stacks-chrome.mjs,
+    # title's, a Pulls row's, and a stack menu member's (mb-1kzu), and the shell's Quick
+    # Search result and ref selector; no other rule sets a number's weight. In headless
+    # Chrome each computes to 700 (github-pulls-stacks-chrome.mjs,
     # github-pull-header-chrome.mjs).
     assert "### Pull Request Numbers" in doc
     shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert shell_css.count("--pull-number-weight:") == 1
     assert "--pull-number-weight: var(--weight-bold);" in shell_css
-    numbers = (".github-pull-number", ".github-pulls-number")
+    numbers = (".github-pull-number", ".github-pulls-number", ".github-pull-stack-member-number")
     weighted = [
         (selector, declarations["font-weight"])
         for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
@@ -2718,6 +2714,7 @@ _PULL_NUMBERS = frozenset(
         ".github-pulls-number",
         ".github-pull-stack-position",
         ".github-pull-stack-member-position",
+        ".github-pull-stack-member-number",
         ".search-palette-pull-number",
         ".source-ref-selector-pull-number",
     }
@@ -2955,21 +2952,9 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
         "align-items": "baseline",
         "column-gap": "inherit",
     }
-    # A line that leaves out its zero totals says "0 lines" for a change of none, muted at
-    # its line's weight (mb-efum). Only the Pulls tab's rows and stack headings leave them
-    # out: every other surface that says a change set in brief says both totals.
+    # A line leaves out a total of zero and says "0 lines" for a change of none, muted at
+    # its line's weight, wherever it stands (mb-efum, mb-ox6a).
     assert shell[".change-line-stats > .change-line-none"] == {"color": "var(--muted)"}
-    panel = (REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js").read_text(encoding="utf-8")
-    assert panel.count("{ omitZeroTotals: true }") == 2
-    for path in (
-        "builtin_plugins/diff/diff-view.js",
-        "builtin_plugins/github/pull-page.js",
-        "builtin_plugins/github/pull-summary-brief.js",
-        "static/git-panel.js",
-        "static/changed-files-tree.js",
-    ):
-        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
-        assert "omitZeroTotals" not in source, path
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:
@@ -3021,53 +3006,25 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # The Pulls tab's number's line names no branches (the pull request's page does) and is
-    # one line, the row's third, its change line (mb-lkkt, mb-lqkb): the number never gives
-    # way; the author and the lines changed after it are a wrap laid out from its end, the
-    # lines its first item and the author its second, each carrying its separator, so the
-    # author leaves first onto a second line the box clips, one change line tall, and the
-    # lines leave it whole where the number leaves them no room.
+    # A Pulls row names no branches (the pull request's page does) (mb-lkkt, mb-pw8t): its
+    # run is the title, the place, the number, and the lines, the number never breaking, and
+    # its last line the author, in the row's type, then the age, the author's name ending in
+    # an ellipsis where the line has no room for it.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
-    meta = github[".github-pulls-meta"]
-    assert (meta["min-width"], meta["overflow"], meta["height"]) == (
-        "0",
-        "clip",
+    assert ".github-pulls-meta" not in github and ".github-pulls-line" not in github
+    assert github[".github-pulls-number"]["white-space"] == "nowrap", "the number never breaks"
+    byline = github[".github-pulls-byline"]
+    assert (byline["height"], byline["grid-template-columns"]) == (
         "var(--github-pulls-change-line)",
+        "minmax(0, 1fr) 5ch",
     )
-    assert meta["font-size"] == "var(--nav-font-size)", "the number's line is the nav's type"
-    assert github[".github-pulls-number"]["flex"] == "none", "the number never gives way"
-    # The author is the number's line's secondary metadata, at its size, which it inherits.
+    # The author is the last line's secondary metadata, at its size, which it inherits.
     assert "font-size" not in github[".github-pulls-by"]
-    assert "text-overflow" not in meta
-    line = github[".github-pulls-line"]
-    assert (line["display"], line["flex-direction"], line["flex-wrap"]) == (
-        "flex",
-        "row-reverse",
-        "wrap",
-    )
-    assert (line["overflow"], line["height"]) == ("clip", "var(--github-pulls-change-line)")
-    assert github[".github-pulls-line::before"]["order"] == "-2", "a zero-width first item"
-    lines = github[".github-pulls-line > .github-pulls-change-line"]
-    assert (lines["flex"], lines["order"]) == ("none", "-1"), "the lines, whole, before the author"
-    assert ".github-pulls-id" not in github, "the number's line starts with the number"
-    assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
-    by_rule = github[".github-pulls-by"]
-    assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")
+    assert ".github-pulls-id" not in github, "the run names the number once"
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
     by = github[".github-pulls-by"]
-    assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
-    avatar = " ".join(github[".github-pulls-by:has(.actor-avatar)"]["min-width"].split())
-    assert avatar == (
-        "calc( var(--github-pulls-sep) + var(--actor-avatar-size) +"
-        " var(--actor-identity-gap) + 1.75em )"
-    ), "a name beside it"
-    # The floor counts the avatar's box and its gap, through the two tokens that size them in
-    # the shell's identity (mb-xlla, mb-nunw).
-    shell = dict(_rules_of(STATIC / "styles.css"))
-    assert (shell[".actor-avatar"]["width"], shell[".actor-identity"]["gap"]) == (
-        "var(--actor-avatar-size)",
-        "var(--actor-identity-gap)",
-    ), "the floor counts the avatar and its gap"
+    assert (by["min-width"], by["overflow"]) == ("0", "hidden"), "the author gives way to the age"
+    assert ".github-pulls-by:has(.actor-avatar)" not in github
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
     assert ".github-pulls-who" not in github
@@ -3176,11 +3133,12 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "github-pull-browse" not in page and '"Browse code"' in page
     assert page.count('class: "github-pull-text-action"') == 1
     assert '"github-pull-file github-pull-text-action"' in page
-    # The status line's Refresh or Fetch is a text action too: the line is one of the
-    # header's metadata lines, and a bordered .btn made it 26 px where the row of ages above
-    # it is 18 (mb-2u08). A switch to the head was one, until the server followed the head
-    # itself (mb-6a6w).
-    assert '"github-pull-text-action github-pull-refresh"' in page
+    # The status line's remedy, Retry or Fetch, is a text action too (mb-ablv): the line is
+    # one of the header's metadata lines, and a bordered .btn made it 26 px where the row of
+    # ages above it is 18 (mb-2u08). A switch to the head was one, until the server followed
+    # the head itself (mb-6a6w). The page has no Refresh of its own.
+    assert '"github-pull-text-action github-pull-remedy"' in page
+    assert "github-pull-refresh" not in page
     assert "github-pull-switch" not in page
     # A <button> is an atomic inline box whatever its display, so the link and the plain
     # path are one too: a wrapped path then puts the badge after it on the next line in every
@@ -3576,7 +3534,6 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
     for selector in (
         ".github-pull-commit",
         ".github-pull-meta-details > .github-pull-identity",
-        ".github-pulls-by:has(.actor-avatar)",
     ):
         geometry = " ".join(
             rules[selector].get("padding", rules[selector].get("min-width", "")).split()
@@ -4634,8 +4591,6 @@ def test_a_failure_is_one_ink_and_a_stat_is_one_pair() -> None:
     ink = {
         ".diff-stat-add": "--status-success-text",
         ".diff-stat-del": "--status-error-text",
-        ".git-stat-add": "--status-success-text",
-        ".git-stat-del": "--status-error-text",
     }
     seen: dict[str, set[str]] = {}
     for sheet in _stylesheets():

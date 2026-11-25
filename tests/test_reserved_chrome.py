@@ -312,8 +312,8 @@ def test_a_title_holds_two_lines_and_never_more() -> None:
 def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     """The author and the sentence share one line; the branches, the next (mb-646g).
 
-    The row of ages above them ends in the stack's slot and Refresh's, and the slot's strut
-    holds that row at a chip's height until a chip arrives.
+    The row of ages above them ends in the stack's slot, whose strut holds that row at a
+    chip's height until a chip arrives.
     """
 
     css = _github_css()
@@ -366,10 +366,11 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "text-overflow" not in ages
     assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-quiet > .github-pull-ages")
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
-    # Refresh ends it, after Browse code (A1 of review A on #506), with the stack's slot just
-    # before it (mb-646g), on a record's row and on the one held before a record.
-    assert "placeChildren(openedRow, [stateBadge, opened.row, stackColumn, refresh]);" in page
-    assert "          stackColumn,\n          refresh,\n        ]);" in page
+    # The stack's slot ends the row (mb-646g, mb-dwha), on a record's row and on the one held
+    # before a record, with nothing after it: the page has no Refresh of its own (mb-ablv).
+    assert "placeChildren(openedRow, [stateBadge, opened.row, stackColumn]);" in page
+    assert "          ),\n          stackColumn,\n        ]);" in page
+    assert "github-pull-refresh" not in page and "github-pull-refresh" not in css
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page
 
 
@@ -419,13 +420,16 @@ def test_labels_have_a_row_while_unknown_or_present() -> None:
     assert "children.push(openedRow, stateRow, branchesRow, labelsRow);" in page
 
 
-def test_the_stack_chip_ends_the_row_of_ages_before_refresh() -> None:
-    """A late chip lands in the row's empty end, before Refresh's slot, moving it not (mb-646g).
+def test_the_stack_chip_ends_the_row_of_ages_under_the_number() -> None:
+    """A late chip lands in the row's empty end, under the number (mb-646g, mb-dwha, mb-ablv).
 
-    The slot takes the row's spare width, so Refresh, which keeps its box held hidden, ends
-    the row on the header's content edge whatever the slot holds. The ages take only the
-    width the chips leave, so they give way before a chip does, and a chip's position is cut
-    short only once they have none left. tests/dom/github-pull-header-chrome.mjs measures it.
+    The slot takes the row's spare width, so the chip ends the row at the content edge,
+    under the end of the title's number where the title leaves the corner's button no room;
+    nothing follows it, since the page has no Refresh of its own, whose held slot there kept
+    the chip a Refresh's width short of the number. The ages take only the width the chips
+    leave, so they give
+    way before a chip does, and a chip's position is cut short only once they have none
+    left. tests/dom/github-pull-header-chrome.mjs measures it.
     """
 
     css = _github_css()
@@ -433,10 +437,14 @@ def test_the_stack_chip_ends_the_row_of_ages_before_refresh() -> None:
     assert "margin-inline-start: auto;" in stacks and "flex: 0 1 auto;" in stacks
     assert "min-width: 0;" in stacks
     assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
-    # One auto margin on the row: a second, on Refresh, would split the spare width with the
-    # slot's and leave the chip in the middle of the row.
-    assert ".github-pull-opened > .github-pull-refresh" not in css
-    assert "visibility: hidden;" in _rule(css, ".github-pull-refresh[hidden]")
+    # One auto margin on the row, the slot's, so the chip ends the row.
+    assert "margin-inline-start" not in _rule(css, ".github-pull-opened > .github-pull-quiet")
+    # The row ends at the content edge: the room the title leaves the corner's button is the
+    # title's alone, since taking it from the row too cut the ages and Browse code short in a
+    # narrow pane.
+    room = ".github-pull-header:has(> .view-header-end[data-counterpart])"
+    assert "padding-inline-end: max(" in _rule(css, f"{room} > .github-pull-title")
+    assert f"{room} > .github-pull-opened" not in css
     # The ages' basis is nothing, and they grow to their own width at most.
     ages = _rule(css, ".github-pull-opened > .github-pull-quiet")
     assert "flex: 1 1 0;" in ages and "max-width: max-content;" in ages
@@ -495,9 +503,6 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     # pane width, is checked in Chrome (tests/test_github_pull_header_chrome.py).
     assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-offer-text")
     assert "flex: none;" in _rule(css, ".github-pull-offer > :is(button, a)")
-    assert "margin-inline-start" not in _rule(css, ".github-pull-refresh")
-    held = _rule(css, ".github-pull-refresh[hidden]")
-    assert "visibility: hidden;" in held and "display: inline-block;" in held
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     # The row is a metadata line, a line of the page header's body size tall (mb-2u08,
     # mb-kisi), which its class sets (`.page-header-line`): its controls are text actions, a
@@ -507,18 +512,20 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     # Whether it shows is read from what the paint put on it, not from the DOM (A4 of review A
     # on #506); the browserless sessions hold it (github-pull-page-mount-behavior.js).
     assert "status.hidden = agesRow && statusText.length === 0 && ending.length === 0;" in page
-    assert 'class: "github-pull-text-action github-pull-refresh"' in page
-    assert "btn github-pull-refresh" not in page
-    # Shown while offered, and while a refresh it offered waits, disabled, keeping its number
-    # (B2 of review B on #506).
-    assert "refresh.hidden = !(model.canRefresh || waiting);" in page
-    assert 'refresh.setAttribute("aria-disabled", "true");' in page
+    # The page has no Refresh of its own (mb-ablv): the status row's remedy, Retry or Fetch,
+    # is a text action first among the offers at its end, never cut short.
+    assert 'class: "github-pull-text-action github-pull-remedy"' in page
+    assert "btn github-pull-remedy" not in page
+    assert "flex: none;" in _rule(css, ".github-pull-status-end > .github-pull-remedy")
+    # Shown while the row says what it is for, and while a refresh it asked for has not yet
+    # started, disabled, keeping its number (B2 of review B on #506).
+    assert "const remedyShown = asks && (model.canRefresh || waiting);" in page
+    assert 'remedy.setAttribute("aria-disabled", "true");' in page
     waits = _rule(css, '.github-pull-text-action[aria-disabled="true"]')
     assert "color: var(--muted);" in waits and "cursor: default;" in waits
     assert "if (model.canRefresh) {" not in page
-    # With no row of ages, Refresh is the end's last child, after any offers.
     assert 'h("span", { class: "github-pull-status-end" })' in page
-    assert "placeChildren(end, agesRow ? ending : [...ending, refresh]);" in page
+    assert "placeChildren(end, ending);" in page
     assert 'status.append(h("span", { class: "github-pull-offer" }' not in page
     # A failure carries its remedy, so it is the one text the row lets wrap.
     failed = _rule(css, ".github-pull-status.github-pull-status-failed")
@@ -554,9 +561,9 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
-    # A pull request's link is one column, its title's two lines, across the row from the
-    # state icon in the slot to the row's end (mb-85op); a stack's row is one line, the age at
-    # its end.
+    # A pull request's link is one column, its run and its last line, across the row from the
+    # state icon in the slot to the row's end (mb-85op, mb-pw8t); a stack's row is one line,
+    # the age at its end.
     # The state icon is the tree's one icon slot (mb-hmv7), on the row's inset, with no empty
     # slot before it (mb-3vil); a stack's row has two, its chevron's and its Layers icon's.
     assert " ".join(columns.group(1).split()) == "minmax(0, 1fr)"
@@ -570,12 +577,12 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
         == "var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch"
     )
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
-    # on #506). The change line's inset is the row's, so its chevron is under the state icon,
-    # and its columns are the row's, so its age sits in the row's age column (mb-lqkb).
-    change = _rule(css, ".github-pulls-change")
-    assert "padding: 0 12px 2px calc(10px + var(--github-pulls-indent, 0px));" in change
-    assert "grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr) 5ch;" in change
-    assert "column-gap: var(--github-pull-row-gap);" in change
+    # on #506). The last line is in the row's content box, from the text column, and its age
+    # column is the stack row's, so the age sits in the row's age column (mb-lqkb, mb-pw8t).
+    byline = _rule(css, ".github-pulls-byline")
+    assert "padding: 0 0 2px var(--github-pull-row-text-column);" in byline
+    assert "grid-template-columns: minmax(0, 1fr) 5ch;" in byline
+    assert "column-gap: var(--github-pull-row-gap);" in byline
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
     assert "  --github-pull-row-gap: var(--tree-icon-gap);\n" in css
     column = (
@@ -590,26 +597,33 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "width: 3ch;" in _rule(css, ".github-pulls-filters .count.tally-pending")
 
 
-def test_a_stack_members_place_leads_its_title() -> None:
-    """A stack member's place in its stack leads its title, after the state icon: "14/15 ·
-    title", the place bold, then the stack menu's muted dot (mb-vkhd). It was on the
-    muted line before the number, "1/6 · #455 · author", from mb-dzsi until the title took two
-    lines and the number's line joined the change line (mb-85op, mb-lqkb); before that its
+def test_a_stack_members_place_follows_its_title() -> None:
+    """A stack member's place in its stack follows its title, with the stack menu's muted dot
+    before it, "title · 14/15", the place bold, then the number, "· #N" (mb-vkhd, mb-pw8t): the
+    stack menu's member line's order, the title, then the place and the number. It led the
+    title, "14/15 · title", from mb-85op until the run took the number too; it was on the muted
+    line before the number, "1/6 · #455 · author", from mb-dzsi until then; and before that its
     column on the title line, between the title and the age (review E1 on #370), took the
-    title's room. A pull request in no stack has no place and no dot: the icon, then the
-    title. github-pull-header-chrome.mjs and github-pulls-stacks-chrome.mjs measure it, and
+    title's room. A pull request in no stack has no place and no dot: the title, then the
+    number. github-pull-header-chrome.mjs and github-pulls-stacks-chrome.mjs measure it, and
     github-pulls-stack-groups-session.js pins the drawn place."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
-    assert 'h("span", { class: "github-pulls-heading" }, [icon, stack, title])' in panel
+    build = _function(panel, "buildRow")
+    run = build[build.index('h("span", { class: "github-pulls-heading" }, [') :]
+    assert run.index("title,") < run.index("stack,") < run.index("number,")
     place = panel[panel.index("function paintPlace(") :]
     place = place[: place.index("\n  }\n")]
-    assert place.index('"github-pull-stack-position"') < place.index('"github-pull-stack-dot"')
+    assert place.index('"github-pull-stack-dot"') < place.index('"github-pull-stack-position"')
     # The dot is the stack menu's member line's (`.github-pull-stack-dot`), so the two
     # surfaces read alike.
     assert 'h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"])' in place
     # A no-break space before the dot, so no line starts with it.
     assert '"\\u00a0",\n      h("span", { class: "github-pull-stack-dot"' in place
+    # The number's dot is the same one, the run's separator's.
+    separator = panel[panel.index("  const separator = () =>") :]
+    separator = separator[: separator.index("]);")]
+    assert '"\\u00a0",\n      h("span", { class: "github-pull-stack-dot" }, ["·"]),' in separator
     assert "element.hidden = caption === null;" in place, "no stack, no place and no dot"
     css = _github_css()
     # The dot is the muted token, at the micro marks' size, never a color literal, and the
@@ -628,77 +642,99 @@ def test_a_stack_members_place_leads_its_title() -> None:
 
 
 def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
-    """A pull request's row is three lines (mb-lkkt, mb-d0a3, mb-85op, mb-lqkb). Its link is
-    two: its title's, one flow of the state icon, a stack member's place and dot, and the
-    title, which wraps under the icon and is cut short at the second line's end, two lines
-    tall whatever it holds. The third line is its change line, not part of the link: the
-    chevron under the state icon, then the number's line, "#113 · jlevy · +1,234 −567", with
-    the age at the row's end. The number's line came first, the icon leading it, from mb-3cbf
-    until 2026-11-17, when the owner asked for the title first; the chevron moved to the third
-    line in mb-h0ml, and the number's line joined it, its file statuses dropped, when the
-    title took two lines. The DOM keeps the title the link's first text, so its accessible
-    name gives the state icon's label, the place, and then the title, before the number's line
-    in words (`rowSaid`). github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs, and
+    """A pull request's row is a run and a last line, all of it the row's link (mb-lkkt,
+    mb-d0a3, mb-85op, mb-lqkb, mb-pw8t). The run is one flow of the state icon, then the title,
+    a stack member's place, the number, and the lines with the chevron after them, "title ·
+    5/12 · #N · +12 −3 ›", every line of it in the text column, past the icon, as a tree's
+    title wraps; the last line is the author, then the age at the row's end. The lines and the
+    chevron are the toggle of its changed files, and the rest of the row opens it. Before, the
+    title alone held two lines, cut short at the second, its second line under the icon, and a
+    third line held the number, the author, and the lines, and was the toggle's line. The DOM
+    keeps the title the link's first text, so its accessible name gives the state icon's label,
+    the title, and the place, before the number, the author, and the age in words
+    (`rowSaid`). github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs, and
     github-pulls-row-lines-chrome.mjs measure it."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
-    assert "[heading, said]," in panel, "the title leads the name"
+    assert "[heading, byline, said]," in panel, "the title leads the name"
     assert 'h("span", { class: "sr-only" }, [rowSaid(row, when.label)])' in panel
+    build = _function(panel, "buildRow")
+    # The run's order: the icon, the title, the place, the dot and the number, then the dot and
+    # the toggle, whose lines come before its chevron.
+    run = build[build.index('h("span", { class: "github-pulls-heading" }, [') :]
+    run = run[: run.index("]);")]
+    assert [part.strip(" \n,") for part in run.split("[", 1)[1].split("\n") if part.strip()] == [
+        "icon",
+        "title",
+        "stack",
+        "separator()",
+        "number",
+        "separator()",
+        "tail",
+    ]
+    toggle = build[build.index('{ class: "github-pulls-change disclosure-toggle collapsed"') :]
+    assert toggle.index("changeLine,") < toggle.index('"github-pulls-toggle"'), (
+        "the chevron comes after the lines it expands"
+    )
     css = _github_css()
     heading = _rule(css, ".github-pulls-row > .github-pulls-heading")
     for declaration in (
         "position: relative;",
-        "height: 2lh;",
-        "overflow: hidden;",
-        "text-indent: var(--github-pull-row-text-column);",
-        "-webkit-line-clamp: 2;",
-        "line-clamp: 2;",
+        "display: block;",
+        "padding-inline-start: var(--github-pull-row-text-column);",
     ):
         assert declaration in heading, declaration
-    # Only the title breaks anywhere: on the heading, that break let a place wider than the
-    # first line put its dot at the second line's start (Chrome 152, 180 px).
+    # Every line of the run starts in the text column: its start padding, not the first line's
+    # indent, which WebKit drops on a -webkit-box, where in the app's WKWebView the place or the
+    # title was drawn over the state icon (mb-ma3f). The run is no -webkit-box and is never cut
+    # short, so it always ends with its chevron; no rule of the sheet indents a line.
+    assert "-webkit-box" not in heading and "line-clamp" not in heading
+    assert not re.search(r"(?<![-\w])(?:min-|max-)?height\s*:", heading), heading
+    assert ".github-pulls-row > .github-pulls-heading::before" not in css
+    assert not re.search(r"(?m)^\s*text-indent\s*:", css)
+    # Only the title breaks anywhere; the number never breaks.
     assert "overflow-wrap" not in heading
     assert "overflow-wrap: anywhere;" in _rule(css, ".github-pulls-title")
-    # The icon is out of the text's flow, in the slot the first line's indent leaves, one line
-    # of the row's type tall: inline, it was a break, and a title of one long word left the
-    # first line the icon alone.
+    assert "white-space: nowrap;" in _rule(css, ".github-pulls-number")
+    # The icon is out of the text's flow, in the run's start padding, one line of the row's
+    # type tall: inline, it was a break, and a title of one long word left the first line the
+    # icon alone.
     icon = _rule(css, ".github-pulls-heading > .github-pull-state-icon")
     for declaration in (
         "position: absolute;",
         "inset-block-start: 0;",
         "inset-inline-start: 0;",
         "height: 1lh;",
-        "text-indent: 0;",
     ):
         assert declaration in icon, declaration
-    # A pull request's chevron is on its change line, in the row's one slot under the state
-    # icon, and the number's line in the text column (mb-3vil), the age at the row's end.
-    assert "grid-column: 1;" in _rule(css, ".github-pulls-change > .github-pulls-toggle")
-    meta = _rule(css, ".github-pulls-meta")
+    # The lines and the chevron are one box the run breaks before and never inside, at least
+    # the pending placeholder's room and the chevron's wide, so lines no wider than it arrive
+    # where it was and move nothing; the room past shorter lines follows the chevron.
+    tail = _rule(css, ".github-pulls-heading > .github-pulls-tail")
     for declaration in (
-        "grid-column: 2;",
+        "display: inline-block;",
+        "min-width: calc(var(--github-pulls-lines-room) + 0.25em + var(--tree-icon-slot));",
+        "white-space: nowrap;",
+    ):
+        assert declaration in tail, declaration
+    assert "--github-pulls-lines-room: 5.6em;" in _rule(css, ".github-pulls-row")
+    assert "width: var(--github-pulls-lines-room);" in _rule(css, ".github-pulls-change-pending")
+    assert "margin-inline-start: 0.25em;" in _rule(
+        css, ".github-pulls-change > .github-pulls-toggle"
+    )
+    # The last line: the author in the text column, the age in its column at the row's end,
+    # one line height, centered.
+    byline = _rule(css, ".github-pulls-byline")
+    for declaration in (
+        "grid-template-columns: minmax(0, 1fr) 5ch;",
         "align-items: center;",
         "height: var(--github-pulls-change-line);",
-        "overflow: clip;",
+        "padding: 0 0 2px var(--github-pull-row-text-column);",
+        "line-height: var(--github-pulls-change-line);",
     ):
-        assert declaration in meta, declaration
-    age = _rule(css, ".github-pulls-change > .github-pulls-age")
-    assert "grid-column: 3;" in age and "justify-self: end;" in age
-    # No part of a pull request's link is placed on a row of its grid: the link is one flow.
+        assert declaration in byline, declaration
+    assert "justify-self: end;" in _rule(css, ".github-pulls-byline > .github-pulls-age")
+    # Nothing of the row's old change line is left: no grid of its own, no line that gives way.
+    for gone in (".github-pulls-meta", ".github-pulls-line", ".github-pulls-change > :is("):
+        assert gone not in css, gone
     assert re.findall(r"(?m)^(\.github-pulls[^{\n]*)\{[^}]*grid-row: 2;", css) == []
-    # The change line's text is one size on one line height, centered, as its chevron is: a
-    # baseline taken from the number's line, a wrap whose first line can hold no text, moved
-    # the number and the age 6 px when the author left it (Chrome 152, 200 and 180 px).
-    change = _rule(css, ".github-pulls-change")
-    assert "align-items: center;" in change
-    assert "line-height: var(--github-pulls-change-line);" in change
-    assert "align-items: center;" in _rule(css, ".github-pulls-line")
-    assert ".github-pulls-change > :is(" not in css
-    assert not re.findall(r"(?m)^\.github-pulls-(?:change|meta|line)[^{\n]*\{[^}]*baseline", css)
-    # The lines take at least the pending placeholder's room, so lines no wider than it arrive
-    # where it was and leave the author as it was.
-    assert "--github-pulls-lines-room: 5.6em;" in change
-    assert "min-width: calc(var(--github-pulls-sep) + var(--github-pulls-lines-room));" in _rule(
-        css, ".github-pulls-line > .github-pulls-change-line:not(:empty)"
-    )
-    assert "width: var(--github-pulls-lines-room);" in _rule(css, ".github-pulls-change-pending")

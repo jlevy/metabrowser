@@ -939,6 +939,8 @@ async function main() {
     const binds = [];
     const attachments = [];
     const api = {
+      // A file's lines are said by the shell's brief change line, as the SDK hands it.
+      ...require("./changed-files-tree-fixture.js").shellPainters(),
       highlightSyntax: async () => null,
       isLargeTextPreview: () => true,
       langForPath: () => "",

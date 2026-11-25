@@ -1,6 +1,7 @@
 // A diff's toolbar and its file bars' end groups, laid out by headless Chrome, and the place a
 // Diff | Current choice keeps: the production `mountDiffView` (builtin_plugins/diff/diff-view.js),
-// with diff-markdown.js's views, the shell's own chip family (static/filter-controls.js), and
+// with diff-markdown.js's views, the shell's brief change line (static/formatters.js), its own
+// chip family (static/filter-controls.js), and
 // the production File type control (diff-type-filter.js), under the shell's, the diff plugin's,
 // and KPress's stylesheets.
 //
@@ -223,6 +224,7 @@ const head = (title) => `<!doctype html><html><head><meta charset="utf-8"><title
 ${INPUT.sheets.map((sheet) => `<link rel="stylesheet" href="/kpress/${sheet}">`).join("\n")}
 <script>window.METABROWSER_SETTINGS = { FILTER_TYPE_PRESETS: ${JSON.stringify(INPUT.presets)} };</script>
 <script src="/static/icons.js"></script>
+<script src="/static/formatters.js"></script>
 <script>window.metabrowser = { icons: window.MetabrowserIcons };</script>
 <script src="/static/filter-controls.js"></script>
 <script src="/static/inert-html.js"></script>
@@ -286,7 +288,12 @@ const MOUNT = `async (hostId, options, comparison, answer, imageRoute, typeState
   const prefs = new Map([["diff.layout", "unified"], ...Object.entries(stored)]);
   const writes = [];
   const fc = window.metabrowser.filterControls;
+  const formatters = window.MetabrowserFormatters;
   const api = {
+    // A file's lines are said by the shell's brief change line, as the SDK hands it.
+    countPartsNodes: (parts) => formatters.countPartsNodes(document, parts),
+    changeLine: (change) => formatters.changeLine(change, formatters.formatInteger),
+    changeLineNodes: (line, options) => formatters.changeLineNodes(document, line, options),
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
     langForPath: () => "",

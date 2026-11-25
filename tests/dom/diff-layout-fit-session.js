@@ -92,6 +92,11 @@ class PageElement {
 
   append(...nodes) {
     for (const node of nodes) {
+      // The shell's painters append a string as text, as the DOM's `append` takes one.
+      if (typeof node === "string") {
+        this.textContent += node;
+        continue;
+      }
       node.parentNode = this;
       this.children.push(node);
     }
@@ -241,6 +246,8 @@ async function main() {
     let spec = null;
     const attachments = [];
     const api = {
+      // The file bars' lines are the shell's brief change line, through the SDK's painters.
+      ...require("./changed-files-tree-fixture.js").shellPainters(),
       highlightSyntax: async () => null,
       isLargeTextPreview: () => true,
       langForPath: () => "",

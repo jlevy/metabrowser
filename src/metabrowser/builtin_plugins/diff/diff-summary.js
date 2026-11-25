@@ -277,6 +277,7 @@ function h(tag, attributes, children = []) {
  *   files: ReadonlyArray<MetabrowserChangedFileRow>,
  *   id: string,
  *   formatCount: (count: number) => string,
+ *   changeLineNodes: MetabrowserPublicSdk["changeLineNodes"],
  *   chevron: () => Node | null,
  *   jump: (path: string) => void,
  *   marks?: (path: string) => Node[],
@@ -324,10 +325,11 @@ export function mountSummaryTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "changed-file-stats", "aria-hidden": "true" }, [
-            h("span", { class: "diff-stat-add" }, [stats.additions]),
-            h("span", { class: "diff-stat-del" }, [stats.deletions]),
-          ]),
+          h(
+            "span",
+            { class: "changed-file-stats", "aria-hidden": "true" },
+            host.changeLineNodes(stats),
+          ),
         ];
   }
 

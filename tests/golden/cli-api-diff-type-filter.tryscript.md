@@ -634,7 +634,7 @@ api: /api/plugin/diff/comparison?revision=HEAD&view=tally
 status: 400
 {
   "error": "diff_comparison",
-  "message": "view is types, or absent for the comparison itself.",
+  "message": "view is types or lines, or absent for the comparison itself.",
   "path": "HEAD"
 }
 Error: /api/plugin/diff/comparison?revision=HEAD&view=tally returned HTTP 400

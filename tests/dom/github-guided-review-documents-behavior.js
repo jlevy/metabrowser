@@ -33,6 +33,7 @@ registerHooks({
         shortCircuit: true,
         source: [
           "export const setChangeLoader = () => {};",
+          "export const setGapLoader = () => {};",
           "export const mountDiffSummary = () => ({ dispose() {} });",
           "export const mountDiffView = (...args) => globalThis.diffViewRecorder.mountDiffView(...args);",
           "export const mountFilePatch = (...args) => globalThis.diffViewRecorder.mountFilePatch(...args);",
