@@ -16,7 +16,7 @@ import WebKit
 /// in mb-4wqh).
 ///
 /// The web view keeps what its site stores in the one store every pane shares
-/// (`WebDataStore`), so signing in to a site once holds in every tab and window and after a
+/// (`WebDataStore`), so signing in to a site once holds in every window and after a
 /// relaunch. Navigation follows the policy for the site it was opened on (`WebViewPolicy`):
 /// that site's own pages stay, and anything else opens in the default browser; opening it
 /// on another site's page starts a new web view, with no history. A file dropped on it goes

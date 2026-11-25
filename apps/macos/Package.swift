@@ -14,7 +14,7 @@ let package = Package(
     ],
     targets: [
         // Everything testable without a window: supervision, runtime discovery, the
-        // child environment, logs, files opened in folders, tabs, the saved session, and
+        // child environment, logs, files opened in folders, windows, the saved session, and
         // the navigation policy.
         .target(name: "ShellCore", swiftSettings: settings),
         // The web view class a window holds and its container, and the title-line menu
