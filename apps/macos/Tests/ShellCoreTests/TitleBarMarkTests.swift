@@ -11,6 +11,12 @@ import Testing
         #expect(ProjectLinks.repositoryLabel == "Metabrowser on GitHub")
     }
 
+    @Test func theCreditLeadsToTheAuthorsPage() {
+        #expect(ProjectLinks.authorName == "Joshua Levy")
+        #expect(ProjectLinks.author.absoluteString == "https://x.com/ojoshe")
+        #expect(ProjectLinks.author.scheme == "https")
+    }
+
     @Test func theOtherLinksAreUnderTheRepository() {
         #expect(ProjectLinks.readme.absoluteString == "https://github.com/jlevy/metabrowser#readme")
         #expect(ProjectLinks.installationGuide.absoluteString

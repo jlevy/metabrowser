@@ -541,7 +541,8 @@ def test_git_kpress_render_honors_gitpath_without_mtime(
                 params={"path": _wire(b"nul.bin"), "view": "rendered"},
             )
             assert binary.status_code == 415
-            assert binary.json()["error"] == "KPress render supports text-like files only"
+            assert binary.json()["error"] == "Only a text file can be rendered as a document."
+            assert binary.json()["detail"] == "KPress render supports text-like files only"
 
             symlink = await client.get(
                 "/api/kpress/render",
@@ -677,7 +678,8 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 assert (body["type"], body["kind"]) == ("text", "markdown")
                 assert body["content"].startswith("---\n" + OVER_BUDGET)
                 assert "frontmatter" not in body
-                assert "without its YAML aliases" in body["frontmatter_error"]
+                assert body["frontmatter_error"] == "The frontmatter could not be read."
+                assert "without its YAML aliases" in body["frontmatter_error_detail"]
                 assert plain.json()["frontmatter"] == {"title": "Plain"}
 
                 seen.clear()
@@ -687,7 +689,8 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 assert rendered.status_code == 200, shape
                 assert "lol" not in rendered.json()["html"]
                 assert seen["frontmatter"] is None
-                assert "without its YAML aliases" in seen["frontmatter_error"]
+                assert seen["frontmatter_error"] == "The frontmatter could not be read."
+                assert "without its YAML aliases" in rendered.json()["frontmatter_error_detail"]
 
             odd = (await client.get("/api/file", params={"path": _wire(b"odd.md")})).json()
             assert "frontmatter_error" not in odd
@@ -699,7 +702,7 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 path = _wire(f"fails-{case}.md".encode())
                 failed = await client.get("/api/file", params={"path": path})
                 assert failed.status_code == 200, case
-                assert failed.json()["frontmatter_error"].startswith(
+                assert failed.json()["frontmatter_error_detail"].startswith(
                     f"Error parsing YAML metadata: {reason}"
                 ), case
 

@@ -319,7 +319,7 @@ this standard. Paths are under `src/metabrowser/`.
 | `TEXT_PREVIEW_CHUNK_BYTES` | `settings.py` | The source view’s first chunk: opening latency |
 | `TEXT_PREVIEW_MAX_CHUNK_BYTES` | `settings.py` | The largest Load more: per-click main-thread time |
 | `TEXT_PREVIEW_REQUEST_MAX_BYTES` | `settings.py` | One text request, and the stream window of a compressed file or Git blob |
-| `FRONTMATTER_MAX_BYTES`, `FRONTMATTER_MAX_EXPANDED_SIZE`, `YAML_MAX_DEPTH` | `frontmatter_yaml.py` | The front-matter text any path parses, its size with every YAML alias written out, and its nesting; past any of them the front matter is refused with the reason, and the file reads as text |
+| `FRONTMATTER_MAX_BYTES`, `FRONTMATTER_MAX_EXPANDED_SIZE`, `YAML_MAX_DEPTH` | `frontmatter_yaml.py` | The front-matter text any path parses, its size with every YAML alias written out, and its nesting; past any of them the front matter is refused, the reason in the answer’s `frontmatter_error_detail`, and the file reads as text |
 | `TEXT_NODE_MAX_LENGTH` | `static/source-append.js` | WebKit’s layout of the text one Load more appends |
 | `SYNTAX_HIGHLIGHT_MAX_BYTES` | `settings.py` | Highlight.js main-thread work and token-span DOM |
 | `BINARY_PREVIEW_MAX_BYTES` | `builtin_plugins/binary/sidekick.py` | Browser memory for the bytes the binary view loads |

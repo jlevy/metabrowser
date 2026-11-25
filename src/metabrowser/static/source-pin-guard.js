@@ -120,7 +120,7 @@
         if (target.origin === new URL(address).origin && target.pathname === "/api/source/pin") {
           if (selecting) {
             return Response.json(
-              { code: "selection_busy", error: "A ref switch is already in progress." },
+              { code: "selection_busy", error: "Another switch is already in progress." },
               { status: 409 },
             );
           }

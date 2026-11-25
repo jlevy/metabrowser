@@ -1752,7 +1752,7 @@ pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: g
 api: /api/plugin/github/pull-markdown?number=14&part=body
 status: 404
 {
-  "error": "no record of this pull request is cached",
+  "error": "This pull request has not been loaded.",
   "code": "not_cached"
 }
 Error: /api/plugin/github/pull-markdown?number=14&part=body returned HTTP 404

@@ -19,7 +19,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from metabrowser import server
-from metabrowser.builtin_plugins.fsqlite import reader, source, store
+from metabrowser.builtin_plugins.fsqlite import reader, sidekick, source, store
 from metabrowser.builtin_plugins.fsqlite.store import (
     CURRENT_MAX_BYTES,
     CURRENT_MAX_VERSION,
@@ -211,12 +211,26 @@ def test_an_oversized_marker_is_invalid_without_parsing() -> None:
 def test_store_metadata_read_refuses_a_fifo(tmp_path: Path, name: str, state: str) -> None:
     fifo = tmp_path / name
     os.mkfifo(fifo)
-    with pytest.raises(StoreError, match="not a regular file") as refused:
+    with pytest.raises(StoreError) as refused:
         if name == "fsqlite.json":
             store.read_marker(fifo)
         else:
             store.read_current(fifo)
     assert refused.value.state == state
+    # The page says the file cannot be read; the operating system's words are detail.
+    assert "not a regular file" in refused.value.detail
+
+
+def test_an_unreadable_store_file_is_named_in_the_detail() -> None:
+    """The page says the store cannot be read; the detail, for `metab --api`, says which
+    of its files failed and why, without the folder it sits in (review A8 on #801)."""
+    denied = PermissionError(13, "Permission denied", "/stores/demo/fsqlite.json")
+    assert sidekick._unreadable(denied) == {
+        "state": "invalid",
+        "message": "This store cannot be read.",
+        "detail": "fsqlite.json: Permission denied",
+    }
+    assert sidekick._unreadable(OSError("no such device"))["detail"] == "no such device"
 
 
 def test_pending_envelopes_are_counted_by_their_commit_marker(tmp_path: Path) -> None:
@@ -718,9 +732,10 @@ def test_snapshot_identity_reports_an_older_sqlite_library_as_unsupported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(reader.sqlite_access, "library_version", lambda: (3, 42, 0))
-    with pytest.raises(SqliteAccessError, match="requires SQLite 3.43.0 or later") as refused:
+    with pytest.raises(SqliteAccessError, match="needs SQLite 3.43.0 or later") as refused:
         reader._identity_op({}, deadline=0)
     assert refused.value.state == "unsupported"
+    assert "this reader uses SQLite" in refused.value.detail
 
 
 @pytest.mark.parametrize(

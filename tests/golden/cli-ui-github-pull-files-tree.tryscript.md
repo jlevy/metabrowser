@@ -311,7 +311,7 @@ $ node tests/dom/github-pull-files-tree-session.js
       "capped": false,
       "truncated": false,
       "failure": "cache_unwritable",
-      "says": "The changed files of pull request #106 could not be written to the cache: An entry in the Metabrowser storage directory cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own. To clear the GitHub cache of octo/demo, run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, then retry."
+      "says": "Could not list the changed files."
     },
     "a stale list's rows are never covered by progress": {
       "its refresh about to be asked for": {
@@ -356,7 +356,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "not_logged_in",
-        "says": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. You can still browse local files and any cached pull requests."
+        "says": "Run gh auth login --hostname github.com to sign in to GitHub."
       },
       "gh_too_old": {
         "status": "stale",
@@ -365,7 +365,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "gh_too_old",
-        "says": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. You can still browse local files and any cached pull requests."
+        "says": "GitHub CLI needs an update."
       },
       "not_found_or_private": {
         "status": "stale",
@@ -383,7 +383,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "network_error",
-        "says": "Offline, or GitHub could not be reached. The files are as they were last listed."
+        "says": "Could not reach GitHub."
       },
       "gh_failed": {
         "status": "stale",
@@ -392,7 +392,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "gh_failed",
-        "says": "GitHub answered with something other than JSON."
+        "says": "Could not list the changed files."
       },
       "account_changed": {
         "status": "stale",
@@ -401,7 +401,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "account_changed",
-        "says": "The active gh account changed during the read, so it is not taken as complete; open the files again."
+        "says": "Could not list the changed files."
       },
       "rate_limited": {
         "status": "stale",
@@ -419,7 +419,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "gh_missing",
-        "says": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests."
+        "says": "GitHub CLI is not installed."
       },
       "cache_unwritable": {
         "status": "stale",
@@ -428,7 +428,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "cache_unwritable",
-        "says": "The changed files of pull request #106 could not be written to the cache: An entry in the Metabrowser storage directory cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own. To clear the GitHub cache of octo/demo, run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, then retry."
+        "says": "Could not list the changed files."
       }
     },
     "an answer for another read starts again at 0": {

@@ -1005,7 +1005,8 @@ def test_the_raw_path_form_is_an_honest_refusal_on_a_pin(
         response = client.get(f"/raw/{path}")
         assert response.status_code == 409, path
         assert response.json() == {
-            "error": "source does not support raw_document_path",
+            "error": "This is not available here.",
+            "detail": "source does not support raw_document_path",
             "code": "unsupported_for_subject",
             "capability": "raw_document_path",
         }

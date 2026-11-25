@@ -1,11 +1,32 @@
 // The page the PDF sessions run the production SDK, compositor, and PDF view in: a vm
 // context with a small element tree that records what the view builds, the shell's
-// scripts loaded whole in the order the shell loads them, and a mount that goes through
-// the compositor's lifecycle as a file view does.
+// scripts loaded whole in the order the shell loads them, the plugin's module loaded as
+// the SDK imports it, and a mount that goes through the compositor's lifecycle as a file
+// view does.
+//
+// The plugin's index.js is an ES module (it exports `mountPdfCard`), which a vm context
+// evaluates only as a `vm.SourceTextModule`, behind `--experimental-vm-modules`. A
+// session started without the flag is run again with it, so `node <session>` and the
+// goldens that spell it stay the same.
 
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+
+if (typeof vm.SourceTextModule !== "function") {
+  const { spawnSync } = require("node:child_process");
+  const again = spawnSync(
+    process.execPath,
+    [
+      "--experimental-vm-modules",
+      "--disable-warning=ExperimentalWarning",
+      ...process.execArgv,
+      ...process.argv.slice(1),
+    ],
+    { stdio: "inherit" },
+  );
+  process.exit(again.status ?? 1);
+}
 
 const repoRoot = path.resolve(__dirname, "../..");
 
@@ -70,6 +91,16 @@ function createPage() {
       this.attributes.delete(String(name));
     }
 
+    append(...children) {
+      for (const child of children) {
+        if (child.parentNode) {
+          child.remove();
+        }
+        child.parentNode = this;
+        this.children.push(child);
+      }
+    }
+
     replaceChildren(...children) {
       for (const child of this.children) {
         child.parentNode = null;
@@ -111,6 +142,7 @@ function createPage() {
     console,
     document,
     encodeURIComponent,
+    // A session that serves previews replaces it (`servePreviews`).
     fetch: () => Promise.reject(new Error("fetch is unavailable in the pdf session")),
     location: { origin: "http://127.0.0.1:8411" },
     Map,
@@ -133,6 +165,54 @@ function createPage() {
   function runProduction(relative) {
     const absolute = path.join(repoRoot, relative);
     vm.runInContext(fs.readFileSync(absolute, "utf8"), sandbox, { filename: absolute });
+  }
+
+  /** @type {Map<string, vm.SourceTextModule>} */
+  const modules = new Map();
+
+  function moduleFor(absolute) {
+    let module = modules.get(absolute);
+    if (module === undefined) {
+      module = new vm.SourceTextModule(fs.readFileSync(absolute, "utf8"), {
+        context: sandbox,
+        identifier: absolute,
+      });
+      modules.set(absolute, module);
+    }
+    return module;
+  }
+
+  /** Evaluate a production ES module in the page, once, and return its exports. */
+  async function importProduction(relative) {
+    const module = moduleFor(path.join(repoRoot, relative));
+    if (module.status === "unlinked") {
+      await module.link((specifier, referencing) =>
+        moduleFor(path.resolve(path.dirname(referencing.identifier), specifier)),
+      );
+    }
+    if (module.status === "linked") {
+      await module.evaluate();
+    }
+    return module.namespace;
+  }
+
+  /**
+   * Answer the page's requests from *answers*, by address, as the server recorded them:
+   * the preview route's JSON. Every other address fails, as it would offline.
+   *
+   * @param {Record<string, unknown>} answers
+   * @param {string[]} [requests] Each address asked, in order.
+   */
+  function servePreviews(answers, requests = []) {
+    sandbox.fetch = (address) => {
+      requests.push(String(address));
+      if (!Object.hasOwn(answers, address)) {
+        return Promise.reject(new Error(`no recorded answer for ${address}`));
+      }
+      const body = answers[address];
+      return Promise.resolve({ ok: true, status: 200, json: async () => body });
+    };
+    return requests;
   }
 
   for (const relative of [
@@ -172,6 +252,8 @@ function createPage() {
     document,
     sandbox,
     runProduction,
+    importProduction,
+    servePreviews,
     serve,
     innerHtmlWrites: () => innerHtmlWrites,
   };
@@ -204,7 +286,7 @@ async function preparePdfView(page, views = [PDF_VIEW]) {
     ensureKindAssets: async (kind) => {
       assetRequests.push(kind);
       if (!loaded) {
-        page.runProduction("src/metabrowser/builtin_plugins/pdf/index.js");
+        await page.importProduction("src/metabrowser/builtin_plugins/pdf/index.js");
         loaded = true;
       }
     },

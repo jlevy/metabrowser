@@ -596,14 +596,18 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   /** renderFolderHeader and renderFileHeader, through app.js's own builders. */
   function header(data) {
     const segments = data.path ? data.path.split("/") : [];
-    // The eyebrow's address: the root, then each folder above the item.
+    // The eyebrow's address: the root's crumb, then each folder above the item, each
+    // followed by its separator.
+    const separator = '<span class="folder-crumb-sep">/</span>';
     const crumbs =
-      segments.length === 0 ? "" : '<button class="folder-crumb" data-nav-dir="">/</button>';
+      segments.length === 0
+        ? ""
+        : `<button class="folder-crumb folder-crumb-root" data-nav-dir=""><bdi>~/wrk/project</bdi></button>${separator}`;
     const folders = segments
       .slice(0, -1)
       .map(
         (segment, index) =>
-          `<button class="folder-crumb" data-nav-dir="${segments.slice(0, index + 1).join("/")}">${segment}</button>`,
+          `<button class="folder-crumb" data-nav-dir="${segments.slice(0, index + 1).join("/")}">${segment}</button>${separator}`,
       )
       .join("");
     const copy =

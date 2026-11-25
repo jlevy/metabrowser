@@ -755,24 +755,18 @@ export function pageNotes(page) {
   const notes = [];
   if (page.truncated || page.reason === "source_truncated") {
     if (page.count_complete) {
-      notes.push(
-        "Every row of this table was read, but some of their values were not; those are not shown.",
-      );
-    } else if (page.reason === "budget") {
-      notes.push(
-        "This table is larger than its source reads: rows, counts, sorts, and filters cover the part it read.",
-      );
+      notes.push("Some values in this table are too large to show.");
     } else {
+      // Where the read stopped, and why, are the page's (`reason`, `examined`), for an
+      // agent (docs/design-system-messages.md).
       notes.push(
-        "This table is larger than its source reads: rows, counts, sorts, and filters cover its leading part only.",
+        "Only part of this table is shown, and counts, sorts, and filters cover that part.",
       );
     }
   }
   if (page.reason === "budget") {
     const examined = typeof page.examined === "number" ? formatCount(page.examined) : "some";
-    notes.push(
-      `The table stopped looking after ${examined} rows, at the time a request may take; these are the matches among them.`,
-    );
+    notes.push(`These are the matches among the first ${examined} rows.`);
   } else if (page.reason === "cursor_expired") {
     notes.push("This table changed while it was being read; reload it to continue.");
   }
@@ -1201,7 +1195,7 @@ export function livePillText(paused, held) {
  */
 export function liveFailure(code) {
   if (code === "busy") {
-    return "The file’s writer is busy, so these are the rows last read; the table refreshes once it can.";
+    return "The file is busy, so these are the rows last read; the table refreshes once it can.";
   }
   if (code === "not_found") {
     return "This file is no longer there, so these are the rows last read.";

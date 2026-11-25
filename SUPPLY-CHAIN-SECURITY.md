@@ -508,6 +508,45 @@ core nor a built-in plugin imports, which is how this one was found.
 - **Reach.** The wheel, and the macOS app that bundles its requirements, no longer
   install a compiled extension that nothing at run time uses.
 
+### pypdfium2 Review (November 24, 2026)
+
+`pypdfium2` is a new runtime dependency of the `pdf` plugin alone (its manifest’s
+`python_requires`, which `devtools/check_plugin_deps.py` keeps true).
+It is Python’s binding to PDFium, the PDF engine of Chrome, and draws the first page of
+a PDF for the plugin’s preview card.
+It is the one maintained binding that ships PDFium prebuilt for every platform this
+package supports and needs no imaging library; the plugin encodes the PNG with the
+standard library (`render_child.py`). PDFium parses bytes a content author wrote, so it
+never runs in the server: each render is a child process with resource limits, and for
+an untrusted source an OS sandbox (threat model T7 in
+`docs/project/architecture/arch-threat-model.md`).
+
+| Package | Release | Published | Source | License | Wheel SHA-256 | sdist SHA-256 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pypdfium2` | 5.15.2 | 2026-11-09 | [pypdfium2-team/pypdfium2](https://github.com/pypdfium2-team/pypdfium2) | BSD-3-Clause, Apache-2.0, and PDFium’s dependencies’ licenses | macOS arm64 `e71fe832…c2a44c35`, Linux x86_64 `dc31aea5…85161e37` | `0185193b…d2ce2aef` |
+
+- **Cool-off.** 5.15.2 is the newest release, published fifteen days before this review,
+  so it passes the 14-day `exclude-newer` window without an exception.
+  PyPI lists no known vulnerability for it.
+- **Artifacts.** `uv.lock` holds the sdist and 22 wheels, and their 23 digests match the
+  ones PyPI lists for the release.
+  PyPI holds a Trusted Publishing attestation for the files, naming the project’s
+  `main.yaml` release workflow.
+  The wheels are `py3-none-<platform>`: the Python binding, and a bundled `libpdfium`
+  built from PDFium’s sources by the project’s toolchain (`pypdfium2 --version` reports
+  `pdfium 159.0.8149.0@sourcebuild-toolchained`), built without V8 or XFA, so it runs no
+  JavaScript in a PDF and parses no XFA form.
+  The macOS arm64 wheel installed here holds no `.pth` file; its one console script,
+  `pypdfium2`, is a command line nothing here runs.
+- **Import.** Only the render child imports it (`render_child.py`, run by path in a
+  child process); the server process loads only its version file to name the renderer in
+  each preview’s cache key (`preview.renderer_version`).
+- **Lock delta.** The one package, and `pypdfium2>=5.15.2` among the package’s
+  `dependencies`; it requires nothing else.
+- **Reach.** The wheel, and so the macOS app that bundles its requirements, install it
+  and its native library (7.6 MB installed on macOS arm64, from a 3.7 MB wheel).
+  A disabled `pdf` plugin never starts the child.
+
 ### Automated Checks
 
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:

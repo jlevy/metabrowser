@@ -727,7 +727,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   watch.state.online = false;
   watch.controller.onOffline();
   await watch.controller.reload();
-  assert.equal(watch.model().connection.text, "Offline. Showing cached pull requests.");
+  assert.equal(watch.model().connection.text, "Offline. Showing the pull requests last loaded.");
   assert.equal(watch.model().connection.reload, false);
   await tick(watch);
   assert.deepEqual(providerAsks(watch), []);

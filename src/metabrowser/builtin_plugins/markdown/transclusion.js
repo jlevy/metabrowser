@@ -610,14 +610,14 @@ function transclusionErrorLabel(code) {
   /** @type {Record<string, string>} */
   const labels = {
     cycle: "This embed would create a cycle.",
-    "depth-limit": "The nested embed depth limit was reached.",
-    "document-limit": "The embedded document limit was reached.",
+    "depth-limit": "Embeds are nested too deeply to show.",
+    "document-limit": "This document embeds too many notes to show them all.",
     "missing-location": "The requested heading or block was not found.",
     "render-failed": "The embedded note could not be rendered.",
-    "source-byte-limit": "The embedded source limit was reached.",
+    "source-byte-limit": "The embedded notes are too large to show them all.",
     "source-too-large": "The embedded note is too large.",
     "timed-out": "The embedded note timed out.",
-    "transformed-source-byte-limit": "The embedded note expands past the render limit.",
+    "transformed-source-byte-limit": "The embedded note is too large to render.",
     "unsupported-location": "The requested embedded location is unsupported.",
     "wiki-target-limit": "The embedded note has too many wiki targets.",
   };

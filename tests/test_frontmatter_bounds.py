@@ -33,6 +33,7 @@ from metabrowser import frontmatter_yaml, server
 from metabrowser.capabilities import Capabilities, set_capabilities
 from metabrowser.file_kinds import FileContext
 from metabrowser.frontmatter_yaml import (
+    FRONTMATTER_ERROR_MESSAGE,
     FRONTMATTER_MAX_BYTES,
     FRONTMATTER_MAX_EXPANDED_SIZE,
     YAML_ERROR_MAX_CHARS,
@@ -771,7 +772,8 @@ def test_api_file_answers_a_bomb_as_text_with_the_reason_and_keeps_answering(
     assert (body["type"], body["kind"]) == ("text", "markdown")
     assert body["content"].startswith("---\n" + OVER_BUDGET)
     assert "frontmatter" not in body
-    assert REFUSED in body["frontmatter_error"]
+    assert body["frontmatter_error"] == FRONTMATTER_ERROR_MESSAGE
+    assert REFUSED in body["frontmatter_error_detail"]
     assert len(bomb.body) < 4_096
     assert _body(plain)["frontmatter"] == {"title": "Plain"}
     assert parse_threads and loop_thread not in parse_threads
@@ -809,7 +811,8 @@ def test_api_file_and_render_answer_a_scalar_or_tag_the_loader_does_not_read(
 
     body = _body(answered)
     assert (answered.status_code, body["type"]) == (200, "text")
-    assert body["frontmatter_error"].startswith(f"Error parsing YAML metadata: {reason}")
+    assert body["frontmatter_error"] == FRONTMATTER_ERROR_MESSAGE
+    assert body["frontmatter_error_detail"].startswith(f"Error parsing YAML metadata: {reason}")
     assert rendered.status_code == 200
     reasons = [
         item["message"]
@@ -838,7 +841,8 @@ def test_a_compressed_bomb_is_refused_like_a_plain_one(tmp_path: Path) -> None:
 
     assert body["type"] == "text"
     assert "frontmatter" not in body
-    assert REFUSED in body["frontmatter_error"]
+    assert body["frontmatter_error"] == FRONTMATTER_ERROR_MESSAGE
+    assert REFUSED in body["frontmatter_error_detail"]
 
 
 @pytest.mark.parametrize("name", ["long.md", "long.md.gz"])
@@ -919,7 +923,8 @@ def test_untrusted_render_of_a_bomb_reports_the_reason_and_renders_the_body(
     assert "lol" not in body["html"]
     errors = [item for item in body["diagnostics"] if item["type"] == "frontmatter_error"]
     assert len(errors) == 1
-    assert REFUSED in errors[0]["message"]
+    assert errors[0]["message"] == FRONTMATTER_ERROR_MESSAGE
+    assert REFUSED in body["frontmatter_error_detail"]
     assert parse_threads and loop_thread not in parse_threads
 
 

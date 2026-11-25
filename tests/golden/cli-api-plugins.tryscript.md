@@ -412,7 +412,7 @@ status: 200
       "rename_detection": true
     },
     "warnings": [
-      "no diff sections recognized in this input"
+      "No changes could be read from this patch."
     ]
   },
   "manifest": {

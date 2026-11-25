@@ -103,7 +103,20 @@ lock, and refuses only new ones.
     change-sizes/               measured change sizes
     github-pull-manifest-<slot>.epoch
   plugins/<plugin>/             a plugin's own cache, which Metabrowser never reads
+    pdf/previews/<key>.png      the pdf plugin's first-page previews
 ```
+
+The **previews** area is the `pdf` plugin’s (`builtin_plugins/pdf/preview_store.py`).
+Each entry is the PNG of a PDF’s first page, named by a key that hashes what it was
+drawn from: the content (a pin’s or a comparison’s blob ID, or a folder file’s SHA-256,
+which the plugin remembers by path, size, modification time, and inode), the renderer’s
+version, and the size it was fitted to.
+So an entry is never stale, only unused, and the same bytes are drawn once, under one
+key, whichever file holds them.
+Reads and writes go through the owner-only helpers below; a read marks its entry used by
+moving its modification time, and each write evicts the entries used longest ago until
+the area is within `AREA_MAX_BYTES` and `AREA_MAX_ENTRIES`, which say beside them what
+set them. A PDF whose preview failed is remembered in the process, not here.
 
 A **source** is a repository as addressed and what its provider said about it; a
 **repo** is Metabrowser’s own Git copy of it and what was computed from that copy.

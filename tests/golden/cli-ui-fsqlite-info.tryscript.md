@@ -145,7 +145,7 @@ $ node tests/dom/fsqlite-info-session.js
       "[error alert] Unreadable store: This is not an fsqlite store's marker."
     ],
     "the SQLite plugin failed to load": [
-      "(Could not load the SQLite plugin this view draws with.)"
+      "(Could not load this view. Reload to try again.)"
     ]
   }
 }
