@@ -3,9 +3,9 @@ type: is
 id: is-01m87ysp5pv3xq6escp1sdttc4
 title: "Docs tab mounts a large new Markdown document whole: #31 of investment-research builds 72k nodes and freezes 4x350 ms"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10.local
 labels: []
@@ -16,8 +16,12 @@ parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 hold: null
 hold_until: null
 created_at: 2026-11-24T23:38:29.940Z
-updated_at: 2026-11-25T03:54:43.026Z
+updated_at: 2026-11-25T06:02:07.709Z
 started_at: 2026-11-24T23:57:42.485Z
+closed_at: 2026-11-25T06:02:07.673Z
+close_reason: "Merged in #811"
+resolution: null
+duplicate_of: null
 ---
 Measured 2026-11-24, runtime 19cd5a41 (main dcb9f32), headless Chrome 1280x900, finterm-ai/investment-research PR 31 (one new 876,516-byte Markdown book, 17,177 lines; 13 files).
 

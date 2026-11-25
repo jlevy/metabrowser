@@ -3,9 +3,9 @@ type: is
 id: is-01m87zs9sbky91edkksae1vbdt
 title: "Folded rendered runs: send small ones inline, fetch only large ones on expand"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 hold: null
 hold_until: null
 created_at: 2026-11-24T23:55:45.834Z
-updated_at: 2026-11-25T03:54:27.817Z
+updated_at: 2026-11-25T06:02:11.722Z
 started_at: 2026-11-24T23:57:44.076Z
+closed_at: 2026-11-25T06:02:11.718Z
+close_reason: "Merged in #811"
+resolution: null
+duplicate_of: null
 ---
 User request 2026-11-24, refining mb-qn7e lazy folds: a folded run below a measured size is included in the route answer so opening it is instant; only runs past the bound are left as placeholders fetched when opened. Threshold measured, recorded beside its constant.
 
