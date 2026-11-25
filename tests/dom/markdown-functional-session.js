@@ -91,6 +91,24 @@ class FakeElement {
     this.listeners.set(name, listener);
   }
 
+  append(...nodes) {
+    for (const node of nodes) {
+      node.parentElement = this;
+      this.elements.push(node);
+    }
+  }
+
+  get children() {
+    return this.elements;
+  }
+
+  remove() {
+    if (this.parentElement) {
+      this.parentElement.elements = this.parentElement.elements.filter((node) => node !== this);
+      this.parentElement = null;
+    }
+  }
+
   getAttribute(name) {
     return this.attributes.has(name) ? this.attributes.get(name) : null;
   }
@@ -120,6 +138,9 @@ class FakeElement {
     }
     if (selector.includes(",")) {
       return selector.split(",").some((part) => this.matches(part.trim()));
+    }
+    if (/^\w+$/.test(selector)) {
+      return this.tagName === selector.toUpperCase();
     }
     const match = /^(\w+)\[([\w-]+)]$/.exec(selector);
     return Boolean(match && this.tagName === match[1].toUpperCase() && this.hasAttribute(match[2]));
@@ -167,9 +188,11 @@ class FakeElement {
     return this;
   }
 
-  replaceChildren(fragment) {
-    this._innerHTML = fragment._innerHTML;
-    this.elements = fragment.elements;
+  replaceChildren(...nodes) {
+    const [only] = nodes;
+    const fragment = nodes.length === 1 && only.tagName === "TEMPLATE";
+    this._innerHTML = fragment ? only._innerHTML : "";
+    this.elements = fragment ? only.elements : [...nodes];
     for (const element of this.elements) {
       element.parentElement = this;
     }
@@ -204,7 +227,7 @@ class FakeContainer extends FakeElement {
 
 function parseFakeHtml(html, document) {
   const elements = [];
-  const pattern = /<(a|span)\b([^>]*)>(.*?)<\/\1>|<(img)\b([^>]*)>/g;
+  const pattern = /<(a|span|object)\b([^>]*)>(.*?)<\/\1>|<(img)\b([^>]*)>/g;
   for (const match of html.matchAll(pattern)) {
     const element = new FakeElement(match[1] || match[4], (match[3] || "").replace(/<[^>]*>/g, ""));
     element.ownerDocument = document;
@@ -214,6 +237,259 @@ function parseFakeHtml(html, document) {
     elements.push(element);
   }
   return elements;
+}
+
+/** The text a reader reads in *element*: its own, or its children's, in order. */
+function reads(element) {
+  return element.elements.length === 0
+    ? element.textContent
+    : element.elements.map((child) => reads(child)).join(" · ");
+}
+
+/** A plain primary click on *target*, or one with *modifiers*, as the container hears it. */
+function click(container, target, modifiers = {}) {
+  const event = {
+    altKey: false,
+    button: 0,
+    ctrlKey: false,
+    defaultPrevented: false,
+    metaKey: false,
+    shiftKey: false,
+    ...modifiers,
+    target,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
+  };
+  container.listeners.get("click")(event);
+  return event.defaultPrevented;
+}
+
+/** Let posted reconciliation slices, the plugin's load, and the preview's answer settle. */
+async function settled() {
+  for (let round = 0; round < 20; round += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+/**
+ * A document's PDFs, through the same chain as the root document above (rendered.js, the
+ * link enhancer, the wiki enhancer) and the pdf plugin's production card
+ * (builtin_plugins/pdf/card.js, the `mountPdfCard` its index.js exports and
+ * `mb.plugins.load("pdf")` answers). The render holds what KPress keeps of each way to
+ * name a PDF (cli-api-render-diagnostics.tryscript.md pins it) -- a link, `![](…)` and
+ * `<img>` as an image, and the wiki preprocessor's own placeholders for `![[…]]` and
+ * `[[…]]` -- with an `<object>`, which the enhancer's selector admits though KPress drops
+ * it, and an image of a PDF named without `.pdf`. The preview route answers as the server
+ * did for `papers/report.pdf` in a trusted folder (tests/fixtures/pdf-surfaces-responses.json).
+ */
+async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
+  const card = await import(
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/pdf/card.js")).href
+  );
+  const recorded = require("../fixtures/pdf-surfaces-responses.json");
+  const wikiTargets = wikiParser.preprocessObsidianWiki("![[report.pdf]] [[report.pdf]]\n");
+  const [wikiEmbed, wikiLink] = wikiTargets.source
+    .trim()
+    .split(" <span")
+    .map((part, index) => (index === 0 ? part : `<span${part}`));
+  // Each way the document names a PDF, and what KPress hands the enhancer for it.
+  const forms = [
+    ["[the report](report.pdf)", '<a href="report.pdf">the report</a>'],
+    ["![The report](report.pdf)", '<img src="report.pdf" alt="The report">'],
+    ['<object data="report.pdf">', '<object data="report.pdf">The report</object>'],
+    ["![[report.pdf]]", wikiEmbed],
+    ["[[report.pdf]]", wikiLink],
+    ["![A scan](scan)", '<img src="scan" alt="A scan">'],
+  ];
+  const html = forms.map(([, rendered]) => rendered).join("");
+  const answers = {
+    "/api/plugin/pdf/preview?path=papers%2Freport.pdf":
+      recorded.folder.files["papers/report.pdf"].preview,
+  };
+  const previews = [];
+  globalThis.fetch = async (address) => {
+    previews.push(address);
+    const answer = answers[address];
+    return { ok: answer !== undefined, json: async () => answer };
+  };
+  globalThis.Element = FakeElement;
+  globalThis.window = { addEventListener() {}, removeEventListener() {} };
+  globalThis.requestAnimationFrame = () => 0;
+  globalThis.cancelAnimationFrame = () => {};
+
+  /** Mount the document, with the plugin's load answered by *load*. */
+  async function mount(load) {
+    const container = new FakeContainer([]);
+    const loads = [];
+    const opened = [];
+    const handle = renderedMarkdown.mountRenderedMarkdown(
+      container,
+      { path: "papers/notes.md", raw: { content: "notes", content_truncated: false } },
+      {
+        decorateExternalLink: createSdkSandbox().metabrowser.decorateExternalLink,
+        errors: { isAbortError: (error) => error?.name === "AbortError" },
+        escapeHtml: String,
+        fetchKpressRender: async () => ({ diagnostics: [], html }),
+        fileCatalog: {
+          snapshot: () => snapshot(["papers/notes.md", "papers/report.pdf", "papers/scan"]),
+          subscribe: () => () => {},
+        },
+        kpressInitToc: () => () => {},
+        navigation: {
+          current: () => ({ path: "papers/notes.md" }),
+          href: (target) => `/view/${target.path}`,
+          open: async (target) => opened.push(target),
+        },
+        plugins: {
+          load: (name) => {
+            loads.push(name);
+            return load();
+          },
+        },
+        repository: null,
+      },
+    );
+    await handle.ready;
+    await settled();
+    return { container, handle, loads, opened };
+  }
+
+  /** What each form became: a link, an image, or a PDF's slot and what it holds. */
+  function describeDocument(container, only = null) {
+    const described = {};
+    container.elements.forEach((element, index) => {
+      const [form] = forms[index];
+      if (element.getAttribute("class") !== "metabrowser-pdf-embed") {
+        if (only === null) {
+          const address = element.getAttribute("href") ?? element.getAttribute("src");
+          described[form] = `${element.tagName.toLowerCase()} → ${address}`;
+        }
+        return;
+      }
+      const [held] = element.elements;
+      if (held === undefined) {
+        described[form] = "pdf slot: empty";
+      } else if (element.getAttribute("data-metabrowser-pdf-embed") === "link") {
+        described[form] = `pdf slot: link "${held.textContent}" → ${held.getAttribute("href")}`;
+      } else {
+        const [page, caption] = held.elements;
+        const image = page.elements[0];
+        const view = caption.elements[2].elements[0];
+        described[form] =
+          `pdf slot: card ${held.getAttribute("data-pdf-preview")}, ` +
+          `${image ? `image ${image.getAttribute("src")}` : "no image"}, ` +
+          `"${reads(caption)}", View → ${view.getAttribute("href")}`;
+      }
+    });
+    return described;
+  }
+
+  /** Every element under *container*. */
+  function walk(container) {
+    const found = [];
+    const visit = (element) => {
+      found.push(element);
+      for (const child of element.elements) {
+        visit(child);
+      }
+    };
+    for (const element of container.elements) {
+      visit(element);
+    }
+    return found;
+  }
+
+  // The plugin loads when the first PDF is drawn, and until it answers each slot is a
+  // plain link to the view.
+  let release = () => {};
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const drawn = await mount(() => gate.then(() => ({ mountPdfCard: card.mountPdfCard })));
+  const beforeLoad = describeDocument(drawn.container);
+  const fallback = drawn.container.elements[1].elements[0];
+  const fallbackOpens = click(drawn.container, fallback);
+  release();
+  await settled();
+  const shown = describeDocument(drawn.container);
+  const nodes = walk(drawn.container);
+  const pdfAddresses = nodes.flatMap((node) =>
+    [...node.attributes.values()].filter((value) =>
+      /^\/raw\?path=papers%2Freport\.pdf/.test(value),
+    ),
+  );
+  const viewers = nodes.filter((node) => ["EMBED", "OBJECT", "IFRAME"].includes(node.tagName));
+  const views = nodes.filter((node) => node.tagName === "A" && node.textContent === "View");
+  const plainClickOpens = click(drawn.container, views[0]);
+  const modifiedClickOpens = click(drawn.container, views[0], { metaKey: true });
+  // Printing a document makes each image that has not loaded eager, the card's too.
+  printReady.loadImagesForPrint(drawn.container);
+  const printLoading = nodes
+    .filter((node) => node.getAttribute("class") === "pdf-card-image")
+    .map((image) => image.getAttribute("loading"));
+  const askedBeforeDispose = previews.length;
+  const slots = drawn.container.elements.filter(
+    (element) => element.getAttribute("class") === "metabrowser-pdf-embed",
+  );
+  drawn.handle.dispose();
+  const disposal = {
+    cardsLeft: slots.filter((slot) => slot.elements.length > 0).length,
+    slots: slots.length,
+  };
+
+  // A document replaced before the plugin answers mounts no card, and asks for no preview.
+  let releaseLate = () => {};
+  const lateGate = new Promise((resolve) => {
+    releaseLate = resolve;
+  });
+  const replaced = await mount(() => lateGate.then(() => ({ mountPdfCard: card.mountPdfCard })));
+  replaced.handle.dispose();
+  releaseLate();
+  await settled();
+  const replacedBeforeLoad = {
+    asked: previews.length - askedBeforeDispose,
+    shows: describeDocument(replaced.container, "pdf"),
+  };
+
+  // A page whose pdf plugin cannot load keeps the links.
+  const missing = await mount(() => Promise.reject(new Error("plugins.load: no plugin pdf")));
+  const withoutPlugin = describeDocument(missing.container, "pdf");
+  missing.handle.dispose();
+
+  delete globalThis.fetch;
+  delete globalThis.Element;
+  delete globalThis.window;
+  delete globalThis.requestAnimationFrame;
+  delete globalThis.cancelAnimationFrame;
+  const result = {
+    beforeLoad,
+    shown,
+    clicks: {
+      fallback: { opened: fallbackOpens, target: drawn.opened[0] },
+      view: { opened: plainClickOpens, target: drawn.opened[1] },
+      modified: { opened: modifiedClickOpens },
+    },
+    pluginLoads: { calls: drawn.loads.length, names: [...new Set(drawn.loads)] },
+    previewsAsked: previews.slice(0, askedBeforeDispose),
+    print: printLoading,
+    disposal,
+    replacedBeforeLoad,
+    withoutPlugin,
+    viewersDrawn: viewers.length,
+    rawAddressesOfThePdf: pdfAddresses.length,
+  };
+  if (
+    viewers.length !== 0 ||
+    pdfAddresses.length !== 0 ||
+    disposal.cardsLeft !== 0 ||
+    replacedBeforeLoad.asked !== 0 ||
+    !plainClickOpens ||
+    modifiedClickOpens
+  ) {
+    throw new Error(`a document's PDF embeds broke an invariant: ${JSON.stringify(result)}`);
+  }
+  return result;
 }
 
 (async () => {
@@ -429,6 +705,7 @@ function parseFakeHtml(html, document) {
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
   const nestedCatalog = snapshot(["Embedded.md", "Nested.md"]);
+  const rootPluginLoads = [];
   const rootMount = renderedMarkdown.mountRenderedMarkdown(
     rootContainer,
     { path: "root.md", raw: { content: "![[Embedded]]", content_truncated: false } },
@@ -460,6 +737,13 @@ function parseFakeHtml(html, document) {
         current: () => ({ path: "root.md" }),
         href: (target) => `/view/${target.path}`,
         open: async () => {},
+      },
+      // A document that embeds no PDF never loads the pdf plugin.
+      plugins: {
+        load: async (name) => {
+          rootPluginLoads.push(name);
+          return {};
+        },
       },
       repository: null,
     },
@@ -511,6 +795,14 @@ function parseFakeHtml(html, document) {
   ) {
     throw new Error("real nested Markdown chain did not preserve its shared root budgets");
   }
+  const pdfEmbeds = {
+    pluginLoadsWithoutAPdf: rootPluginLoads.length,
+    ...(await pdfEmbedSession(
+      renderedMarkdown,
+      wikiParser,
+      await import(moduleUrl("print-ready.js")),
+    )),
+  };
 
   // Every Markdown mount on a page shares one Worker. References release it only
   // when the last one is disposed, and a fatal failure is replaced on the next
@@ -591,6 +883,7 @@ function parseFakeHtml(html, document) {
             revisionStates: truncatedRevisionStates,
           },
         },
+        pdfEmbeds,
         publishedRoutes: {
           complete: completeAdapter,
           incomplete: incompleteAdapter,

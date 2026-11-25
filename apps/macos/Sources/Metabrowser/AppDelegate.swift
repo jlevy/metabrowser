@@ -1211,7 +1211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - About and Help
 
     /// The standard About panel, which reads the version and build from the bundle,
-    /// with the build variant and a link to the repository.
+    /// with the build variant, the author's credit, and a link to the repository.
     @objc func showAbout(_ sender: Any?) {
         let centered = NSMutableParagraphStyle()
         centered.alignment = .center
@@ -1221,6 +1221,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .foregroundColor: NSColor.secondaryLabelColor,
             .paragraphStyle: centered,
         ])
+        let credit: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: centered,
+        ]
+        credits.append(NSAttributedString(string: "By ", attributes: credit))
+        credits.append(NSAttributedString(string: ProjectLinks.authorName, attributes: [
+            .font: font,
+            .link: ProjectLinks.author,
+            .paragraphStyle: centered,
+        ]))
+        credits.append(NSAttributedString(string: "\n", attributes: credit))
         let repository = ProjectLinks.repository
         credits.append(NSAttributedString(string: repository.absoluteString, attributes: [
             .font: font,

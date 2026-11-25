@@ -4,6 +4,9 @@ display_name = "Markdown"
 version = "0.0.1"
 sdk_version = "0.8"
 extra_styles = ["markdown.css"]
+# A PDF a document embeds is the pdf plugin's card, loaded on the first one a page holds
+# (link-enhancer.js `mountPdfEmbed`).
+requires = ["pdf"]
 
 # Generic Markdown handling. Higher-priority plugin classifiers may claim
 # specialized document kinds; this plugin handles every other Markdown file.

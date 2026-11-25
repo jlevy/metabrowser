@@ -113,6 +113,11 @@
       "expected": { "status": "internal", "path": "docs/asset.png", "mediaKind": "image" }
     },
     {
+      "id": "pdf-embed",
+      "intent": { "authoredTarget": "report.pdf", "action": "embed" },
+      "expected": { "status": "internal", "path": "assets/report.pdf", "mediaKind": "pdf" }
+    },
+    {
       "id": "audio-embed",
       "intent": { "authoredTarget": "song.mp3", "action": "embed" },
       "expected": { "status": "internal", "path": "assets/song.mp3", "mediaKind": "audio" }
