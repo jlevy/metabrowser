@@ -5,17 +5,18 @@ title: Collection references to a pull request, a file as a pull request changes
 kind: feature
 status: in_progress
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m8806zrnxn9jwj89hffd2yv7
 child_order_hints:
   - is-01m898v9wsv87ksj602asv16mq
+  - is-01m89etmssv0xtt5xwa2qm5h2q
 hold: null
 hold_until: null
 created_at: 2026-11-25T02:04:34.103Z
-updated_at: 2026-11-25T11:53:23.096Z
+updated_at: 2026-11-25T13:37:52.952Z
 started_at: 2026-11-25T07:53:39.977Z
 ---
 
