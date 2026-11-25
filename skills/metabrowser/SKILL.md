@@ -438,9 +438,23 @@ move with it. This section has what you need to write, publish, and refresh one;
 [guide](https://github.com/jlevy/metabrowser/blob/main/docs/reviewing-pull-requests.md#guided-review)
 is the format’s full reference, with its limits.
 
-A guide does more than explain the change.
-It is the reviewer’s agenda, so give each of these concerns a step, or a run of steps,
-of its own, in this order, and title each step so the list reads as that agenda.
+A guide is the reviewer’s agenda, not an inventory of the change: the Changes tab
+already lists every file.
+Keep it short:
+
+- Open the description with three to five lines on the end state, what is true once the
+  change lands. That is the guide’s orientation, which the tab shows first, and no step
+  repeats it.
+- Write about eight steps or fewer, one for each area of the change, never one for each
+  file or commit.
+- Cite what a reviewer must read, not every file the change touches.
+- Write each note in one to three sentences: what is true now, and what to check.
+- A layer of a stack says its place in one line of the description, naming the layers
+  below and above it by number, such as “Layer 2 of 3: the route, on #811; the page in
+  #813 reads it”, and does not explain the stack again.
+
+Give each of these concerns a step, or a run of steps, of its own, in this order, and
+title each step so the list reads as the agenda.
 A guide of more than about six steps puts each concern’s steps in a group named as
 below, so the page’s step list shows the agenda as headings; a guide of about six steps
 or fewer stays flat, even when it covers several concerns, since its step titles name
@@ -455,14 +469,13 @@ them:
      else was considered and the fact that decided it, a measurement, a constraint, a
      requirement, or a precedent.
      Split it only when it would run long.
-2. **Documents.** One step per spec, plan, architecture document, or user guide the
-   change adds or rewrites, cited whole, with a note on what each now promises.
+2. **Documents.** The specs, plans, architecture documents, and user guides the change
+   adds or rewrites that a reviewer must read, cited whole, with a note on what they now
+   promise: one step for them, or one for each only when a document needs its own.
 3. **Changes.** One step per area of change, in dependency or execution order (the
    format before its parser, the route before its page), each saying what to verify
    there, not only what changed.
-   Cite the ranges that matter, and whole files for tests, goldens, and generated
-   output. Every changed file belongs to some step, the changelog fragment with the area
-   it describes.
+   Cite the ranges that matter.
 4. **Open questions.** What you were unsure of, a guess you made where a requirement was
    silent, a behavior you could not measure, a risk you accepted.
    Say plainly that a person should decide or check it, and cite the code in doubt.
@@ -516,8 +529,8 @@ such as commit IDs, commit lists, and merge-base or rebase mechanics.
 
 ### Write the Block
 
-The guide is one `guided-review` block in the description, after the prose that
-introduces it, which the tab shows first.
+The guide is one `guided-review` block in the description, after the end-state summary
+that introduces it, which the tab shows first.
 A short guide is a flat list of steps:
 
 ````markdown
@@ -655,8 +668,9 @@ changed:
 
 `.stale.changed_steps` are those steps, and `.stale.changed_paths` the files; a list is
 null when it could not be read, and then every step needs rechecking.
-Recheck only those steps’ ranges against the new hunks, give each file the push added a
-step, move both pins as above, and publish and confirm the guide again.
+Recheck only those steps’ ranges against the new hunks and their notes against what is
+now true, add or change a step only when the push changed what a reviewer must read,
+move both pins as above, and publish and confirm the guide again.
 A step that cites no changed file still matches the pull request.
 
 ## Browse a Remote Directory
