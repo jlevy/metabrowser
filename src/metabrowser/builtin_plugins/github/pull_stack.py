@@ -46,7 +46,12 @@ A member with no usable record (none cached, another account's, or one with no
 comparison) leaves the stack ``pending``, with no comparison: the page asks ``pull-refresh``
 for it. A member whose catalog row names a newer head than its record is named in
 ``pending`` while the stack stays ``current``, its record's comparison standing until a
-refresh replaces it.
+refresh replaces it. Each pending member's ``fetching`` says whether its refresh is running
+now, so the page asks again for one whose fetch ended without a usable record.
+
+**After a move.** A page keeps the comparison it drew, so each pair this route answers is
+kept admitted (:mod:`.pull_stack_retained`), and ``stack-comparison``, ``pull-rendered-diff``
+and ``pull-image`` keep answering it after the stack moves on.
 """
 
 from __future__ import annotations
@@ -58,6 +63,7 @@ import os
 import stat
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
 from urllib.parse import urlencode
@@ -130,6 +136,9 @@ class StackMemberWire(TypedDict):
     in_top: bool | None
     # Whether the page asks pull-refresh for it: no usable record, or a newer head known.
     pending: bool
+    # Whether a refresh of this pending member is running now, so that the page tells a
+    # fetch under way from one that ended without a usable record; false for any other.
+    fetching: bool
 
 
 class StackComparisonWire(TypedDict):
@@ -611,7 +620,8 @@ def _query(pair: StackPair, store: str) -> dict[str, str | int]:
 def comparison_wire(published: PublishedSource, pair: StackPair) -> StackComparisonWire:
     """The combined comparison's routes. The comparison's address names everything its
     answer depends on, so the browser keeps it; the image and rendered routes take
-    ``stack=`` in place of ``number`` and admit the stack's current pair alone."""
+    ``stack=`` in place of ``number`` and admit the stack's current pair, and an earlier
+    one while it is kept (:mod:`.pull_stack_retained`)."""
 
     from metabrowser.builtin_plugins.github.pull_route import IMAGE_ROUTE, RENDERED_ROUTE
 
@@ -637,35 +647,50 @@ def comparison_wire(published: PublishedSource, pair: StackPair) -> StackCompari
     )
 
 
-def absent(number: int, reason: StackAbsence, read: StackRead | None = None) -> StackEnvelope:
-    envelope = _envelope(number, read, "absent")
+def _not_fetching(_number: int) -> bool:
+    return False
+
+
+def absent(
+    number: int,
+    reason: StackAbsence,
+    read: StackRead | None = None,
+    fetching: Callable[[int], bool] = _not_fetching,
+) -> StackEnvelope:
+    envelope = _envelope(number, read, "absent", fetching)
     envelope["reason"] = reason
     return envelope
 
 
 def _envelope(
-    number: int, read: StackRead | None, state: Literal["absent", "pending", "current"]
+    number: int,
+    read: StackRead | None,
+    state: Literal["absent", "pending", "current"],
+    fetching: Callable[[int], bool] = _not_fetching,
 ) -> StackEnvelope:
     stack = read.stack if read is not None else None
     members = read.members if read is not None else ()
     pair = read.pair if read is not None else None
-    wires = [
-        StackMemberWire(
-            number=member.number,
-            place=place,
-            title=member.title,
-            state=member.state,
-            base=member.record.comparison.base
-            if member.record is not None and member.record.comparison is not None
-            else None,
-            head=member.record.comparison.head
-            if member.record is not None and member.record.comparison is not None
-            else None,
-            in_top=pair.in_top[place - 1] if pair is not None else None,
-            pending=member.record is None or member.moved,
+    wires: list[StackMemberWire] = []
+    for place, member in enumerate(members, 1):
+        pending = member.record is None or member.moved
+        wires.append(
+            StackMemberWire(
+                number=member.number,
+                place=place,
+                title=member.title,
+                state=member.state,
+                base=member.record.comparison.base
+                if member.record is not None and member.record.comparison is not None
+                else None,
+                head=member.record.comparison.head
+                if member.record is not None and member.record.comparison is not None
+                else None,
+                in_top=pair.in_top[place - 1] if pair is not None else None,
+                pending=pending,
+                fetching=pending and fetching(member.number),
+            )
         )
-        for place, member in enumerate(members, 1)
-    ]
     return StackEnvelope(
         state=state,
         reason=None,
@@ -690,23 +715,33 @@ async def stack_envelope(
     published: PublishedSource | None,
     number: int,
     reader: str | None,
+    fetching: Callable[[int], bool] = _not_fetching,
 ) -> StackEnvelope:
-    """Stack *number*'s page answer, or why there is none. Runs no ``gh`` and no fetch."""
+    """Stack *number*'s page answer, or why there is none. Runs no ``gh`` and no fetch.
 
+    *fetching* says whether a refresh of a member is running now. A current pair is kept
+    admitted for later (:func:`.pull_stack_retained.retain_stack_pair`), so the page can keep
+    drawing it after the stack moves.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_stack_retained import retain_stack_pair
     from metabrowser.diff.adapters.base import DiffSourceError
     from metabrowser.git.process import GitError
 
     read = await read_stack(repository, published, number, reader)
     if read.reason is not None:
-        return absent(number, read.reason, read)
+        return absent(number, read.reason, read, fetching)
     if read.pair is None or published is None:
-        envelope = _envelope(number, read, "pending")
+        envelope = _envelope(number, read, "pending", fetching)
     else:
         try:
             found = await combined(published, read.pair)
         except (DiffSourceError, GitError):
-            return absent(number, "commits_unavailable", read)
-        envelope = _envelope(number, read, "current")
+            return absent(number, "commits_unavailable", read, fetching)
+        top_record = read.members[-1].record
+        if top_record is not None:
+            await asyncio.to_thread(retain_stack_pair, published, read.pair, top_record.reader)
+        envelope = _envelope(number, read, "current", fetching)
         manifest = found.manifest.manifest
         totals = manifest.totals
         envelope["comparison"] = comparison_wire(published, read.pair)

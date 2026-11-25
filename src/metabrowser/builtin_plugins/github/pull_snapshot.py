@@ -7,9 +7,10 @@ Nothing else is ever read: no fetch starts, the served pin and checkout stay as 
 both admit their pair this way.
 
 An address may name ``stack=<n>`` in place of ``number``: a native stack's page asks for
-its combined comparison's rendered documents and their images so. It opens only the
-stack's current pair, computed as the ``stack`` route computes it (:mod:`.pull_stack`),
-from its members' records and their ancestry; a stack keeps no earlier pairs.
+its combined comparison's rendered documents and their images so. It opens the stack's
+current pair, computed as the ``stack`` route computes it (:mod:`.pull_stack`), from its
+members' records and their ancestry, and an earlier pair that route answered while it is
+kept (:mod:`.pull_stack_retained`), since a stack's page keeps the comparison it drew.
 
 ``GET github/pull-image`` serves one image at the head of an admitted pair, for the
 rendered Markdown of Changes: the pull envelope's ``image_route`` names the pair
@@ -266,16 +267,22 @@ async def _stack_admission(
 ) -> Admission:
     from metabrowser.builtin_plugins.github.pull_list_route import served_repository
     from metabrowser.builtin_plugins.github.pull_stack import read_stack
+    from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
 
     read = await read_stack(served_repository(request.app), published, snapshot.number, reader)
     if read.reason == "commits_unavailable":
         return "unknown"
     pair = read.pair
-    return (
-        "current"
-        if pair is not None and (pair.base, pair.head) == (snapshot.base, snapshot.head)
-        else "refused"
+    if pair is not None and (pair.base, pair.head) == (snapshot.base, snapshot.head):
+        return "current"
+    # A pair the stack has moved from stays admitted while the stack route keeps it, so a
+    # page keeps drawing the comparison it drew (pull_stack_retained.py).
+    retained = await asyncio.to_thread(
+        retained_stack_pair, published, snapshot.number, reader, snapshot.base, snapshot.head, None
     )
+    if retained == "unknown":
+        return "unknown"
+    return "retained" if retained is not None else "refused"
 
 
 async def admitted_snapshot(

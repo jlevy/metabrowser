@@ -14,7 +14,8 @@
         "base": null,
         "head": null,
         "in_top": null,
-        "pending": true
+        "pending": true,
+        "fetching": false
       },
       {
         "number": 10,
@@ -24,7 +25,8 @@
         "base": null,
         "head": null,
         "in_top": null,
-        "pending": true
+        "pending": true,
+        "fetching": false
       }
     ],
     "pending": [
@@ -55,7 +57,8 @@
         "base": "<base>",
         "head": "<merged_head>",
         "in_top": true,
-        "pending": false
+        "pending": false,
+        "fetching": false
       },
       {
         "number": 10,
@@ -65,7 +68,8 @@
         "base": "<topic>",
         "head": "<draft_head>",
         "in_top": true,
-        "pending": false
+        "pending": false,
+        "fetching": false
       }
     ],
     "pending": [],
@@ -120,7 +124,8 @@
         "base": "<base>",
         "head": "<merged_head>",
         "in_top": true,
-        "pending": false
+        "pending": false,
+        "fetching": false
       },
       {
         "number": 7,
@@ -130,7 +135,8 @@
         "base": "<base>",
         "head": "<fork_head>",
         "in_top": false,
-        "pending": false
+        "pending": false,
+        "fetching": false
       },
       {
         "number": 10,
@@ -140,7 +146,8 @@
         "base": "<topic>",
         "head": "<draft_head>",
         "in_top": true,
-        "pending": false
+        "pending": false,
+        "fetching": false
       }
     ],
     "pending": [],
@@ -197,7 +204,8 @@
         "base": "<topic>",
         "head": "<draft_head>",
         "in_top": null,
-        "pending": false
+        "pending": false,
+        "fetching": false
       },
       {
         "number": 8,
@@ -207,7 +215,8 @@
         "base": "<base>",
         "head": "<merged_head>",
         "in_top": null,
-        "pending": false
+        "pending": false,
+        "fetching": false
       }
     ],
     "pending": [],

@@ -2,18 +2,27 @@
 
 The routes are ``tests/test_cli_github_stack_golden.py``'s, on the GitHub stand-in. These
 are the rules on manifests of their own: a file two layers change, a file one layer renames
-and another changes, and a key that moves with every member's pins and with the list.
+and another changes, a key that moves with every member's pins and with the list, and the
+earlier comparisons a stack keeps admitted after it moves.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import pull_stack
+from metabrowser.builtin_plugins.github import pull_stack, pull_stack_retained
 from metabrowser.builtin_plugins.github.pull_stack import StackPair, stack_digest, stack_scope
+from metabrowser.builtin_plugins.github.pull_stack_retained import (
+    MAX_RETAINED_STACK_PAIRS,
+    retained_stack_pair,
+)
+from metabrowser.cache.paths import source_pulls_directory, source_stack_snapshots
 from metabrowser.diff.format import ChangeSetManifest, EntrySide, FileChange, Totals
+from metabrowser.home import ensure_private_directory
 from metabrowser.view_routes import decode_safe_stack_route, format_stack_href
 
 A, B, C, D = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
@@ -159,3 +168,69 @@ def test_format_stack_href_refuses_what_the_route_does_not_parse() -> None:
     ):
         with pytest.raises(ValueError):
             format_stack_href(number, tab, file)
+
+
+_SLUG = "github-com-octo-demo-01234567890"
+
+
+def _published(home: Path, store: str = "store-1") -> Any:
+    """What retention reads of a published source: its home, slug and store, with the
+    directory its pull records, which a stack's comparison is drawn from, are kept in."""
+
+    ensure_private_directory(home, source_pulls_directory(_SLUG))
+    return SimpleNamespace(home=home, slug=_SLUG, store_id=store)
+
+
+def _pair(head: str, number: int = 7) -> StackPair:
+    members = ((1, A, B), (number, B, head))
+    return StackPair(number, A, head, stack_digest(members), members, (True, True))
+
+
+def test_a_drawn_stack_pair_stays_admitted_for_its_store_and_reader(tmp_path: Path) -> None:
+    published = _published(tmp_path)
+    first, moved = _pair(C), _pair(D)
+    pull_stack_retained.retain_stack_pair(published, first, "gh:alice")
+    pull_stack_retained.retain_stack_pair(published, moved, "gh:alice")
+
+    # The earlier pair answers by its commits, with its members, as long as it is kept.
+    assert retained_stack_pair(published, 7, "gh:alice", A, C, first.digest) == first
+    assert retained_stack_pair(published, 7, None, A, C, None) == first
+    assert retained_stack_pair(published, 7, "gh:alice", A, D, None) == moved
+    # Another digest, reader, store, or stack admits nothing.
+    assert retained_stack_pair(published, 7, "gh:alice", A, C, moved.digest) is None
+    assert retained_stack_pair(published, 7, "gh:bob", A, C, None) is None
+    assert retained_stack_pair(_published(tmp_path, "store-2"), 7, None, A, C, None) is None
+    assert retained_stack_pair(published, 8, None, A, C, None) is None
+
+
+def test_a_stack_keeps_its_last_eight_pairs_and_one_reader(tmp_path: Path) -> None:
+    published = _published(tmp_path)
+    heads = [f"{index:040x}" for index in range(1, MAX_RETAINED_STACK_PAIRS + 2)]
+    for head in heads:
+        pull_stack_retained.retain_stack_pair(published, _pair(head), "gh:alice")
+    assert retained_stack_pair(published, 7, None, A, heads[0], None) is None
+    for head in heads[1:]:
+        assert retained_stack_pair(published, 7, None, A, head, None) == _pair(head)
+
+    # Another reader's pair starts the history over.
+    pull_stack_retained.retain_stack_pair(published, _pair(C), "gh:bob")
+    assert retained_stack_pair(published, 7, None, A, heads[-1], None) is None
+    assert retained_stack_pair(published, 7, "gh:bob", A, C, None) == _pair(C)
+
+
+def test_an_unreadable_file_answers_unknown_and_a_malformed_one_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    published = _published(tmp_path)
+    pull_stack_retained.retain_stack_pair(published, _pair(C), "gh:alice")
+    with monkeypatch.context() as patch:
+
+        def unreadable(*_args: object, **_kwargs: object) -> bytes:
+            raise PermissionError("denied")
+
+        patch.setattr(pull_stack_retained, "read_bytes_bounded", unreadable)
+        assert retained_stack_pair(published, 7, None, A, C, None) == "unknown"
+
+    path = tmp_path / source_stack_snapshots(_SLUG, 7)
+    path.write_text('[{"store": "store-1"}]')
+    assert retained_stack_pair(published, 7, None, A, C, None) is None
