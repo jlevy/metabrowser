@@ -88,8 +88,8 @@ Metabrowser to Applications after installing a compatible `metab`.
 
 If the app cannot start a folder, open **Settings → Runtime**. It shows the required
 version and any rejected runtimes.
-After installing or updating `metab`, use **Find Again** or **Choose metab…** to select
-the executable. If your preview requires a newer version than
+After installing or updating `metab`, use **Refresh** or **Choose metab…** to select the
+executable. If your preview requires a newer version than
 [PyPI](https://pypi.org/project/metabrowser/) offers, use the checkout’s `metab` as
 described below. **Help → Check Setup…** checks the tools and paths the app actually
 uses, which can differ from the ones in your terminal.

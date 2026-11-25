@@ -39,7 +39,7 @@ shows it; each of those windows shows the folder open in the background that you
 at last, or closes if there is none.
 While a dialog or panel is open on one of those windows, it does nothing.
 If a server stops answering or fails to start, the window says so and offers Retry,
-Reveal Logs, and Runtime Settings….
+Reveal Server Log, and Runtime Settings….
 
 Opening a folder in Desktop, Documents, Downloads, iCloud Drive, or on another volume
 asks once for access, in Metabrowser’s name, because the app starts the server that
@@ -174,7 +174,7 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   switch back: Metabrowser tries again by itself, as Retry does, and the window says so.
   Any other failure waits for Retry, since trying again on every switch could restart a
   long clone from the beginning or ask GitHub again while it asks for fewer requests.
-  After installing GitHub CLI, choose Find Again in Settings > Runtime first, so that
+  After installing GitHub CLI, choose Refresh in Settings > Runtime first, so that
   Metabrowser finds it, then Retry.
 - **A link `metab` refuses**, such as an issues page, shows `metab`’s message, which
   says what to do. A link to another site, an `http` link, and a link with a user name, a
@@ -370,9 +370,10 @@ Each tab sizes the window to fit, keeping its top edge in place.
 - **General:** where a newly opened folder goes ([Windows and Tabs](#windows-and-tabs)),
   and whether the [last session](#the-last-session) reopens.
 - **Runtime:** the selected `metab`, its path, how the app found it, and the `git` and
-  `gh` it hands each server, with **Find Again** and **Choose metab…**
+  `gh` it hands each server, with **Refresh** and **Choose metab…**
   ([Choosing a metab](#choosing-a-metab)). **Places looked** lists the last runtime
-  search, and **Reveal Logs** shows the app’s logs in Finder.
+  search, scrolling within the tab when it is long, and **Reveal Logs Folder** shows the
+  app’s logs in Finder, as Help > Reveal Logs Folder does.
 - **Plugins:** the plugins a new server started with this runtime discovers, each with
   its name, ID, version, source, and the plugins it requires, then any discovery errors.
   The app runs [the CLI’s plugin inventory](plugins.md#inspecting-plugins) with the same
@@ -386,9 +387,9 @@ Each tab sizes the window to fit, keeping its top edge in place.
 
 ## Choosing a metab
 
-At first launch, and again on Settings > Runtime > Find Again, the app looks for `metab`
-in several places, among them the one it used last, `METABROWSER_METAB`, and where uv
-and Homebrew install commands; Places looked lists them in the order tried.
+At first launch, and again on Settings > Runtime > Refresh, the app looks for `metab` in
+several places, among them the one it used last, `METABROWSER_METAB`, and where uv and
+Homebrew install commands; Places looked lists them in the order tried.
 Your login shell’s `PATH` comes last: the login shell runs only when the other places
 miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the app’s name,
 which can take seconds.
@@ -428,8 +429,9 @@ The `metab` check compares with the oldest `metab` this build of the app runs.
 The Git check names that `git`, its version, and whether it reads file ages on a Git
 revision; a Git too old for them is a warning that says which release it needs.
 
-- **Check Again** runs it again, as after following a step or choosing a `metab` in
-  Settings > Runtime.
+- **Refresh** runs it again, as after following a step or choosing a `metab` in the
+  Runtime tab. A selection in the report stays on its text, and the report stays where it
+  was scrolled.
 - **Copy Report** copies the whole report, for a bug report.
 - **A `metab` built before the setup checks** shows its problems as it words them, and
   says the checks are missing.

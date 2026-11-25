@@ -284,7 +284,7 @@ and the server, which resolves the link against its mirror, announces the right 
   A network failure can come minutes into a first clone’s fetch (`timed_out`), which a
   retry would start again from zero while holding the repository launch gate; a rate
   limit asks for fewer requests; a server error is GitHub’s to fix; and without `gh`
-  nothing changes until Find Again, which restarts nothing.
+  nothing changes until Refresh in Settings > Runtime, which restarts nothing.
   The recheck runs the start again, since no route reports the sign-in yet, so each
   switch back to the app while a not-found failure stands costs GitHub that failure’s
   requests: the provider’s size check, when `gh` is found, and the probe of the origin,

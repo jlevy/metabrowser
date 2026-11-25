@@ -895,9 +895,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Runtime
 
-    /// A search the launch, Find Again, or the watch starts (`RuntimeOperations`). It
-    /// counts as running before this returns, so a folder requested in the same run-loop
-    /// turn waits for it.
+    /// A search the launch, Refresh in Settings > Runtime, or the watch starts
+    /// (`RuntimeOperations`). It counts as running before this returns, so a folder
+    /// requested in the same run-loop turn waits for it.
     private func beginDiscovery() {
         guard !selection.isSearching else { return }
         runtimeModel.notice = nil
@@ -1011,12 +1011,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = SettingsWindowController(
                 runtime: runtimeModel,
                 runtimeActions: RuntimeActions(
-                    findAgain: { [weak self] in self?.beginDiscovery() },
+                    refresh: { [weak self] in self?.beginDiscovery() },
                     choose: { [weak self] in self?.chooseRuntime() },
-                    revealLogs: { [weak self] in self?.revealLogsFolder(nil) }),
+                    revealLogsFolder: { [weak self] in self?.revealLogsFolder(nil) }),
                 plugins: pluginList,
                 checkSetup: checkSetupModel,
-                checkSetupActions: CheckSetupActions(checkAgain: { [weak self] in self?.runCheckSetup() }))
+                checkSetupActions: CheckSetupActions(refresh: { [weak self] in self?.runCheckSetup() }))
             // Check Setup runs each time its pane comes on screen, unless a run is under way.
             window.onShow = { [weak self] shown in
                 if shown == .checkSetup { self?.runCheckSetup() }

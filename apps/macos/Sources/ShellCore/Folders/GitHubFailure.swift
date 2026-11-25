@@ -146,11 +146,11 @@ public nonisolated struct GitHubFailure: Equatable, Sendable {
         case .notSignedIn:
             "Metabrowser clones and reads repositories with your GitHub CLI (gh) sign-in. Sign in in Terminal."
         case .noGitHubCLI:
-            "Without GitHub CLI (gh), Metabrowser reads only public repositories. Install it from https://cli.github.com and sign in, then choose Find Again in Runtime Settings so that Metabrowser finds it, and Retry."
+            "Without GitHub CLI (gh), Metabrowser reads only public repositories. Install it from https://cli.github.com and sign in, then choose Refresh in Settings > Runtime so that Metabrowser finds it, and Retry."
         case .notFound:
             "GitHub answers the same way for a repository that does not exist and for a private one it will not show: GitHub CLI is not signed in, its account cannot read the repository, or its sign-in lacks the repo scope."
         case .notFoundWithoutGitHubCLI:
-            "GitHub answers the same way for a repository that does not exist and for a private one, and without GitHub CLI (gh) Metabrowser could offer it no sign-in. Check the link. If the repository is private, install GitHub CLI from https://cli.github.com and sign in, then choose Find Again in Runtime Settings so that Metabrowser finds it, and Retry."
+            "GitHub answers the same way for a repository that does not exist and for a private one, and without GitHub CLI (gh) Metabrowser could offer it no sign-in. Check the link. If the repository is private, install GitHub CLI from https://cli.github.com and sign in, then choose Refresh in Settings > Runtime so that Metabrowser finds it, and Retry."
         case .network:
             "Check the network connection. Trying the same clone in Terminal shows whether this Mac reaches GitHub, and Retry then opens what it cloned."
         case .rateLimited:

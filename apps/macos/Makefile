@@ -70,15 +70,20 @@ webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAut
 # wall-clock bounds, HealthCheckTests' 2 s one by 6 to 8 s both times, in 37 and 35 s.
 window_suites := SettingsWindowTests
 #
+# Each test process runs through scripts/swift-test.sh, which fails one that exits 0 without
+# swift-testing's summary of a passed run: a window-server event once ended a process that
+# way with its tests unrun, and a filter that matches nothing passes the same way.
+swift_test = SWIFT=$(SWIFT) scripts/swift-test.sh
+#
 # The WebKit gate's driver ships in no product, so nothing else would notice a change to
 # the app's views or configuration that broke its build; the gate itself needs Chrome and
 # a logged-in session, so only its build and its Node tests, which need neither, run here.
 test:
 	$(SWIFT) build --product WebKitDriver
-	$(SWIFT) test --skip ExitObservationStressTests $(webkit_suites:%=--skip %) $(window_suites:%=--skip %)
-	$(SWIFT) test --no-parallel $(webkit_suites:%=--filter %)
-	$(SWIFT) test --no-parallel $(window_suites:%=--filter %)
-	$(SWIFT) test --filter ExitObservationStressTests
+	$(swift_test) --skip ExitObservationStressTests $(webkit_suites:%=--skip %) $(window_suites:%=--skip %)
+	$(swift_test) --no-parallel $(webkit_suites:%=--filter %)
+	$(swift_test) --no-parallel $(window_suites:%=--filter %)
+	$(swift_test) --filter ExitObservationStressTests
 	scripts/test-scripts.sh
 	node --test 'webkit-gate/*.test.mjs'
 

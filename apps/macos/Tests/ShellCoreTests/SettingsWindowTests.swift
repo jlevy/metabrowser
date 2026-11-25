@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import Metabrowser
 @testable import ShellCore
@@ -53,8 +54,8 @@ import Testing
         }, environment: { [:] })
         let checkSetup = CheckSetupModel()
         let controller = SettingsWindowController(
-            runtime: runtime, runtimeActions: RuntimeActions(findAgain: {}, choose: {}, revealLogs: {}),
-            plugins: plugins, checkSetup: checkSetup, checkSetupActions: CheckSetupActions(checkAgain: {}))
+            runtime: runtime, runtimeActions: RuntimeActions(refresh: {}, choose: {}, revealLogsFolder: {}),
+            plugins: plugins, checkSetup: checkSetup, checkSetupActions: CheckSetupActions(refresh: {}))
         let shown = Recorder<SettingsTab>()
         controller.onShow = { shown.append($0) }
         controller.window?.animationBehavior = .none
@@ -221,6 +222,106 @@ import Testing
         let scroll = try #require(report.enclosingScrollView)
         #expect(report.frame.height > scroll.contentView.bounds.height)
         #expect(window.contentLayoutRect.height == CheckSetupView.height)
+    }
+
+    /// A rerun's report replaces the text, and a reader's selection stays on the same
+    /// text, wherever the change moved it, with the report scrolled where it was; a
+    /// render with the same report changes nothing.
+    @Test func aRerunKeepsTheSelectionAndTheScroll() async throws {
+        let fixture = await fixture()
+        let window = fixture.window
+        let app = { (version: String) in
+            AppIdentity(infoDictionary: ["CFBundleShortVersionString": version, "CFBundleVersion": "1"])
+        }
+        fixture.checkSetup.header = DoctorRun.header(app: app("0.1.0"), setup: Self.setup)
+        fixture.checkSetup.answer = DoctorRun.answer(CommandResult(status: 0, output: try doctorTranscript()))
+        fixture.controller.show(.checkSetup)
+        defer { window.orderOut(nil) }
+        let first = try #require(fixture.checkSetup.text)
+        #expect(await eventually(within: .seconds(10)) { views(NSTextView.self, in: window.contentView).count == 1 })
+        let report = try #require(views(NSTextView.self, in: window.contentView).first)
+        let scroll = try #require(report.enclosingScrollView)
+        #expect(report.string == first)
+
+        let part = "  file ages: available"
+        let before = (first as NSString).range(of: part)
+        try #require(before.location != NSNotFound)
+        report.setSelectedRange(before)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 120))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        let origin = scroll.contentView.bounds.origin
+        try #require(origin.y == 120, "the report is long enough to scroll")
+
+        // The same report rendered again, as a run's start and end render it.
+        fixture.checkSetup.isRunning = true
+        try? await Task.sleep(for: .milliseconds(200))
+        fixture.checkSetup.isRunning = false
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(report.selectedRange() == before)
+
+        // A longer version above the selection moves its text along.
+        fixture.checkSetup.header = DoctorRun.header(app: app("0.1.0-preview.2"), setup: Self.setup)
+        let second = try #require(fixture.checkSetup.text)
+        try #require(second != first)
+        #expect(await eventually(within: .seconds(10)) { report.string == second })
+        let after = (second as NSString).range(of: part)
+        #expect(after.location != before.location)
+        #expect(report.selectedRange() == after)
+        // TextKit 2 lays text out after an edit too, which moved the scroll.
+        try? await Task.sleep(for: .milliseconds(500))
+        #expect(scroll.contentView.bounds.origin == origin)
+    }
+
+    /// The nearest occurrence of the selected text, which may appear more than once.
+    @Test func aSelectionReturnsToTheNearestOccurrence() {
+        let text = "ok: a\nwarning: b\nok: c\n" as NSString
+        #expect(ReportTextView.range(of: "ok", in: text, near: 0) == NSRange(location: 0, length: 2))
+        #expect(ReportTextView.range(of: "ok", in: text, near: 15) == NSRange(location: 17, length: 2))
+        #expect(ReportTextView.range(of: "error", in: text, near: 0) == nil)
+    }
+
+    /// Places looked lists every directory of a long `PATH` when no `metab` is found, under
+    /// the setup guide's notices. It scrolls in place, so the pane fits the height the
+    /// window is placed for, and everything under it, Reveal Logs Folder included, stays in
+    /// the window. A short list takes only its own height.
+    ///
+    /// SwiftUI builds a pane's accessibility elements only for an assistive app, so this
+    /// measures its views.
+    @Test func aLongPlacesLookedScrollsWithinThePane() async throws {
+        let fixture = await fixture(setup: nil)
+        let window = fixture.window
+        let home = "/Volumes/Home"
+        let tried =
+            (0..<38).map {
+                CandidateOutcome(path: "\(home)/.local/share/tool-\($0)/bin/metab", source: .loginShell, result: .missing)
+            } + [
+                CandidateOutcome(path: "/opt/homebrew/bin/metab", source: .homebrew, result: .tooOld(version: "0.11.0")),
+                CandidateOutcome(
+                    path: "\(home)/bin/metab", source: .loginShell, result: .untrusted("it is writable by others")),
+            ]
+        fixture.runtime.tried = tried
+        fixture.runtime.guide = SetupGuide(
+            tried: tried, binDirectory: "\(home)/.local/bin", home: home, minimumIsReleased: false)
+        try #require(fixture.runtime.guide?.notices.count == 3)
+        fixture.controller.show(.runtime)
+        defer { window.orderOut(nil) }
+
+        let list = { views(NSScrollView.self, in: window.contentView).first }
+        #expect(await eventually(within: .seconds(10)) { list()?.documentView.map { $0.frame.height > 0 } == true })
+        let pane = try #require(views(NSHostingView<RuntimeView>.self, in: window.contentView).first)
+        let scroll = try #require(list())
+        let content = window.contentLayoutRect.height
+        #expect(content <= CheckSetupView.height, "\(content)")
+        #expect(pane.fittingSize.height <= content, "\(pane.fittingSize.height) > \(content)")
+        #expect(abs(scroll.frame.height - RuntimeView.placesLookedHeight) <= 1, "\(scroll.frame.height)")
+        let listed = try #require(scroll.documentView).frame.height
+        #expect(listed > 3 * scroll.contentView.bounds.height, "the list scrolls: \(listed)")
+
+        fixture.runtime.tried = Array(tried.suffix(2))
+        #expect(await eventually(within: .seconds(10)) {
+            (list()?.frame.height ?? .infinity) < RuntimeView.placesLookedHeight / 2
+        })
+        #expect(await eventually(within: .seconds(10)) { window.contentLayoutRect.height < content })
     }
 
     @Test func withoutARuntimeThePanesSaySoAndRunNothing() async throws {
