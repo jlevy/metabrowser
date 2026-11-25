@@ -1413,7 +1413,7 @@ const CORNER_DONE = `(() => {
 
 // Pulls rows built as pulls-panel.js#buildRow builds them, whose order
 // github-pulls-panel-session.js pins: the row's link, which is its title's two lines, one
-// flow of the state icon in the row's one slot, a stack member's place and a bullet, and the
+// flow of the state icon in the row's one slot, a stack member's place and a dot, and the
 // title, which wraps under the icon and is cut short at the second line's end (mb-vkhd,
 // mb-85op); then the row's third line, its change line (mb-d0a3, mb-lqkb), which holds the
 // chevron in the same slot, under the icon (mb-3vil), then the number's line, the number, the
@@ -1507,7 +1507,7 @@ const PULLS_ROWS = `async (rows, width) => {
   for (const { place, row } of built) {
     place.hidden = false;
     // As pulls-panel.js#paintPlace draws it: another stack is the Layers glyph before its
-    // number, written here as "#N", and the bullet ends it, after a no-break space.
+    // number, written here as "#N", and the stack menu's dot ends it, after a no-break space.
     place.append(
       h(
         "span",
@@ -1526,7 +1526,7 @@ const PULLS_ROWS = `async (rows, width) => {
         }),
       ),
       "\u00a0",
-      h("span", { class: "github-pulls-bullet", "aria-hidden": "true" }, ["•"]),
+      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
       " ",
     );
   }
@@ -1540,9 +1540,8 @@ const PULLS_ROWS = `async (rows, width) => {
         : [[node.className.baseVal ?? node.className, before[at][index], after[at][index]]],
     );
     const position = place.querySelector(".github-pull-stack-position");
-    const bullet = place.querySelector(".github-pulls-bullet");
     const p = position.getBoundingClientRect();
-    const dot = bullet.getBoundingClientRect();
+    const dot = place.querySelector(".github-pull-stack-dot").getBoundingClientRect();
     const n = number.getBoundingClientRect();
     const box = anchor.getBoundingClientRect();
     const end = box.right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5;
@@ -1584,7 +1583,7 @@ const PULLS_ROWS = `async (rows, width) => {
       number: row.number,
       moved,
       // The place leads the title's flow: on the first line, after the icon, in the text
-      // column, then the bullet, on the place's line, then the title, on that line or the
+      // column, then the dot, on the place's line, then the title, on that line or the
       // next.
       placeFirst:
         p.width > 0 &&
@@ -1595,7 +1594,7 @@ const PULLS_ROWS = `async (rows, width) => {
         lines.length > 0 &&
         (lineOf(dot) < lineOf(lines[0]) || lines[0].left >= dot.right - 0.5),
       placeFrom: round(p.left - inset),
-      // The line each of the position, the bullet, and the title's start is on.
+      // The line each of the position, the dot, and the title's start is on.
       placeLines: [lineOf(p), lineOf(dot), lines.length > 0 ? lineOf(lines[0]) : null],
       titleFrom: lines.length > 0 ? round(lines[0].left - inset) : null,
       // The number shows whole, inside the number's line's clip.
@@ -2881,7 +2880,7 @@ async function main() {
           // The place leads the title's flow (mb-vkhd): it was before the number, on the
           // number's line (mb-dzsi).
           check(
-            `${where}: the stack place leads the title's first line, after the icon, in the text column, then the bullet, then the title`,
+            `${where}: the stack place leads the title's first line, after the icon, in the text column, then the dot, then the title`,
             row.placeFirst && Math.abs(row.placeFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
           );

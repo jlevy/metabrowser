@@ -41,8 +41,8 @@ neighbours as drawn, a stack’s row passed over, then the first pull requests d
 `mounted` mounts the panel over a stand-in for the DOM and drives its handle, as Space,
 Right, and Left reach it, and a press on a stack’s row, printing the tree’s roles,
 levels, places, expansion, and Tab stop at each step, and each member’s title line as
-drawn: its place in its stack and a small bullet before its title, “3/3 • Say more in
-the guide”, where a pull request in no stack has its title alone (mb-vkhd).
+drawn: its place in its stack and the stack menu’s muted dot before its title, “3/3 ·
+Say more in the guide”, where a pull request in no stack has its title alone (mb-vkhd).
 `menu` is the page’s stack menu, mounted over a stand-in for the DOM: its heading is the
 stack’s label on the shared label classes, its trigger shows its bare position, a press
 opens it with focus on the current member, and its members are the group’s, in one
@@ -368,9 +368,9 @@ $ node tests/dom/github-pulls-stack-groups-session.js
   ],
   "mounted": {
     "member lines": [
-      "#8: 3/3 • Say more in the guide",
-      "#7: 2/3 • Count to two in the app",
-      "#6: 1/3 • Work item 6"
+      "#8: 3/3 · Say more in the guide",
+      "#7: 2/3 · Count to two in the app",
+      "#6: 1/3 · Work item 6"
     ],
     "a pull request in no stack": "#106: Work item 106",
     "files": {

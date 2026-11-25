@@ -1210,7 +1210,7 @@
 /* A pull request's row is three lines, one item, and two targets (mb-lkkt, mb-d0a3, mb-1z7j,
    mb-85op, mb-lqkb). The row's link is the first two: its title's, one flow that starts with
    the state icon, in the tree's icon slot on the row's inset, then a stack member's place and
-   a bullet (mb-vkhd), then the title, which wraps under the icon and is cut short at the
+   a dot (mb-vkhd), then the title, which wraps under the icon and is cut short at the
    second line's end (`.github-pulls-heading`, below). The third line is its change line
    (`.github-pulls-change`, below), which carries the chevron in the same slot, under the
    state icon, then the number's line in the text column, the number, the author, and the
@@ -1282,13 +1282,13 @@
   width: 3ch;
 }
 /* The title's two lines (mb-85op): one run of inline text, a stack member's place and its
-   bullet, and the title, from the row's inset to its end, after the state icon on the first
+   dot, and the title, from the row's inset to its end, after the state icon on the first
    line, so the title's second line starts under the icon, and cut short with an ellipsis at
    the second line's end, as the pull request page's title is (`.github-pull-title-text`). Its
    box is two lines of the row's type from the first paint, a title of one line included, so a
    title's length, or a place that arrives, never moves the row's third line. A word of the
    title longer than the line breaks anywhere, so nothing scrolls sideways; the place breaks
-   only after its bullet (`.github-pulls-place`). */
+   only after its dot (`.github-pulls-place`). */
 .github-pulls-row > .github-pulls-heading {
   position: relative;
   display: -webkit-box;
@@ -1323,27 +1323,21 @@
   overflow-wrap: anywhere;
 }
 /* A stack member's place, bold in the number's type and ink, "14/15", after the state icon
-   and before the title, then a small bullet in the muted ink, "14/15 • title" (mb-vkhd). Its
-   own stack's position is bare, as the row sits under that stack's row, and another stack's
-   is named by the Layers glyph. It is text of the title's run: the position never breaks
-   (`.github-pull-stack-position`), a no-break space keeps the bullet on its line, a line may
-   break after the bullet as after a word, and the title after it wraps under the icon. Only
-   the title breaks anywhere (`.github-pulls-title`): on the heading, that break let a place
-   wider than the first line, three stacks' at 180 px, put its bullet at the second line's
-   start (Chrome 152); now the place is cut short at the first line's end and the title starts
-   the second. A row in no stack has no place and no bullet. */
+   and before the title, then a muted dot, "14/15 · title" (mb-vkhd): the dot of the stack
+   menu's member line (`.github-pull-stack-dot`), so the two surfaces read alike. Its own
+   stack's position is bare, as the row sits under that stack's row, and another stack's is
+   named by the Layers glyph. It is text of the title's run: the position never breaks
+   (`.github-pull-stack-position`), a no-break space keeps the dot on its line, a line may
+   break after the dot as after a word, and the title after it wraps under the icon. Only the
+   title breaks anywhere (`.github-pulls-title`): on the heading, that break let a place wider
+   than the first line, three stacks' at 180 px, put its dot at the second line's start
+   (Chrome 152); now the place is cut short at the first line's end, with no ellipsis, and the
+   title starts the second. A row in no stack has no place and no dot. */
 .github-pulls-place {
   color: var(--text);
 }
 .github-pulls-place[hidden] {
   display: none;
-}
-.github-pulls-bullet {
-  color: var(--muted);
-  font-size: var(--micro-font-size);
-  /* Raised a tenth of its size, so its middle meets the title's x-height, as the muted dots of
-     the number's line do; on the baseline it sat a pixel low at 13 px (Chrome 152). */
-  vertical-align: 0.1em;
 }
 /* The registry's chevron, at the tree's 12px glyph in the tree's icon slot; `.collapsed` and
    `.expanded` on the row turn it, as they turn a folder's (a changed folder's is the shell's

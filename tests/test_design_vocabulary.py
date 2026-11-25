@@ -1716,7 +1716,6 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
 _MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".chip-badge"): "a chip's count badge, a filled mark inside the chip",
     ("github/styles.css", ".github-pull-stack-dot"): "the dot between a stack's badges",
-    ("github/styles.css", ".github-pulls-bullet"): "the bullet after a Pulls row's stack place",
 }
 # The role tokens that are the small size, each a role of its own.
 _SMALL_SIZE_TOKENS = frozenset({"--kbd-font-size", "--label-font-size", "--mono-block-font-size"})

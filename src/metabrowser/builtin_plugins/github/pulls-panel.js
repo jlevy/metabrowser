@@ -4168,11 +4168,11 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /**
    * A stack member's place in its stack, at the start of its title's flow, after the state
-   * icon, then a small muted bullet before the title: "14/15 • title" (docs/design-system.md,
-   * "Stacks"; mb-vkhd). It has no stack icon of its own: the stack's row it sits under has
+   * icon, then a muted dot before the title: "14/15 · title" (docs/design-system.md, "Stacks";
+   * mb-vkhd), the stack menu's member line's dot (`.github-pull-stack-dot`). It has no stack icon of its own: the stack's row it sits under has
    * it. The place of its row's own stack comes first, bare, and any other stack's is named by
    * the Layers glyph before its number. A pull request in no stack has neither place nor
-   * bullet, so its title follows the icon. A passive part of the row's one primary link,
+   * dot, so its title follows the icon. A passive part of the row's one primary link,
    * named by its accessible name; the Pulls column shows no tooltips (docs/design-system.md,
    * "Tooltips Add Information").
    *
@@ -4215,11 +4215,10 @@ export function mountPullsPanel(container, ctx, mb) {
           part.position,
         ]),
       ),
-      // A no-break space before the bullet and a text space after it, so the flow breaks
-      // after the bullet as after a word and never before it (github/styles.css,
-      // `.github-pulls-place`).
+      // A no-break space before the dot and a text space after it, so the flow breaks after
+      // the dot as after a word and never before it (github/styles.css, `.github-pulls-place`).
       "\u00a0",
-      h("span", { class: "github-pulls-bullet", "aria-hidden": "true" }, ["•"]),
+      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
       " ",
     );
   }
@@ -4304,7 +4303,7 @@ export function mountPullsPanel(container, ctx, mb) {
     // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
     // "Titles").
     const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
-    // A stack member's place and the bullet after it, between the state icon and the title
+    // A stack member's place and the dot after it, between the state icon and the title
     // (`paintPlace`); empty and hidden while the row is in no stack.
     const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
     const icon = pullStateIcon(row.state);

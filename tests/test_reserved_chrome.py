@@ -571,12 +571,12 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
 
 
 def test_a_stack_members_place_leads_its_title() -> None:
-    """A stack member's place in its stack leads its title, after the state icon: "14/15 •
-    title", the place bold, then a small bullet in the muted ink (mb-vkhd). It was on the
+    """A stack member's place in its stack leads its title, after the state icon: "14/15 ·
+    title", the place bold, then the stack menu's muted dot (mb-vkhd). It was on the
     muted line before the number, "1/6 · #455 · author", from mb-dzsi until the title took two
     lines and the number's line joined the change line (mb-85op, mb-lqkb); before that its
     column on the title line, between the title and the age (review E1 on #370), took the
-    title's room. A pull request in no stack has no place and no bullet: the icon, then the
+    title's room. A pull request in no stack has no place and no dot: the icon, then the
     title. github-pull-header-chrome.mjs and github-pulls-stacks-chrome.mjs measure it, and
     github-pulls-stack-groups-session.js pins the drawn place."""
 
@@ -584,15 +584,19 @@ def test_a_stack_members_place_leads_its_title() -> None:
     assert 'h("span", { class: "github-pulls-heading" }, [icon, stack, title])' in panel
     place = panel[panel.index("function paintPlace(") :]
     place = place[: place.index("\n  }\n")]
-    assert place.index('"github-pull-stack-position"') < place.index('"github-pulls-bullet"')
-    assert 'h("span", { class: "github-pulls-bullet", "aria-hidden": "true" }, ["•"])' in place
-    # A no-break space before the bullet, so no line starts with it.
-    assert '"\\u00a0",\n      h("span", { class: "github-pulls-bullet"' in place
-    assert "element.hidden = caption === null;" in place, "no stack, no place and no bullet"
+    assert place.index('"github-pull-stack-position"') < place.index('"github-pull-stack-dot"')
+    # The dot is the stack menu's member line's (`.github-pull-stack-dot`), so the two
+    # surfaces read alike.
+    assert 'h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"])' in place
+    # A no-break space before the dot, so no line starts with it.
+    assert '"\\u00a0",\n      h("span", { class: "github-pull-stack-dot"' in place
+    assert "element.hidden = caption === null;" in place, "no stack, no place and no dot"
     css = _github_css()
-    # The bullet is the muted token, at the micro marks' size, never a color literal.
-    bullet = _rule(css, ".github-pulls-bullet")
-    assert "color: var(--muted);" in bullet and "font-size: var(--micro-font-size);" in bullet
+    # The dot is the muted token, at the micro marks' size, never a color literal, and the
+    # Pulls column sets no dot of its own.
+    dot = _rule(css, ".github-pull-stack-dot")
+    assert "color: var(--muted);" in dot and "font-size: var(--micro-font-size);" in dot
+    assert "github-pulls-bullet" not in css
     assert "color: var(--text);" in _rule(css, ".github-pulls-place")
     assert "display: none;" in _rule(css, ".github-pulls-place[hidden]")
     # The position is bold, the pull request number's weight, and never breaks.
@@ -605,7 +609,7 @@ def test_a_stack_members_place_leads_its_title() -> None:
 
 def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     """A pull request's row is three lines (mb-lkkt, mb-d0a3, mb-85op, mb-lqkb). Its link is
-    two: its title's, one flow of the state icon, a stack member's place and bullet, and the
+    two: its title's, one flow of the state icon, a stack member's place and dot, and the
     title, which wraps under the icon and is cut short at the second line's end, two lines
     tall whatever it holds. The third line is its change line, not part of the link: the
     chevron under the state icon, then the number's line, "#113 · jlevy · +1,234 −567", with
@@ -633,7 +637,7 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     ):
         assert declaration in heading, declaration
     # Only the title breaks anywhere: on the heading, that break let a place wider than the
-    # first line put its bullet at the second line's start (Chrome 152, 180 px).
+    # first line put its dot at the second line's start (Chrome 152, 180 px).
     assert "overflow-wrap" not in heading
     assert "overflow-wrap: anywhere;" in _rule(css, ".github-pulls-title")
     # The icon is out of the text's flow, in the slot the first line's indent leaves, one line

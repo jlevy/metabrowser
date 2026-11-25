@@ -248,9 +248,10 @@ async function mountStory() {
     };
     await step("mounted: Stack #286 open, its pull requests a level in", () => undefined);
     // Each member's title line as drawn (pulls-panel.js, `paintPlace` and `buildRow`): the
-    // state icon, then its place in bold and a small bullet, "3/3 • ", where another stack's
-    // glyph is written ⧉, then the title, and no stack icon on its row, whose stack's row has
-    // it (mb-dzsi, mb-vkhd). A pull request in no stack has no place and no bullet.
+    // state icon, then its place in bold and the stack menu's muted dot, "3/3 · ", where
+    // another stack's glyph is written ⧉, then the title, and no stack icon on its row, whose
+    // stack's row has it (mb-dzsi, mb-vkhd). A pull request in no stack has no place and no
+    // dot.
     const find = (node, name) =>
       node.classList?.contains(name)
         ? node
@@ -270,7 +271,7 @@ async function mountStory() {
         "the state icon, then the place, then the title, one flow",
       );
       const place = heading.childNodes[1];
-      // The no-break space before the bullet is written as a space.
+      // The no-break space before the dot is written as a space.
       const text = `${textOf(place)}${textOf(heading.childNodes[2])}`.replaceAll("\u00a0", " ");
       return { heading, place, text };
     };
@@ -284,16 +285,16 @@ async function mountStory() {
         );
         const { place, text } = titleLine(row);
         assert.equal(place.hidden, false, "a member's place is shown");
-        // The place and its bullet lead the title: the position, a no-break space, so no line
-        // starts with the bullet, the bullet, and a space, where the title may wrap.
+        // The place and its dot lead the title: the position, a no-break space, so no line
+        // starts with the dot, the dot, and a space, where the title may wrap.
         assert.deepEqual(
           place.childNodes.map((node) => classOf(node) ?? node.data),
-          ["github-pull-stack-position", "\u00a0", "github-pulls-bullet", " "],
-          "the place is the position, then the bullet, before the title",
+          ["github-pull-stack-position", "\u00a0", "github-pull-stack-dot", " "],
+          "the place is the position, then the dot, before the title",
         );
-        const bullet = place.childNodes[2];
-        assert.equal(textOf(bullet), "•");
-        assert.equal(bullet.getAttribute("aria-hidden"), "true", "the place's label says it");
+        const dot = place.childNodes[2];
+        assert.equal(textOf(dot), "·");
+        assert.equal(dot.getAttribute("aria-hidden"), "true", "the place's label says it");
         assert.equal(find(row, "github-pulls-number"), null, "the number is not on the title line");
         return `#${row.dataset.number}: ${text}`;
       });
@@ -302,7 +303,7 @@ async function mountStory() {
     );
     const looseLine = titleLine(loose);
     assert.equal(looseLine.place.hidden, true, "a pull request in no stack has no place");
-    assert.equal(looseLine.place.childNodes.length, 0, "and no bullet");
+    assert.equal(looseLine.place.childNodes.length, 0, "and no dot");
     const unstacked = `#${loose.dataset.number}: ${looseLine.text}`;
     await step("Space on the stack's row (the handle's toggleStack) closes it", () =>
       handle.toggleStack(286),

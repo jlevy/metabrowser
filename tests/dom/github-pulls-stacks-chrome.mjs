@@ -98,7 +98,7 @@ const LIST = `(() => {
         number: Number(row.dataset.number),
         // Its place in its stacks, leading its title, after the state icon (mb-vkhd).
         badge: row.querySelector(".github-pulls-place .github-pull-stack-position")?.textContent ?? "",
-        // The title's flow, the place and its bullet, then the title, its no-break space a
+        // The title's flow, the place and its dot, then the title, its no-break space a
         // space; and the number's line, on the row's third line.
         heading: ((place?.textContent ?? "") + (row.querySelector(".github-pulls-title")?.textContent ?? "")).replaceAll("\u00a0", " "),
         line: row.closest("li").querySelector(".github-pulls-change .github-pulls-meta")?.textContent ?? "",
@@ -154,7 +154,7 @@ const LIST = `(() => {
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
   // A pull request's three lines (mb-85op, mb-lqkb): its link's two, the title's, one flow of
-  // the state icon, a member's place and bullet, and the title, from the row's inset to its
+  // the state icon, a member's place and dot, and the title, from the row's inset to its
   // end; and under them its change line, the chevron in the first icon slot, then the number's
   // line in the text column, and the age at the row's end. Each row's parts, from its link's
   // content box.
@@ -643,9 +643,9 @@ try {
     // It was on the number's line, before the number, "1/6 · #455", from mb-dzsi until the
     // title took two lines and the number's line joined the change line (mb-vkhd, mb-85op).
     check(
-      "a member's place leads its title, then a bullet, as 1/6 • Fix the reader reads, and its number's line starts with its number",
-      first?.members[0]?.heading.startsWith("4/4 · 300 2/2 • ") &&
-        first.members[1]?.heading.startsWith("3/4 • ") &&
+      "a member's place leads its title, then the stack menu's dot, as 1/6 · Fix the reader reads, and its number's line starts with its number",
+      first?.members[0]?.heading.startsWith("4/4 · 300 2/2 · ") &&
+        first.members[1]?.heading.startsWith("3/4 · ") &&
         first.members[0].line.startsWith("#10 · ") &&
         first.members[1].line.startsWith("#9 · "),
       JSON.stringify(first?.members.map((m) => [m.heading, m.line])),
