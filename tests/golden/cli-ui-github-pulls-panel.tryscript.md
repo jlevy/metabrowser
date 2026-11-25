@@ -24,7 +24,7 @@ only when every page has the same source, reader, and generation.
 Changing filters or hiding the panel aborts presentation reads, with late responses
 unable to replace the next request’s ownership.
 One connection row shows progress while no rows are shown, and otherwise the rows’ age,
-breathing while a refresh runs, or recovery, with a Reload action; nothing spins over
+breathing while a refresh runs, or recovery, with a Refresh action; nothing spins over
 rows. A failed refresh keeps cached rows.
 
 Holding a key changes two row marks per step and reads no detail until the walk stops.
@@ -60,7 +60,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
-          "reload": false
+          "canRefresh": false
         },
         "live": "Fetching pull requests…"
       }
@@ -81,7 +81,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
-          "reload": false
+          "canRefresh": false
         },
         "live": "Fetching pull requests…"
       }
@@ -101,7 +101,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
-          "reload": false
+          "canRefresh": false
         },
         "live": "Fetching pull requests…"
       }
@@ -124,7 +124,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "connected",
           "text": "Updated just now",
-          "reload": true
+          "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 100,
@@ -152,7 +152,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "connected",
           "text": "Updated just now",
-          "reload": true
+          "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 102,
@@ -200,7 +200,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "connected",
           "text": "Updated just now",
-          "reload": true
+          "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 100 pull requests",
         "rowsHeld": 100,
@@ -254,7 +254,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "connected",
           "text": "Updated just now",
-          "reload": false,
+          "canRefresh": false,
           "refreshing": true
         },
         "live": "Pull requests of octo/demo: 1,000 pull requests",
@@ -283,7 +283,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "connected",
           "text": "Updated just now",
-          "reload": false,
+          "canRefresh": false,
           "refreshing": true
         },
         "live": "Pull requests of octo/demo: 6,000 pull requests",
@@ -312,7 +312,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "connected",
           "text": "Updated just now",
-          "reload": false,
+          "canRefresh": false,
           "refreshing": true
         },
         "progress": "Fetching pull requests…",
@@ -345,7 +345,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "connected",
           "text": "Updated just now",
-          "reload": false,
+          "canRefresh": false,
           "refreshing": true
         },
         "live": "Pull requests of octo/demo: 6,000 pull requests",
@@ -383,7 +383,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "connection": {
           "state": "connected",
           "text": "Updated just now",
-          "reload": false,
+          "canRefresh": false,
           "refreshing": true
         },
         "live": "Pull requests of octo/demo: 6,001 pull requests",
@@ -550,7 +550,7 @@ Given the shell’s toolbar slot and the band under it, the filters fill the slo
 count and connection lines fill the band, outside the list’s scroller, and a disposed
 list leaves both empty.
 `numbers` runs the production shortcut registry and plugin facade around the panel: the
-Open, Closed, and All chips and Reload take `1` to `4` in reading order, before the
+Open, Closed, and All chips and Refresh take `1` to `4` in reading order, before the
 page’s numbered link, and each number asks for what its control’s click asks for.
 A hidden or disposed panel’s controls give up their numbers.
 
@@ -589,91 +589,91 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "newer_cache": {
       "status": "absent",
       "connection": {
-        "text": "The pull-request list in the cache was written by a newer Metabrowser (row projection 3, where this release reads up to 2), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "text": "Could not refresh the list.",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "unknown_cache": {
       "status": "absent",
       "connection": {
-        "text": "The pull-request list in the cache cannot be checked for the Metabrowser that wrote it (the catalog is not in the rollback-journal mode this release writes), so this one leaves it as it is. Upgrade metab if a newer one wrote it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "text": "Could not refresh the list.",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "not_logged_in": {
       "status": "current",
       "connection": {
-        "text": "Run gh auth login --hostname github.com to connect. Showing cached pull requests.",
+        "text": "Run gh auth login --hostname github.com to sign in to GitHub. Showing the pull requests last loaded.",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "gh_too_old": {
       "status": "current",
       "connection": {
-        "text": "Update GitHub CLI, then run gh auth status --hostname github.com. Showing cached pull requests.",
+        "text": "GitHub CLI needs an update. Showing the pull requests last loaded.",
         "help": "update",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "not_found_or_private": {
       "status": "current",
       "connection": {
-        "text": "GitHub could not find this repository or grant access to it. Showing cached pull requests.",
+        "text": "GitHub could not find this repository or grant access to it. Showing the pull requests last loaded.",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "network_error": {
       "status": "current",
       "connection": {
-        "text": "GitHub could not be reached. Showing cached pull requests.",
+        "text": "Could not reach GitHub. Showing the pull requests last loaded.",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "gh_failed": {
       "status": "current",
       "connection": {
-        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing the pull requests last loaded.",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "account_changed": {
       "status": "stale",
       "connection": {
-        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing the pull requests last loaded.",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "gh_missing": {
       "status": "current",
       "connection": {
-        "text": "Install GitHub CLI, then run gh auth login --hostname github.com. Showing cached pull requests.",
+        "text": "GitHub CLI is not installed. Showing the pull requests last loaded.",
         "help": "install",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "cache_unwritable": {
       "status": "current",
       "connection": {
-        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing the pull requests last loaded.",
         "state": "paused",
-        "reload": true
+        "canRefresh": true
       }
     },
     "rate_limited": {
       "status": "current",
       "connection": {
-        "text": "GitHub rate limit reached. Next attempt after 2026-09-18T00:00:00.000Z. Showing cached pull requests.",
+        "text": "GitHub rate limit reached. Next attempt after 2026-09-18T00:00:00.000Z. Showing the pull requests last loaded.",
         "state": "paused",
-        "reload": false
+        "canRefresh": false
       }
     }
   },
@@ -883,7 +883,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "revalidating": false
       },
       "after": {
-        "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
+        "message": "The refresh could not start while other pull requests are being fetched.",
         "canRefresh": true,
         "revalidating": false
       }
@@ -981,7 +981,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
   ],
   "paint": {
     "loading status": "Fetching pull requests…",
-    "ready action": "Reload",
+    "ready action": "Refresh",
     "landing": "Select a pull request.",
     "filter tallies": [
       "Open 100",
@@ -1041,7 +1041,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "an age, before": "2h",
     "an age, two hours on": "4h",
     "rows built to tell it": 0,
-    "a passive retry over cached rows breathes the announced outage, with no spinner": "GitHub could not be reached. Showing cached pull requests.",
+    "a passive retry over cached rows breathes the announced outage, with no spinner": "Could not reach GitHub. Showing the pull requests last loaded.",
     "closing twelve expanded trees enforces retention immediately": {
       "whileExpanded": 10,
       "afterClosingAll": 9
@@ -1071,26 +1071,26 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Reload",
+      "4 Refresh",
       "5 Browse code"
     ],
-    "Reload waits": [
+    "Refresh waits": [
       {
         "what": "press 4",
         "handled": true
       },
       {
-        "what": "click Reload"
+        "what": "click Refresh"
       }
     ],
     "the Pulls tab, settled": [
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Reload",
+      "4 Refresh",
       "5 Browse code"
     ],
-    "Reload": [
+    "Refresh": [
       {
         "what": "press 4",
         "handled": true,
@@ -1099,7 +1099,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         ]
       },
       {
-        "what": "click Reload",
+        "what": "click Refresh",
         "asked": [
           "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
         ]
@@ -1162,7 +1162,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "what": "click All"
       }
     ],
-    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Reload 4, Modified within none, File type none, Browse code 5",
+    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Refresh 4, Modified within none, File type none, Browse code 5",
     "the Files tab": [
       "1 Modified within",
       "2 File type",
@@ -1232,10 +1232,13 @@ Cached refreshes stay readable.
 Native stack members are created on disclosure; Previous PR and Next PR preserve the
 active tab, clear file selection, and carry a reader’s explicit fetch intent.
 An identity-only response removes the old source’s enrichment.
+A member the Pulls list no longer holds in the state it said is drawn with its state
+icon’s slot empty, not that state, and the page notes its own fresher record back over
+the list’s older word.
 
 ```console
 $ node tests/dom/github-pull-stack-mount-behavior.js
-{"coldSkeleton":true,"pendingSkeleton":true,"cachedRefreshRetained":true,"authoritativeStack":true,"orderedNeighbors":true,"stackActivationFocus":true,"tabPreserved":true,"fileCleared":true,"explicitReaderIntent":true,"disposedWorkReleased":true}
+{"coldSkeleton":true,"pendingSkeleton":true,"cachedRefreshRetained":true,"authoritativeStack":true,"orderedNeighbors":true,"stackActivationFocus":true,"tabPreserved":true,"fileCleared":true,"explicitReaderIntent":true,"disposedWorkReleased":true,"memberStateTakenBack":true,"recordNotedBack":true}
 ? 0
 ```
 
@@ -1312,7 +1315,7 @@ A reader parked at the tail keeps reading as GitHub’s pages land, under the sc
 indicator, which leaves with the last row.
 It stops at the actual filter tail and reads cached rows after a provider failure.
 A late page cannot change the newly selected filter or consume its reconnect hint.
-Offline, rate limits, focus, external setup recovery, and Reload all use the same watch
+Offline, rate limits, focus, external setup recovery, and Refresh all use the same watch
 controller.
 
 ```console

@@ -265,7 +265,7 @@ async function run() {
     await run.controller.requestComparison();
     assert.equal(run.posts().length, 1);
     assert.equal(run.model.changesPending, true);
-    snapshot(run, "Fetch changes asks for the comparison");
+    snapshot(run, "Changes' Fetch asks for the comparison");
     run.controller.dispose();
   }
 
@@ -306,7 +306,7 @@ async function run() {
     await settle();
     assert.equal(run.posts().length, 1);
     assert.equal(run.model.canRetryComparison, true);
-    snapshot(run, "a refused automatic comparison offers Retry changes");
+    snapshot(run, "a refused automatic comparison offers Changes' Retry");
     await run.controller.poll();
     await settle();
     assert.equal(run.posts().length, 0, "polling does not retry a refused acquisition");
@@ -314,7 +314,7 @@ async function run() {
     // status line, which showed it on Changes alone (B5 of review B on #506).
     assert.match(
       run.model.filesUnavailable,
-      /too many pull requests/,
+      /other pull requests are being fetched/,
       "the reason outlasts the read",
     );
     assert.equal(run.model.message, null, "the header says nothing of it, on any tab");
@@ -323,14 +323,15 @@ async function run() {
     await run.controller.requestComparison();
     assert.equal(run.posts().length, 1);
     assert.equal(run.model.message, null);
-    assert.doesNotMatch(run.model.filesUnavailable, /too many pull requests/);
-    snapshot(run, "Retry changes asks again and clears the reason");
+    assert.doesNotMatch(run.model.filesUnavailable, /other pull requests are being fetched/);
+    snapshot(run, "Changes' Retry asks again and clears the reason");
     run.state.get = () =>
       answer(failedAfter("lender_missing", "the checkout cannot supply this comparison"));
     await run.controller.poll();
     await settle();
     assert.equal(run.model.message, null, "the earlier refusal is not this attempt's reason");
-    assert.match(run.model.failure, /cannot supply this comparison/);
+    // Said by its outcome; the job's own words stay in `last_refresh.message`.
+    assert.equal(run.model.failure, "The checkout cannot supply these changes.");
     snapshot(run, "a retry that fails shows its own outcome, not the earlier refusal");
     run.controller.dispose();
   }
@@ -344,7 +345,7 @@ async function run() {
     await run.controller.start();
     await settle();
     assert.equal(run.posts().length, 1);
-    assert.match(run.model.filesUnavailable, /too many pull requests/);
+    assert.match(run.model.filesUnavailable, /other pull requests are being fetched/);
     assert.equal(run.model.message, null);
     snapshot(run, "a refused comparison beside a failed refresh is said on Changes");
     run.controller.setTab("");
@@ -353,7 +354,11 @@ async function run() {
     await run.controller.requestRefresh();
     await settle();
     assert.equal(run.posts().length, 1);
-    assert.match(run.model.message, /too many pull requests/, "the refused Refresh is said");
+    assert.match(
+      run.model.message,
+      /other pull requests are being fetched/,
+      "the refused Refresh is said",
+    );
     snapshot(run, "a refused Refresh in the same words is said on the header");
     run.controller.dispose();
   }
@@ -376,7 +381,7 @@ async function run() {
     assert.equal(run.model.canRetryComparison, true);
     snapshot(run, "a recorded borrowing refusal holds the automatic attempt");
     await run.controller.requestComparison();
-    assert.equal(run.posts().length, 1, "Retry changes is the reader's override");
+    assert.equal(run.posts().length, 1, "Changes' Retry is the reader's override");
     run.requests.length = 0;
     run.controller.dispose();
   }
@@ -431,17 +436,17 @@ async function run() {
     assert.equal(run.model.canRetryComparison, true);
     snapshot(run, "a rate limit holds the automatic attempt until it lifts");
     // A read fails while the hold still stands, and then the limit lifts by the clock
-    // alone, before any read repaints the page. The Retry changes still on screen sends.
+    // alone, before any read repaints the page. The Retry still on screen sends.
     run.state.get = () => answer(null, 500);
     await run.controller.poll();
-    assert.equal(run.model.canRetryComparison, true, "the hold's Retry changes stays painted");
+    assert.equal(run.model.canRetryComparison, true, "the hold's Retry stays painted");
     run.requests.length = 0;
     run.state.now = Date.parse("2026-09-17T12:05:01Z");
     await run.controller.requestComparison();
     await settle();
     assert.deepEqual(run.posts(), [comparisonPost]);
     assert.equal(run.model.changesPending, true);
-    snapshot(run, "Retry changes after the limit lifts sends the attempt at once");
+    snapshot(run, "Changes' Retry after the limit lifts sends the attempt at once");
     run.controller.dispose();
   }
   {
@@ -548,7 +553,7 @@ async function run() {
       run,
       owned
         ? "Changes opened during the page's own refresh waits for it"
-        : "Changes without its address paints no Fetch changes during the page's own refresh",
+        : "Changes without its address paints no Fetch during the page's own refresh",
     );
     answerStale(answer({ refresh: "not_due", pull: stale }));
     await settle();
@@ -558,7 +563,7 @@ async function run() {
       run,
       owned
         ? "the comparison follows the refresh's answer"
-        : "Fetch changes returns with the refresh's answer",
+        : "Changes' Fetch returns with the refresh's answer",
     );
     run.controller.dispose();
   }

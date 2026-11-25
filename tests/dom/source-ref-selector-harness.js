@@ -159,7 +159,7 @@ function paintOf(model) {
     return null;
   }
   const checkout = model.workingTree !== null;
-  const stale = model.stale === null ? {} : { stale: `${model.stale} [Reload]` };
+  const stale = model.stale === null ? {} : { stale: `${model.stale} [Reload page]` };
   if (model.removed) {
     return { removed: true };
   }

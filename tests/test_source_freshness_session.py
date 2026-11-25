@@ -656,7 +656,7 @@ def test_a_folders_row_names_its_store_of_the_origin_on_every_page() -> None:
     assert pressed["paint"]["label"] == "Refreshing…"
     fetched = by_name["the store was fetched; the row says when, and nothing reloads"]
     assert fetched["paint"]["label"].startswith("Origin fetched ")
-    assert "never fetched into" in fetched["paint"]["detail"]
+    assert "without changing the checkout" in fetched["paint"]["detail"]
     failed = by_name["a fetch that failed says the checkout is unchanged"]
     assert failed["paint"]["label"].startswith("Refresh failed · origin fetched ")
     for step in folder["steps"]:
@@ -728,7 +728,7 @@ def test_the_session_runs_on_the_recording() -> None:
     refused_follow = by_name["a refused follow says why and offers a reload"]
     assert refused_follow["reloads"] == 0
     assert refused_follow["paint"]["error"].startswith("Could not follow topic")
-    assert refused_follow["paint"]["offer"].endswith("[Reload]")
+    assert refused_follow["paint"]["offer"].endswith("[Reload page]")
     again = by_name["a refused follow is not asked again on the next poll"]
     assert not any(request.startswith("POST /api/source/pin") for request in again["requests"])
     assert again["paint"]["error"] == refused_follow["paint"]["error"]
@@ -784,7 +784,7 @@ def test_the_session_runs_on_the_recording() -> None:
     history = {row["failure"]: row["means"] for row in transcript["history"]}
     assert history["a refresh moved the refs"] == "stale"
     assert by_name["an unchanged status is a 304"]["repaints"] == 0
-    assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload]")
+    assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload page]")
     guard = transcript["guard"]
     page = guard["page"]
     # The status route, another origin, and the event log's routes name no pin; a route
@@ -808,7 +808,7 @@ def test_the_session_runs_on_the_recording() -> None:
     inside = by_name["inside the freshness window a missing commit starts no fetch"]
     assert inside["requests"] == []
     assert inside["commit"]["state"] == "not_found" and inside["commit"]["offer"] == "[Retry]"
-    assert "as fetched" in inside["commit"]["detail"]
+    assert "as last fetched" in inside["commit"]["detail"]
     retried = by_name["retry fetches for the commit"]
     assert retried["requests"] == ['POST /api/source/refresh {"for":"commit","retry":true}']
     assert retried["commit"]["state"] == "pending" and retried["commit"]["offer"] is None
@@ -819,10 +819,11 @@ def test_the_session_runs_on_the_recording() -> None:
     # Only a fetch of the mirror that ran lets the view say the origin lacks the commit.
     absent = by_name["the fetch ran and did not bring the commit"]["commit"]
     assert (
-        absent["state"] == "not_found" and "no branch or tag there reaches it" in absent["detail"]
+        absent["state"] == "not_found"
+        and absent["detail"] == "No branch or tag on the origin has this commit."
     )
     beside = by_name["no fetch of the mirror ran, and the view does not say one did"]["commit"]
-    assert beside["state"] == "not_found" and "as fetched" in beside["detail"]
+    assert beside["state"] == "not_found" and "as last fetched" in beside["detail"]
     assert "did not bring it" not in beside["detail"]
     # A re-ask that failed is a load failure, not an answer about the commit.
     refused = by_name["asking again failed; the view does not say not found"]["commit"]
@@ -832,7 +833,7 @@ def test_the_session_runs_on_the_recording() -> None:
     assert outside["requests"] == ['POST /api/source/refresh {"for":"commit"}']
     unfetched = by_name["the commit could not be fetched"]["commit"]
     assert unfetched["state"] == "fetch_failed" and unfetched["offer"] == "[Retry]"
-    assert "The origin could not be read." in unfetched["detail"]
+    assert unfetched["detail"] == "The origin could not be read."
     left = by_name["the reader left before the fetch ended"]
     assert left["requests"] == ["GET /api/source/status"] and left["commit"]["repaints"] == 0
     joined = by_name["a fetch of the mirror already running is joined"]
@@ -840,20 +841,21 @@ def test_the_session_runs_on_the_recording() -> None:
     # A server that stops answering is not polled every second, nor waited for.
     stopped = by_name["the server stopped answering while the fetch ran"]
     assert stopped["timer"] == "slow" and stopped["commit"]["state"] == "fetch_failed"
-    assert "The server did not answer." in stopped["commit"]["detail"]
+    assert stopped["commit"]["detail"] == "This commit could not be fetched."
     # A fetch that ran while a full queue refused the pull request's refresh does not let
     # the view say the origin lacks the commit.
     unqueued = by_name["the queue had no room for the pull request's refresh"]["commit"]
     assert unqueued["state"] == "fetch_failed" and unqueued["offer"] == "[Retry]"
-    assert "was not queued" in unqueued["detail"]
-    assert "no branch or tag there reaches it" not in unqueued["detail"]
+    assert "while others are being fetched" in unqueued["detail"]
+    assert "No branch or tag" not in unqueued["detail"]
     # A refusal of the page's own refresh says nothing; the reader's press says why.
     own = by_name["a page's own refresh with no room in the queue says nothing"]
     assert own["requests"] == ["GET /api/source/status", "POST /api/source/refresh {}"]
     assert (own["paint"]["tone"], own["paint"]["error"]) == ("stale", None)
     pressed = by_name["a press with no room in the queue says why"]
     assert pressed["requests"] == ["POST /api/source/refresh {}"]
-    refusal = recording["queue_full_refresh"]["body"]["error"]
-    assert pressed["paint"]["error"] == f"Refresh refused: {refusal}."
+    # The answer's own words are the agent's; its code says waiting would help.
+    assert recording["queue_full_refresh"]["body"]["code"] == "too_many"
+    assert pressed["paint"]["error"] == "Other refreshes are running. Try again shortly."
     shown = by_name["the origin no longer shows the repository"]["paint"]["detail"]
     assert shown.startswith("The repository was not found, or it is private and could not be read.")

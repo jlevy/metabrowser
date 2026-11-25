@@ -30,8 +30,10 @@ let package = Package(
         .executableTarget(
             name: "WebKitDriver", dependencies: ["ShellCore", "ShellViews"],
             path: "webkit-gate/driver", swiftSettings: settings),
+        // The app too, so a test can open its SwiftUI windows, such as Settings, and click
+        // them as a person does (`SettingsWindowTests`).
         .testTarget(
-            name: "ShellCoreTests", dependencies: ["ShellCore", "ShellViews"], swiftSettings: settings),
+            name: "ShellCoreTests", dependencies: ["ShellCore", "ShellViews", "Metabrowser"], swiftSettings: settings),
     ],
     swiftLanguageModes: [.v6]
 )

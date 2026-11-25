@@ -55,7 +55,8 @@ exit: 0
       "version": "<text>",
       "source": "<text>",
       "requires": [
-        "structured"
+        "structured",
+        "pdf"
       ]
     },
     {
@@ -115,7 +116,9 @@ exit: 0
       "display_name": "<text>",
       "version": "<text>",
       "source": "<text>",
-      "requires": []
+      "requires": [
+        "pdf"
+      ]
     },
     {
       "name": "pdf",

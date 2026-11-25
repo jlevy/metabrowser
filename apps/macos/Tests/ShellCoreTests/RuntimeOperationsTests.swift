@@ -134,7 +134,7 @@ private let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
 /// A choice rejected during the first search (mb-vh2z). The choice overtook the search,
 /// and its rejection ended the only operation without a runtime: the search's late result
 /// was dropped, nothing searched again, and the folders opened meanwhile, and the restore,
-/// waited until Find Again.
+/// waited until a Refresh.
 @Suite struct RejectedChoiceDuringASearchTests {
     /// The review's sequence: the launch's search, a folder opened while it runs, a choice
     /// rejected, then the overtaken search's late answer.
@@ -179,7 +179,7 @@ private let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
         await operations.searches.answer(0, with: found(runtime("/opt/a/metab")))  // still dropped
         try #require(await operations.waitForFinishes(3))
         #expect(operations.finishes[2].outcome == .superseded)
-        operations.subject.beginDiscovery()  // Find Again, or the watch
+        operations.subject.beginDiscovery()  // Refresh, or the watch
         let b = runtime("/opt/b/metab")
         await operations.searches.answer(2, with: found(b))
         try #require(await operations.waitForFinishes(4))
@@ -254,8 +254,8 @@ private let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
         #expect(!subject.needsSearch)
     }
 
-    /// Find Again with a runtime in use is the user's search too.
-    @Test func aRejectedChoiceOwesFindAgainEvenWithARuntime() {
+    /// Refresh with a runtime in use is the user's search too.
+    @Test func aRejectedChoiceOwesARefreshEvenWithARuntime() {
         let subject = selection(runtime("/opt/a/metab"))
         _ = subject.startSearch()
         let choice = subject.startChoice()

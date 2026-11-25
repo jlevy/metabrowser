@@ -138,7 +138,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-## A reader's Reload never probes: it scans.
+## A reader's Refresh never probes: it scans.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---

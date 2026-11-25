@@ -77,6 +77,13 @@ interface can read every file under its root.
   that page, as it would for any PDF link.
   Nothing else embeds one: a diff, an overview, or a Markdown document never starts a
   viewer.
+- **Metabrowser draws a PDF’s first page itself.** For the preview behind a PDF’s viewer
+  and the card a diff shows, the server renders the first page with PDFium in a child
+  process with a deadline and resource limits.
+  For a source you did not mark as yours (an `--untrusted` folder, a repository, a pull
+  request) that child runs only inside the operating system’s sandbox, macOS’s today;
+  without one, such a PDF’s card has no image.
+  A trusted folder’s PDFs are drawn without a sandbox where there is none.
 - **The macOS app opens files in their default app.** Open hands a PDF, image, or media
   file to the app macOS assigns its type; a copy from a repository or pull request is
   quarantined and read-only first, so Gatekeeper still judges it.

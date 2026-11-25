@@ -81,7 +81,7 @@ $ node tests/dom/fsqlite-tables-session.js
     ]
   },
   "the SQLite plugin failed to load": {
-    "said": "Could not load the SQLite plugin this view draws with."
+    "said": "Could not load this view. Reload the page to try again."
   }
 }
 ? 0

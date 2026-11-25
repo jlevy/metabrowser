@@ -529,7 +529,7 @@ def test_an_answer_past_the_cap_stops_its_reader(
             )
         # Its own state, not `busy`: asking again would answer the same length.
         assert caught.value.state == "too_large"
-        assert "256 bytes" in str(caught.value)
+        assert "256 bytes" in caught.value.detail
         assert pool.workers() == []
         monkeypatch.setattr(sqlite_access, "ANSWER_MAX_BYTES", original)
         with pool.scratch() as scratch:
@@ -590,7 +590,7 @@ def test_a_reader_answers_busy_in_place_of_a_long_answer_and_bounds_its_heap(
         with pytest.raises(SqliteAccessError) as caught:
             pool.call("long_answer", {}, deadline=time.monotonic() + 10, subject="s")
         assert caught.value.state == "too_large"
-        assert "longer than" in str(caught.value)
+        assert "longer than" in caught.value.detail
         # Asked again, it answers the same: nothing about it passes with time.
         with pytest.raises(SqliteAccessError) as again:
             pool.call("long_answer", {}, deadline=time.monotonic() + 10, subject="s")

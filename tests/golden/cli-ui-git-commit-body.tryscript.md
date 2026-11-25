@@ -312,7 +312,7 @@ $ node tests/dom/git-commit-body-session.js
           "div.git-commit-body-plain": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
         },
         {
-          "div.notice.git-commit-body-notice[role=status data-severity=warning]": "This message is longer than 64 KiB, so it is shown as written rather than as Markdown."
+          "div.notice.git-commit-body-notice[role=status data-severity=warning]": "This message is too long to render, so it is shown as written."
         }
       ]
     },
@@ -336,7 +336,7 @@ $ node tests/dom/git-commit-body-session.js
           "div.git-commit-body-plain": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
         },
         {
-          "div.notice.git-commit-body-notice[role=status data-severity=warning]": "This message is longer than 64 KiB, so it is shown as written rather than as Markdown."
+          "div.notice.git-commit-body-notice[role=status data-severity=warning]": "This message is too long to render, so it is shown as written."
         }
       ]
     },
@@ -362,7 +362,7 @@ $ node tests/dom/git-commit-body-session.js
           "div.git-commit-body-plain": "slow"
         },
         {
-          "div.notice.git-commit-body-notice[role=status data-severity=warning]": "This message took longer than 5 seconds to render, so it is shown as written."
+          "div.notice.git-commit-body-notice[role=status data-severity=warning]": "This message took too long to render, so it is shown as written."
         }
       ]
     },
@@ -388,7 +388,7 @@ $ node tests/dom/git-commit-body-session.js
           "div.git-commit-body-plain": "slow"
         },
         {
-          "div.notice.git-commit-body-notice[role=status data-severity=warning]": "This message took longer than 5 seconds to render, so it is shown as written."
+          "div.notice.git-commit-body-notice[role=status data-severity=warning]": "This message took too long to render, so it is shown as written."
         }
       ]
     },
@@ -468,11 +468,11 @@ $ node tests/dom/git-commit-body-session.js
     ]
   },
   "notes": {
-    "body_too_large": "This message is longer than 64 KiB, so it is shown as written rather than as Markdown.",
-    "render_deadline": "This message took longer than 1 second to render, so it is shown as written.",
-    "renderer_exited": "The renderer stopped while rendering this message, so it is shown as written.",
-    "renderer_unavailable": "The renderer could not start, so this message is shown as written. Reload to try again.",
-    "renderer_busy": "The renderer is busy with other texts, so this message is shown as written. Reload to try again.",
+    "body_too_large": "This message is too long to render, so it is shown as written.",
+    "render_deadline": "This message took too long to render, so it is shown as written.",
+    "renderer_exited": "This message could not be rendered, so it is shown as written.",
+    "renderer_unavailable": "This message could not be rendered, so it is shown as written. Reload the page to try again.",
+    "renderer_busy": "This message could not be rendered, so it is shown as written. Reload the page to try again.",
     "render_failed": "This message could not be rendered, so it is shown as written.",
     "commit_not_found": null,
     "none": null

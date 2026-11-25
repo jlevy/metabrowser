@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,9 @@ THIS = Path(__file__).resolve()
 ROOT = THIS.parents[1]
 DRIVER = THIS.parent / "dom" / "chrome-start-retry.mjs"
 SESSION_SCRIPT = THIS.parent / "dom" / "chrome-session.mjs"
-# The longest case, a nested session: pytest's start and collection, the warm-up and the
+# The longest case, a Chrome session held DEFAULT_APPS_HOLD_MS (below) after it starts:
+# 8.78 s in a CI job, and 18.6 s on a 10-core Mac at a load average near 400, on
+# 2026-11-24. Then a nested session: pytest's start and collection, the warm-up and the
 # probe's two starts of a stand-in that exits, 3.7 s on a 10-core Mac at a load average
 # near 17. The driver's cases each wait at most two of their own bounds (BOUNDS_MS in the
 # driver) and the session's close.
@@ -57,6 +60,24 @@ try {{
 }} catch (error) {{
   console.error(error.message);
 }}
+"""
+
+
+# A new profile installs Google Chrome's default apps from two CRX files that it first
+# copies into its temporary directory, and leaves there however it is stopped. The copies
+# came 1.5 to 4.2 s after Chrome wrote its DevTools port, in five starts on a 10-core Mac
+# at a load average of 360 to 430 on 2026-11-24, so a session that holds its page twice
+# the longest of those would see them made. On macOS Chrome takes that directory from
+# MAC_CHROMIUM_TMPDIR (base/files/file_util_mac.mm in Chromium), elsewhere from TMPDIR.
+DEFAULT_APPS_HOLD_MS = 8400
+MAC_TEMPORARY = "MAC_CHROMIUM_TMPDIR"
+HELD_LAUNCH = f"""
+import {{ launchChrome }} from {json.dumps(SESSION_SCRIPT.as_uri())};
+const session = await launchChrome(process.env.CHROME_BIN, {{
+  profiles: process.env.CHROME_PROFILES,
+}});
+await new Promise((resolve) => setTimeout(resolve, {DEFAULT_APPS_HOLD_MS}));
+await session.close();
 """
 
 
@@ -181,6 +202,32 @@ def test_a_retried_start_is_a_working_session_in_chrome(
     _left_nothing(result)
     assert "launchChrome: start 1 of 2 wrote no DevTools port: exited (3)" in result["stderr"]
     assert [(n["attempt"], n["ok"]) for n in result["noted"]] == [(1, False), (2, True)]
+
+
+def test_a_session_leaves_no_file_in_chrome_s_temporary_directory(chrome_profile: Path) -> None:
+    """A new profile's default apps are not installed (``--disable-default-apps`` in
+    ``tests/dom/chrome-session.mjs``), so nothing is copied there to be left behind."""
+
+    # Short, under the system's own, as the path of Chrome's singleton socket in it must
+    # be: not tmp_path.
+    with tempfile.TemporaryDirectory(prefix="mb-chrome-tmp-") as temporary:
+        run = run_in_own_group(
+            [require_node(), "--input-type=module", "-e", HELD_LAUNCH],
+            timeout_s=SESSION_TIMEOUT_S,
+            env={
+                **os.environ,
+                "CHROME_BIN": require_chrome(),
+                "CHROME_PROFILES": str(chrome_profile),
+                "TMPDIR": temporary,
+                MAC_TEMPORARY: temporary,
+            },
+        )
+        # A Chrome stopped by SIGKILL leaves its singleton's directory, which holds a
+        # socket and a link and no file.
+        left = [p for p in Path(temporary).rglob("*") if p.is_file() and not p.is_symlink()]
+    assert not run.timed_out, f"ran past {SESSION_TIMEOUT_S} s:\n{run.stderr}"
+    assert run.returncode == 0, run.stderr or run.stdout
+    assert left == [], f"Chrome left files in its temporary directory: {left}"
 
 
 def _warm_up(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[list[str], list[Any]]:

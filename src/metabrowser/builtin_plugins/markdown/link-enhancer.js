@@ -38,7 +38,8 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  * 2. Exact resolution (`links.js`): relative, `./`, `../`, and leading-slash targets resolve
  *    from the source document as GitHub resolves them. A missing target keeps its URL and
  *    opens the ordinary not-found state; nothing guesses by basename. Media goes through
- *    `/raw`.
+ *    `/raw`, except an embedded PDF, which is the pdf plugin's card with a link to the
+ *    PDF's view (`mountPdfEmbed`); a link to a PDF opens its view, as any file's does.
  * 3. GitHub localization (`github-localizer.js`): a `github.com` blob or tree URL opens
  *    locally only when the served repository's identity, which `repository_context.py`
  *    reads from Git metadata with bounded reads and no Git process, proves it names the
@@ -82,6 +83,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const preserveFragmentOnlyHrefs = isCurrentDocument(pagePath, mb.navigation.current());
   /** @type {WeakMap<Element, NavigationTarget>} */
   const internalTargets = new WeakMap();
+  /** The PDF cards this document drew, disposed with it. @type {Set<{dispose: () => void}>} */
+  const pdfEmbeds = new Set();
   const ownsReconciliation = !options.reconciliation;
   const reconciliation =
     options.reconciliation ||
@@ -219,6 +222,23 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
           syntax: "html",
         },
         (resolved) => {
+          if (
+            resolved.status === "internal" &&
+            resolved.mediaKind === "pdf" &&
+            (tagName === "img" || tagName === "object")
+          ) {
+            // Never a viewer in a document, and never `/raw`: the card, linking to the view.
+            const embed = mountPdfEmbed(
+              resource,
+              mb,
+              navigationTarget({ path: normalizedFilePath(resolved.path) }),
+              authoredFileName(authoredTarget),
+              registerInternal,
+            );
+            pdfEmbeds.add(embed);
+            resource.replaceWith(embed.element);
+            return;
+          }
           if (resolved.status === "internal") {
             const version = rawVersions.get(normalizedFilePath(resolved.path));
             const href = rawResourceHref(resolved, version);
@@ -242,39 +262,44 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     }
   }
 
-  const wiki = enhanceWikiLinks(
-    container,
-    sourcePath,
-    mb,
-    (element, target) => {
-      internalTargets.set(element, target);
-    },
-    {
-      budget: options.transclusionBudget,
-      cancel,
-      chain: options.transclusionChain,
-      enhancementBudget,
-      reconciliation,
-      reconciliationScope,
-      schedule,
-      signal: options.signal,
-      workerClient,
-      elements: admittedTargets.filter((element) => element.hasAttribute("data-mb-wiki-target")),
-      enhanceNested: (nestedContainer, nestedSourcePath, nestedOptions) =>
-        enhanceRenderedLinks(nestedContainer, nestedSourcePath, mb, {
-          cancel,
-          enhancementBudget,
-          eventTarget,
-          reconciliation,
-          schedule,
-          signal: nestedOptions.signal,
-          transclusionBudget: nestedOptions.budget,
-          transclusionChain: nestedOptions.chain,
-          rawVersions: nestedOptions.rawVersions,
-          workerClient,
-        }),
-    },
-  );
+  /** @param {Element} anchor @param {NavigationTarget} target */
+  function registerInternal(anchor, target) {
+    internalTargets.set(anchor, target);
+  }
+
+  const wiki = enhanceWikiLinks(container, sourcePath, mb, registerInternal, {
+    budget: options.transclusionBudget,
+    cancel,
+    chain: options.transclusionChain,
+    embedPdf: (template, target, name) =>
+      mountPdfEmbed(
+        template,
+        mb,
+        navigationTarget({ path: normalizedFilePath(target.path) }),
+        name,
+        registerInternal,
+      ),
+    enhancementBudget,
+    reconciliation,
+    reconciliationScope,
+    schedule,
+    signal: options.signal,
+    workerClient,
+    elements: admittedTargets.filter((element) => element.hasAttribute("data-mb-wiki-target")),
+    enhanceNested: (nestedContainer, nestedSourcePath, nestedOptions) =>
+      enhanceRenderedLinks(nestedContainer, nestedSourcePath, mb, {
+        cancel,
+        enhancementBudget,
+        eventTarget,
+        reconciliation,
+        schedule,
+        signal: nestedOptions.signal,
+        transclusionBudget: nestedOptions.budget,
+        transclusionChain: nestedOptions.chain,
+        rawVersions: nestedOptions.rawVersions,
+        workerClient,
+      }),
+  });
 
   /** @param {Event} event */
   function handleClick(event) {
@@ -355,6 +380,10 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       }
       disposed = true;
       wiki.dispose();
+      for (const embed of pdfEmbeds) {
+        embed.dispose();
+      }
+      pdfEmbeds.clear();
       reconciliationScope.dispose();
       if (ownsReconciliation) {
         reconciliation.dispose();
@@ -412,6 +441,109 @@ function navigationTarget(resolved) {
 }
 
 /**
+ * The pdf plugin's `mountPdfCard` (builtin_plugins/pdf/card.js), as `mb.plugins.load("pdf")`
+ * answers it.
+ *
+ * @typedef {(host: HTMLElement, options: {path: string, name: string, links: HTMLElement[]}) => {dispose: () => void}} MountPdfCard
+ */
+
+/**
+ * Draw a PDF the document embeds, in place of *replaced*: `![](report.pdf)` and
+ * `<img src="report.pdf">`, an `<object>` of one, and `![[report.pdf]]`
+ * (wiki-enhancer.js). A document never starts the browser's viewer, which is the file
+ * page's alone, and never addresses `/raw`: the slot holds the pdf plugin's card, the
+ * first page as an image the server drew, the file's name, and one link, View, to the
+ * PDF's view in Metabrowser. The image is not a link (card.js).
+ *
+ * Until the card mounts, and for good when the plugin cannot load, the slot holds a plain
+ * link to the view named by the file. Both links are *register*ed, so a plain click opens
+ * the view through `mb.navigation` and a modified click is the browser's. The plugin
+ * loads on the first PDF a page embeds (`requires = ["pdf"]` in manifest.toml), so a
+ * document with none never fetches it. The load settles after the caller returns, so an
+ * inert render's slot is in the page's document by then (inert-render.js), and the card
+ * is built there.
+ *
+ * @param {Element} replaced
+ * @param {MetabrowserPublicSdk} mb
+ * @param {NavigationTarget} target The PDF's view.
+ * @param {string} name The file's name, as the document names it.
+ * @param {(anchor: Element, target: NavigationTarget) => void} register
+ * @returns {{element: HTMLElement, dispose: () => void}}
+ */
+function mountPdfEmbed(replaced, mb, target, name, register) {
+  const slot = replaced.ownerDocument.createElement("span");
+  slot.setAttribute("class", "metabrowser-pdf-embed");
+  slot.setAttribute("data-metabrowser-pdf-embed", "link");
+  const fallback = pdfViewLink(slot.ownerDocument, mb, target, name, register);
+  slot.append(fallback);
+  /** @type {{dispose: () => void} | null} */
+  let card = null;
+  let disposed = false;
+  const plugins = mb.plugins;
+  if (typeof plugins?.load === "function") {
+    // A load that throws at once is a page without the plugin, as one that rejects is.
+    void new Promise((resolve) => resolve(plugins.load("pdf")))
+      .then((pdf) => {
+        const mount = /** @type {{mountPdfCard?: MountPdfCard} | undefined} */ (pdf)?.mountPdfCard;
+        if (disposed || typeof mount !== "function") {
+          return;
+        }
+        const view = pdfViewLink(slot.ownerDocument, mb, target, "View", register);
+        card = mount(slot, { path: target.path, name, links: [view] });
+        fallback.remove();
+        slot.setAttribute("data-metabrowser-pdf-embed", "card");
+      })
+      .catch(() => {
+        // The link to the view stays, so the PDF is still a click away.
+      });
+  }
+  return {
+    element: slot,
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      card?.dispose();
+      card = null;
+    },
+  };
+}
+
+/**
+ * A plain link to a PDF's view, labelled *label*.
+ *
+ * @param {Document} doc
+ * @param {MetabrowserPublicSdk} mb
+ * @param {NavigationTarget} target
+ * @param {string} label
+ * @param {(anchor: Element, target: NavigationTarget) => void} register
+ */
+function pdfViewLink(doc, mb, target, label, register) {
+  const anchor = doc.createElement("a");
+  anchor.setAttribute("href", mb.navigation.href(target));
+  anchor.textContent = label;
+  register(anchor, target);
+  return anchor;
+}
+
+/**
+ * The file's name in an authored address: its last segment, decoded, without its query
+ * or fragment.
+ *
+ * @param {string} authoredTarget
+ */
+function authoredFileName(authoredTarget) {
+  const path = authoredTarget.split("#", 1)[0].split("?", 1)[0];
+  const leaf = (path.endsWith("/") ? path.slice(0, -1) : path).split("/").at(-1) || path;
+  try {
+    return decodeURIComponent(leaf);
+  } catch {
+    return leaf;
+  }
+}
+
+/**
  * A served file's address, with the version the render gave it when it gave one.
  *
  * @param {{path: string, fragment?: string}} resolved
@@ -457,7 +589,10 @@ function disableTarget(element, attribute, status, reason) {
   element.removeAttribute(attribute);
   element.setAttribute("data-metabrowser-link-status", status);
   element.setAttribute("aria-disabled", "true");
-  element.setAttribute("title", `${destinationStatusMessage(status)} (${reason}).`);
+  // The reason code is data for a test or an agent, not the tooltip's
+  // (docs/design-system-messages.md).
+  element.setAttribute("data-metabrowser-link-reason", reason);
+  element.setAttribute("title", `${destinationStatusMessage(status)}.`);
   if (element.tagName.toLowerCase() === "a" && !element.hasAttribute("tabindex")) {
     element.setAttribute("tabindex", "0");
     element.setAttribute("data-metabrowser-managed-tabindex", "true");
@@ -485,6 +620,7 @@ function clearDisabledTarget(element) {
   }
   element.removeAttribute("aria-disabled");
   element.removeAttribute("data-metabrowser-link-status");
+  element.removeAttribute("data-metabrowser-link-reason");
   const authoredTitle = element.getAttribute("data-metabrowser-authored-title");
   if (authoredTitle === null) {
     element.removeAttribute("title");

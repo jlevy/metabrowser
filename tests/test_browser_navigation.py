@@ -217,7 +217,7 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
     The directories above the served root are the same on every row of
     every view, and the column is the narrowest in the app. Nothing is
     lost: ``data-served-root`` is both what the file header reads back to
-    draw its dimmed prefix — so the two headers cannot disagree about the
+    draw the root's address — so the two headers cannot disagree about the
     root — and what the repository details show.
 
     The heading carries no tooltip attribute of its own, deliberately. It
@@ -343,20 +343,20 @@ def test_a_root_under_the_home_directory_is_shown_with_a_tilde(
 
 
 def test_the_header_prefix_gives_way_from_its_start_and_reads_at_row_weight() -> None:
-    """Two properties of the dimmed prefix, both about what survives.
+    """Two properties of the root's address, both about what survives.
 
     It truncates from the START, because the end of a path is the half that
     says where you are and the beginning is the same on every page. And it is
-    bold like the crumbs after it: grey already carries "this is context",
-    so the weight does not need to say it a second time, and one address at
-    two weights reads as two things.
+    at the weight of the crumbs after it, because one address at two weights
+    reads as two things. The root's crumb and, on the root's own page, the
+    dimmed directory that holds the root are one rule, so both hold.
     """
 
     css = (Path(server.STATIC_DIR) / "styles.css").read_text()
-    start = css.index(".file-header-root {")
+    start = css.index(".file-header-root,\n.folder-breadcrumb .folder-crumb-root {")
     block = css[start : css.index("}", start)]
     assert "direction: rtl" in block
     assert "text-overflow: ellipsis" in block
     assert "font-weight" not in block, (
-        "the prefix inherits the container's weight rather than setting its own"
+        "the address inherits the container's weight rather than setting its own"
     )

@@ -127,7 +127,9 @@ type OriginAbsence = (
 # 1.26 MB.
 _NOT_RETRIED_UNASKED: Final[frozenset[OriginAbsence]] = frozenset({"timed_out"})
 
-# What a page says for each reason. No path and no address: the envelope names the origin.
+# Why the store is absent, for an agent reading `metab --api`; the page says only that the
+# origin is not fetched (docs/design-system-messages.md). No path and no address: the
+# envelope names the origin.
 ABSENCE_DETAIL: Final[dict[OriginAbsence, str]] = {
     "not_fetched": "Metabrowser has not fetched this repository's origin yet.",
     "transport_unsupported": (

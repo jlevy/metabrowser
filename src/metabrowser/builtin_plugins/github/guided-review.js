@@ -185,7 +185,7 @@ const MESSAGES = Object.freeze({
   absent: "This pull request has no guide.",
   comparison_unavailable:
     "The comparison is unavailable. Fetch it from Changes, then reopen the guide.",
-  description_truncated: "The cached description is incomplete and contains no complete guide.",
+  description_truncated: "Only part of the description was loaded, and it holds no complete guide.",
   step_not_found: "This review step is unavailable.",
   not_cached: "The full pull request is unavailable.",
   preview: "The guide needs the full pull request.",

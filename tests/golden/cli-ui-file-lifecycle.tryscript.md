@@ -407,7 +407,7 @@ $ node tests/dom/preview-pane-state-session.js
         "status": "error"
       },
       "unreachableThrow": {
-        "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+        "message": "Metabrowser is not reachable. Start it again with metab <folder>, and this page reconnects.",
         "status": "unreachable"
       }
     },
@@ -419,7 +419,7 @@ $ node tests/dom/preview-pane-state-session.js
       "revalidated": [],
       "shown": [
         {
-          "detail": "Cannot read properties of undefined (reading 'views')",
+          "detail": "Reload the page to try again.",
           "kind": "error",
           "summary": "Could not open this file."
         }
@@ -433,7 +433,7 @@ $ node tests/dom/preview-pane-state-session.js
     },
     "serverUnreachable": {
       "outcome": {
-        "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+        "message": "Metabrowser is not reachable. Start it again with metab <folder>, and this page reconnects.",
         "status": "unreachable"
       },
       "revalidated": [
@@ -441,7 +441,7 @@ $ node tests/dom/preview-pane-state-session.js
       ],
       "shown": [
         {
-          "detail": "It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+          "detail": "Start it again with metab <folder>, and this page reconnects.",
           "kind": "unreachable",
           "summary": "Metabrowser is not reachable."
         }
@@ -912,7 +912,7 @@ $ node tests/dom/preview-pane-state-session.js
         "fetches": 1,
         "fragments": 1,
         "outcome": {
-          "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+          "message": "Metabrowser is not reachable. Start it again with metab <folder>, and this page reconnects.",
           "status": "unreachable",
           "focusesPreview": false
         },
@@ -921,14 +921,14 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "file",
           "path": "notes.md",
           "phase": "unreachable",
-          "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+          "shows": "preview-empty preview-error: Metabrowser is not reachable. Start it again with metab &lt;folder&gt;, and this page reconnects."
         }
       }
     },
     "bodyReadFailure": {
       "interruptedJsonBody": {
         "outcome": {
-          "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+          "message": "Metabrowser is not reachable. Start it again with metab <folder>, and this page reconnects.",
           "status": "unreachable",
           "focusesPreview": false
         },
@@ -937,7 +937,7 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "file",
           "path": "big.log",
           "phase": "unreachable",
-          "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+          "shows": "preview-empty preview-error: Metabrowser is not reachable. Start it again with metab &lt;folder&gt;, and this page reconnects."
         },
         "reconnectRetry": {
           "folder": false,
@@ -946,7 +946,7 @@ $ node tests/dom/preview-pane-state-session.js
       },
       "interruptedErrorBody": {
         "outcome": {
-          "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+          "message": "Metabrowser is not reachable. Start it again with metab <folder>, and this page reconnects.",
           "status": "unreachable",
           "focusesPreview": false
         },
@@ -955,7 +955,7 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "file",
           "path": "failing.md",
           "phase": "unreachable",
-          "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+          "shows": "preview-empty preview-error: Metabrowser is not reachable. Start it again with metab &lt;folder&gt;, and this page reconnects."
         },
         "reconnectRetry": {
           "folder": false,
@@ -973,7 +973,7 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "file",
           "path": "garbled.json",
           "phase": "error",
-          "shows": "preview-empty preview-error: Could not open this file. Unexpected token &lt; in JSON at position 0"
+          "shows": "preview-empty preview-error: Could not open this file. Reload the page to try again."
         },
         "reconnectRetry": null
       }
@@ -995,14 +995,14 @@ $ node tests/dom/preview-pane-state-session.js
         "owner": "file",
         "path": "empty",
         "phase": "loading",
-        "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+        "shows": "preview-empty preview-error: Metabrowser is not reachable. Start it again with metab &lt;folder&gt;, and this page reconnects."
       },
       "failed": {
         "claim": 1,
         "owner": "file",
         "path": "empty",
         "phase": "unreachable",
-        "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+        "shows": "preview-empty preview-error: Metabrowser is not reachable. Start it again with metab &lt;folder&gt;, and this page reconnects."
       },
       "fetchesForFailedFolder": 2,
       "paletteReconnects": 2,
@@ -1177,7 +1177,7 @@ $ node tests/dom/preview-pane-state-session.js
             "owner": "file",
             "path": "notes.md",
             "phase": "error",
-            "shows": "preview-empty preview-error: Could not open this file. Failed to load asset: /static/plugin-sdk-views.js"
+            "shows": "preview-empty preview-error: Could not open this file. Reload the page to try again."
           },
           "scriptRequests": [
             "view-composition.js",
@@ -1208,7 +1208,7 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "pull-request",
           "path": null,
           "phase": "external",
-          "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+          "shows": "preview-empty preview-error: Could not load the pull-request page. Reload the page to try again."
         },
         "scriptRequests": [
           "pull-route.js"
@@ -1220,7 +1220,7 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "pull-request",
           "path": null,
           "phase": "external",
-          "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+          "shows": "preview-empty preview-error: Could not load the pull-request page. Reload the page to try again."
         },
         "scriptRequests": [
           "pull-route.js"
@@ -1233,7 +1233,7 @@ $ node tests/dom/preview-pane-state-session.js
             "owner": "pull-request",
             "path": null,
             "phase": "external",
-            "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+            "shows": "preview-empty preview-error: Could not load the pull-request page. Reload the page to try again."
           },
           "scriptRequests": [
             "plugin-sdk-views.js",
@@ -1260,7 +1260,7 @@ $ node tests/dom/preview-pane-state-session.js
             "owner": "pull-request",
             "path": null,
             "phase": "external",
-            "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+            "shows": "preview-empty preview-error: Could not load the pull-request page. Reload the page to try again."
           },
           "scriptRequests": [
             "plugin-sdk-views.js",

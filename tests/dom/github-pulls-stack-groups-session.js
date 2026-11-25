@@ -631,9 +631,16 @@ async function mountStory() {
     createElement: (tag) => new FakeElement(tag),
     createTextNode: (text) => text,
     addEventListener: (type, listener) => listeners.set(type, listener),
+    importNode: (node) => new FakeElement(node.localName),
   };
   const stack = shared.byPull.get(9)[0];
+  // Each member's state as its page draws it (`stackMemberState`): the page's own, #9's, as
+  // the list said it, and the others' as the list said them, the list the panel above read.
+  const { listedState } = await import(pathToFileURL(path.join(GITHUB, "pull-state.js")).href);
+  const source = story.identity.source;
   const menuDeps = {
+    state: (target) =>
+      page.stackMemberState(source, target, 9, listedState(source, 9)?.state ?? null),
     link(number) {
       const link = new FakeElement("a");
       link.dataset.number = String(number);
@@ -657,6 +664,33 @@ async function mountStory() {
     .childNodes.find((node) => node.classList.contains("menu-group"));
   const [heading, ...links] = group.childNodes;
   const menuOrder = links.map((link) => Number(link.dataset.number));
+  // Each member's one line as drawn (mb-as06): its state icon's state, then its text, the
+  // bold place, the muted dot, and the title, then the number a screen reader says and the
+  // line does not show, its visually hidden part, here in brackets; and the parts the line
+  // is made of, one layout for every member, the current one too.
+  const elements = (node) => node.childNodes.filter((child) => child instanceof FakeElement);
+  const memberLines = links.map((link) => {
+    const [icon, copy] = elements(link);
+    const text = copy.childNodes
+      .map((child) =>
+        child instanceof FakeElement && child.classList.contains("visually-hidden")
+          ? `[said, not shown: ${child.textContent}]`
+          : typeof child === "string"
+            ? child
+            : child.textContent,
+      )
+      .join("");
+    return `${icon.dataset.state ?? "(state unknown)"} ${text}`;
+  });
+  const memberLayouts = new Set(
+    links.map((link) =>
+      JSON.stringify([
+        ...elements(link).map((part) => part.className),
+        ...elements(elements(link)[1]).map((part) => part.className),
+      ]),
+    ),
+  );
+  assert.equal(memberLayouts.size, 1, "every member has one layout, the current one too");
   story.controller.setStacks(shared);
   const groupRow = story
     .model()
@@ -691,6 +725,8 @@ async function mountStory() {
             current: landed.getAttribute("aria-current") === "page",
           },
           members: menuOrder,
+          lines: memberLines,
+          layout: JSON.parse([...memberLayouts][0]),
           groupRow: { label: groupRow.label, members: groupRow.members },
           named,
         },

@@ -1,6 +1,6 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
-import { drawDiagrams, placeRendered } from "./place-rendered.js";
+import { drawDiagrams, isFrontmatterError, placeRendered } from "./place-rendered.js";
 import { holdLightPrintTheme, mountPrintIndicator } from "./print-indicator.js";
 import { kpressTocConfig } from "./toc-toggle.js";
 import { transclusionKey } from "./transclusion.js";
@@ -57,9 +57,19 @@ export function buildDiagnosticsNode(diagnostics, mb) {
   return temporary.firstElementChild;
 }
 
-/** @param {HTMLElement} container @param {Array<unknown>} diagnostics @param {MetabrowserPublicSdk} mb */
+/**
+ * Gather a placed document's preamble -- KPress's Frontmatter error notice and
+ * Frontmatter disclosure -- with a Diagnostics disclosure of *diagnostics* at the top of
+ * its prose. A front-matter error is left out of the disclosure: the document shows it
+ * as its notice (`isFrontmatterError`).
+ *
+ * @param {HTMLElement} container @param {Array<unknown>} diagnostics @param {MetabrowserPublicSdk} mb
+ */
 export function injectDiagnostics(container, diagnostics, mb) {
-  const node = buildDiagnosticsNode(diagnostics, mb);
+  const node = buildDiagnosticsNode(
+    diagnostics.filter((diagnostic) => !isFrontmatterError(diagnostic)),
+    mb,
+  );
   const article = container.querySelector("article.kpress");
   const layout = article?.querySelector(":scope > .kpress-doc-layout");
   const prose = layout?.querySelector(":scope > .kpress-prose");
@@ -82,7 +92,13 @@ export function injectDiagnostics(container, diagnostics, mb) {
   }
 }
 
-/** @param {unknown} error @param {MetabrowserPublicSdk} mb */
+/**
+ * A failed render's notice: the answer's reader sentence, or the fixed one, and the one
+ * remedy. The answer's `detail`, `diagnostics`, and status, and any exception, go to the
+ * console (docs/design-system-messages.md, "Where the Detail Goes").
+ *
+ * @param {unknown} error @param {MetabrowserPublicSdk} mb
+ */
 export function renderKpressError(error, mb) {
   const value =
     error && typeof error === "object" ? /** @type {Record<string, unknown>} */ (error) : {};
@@ -90,10 +106,12 @@ export function renderKpressError(error, mb) {
     value.payload && typeof value.payload === "object"
       ? /** @type {Record<string, unknown>} */ (value.payload)
       : {};
-  const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
-  const detail = payload.detail || (error instanceof Error ? error.message : "");
-  const message = `${payload.error || "The renderer reported an error"}${detail ? `: ${detail}` : ""}`;
-  return `<div class="notice metabrowser-kpress-render-error" data-severity="error" role="alert"><strong>Could not render this document.</strong><pre class="metabrowser-kpress-error-detail">${mb.escapeHtml(String(message))}</pre>${renderKpressDiagnosticsHtml(diagnostics, mb.escapeHtml)}</div>`;
+  console.error("metabrowser: the document could not be rendered", error);
+  const said =
+    typeof payload.error === "string" && payload.error.trim()
+      ? payload.error.trim()
+      : "Could not render this document.";
+  return `<div class="notice metabrowser-kpress-render-error" data-severity="error" role="alert"><strong>${mb.escapeHtml(said)}</strong> The Source tab shows its text.</div>`;
 }
 
 /**

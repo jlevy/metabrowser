@@ -606,15 +606,16 @@
         : await decode();
     if (data && data.type === "plugin_error") {
       /** @type {Error & {status?: number, payload?: unknown}} */
-      const err = new Error(
-        (data.error || "Plugin data hook failed") + (data.detail ? `: ${data.detail}` : ""),
-      );
+      const err = new Error(data.error || PLUGIN_DATA_FAILED);
       err.status = resp.status;
       err.payload = data;
       throw err;
     }
     return data;
   }
+
+  const PLUGIN_DATA_FAILED = "Could not load this view's data.";
+  const KPRESS_RENDER_FAILED = "This document could not be rendered.";
 
   async function fetchJsonl(path, opts) {
     // Plugins fetch JSONL content through the same /api/file endpoint the
@@ -1077,11 +1078,9 @@
     };
   }
 
-  function formatKpressError(payload, status) {
+  function formatKpressError(payload) {
     const body = payload && typeof payload === "object" ? payload : {};
-    const base = body.error || "KPress render failed";
-    const detail = body.detail || "";
-    return `${base + (detail ? `: ${detail}` : "")} (HTTP ${status})`;
+    return typeof body.error === "string" && body.error ? body.error : KPRESS_RENDER_FAILED;
   }
 
   function _headOrBody() {
@@ -1524,11 +1523,11 @@
     try {
       payload = await resp.json();
     } catch (_e) {
-      payload = { error: "KPress render returned non-JSON response" };
+      payload = { error: KPRESS_RENDER_FAILED };
     }
     if (!resp.ok) {
       /** @type {Error & {status?: number, payload?: unknown}} */
-      const err = new Error(formatKpressError(payload, resp.status));
+      const err = new Error(formatKpressError(payload));
       err.status = resp.status;
       err.payload = payload;
       throw err;
@@ -1726,7 +1725,7 @@
       }, 1500);
     }
     clipboard.writeText(text).then(
-      () => feedback("Copied!", true),
+      () => feedback("Copied", true),
       () => feedback("Copy failed", false),
     );
   }

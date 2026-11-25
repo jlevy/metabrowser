@@ -207,6 +207,34 @@ when jq is missing and names the directories it searched;
 `METABROWSER_ALLOW_MISSING_TOOLS` does not reach tryscript.
 No CI step installs jq: the GitHub-hosted Ubuntu runner image provides it.
 
+### Transient Output
+
+A pytest session writes under `pytest-of-$USER/pytest-<N>` in the system temporary
+directory (`$TMPDIR` on macOS), one directory per test and, under pytest-xdist, one
+`popen-gw<N>` per worker.
+pytest keeps them all (`tmp_path_retention_policy = "all"` in `pyproject.toml`), and
+`tests/conftest.py` removes what no one reads.
+After a test’s teardown it empties the test’s `tmp_path`, unless the test failed or
+errored in its setup, its call, or its teardown.
+It keeps the empty directory, so that no later test in the session is handed the same
+path: a process-wide cache keyed by path would carry the earlier test’s state into it.
+As a passing session ends it removes the session’s whole directory.
+So what stays is the `tmp_path` of each test that failed or errored, beside the
+directories that session-scoped fixtures made, until pytest prunes the session among the
+oldest beyond `tmp_path_retention_count`. A session killed before it ended leaves its
+lock, which would hold the directory for days; the next session to end releases such a
+lock once its process has gone, so pytest prunes the directory too.
+`tests/transient_output.py` has the measurements, and `tests/test_transient_output.py`
+holds the policy and the pruning.
+
+Nothing in that directory outlives a session to save a later one time: what saves time,
+such as the stand-in GitHub origin (`tests/conftest.py`), is a session-scoped fixture,
+built once per session and removed with it.
+A Chrome test’s profile is a directory of its own in the system temporary directory,
+removed after the test (`tests/process_group.py`), and Chrome starts with
+`--disable-default-apps`, without which a session that ran past a few seconds left two
+CRX files there (`tests/dom/chrome-session.mjs`).
+
 ## Test Tiers
 
 `make test` is the default tier.
@@ -367,8 +395,13 @@ failed, and the legs that passed stay as evidence.
 **Time limits and shards.** Each job’s `timeout-minutes` is about 1.5 times its measured
 90th percentile, with the measurement in a comment beside it.
 A limit that trips means a tier grew by half: split its job further, or make its slowest
-tests cheaper. A job that nears its limit while its sibling parts do not is uneven, not
-grown: the parts are dealt by the measured seconds in `devtools/shard_weights.json`, and
+tests cheaper. The limit covers the job’s setup too, so each setup download that has
+stalled is bounded: `devtools/install_uv.sh` and `devtools/install_node.sh` fetch the
+pinned uv and Node with retries that end a stalled transfer, and put them where their
+setup actions look first, and `SEGMENT_DOWNLOAD_TIMEOUT_MINS` in a workflow’s `env`
+gives a cache restore a deadline, after which the job goes on as on a miss.
+A job that nears its limit while its sibling parts do not is uneven, not grown: the
+parts are dealt by the measured seconds in `devtools/shard_weights.json`, and
 `make shard-weights` rewrites that file from the newest green run of `main` as `gh`
 reads its job logs. Run it when `make ci-report CI_REPORT_FLAGS=--check` names a sharded
 job, and after a change that moves a tier’s time between tests, such as a new slow test;

@@ -284,7 +284,7 @@ and the server, which resolves the link against its mirror, announces the right 
   A network failure can come minutes into a first clone’s fetch (`timed_out`), which a
   retry would start again from zero while holding the repository launch gate; a rate
   limit asks for fewer requests; a server error is GitHub’s to fix; and without `gh`
-  nothing changes until Find Again, which restarts nothing.
+  nothing changes until Refresh in Settings > Runtime, which restarts nothing.
   The recheck runs the start again, since no route reports the sign-in yet, so each
   switch back to the app while a not-found failure stands costs GitHub that failure’s
   requests: the provider’s size check, when `gh` is found, and the probe of the origin,
@@ -402,8 +402,8 @@ orderly quit still ends with SIGKILL, and descendants in other process groups.
 
 ## Choosing a metab
 
-`RuntimeDiscovery.discover` runs on the first launch and from Settings > Find Again.
-It tries, in order, the path a previous setup saved, `METABROWSER_METAB`,
+`RuntimeDiscovery.discover` runs on the first launch and from Settings > Runtime >
+Refresh. It tries, in order, the path a previous setup saved, `METABROWSER_METAB`,
 `~/.local/bin/metab`, uv’s tool bin directory, the Homebrew prefixes, and last the login
 shell’s `PATH`, which runs only when the earlier places miss `metab`, `git`, or `gh`,
 because it runs the user’s shell startup files in the app’s name.
@@ -464,39 +464,45 @@ running servers’ environment before the app notices.
 
 ### First Run
 
-When a search finds no usable `metab`, Settings shows the required version, any
-discovery issues, and a link to the README (`SetupGuide` and `ProjectLinks`). The app
-asks a uv that passes `ExecutableTrust` where `metab` will appear (`uv tool dir --bin`),
-watches there and every place discovery looks, and when `metab` appears searches again
-and opens the folders that were waiting.
+When a search finds no usable `metab`, Settings > Runtime shows the required version,
+any discovery issues, and a link to the README (`SetupGuide` and `ProjectLinks`). The
+app asks a uv that passes `ExecutableTrust` where `metab` will appear
+(`uv tool dir --bin`), watches there and every place discovery looks, and when `metab`
+appears searches again and opens the folders that were waiting.
 
 ### Check Setup…
 
-Help > Check Setup…, and Settings’ button of the same name, run `metab --doctor --json`
-from the accepted runtime in a server’s environment (`DoctorRun`, `ChildEnvironment`),
-bounded by `RuntimeDiscovery.doctorTimeout`, and show the report as rows
-(`DoctorReport`): each entry of `checks`, the plugins and `open_in` among them, then the
-`github` object, whose shapes `cli/doctor.py` documents.
+Help > Check Setup… opens Settings at its Check Setup tab, and each time that tab comes
+on screen it runs `metab --doctor --json` from the accepted runtime in a server’s
+environment (`DoctorRun`, `ChildEnvironment`), bounded by
+`RuntimeDiscovery.doctorTimeout`. It reads the report as rows (`DoctorReport`): each
+entry of `checks`, the plugins and `open_in` among them, then the `github` object, whose
+shapes `cli/doctor.py` documents.
 The app decodes these objects and their `remedy` fields using `CodingKeys`. The runtime
 row uses the README link for setup.
-The report window also offers that link when a check cannot run or an older runtime
-provides no checks. `DoctorRun.spec` names the app’s own bundle in
-`METABROWSER_DOCTOR_APP`, so the `metab` row compares with this build’s floor rather
-than the app LaunchServices finds first.
+The tab also offers that link when a check cannot run or an older runtime provides no
+checks. It shows the rows as one block of plain text (`DoctorReport.text(after:)`, the
+text Copy Report copies), each row as `metab --doctor` prints a check, in a read-only,
+selectable `NSTextView` (`ReportTextView`), so the text wraps and scrolls as text does
+and any part of it copies as plain text.
+It was a grid of rows, in which a detail that wrapped drew taller than the space the
+grid gave it and ran over the next check; a text view lays out and draws the same lines.
+`DoctorRun.spec` names the app’s own bundle in `METABROWSER_DOCTOR_APP`, so the `metab`
+row compares with this build’s floor rather than the app LaunchServices finds first.
 The doctor reads only that bundle’s `Info.plist`; the `open_in` row keeps a terminal’s
 lookup.
 The app reads `gh`’s and `git`’s path, version, and minimum only from the report,
 which ran with the tool directories first on `PATH`, so they are the tools its servers
 run; it never runs either itself.
-The window adds what only the app knows: its build, its floor, and the `metab` it ran
-and how it found it, which head Copy Report’s text.
+The tab adds what only the app knows: its build, its floor, and the `metab` it ran and
+how it found it, which head the report’s text.
 
 - **Unknown keys** are ignored and an unknown state is shown as named, so a newer
   `metab`’s report still reads.
 - **An entry that does not decode,** a check or `github`, is one unreadable row with its
   `id` when it has one, and the rest of the report still shows.
 - **No `checks`:** a development build of the floor from before the setup checks meets
-  the floor, so the window lists its `problems` as it words them in one row, says the
+  the floor, so the tab lists its `problems` as it words them in one row, says the
   checks are missing, and links to the README.
 - **No report:** a `metab` that cannot start, runs out the deadline, or prints no single
   JSON object (`JSONAnswer`) is shown with the reason and its output.
@@ -557,6 +563,17 @@ Applications.
   (`WindowTitle.windowTitles`). The page’s own `<title>` is for a browser’s tab.
 - **Size.** `NewWindowFrame` sizes new windows to 92% of the screen’s visible height and
   cascades the next window from the window placed last.
+- **Settings.** One window (`SettingsWindowController`) whose `NSTabViewController`
+  shows General, Runtime, Plugins, and Check Setup as toolbar tabs (`SettingsTab`), each
+  a SwiftUI pane in its own hosting controller.
+  A pane’s size sets the window’s, which AppKit changes from a fixed top edge; the
+  window is first placed for the tallest pane, Check Setup.
+  Settings… shows the tab it showed last; Help > Check Setup… and a status view’s
+  Runtime Settings… name theirs.
+  The Plugins pane runs `metab --plugins --json` (`PluginInventory`) when it first shows
+  a runtime and on Refresh, and keeps the answer while other tabs show
+  (`PluginListModel`). `SettingsWindowTests` opens the window, presses its tabs through
+  accessibility, and copies part of the setup report.
 - **Navigation.** `NavigationPolicy` keeps the server’s origin in the window.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, or history is cancelled, and so are

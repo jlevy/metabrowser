@@ -304,6 +304,20 @@ more, reviewed on November 17, 2026:
   downloads uv nor fetches its version manifest.
   The manifest fetch has a fixed 5 s limit and no retry, and one slow answer failed a
   job; the script retries instead.
+- **Node.** Before each setup-node step, `devtools/install_node.sh` fetches the archive
+  setup-node would download from an `actions/node-versions` release, over HTTPS, refuses
+  it unless its SHA-256 is the one the script pins for the runner’s platform, and
+  unpacks it into the runner’s tool cache, so setup-node neither downloads Node nor
+  copies it there. setup-node checks no checksum, so the pins are new.
+  Reviewed on November 25, 2026: for Node 24.18.0 the script pins release
+  `24.18.0-28070977815`, published June 24, 2026, and each archive’s SHA-256 is the
+  digest GitHub records for that release asset.
+  setup-node v6.4.0 has no manifest of its own: it reads `versions-manifest.json` from
+  `actions/node-versions` at `main` when it runs, and on that date the manifest named
+  this release for both platforms’ 24.18.0 archives.
+  The download had no limit on a slow transfer and the copy went file by file, and each
+  stalled for over a minute (mb-z4i7); the script ends a stalled transfer and retries,
+  and unpacks in place.
 
 `devtools/check_ci.py`, in `make lint-check`, fails:
 
@@ -320,7 +334,9 @@ more, reviewed on November 17, 2026:
 - an expression in a `run:` line that reads `env`, which the shell reads as `"$NAME"`
   instead;
 - a setup-uv step that does not come just after `devtools/install_uv.sh` with its own
-  version and checksum.
+  version and checksum;
+- a setup-node step that does not come just after `devtools/install_node.sh` with its
+  own version.
 
 ## Apple Developer ID Intermediate (November 17, 2026)
 
@@ -507,6 +523,45 @@ core nor a built-in plugin imports, which is how this one was found.
   joins the `dev` group’s; the locked release and its artifact hashes are unchanged.
 - **Reach.** The wheel, and the macOS app that bundles its requirements, no longer
   install a compiled extension that nothing at run time uses.
+
+### pypdfium2 Review (November 24, 2026)
+
+`pypdfium2` is a new runtime dependency of the `pdf` plugin alone (its manifest’s
+`python_requires`, which `devtools/check_plugin_deps.py` keeps true).
+It is Python’s binding to PDFium, the PDF engine of Chrome, and draws the first page of
+a PDF for the plugin’s preview card.
+It is the one maintained binding that ships PDFium prebuilt for every platform this
+package supports and needs no imaging library; the plugin encodes the PNG with the
+standard library (`render_child.py`). PDFium parses bytes a content author wrote, so it
+never runs in the server: each render is a child process with resource limits, and for
+an untrusted source an OS sandbox (threat model T7 in
+`docs/project/architecture/arch-threat-model.md`).
+
+| Package | Release | Published | Source | License | Wheel SHA-256 | sdist SHA-256 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pypdfium2` | 5.15.2 | 2026-11-09 | [pypdfium2-team/pypdfium2](https://github.com/pypdfium2-team/pypdfium2) | BSD-3-Clause, Apache-2.0, and PDFium’s dependencies’ licenses | macOS arm64 `e71fe832…c2a44c35`, Linux x86_64 `dc31aea5…85161e37` | `0185193b…d2ce2aef` |
+
+- **Cool-off.** 5.15.2 is the newest release, published fifteen days before this review,
+  so it passes the 14-day `exclude-newer` window without an exception.
+  PyPI lists no known vulnerability for it.
+- **Artifacts.** `uv.lock` holds the sdist and 22 wheels, and their 23 digests match the
+  ones PyPI lists for the release.
+  PyPI holds a Trusted Publishing attestation for the files, naming the project’s
+  `main.yaml` release workflow.
+  The wheels are `py3-none-<platform>`: the Python binding, and a bundled `libpdfium`
+  built from PDFium’s sources by the project’s toolchain (`pypdfium2 --version` reports
+  `pdfium 159.0.8149.0@sourcebuild-toolchained`), built without V8 or XFA, so it runs no
+  JavaScript in a PDF and parses no XFA form.
+  The macOS arm64 wheel installed here holds no `.pth` file; its one console script,
+  `pypdfium2`, is a command line nothing here runs.
+- **Import.** Only the render child imports it (`render_child.py`, run by path in a
+  child process); the server process loads only its version file to name the renderer in
+  each preview’s cache key (`preview.renderer_version`).
+- **Lock delta.** The one package, and `pypdfium2>=5.15.2` among the package’s
+  `dependencies`; it requires nothing else.
+- **Reach.** The wheel, and so the macOS app that bundles its requirements, install it
+  and its native library (7.6 MB installed on macOS arm64, from a 3.7 MB wheel).
+  A disabled `pdf` plugin never starts the child.
 
 ### Automated Checks
 

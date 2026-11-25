@@ -48,10 +48,10 @@ folder="$(mktemp -d)"
 6. **A `metab` the app does not run.** Quit, forget the saved runtime
    (`defaults delete io.github.jlevy.metabrowser.dev`),
    `printf '#!/bin/sh\necho metab 9.9.9\n' > /tmp/metab; chmod +x /tmp/metab`, and
-   `open --env METABROWSER_METAB=/tmp/metab -a "$app"`. Settings > Places looked lists
-   `/tmp/metab` as not run because `/private/tmp` can be changed by every account, the
-   log says “not running /tmp/metab”, and the runtime is not 9.9.9. Choose metab… and
-   `/tmp/metab` then uses it, saying it runs because you chose it.
+   `open --env METABROWSER_METAB=/tmp/metab -a "$app"`. Settings > Runtime > Places
+   looked lists `/tmp/metab` as not run because `/private/tmp` can be changed by every
+   account, the log says “not running /tmp/metab”, and the runtime is not 9.9.9. Choose
+   metab… and `/tmp/metab` then uses it, saying it runs because you chose it.
    `rm /tmp/metab` and forget the saved runtime again afterward.
 
 ## Files, Tabs, Recents, and Restore
@@ -90,9 +90,9 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    relaunch that restores `a` and `b`, both menus and `metab --recent` list them in the
    order they had before the quit.
    `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
-3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
-   as tabs of the front window; set to Windows, opening `e` gives it a window, and
-   Window > Merge All Windows then merges every folder into one window.
+3. **Tabs.** With Settings > General > Open folders in set to Tabs, opening `c` and `d`
+   adds them as tabs of the front window; set to Windows, opening `e` gives it a window,
+   and Window > Merge All Windows then merges every folder into one window.
    With the setting on System Settings and Desktop & Dock > “Prefer tabs when opening
    documents” at Always, a new folder opens as a tab.
 4. **Discarded pages.** With `a` to `e` as tabs of one window, select each in turn: once
@@ -124,7 +124,7 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    that tab forward, while `pgrep -fl 'metab /private/tmp/mb-check/[de]'` lists one
    server, for `e`. Put `d` back with
    `rm /tmp/mb-check/d; mv /tmp/mb-check/d-old /tmp/mb-check/d`.
-8. **Off, and empty.** With Settings > “Reopen the last session’s folders when
+8. **Off, and empty.** With Settings > General > “Reopen the last session’s folders when
    Metabrowser opens” off, a launch restores nothing.
    With it on, closing every window before quitting restores nothing.
    After each quit, `pgrep -fl 'metab /private/tmp/mb-check'` finds nothing.
@@ -213,9 +213,9 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
    Terminal clone ends, Retry opens it from the cache.
 9. **Launched by a link.** Quit the app, then `open -b "$APP_ID" "$REPO"`: the app
    starts and opens the repository’s window, and no Open panel appears over it.
-10. **No runtime yet.** In Settings, choose a file that is not a `metab`, then send a
-    link: Settings says no `metab` is usable and no window opens; choose this checkout’s
-    `.venv/bin/metab`, and the link opens.
+10. **No runtime yet.** In Settings > Runtime, choose a file that is not a `metab`, then
+    send a link: Settings says no `metab` is usable and no window opens; choose this
+    checkout’s `.venv/bin/metab`, and the link opens.
 11. **A `metab` without `--present`.** Choose a `metab` built before `--present`, such
     as one from a checkout of `main` before #540: Settings calls it too old, “built
     before --recent”, the newest flag the app needs, before any link is sent.
@@ -287,15 +287,15 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
     `log show --last 5m --predicate "subsystem == '$APP_ID'" | grep "on activation"`
     lists one start again after `not_found_or_private`.
 22. **No GitHub CLI.** Move `gh` aside
-    (`mv "$(command -v gh)" "$(command -v gh).aside"`), choose Find Again in Settings,
-    whose gh row then says not found, and send the link of a private repository the
-    cache does not hold.
+    (`mv "$(command -v gh)" "$(command -v gh).aside"`), choose Refresh in Settings >
+    Runtime, whose gh row then says not found, and send the link of a private repository
+    the cache does not hold.
     The window says “Not found, or private, and Metabrowser did not find GitHub CLI”,
     tells you to check the link or, for a private repository, to install GitHub CLI and
-    then choose Find Again, and offers `gh auth login --hostname github.com`; it does
-    not say that switching back tries again, and switching to another app and back
-    leaves the failure as it is.
-    Move `gh` back, choose Find Again, and press Retry: the repository opens.
+    then choose Refresh, and offers `gh auth login --hostname github.com`; it does not
+    say that switching back tries again, and switching to another app and back leaves
+    the failure as it is.
+    Move `gh` back, choose Refresh, and press Retry: the repository opens.
 23. **No connection.** Turn Wi-Fi off and send the link of a public repository the cache
     does not hold. The window says “The connection to GitHub failed”, with `metab`’s
     message, which names `network_unreachable`, and
@@ -360,8 +360,8 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 8. **A repository the cache does not hold.** A small public repository you have never
    opened: the panel closes, and the confirmation of GitHub Links check 4 appears.
 9. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
-   in Settings, then Open URL… `$REPO`: the panel closes and no window opens; choose
-   this checkout’s `.venv/bin/metab`, and the repository opens.
+   in Settings > Runtime, then Open URL… `$REPO`: the panel closes and no window opens;
+   choose this checkout’s `.venv/bin/metab`, and the repository opens.
 10. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
     its text.
 11. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
@@ -421,15 +421,15 @@ Start signed out: choose Metabrowser > Clear Website Data…, All Websites, and 
    browser.
 6. **Sign in once.** In the popover, sign in to github.com with a password and the
    two-factor code. Open a second folder of a repository on github.com as a tab, and a
-   third in a window of its own (Settings > Open folders in), and click View on GitHub
-   in each: both are signed in.
+   third in a window of its own (Settings > General > Open folders in), and click View
+   on GitHub in each: both are signed in.
    Quit Metabrowser, open it again, open `README.md`, and click View on GitHub: still
    signed in. The default browser’s own sign-in did not change.
    Note whether a passkey or a security key is offered and works, and what an
    organization’s single sign-on does; neither is checked yet.
-7. **Switching and closing folders.** With Settings > Open folders in set to Windows,
-   open a second checkout of a repository on github.com, so two such folders are open,
-   and show the first in a window.
+7. **Switching and closing folders.** With Settings > General > Open folders in set to
+   Windows, open a second checkout of a repository on github.com, so two such folders
+   are open, and show the first in a window.
    With the popover open, press Shift-Command-O and choose the second folder: the window
    shows it, and no popover is left over it.
    Click View on GitHub there, go to a pull request in the popover, and type a comment
@@ -458,7 +458,7 @@ LONG=/tmp/mb-check/projects/2026/clients/northwind/archive/quarterly-reports
 mkdir -p "$LONG"
 ```
 
-Set Settings > Open folders in to Windows and close every window.
+Set Settings > General > Open folders in to Windows and close every window.
 Open `$LONG` and close its window, then `c` and close its window, then `d` and close its
 window, so all three are recent and none is open.
 Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`, so each has a
@@ -497,7 +497,7 @@ window of its own. Each step starts where the one before it ends.
 4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
    forward and keeps `a` in its window.
    Choosing `b` again leaves one window for `b`.
-5. **A recent folder.** Set Settings > Open folders in to Tabs.
+5. **A recent folder.** Set Settings > General > Open folders in to Tabs.
    Choose `c` in `a`’s chooser.
    A separate window opens on `c`, and `a` keeps its window.
 6. **A background folder.** In `c`’s window, open the Switch Folder panel and choose
@@ -516,11 +516,11 @@ window of its own. Each step starts where the one before it ends.
    Folder closes the window and stops `d`’s server.
    In `b`’s window, use the Switch Folder panel to reopen `d`. File > Close Folder then
    restores `b` in that window and stops `d`’s server.
-10. **Close Folder across windows and tabs.** Set Settings > Open folders in to Tabs,
-    choose `a` with Option-Return in the Switch Folder panel over `b`’s window, which
-    adds a tab of `a` to it, and select `b`’s tab again, so `a`’s tab is hidden; set the
-    setting back to Windows, and choose `a` with Option-Return in the panel over `a`’s
-    window for a second window on it.
+10. **Close Folder across windows and tabs.** Set Settings > General > Open folders in
+    to Tabs, choose `a` with Option-Return in the Switch Folder panel over `b`’s window,
+    which adds a tab of `a` to it, and select `b`’s tab again, so `a`’s tab is hidden;
+    set the setting back to Windows, and choose `a` with Option-Return in the panel over
+    `a`’s window for a second window on it.
     With no folder in the background, File > Close Folder in `a`’s first window closes
     both of `a`’s windows and its hidden tab, leaves `b`’s window with only `b`’s tab,
     and stops `a`’s server.
@@ -747,11 +747,13 @@ present() {
     server starts (`pgrep -f metabrowser.cli.main` finds none).
     Remove the line after.
 
-## Help > Check Setup…
+## Settings and Help > Check Setup…
 
 How the app reads `metab --doctor --json` is unit tested (`DoctorReportTests`, which
-reads the doctor’s transcript, and `LiveMetabTests` against a real `metab`); these check
-the window. Choose the checkout’s `.venv/bin/metab` in Settings first.
+reads the doctor’s transcript, and `LiveMetabTests` against a real `metab`), and
+`SettingsWindowTests` presses the tabs through accessibility and copies part of the
+report; these check the window as a person uses it, in light and dark appearance.
+Choose the checkout’s `.venv/bin/metab` in Settings > Runtime first.
 
 ```shell
 real="$PWD/.venv/bin/metab"
@@ -759,40 +761,58 @@ stand_in="$HOME/.metab-check-setup"
 mkdir -p "$stand_in"
 ```
 
-1. **A clean report.** Help > Check Setup…. Within seconds the window names the
-   development build, the oldest `metab` it runs, and the checkout’s `metab`, then rows
-   for Plugins, Opening from a terminal, metab, Git, Configuration, Cache, Event log,
-   and GitHub CLI, each marked ok.
-   The metab row’s app detail names this development build and the `metab` it runs, even
-   with a release app installed too.
-   Copy Report, then `pbpaste` prints the same rows as text under the two header lines.
-   Settings > Check Setup… brings the same window forward.
+1. **The tabs.** Metabrowser > Settings… opens at General, with General, Runtime,
+   Plugins, and Check Setup along the toolbar.
+   Click each: the window takes the tab’s size with its top edge still, and nothing in a
+   tab overlaps. With Full Keyboard Access on, Tab reaches the tabs and the controls in
+   order and Space presses them.
+   Close the window and choose Settings… again: it opens at the tab it showed last.
 
-2. **A problem with its row.** Choose a stand-in that points the cache somewhere `metab`
-   refuses:
+2. **The plugins.** Click Plugins: within seconds it lists each plugin of
+   `.venv/bin/metab --plugins` with its name, ID, version, source, and what it requires,
+   and counts them below.
+   Switch tabs and back: the list shows at once, without discovering again.
+   Refresh discovers them again.
+
+3. **A clean report.** Help > Check Setup…. Settings comes forward at Check Setup, and
+   within seconds it says there are no problems, then shows the report as text: the
+   development build, the oldest `metab` it runs, and the checkout’s `metab`, then
+   `plugins`, `open_in`, `metab`, `git`, `config`, `cache`, `event_log`, and `github`,
+   each `ok`, with nothing overlapping at any window width.
+   The `metab` check’s app detail names this development build and the `metab` it runs,
+   even with a release app installed too.
+   Drag across a few lines in the middle of the report, Command-C, then `pbpaste` prints
+   exactly those lines.
+   Scroll down a little and Refresh while they are selected: when the new report
+   arrives, the same lines are still selected and the report has not moved.
+   Copy Report, then `pbpaste` prints the whole report.
+
+4. **A problem with its check.** Choose a stand-in that points the cache somewhere
+   `metab` refuses:
 
    ```shell
    printf '#!/bin/sh\nMETABROWSER_CACHE_DIR=relative exec "%s" "$@"\n' "$real" > "$stand_in/metab"
    chmod 755 "$stand_in/metab"
    ```
 
-   then Settings > Choose metab… and `$stand_in/metab`. Check Again: the heading says
-   `metab` found problems, Cache is marked as a problem with the override’s message, and
-   Plugins stays ok.
+   then Settings > Runtime > Choose metab… and `$stand_in/metab`. Settings > Check
+   Setup: the heading says `metab` found problems, `cache` is a problem with the
+   override’s message, and `plugins` stays ok.
 
-3. **No report.** Replace the stand-in with one whose doctor fails:
+5. **No report.** Replace the stand-in with one whose doctor fails:
 
    ```shell
    printf '#!/bin/sh\ncase "$*" in\n*--doctor*) echo boom; exit 3;;\nesac\nexec "%s" "$@"\n' "$real" > "$stand_in/metab"
    ```
 
-   and Check Again. The window says `metab --doctor --json` printed no answer (exit
-   status 3) and shows `boom`; Copy Report includes both.
+   and Refresh. The tab says `metab --doctor --json` printed no answer (exit status 3\)
+   and shows `boom`; Copy Report includes both.
 
-4. **No metab, then one.** In Settings, forget the chosen `metab` so none is selected,
-   and Check Again: the window says none is selected, and Check Again stays enabled.
-   Choose `$real` in Settings, then Check Again in the open window: it shows the clean
-   report without reopening it from the Help menu.
+6. **No metab, then one.** In Settings > Runtime, forget the chosen `metab` so none is
+   selected, and in Check Setup, Refresh: the tab says none is selected, Refresh stays
+   enabled, and Plugins says no plugins are listed.
+   Choose `$real` in Settings > Runtime, then Check Setup: it shows the clean report
+   without the Help menu.
    Then `rm -r "$stand_in"`.
 
 ## Help > Open Event Log
@@ -830,9 +850,9 @@ segment() { ls -t "$state"/events-*.jsonl | head -1; }
    Help > Open Event Log says there is no event log yet and names the directory.
 6. **A `metab` that cannot say.** Choose a stand-in that fails for `--api`
    (`printf '#!/bin/sh\ncase "$*" in\n*--api*) echo boom; exit 3;;\nesac\nexec "%s" "$@"\n' "$PWD/.venv/bin/metab" > /tmp/metab-stand-in; chmod 755 /tmp/metab-stand-in`,
-   then Settings > Choose metab…): Help > Open Event Log says it could not open the log,
-   shows `boom`, and points to Check Setup…. Choose the checkout’s `metab` again and
-   `rm /tmp/metab-stand-in`.
+   then Settings > Runtime > Choose metab…): Help > Open Event Log says it could not
+   open the log, shows `boom`, and points to Check Setup…. Choose the checkout’s `metab`
+   again and `rm /tmp/metab-stand-in`.
 7. **Turned off.** Quit, then `open --env METABROWSER_EVENT_LOG=0 -a "$APP" "$HOME"`.
    Help > Check Setup… marks Event log as a warning that names the variable, and a late
    wait’s Details on a pull request page say the log is off and why, where with the log
@@ -871,14 +891,14 @@ exits nonzero. `scripts/test-scripts.sh` checks that accounting on stand-in proc
 
 | Case | What it checks |
 | --- | --- |
-| `no-metab` | Settings shows the minimum and links to the README’s installation guide. Check its uv instructions for a released minimum and its developer preview instructions when the minimum is pending. With only uv installed, Find Again still reports no usable runtime. Once `metab` appears, the waiting folder opens by itself |
+| `no-metab` | Settings shows the minimum and links to the README’s installation guide. Check its uv instructions for a released minimum and its developer preview instructions when the minimum is pending. Places looked lists the places searched, scrolling within the Runtime tab when it is long, and Reveal Logs Folder stays in the window. With only uv installed, Refresh still reports no usable runtime. Once `metab` appears, the waiting folder opens by itself |
 | `old-metab` | Settings explains why the stand-in (`scripts/setup-check/metab-0.12.0`) is incompatible. The script checks that no server starts. Replacing the stand-in opens the waiting folder by itself. A wrapper reporting a newer version under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
 | `disk-image` | The copy on a read-only image of its own shows “Move Metabrowser to Applications”, naming the image |
 
 A choice rejected during the first search is checked by hand within `no-metab`, whose
-search waits on the login shell: as soon as the copy opens, Settings > Choose metab… and
-`/bin/ls`. Settings names the rejection and goes on looking, then shows the minimum, and
-the waiting folder still opens by itself once `metab` appears.
+search waits on the login shell: as soon as the copy opens, Settings > Runtime > Choose
+metab… and `/bin/ls`. Settings names the rejection and goes on looking, then shows the
+minimum, and the waiting folder still opens by itself once `metab` appears.
 
 Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper
 accepts, and so a Developer ID build; its detection is tested on the path
