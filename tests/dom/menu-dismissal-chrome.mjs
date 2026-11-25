@@ -232,17 +232,25 @@ try {
       }
       return null;
     })()`);
-  // The HTML page's preview, whose frame takes presses into a document of its own.
+  // The HTML page's preview, whose frame takes presses into a document of its own. A press
+  // on a tree row selects that row's file or folder, whose view replaces the preview once
+  // it loads, so the page is selected again, awaited, every time: a selection supersedes
+  // the one before it, and the frame read is the one the page's own view drew.
+  const PAGE_FRAME = `#preview-pane iframe[title="page.html"]`;
   const frame = async () => {
-    if (!(await point("#preview-pane iframe"))) {
-      await page.evaluate(`window.metabrowser.debug.selectFile("page.html")`);
-      await page.waitFor(`!!document.querySelector("#preview-pane iframe")`, 30000);
-      await settle();
-    }
-    return page.evaluate(`(() => {
-      const box = document.querySelector("#preview-pane iframe").getBoundingClientRect();
+    await page.evaluate(`window.metabrowser.debug.selectFile("page.html").then(() => true)`);
+    await page.waitFor(`!!document.querySelector(${JSON.stringify(PAGE_FRAME)})`, 30000);
+    await settle();
+    const at = await page.evaluate(`(() => {
+      const frame = document.querySelector(${JSON.stringify(PAGE_FRAME)});
+      if (!frame) return null;
+      const box = frame.getBoundingClientRect();
       return {x: box.left + box.width / 2, y: box.top + 20};
     })()`);
+    if (!at) {
+      throw new Error("the HTML page's preview went before it could be pressed");
+    }
+    return at;
   };
 
   const result = { menus: {}, pressesAct: {} };
@@ -282,6 +290,9 @@ try {
     }
     const at = await frame();
     await open(name);
+    if (!(await page.evaluate(`!!document.querySelector(${JSON.stringify(PAGE_FRAME)})`))) {
+      throw new Error(`opening ${name} took the HTML page's preview away`);
+    }
     await pressAt(at);
     seen.frameCloses = !(await isOpen(name));
     result.menus[name] = seen;
