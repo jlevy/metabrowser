@@ -234,7 +234,7 @@ def test_a_stack_keeps_its_last_eight_pairs_and_one_reader(tmp_path: Path) -> No
     assert retained_stack_pair(published, 7, "gh:bob", A, C, None) == _pair(C)
 
 
-def test_a_stack_keeps_the_pair_its_page_draws_past_any_number_of_moves(tmp_path: Path) -> None:
+def test_a_stack_keeps_the_pair_its_page_draws_while_the_page_polls(tmp_path: Path) -> None:
     # A page drew the first pair and names it in each poll (`since`): every write keeps it,
     # and the oldest of the others goes, so it outlives the moves of a stack whose members'
     # records arrive one by one.
@@ -263,6 +263,27 @@ def test_a_stack_keeps_the_pair_its_page_draws_past_any_number_of_moves(tmp_path
     assert retained_stack_pair(published, 7, "gh:bob", A, C, None) == _pair(C)
 
 
+def test_two_pages_on_one_stack_each_keep_the_pair_they_draw(tmp_path: Path) -> None:
+    # Page one draws X and page two Y. At each move page one's poll answers the new pair
+    # first, so the file already ends with it when page two's poll names Y: that poll writes
+    # too, keeping Y, and a poll that names the pair the last write kept writes nothing.
+    published = _published(tmp_path)
+    first, second = _pair("1" * 40), _pair("2" * 40)
+    pull_stack_retained.retain_stack_pair(published, first, "gh:alice")
+    pull_stack_retained.retain_stack_pair(published, second, "gh:alice", first.digest)
+    path = tmp_path / source_stack_snapshots(_SLUG, 7)
+    for move in range(1, 2 * MAX_RETAINED_STACK_PAIRS + 1):
+        pair = _pair(f"{100 + move:040x}")
+        pull_stack_retained.retain_stack_pair(published, pair, "gh:alice", first.digest)
+        pull_stack_retained.retain_stack_pair(published, pair, "gh:alice", second.digest)
+        stamp = path.stat().st_mtime_ns
+        pull_stack_retained.retain_stack_pair(published, pair, "gh:alice", second.digest)
+        assert path.stat().st_mtime_ns == stamp, "a poll that names the same pair writes nothing"
+        for drawn in (first, second):
+            found = retained_stack_digest(published, 7, "gh:alice", drawn.digest)
+            assert found == drawn, f"move {move}: the pair a polling page draws is kept"
+
+
 def test_a_moved_member_counts_the_commits_the_drawn_comparison_did_not_show(
     tmp_path: Path,
 ) -> None:
@@ -279,6 +300,9 @@ def test_a_moved_member_counts_the_commits_the_drawn_comparison_did_not_show(
         return git(work, "rev-parse", "HEAD").decode().strip()
 
     base, a1, b1, t1 = (commit(name) for name in ("base", "a1", "b1", "t1"))
+    # A record older still named a head 8's branch has since been rebased past.
+    git(work, "checkout", "-q", base)
+    a0 = commit("a0")
     git(work, "checkout", "-q", b1)
     c1, t2 = commit("c1"), commit("t2")
     drawn_members = ((8, base, a1), (10, b1, t1))
@@ -294,6 +318,19 @@ def test_a_moved_member_counts_the_commits_the_drawn_comparison_did_not_show(
         {"number": 10, "commits": None},
     ]
     assert asyncio.run(pull_stack.stack_moves(target, drawn, drawn)) == []
+
+    # 8's record catches up to b1, which the drawn top held, as does one that had named a0:
+    # nothing is new to the reader, so each counts 0 rather than being called rewritten.
+    caught_members = ((8, base, b1), (10, b1, t1))
+    caught = StackPair(70, base, t1, stack_digest(caught_members), caught_members, (True, True))
+    assert asyncio.run(pull_stack.stack_moves(target, drawn, caught)) == [
+        {"number": 8, "commits": 0}
+    ]
+    older_members = ((8, base, a0), (10, b1, t1))
+    older = StackPair(70, base, t1, stack_digest(older_members), older_members, (True, True))
+    assert asyncio.run(pull_stack.stack_moves(target, older, caught)) == [
+        {"number": 8, "commits": 0}
+    ]
 
 
 def test_an_unreadable_file_answers_unknown_and_a_malformed_one_nothing(

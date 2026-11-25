@@ -19,9 +19,10 @@ closed: a file they cannot read now admits nothing and says so, and a malformed 
 nothing. The ``stack``
 route writes it when it answers a pair the file does not end with, by atomic replacement
 under the source's alias lock, as every writer of the ``pulls`` directory does, so two
-writers lose no pair and a cache clear removes the file whole. A write keeps the pair the
-asking page draws, its ``since``, just before the new one, so the pair a page polls on is
-never the oldest when one goes.
+writers lose no pair and a cache clear removes the file whole. Each page's poll names the
+pair it draws, its ``since``, and the file keeps that pair just before the one it ends with,
+written again when another page named another, so the pair a page polls on is never the
+oldest when one goes.
 """
 
 from __future__ import annotations
@@ -51,10 +52,13 @@ log = logging.getLogger(__name__)
 
 # How many earlier comparisons of one stack stay admitted: one per move, a member's push or
 # a change to the member list. A page holds the one it drew, and names it in each poll
-# (`since`), so a write keeps that one past any number of moves while the page asks, and
-# another page's past seven. A stack whose members' records arrive one by one moves once
-# for each that lagged: on 2026-11-25 a 22-member stack's file held eight pairs, all with
-# the same two commits.
+# (`since`), which moves it just before the newest, so it stays while the page polls unless
+# seven moves come between two of its polls, as they can for a page out of sight, which
+# does not poll; the page then draws the stack's own comparison again (`answerAction` in
+# stack-page.js). A stack whose members' records arrive one by one moves once for each that
+# lagged: on 2026-11-25 a 22-member stack's file held eight pairs, all with the same two
+# commits. Two pages open on one stack write the file again at each poll, each moving its
+# own pair, since each names another.
 MAX_RETAINED_STACK_PAIRS: Final = 8
 # The file's read bound. Eight pairs of a 64-member stack with the longest fields the model
 # accepts (64-hex IDs, a 103-character reader, a `sha256:` store ID, five-digit numbers)
@@ -82,10 +86,13 @@ class RetainedStackPair(_Model):
 _PAIRS = TypeAdapter(tuple[RetainedStackPair, ...])
 
 # The file each stack's pairs were last seen in, by its identity (device, inode,
-# modification time, and size), and the pair it ends with: a page's poll, which answers the
-# same pair each time, then costs one lstat and writes nothing, and a file that cache-clear
-# removed or another writer replaced is read and written again.
-_LAST: OrderedDict[tuple[str, str, int], tuple[str, str, str, _Identity]] = OrderedDict()
+# modification time, and size), the pair it ends with, and the pair the last write kept just
+# before it: a page's poll, which answers the same pair and names the same one each time,
+# then costs one lstat and writes nothing, and a poll that names another pair, a file that
+# cache-clear removed, or one another writer replaced is read and written again.
+_LAST: OrderedDict[tuple[str, str, int], tuple[str, str, str, str | None, _Identity]] = (
+    OrderedDict()
+)
 _LAST_LOCK: Final = threading.Lock()
 _MAX_LAST: Final = 64
 
@@ -122,10 +129,10 @@ def retain_stack_pair(
     assert isinstance(pair, _Pair)
     home, slug, number = published.home, published.slug, pair.number
     seen = (str(home), slug, number)
-    last = (published.store_id, reader, pair.digest)
+    last = (published.store_id, reader, pair.digest, held)
     with _LAST_LOCK:
         known = _LAST.get(seen)
-    if known is not None and known[:3] == last and known[3] == _identity(home, slug, number):
+    if known is not None and known[:4] == last and known[4] == _identity(home, slug, number):
         with _LAST_LOCK:
             if seen in _LAST:
                 _LAST.move_to_end(seen)

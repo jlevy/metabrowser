@@ -212,10 +212,10 @@ class MemberMoveWire(TypedDict):
     number: int
     # The commits the new head adds that the comparison drawn did not hold, in neither the
     # earlier head's history nor its top's, and that its merge base does not hold, so a base
-    # branch merged in counts as its one merge commit, and commits the drawn comparison
-    # showed while its record lagged count as none; None when the earlier head is not in the
-    # new head's history (the branch was rewritten), or the store cannot say, so no count
-    # says what is new.
+    # branch merged in counts as its one merge commit; 0 when the drawn top already held the
+    # new head, as it does for a record that lagged and caught up, whether or not its earlier
+    # head is in the new one's history; None when that earlier head is not (the branch was
+    # rewritten), or the store cannot say, so no count says what is new.
     commits: int | None
 
 
@@ -473,9 +473,12 @@ async def _added(
     target: RepositoryStoreTarget, earlier: str, head: str, base: str, drawn: str
 ) -> int | None:
     """The commits *head* adds to *earlier* that neither *drawn*, the top of the comparison
-    drawn, nor *base* holds, when *earlier* is in *head*'s history; ``None`` when it is not,
-    or when the store cannot say. A count is kept: all four ends are commit IDs."""
+    drawn, nor *base* holds: 0 when *drawn* holds *head*, and otherwise a count when
+    *earlier* is in *head*'s history; ``None`` when it is not, or when the store cannot say.
+    A count is kept: all four ends are commit IDs."""
 
+    if await _contains(target, head, drawn) is True:
+        return 0
     held = await _contains(target, earlier, head)
     if held is not True:
         return None
@@ -502,8 +505,8 @@ async def stack_moves(
     target: RepositoryStoreTarget, since: StackPair, pair: StackPair
 ) -> list[MemberMoveWire]:
     """Each member of *pair* that *since* holds too whose head moved, bottom first, with the
-    commits its new head adds that *since* did not show (:func:`_added`). Runs one ancestry
-    check and one count a member that moved, each kept."""
+    commits its new head adds that *since* did not show (:func:`_added`). Runs at most two
+    ancestry checks and one count a member that moved, each kept."""
 
     earlier = {number: head for number, _base, head in since.members}
     moves: list[MemberMoveWire] = []
