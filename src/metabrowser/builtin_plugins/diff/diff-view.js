@@ -4456,10 +4456,11 @@ function drawnRows(view, section, current) {
 }
 
 /**
- * A rendered Markdown article's rows in the page's order: its own, and in place of an open
- * fold's group, the rows the group holds, so the row at the pane's top is the block there
- * however deep in a fold it is. A fold's rows are its blocks and the places of its chunks
- * not drawn yet; a closed fold's group holds none.
+ * A rendered Markdown article's rows in the page's order: its own, in place of a change the
+ * rows its runs hold (`changeRuns` in diff-markdown.js), and in place of an open fold's
+ * group, the rows the group holds, so the row at the pane's top is the block there however
+ * deep in a fold it is. A fold's rows are its blocks and the places of its chunks not drawn
+ * yet; a closed fold's group holds none.
  *
  * @param {HTMLElement} rendered
  * @returns {HTMLElement[]}
@@ -4470,6 +4471,16 @@ function markdownRows(rendered) {
   for (const child of rendered.children) {
     const element = /** @type {HTMLElement} */ (child);
     if (element.hidden) {
+      continue;
+    }
+    if (element.classList.contains("diff-markdown-change")) {
+      for (const run of element.children) {
+        for (const row of run.children) {
+          if (!(/** @type {HTMLElement} */ (row).hidden)) {
+            rows.push(/** @type {HTMLElement} */ (row));
+          }
+        }
+      }
       continue;
     }
     if (!element.classList.contains("diff-fold-group")) {

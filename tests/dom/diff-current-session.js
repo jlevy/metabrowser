@@ -185,6 +185,16 @@ class PageElement {
     return this.children[0];
   }
 
+  get previousElementSibling() {
+    const siblings = this.parentElement?.children ?? [];
+    return siblings[siblings.indexOf(this) - 1] ?? null;
+  }
+
+  get nextElementSibling() {
+    const siblings = this.parentElement?.children ?? [];
+    return siblings[siblings.indexOf(this) + 1] ?? null;
+  }
+
   append(...nodes) {
     for (const given of nodes) {
       const node = typeof given === "string" ? text(given) : given;
@@ -801,6 +811,13 @@ function renderedBody(article) {
       shown.push(`[${node.textContent}${open ? ", open" : ""}]`);
     } else if (node.classList.contains("diff-fold-group")) {
       shown.push(...renderedBody(node).map((line) => `  ${line}`));
+    } else if (
+      node.classList.contains("diff-markdown-change") ||
+      node.classList.contains("diff-markdown-run")
+    ) {
+      // A change and its runs draw its bands (changeRuns in diff-markdown.js); its rows are
+      // the blocks.
+      shown.push(...renderedBody(node));
     } else if (node.classList.contains("diff-markdown-spacer")) {
       shown.push(`[blocks ${node.dataset.span} not drawn yet]`);
     } else if (node.classList.contains("diff-markdown-frontmatter")) {

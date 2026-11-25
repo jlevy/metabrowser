@@ -142,7 +142,9 @@ const PLACE = `(async () => {
   await mb.ensureKindAssets("diff");
   await mb.ensureAsset("inert-html");
   const inert = window.MetabrowserInertHtml;
-  const { blockRow, sanitizeBlock } = await import("/plugin-static/diff/diff-markdown.js");
+  const { blockRow, changeRuns, sanitizeBlock } = await import(
+    "/plugin-static/diff/diff-markdown.js"
+  );
   const place = (name, chain, content) => {
     const outer = document.createElement("div");
     outer.setAttribute("data-face-place", name);
@@ -169,18 +171,20 @@ const PLACE = `(async () => {
     }
   }
   place("chrome-prose", [["div", "github-pull-text chrome-prose"], ["div", "metabrowser-kpress-host"]], article);
-  // A Markdown file in Changes: diff-markdown.js's article and block rows, in its section
-  // of the diff view, in the pull request page.
+  // A Markdown file in Changes: diff-markdown.js's article and block rows, in their change
+  // and run, in its section of the diff view, in the pull request page.
   const rendered = document.createElement("article");
   rendered.className = "kpress kpress-inert diff-markdown";
   const blocks = document.createDocumentFragment();
   const template = document.createElement("template");
   const build = (html) => sanitizeBlock(html, inert, template, document, () => false);
   blocks.append(
-    ...[
-      { kind: "added", html: "<h2>A section among the changes</h2>" },
-      { kind: "added", html: "<p>A Markdown file among a pull request's changes.</p>" },
-    ].map((block) => blockRow(block, build)),
+    ...changeRuns(
+      [
+        { kind: "added", html: "<h2>A section among the changes</h2>" },
+        { kind: "added", html: "<p>A Markdown file among a pull request's changes.</p>" },
+      ].map((block) => blockRow(block, build)),
+    ),
   );
   rendered.append(blocks);
   place(
