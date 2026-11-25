@@ -16,6 +16,10 @@
 // checked out. What a checkout adds is told by the page (`METABROWSER_SOURCE_CHECKOUT`)
 // and by the listing:
 //
+// - words in its row before the ref, since the checked-out branch names both of a
+//   checkout's views: "Working tree" and the branch or detached commit `HEAD` is on, or
+//   "Revision" and the ref chosen, with a button back to the working tree at the row's
+//   end (`describe`, docs/design-system.md, "The Ref Selector");
 // - a Working tree row above the refs, the live files on disk, which is what a folder
 //   opens on and the only choice that is not a ref. It names the folder by its path, and
 //   has no commit or age: what is on disk is not one commit. The checked-out branch is a
@@ -70,6 +74,14 @@
   const LOCAL_BRANCH_PREFIX = "refs/heads/";
   const REMOTE_PREFIX = "refs/remotes/";
   const WORKING_TREE = "Working tree";
+  // What a checkout's row says before the ref it shows when that is a revision, and what
+  // each of the two words says as its tooltip (docs/design-system.md, "The Ref Selector").
+  // server.py draws the same words at first paint (`_source_ref_label_html`).
+  const REVISION = "Revision";
+  const REVISION_TIP = "A committed revision, read from Git. The files on disk are unchanged.";
+  const WORKING_TREE_TIP = "The files on disk, live.";
+  const BACK_LABEL = "Back to the working tree";
+  const BACK_TIP = "Back to the working tree, the files on disk";
   const PULL_HEAD = /^refs\/pull\/([1-9][0-9]{0,9})\/head$/;
   // Typing narrows the list through the server, which reads the mirror's refs once per
   // request; waiting for a short pause in typing asks once per word, not per key.
@@ -213,10 +225,42 @@
    */
   function describe(state) {
     const checkout = state.checkout === true;
-    const workingBranch = checkout && state.shown === null ? state.workingBranch : undefined;
+    // Which of a checkout's two views the page shows, which its row says in words before
+    // the ref: the working tree, the files on disk on the branch or commit `HEAD` is on,
+    // or a revision chosen from the list, read-only, with a button back. A mirror has
+    // only revisions, so its row names the ref alone.
+    const view = !checkout ? null : state.shown === null ? "working-tree" : "revision";
+    const workingBranch = view === "working-tree" ? state.workingBranch || undefined : undefined;
+    const workingCommit =
+      view === "working-tree" && workingBranch === undefined
+        ? state.workingCommit || undefined
+        : undefined;
     const label = workingBranch
       ? { kind: "Branch", name: workingBranch }
-      : shownLabel(state.shown, checkout);
+      : workingCommit
+        ? { kind: "Commit", name: window.MetabrowserFormatters.shortCommit(workingCommit) }
+        : view === "working-tree"
+          ? null
+          : shownLabel(state.shown, checkout);
+    // The working tree's detached commit is the ID alone: the word before it says what it is.
+    const refText =
+      label === null
+        ? ""
+        : workingCommit || label.name === ""
+          ? label.name || label.kind
+          : `${label.kind}: ${label.name}`;
+    const viewLabel =
+      view === "working-tree" ? WORKING_TREE : view === "revision" ? REVISION : null;
+    const viewTip =
+      view === null
+        ? null
+        : view === "revision"
+          ? REVISION_TIP
+          : workingBranch
+            ? `${WORKING_TREE_TIP} The checkout is on ${workingBranch}.`
+            : workingCommit
+              ? `${WORKING_TREE_TIP} HEAD is detached at ${label?.name}.`
+              : WORKING_TREE_TIP;
     const plural = KIND_PLURAL[state.kind];
     const listing = state.listing;
     // A mirror's branch is its origin's, a remote chip; a checkout's own is a local one.
@@ -309,14 +353,22 @@
       }
     }
     return {
-      button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
+      button:
+        viewLabel === null ? refText : refText === "" ? viewLabel : `${viewLabel} · ${refText}`,
+      view,
+      viewLabel,
+      viewTip,
+      refText,
+      // A revision of a checkout has a button back to its working tree.
+      back: view === "revision",
       // A pull request's number, which the button sets in its own weight
       // (docs/design-system.md, "Pull Request Numbers").
-      pullNumber: label.kind === "Pull request" ? label.name : null,
+      pullNumber: label?.kind === "Pull request" ? label.name : null,
       // A bare commit's ID, which the button sets in the commit-ID face.
-      commitId: label.kind === "Commit" ? label.name : null,
+      commitId: label?.kind === "Commit" ? label.name : null,
       selectedRef:
-        label.kind === "Branch" || label.kind === "Tag" || label.kind === "Remote branch"
+        label !== null &&
+        (label.kind === "Branch" || label.kind === "Tag" || label.kind === "Remote branch")
           ? {
               name: label.name,
               label: label.name,
@@ -635,10 +687,12 @@
    * writes into a pin's page. A switch that leaves the server serving exactly that
    * only closes the selector; any other answer opens where the server says.
    * *options.checkout* is whether the page is a checkout's: with no pin it shows the
-   * working tree, which is then what a switch is compared with.
+   * working tree, which is then what a switch is compared with. *options.workingBranch*
+   * is the branch the working tree is on, and *options.workingCommit* the commit a
+   * detached `HEAD` is at, which its row names (server.py writes both on the row).
    *
    * @param {MetabrowserSourceRefSelectorDependencies} deps
-   * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean, workingBranch?: string}} [options]
+   * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean, workingBranch?: string, workingCommit?: string}} [options]
    */
   function createSelector(deps, options = {}) {
     const checkout = options.checkout === true;
@@ -652,7 +706,14 @@
       loading: false,
       switching: false,
       error: null,
-      ...(checkout ? { checkout, workingBranch: options.workingBranch, stale: null } : {}),
+      ...(checkout
+        ? {
+            checkout,
+            workingBranch: options.workingBranch,
+            workingCommit: options.workingCommit,
+            stale: null,
+          }
+        : {}),
     };
     // Each listing request takes the next number; only the newest one's answer counts,
     // so a slow answer to an older filter never replaces a newer one. A newer request,
@@ -794,6 +855,19 @@
       state.loading = false;
       state.listing = listing;
       state.error = error;
+      // A listing reads HEAD afresh, so a branch switched in a terminal since the page was
+      // drawn is named in the row as in the list's "checked out" badge. A detached HEAD's
+      // commit is not in it: a page drawn on a branch then names no ref, and one drawn
+      // detached keeps the commit the server wrote.
+      const tree = listing?.working_tree;
+      if (tree) {
+        if (tree.head_name !== null) {
+          state.workingBranch = tree.head_name;
+          state.workingCommit = undefined;
+        } else {
+          state.workingBranch = undefined;
+        }
+      }
       if (gone) {
         state.open = false;
         state.removed = true;
@@ -861,6 +935,8 @@
       requested += 1;
       state.open = false;
       state.loading = false;
+      // What the list said goes with it, so the row says only what failed while closed.
+      state.error = null;
       render();
     }
 
@@ -1054,6 +1130,22 @@
   }
 
   /**
+   * The word a checkout's row starts with, which its tooltip explains. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorModel} model
+   * @returns {HTMLElement}
+   */
+  function viewWord(model) {
+    const word = document.createElement("span");
+    word.className = "source-ref-selector-view";
+    word.textContent = model.viewLabel;
+    if (model.viewTip !== null) {
+      word.dataset.tipText = model.viewTip;
+    }
+    return word;
+  }
+
+  /**
    * Paint one model. Browser only.
    *
    * The skeleton is built once so the filter box keeps its focus and caret while the
@@ -1069,39 +1161,59 @@
     // Shown while the list is closed too: the page is no longer what the server shows.
     parts.staleText.textContent = model.stale ?? "";
     parts.stale.hidden = model.stale === null;
-    const refKey = JSON.stringify(model.selectedRef);
+    const refKey = JSON.stringify([
+      model.viewLabel,
+      model.viewTip,
+      model.refText,
+      model.selectedRef,
+    ]);
     if (parts.label.dataset.refKey !== refKey) {
       parts.label.dataset.refKey = refKey;
       parts.label.replaceChildren();
+      // A checkout's row says which view the page shows before the ref: "Working tree" or
+      // "Revision", a muted dot, then the branch, tag, or commit.
+      if (model.viewLabel !== null && model.refText === "") {
+        parts.label.append(viewWord(model));
+      } else if (model.viewLabel !== null) {
+        const separator = document.createElement("span");
+        separator.className = "source-ref-selector-sep";
+        separator.setAttribute("aria-hidden", "true");
+        // The spaces are the text's alone: the label's gap sets the room around the dot.
+        separator.textContent = " · ";
+        parts.label.append(viewWord(model), separator);
+      }
       if (model.selectedRef !== null) {
-        const chip = window.metabrowser.refChip(model.selectedRef.name, {
-          label: model.selectedRef.label,
-          kind: model.selectedRef.kind,
-          ref: model.selectedRef.ref,
-          current: true,
-        });
-        if (model.workingTree?.current) {
-          const context = model.selectedRef.label + " · Working tree";
-          chip.dataset.tipText = context;
-          chip.setAttribute("aria-label", "Actions for " + context);
-        }
-        parts.label.append(chip);
+        parts.label.append(
+          window.metabrowser.refChip(model.selectedRef.name, {
+            label: model.selectedRef.label,
+            kind: model.selectedRef.kind,
+            ref: model.selectedRef.ref,
+            current: true,
+          }),
+        );
       } else if (model.pullNumber !== null) {
         const number = document.createElement("span");
         number.className = "source-ref-selector-pull-number";
         number.textContent = model.pullNumber;
-        parts.label.append(model.button.slice(0, -model.pullNumber.length), number);
+        parts.label.append(model.refText.slice(0, -model.pullNumber.length), number);
       } else if (model.commitId !== null) {
         // A commit's ID is set in the commit-ID face wherever it appears
         // (docs/design-system.md, "Short Commit IDs").
         const id = document.createElement("span");
         id.className = "git-commit-sha";
         id.textContent = model.commitId;
-        parts.label.append(model.button.slice(0, -model.commitId.length), id);
-      } else {
+        parts.label.append(model.refText.slice(0, -model.commitId.length), id);
+      } else if (model.viewLabel === null) {
         parts.label.textContent = model.button;
       }
     }
+    // A revision of a checkout offers the way back in its own row.
+    parts.back.hidden = !model.back;
+    parts.back.disabled = model.switching;
+    // A switch asked for with the list closed, by the back button, says why it failed in
+    // the row; the list's own error line is in the closed panel.
+    parts.backError.textContent = model.open ? "" : (model.error ?? "");
+    parts.backError.hidden = model.open || model.error === null;
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
     parts.root.dataset.open = String(model.open);
@@ -1704,6 +1816,25 @@
       /** @type {HTMLElement | null} */ (element.querySelector(".source-ref-selector-label")) ??
       document.createElement("span");
     label.className = "source-ref-selector-label";
+    // A checkout's revision has a way back to the working tree in its row: one click, as
+    // the list's Working tree row does. The server draws it at first paint so the row
+    // keeps its box, and it is adopted here; a page with none gets one, kept hidden.
+    const back =
+      /** @type {HTMLButtonElement | null} */ (
+        element.querySelector("button.source-ref-selector-back")
+      ) ?? document.createElement("button");
+    back.type = "button";
+    back.className = "btn source-ref-selector-back";
+    back.setAttribute("aria-label", BACK_LABEL);
+    back.dataset.tipText = BACK_TIP;
+    if (!back.isConnected) {
+      back.hidden = true;
+      const arrow = document.createElement("span");
+      arrow.className = "source-ref-selector-back-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "←";
+      back.append(arrow, WORKING_TREE);
+    }
     // What a checkout's page says when the server comes to show something else, as a
     // freshness row: at the foot of the navigation pane, where a mirror's makes the same
     // offer, so every tab shows it. The Pulls tab's requests and a comparison's are
@@ -1803,8 +1934,14 @@
       const buttonHost = document.createElement("span");
       buttonHost.className = "source-ref-selector-button";
       buttonHost.append(label, toggle);
-      element.replaceChildren(buttonHost);
+      element.replaceChildren(buttonHost, back);
     }
+    const backError = document.createElement("p");
+    backError.className = "source-ref-selector-error source-ref-selector-back-error";
+    backError.setAttribute("role", "alert");
+    backError.hidden = true;
+    // After the back button, which the server draws on a revision's row and no other.
+    element.append(backError);
     const foot = document.getElementById("index-progress");
     if (foot) {
       foot.after(stale);
@@ -1816,6 +1953,8 @@
       root: element,
       toggle,
       label,
+      back,
+      backError,
       stale,
       staleText,
       reload,
@@ -1891,6 +2030,7 @@
         shown: window.METABROWSER_SOURCE_PIN ?? null,
         checkout,
         workingBranch: element.dataset.workingBranch,
+        workingCommit: element.dataset.workingCommit,
       },
     );
     const mounted = selector;
@@ -1899,6 +2039,7 @@
     parts.workingTree.addEventListener("click", () => void mounted.chooseWorkingTree(), {
       signal,
     });
+    parts.back.addEventListener("click", () => void mounted.chooseWorkingTree(), { signal });
     parts.reload.addEventListener("click", () => window.location.reload(), { signal });
     // The pin guard announces a data request refused because the server serves
     // something else (static/source-pin-guard.js); only a checkout's selector says so.
