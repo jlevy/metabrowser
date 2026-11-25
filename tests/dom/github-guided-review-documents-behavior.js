@@ -114,6 +114,12 @@ function step(body, number, references, extra = {}) {
     comparison: comparisonOf(body),
     step_count: 3,
     titles: ["Documents", "Another document", "Code"],
+    outline: ["Documents", "Another document", "Code"].map((title, index) => ({
+      kind: "step",
+      step: index + 1,
+      title,
+    })),
+    group: null,
     step: number,
     title: `Step ${number}`,
     note: "Read it whole.",
