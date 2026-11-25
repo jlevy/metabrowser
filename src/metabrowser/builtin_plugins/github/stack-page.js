@@ -970,10 +970,8 @@ export function diffComparison(comparison) {
 
 /**
  * What the page passes the diff view's `summary` for its header's Diff summary: the
- * comparison read, and where a file the summary opens goes. That is all a pull request's
- * page passes, so the summary starts collapsed, as every Diff summary does, and its rows
- * carry the tree's own marks and nothing of the layers that change each file, which are each
- * member's to show on its own page.
+ * comparison read, and where a file the summary opens goes, as a pull request's page
+ * passes, so the summary starts collapsed, as every Diff summary does.
  *
  * @param {unknown} raw
  * @param {(path: string) => void} openFile

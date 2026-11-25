@@ -1819,7 +1819,7 @@ async def stack_guided_review(
     (:func:`stack_guide_carrier`), and the answer names that member as ``carrier``, its
     page, which the notes' links were made absolute against, as ``carrier_url``, and its
     record's revision as ``record_revision``. Its references are read against a combined
-    comparison of the stack, the one its page's Files, Docs, and Changes draw, and its pins
+    comparison of the stack, the one its page's Diff summary, Docs, and Changes draw, and its pins
     against that comparison's pair: the bottom member's merge base and the top member's
     head. *drawn* names the comparison the page draws, by its two commits and its key, as
     ``stack-comparison`` takes it: the stack's current pair, or one the stack route gave

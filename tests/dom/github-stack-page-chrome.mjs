@@ -403,7 +403,6 @@ try {
           };
         }),
         summary_open: summary?.getAttribute("aria-expanded") ?? null,
-        marks: page.querySelectorAll(".diff-file-marks, .diff-file-mark").length,
         counterpart: counterpart?.getAttribute("href") ?? null,
         tabs: [...page.querySelectorAll(".tab-bar .tab-btn")].filter((tab) => !tab.hidden).map((tab) => tab.textContent),
         size: page.querySelector(".github-pull-size")?.innerText ?? null,
@@ -456,7 +455,6 @@ try {
       JSON.stringify(page.members.map((row) => row.author)),
     );
     check("the Diff summary is closed", page.summary_open === "false", String(page.summary_open));
-    check("no layer marks", page.marks === 0, String(page.marks));
     check(
       "View on GitHub opens the whole stack",
       page.counterpart === "https://github.com/octo/demo/stack/70",

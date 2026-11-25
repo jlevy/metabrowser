@@ -479,9 +479,9 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "status: 410" not in kept_rendered.stdout
     never = api(comparison["route"].replace(comparison["key"], "0" * 32))
     assert "status: 410" in never.stdout
-    # The guide follows the comparison the page draws, as Files, Docs, and Changes do: at the
-    # current pair, 10 alone, its pins are behind; at the pair the page still draws, it reads
-    # as it did, until the reader takes the new comparison.
+    # The guide follows the comparison the page draws, as the Diff summary, Docs, and Changes
+    # do: at the current pair, 10 alone, its pins are behind; at the pair the page still
+    # draws, it reads as it did, until the reader takes the new comparison.
     now = run_metab((CANONICAL, "--api", f"{GUIDE}?stack=70&step=2")).payload()
     assert (now["state"], now["comparison"]["merge_base"]) == ("stale", pull_origin["topic"])
     still = read_guide(

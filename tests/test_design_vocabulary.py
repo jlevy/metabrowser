@@ -1712,7 +1712,6 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
     ("agents/agent-log.css", ".log-event-kind"): "a badge",
-    ("diff/styles.css", ".diff-file-marks"): "a row of layer chips, each a link (fileMarks)",
     ("github/styles.css", ".github-pull-labels"): "a row of label chips",
     ("github/styles.css", ".github-pull-label"): "a label chip",
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
