@@ -3,9 +3,9 @@ type: is
 id: is-01m89etmssv0xtt5xwa2qm5h2q
 title: "Address PR #834 review B: plan's reference costs, batched git log"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -16,7 +16,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T13:37:52.952Z
-updated_at: 2026-11-25T13:37:57.690Z
+updated_at: 2026-11-25T14:05:21.959Z
 started_at: 2026-11-25T13:37:57.689Z
+closed_at: 2026-11-25T14:05:21.958Z
+close_reason: "Review B on #834 addressed in 03a57880e (B1 mb-7otu, B2 mb-9drj); ci-ok passed in run 45626068276."
+resolution: null
+duplicate_of: null
 ---
 Review B on #834 (https://github.com/jlevy/metabrowser/pull/834#pullrequestreview-6058519332), round 2, head fc78dc2b3.
