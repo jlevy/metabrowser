@@ -21,7 +21,8 @@
 // blocks around it and the space on each side of it is those blocks' margins; open, the
 // blocks it held stand after it in the face, measure, and spacing of the blocks around
 // them, the bar does not move, and everything after it moves by one amount; closed again,
-// the layout is as it was.
+// the layout is as it was. A KPress document beside the diff keeps its own `<details>` in
+// KPress's box and ring: the fold bar's rules are the diff's alone.
 //
 // Last, a comparison of a quote holding inline code and of a code block (FOLD_INPUT's
 // `quoted` blocks) is drawn beside a document holding the same blocks: in the light and
@@ -104,7 +105,8 @@ function serve() {
 
 // In the page: mount the Concise answer as a pull request's Changes mounts a Markdown
 // file, through the views, and below it a code file whose hunk holds a fold bar built as
-// diff-view.js builds one. Resolves with the comparison's fold bars once it is drawn.
+// diff-view.js builds one, beside a document with a `<details>` of its own. Resolves with
+// the comparison's fold bars once it is drawn.
 const MOUNT = `async (answer) => {
   const { createMarkdownViews, renderedFormat, foldExpander } = window.diffFold;
   const el = (tag, className, children = []) => {
@@ -129,7 +131,14 @@ const MOUNT = `async (answer) => {
   const hunk = el("div", "diff-hunk diff-hunk-unified", [code.control, code.group]);
   const codeFile = el("section", "diff-file diff-file-code", [el("div", "diff-file-body", [hunk])]);
   host.append(section, codeFile);
-  document.getElementById("preview-pane").replaceChildren(host);
+  const own = el("details", "", [el("summary", "", ["A document's own details"]), el("p", "", ["Inside."])]);
+  const documentArticle = el("article", "kpress kpress-doc kpress-inert", [
+    el("div", "kpress-doc-layout", [el("div", "kpress-prose", [own])]),
+  ]);
+  document.getElementById("preview-pane").replaceChildren(
+    host,
+    el("div", "metabrowser-kpress-host", [documentArticle]),
+  );
   const views = createMarkdownViews({
     controls: window.metabrowser.filterControls,
     load: async () => structuredClone(answer),
@@ -224,7 +233,7 @@ const BAR_STYLE = [
 ];
 
 // In the page: both bars, their files, and their groups, every block row of the
-// comparison, with box edges unrounded.
+// comparison, and the document's own details, with box edges unrounded.
 const READ = `() => {
   const names = ${JSON.stringify(BAR_STYLE)};
   const box = (node) => {
@@ -280,6 +289,7 @@ const READ = `() => {
     code: bar(document.querySelector(".diff-file-code .fold-expander")),
     group: { ...box(group), children: group.children.length, className: group.className },
     rows,
+    own: box(document.querySelector(".kpress-doc details")),
   };
 }`;
 
@@ -320,10 +330,10 @@ const BACKGROUND = (/** @type {string} */ selector) => `new Promise((resolve) =>
 })`;
 const MARKDOWN_BAR = "article.diff-markdown .fold-expander";
 const CODE_BAR = ".diff-file-code .fold-expander";
-// The bars whose keyboard ring the session reads, and how many presses of Tab it allows to
-// reach both from the page's start: a handful do on this small page, so the bound only
-// stops a page that lost one.
-const RINGED = { fold: MARKDOWN_BAR, code: CODE_BAR };
+// The controls whose keyboard ring the session reads, both bars and a document's own
+// summary, and how many presses of Tab it allows to reach them all from the page's start:
+// a handful do on this small page, so the bound only stops a page that lost one.
+const RINGED = { fold: MARKDOWN_BAR, code: CODE_BAR, own: ".kpress-doc details > summary" };
 const TAB_STEPS = 20;
 // In the page, once the keyboard has focused the control *selector* names: the ring it
 // draws, beside the shell's ring tokens resolved where it is; null while focus is elsewhere.
@@ -519,11 +529,12 @@ try {
   await point(codeResting);
   const codeHovered = await chrome.evaluate(BACKGROUND(CODE_BAR));
   // The keyboard walks the page from its start to the Markdown fold's bar, then to the code
-  // fold's, so `:focus-visible` holds on each as it does for a reader.
+  // fold's, then to the document's own summary, so `:focus-visible` holds on each as it
+  // does for a reader.
   await chrome.evaluate("(document.activeElement?.blur(), true)");
   /** @type {Record<string, any>} */
   const rings = {};
-  for (let step = 0; step < TAB_STEPS && !(rings.fold && rings.code); step += 1) {
+  for (let step = 0; step < TAB_STEPS && !(rings.fold && rings.code && rings.own); step += 1) {
     for (const type of ["keyDown", "keyUp"]) {
       await chrome.send("Input.dispatchKeyEvent", {
         type,
@@ -551,7 +562,8 @@ try {
   // The fold draws the shell's one ring (docs/design-system.md, "Focus Ring"). KPress's
   // document sheet rings a `summary` inside `article.kpress` 3px wide and 2px outside its
   // box; the fold's bar is a `button` there, which it does not ring, so the bar keeps the
-  // shell's ring, as the code fold's bar outside the article does.
+  // shell's ring, as the code fold's bar outside the article does. A document's own summary
+  // keeps KPress's ring, which shows that rule is live and that no fold rule reaches it.
   for (const [part, label] of [
     ["fold", "the Markdown fold's bar"],
     ["code", "a code fold's bar"],
@@ -572,6 +584,18 @@ try {
       JSON.stringify(rings[part] ?? null),
     );
   }
+  check(
+    "Tab reaches a document's own summary, which matches :focus-visible",
+    rings.own?.visible === true,
+    JSON.stringify(rings.own ?? null),
+  );
+  check(
+    "a document's own focused summary keeps KPress's ring",
+    rings.own?.drawn.style === "solid" &&
+      rings.own.drawn.width !== rings.own.ring.width &&
+      rings.own.drawn.offset !== rings.own.ring.offset,
+    JSON.stringify(rings.own ?? null),
+  );
 
   // One bar for every fold: the Markdown file's computes as the code file's does.
   for (const [state, measured] of [
@@ -734,9 +758,16 @@ try {
 
   // Closing restores the closed layout.
   const layout = (/** @type {any} */ read) =>
-    JSON.stringify({ bar: read.bar, group: read.group, rows: read.rows });
+    JSON.stringify({ bar: read.bar, group: read.group, rows: read.rows, own: read.own });
   check("closed again, the bar is closed", reclosed.bar.expanded === "false");
   check("closed again, every box is where it was", layout(reclosed) === layout(closed));
+
+  // A document's own details keeps KPress's box: the fold bar's rules are the diff's alone.
+  check(
+    "a document's own details keeps its border",
+    closed.own.border === "1px 1px 1px 1px",
+    closed.own.border,
+  );
 
   // A comparison's quote and code draw as a document's do, in the app's tokens, in either
   // theme; the theme switch has to move them for the comparison to mean anything.
