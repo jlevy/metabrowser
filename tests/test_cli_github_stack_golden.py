@@ -7,7 +7,7 @@ stand-in's pull requests (``tests/github_pull_fixture.py``):
 
 | Stack | Members, bottom first | What it shows |
 | --- | --- | --- |
-| 70 | 8 (merged), 10 (draft) | The whole stack. 10's base is ``topic`` after 8 merged, and ``topic`` had moved ``README.md`` before: the plain diff from 8's merge base to 10's head holds it, and the stack's comparison leaves it out, since no layer changes it |
+| 70 | 8 (merged), 10 (draft), then 10 alone | The whole stack. 10's base is ``topic`` after 8 merged, and ``topic`` had moved ``README.md`` before: the plain diff from 8's merge base to 10's head holds it, and the stack's comparison leaves it out, since no layer changes it. Last, the stack moves to 10 alone, and its earlier comparison keeps answering |
 | 71 | 8, 7, 10 | 7 is a fork whose head the top lacks, so it contributes no files and is named in ``lacking`` |
 | 72 | 10, 8 | Not linear: 10's merge base is not in 8's history |
 | 73 | 8, 9 | Pending while 9 has no record, until the page asks for 9 as the reader's own open of it |
@@ -19,7 +19,8 @@ the top contains it. A file two layers change, and one a layer renames, are
 ``tests/test_github_pull_stack.py``'s, on manifests of their own.
 
 The rendered-diff and image routes take ``stack=`` in place of ``number`` and admit the
-stack's current pair alone. Nothing here asks GitHub but the record fetches.
+stack's current pair, and a pair the stack route gave before and keeps
+(``pull_stack_retained.py``). Nothing here asks GitHub but the record and stack fetches.
 """
 
 from __future__ import annotations
@@ -285,6 +286,38 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "kind: pull-stack" in shown.stdout
     file_shown = run(CANONICAL, "--show", "/stack/70/changes/docs/draft.md")
     assert "layers=2/2:#10" in file_shown.stdout
+
+    blocks.append(
+        "## The stack moves: 70 is now 10 alone. A page still draws the comparison it was"
+        " given, so that comparison keeps answering and its rendered documents keep being"
+        " admitted, while an address the route never gave is still refused.\n"
+    )
+    answers["api"][STACKS] = ok(
+        STACKS,
+        [_stack(70, [10]), _stack(71, [8, 7, 10]), _stack(72, [10, 8]), _stack(73, [8, 9])],
+    )
+    install_fake_gh(tmp_path, answers)
+    request.write_text('{"retry": true}\n')
+    run(
+        CANONICAL,
+        "--api",
+        "/api/plugin/github/stacks-refresh",
+        "--data",
+        str(request),
+        gh_free=False,
+    )
+    moved_on = stack(70)
+    assert moved_on["state"] == "current"
+    assert [member["number"] for member in moved_on["members"]] == [10]
+    assert moved_on["comparison"]["key"] != comparison["key"]
+    kept = api(comparison["route"])
+    assert kept.exit_code == 0, kept.stderr
+    assert _paths(kept.payload()) == ["docs/draft.md"]
+    kept_rendered = api(f"{comparison['rendered_route']}&file={guide['id']}")
+    assert kept_rendered.exit_code == 0, kept_rendered.stderr
+    assert "status: 410" not in kept_rendered.stdout
+    never = api(comparison["route"].replace(comparison["key"], "0" * 32))
+    assert "status: 410" in never.stdout
 
     rendered_text = _scoped("".join(blocks))
     # A rendered document's anchors are named by its sandbox-derived namespace.

@@ -940,11 +940,15 @@ async def stack_handler(request: Request) -> Response:
     """``GET /api/plugin/github/stack?number=<stack>`` — a native stack's page.
 
     Its members, its combined comparison and that comparison's routes, the members the top
-    lacks, the members still pending, the totals, and each file's layers
-    (:mod:`.pull_stack`). No GitHub call and no fetch; the first read after a member moves
-    lists the comparison in the store.
+    lacks, the members still pending and which of them a refresh is fetching now, the
+    totals, and each file's layers (:mod:`.pull_stack`). No GitHub call and no fetch; the
+    first read after a member moves lists the comparison in the store.
     """
-    from metabrowser.builtin_plugins.github.pull_route import PullRequestError, requested_number
+    from metabrowser.builtin_plugins.github.pull_route import (
+        PullRequestError,
+        pull_host,
+        requested_number,
+    )
     from metabrowser.builtin_plugins.github.pull_stack import envelope_etag, stack_envelope
 
     if set(request.query_params) != {"number"}:
@@ -954,8 +958,16 @@ async def stack_handler(request: Request) -> Response:
     except PullRequestError:
         return _invalid_request('"number" is a native stack number')
     repository, published, reader = await _stack_sources(request)
+    host = pull_host(request.app)
     answer = await unless_disconnected(
-        request, stack_envelope(repository, published, number, reader)
+        request,
+        stack_envelope(
+            repository,
+            published,
+            number,
+            reader,
+            host.running if host is not None else lambda _number: False,
+        ),
     )
     if answer is None:
         return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
@@ -970,10 +982,12 @@ async def stack_comparison_handler(request: Request) -> Response:
     """``GET /api/plugin/github/stack-comparison`` — a stack's combined comparison.
 
     The address the ``stack`` route answers names the stack, both commits, and the digest
-    of its members; only the stack's current comparison is answered, through the diff
-    plugin's ``comparison_at`` with the stack's restricted manifest, so ``group=``,
-    ``types=``, ``file=``, and ``view=types`` work as on a pull request. An address the
-    stack has moved from answers ``410 stack_moved``: the page reads ``stack`` again.
+    of its members; the stack's current comparison is answered, or one the ``stack`` route
+    answered before and keeps (:mod:`.pull_stack_retained`), through the diff plugin's
+    ``comparison_at`` with the stack's restricted manifest, so ``group=``, ``types=``,
+    ``file=``, and ``view=types`` work as on a pull request. An address neither names
+    answers ``410 stack_moved``, and one whose retained pairs cannot be read now ``409
+    snapshot_unavailable``.
     """
 
     from metabrowser.builtin_plugins.diff.sidekick import comparison_at
@@ -986,6 +1000,7 @@ async def stack_comparison_handler(request: Request) -> Response:
         stack_key,
         stack_scope,
     )
+    from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
     from metabrowser.git.object_failures import observed_object_failures
     from metabrowser.git.process import GitLocation, repository_store_target
     from metabrowser.git.wire import is_full_revision
@@ -1019,8 +1034,18 @@ async def stack_comparison_handler(request: Request) -> Response:
             headers=_NO_STORE,
         )
     read = await read_stack(repository, published, number, reader)
-    pair = read.pair
-    if pair is None or (pair.base, pair.head, pair.digest) != (left, right, key):
+    current = read.pair
+    pair = (
+        current
+        if current is not None
+        and (current.base, current.head, current.digest) == (left, right, key)
+        else await asyncio.to_thread(
+            retained_stack_pair, published, number, reader, left, right, key
+        )
+    )
+    if pair == "unknown":
+        return JSONResponse({"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE)
+    if pair is None:
         return JSONResponse(
             {
                 "error": "this stack has moved; read its page again for its comparison",

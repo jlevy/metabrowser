@@ -173,6 +173,7 @@ Every file is disposable and carries its own schema version.
 | `<n>.core.json`, `cores.refresh.json` | Its lightweight core, and the repository’s core holds | `pull_core_cache.py` |
 | `<n>.files.json`, `<n>.files.refresh.json` | Its changed files, and how their refresh ended | `pull_list.py` |
 | `<n>.snapshots.json` | Earlier comparison pairs a revision link may open | `pull_snapshot_cache.py` |
+| `stack-<n>.snapshots.json` | A native stack’s earlier comparison pairs, which its page keeps drawn | `pull_stack_retained.py` |
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
 | `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, and how its refreshes ended | `pull_catalog.py`, `pull_list.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
@@ -998,16 +999,31 @@ measurements that set them:
   `pull_manifest.py`), so a member that moves names a new comparison and nothing is
   invalidated by hand.
 - **Admission.** `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
-  `number` and admit only the stack’s current pair (`_stack_admission` in
-  `pull_snapshot.py`).
+  `number` and admit the stack’s current pair, and `stack-comparison` lists it
+  (`_stack_admission` in `pull_snapshot.py`). Each keeps answering a pair the `stack`
+  route answered after the stack moves, since a page keeps the comparison it drew:
+  `pull_stack_retained.py` keeps a stack’s last `MAX_RETAINED_STACK_PAIRS` pairs in
+  `sources/<slug>/pulls/stack-<n>.snapshots.json`, for the store that computed them and
+  the reader whose records named them, as `pull_snapshot_cache.py` keeps a pull
+  request’s. A pair no longer kept answers `stack_moved` or `snapshot_expired`, and a
+  file that cannot be read now answers `snapshot_unavailable` (409).
 - **The page** (`stack-page.js`) draws Files with the diff plugin’s Diff summary open,
   Docs with `DOCS_DRAWING` and Changes with `CHANGES_DRAWING` (`diff-drawing.js`, which
   `pull-page.js` shares), and puts each file’s layers on its row and bar through the
-  diff view’s `fileMarks`. It polls `stack`, asks `pull-refresh` once for each pending
-  member at its head, a member with no record as the reader’s own open of it (`retry`),
-  since an automatic ask refreshes only a record the server holds, sends the top
-  member’s automatic ask the answer’s `probe` names, and offers a new comparison rather
-  than swapping it in.
+  diff view’s `fileMarks`. It polls `stack`, asks `pull-refresh` for each pending member
+  at its head, a member with no record as the reader’s own open of it (`retry`), since
+  an automatic ask refreshes only a record the server holds, and sends the top member’s
+  automatic ask the answer’s `probe` names.
+  An ask the server refuses (429, past `MAX_PULL_JOBS`), that fails, or whose fetch ends
+  with the member still pending is sent again after `ASK_BACKOFF_MS`; each member’s
+  `fetching` says whether its fetch is running now, so the page tells one under way from
+  one that ended. A member with no record whose fetch ended without one is named as
+  failed, with a Retry.
+  A hidden page does not poll.
+  A comparison the page drew stays while the stack is pending, refused, or moved, with a
+  notice above it, and a new comparison is offered rather than swapped in.
+  A file the reader opens is scrolled to when its diff is drawn, never on a later answer
+  (`bodyPlan`).
 
 ### Guided Review
 

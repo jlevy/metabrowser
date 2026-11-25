@@ -559,6 +559,7 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     from metabrowser.builtin_plugins.github.pull_list_route import served_repository
     from metabrowser.builtin_plugins.github.pull_manifest import shared_pull_manifest
     from metabrowser.builtin_plugins.github.pull_stack import combined, read_stack
+    from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
 
     params = request.query_params
     try:
@@ -613,14 +614,27 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
         # a pull request keeps the key, and so the rendered namespace, it had.
         host = pull_host(request.app)
         reader = host.pulls.observed_reader if host is not None else None
-        pair = (await read_stack(served_repository(request.app), published, number, reader)).pair
-        if pair is None or (pair.base, pair.head) != (base, head):
+        current = (await read_stack(served_repository(request.app), published, number, reader)).pair
+        # Admission found the pair current or retained; a retained one is the most recent
+        # with these commits, whose listing numbers the files as any other does.
+        pair = (
+            current
+            if current is not None and (current.base, current.head) == (base, head)
+            else await asyncio.to_thread(
+                retained_stack_pair, published, number, reader, base, head, None
+            )
+        )
+        if pair == "unknown":
+            return JSONResponse(
+                {"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE
+            )
+        if pair is None:
             return JSONResponse({"code": "snapshot_expired"}, status_code=410, headers=_NO_STORE)
         named = f"stack-{number}-{pair.digest}"
+        drawn = pair
 
         async def restricted() -> ResolvedManifest:
-            assert pair is not None
-            return (await combined(published, pair)).manifest
+            return (await combined(published, drawn)).manifest
 
         listed = restricted
     key = (published.store_id, snapshot.store, named, base, head, file_id)

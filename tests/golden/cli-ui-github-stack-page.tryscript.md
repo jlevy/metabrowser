@@ -24,17 +24,34 @@ them.
   file no layer changes has none.
 - `said` is the line about members the top lacks, and what the page says for a stack it
   cannot show as one comparison.
-- `delays` is the poll’s cadence: soon while a member is pending, at the top member’s
-  probe interval in sight, and slowly out of sight.
+- `delays` is the poll’s cadence: soon while a member is being asked for or fetched,
+  otherwise at the top member’s probe interval, slowly without one, and not at all out
+  of sight (`null`): a hidden page reads the stack again when it is shown.
 - `sent` and `rendered` are the controller over a scripted poll: pending, current, an
   unchanged answer, then another comparison (71’s answer standing in for 70 moved).
-  Each pending member is asked for once at its head, a member with no record as the
-  reader’s own open of it (`retry`), and the top member’s automatic ask is sent at its
-  interval with the record revision the stack route names, so its answer leaves the
-  record out.
+  Each pending member is asked for at its head, a member with no record as the reader’s
+  own open of it (`retry`), and the top member’s automatic ask is sent at its interval
+  with the record revision the stack route names, so its answer leaves the record out.
+  `failed` lists the members whose fetch ended without a record.
 - `recovery` is a read that fails while an answer is drawn, which says so in the page’s
   own words and not the route’s, and then one that finds the drawn answer current again
   (a 304), which ends the failure.
+- `cold` is a stack of ten members with no record on a server that fetches eight at once
+  and refuses the rest (429). A refused member is asked for again after 2, 4, 8, then 16
+  s until its fetch starts.
+  One whose fetch ends without a record is named as failed, with a Retry, and the
+  reader’s Retry asks for it again.
+  Once nothing is being asked for or fetched, the page reads at the slow cadence
+  (`delay_after_failure`).
+- `one_loop` is a read asked for while one is on its way: it starts no second loop, and
+  is made once the first answer is drawn, which leaves one timer.
+- `body` is the page’s body over a reader who opens `docs/draft.md` in Changes while the
+  stack moves. The file is scrolled to when its diff is first drawn and when the reader
+  opens it again, never on a later answer.
+  While a member is pending or its fetch has failed, and when another comparison
+  arrives, the drawn comparison stays and the notice above it says why, until the reader
+  takes the new one. A stack that can no longer be shown as one keeps the comparison
+  drawn; with nothing drawn, the body says what is missing.
 - `order` is the header’s order of 71’s members, the top first, as every stack menu
   lists them.
 
@@ -91,8 +108,9 @@ $ node tests/dom/github-stack-page-session.js
   },
   "delays": {
     "pending_visible": 1000,
+    "pending_none_asked": 30000,
     "current_visible": 5000,
-    "current_hidden": 30000
+    "current_hidden": null
   },
   "sent": [
     {
@@ -164,14 +182,16 @@ $ node tests/dom/github-stack-page-session.js
       ],
       "lacking": [],
       "comparison": "wait",
-      "error": null
+      "error": null,
+      "failed": []
     },
     {
       "state": "current",
       "pending": [],
       "lacking": [],
       "comparison": "show",
-      "error": null
+      "error": null,
+      "failed": []
     },
     {
       "state": "current",
@@ -180,7 +200,8 @@ $ node tests/dom/github-stack-page-session.js
         7
       ],
       "comparison": "offer",
-      "error": null
+      "error": null,
+      "failed": []
     }
   ],
   "recovery": [
@@ -195,6 +216,266 @@ $ node tests/dom/github-stack-page-session.js
     {
       "state": "current",
       "error": null
+    }
+  ],
+  "cold": {
+    "asked": [
+      "0s #100 retry 202",
+      "0s #101 retry 202",
+      "0s #102 retry 202",
+      "0s #103 retry 202",
+      "0s #104 retry 202",
+      "0s #105 retry 202",
+      "0s #106 retry 202",
+      "0s #107 retry 202",
+      "0s #108 retry 429",
+      "0s #109 retry 429",
+      "2s #108 retry 429",
+      "2s #109 retry 429",
+      "6s #108 retry 202",
+      "6s #109 retry 202",
+      "9s #109 retry 202"
+    ],
+    "rendered": [
+      {
+        "at": "0s",
+        "pending": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "1s",
+        "pending": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "2s",
+        "pending": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "3s",
+        "pending": [
+          108,
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "6s",
+        "pending": [
+          108,
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "7s",
+        "pending": [
+          108,
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "8s",
+        "pending": [
+          108,
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "9s",
+        "pending": [
+          109
+        ],
+        "failed": [
+          109
+        ]
+      },
+      {
+        "at": "9s",
+        "pending": [
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "9s",
+        "pending": [
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "10s",
+        "pending": [
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "11s",
+        "pending": [
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "12s",
+        "pending": [],
+        "failed": []
+      }
+    ],
+    "delay_after_failure": 30000
+  },
+  "one_loop": {
+    "during": {
+      "gets": 1,
+      "timers": 0
+    },
+    "after_first": {
+      "gets": 2,
+      "timers": 0
+    },
+    "after_second": {
+      "gets": 2,
+      "timers": 1
+    }
+  },
+  "body": [
+    {
+      "step": "opened a file, nothing read",
+      "do": "wait",
+      "drawn": null,
+      "notices": []
+    },
+    {
+      "step": "pending",
+      "do": "notice",
+      "text": "Fetching #8 and #10 before the stack can be shown.",
+      "drawn": null,
+      "notices": []
+    },
+    {
+      "step": "current",
+      "do": "mount changes",
+      "drawn": "current",
+      "notices": []
+    },
+    {
+      "step": "current, mounted",
+      "do": "scroll",
+      "file": "docs/draft.md",
+      "drawn": "current",
+      "notices": []
+    },
+    {
+      "step": "current again, top revision moved",
+      "do": "keep",
+      "drawn": "current",
+      "notices": []
+    },
+    {
+      "step": "the reader opens the file again",
+      "do": "scroll",
+      "file": "docs/draft.md",
+      "drawn": "current",
+      "notices": []
+    },
+    {
+      "step": "a member added on top, pending",
+      "do": "keep",
+      "drawn": "current",
+      "notices": [
+        "Fetching #11 before its new comparison can be shown."
+      ]
+    },
+    {
+      "step": "its fetch failed",
+      "do": "keep",
+      "drawn": "current",
+      "notices": [
+        "Could not fetch #11 from GitHub. [retry]"
+      ]
+    },
+    {
+      "step": "it arrived: another comparison",
+      "do": "keep",
+      "drawn": "current",
+      "notices": [
+        "This stack has changed since its comparison was drawn. [take]"
+      ]
+    },
+    {
+      "step": "the reader takes it",
+      "do": "mount changes",
+      "drawn": "other",
+      "notices": []
+    },
+    {
+      "step": "the stack can no longer be shown as one",
+      "do": "keep",
+      "drawn": "other",
+      "notices": [
+        "This stack’s changes cannot be shown together. Open each pull request for its changes."
+      ]
+    },
+    {
+      "step": "the reader opens Docs",
+      "do": "mount docs",
+      "drawn": "other",
+      "notices": [
+        "This stack’s changes cannot be shown together. Open each pull request for its changes."
+      ]
+    },
+    {
+      "step": "nothing drawn, a member's fetch failed",
+      "do": "notice",
+      "text": "Fetching #8 before the stack can be shown. Could not fetch #10 from GitHub.",
+      "retry": true,
+      "drawn": null,
+      "notices": []
+    },
+    {
+      "step": "nothing drawn, not linear",
+      "do": "notice",
+      "text": "This stack’s changes cannot be shown together. Open each pull request for its changes.",
+      "drawn": null,
+      "notices": []
     }
   ],
   "order": [

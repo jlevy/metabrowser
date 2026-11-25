@@ -15,29 +15,37 @@
 // Each file's bar and row carries a mark for each layer that changes it, "2/4", which
 // opens the file in that layer's own Changes (`/pull/<n>/files/<path>`).
 //
-// The page reads the stack route on a poll, as a pull request's page reads its own, and
-// asks `pull-refresh` once for each member it names as pending at that member's head, a
-// member with no record as the reader's own open of it (`refreshAsks`). While it is open
-// it sends the top member's automatic ask, which keeps the repository's list probed so
-// that the catalog keeps reporting every member's head
-// (docs/project/specs/active/plan-2026-11-24-stack-review.md, "Staying Current"). A
-// comparison that changes while the reader reads is offered, not swapped in.
+// The page reads the stack route on a poll, as a pull request's page reads its own, while
+// it is in sight. It asks `pull-refresh` for each member the answer names as pending, a
+// member with no record as the reader's own open of it, and asks again, later each time,
+// for one whose ask the server refused or that did not reach it (`refreshAsks`,
+// `askAnswered`). A member whose fetch ended without a usable record is named, with a
+// Retry (`asksAfterRead`). While it is open it sends the top member's automatic ask, which
+// keeps the repository's list probed so that the catalog keeps reporting every member's
+// head (docs/project/specs/active/plan-2026-11-24-stack-review.md, "Staying Current").
+//
+// A comparison drawn stays drawn while the stack moves: one that changes is offered, not
+// swapped in, and while a new member is fetched or the stack cannot be shown, the drawn
+// one stays beneath the status line, since the server keeps answering a pair it gave
+// (pull_stack_retained.py). `bodyPlan` decides what the body does with each answer, and a
+// file is scrolled to once, when the reader opens it, never again by a later answer.
 //
 // tests/dom/github-stack-page-session.js runs the pure parts and the controller here from
 // the command line.
 
 import { CHANGES_DRAWING, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
-import { h, isPlainClick } from "./pull-page.js";
+import { FAST_POLL_MS, h, isPlainClick, SLOW_POLL_MS } from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition } from "./pull-stacks.js";
 import { pullStateIcon } from "./pull-state.js";
 
 export const STACK_ROUTE = "/api/plugin/github/stack";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
-// The poll while a member is still to arrive, and while the page is out of sight: the pull
-// request page's (`FAST_POLL_MS` and `SLOW_POLL_MS` in pull-page.js), so a stack's page adds
-// no cadence of its own.
-export const PENDING_POLL_MS = 1000;
-export const HIDDEN_POLL_MS = 30000;
+// How long an ask the server refused (`too_many` while its reader jobs are all taken,
+// `MAX_PULL_JOBS` in mirror_refresh.py), or that did not reach it, waits before it is sent
+// again: doubling from the pull page's fast poll to its slow one, so a cold stack of more
+// members than the server fetches at once is asked for as its jobs end, and a server that
+// is down is asked at most every thirty seconds.
+export const ASK_BACKOFF_MS = Object.freeze([2000, 4000, 8000, 16000, SLOW_POLL_MS]);
 // What the page says while the stack route cannot be read. The poll keeps asking, so it offers
 // no remedy, and the last answer read stays drawn beneath it.
 export const UNREADABLE = "Could not read this stack.";
@@ -50,7 +58,7 @@ export const STACK_TABS = Object.freeze([
 ]);
 
 /**
- * @typedef {{number: number, place: number, title: string | null, state: "open" | "draft" | "merged" | "closed" | null, base: string | null, head: string | null, in_top: boolean | null, pending: boolean}} StackMember
+ * @typedef {{number: number, place: number, title: string | null, state: "open" | "draft" | "merged" | "closed" | null, base: string | null, head: string | null, in_top: boolean | null, pending: boolean, fetching?: boolean}} StackMember
  * @typedef {{left: string, right: string, key: string, route: string, image_route: string, rendered_route: string}} StackComparison
  * @typedef {{path: string, layers: Array<{number: number, place: number, path: string}>}} StackFile
  * @typedef {{
@@ -104,21 +112,32 @@ export function comparisonAction(shownKey, envelope) {
 }
 
 /**
- * The members to ask `pull-refresh` for: each that the answer names as pending, once for
- * the head its record has (none, for a member with no record). *asked* holds what was
- * asked; the answer is what to ask now, each with its key to add.
+ * One member's ask, by the member's number and the head its record has: in flight
+ * (`asking`), refused or unanswered and sent again at `due` (`waiting`), taken by the
+ * server, which answered once a read sent after the `after`th saw it (`accepted`), or
+ * ended without a usable record (`failed`).
+ *
+ * @typedef {{number: number, retry: boolean, phase: "asking" | "waiting" | "accepted" | "failed", tries: number, due: number, after: number}} MemberAsk
+ */
+
+/**
+ * The members to ask `pull-refresh` for now: each that the answer names as pending and
+ * that has no ask of its head yet, or whose refused ask is due again. *asks* holds each
+ * member's ask by its key, its number and the head its record has (none, for a member
+ * with no record).
  *
  * A member with no record is asked as the reader's own open of it (`retry`), as a pull
  * request's page asks for one opened by a direct link: an automatic ask refreshes only a
- * record the server holds, and answers `not_cached` for one it does not, so a stack opened
- * cold stayed pending. A member whose record a newer head has passed is asked
- * automatically, which the catalog's newer row makes due at once.
+ * record the server holds, and answers `not_cached` for one it does not. A member whose
+ * record a newer head has passed is asked automatically, which the catalog's newer row
+ * makes due at once.
  *
  * @param {StackEnvelope | null} envelope
- * @param {ReadonlySet<string>} asked
+ * @param {ReadonlyMap<string, MemberAsk>} asks
+ * @param {number} now
  * @returns {Array<{number: number, key: string, retry: boolean}>}
  */
-export function refreshAsks(envelope, asked) {
+export function refreshAsks(envelope, asks, now) {
   if (envelope === null || envelope.state === "absent") {
     return [];
   }
@@ -129,7 +148,80 @@ export function refreshAsks(envelope, asked) {
       key: `${member.number}:${member.head ?? ""}`,
       retry: member.head === null,
     }))
-    .filter((ask) => !asked.has(ask.key));
+    .filter((due) => {
+      const ask = asks.get(due.key);
+      return ask === undefined || (ask.phase === "waiting" && now >= ask.due);
+    });
+}
+
+/**
+ * A member's ask once the server answered it: taken when it started or joined a fetch
+ * (202), and otherwise to be sent again after `ASK_BACKOFF_MS`, longer each time. *status*
+ * is null for an ask that did not reach the server; *reads* is how many reads of the stack
+ * the page had sent when the answer came.
+ *
+ * @param {MemberAsk} ask
+ * @param {number | null} status
+ * @param {number} now
+ * @param {number} reads
+ * @returns {MemberAsk}
+ */
+export function askAnswered(ask, status, now, reads) {
+  if (status === 202) {
+    return { ...ask, phase: "accepted", after: reads };
+  }
+  const wait = ASK_BACKOFF_MS[Math.min(ask.tries, ASK_BACKOFF_MS.length - 1)];
+  return { ...ask, phase: "waiting", tries: ask.tries + 1, due: now + wait };
+}
+
+/**
+ * Each member's ask once an answer is read: one whose fetch ended, by an answer read after
+ * the server took it, with the member still pending and no fetch of it running, has
+ * `failed` when it was the reader's own (the page names the member, with a Retry, rather
+ * than say it is fetching), and otherwise waits to be sent again, since the server decides
+ * when an automatic one is due. The ask of a member no longer pending at that head is
+ * dropped.
+ *
+ * @param {StackEnvelope | null} envelope
+ * @param {ReadonlyMap<string, MemberAsk>} asks
+ * @param {number} read Which read of the stack the answer is, counting from 1.
+ * @param {number} now
+ * @param {number} reads How many reads have been sent.
+ * @returns {Map<string, MemberAsk>}
+ */
+export function asksAfterRead(envelope, asks, read, now, reads) {
+  /** @type {Map<string, MemberAsk>} */
+  const next = new Map();
+  for (const member of envelope?.members ?? []) {
+    const key = `${member.number}:${member.head ?? ""}`;
+    const ask = asks.get(key);
+    if (ask === undefined || !member.pending) {
+      continue;
+    }
+    const ended =
+      envelope?.state !== "absent" &&
+      member.fetching !== true &&
+      ask.phase === "accepted" &&
+      read > ask.after;
+    next.set(
+      key,
+      !ended ? ask : ask.retry ? { ...ask, phase: "failed" } : askAnswered(ask, null, now, reads),
+    );
+  }
+  return next;
+}
+
+/**
+ * The members whose fetch failed, in stack order.
+ *
+ * @param {StackEnvelope | null} envelope
+ * @param {ReadonlyMap<string, MemberAsk>} asks
+ * @returns {number[]}
+ */
+export function failedMembers(envelope, asks) {
+  return (envelope?.members ?? []).flatMap((member) =>
+    asks.get(`${member.number}:${member.head ?? ""}`)?.phase === "failed" ? [member.number] : [],
+  );
 }
 
 /**
@@ -157,6 +249,18 @@ export function layerMarks(envelope, path, href) {
 }
 
 /**
+ * *numbers* as a reader reads a list of them: "#7", "#7 and #9", "#7, #8, and #9".
+ *
+ * @param {number[]} numbers
+ */
+function named(numbers) {
+  const all = numbers.map((number) => `#${number}`);
+  return all.length === 1
+    ? all[0]
+    : `${all.slice(0, -1).join(", ")}${all.length > 2 ? "," : ""} and ${all.at(-1)}`;
+}
+
+/**
  * The line about members the top's head does not contain, whose changes the comparison
  * leaves out, or null when it contains them all.
  *
@@ -168,13 +272,8 @@ export function lackingText(envelope) {
   if (lacking.length === 0) {
     return null;
   }
-  const named = lacking.map((number) => `#${number}`);
-  const list =
-    named.length === 1
-      ? named[0]
-      : `${named.slice(0, -1).join(", ")}${named.length > 2 ? "," : ""} and ${named.at(-1)}`;
-  const which = named.length === 1 ? "its changes" : "each one’s changes";
-  return `The top of this stack does not contain ${list}, so this view leaves out ${which}. Open ${named.length === 1 ? "it" : "each"} to see them.`;
+  const which = lacking.length === 1 ? "its changes" : "each one’s changes";
+  return `The top of this stack does not contain ${named(lacking)}, so this view leaves out ${which}. Open ${lacking.length === 1 ? "it" : "each"} to see them.`;
 }
 
 /** @type {Readonly<Record<string, string>>} */
@@ -199,20 +298,211 @@ export function absentText(reason) {
 }
 
 /**
- * The poll's next delay: soon while a member is still to arrive, at the top member's probe
- * interval while the page is in sight, and slowly out of sight.
+ * The poll's next delay, or null for none: a page out of sight reads nothing, as a pull
+ * request's does, and reads again when it comes back. In sight it reads soon while a
+ * member's fetch is asked for or running, and otherwise at the top member's probe
+ * interval.
  *
  * @param {StackEnvelope | null} envelope
  * @param {boolean} visible
+ * @param {boolean} [busy] Whether an ask is in flight or a member's fetch runs.
+ * @returns {number | null}
  */
-export function pollDelay(envelope, visible) {
+export function pollDelay(envelope, visible, busy = false) {
   if (!visible) {
-    return HIDDEN_POLL_MS;
+    return null;
   }
-  if (envelope === null || envelope.state === "pending" || envelope.pending.length > 0) {
-    return PENDING_POLL_MS;
+  if (envelope === null || busy || envelope.members.some((member) => member.fetching === true)) {
+    return FAST_POLL_MS;
   }
-  return envelope.probe === null ? HIDDEN_POLL_MS : envelope.probe.every_s * 1000;
+  return envelope.probe === null ? SLOW_POLL_MS : envelope.probe.every_s * 1000;
+}
+
+/**
+ * A notice the page shows above the body: a failed read, a comparison it offers, the stack
+ * moving or ceasing to be one comparison while one stays drawn, or members it could not
+ * fetch. `take` shows the new comparison; `retry` asks again for the members named.
+ *
+ * @typedef {{text: string, severity: "error" | "warning" | null, action: "take" | "retry" | null}} StackNotice
+ */
+
+/**
+ * What the page says about members it is fetching and members it could not, or null.
+ *
+ * @param {number[]} fetching
+ * @param {number[]} failed
+ * @param {string} until What the fetches are for: "the stack can be shown".
+ * @returns {{fetching: string | null, failed: string | null}}
+ */
+function fetchText(fetching, failed, until) {
+  return {
+    fetching: fetching.length === 0 ? null : `Fetching ${named(fetching)} before ${until}.`,
+    failed: failed.length === 0 ? null : `Could not fetch ${named(failed)} from GitHub.`,
+  };
+}
+
+/**
+ * The notices above the body, in order: the read's failure, then what became of the stack
+ * since the drawn comparison. With nothing drawn, the body says why itself (`bodyPlan`).
+ *
+ * @param {StackEnvelope | null} envelope
+ * @param {string | null} drawnKey The key of the comparison drawn, or null.
+ * @param {string | null} error
+ * @param {number[]} failed The members whose fetch ended without a usable record.
+ * @returns {StackNotice[]}
+ */
+export function statusNotices(envelope, drawnKey, error, failed) {
+  /** @type {StackNotice[]} */
+  const notices = [];
+  if (error !== null) {
+    // A failed read keeps the last answer drawn, so it is a warning; with none, an error.
+    notices.push({ text: error, severity: envelope === null ? "error" : "warning", action: null });
+  }
+  if (envelope === null || drawnKey === null) {
+    return notices;
+  }
+  if (comparisonAction(drawnKey, envelope) === "offer") {
+    notices.push({
+      text: "This stack has changed since its comparison was drawn.",
+      severity: null,
+      action: "take",
+    });
+  }
+  if (envelope.state === "absent") {
+    notices.push({ text: absentText(envelope.reason), severity: "warning", action: null });
+    return notices;
+  }
+  const waiting = envelope.pending.filter((number) => !failed.includes(number));
+  const said = fetchText(
+    envelope.state === "pending" ? waiting : [],
+    failed,
+    "its new comparison can be shown",
+  );
+  if (said.fetching !== null) {
+    notices.push({ text: said.fetching, severity: null, action: null });
+  }
+  if (said.failed !== null) {
+    notices.push({ text: said.failed, severity: "warning", action: "retry" });
+  }
+  return notices;
+}
+
+/**
+ * What the body shows and has shown: the comparison drawn, the key of what is mounted
+ * ("" for nothing or a notice), whether that mount has finished, and a file to scroll to
+ * once, which the reader's opening a file sets and the scroll clears.
+ *
+ * @typedef {{drawn: StackComparison | null, shown: string, ready: boolean, jump: string | null}} StackBody
+ */
+
+/** The body before any answer. @type {StackBody} */
+export const NO_BODY = Object.freeze({ drawn: null, shown: "", ready: false, jump: null });
+
+/**
+ * The body after a new answer: its first comparison is drawn; any later one waits for the
+ * reader to take it, and the drawn one stays while the stack is pending or absent.
+ *
+ * @param {StackBody} body
+ * @param {StackEnvelope | null} envelope
+ * @returns {StackBody}
+ */
+export function bodyAnswered(body, envelope) {
+  return comparisonAction(body.drawn?.key ?? null, envelope) === "show"
+    ? { ...body, drawn: envelope?.comparison ?? null }
+    : body;
+}
+
+/**
+ * The body after the reader takes the comparison offered.
+ *
+ * @param {StackBody} body
+ * @param {StackEnvelope | null} envelope
+ * @returns {StackBody}
+ */
+export function bodyTaken(body, envelope) {
+  return comparisonAction(body.drawn?.key ?? null, envelope) === "offer"
+    ? { ...body, drawn: envelope?.comparison ?? null }
+    : body;
+}
+
+/**
+ * The body after the reader opens a tab (*file* "") or a file in Changes, which is scrolled
+ * to once.
+ *
+ * @param {StackBody} body
+ * @param {string} file
+ * @returns {StackBody}
+ */
+export function bodyOpened(body, file) {
+  return { ...body, jump: file === "" ? null : file };
+}
+
+/**
+ * @typedef {{do: "wait"} | {do: "notice", text: string, retry: boolean} | {do: "keep"} | {do: "scroll", file: string} | {do: "mount", key: string, tab: "files" | "docs" | "changes", comparison: StackComparison}} BodyAction
+ */
+
+/**
+ * What the body does now, and the body once it has: `wait` before any answer, a `notice`
+ * while nothing is drawn, `mount` the drawn comparison in the tab when that is not what is
+ * mounted, `scroll` to a file the reader opened once the mount is ready, and otherwise
+ * `keep`, so an answer that changes nothing the body shows leaves the reader where they
+ * are.
+ *
+ * @param {StackBody} body
+ * @param {StackEnvelope | null} envelope
+ * @param {"files" | "docs" | "changes"} tab
+ * @param {number[]} failed
+ * @returns {{action: BodyAction, body: StackBody}}
+ */
+export function bodyPlan(body, envelope, tab, failed) {
+  if (body.drawn === null) {
+    if (envelope === null) {
+      return { action: { do: "wait" }, body };
+    }
+    let text = absentText(envelope.reason);
+    if (envelope.state !== "absent") {
+      const said = fetchText(
+        envelope.pending.filter((number) => !failed.includes(number)),
+        failed,
+        "the stack can be shown",
+      );
+      text = [said.fetching, said.failed].filter((line) => line !== null).join(" ");
+    }
+    return {
+      action: { do: "notice", text, retry: envelope.state !== "absent" && failed.length > 0 },
+      body: { ...body, shown: "", ready: false },
+    };
+  }
+  const key = JSON.stringify([tab, body.drawn.key]);
+  if (key !== body.shown) {
+    return {
+      action: { do: "mount", key, tab, comparison: body.drawn },
+      body: { ...body, shown: key, ready: false },
+    };
+  }
+  if (body.ready && body.jump !== null && tab === "changes") {
+    return { action: { do: "scroll", file: body.jump }, body: { ...body, jump: null } };
+  }
+  return { action: { do: "keep" }, body };
+}
+
+/**
+ * The body once the mount of *key* has finished: ready, and the file to scroll to then,
+ * once, if the reader opened one in Changes.
+ *
+ * @param {StackBody} body
+ * @param {string} key
+ * @returns {{scroll: string | null, body: StackBody}}
+ */
+export function bodyMounted(body, key) {
+  if (key !== body.shown) {
+    return { scroll: null, body };
+  }
+  const changes = JSON.parse(key)[0] === "changes";
+  return {
+    scroll: changes ? body.jump : null,
+    body: { ...body, ready: true, jump: changes ? null : body.jump },
+  };
 }
 
 /**
@@ -223,14 +513,15 @@ export function pollDelay(envelope, visible) {
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
- *   render(model: {envelope: StackEnvelope | null, error: string | null}): void,
+ *   render(model: {envelope: StackEnvelope | null, error: string | null, failed: number[]}): void,
  * }} StackDependencies
  */
 
 /**
- * The poll and the asks of one stack's page. It reads the stack route, asks for each pending
- * member once at its head, sends the top member's automatic ask at its interval while the
- * page is in sight, and renders each answer that changed.
+ * The poll and the asks of one stack's page. It reads the stack route while the page is in
+ * sight, one read at a time, asks for each pending member and again for one refused, sends
+ * the top member's automatic ask at its interval, and renders each answer that changed and
+ * each change in which members it could not fetch.
  *
  * @param {StackDependencies} deps
  * @param {{number: number}} options
@@ -243,30 +534,57 @@ export function createStackController(deps, options) {
   let error = null;
   /** @type {string | null} */
   let etag = null;
-  /** @type {Set<string>} */
-  const asked = new Set();
+  /** Each member's ask, by its number and the head its record has. @type {Map<string, MemberAsk>} */
+  const asks = new Map();
+  /** The members whose fetch ended without a usable record, as last rendered. */
+  let failedShown = "[]";
   /** When the top member was last asked for, by `deps.now()`. @type {number | null} */
   let probedAt = null;
   /** @type {unknown} */
   let timer = null;
   let disposed = false;
+  // One read at a time: a read asked for while one is on its way is made after it, since
+  // the one on its way may have left before what the new one is for.
+  let polling = false;
+  let readAgain = false;
+  // How many reads have been sent, which an ask's answer records so that only a read sent
+  // after it counts as seeing its fetch end.
+  let reads = 0;
 
   /** @param {number} number @param {string | null} held @param {boolean} retry */
-  async function ask(number, held, retry) {
+  async function send(number, held, retry) {
     try {
-      await deps.request("POST", REFRESH_ROUTE, {
+      const response = await deps.request("POST", REFRESH_ROUTE, {
         body: { number, ...(retry ? { retry: true } : {}), ...(held === null ? {} : { held }) },
       });
+      return response.status;
     } catch {
-      // The next poll says what came of it; an ask that did not reach the server is asked
-      // again only at the member's next head, as its own page would not retry either.
+      return null;
     }
   }
 
+  /** @param {{number: number, key: string, retry: boolean}} due */
+  async function ask(due) {
+    const before = asks.get(due.key);
+    asks.set(due.key, {
+      number: due.number,
+      retry: due.retry,
+      phase: "asking",
+      tries: before?.tries ?? 0,
+      due: 0,
+      after: 0,
+    });
+    const status = await send(due.number, null, due.retry);
+    const asked = asks.get(due.key);
+    if (disposed || asked === undefined || asked.phase !== "asking") {
+      return;
+    }
+    asks.set(due.key, askAnswered(asked, status, deps.now(), reads));
+  }
+
   function askWhatIsDue() {
-    for (const due of refreshAsks(envelope, asked)) {
-      asked.add(due.key);
-      void ask(due.number, null, due.retry);
+    for (const due of refreshAsks(envelope, asks, deps.now())) {
+      void ask(due);
     }
     const probe = envelope?.probe ?? null;
     if (
@@ -275,8 +593,21 @@ export function createStackController(deps, options) {
       (probedAt === null || deps.now() - probedAt >= probe.every_s * 1000)
     ) {
       probedAt = deps.now();
-      void ask(probe.number, probe.held, false);
+      void send(probe.number, probe.held, false);
     }
+  }
+
+  /** The next delay: the poll's, or sooner when a refused ask is due before it. */
+  function nextDelay() {
+    let busy = false;
+    let delay = pollDelay(envelope, deps.isVisible(), false);
+    for (const ask of asks.values()) {
+      busy ||= ask.phase === "asking" || ask.phase === "accepted";
+      if (delay !== null && ask.phase === "waiting") {
+        delay = Math.min(delay, Math.max(0, ask.due - deps.now()));
+      }
+    }
+    return busy ? pollDelay(envelope, deps.isVisible(), true) : delay;
   }
 
   async function poll() {
@@ -284,7 +615,15 @@ export function createStackController(deps, options) {
     if (disposed) {
       return;
     }
+    if (polling) {
+      readAgain = true;
+      return;
+    }
+    polling = true;
+    reads += 1;
+    const read = reads;
     let changed = false;
+    let answered = false;
     try {
       const response = await deps.request("GET", route, { etag });
       if (disposed) {
@@ -295,7 +634,9 @@ export function createStackController(deps, options) {
         etag = response.etag;
         error = null;
         changed = true;
+        answered = true;
       } else if (response.status === 304) {
+        answered = true;
         // The answer held is the current one again, so a failure said before is over.
         if (error !== null) {
           error = null;
@@ -314,22 +655,58 @@ export function createStackController(deps, options) {
         error = UNREADABLE;
         changed = true;
       }
+    } finally {
+      polling = false;
+    }
+    if (answered) {
+      const next = asksAfterRead(envelope, asks, read, deps.now(), reads);
+      asks.clear();
+      for (const [key, ask] of next) {
+        asks.set(key, ask);
+      }
+    }
+    const failed = failedMembers(envelope, asks);
+    if (JSON.stringify(failed) !== failedShown) {
+      failedShown = JSON.stringify(failed);
+      changed = true;
     }
     if (changed) {
-      deps.render({ envelope, error });
+      deps.render({ envelope, error, failed });
     }
     askWhatIsDue();
-    timer = deps.schedule(() => void poll(), pollDelay(envelope, deps.isVisible()));
+    if (readAgain) {
+      readAgain = false;
+      return poll();
+    }
+    const delay = nextDelay();
+    if (delay !== null) {
+      timer = deps.schedule(() => void poll(), delay);
+    }
+  }
+
+  /** Read the stack now, as the first read and a page coming back into sight do. */
+  function start() {
+    if (timer !== null) {
+      deps.cancel(timer);
+      timer = null;
+    }
+    return poll();
   }
 
   return Object.freeze({
-    /** Read the stack now, as the first read and a visible page's return do. */
-    start() {
-      if (timer !== null) {
-        deps.cancel(timer);
-        timer = null;
+    start,
+    /** Ask again for each member whose fetch failed, as the reader's Retry does. */
+    retry() {
+      for (const [key, ask] of asks) {
+        if (ask.phase === "failed") {
+          asks.delete(key);
+        }
       }
-      return poll();
+      if (failedShown !== "[]") {
+        failedShown = "[]";
+        deps.render({ envelope, error, failed: [] });
+      }
+      return start();
     },
     envelope: () => envelope,
     dispose() {
@@ -438,14 +815,14 @@ export function mountStackPage(container, ctx, mb) {
   // choice decides once the stack is read.
   let routeTab = typeof ctx.tab === "string" ? ctx.tab : "";
   let tab = shownTab(routeTab, null);
-  /** @type {string} */
-  let file = "";
   /** @type {StackEnvelope | null} */
   let envelope = null;
-  /** The comparison drawn, which a later one is offered beside. @type {StackComparison | null} */
-  let drawn = null;
-  /** What the body shows: the tab and the comparison's key. */
-  let bodyKey = "";
+  /** @type {string | null} */
+  let error = null;
+  /** @type {number[]} */
+  let failed = [];
+  /** What the body shows (`bodyPlan`). @type {StackBody} */
+  let shown = NO_BODY;
   /** @type {{dispose?: () => void, scrollToFile?: (path: string) => unknown} | null} */
   let handle = null;
   let resolveReady = () => {};
@@ -476,6 +853,16 @@ export function mountStackPage(container, ctx, mb) {
       { signal: listening.signal },
     );
     return anchor;
+  }
+
+  /**
+   * @param {string} label
+   * @param {() => void} action
+   */
+  function button(label, action) {
+    const node = h("button", { type: "button", class: "btn github-pull-stack-page-take" }, [label]);
+    node.addEventListener("click", action, { signal: listening.signal });
+    return node;
   }
 
   /** @param {number} member @param {string} path */
@@ -540,9 +927,11 @@ export function mountStackPage(container, ctx, mb) {
           ]),
           ...(member.in_top === false
             ? [h("span", { class: "github-pull-stack-page-note" }, ["not in the top"])]
-            : member.pending
-              ? [h("span", { class: "github-pull-stack-page-note" }, ["fetching"])]
-              : []),
+            : failed.includes(member.number)
+              ? [h("span", { class: "github-pull-stack-page-note" }, ["could not fetch"])]
+              : member.pending
+                ? [h("span", { class: "github-pull-stack-page-note" }, ["fetching"])]
+                : []),
         ]),
       );
     }
@@ -586,46 +975,46 @@ export function mountStackPage(container, ctx, mb) {
     header.replaceChildren(title, ...lines, members);
   }
 
-  /** @param {string | null} message */
-  function paintStatus(message) {
-    const action = comparisonAction(drawn?.key ?? null, envelope);
-    const nodes = [];
-    if (message !== null) {
-      // A failed read keeps the last answer drawn, so it is a warning; with none, an error.
-      const severity = envelope === null ? "error" : "warning";
-      nodes.push(
-        h(
-          "div",
-          {
-            class: "notice github-pull-notice",
-            "data-severity": severity,
-            role: severity === "error" ? "alert" : "status",
-          },
-          [message],
-        ),
-      );
-    }
-    if (action === "offer") {
-      const take = h("button", { type: "button", class: "btn github-pull-stack-page-take" }, [
-        "Show the new comparison",
-      ]);
-      take.addEventListener(
-        "click",
-        () => {
-          drawn = envelope?.comparison ?? null;
-          paintStatus(null);
-          void paintBody(true);
-        },
-        { signal: listening.signal },
-      );
-      nodes.push(
-        h("div", { class: "notice github-pull-notice" }, [
-          "This stack has changed since its comparison was drawn. ",
-          take,
-        ]),
-      );
-    }
-    status.replaceChildren(...nodes);
+  /**
+   * A notice as the page draws it, with its action's button.
+   *
+   * @param {StackNotice} notice
+   */
+  function noticeNode(notice) {
+    const severity = notice.severity;
+    return h(
+      "div",
+      {
+        class: "notice github-pull-notice",
+        ...(severity === null
+          ? {}
+          : { "data-severity": severity, role: severity === "error" ? "alert" : "status" }),
+      },
+      [
+        notice.text,
+        ...(notice.action === "take"
+          ? [" ", button("Show the new comparison", take)]
+          : notice.action === "retry"
+            ? [" ", button("Retry", retry)]
+            : []),
+      ],
+    );
+  }
+
+  function paintStatus() {
+    status.replaceChildren(
+      ...statusNotices(envelope, shown.drawn?.key ?? null, error, failed).map(noticeNode),
+    );
+  }
+
+  function take() {
+    shown = bodyTaken(shown, envelope);
+    paintStatus();
+    void paintBody();
+  }
+
+  function retry() {
+    void controller.retry();
   }
 
   function disposeBody() {
@@ -633,36 +1022,46 @@ export function mountStackPage(container, ctx, mb) {
     handle = null;
   }
 
-  /** @param {boolean} [force] */
-  async function paintBody(force = false) {
-    if (envelope === null) {
+  async function paintBody() {
+    const plan = bodyPlan(shown, envelope, tab, failed);
+    shown = plan.body;
+    const action = plan.action;
+    if (action.do === "wait" || action.do === "keep") {
       return;
     }
-    if (envelope.state !== "current" || drawn === null) {
+    if (action.do === "scroll") {
+      handle?.scrollToFile?.(action.file);
+      return;
+    }
+    if (action.do === "notice") {
       disposeBody();
-      bodyKey = "";
       body.replaceChildren(
-        h("div", { class: "notice github-pull-notice" }, [
-          envelope.state === "pending"
-            ? `Fetching ${envelope.pending.map((member) => `#${member}`).join(", ")} before the stack can be shown.`
-            : absentText(envelope.reason),
-        ]),
+        noticeNode({
+          text: action.text,
+          severity: action.retry ? "warning" : null,
+          action: action.retry ? "retry" : null,
+        }),
       );
       return;
     }
-    const key = JSON.stringify([tab, drawn.key]);
-    if (!force && key === bodyKey) {
-      if (tab === "changes" && file) {
-        handle?.scrollToFile?.(file);
-      }
-      return;
-    }
-    bodyKey = key;
+    const key = action.key;
     disposeBody();
-    const comparison = drawn;
     const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
     body.replaceChildren(host);
-    const owns = () => !listening.signal.aborted && bodyKey === key;
+    const owns = () => !listening.signal.aborted && shown.shown === key;
+    /** @param {{dispose?: () => void, scrollToFile?: (path: string) => unknown} | null} mounted */
+    const adopt = (mounted) => {
+      if (!owns()) {
+        mounted?.dispose?.();
+        return;
+      }
+      handle = mounted;
+      const done = bodyMounted(shown, key);
+      shown = done.body;
+      if (done.scroll !== null) {
+        handle?.scrollToFile?.(done.scroll);
+      }
+    };
     try {
       await mb.ensureKindAssets("diff");
       const view = /** @type {any} */ (mb.getRegisteredView("diff", "diff"));
@@ -673,45 +1072,45 @@ export function mountStackPage(container, ctx, mb) {
         host.textContent = "Changes could not be shown. Reload the page to try again.";
         return;
       }
-      const shown = diffComparison(comparison);
-      if (tab === "files") {
-        const raw = await view.prefetch(shown, listening.signal);
+      const comparison = diffComparison(action.comparison);
+      if (action.tab === "files") {
+        const raw = await view.prefetch(comparison, listening.signal);
         if (!owns()) {
           return;
         }
         host.classList.add("github-pull-summary");
-        handle = await view.summary(host, {
-          raw,
-          open: true,
+        adopt(
+          await view.summary(host, {
+            raw,
+            open: true,
+            fileMarks: marksFor,
+            openFile: (/** @type {string} */ path) =>
+              open({ number, tab: "changes", file: path, stack: true }),
+          }),
+        );
+        return;
+      }
+      const docs = action.tab === "docs";
+      adopt(
+        await view.render(host, {
+          comparisonSignal: listening.signal,
+          comparison,
+          summary: false,
           fileMarks: marksFor,
-          openFile: (/** @type {string} */ path) =>
-            open({ number, tab: "changes", file: path, stack: true }),
-        });
-        return;
-      }
-      const docs = tab === "docs";
-      const mounted = await view.render(host, {
-        comparisonSignal: listening.signal,
-        comparison: shown,
-        summary: false,
-        fileMarks: marksFor,
-        markdownHoldMs: FIRST_SCREEN_MS,
-        ...(docs
-          ? { group: DOCS_GROUP, ...DOCS_DRAWING, emptyText: "No documents changed in this stack." }
-          : {
-              ...CHANGES_DRAWING,
-              openFile: (/** @type {string} */ path) =>
-                open({ number, tab: "changes", file: path, stack: true }),
-            }),
-      });
-      if (!owns()) {
-        mounted?.dispose?.();
-        return;
-      }
-      handle = mounted;
-      if (tab === "changes" && file) {
-        handle?.scrollToFile?.(file);
-      }
+          markdownHoldMs: FIRST_SCREEN_MS,
+          ...(docs
+            ? {
+                group: DOCS_GROUP,
+                ...DOCS_DRAWING,
+                emptyText: "No documents changed in this stack.",
+              }
+            : {
+                ...CHANGES_DRAWING,
+                openFile: (/** @type {string} */ path) =>
+                  open({ number, tab: "changes", file: path, stack: true }),
+              }),
+        }),
+      );
     } catch (failure) {
       if (owns()) {
         console.error("metabrowser github: the stack's diff could not load", failure);
@@ -754,13 +1153,13 @@ export function mountStackPage(container, ctx, mb) {
       isVisible: () => document.visibilityState === "visible",
       render(model) {
         envelope = model.envelope;
-        if (comparisonAction(drawn?.key ?? null, envelope) === "show") {
-          drawn = envelope?.comparison ?? null;
-        }
+        error = model.error;
+        failed = model.failed;
+        shown = bodyAnswered(shown, envelope);
         tab = shownTab(routeTab, envelope);
         paintHeader();
         paintTabs();
-        paintStatus(model.error);
+        paintStatus();
         void paintBody();
         resolveReady();
       },
@@ -781,7 +1180,7 @@ export function mountStackPage(container, ctx, mb) {
   function setTab(next) {
     routeTab = next;
     tab = shownTab(next, envelope);
-    file = "";
+    shown = bodyOpened(shown, "");
     paintTabs();
     void paintBody();
   }
@@ -790,7 +1189,7 @@ export function mountStackPage(container, ctx, mb) {
   function showFile(path) {
     routeTab = "changes";
     tab = "changes";
-    file = path;
+    shown = bodyOpened(shown, path);
     paintTabs();
     void paintBody();
   }
