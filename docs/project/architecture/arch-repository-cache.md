@@ -162,11 +162,13 @@ A home that is `f01` is renamed once, straight to its `f03` names, and the step 
 `f02` that follows finds nothing left to rename.
 The two have different consumers.
 `f01` is released data, since v0.12.0 wrote it.
-`f02` was never released: it exists only in the homes of development builds, so the code
-that recognises its store keys is deleted before the release that carries `f03`
-(`mb-t7wx`). Each entry is renamed where it stands, and a store is moved into `repos/`
-by the same atomic, no-replace rename that respells its key; the skeleton has made
-`repos/` already, so the parent is not renamed in one step.
+`f02` is released data too.
+No release ended on it, but v0.13.0 upgrades an `f01` home through it and records the
+layout after each step, so an upgrade stopped between the two leaves `f02` on disk.
+The code that recognises its store keys therefore stays for as long as such a home can
+exist (`mb-t7wx`). Each entry is renamed where it stands, and a store is moved into
+`repos/` by the same atomic, no-replace rename that respells its key; the skeleton has
+made `repos/` already, so the parent is not renamed in one step.
 Sources go first: `source.yml` records its slug and validates it against the identity,
 and `f03` spells a slug in a way a `RepositorySource/v1` record cannot hold, so the
 record is a new contract, `/v2`. The migration reads the old record as the YAML it is
