@@ -457,6 +457,38 @@ Raise it with the maintainers if a change needs a different answer, and revisit 
 table when the deciding question’s answer changes: a first external plugin author, a
 published format, or a client outside this repository.
 
+## Correct by Construction
+
+Prefer a construction that makes a mistake impossible to a test that catches it.
+A test that restates what the code says is a second copy of the code: every intended
+change must then be made twice, and the test still passes when both copies are wrong the
+same way.
+
+- **Single-source a rule the product repeats.** When several surfaces must look or
+  behave alike, such as an age’s freshness ink, the order of a pull request’s title,
+  stack place, number, and author, or the highlight on a diff’s changed blocks, give
+  them one helper, builder, or token, and remove the local overrides that let one
+  surface drift. Then nothing per-surface remains to test.
+- **Prefer a mechanism that cannot produce the bug.** For example, one background that
+  spans each run of changed blocks cannot leave gaps between them, whereas a background
+  on each block, corrected with margin fix-ups, can.
+- **Test invariants, not the source.** A test should state a property that must hold
+  whatever the implementation, such as first paint equals final layout, an address
+  round-trips, a count matches its list, or a route’s output survives a restart.
+  Avoid tests that only assert a colour, a class name, a CSS value, or an order that the
+  code already spells out.
+- **Guard the mechanism, not its output.** Where a construction can be bypassed, a cheap
+  structural check that every caller uses it (for instance, that no stylesheet colours
+  an age except the shared rule) is worth having.
+  It enforces one rule, rather than restating each result.
+- **Measure, then keep the number with its constant.** Measure layout and performance
+  while developing, and record the measurement beside the constant it sets, as
+  [Values live in code](../AGENTS.md#documentation-and-public-hygiene) asks.
+  Do not turn a measurement into a pixel or colour assertion.
+
+When a change makes an existing test purely duplicative, delete that test in the same
+change and say so in the pull request.
+
 ## Python
 
 [AGENTS.md](../AGENTS.md#python-and-dependencies) sets the Python rules.

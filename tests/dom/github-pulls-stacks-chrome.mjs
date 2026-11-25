@@ -139,6 +139,14 @@ const LIST = `(() => {
         members: [],
       };
       stacks.push(open);
+    } else if (row.classList.contains("github-pulls-whole-row") && open !== null) {
+      // The stack's Whole stack row, the last of its set, under its members (mb-cm31).
+      open.whole = {
+        text: row.textContent,
+        name: row.getAttribute("aria-label"),
+        href: row.getAttribute("href"),
+        place: row.getAttribute("aria-posinset") + "/" + row.getAttribute("aria-setsize"),
+      };
     } else if (row.getAttribute("aria-level") === "2" && open !== null) {
       const place = row.querySelector(".github-pulls-place");
       open.members.push({
@@ -685,6 +693,20 @@ try {
           )
         : /^Stack #286: .+; 4 pull requests$/.test(first?.name ?? ""),
       first?.name,
+    );
+    // Each open stack's last row is its Whole stack row (mb-cm31), a link to the stack's own
+    // page, the last of the stack's set.
+    check(
+      "each open stack ends in its Whole stack row, which links to the stack's page",
+      list.stacks.every(
+        (stack) =>
+          stack.expanded !== "true" ||
+          (stack.whole?.text === "Whole stack" &&
+            stack.whole.href === `/stack/${stack.stack}` &&
+            stack.whole.name === `Whole stack, Stack #${stack.stack}` &&
+            stack.whole.place === `${stack.members.length + 1}/${stack.members.length + 1}`),
+      ),
+      JSON.stringify(list.stacks.map(({ stack, expanded, whole }) => ({ stack, expanded, whole }))),
     );
     check(
       "#10, in two stacks, sits once, and its badge names the other",

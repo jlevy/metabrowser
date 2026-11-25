@@ -69,9 +69,12 @@ import {
   groupByStack,
   stackCaption,
   stackGroupHint,
+  stackLabel,
   stackMembership,
   stackRowKey,
   watchStacks,
+  wholeStackOfKey,
+  wholeStackRowKey,
 } from "./pull-stacks.js";
 import { displayState, noteListed, PULL_STATES, pullStateIcon } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
@@ -650,6 +653,7 @@ function pinChanged(response) {
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
  *   reveal(number: number): void,
+ *   openStack?(number: number, replace: boolean): void,
  *   markOutside?(text: string | null): void,
  *   focusPlace?(): "list" | "body" | "elsewhere",
  *   open(route: {
@@ -731,7 +735,10 @@ function contentOf(envelope) {
  * then its pull requests, then every pull request in no stack. The keys walk the rows as
  * they are drawn. A stack's row is a row of the tree as a folder is: J and K stop on it and
  * open nothing, Enter and Space open or close it, Right opens it or goes to its first pull
- * request, and Left closes it, or from a pull request in it goes to it.
+ * request, and Left closes it, or from a pull request in it goes to it. Under an open stack's
+ * pull requests is its Whole stack row, which opens the stack's own page as a pull request's
+ * row opens its page: J and K open it, Enter and Space open it, Left goes to its stack's row,
+ * and while the address is that page it takes the current-row mark (`setCurrent`'s *stack*).
  *
  * @param {PullsDependencies} deps
  * @param {{filter?: string, current?: number | null, checkout?: boolean}} [options]
@@ -745,6 +752,17 @@ export function createPullsController(deps, options = {}) {
     : "open";
   /** @type {number | null} */
   let current = options.current ?? null;
+  /** The native stack whose own page the address names (`/stack/<n>`), whose Whole stack
+   * row takes the current-row mark; null at any other address.
+   * @type {number | null} */
+  let currentStack = null;
+  /**
+   * Whether *currentStack*'s Whole stack row is still to be revealed: an address of the
+   * stack's page can come before the list draws the row, before the stacks are known or a
+   * read brings a member, and the row is revealed when it is drawn, as a pull request's row
+   * is once the list holds it (*revealPending*).
+   */
+  let wholeRevealPending = false;
   let revealCurrent = true;
   /**
    * The pull request a navigation asked the list to reveal (docs/design-system.md,
@@ -971,9 +989,21 @@ export function createPullsController(deps, options = {}) {
     return grouped;
   }
 
-  /** The row of a closed stack that holds pull request *number*, if one does. @param {number} number */
+  /** The row of a closed stack that holds pull request *number*, or whose Whole stack row
+   * *number* keys, if one does. @param {number} number */
   function closedStackOf(number) {
-    return grouping().closed.find((row) => row.members.includes(number)) ?? null;
+    const whole = wholeStackOfKey(number);
+    return (
+      grouping().closed.find((row) =>
+        whole === null ? row.members.includes(number) : row.stack.number === whole,
+      ) ?? null
+    );
+  }
+
+  /** The row key the current-row mark is on: the current pull request's, or the Whole stack
+   * row of the stack whose page the address names. */
+  function currentKey() {
+    return current ?? (currentStack === null ? null : wholeStackRowKey(currentStack));
   }
 
   /** The stack a drawn pull request's row sits under, if any. @param {number} number */
@@ -1777,15 +1807,19 @@ export function createPullsController(deps, options = {}) {
   function settleAnchor(follow = false) {
     const order = grouping();
     const hiddenIn = (/** @type {number | null} */ number) => {
-      const stack = number === null || number < 0 ? null : closedStackOf(number);
+      const stack =
+        number === null || (number < 0 && wholeStackOfKey(number) === null)
+          ? null
+          : closedStackOf(number);
       return stack === null ? null : stack.key;
     };
+    const marked = currentKey();
     const next =
       !follow && anchor !== null && anchor < 0 && order.at.has(anchor)
         ? anchor
-        : current !== null && order.at.has(current)
-          ? current
-          : (hiddenIn(current) ??
+        : marked !== null && order.at.has(marked)
+          ? marked
+          : (hiddenIn(marked) ??
             (anchor !== null && order.at.has(anchor) && (anchorChosen || order.rows === null)
               ? anchor
               : null) ??
@@ -1824,6 +1858,60 @@ export function createPullsController(deps, options = {}) {
       chaseCurrent();
     }
     noteOutside();
+  }
+
+  /**
+   * Show the Whole stack row of the stack whose page the address names, as a pull request's
+   * row is shown (`showCurrent`): its stack opens if the reader closed it, and the row scrolls
+   * into view. A stack none of whose pull requests this list holds has no row to show.
+   *
+   * @param {number} stack
+   */
+  function showWholeStack(stack) {
+    if (closedStacks.delete(stack)) {
+      groupingInputs += 1;
+      render();
+    }
+    settleAnchor(true);
+    wholeRevealPending = true;
+    revealWholeStack();
+  }
+
+  /** Reveal the current stack's Whole stack row if it is still to be revealed and is drawn
+   * now (*wholeRevealPending*). */
+  function revealWholeStack() {
+    if (!wholeRevealPending || currentStack === null) {
+      return;
+    }
+    const key = wholeStackRowKey(currentStack);
+    if (!grouping().at.has(key)) {
+      return;
+    }
+    wholeRevealPending = false;
+    if (revealCurrent) {
+      deps.reveal(key);
+    }
+  }
+
+  /**
+   * Open the page of *stack*, as a row's open opens a pull request's (`openRow`): its Whole
+   * stack row takes the current-row mark at once, and the address follows. *replace* is a
+   * key's, which replaces the history entry, as a skim of pull requests does.
+   *
+   * @param {number} stack
+   * @param {boolean} replace
+   */
+  function openStack(stack, replace) {
+    cancelCoreRetry();
+    opening += 1;
+    const previous = currentKey();
+    const next = wholeStackRowKey(stack);
+    if (previous !== next) {
+      current = null;
+      currentStack = stack;
+      deps.markCurrent(previous, next);
+    }
+    deps.openStack?.(stack, replace);
   }
 
   /**
@@ -2291,6 +2379,9 @@ export function createPullsController(deps, options = {}) {
     const awaited = first || (revealPending && sought === current);
     if (awaited && shown && current !== null && list.keys.has(current)) {
       revealRow(current);
+    }
+    if (shown) {
+      revealWholeStack();
     }
     if (placeSought(true)) {
       // The list it moved to reveals it, and this list's reads end with its filter.
@@ -2933,6 +3024,7 @@ export function createPullsController(deps, options = {}) {
         chasing = false;
         revealRow(current);
       }
+      revealWholeStack();
       if (placeSought()) {
         return;
       }
@@ -3232,6 +3324,7 @@ export function createPullsController(deps, options = {}) {
     groupingInputs += 1;
     render();
     settleAnchor();
+    revealWholeStack();
   }
 
   /**
@@ -3295,6 +3388,22 @@ export function createPullsController(deps, options = {}) {
     if (order.keys.length - target <= 2 && list.nextAfter !== null) {
       void loadWindow();
     }
+    const whole = wholeStackOfKey(key);
+    if (whole !== null) {
+      // A Whole stack row opens its page as a pull request's row does: at once for a press,
+      // and for a held key once it stops there.
+      clearWalk();
+      anchorAt(key);
+      if (how.repeat === true) {
+        walkTimer = deps.schedule(() => {
+          walkTimer = null;
+          openStack(whole, true);
+        }, WALK_SETTLE_MS);
+      } else {
+        openStack(whole, true);
+      }
+      return true;
+    }
     if (key < 0) {
       clearWalk();
       anchorAt(key);
@@ -3317,6 +3426,68 @@ export function createPullsController(deps, options = {}) {
       void openRow(number, REFRESH_ASK_MS, true, wasCurrent);
     }
     return true;
+  }
+
+  /**
+   * The pull request the address names, for `setCurrent`.
+   *
+   * @param {number | null} number
+   * @param {{preserveScroll?: boolean, again?: boolean}} options
+   */
+  function followPull(number, options) {
+    if (options.preserveScroll) {
+      revealCurrent = false;
+      seek(null);
+    }
+    if (number === current) {
+      if (options.again === true && number !== null) {
+        revealCurrent = true;
+        seek(number);
+        showCurrent(number);
+      }
+      return;
+    }
+    revealCurrent = !options.preserveScroll;
+    seek(options.preserveScroll ? null : number);
+    // The address moved by itself, by Back or by a link on the page: a row that is still
+    // waiting for its record to open does not open over it.
+    cancelCoreRetry();
+    opening += 1;
+    if (walkingTo !== null && walkingTo !== number) {
+      clearWalk();
+    }
+    const previous = current;
+    current = number;
+    deps.markCurrent(previous, number);
+    showCurrent(number);
+    // Back, a link, or a stack walk on the page: its neighbours are next all the same.
+    warmAhead();
+  }
+
+  /**
+   * The native stack whose page the address names, or null, for `setCurrent`: its Whole
+   * stack row takes the current-row mark and is shown as a pull request's row is, and shown
+   * again only *again*, by an open of the page shown.
+   *
+   * @param {number | null} stack
+   * @param {{preserveScroll?: boolean, again?: boolean}} options
+   */
+  function followStack(stack, options) {
+    if (stack === currentStack) {
+      if (stack !== null && options.again === true) {
+        revealCurrent = true;
+        showWholeStack(stack);
+      }
+      return;
+    }
+    const previous = currentStack === null ? null : wholeStackRowKey(currentStack);
+    currentStack = stack;
+    wholeRevealPending = false;
+    deps.markCurrent(previous, stack === null ? null : wholeStackRowKey(stack));
+    if (stack !== null) {
+      revealCurrent = !options.preserveScroll;
+      showWholeStack(stack);
+    }
   }
 
   return Object.freeze({
@@ -3363,42 +3534,20 @@ export function createPullsController(deps, options = {}) {
      * only follows it, and no fetch starts. The current number named again moves nothing,
      * as another tab of its page or one of its changed files does, unless *again* says the
      * reader opened the pull request shown again: then its stack opens and its row scrolls
-     * into view (docs/design-system.md, "Navigation Reveals the Item").
+     * into view (docs/design-system.md, "Navigation Reveals the Item"). *stack*, with no
+     * pull request, is the native stack whose own page the address names, whose Whole stack
+     * row is marked and shown the same way.
      *
      * @param {number | null} number
-     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean, stack?: number | null}} [options]
      */
     setCurrent(number, options = {}) {
       if (disposed) {
         return;
       }
-      if (options.preserveScroll) {
-        revealCurrent = false;
-        seek(null);
-      }
-      if (number === current) {
-        if (options.again === true && number !== null) {
-          revealCurrent = true;
-          seek(number);
-          showCurrent(number);
-        }
-        return;
-      }
-      revealCurrent = !options.preserveScroll;
-      seek(options.preserveScroll ? null : number);
-      // The address moved by itself, by Back or by a link on the page: a row that is still
-      // waiting for its record to open does not open over it.
-      cancelCoreRetry();
-      opening += 1;
-      if (walkingTo !== null && walkingTo !== number) {
-        clearWalk();
-      }
-      const previous = current;
-      current = number;
-      deps.markCurrent(previous, number);
-      showCurrent(number);
-      // Back, a link, or a stack walk on the page: its neighbours are next all the same.
-      warmAhead();
+      followPull(number, options);
+      // After the pull request's, so the mark the address leaves goes before the one it gives.
+      followStack(number === null ? (options.stack ?? null) : null, options);
     },
     /**
      * Home (static/main-tabs.js, `goHome`): the rows as a fresh load of `/view/` draws them,
@@ -3448,10 +3597,35 @@ export function createPullsController(deps, options = {}) {
       }
       void openRow(number, 0, false, wasCurrent);
     },
-    /** Open the anchor row on Enter; on a stack's row, open or close the stack. */
+    /**
+     * A reader pressed a stack's Whole stack row: it takes the anchor and opens the stack's
+     * page.
+     *
+     * @param {number} stack
+     */
+    activateStack(stack) {
+      if (disposed) {
+        return;
+      }
+      anchorChosen = true;
+      const key = wholeStackRowKey(stack);
+      if (anchor !== key) {
+        const previous = anchor;
+        anchor = key;
+        deps.markAnchor(previous, key, false);
+      }
+      openStack(stack, false);
+    },
+    /** Open the anchor row on Enter; on a stack's row, open or close the stack; on a Whole
+     * stack row, open the stack's page. */
     activateAnchor() {
       if (disposed || anchor === null) {
         return false;
+      }
+      const whole = wholeStackOfKey(anchor);
+      if (whole !== null) {
+        openStack(whole, false);
+        return true;
       }
       if (anchor < 0) {
         setStackOpen(-anchor);
@@ -3516,7 +3690,7 @@ export function createPullsController(deps, options = {}) {
     setStackOpen,
     /** Right on a stack's row: open it, or go to its first pull request. */
     enterStack() {
-      if (disposed || anchor === null || anchor >= 0) {
+      if (disposed || anchor === null || anchor >= 0 || wholeStackOfKey(anchor) !== null) {
         return false;
       }
       if (!setStackOpen(-anchor, true)) {
@@ -3524,10 +3698,17 @@ export function createPullsController(deps, options = {}) {
       }
       return true;
     },
-    /** Left on a stack's row closes it; on a pull request in a stack it goes to the stack. */
+    /** Left on a stack's row closes it; on a pull request in a stack, or its Whole stack row, it
+     * goes to the stack. */
     leaveToStack() {
       if (disposed || anchor === null) {
         return false;
+      }
+      const whole = wholeStackOfKey(anchor);
+      if (whole !== null) {
+        clearWalk();
+        anchorAt(stackRowKey(whole));
+        return true;
       }
       if (anchor < 0) {
         setStackOpen(-anchor, false);
@@ -3828,7 +4009,8 @@ export function mountPullsPanel(container, ctx, mb) {
    * request's row has its level and, under a stack's row, its stack and place in it.
    *
    * @typedef {{kind: "pull", key: number, row: PullRow, level: number, stack: number | null, posinset: number | null, setsize: number | null}
-   *   | {kind: "stack", key: number, group: import("./pull-stacks.js").StackGroupRow}} PaintedPlace
+   *   | {kind: "stack", key: number, group: import("./pull-stacks.js").StackGroupRow}
+   *   | {kind: "whole", key: number, whole: import("./pull-stacks.js").WholeStackRow}} PaintedPlace
    */
   /** @type {PaintedPlace[]} */
   let paintedRows = [];
@@ -3847,19 +4029,39 @@ export function mountPullsPanel(container, ctx, mb) {
    */
   /** @type {Map<number, PaintedStack>} */
   const paintedStacks = new Map();
+  /**
+   * A stack's Whole stack row as painted, by its row key (`wholeStackRowKey`): its item and
+   * its link, and the key of what it shows.
+   *
+   * @typedef {{item: HTMLElement, row: HTMLElement, key: string}} PaintedWhole
+   */
+  /** @type {Map<number, PaintedWhole>} */
+  const paintedWholes = new Map();
   /** The stacks whose rows were in view at the last measure, whose members a prefetch names
    * first. */
   /** @type {Set<number>} */
   let stacksInView = new Set();
-  /** A drawn row's treeitem by its key: a pull request's number, or a stack's row key. */
+  /** A drawn row's treeitem by its key: a pull request's number, a stack's row key, or a
+   * Whole stack row's. */
   const rowElement = (/** @type {number} */ key) =>
-    key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.row;
+    wholeStackOfKey(key) !== null
+      ? paintedWholes.get(key)?.row
+      : key < 0
+        ? paintedStacks.get(key)?.row
+        : painted.get(key)?.row;
   /**
    * What a row's item is on screen: a pull request's lines, its zone, which hovers and
-   * takes the ring as one (mb-1z7j), or a stack's one row.
+   * takes the ring as one (mb-1z7j), or a stack's or a Whole stack row's one row.
    */
   const itemElement = (/** @type {number} */ key) =>
-    key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.zone;
+    key < 0 ? rowElement(key) : painted.get(key)?.zone;
+  /** A drawn row's list item by its key, whatever its kind. */
+  const listItem = (/** @type {number} */ key) =>
+    wholeStackOfKey(key) !== null
+      ? paintedWholes.get(key)?.item
+      : key < 0
+        ? paintedStacks.get(key)?.item
+        : painted.get(key)?.item;
   const rowWindow = createPullsWindow({
     estimate: ROW_ESTIMATE_PX,
     overscan: PULL_ROWS_OVERSCAN,
@@ -4200,7 +4402,7 @@ export function mountPullsPanel(container, ctx, mb) {
   /**
    * The row whose page holds the pane: current, and the tree's one selected item.
    *
-   * @param {HTMLAnchorElement} row
+   * @param {HTMLElement} row
    * @param {boolean} on
    */
   function markShown(row, on) {
@@ -4569,6 +4771,8 @@ export function mountPullsPanel(container, ctx, mb) {
         const row = entry.kind === "pull" ? byNumber.get(entry.number) : undefined;
         if (entry.kind === "stack") {
           places.push({ kind: "stack", key: entry.key, group: entry });
+        } else if (entry.kind === "whole") {
+          places.push({ kind: "whole", key: entry.key, whole: entry });
         } else if (row !== undefined) {
           places.push({
             kind: "pull",
@@ -4719,6 +4923,56 @@ export function mountPullsPanel(container, ctx, mb) {
     return entry;
   }
 
+  /**
+   * Draw a stack's Whole stack row, the last under its open stack: a link to the stack's own
+   * page (`/stack/<n>`, stack-page.js), one line in a member's row grid, the stack's Layers
+   * glyph, muted, in the state icon's slot and "Whole stack" where the members' titles start,
+   * as the stack menu's Whole stack row has them (docs/design-system.md, "Stack Groups in the
+   * Pulls Tab"). It takes the current-row mark while the address is the stack's page.
+   *
+   * @param {import("./pull-stacks.js").WholeStackRow} whole
+   */
+  function paintWholeRow(whole) {
+    let entry = paintedWholes.get(whole.key);
+    if (entry === undefined) {
+      const row = h(
+        "a",
+        {
+          class: "github-pulls-row github-pulls-whole-row",
+          role: "treeitem",
+          "aria-level": String(whole.level),
+          "aria-label": `Whole stack, ${stackLabel(whole.stack)}`,
+          href: `/stack/${whole.stack}`,
+          tabindex: "-1",
+        },
+        [
+          h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
+            stackSvg === null ? null : document.importNode(stackSvg, true),
+          ]),
+          h("span", { class: "github-pulls-title github-pulls-whole-title" }, ["Whole stack"]),
+        ],
+      );
+      row.dataset.stack = String(whole.stack);
+      const item = h("li", { class: "github-pulls-item github-pulls-whole-item", role: "none" }, [
+        row,
+      ]);
+      item.dataset.number = String(whole.key);
+      item.dataset.level = String(whole.level);
+      entry = { item, row, key: "" };
+      paintedWholes.set(whole.key, entry);
+      rowSizes?.observe(item);
+    }
+    const key = JSON.stringify([whole.posinset, whole.setsize, whole.key === currentRow]);
+    if (entry.key !== key) {
+      entry.key = key;
+      entry.row.setAttribute("aria-posinset", String(whole.posinset));
+      entry.row.setAttribute("aria-setsize", String(whole.setsize));
+      markShown(entry.row, whole.key === currentRow);
+    }
+    entry.row.setAttribute("tabindex", whole.key === anchorRow ? "0" : "-1");
+    return entry;
+  }
+
   function visiblePlace() {
     const view = tab.scrollRoot?.getBoundingClientRect();
     if (view === undefined) {
@@ -4729,6 +4983,9 @@ export function mountPullsPanel(container, ctx, mb) {
     const visible = [
       ...[...painted.entries()].map(([key, entry]) => /** @type {const} */ ([key, entry.item])),
       ...[...paintedStacks.entries()].map(
+        ([key, entry]) => /** @type {const} */ ([key, entry.item]),
+      ),
+      ...[...paintedWholes.entries()].map(
         ([key, entry]) => /** @type {const} */ ([key, entry.item]),
       ),
     ].sort((left, right) => (rowIndices.get(left[0]) ?? 0) - (rowIndices.get(right[0]) ?? 0));
@@ -4951,6 +5208,13 @@ export function mountPullsPanel(container, ctx, mb) {
         paintedStacks.delete(key);
       }
     }
+    for (const [key, entry] of paintedWholes) {
+      if (!wanted.has(key)) {
+        rowSizes?.unobserve(entry.item);
+        entry.item.remove();
+        paintedWholes.delete(key);
+      }
+    }
     /** @type {Node[]} */
     const nodes = [];
     const usedGaps = new Set();
@@ -4974,6 +5238,10 @@ export function mountPullsPanel(container, ctx, mb) {
       const placed = paintedRows[part.index];
       if (placed.kind === "stack") {
         nodes.push(paintStackRow(placed.group).item);
+        continue;
+      }
+      if (placed.kind === "whole") {
+        nodes.push(paintWholeRow(placed.whole).item);
         continue;
       }
       const row = placed.row;
@@ -5036,10 +5304,7 @@ export function mountPullsPanel(container, ctx, mb) {
       alignRefreshing(list);
     }
     if (readingPlace !== null && tab.scrollRoot !== null && panelShown) {
-      const item =
-        readingPlace.key < 0
-          ? paintedStacks.get(readingPlace.key)?.item
-          : painted.get(readingPlace.key)?.item;
+      const item = listItem(readingPlace.key);
       if (item !== undefined && view !== undefined) {
         const delta = item.getBoundingClientRect().top - view.top - readingPlace.offset;
         if (Math.abs(delta) >= 0.5) {
@@ -5380,12 +5645,16 @@ export function mountPullsPanel(container, ctx, mb) {
         if (previous !== null && previous !== next) {
           trees.get(previous)?.controller.setCurrent(null);
         }
-        currentRow = next;
-        const leaving = previous === null ? undefined : painted.get(previous)?.row;
+        // A pull request's mark and a Whole stack row's are given and taken in turn
+        // (`followPull`, `followStack`): one leaving clears the row only if it held it.
+        if (next !== null || currentRow === previous) {
+          currentRow = next;
+        }
+        const leaving = previous === null ? undefined : rowElement(previous);
         if (leaving !== undefined) {
           markShown(leaving, false);
         }
-        const arriving = next === null ? undefined : painted.get(next)?.row;
+        const arriving = next === null ? undefined : rowElement(next);
         if (arriving !== undefined) {
           markShown(arriving, true);
         }
@@ -5410,14 +5679,15 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       reveal(number) {
         paintViewport();
-        const entry = painted.get(number);
+        const zone = itemElement(number);
+        const item = listItem(number);
         // The whole item, as a walk brings it (`markAnchor`).
-        entry?.zone.scrollIntoView({ block: "nearest" });
+        zone?.scrollIntoView({ block: "nearest" });
         const view = tab.scrollRoot?.getBoundingClientRect();
         revealedPlace = null;
         // A hidden panel's rows have no place, and its tab's reveal comes when it is shown.
-        if (entry !== undefined && view !== undefined && tab.scrollRoot !== null && panelShown) {
-          const offset = entry.item.getBoundingClientRect().top - view.top;
+        if (item !== undefined && view !== undefined && tab.scrollRoot !== null && panelShown) {
+          const offset = item.getBoundingClientRect().top - view.top;
           revealedPlace = { key: number, offset, scrollTop: tab.scrollRoot.scrollTop };
           readingPlace = { key: number, offset };
         }
@@ -5442,6 +5712,7 @@ export function mountPullsPanel(container, ctx, mb) {
         return list.contains(active) ? "list" : "elsewhere";
       },
       open: (route) => nav.open(route),
+      openStack: (number, replace) => nav.open({ number, tab: "", stack: true, replace }),
       filterChanged: (state) => nav.filterChanged(state),
       warmComparisons: (numbers) => warmer?.want(numbers),
       // The members whose lists the drawn stacks' lines wait for, those in view first, and
@@ -5571,11 +5842,17 @@ export function mountPullsPanel(container, ctx, mb) {
     });
   }
 
-  /** @param {EventTarget | null} target */
-  const rowOf = (target) =>
-    target instanceof Element
-      ? /** @type {HTMLAnchorElement | null} */ (target.closest("a.github-pulls-row"))
-      : null;
+  /**
+   * A pull request's row, not a stack's Whole stack row, which is a row link too.
+   * @param {EventTarget | null} target
+   */
+  const rowOf = (target) => {
+    const row =
+      target instanceof Element
+        ? /** @type {HTMLAnchorElement | null} */ (target.closest("a.github-pulls-row"))
+        : null;
+    return row?.classList.contains("github-pulls-whole-row") ? null : row;
+  };
 
   /** @param {EventTarget | null} target */
   const changeOf = (target) =>
@@ -5613,6 +5890,14 @@ export function mountPullsPanel(container, ctx, mb) {
    */
   function anchorFocusedRow() {
     const active = document.activeElement;
+    const wholeRow = wholeRowOf(active);
+    if (wholeRow !== null) {
+      const key = wholeStackRowKey(Number(wholeRow.dataset.stack));
+      if (paintedWholes.get(key)?.row === wholeRow) {
+        controller.focused(key);
+      }
+      return;
+    }
     const stackRow = stackRowOf(active);
     if (stackRow !== null) {
       const key = stackRowKey(Number(stackRow.dataset.stack));
@@ -5633,9 +5918,24 @@ export function mountPullsPanel(container, ctx, mb) {
     target instanceof Element
       ? /** @type {HTMLElement | null} */ (target.closest(".github-pulls-stack-row"))
       : null;
+  /** @param {EventTarget | null} target */
+  const wholeRowOf = (target) =>
+    target instanceof Element
+      ? /** @type {HTMLElement | null} */ (target.closest(".github-pulls-whole-row"))
+      : null;
   list.addEventListener(
     "click",
     (event) => {
+      const wholeRow = wholeRowOf(event.target);
+      if (wholeRow !== null) {
+        // A link to the stack's page: a plain press opens it in the pane, as a pull request's
+        // row opens its page; a new tab and a copied address are the browser's own.
+        if (isPlainClick(event)) {
+          event.preventDefault();
+          controller.activateStack(Number(wholeRow.dataset.stack));
+        }
+        return;
+      }
       const stackRow = stackRowOf(event.target);
       if (stackRow !== null && isPlainClick(event)) {
         // One gesture, as a folder's: the row takes the anchor and opens or closes.
@@ -5684,6 +5984,11 @@ export function mountPullsPanel(container, ctx, mb) {
   list.addEventListener(
     "focusin",
     (event) => {
+      const wholeRow = wholeRowOf(event.target);
+      if (wholeRow !== null && !movingFocus) {
+        controller.focused(wholeStackRowKey(Number(wholeRow.dataset.stack)));
+        return;
+      }
       const stackRow = stackRowOf(event.target);
       if (stackRow !== null && !movingFocus) {
         controller.focused(stackRowKey(Number(stackRow.dataset.stack)));
@@ -5848,12 +6153,13 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
     /**
-     * The address names a pull request's page, and maybe one file of it. *again* reveals
-     * the pull request already current (the controller's `setCurrent`).
+     * The address names a pull request's page, and maybe one file of it, or, with *stack*, a
+     * native stack's page. *again* reveals the pull request already current (the
+     * controller's `setCurrent`).
      *
      * @param {number | null} number
      * @param {string | null} [file]
-     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean, stack?: number | null}} [options]
      */
     setCurrent(number, file = null, options) {
       if (currentRow !== null && currentRow !== number) {

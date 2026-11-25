@@ -425,40 +425,6 @@
   align-self: baseline;
 }
 
-/* A host's marks on a file (diff-view.js, `fileMarkNodes`): a stack's page names
-   each layer that changes the file by its place, "2/4", a tag that opens the file in
-   that layer. They follow the stats in the file bar's name group, and the stats at a
-   Diff summary row's end, which may be drawn outside the diff's host. */
-.diff-file-marks {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
-  line-height: normal;
-  white-space: nowrap;
-}
-
-.diff-file-marks-row {
-  margin-left: 6px;
-}
-
-.diff-file-mark {
-  padding: 0 var(--compact-chip-padding-inline);
-  border: var(--chip-border) solid var(--border);
-  border-radius: var(--radius-tag);
-  color: var(--muted);
-  font-variant-numeric: var(--tabular-numerals);
-  text-decoration: none;
-}
-
-.diff-file-mark:hover,
-.diff-file-mark:focus-visible {
-  background: var(--hover-bg);
-  color: var(--link);
-}
-
 /* Inline change stats: the +N −N pair in the status palette, beside
    the filename rather than across the row. */
 .metabrowser-diff-host .diff-file-stats {

@@ -1098,7 +1098,7 @@ show: /stack/70
 route: /stack/70
 kind: pull-stack
 views: pull-stack (default)
-model: stack envelope; state=absent reason=not_github tab=files
+model: stack envelope; state=absent reason=not_github tab=changes
 ? 0
 ```
 
