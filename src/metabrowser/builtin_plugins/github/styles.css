@@ -974,9 +974,10 @@
 .github-pull-hunk-line[data-kind="note"] {
   color: var(--muted);
 }
-/* The fold of a hunk's earlier lines, on the `.fold-expander` its summary carries. Native, so
-   the browser holds its state; these say what a fold says in each, and move it as every
-   disclosure moves. The expander's top edge is the card head's rule. */
+/* The fold of a hunk's earlier lines, on the `.fold-expander` its summary carries, which
+   draws the fold's glyph from `details[open]`. Native, so the browser holds its state;
+   these say what a fold says in each, and move it as every disclosure moves. The
+   expander's top edge is the card head's rule. */
 .github-pull-hunk-earlier > .fold-expander {
   padding-inline: var(--github-pull-text-inset);
   border-top: 0;
@@ -991,17 +992,6 @@
 }
 .github-pull-hunk-earlier > .fold-expander::-webkit-details-marker {
   display: none;
-}
-.github-pull-hunk-earlier .toggle-chevron {
-  transition: transform var(--transition-fast);
-}
-.github-pull-hunk-earlier[open] .toggle-chevron {
-  transform: rotate(90deg);
-}
-.github-pull-fold-chevron {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
 }
 .github-pull-hunk-earlier[open] .github-pull-fold-closed,
 .github-pull-hunk-earlier:not([open]) .github-pull-fold-open {

@@ -14,6 +14,8 @@ the keyboard table to the keys the app binds:
   the status tables give are rows, and each row's file says so;
 - two rows naming one upstream glyph draw it the same, and a row's upstream id is the one
   its definition's comment names;
+- a fold expander draws KPress's expand/contract pair, the drawings of KPress's own sprite,
+  and never the registry's chevron;
 - the type registry's shapes are cataloged and named for the categories and formats that
   take them, and its schema permits exactly those shapes;
 - each token a row's ink or size names is declared by a shipped stylesheet;
@@ -38,6 +40,7 @@ from pathlib import Path
 from typing import NamedTuple, get_args
 from urllib.parse import unquote
 
+from metabrowser import kpress_adapter
 from metabrowser.root_identity import KIND_LABELS, IdentityKind
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -96,6 +99,14 @@ _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _CODE_SPAN = re.compile(r"`([^`]+)`")
 _TOKEN = re.compile(r"`(--[\w-]+)`")
 _TOKEN_DECLARATION = re.compile(r"(--[\w-]+)\s*:")
+# A symbol of KPress's icon sprite: its Lucide id and its drawing.
+_KPRESS_SYMBOL = re.compile(r'<symbol id="kpress-icon-([a-z0-9-]+)"[^>]*>(.*?)</symbol>', re.DOTALL)
+# A fold expander's two glyphs, closed and open, by the selector that draws each
+# (docs/design-system.md, "Fold Expanders").
+_FOLD_GLYPHS = {
+    ".fold-expander::before": "chevrons-up-down",
+    '.fold-expander[aria-expanded="true"]::before': "chevrons-down-up",
+}
 
 
 class Row(NamedTuple):
@@ -434,6 +445,27 @@ def test_an_upstream_glyph_is_one_drawing_under_its_own_id() -> None:
 def test_every_masked_glyph_is_a_row() -> None:
     cataloged = {(row.defined_in[0], row.icon) for row in _rows("CSS mask")}
     assert sorted(_mask_glyphs()) == sorted(cataloged)
+
+
+def test_a_fold_expander_draws_kpress_expand_contract_pair() -> None:
+    """A fold's glyphs are KPress's table-of-contents pair, not the chevron a row turns.
+
+    The shell draws them, so a fold outside a rendered document has them too, and they
+    are KPress's drawings under KPress's ids, so the two products' pair is one mark.
+    """
+
+    sprite = kpress_adapter.get_kpress_static_asset("icons/icons.svg").content.decode("utf-8")
+    kpress = {name: _drawing(inner) for name, inner in _KPRESS_SYMBOL.findall(sprite)}
+    masks = _mask_glyphs()
+    folds = {row.icon: row for row in _rows("CSS mask") if row.icon.startswith(".fold-expander")}
+    assert {icon: row.upstream for icon, row in folds.items()} == _FOLD_GLYPHS
+    for icon, upstream in _FOLD_GLYPHS.items():
+        assert folds[icon].defined_in == ("static/styles.css",), icon
+        assert masks[("static/styles.css", icon)] == kpress[upstream], f"{icon} is not KPress's"
+    # The chevron is a row's disclosure, and its row says a fold never takes it.
+    toggle = next(row for row in _rows("Registry") if row.icon == "toggle")
+    assert "Never a fold expander’s" in toggle.meaning
+    assert "fold expanders" not in toggle.meaning
 
 
 def test_every_typed_glyph_is_a_text_row_with_the_files_that_type_it() -> None:

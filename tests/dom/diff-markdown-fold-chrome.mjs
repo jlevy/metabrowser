@@ -11,7 +11,8 @@
 // tests/test_diff_markdown_fold_chrome.py writes FOLD_INPUT ({sheets, answer, quoted,
 // docMaxChars}), copies KPress's stylesheets and faces out of the installed package, owns
 // the profile, and runs this in a process group of its own. FOLD_SHOTS, when set,
-// receives a screenshot of the comparison closed and open.
+// receives a screenshot of the comparison closed and open, and of a code fold bar and a
+// native summary's fold, closed, under the pointer, and open, in each theme.
 //
 // Every fold of a diff draws as one bar: a rendered Markdown file's run of unchanged
 // blocks is the bar a code file's long run of changed lines is, the same element, classes,
@@ -23,6 +24,13 @@
 // them, the bar does not move, and everything after it moves by one amount; closed again,
 // the layout is as it was. A KPress document beside the diff keeps its own `<details>` in
 // KPress's box and ring: the fold bar's rules are the diff's alone.
+//
+// Every fold leads with the shell's expand/contract pair, never the registry's chevron
+// (docs/design-system.md, "Fold Expanders"): `.fold-expander::before`, Lucide
+// chevrons-up-down while closed and chevrons-down-up while open, read from a button's
+// `aria-expanded` and from a native summary's `details[open]`, at the chevron's size,
+// unturned, muted at rest and in the text's ink under the pointer or the focus ring, in
+// the light and the dark theme.
 //
 // Last, a comparison of a quote holding inline code and of a code block (FOLD_INPUT's
 // `quoted` blocks) is drawn beside a document holding the same blocks: in the light and
@@ -232,10 +240,42 @@ const BAR_STYLE = [
   "user-select",
 ];
 
+// In the page: a fold's glyph, its ::before, which a pseudo-element's box does not report,
+// so where it starts is where its label starts, less the bar's gap and the glyph's width;
+// with the markup's drawn glyphs, which a fold has none of, and the chevron's size token.
+const GLYPH_OF = `(node) => {
+  const style = getComputedStyle(node);
+  const glyph = getComputedStyle(node, "::before");
+  const shown = [...node.children].find((child) => getComputedStyle(child).display !== "none");
+  const start = shown.getBoundingClientRect().left - node.getBoundingClientRect().left;
+  const probe = document.createElement("span");
+  probe.style.display = "block";
+  probe.style.width = "var(--toggle-chevron-size)";
+  node.append(probe);
+  const chevronSize = getComputedStyle(probe).width;
+  probe.remove();
+  return {
+    glyphStart: start - parseFloat(style.columnGap) - parseFloat(glyph.width),
+    glyphWidth: parseFloat(glyph.width),
+    glyph: {
+      content: glyph.content,
+      width: glyph.width,
+      height: glyph.height,
+      chevronSize,
+      mask: glyph.maskImage,
+      ink: glyph.backgroundColor,
+      transform: glyph.transform,
+      drawn: node.querySelectorAll("svg, img").length,
+      inset: parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth),
+    },
+  };
+}`;
+
 // In the page: both bars, their files, and their groups, every block row of the
 // comparison, and the document's own details, with box edges unrounded.
 const READ = `() => {
   const names = ${JSON.stringify(BAR_STYLE)};
+  const glyphOf = ${GLYPH_OF};
   const box = (node) => {
     const rect = node.getBoundingClientRect();
     const style = getComputedStyle(node);
@@ -250,7 +290,6 @@ const READ = `() => {
     const file = node.closest(".diff-file");
     const fileRect = file.getBoundingClientRect();
     const style = getComputedStyle(node);
-    const chevron = node.querySelector(".diff-fold-chevron").getBoundingClientRect();
     const label = node.querySelector(".diff-fold-label").getBoundingClientRect();
     return {
       ...box(node),
@@ -259,8 +298,7 @@ const READ = `() => {
       expanded: node.getAttribute("aria-expanded"),
       startInFile: node.getBoundingClientRect().left - fileRect.left - file.clientLeft,
       fileWidth: file.clientWidth,
-      chevronStart: chevron.left - node.getBoundingClientRect().left,
-      chevronWidth: chevron.width,
+      ...glyphOf(node),
       labelStart: label.left - node.getBoundingClientRect().left,
       labelMiddle: (label.top + label.bottom) / 2 - node.getBoundingClientRect().top,
     };
@@ -329,6 +367,54 @@ const BACKGROUND = (/** @type {string} */ selector) => `new Promise((resolve) =>
   requestAnimationFrame(frame);
 })`;
 const MARKDOWN_BAR = "article.diff-markdown .fold-expander";
+// The fold's two glyphs, KPress's table-of-contents pair, each known by a path only it has.
+const CLOSED_GLYPH = { name: "chevrons-up-down", path: "m7 15 5 5 5-5" };
+const OPEN_GLYPH = { name: "chevrons-down-up", path: "m7 20 5-5 5 5" };
+// In the page: a native summary's fold, built as a review comment's earlier lines are
+// (pull-page.js), after the code file, whose `details[open]` alone says its state.
+const MOUNT_SUMMARY = `() => {
+  const label = (className, text) => {
+    const span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    return span;
+  };
+  const summary = document.createElement("summary");
+  summary.className = "fold-expander disclosure-toggle";
+  summary.append(label("summary-closed", "3 earlier lines"), label("summary-open", "Hide 3 lines"));
+  const details = document.createElement("details");
+  details.className = "summary-fold";
+  const lines = document.createElement("pre");
+  lines.textContent = "The three lines above the comment.";
+  details.append(summary, lines);
+  const style = document.createElement("style");
+  style.textContent = ".summary-fold[open] .summary-closed, .summary-fold:not([open]) .summary-open { display: none; }";
+  document.head.append(style);
+  document.querySelector(".diff-file-code").after(details);
+  return true;
+}`;
+const SUMMARY_FOLD = ".summary-fold > summary";
+// In the page: the glyph's ink and the tokens it is held to, where the fold is, and whether
+// the fold is under the pointer or the focus ring.
+const INK = (/** @type {string} */ selector) => `(() => {
+  const node = document.querySelector(${JSON.stringify(selector)});
+  const token = (name) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(" + name + ")";
+    node.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  };
+  return {
+    ink: getComputedStyle(node, "::before").backgroundColor,
+    mask: getComputedStyle(node, "::before").maskImage,
+    muted: token("--muted"),
+    text: token("--text"),
+    hovered: node.matches(":hover"),
+    focused: node.matches(":focus-visible"),
+  };
+})()`;
 const CODE_BAR = ".diff-file-code .fold-expander";
 // The controls whose keyboard ring the session reads, both bars and a document's own
 // summary, and how many presses of Tab it allows to reach them all from the page's start:
@@ -343,13 +429,18 @@ const RING = `(selector) => {
   const probe = document.createElement("span");
   probe.style.outline = "var(--focus-ring-width) solid var(--focus-ring-color)";
   probe.style.outlineOffset = "var(--focus-ring-offset)";
+  probe.style.color = "var(--text)";
   control.append(probe);
   const token = getComputedStyle(probe);
   const ring = { width: token.outlineWidth, color: token.outlineColor, offset: token.outlineOffset };
+  const textInk = token.color;
   probe.remove();
   const style = getComputedStyle(control);
   return {
     visible: control.matches(":focus-visible"),
+    hovered: control.matches(":hover"),
+    glyphInk: getComputedStyle(control, "::before").backgroundColor,
+    textInk,
     ring,
     drawn: {
       style: style.outlineStyle,
@@ -448,14 +539,19 @@ const server = await serve();
 const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
 /** @type {Awaited<ReturnType<typeof launchChrome>> | null} */
 let chrome = null;
-/** @param {string} name */
-const shot = async (name) => {
+/** @param {string} name @param {string[]} selectors What it shows. @param {number} scale */
+const shot = async (name, selectors = [".metabrowser-diff-host"], scale = 1) => {
   if (!SHOTS || !chrome) {
     return;
   }
   const clip = await chrome.evaluate(`(() => {
-    const rect = document.querySelector(".metabrowser-diff-host").getBoundingClientRect();
-    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height, scale: 1 };
+    const rects = ${JSON.stringify(selectors)}.map((selector) =>
+      document.querySelector(selector).getBoundingClientRect());
+    const x = Math.min(...rects.map((rect) => rect.left));
+    const y = Math.min(...rects.map((rect) => rect.top));
+    const width = Math.max(...rects.map((rect) => rect.right)) - x;
+    const height = Math.max(...rects.map((rect) => rect.bottom)) - y;
+    return { x, y, width, height, scale: ${scale} };
   })()`);
   const { data } = await chrome.send("Page.captureScreenshot", { format: "png", clip });
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -464,6 +560,20 @@ const shot = async (name) => {
 /** @param {{x: number, y: number}} at */
 const point = (at) =>
   chrome?.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
+/** @param {string} selector Where the centre of the element it names is. */
+const centre = (selector) =>
+  chrome?.evaluate(`(() => {
+    const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+// A data URI as the page computes it, with its escapes undone, to find a path in.
+const decoded = (/** @type {string} */ value) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
 try {
   chrome = await launchChrome(/** @type {string} */ (process.env.CHROME_BIN), {
     profiles: /** @type {string} */ (process.env.CHROME_PROFILES),
@@ -547,6 +657,40 @@ try {
       rings[part] ??= await chrome.evaluate(`(${RING})(${JSON.stringify(selector)})`);
     }
   }
+  // The glyph's ink in each theme, on a code fold's bar and on a native summary's fold, at
+  // rest, under the pointer, and open, with the pointer off the page's folds between.
+  await chrome.evaluate(`(${MOUNT_SUMMARY})()`);
+  const away = { x: 1, y: 1 };
+  const pictured = [".diff-file-code", ".summary-fold"];
+  /** @type {Record<string, any>} */
+  const inks = {};
+  for (const theme of /** @type {const} */ (["light", "dark"])) {
+    await chrome.evaluate(THEME(theme));
+    await point(away);
+    const rest = {
+      code: await chrome.evaluate(INK(CODE_BAR)),
+      summary: await chrome.evaluate(INK(SUMMARY_FOLD)),
+    };
+    await shot(`${theme}-closed`, pictured, 2);
+    await point(await centre(CODE_BAR));
+    const hoveredCode = await chrome.evaluate(INK(CODE_BAR));
+    await shot(`${theme}-code-hover`, pictured, 2);
+    await point(await centre(SUMMARY_FOLD));
+    const hoveredSummary = await chrome.evaluate(INK(SUMMARY_FOLD));
+    await point(away);
+    await chrome.evaluate(
+      `(document.querySelector(${JSON.stringify(CODE_BAR)}).click(), document.querySelector(".summary-fold").open = true, true)`,
+    );
+    const open = {
+      code: await chrome.evaluate(INK(CODE_BAR)),
+      summary: await chrome.evaluate(INK(SUMMARY_FOLD)),
+    };
+    await shot(`${theme}-open`, pictured, 2);
+    await chrome.evaluate(
+      `(document.querySelector(${JSON.stringify(CODE_BAR)}).click(), document.querySelector(".summary-fold").open = false, true)`,
+    );
+    inks[theme] = { rest, hovered: { code: hoveredCode, summary: hoveredSummary }, open };
+  }
   const quotedMounted = await chrome.evaluate(`(${MOUNT_QUOTED})(${JSON.stringify(INPUT.quoted)})`);
   await chrome.evaluate("document.fonts.ready.then(() => true)");
   /** @type {Record<string, any>} */
@@ -556,7 +700,7 @@ try {
     quoted[theme] = await chrome.evaluate(QUOTED);
   }
   process.stderr.write(
-    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, codeResting, codeHovered, rings, quoted }, rounded)}\n`,
+    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, codeResting, codeHovered, rings, inks, quoted }, rounded)}\n`,
   );
 
   // The fold draws the shell's one ring (docs/design-system.md, "Focus Ring"). KPress's
@@ -585,6 +729,11 @@ try {
     );
   }
   check(
+    "the Markdown fold's glyph takes the text's ink under the focus ring alone",
+    rings.fold?.hovered === false && rings.fold.glyphInk === rings.fold.textInk,
+    JSON.stringify(rings.fold ?? null),
+  );
+  check(
     "Tab reaches a document's own summary, which matches :focus-visible",
     rings.own?.visible === true,
     JSON.stringify(rings.own ?? null),
@@ -611,8 +760,8 @@ try {
     }
     for (const part of [
       "startInFile",
-      "chevronStart",
-      "chevronWidth",
+      "glyphStart",
+      "glyphWidth",
       "labelStart",
       "labelMiddle",
       "height",
@@ -631,11 +780,27 @@ try {
       `${measured.bar.startInFile}+${measured.bar.width} of ${measured.bar.fileWidth}; ` +
         `code ${measured.code.width} of ${measured.code.fileWidth}`,
     );
-    check(
-      `${state}, the fold bar leads with the shell's chevron`,
-      measured.bar.chevronWidth > 0,
-      `${measured.bar.chevronWidth}`,
-    );
+    // The code fold stays closed here; the theme checks below open it.
+    for (const [which, bar, pair] of [
+      ["Markdown", measured.bar, state === "closed" ? CLOSED_GLYPH : OPEN_GLYPH],
+      ["closed code", measured.code, CLOSED_GLYPH],
+    ]) {
+      check(
+        `${state}, the ${which} fold bar leads with ${pair.name}, drawn by .fold-expander`,
+        bar.glyph.content === '""' &&
+          decoded(bar.glyph.mask).includes(pair.path) &&
+          bar.glyph.drawn === 0 &&
+          near(bar.glyphStart, bar.glyph.inset),
+        JSON.stringify(bar.glyph),
+      );
+      check(
+        `${state}, the ${which} fold bar's glyph is the chevron's size, unturned`,
+        bar.glyph.width === bar.glyph.chevronSize &&
+          bar.glyph.height === bar.glyph.chevronSize &&
+          bar.glyph.transform === "none",
+        JSON.stringify(bar.glyph),
+      );
+    }
     check(
       `${state}, the fold bar never selects text`,
       measured.bar.style["user-select"] === "none",
@@ -648,6 +813,41 @@ try {
       resting.background === codeResting.background &&
       hovered.background !== resting.background,
     `${resting.background} -> ${hovered.background}, code ${codeResting.background} -> ${codeHovered.background}`,
+  );
+
+  // The glyph in each theme: muted at rest, the text's ink under the pointer, and the pair's
+  // other half once open, on a button's `aria-expanded` and a native summary's `open` alike.
+  for (const theme of /** @type {const} */ (["light", "dark"])) {
+    const { rest, hovered: under, open } = inks[theme];
+    for (const form of /** @type {const} */ (["code", "summary"])) {
+      const name = form === "code" ? "a code fold bar" : "a native summary's fold";
+      check(
+        `${theme}, ${name} at rest draws ${CLOSED_GLYPH.name} in the muted ink`,
+        !rest[form].hovered &&
+          rest[form].ink === rest[form].muted &&
+          rest[form].muted !== rest[form].text &&
+          decoded(rest[form].mask).includes(CLOSED_GLYPH.path),
+        JSON.stringify(rest[form]),
+      );
+      check(
+        `${theme}, ${name} under the pointer draws its glyph in the text's ink`,
+        under[form].hovered && under[form].ink === under[form].text,
+        JSON.stringify(under[form]),
+      );
+      check(
+        `${theme}, ${name} open draws ${OPEN_GLYPH.name}`,
+        !open[form].hovered &&
+          open[form].ink === open[form].muted &&
+          decoded(open[form].mask).includes(OPEN_GLYPH.path),
+        JSON.stringify(open[form]),
+      );
+    }
+  }
+  check(
+    "the dark theme moves the fold glyph's ink",
+    inks.light.rest.code.ink !== inks.dark.rest.code.ink &&
+      inks.light.hovered.code.ink !== inks.dark.hovered.code.ink,
+    `${inks.light.rest.code.ink} and ${inks.dark.rest.code.ink}`,
   );
 
   // Closed: the bar between the blocks around it, its group empty and of no height.

@@ -14,6 +14,12 @@ browser computes that cascade and the boxes it draws. So
 document with a long unchanged run through the production ``createMarkdownViews``, beside
 a code file's fold bar, and measures both.
 
+Each bar, and a native summary's fold, leads with the expand/contract pair that
+``.fold-expander::before`` draws, never the registry's chevron: chevrons-up-down closed and
+chevrons-down-up open, at the chevron's size and unturned, muted at rest and in the text's
+ink under the pointer and the focus ring, in the light and the dark theme. That glyph is
+the cascade's, which only a browser computes.
+
 Before the group of a Markdown fold clipped with ``overflow: clip``, the code fold's
 ``overflow: hidden`` started a formatting context there and kept the last block's margin
 inside the open group, adding it to the next block's: 24 px from the last block the fold
@@ -28,7 +34,8 @@ article is outside ``.metabrowser-kpress-host``; while the token bridge in
 rule and muted text in its own palette, and on 0.3.6 its quote had no rule at all.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
-``FOLD_SHOTS`` in the environment names a directory for a screenshot closed and open.
+``FOLD_SHOTS`` in the environment names a directory for screenshots closed and open, and
+of a code fold and a summary's fold in each theme.
 """
 
 from __future__ import annotations

@@ -1668,9 +1668,11 @@ Every disclosure chevron in the product is the same Lucide mark: the registry’
 glyph on row-like targets (tree folders, tally tree, diff file bars) and the
 section-disclosure mask after heading-like titles, both in `--muted`, pointing right
 when closed and rotating to point down when open.
+A [fold expander](#fold-expanders) takes no chevron: it sets withheld content back in
+place rather than opening a row’s children, so it draws its own pair of glyphs.
 Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agreements
 are enforced by `tests/test_design_vocabulary.py`, which fails when a surface forks the
-glyph, the row height, or the hover token.
+glyph, the row height, or the hover token, or puts the chevron on a fold.
 
 ### Row Text Shares a Baseline
 
@@ -1742,14 +1744,42 @@ baseline matches a box, including a text slot in its box state.
 ### Fold Expanders
 
 A run of content withheld until asked for, such as a long stretch of changed lines in a
-diff, sits behind a full-width control at `--ui-row-height` carrying the same registry
-chevron, in `--highlight-bg`, hovering with `--hover-bg`. The label states the count it
-holds (`86 more changed lines`) and becomes the inverse when open (`Hide 86 lines`),
-because a control that hides its size is a control the reader cannot judge.
+diff, sits behind a full-width control at `--ui-row-height`, in `--highlight-bg`,
+hovering with `--hover-bg`. The label states the count it holds
+(`86 more changed lines`) and becomes the inverse when open (`Hide 86 lines`), because a
+control that hides its size is a control the reader cannot judge.
 A fold inside another disclosure stops its click, so expanding a fold never collapses
 its container. It is one primitive, `.fold-expander` in `static/styles.css`, on a button
 or a native `summary`. `test_section_headings_and_fold_expanders_are_primitives` holds
 it.
+
+The control leads with the **expand/contract pair** that KPress’s table of contents
+draws for its expand-all button, not the registry’s chevron:
+
+| State | Glyph | Says |
+| --- | --- | --- |
+| Closed | Lucide `chevrons-up-down` | Expand: the withheld content opens here |
+| Open | Lucide `chevrons-down-up` | Contract: the content folds back into this bar |
+
+A chevron says a row holds children, and it turns as they open.
+A fold holds no children: what it withholds is the run’s own content, cut from its
+middle and set back in place, so opening it opens no level of a tree.
+The pair is the mark for expanding and contracting in place, the one a rendered
+document’s table of contents already draws for its expand-all control.
+
+The primitive draws the glyph, as a mask on `.fold-expander::before`, from the control’s
+own state: a button’s `aria-expanded` or a native summary’s `details[open]`. A fold’s
+markup holds only its words, so every fold, current or new, draws the pair without
+asking for it, and none can carry a chevron.
+The glyph is the chevron’s size, `--toggle-chevron-size`, and weight, in the place a
+chevron would take, muted at rest and in `--text` under the pointer or the focus ring,
+in both themes. It swaps at once when the fold opens; only the group the fold opens
+travels ([Disclosure Motion](#disclosure-motion)).
+`test_a_fold_expander_draws_the_pair_not_the_chevron` in
+`tests/test_design_vocabulary.py` holds the primitive, its two states, and that no fold
+builds or turns a chevron;
+[the icon catalog](design-system-icons.md#ui-chrome-and-actions) holds the drawings to
+KPress’s.
 
 Every fold of a diff is one **fold bar**, made by one factory, `foldExpander` in the
 diff plugin’s `diff-fold.js`: a code file’s long run of changed lines
@@ -1759,14 +1789,16 @@ the group they open holds.
 Opening a Markdown fold sets the blocks it holds exactly as the unchanged blocks around
 them. A new kind of fold in a diff calls the factory rather than drawing a bar of its
 own. `tests/test_diff_markdown_fold_chrome.py` holds in Chrome that the two bars compute
-alike at rest and under the pointer.
+alike at rest and under the pointer, and that a fold bar and a native summary’s fold
+draw the pair in each state and theme, muted at rest and in the text’s ink under the
+pointer and the focus ring.
 
 ### Disclosure Motion
 
 Every toggle travels the same way: the body animates `height` between `auto` and `0` on
-`var(--transition-fast)` (the same duration its chevron rotates with), with
-`overflow: hidden` during travel and `visibility: hidden` at rest so collapsed content
-leaves the tab order and the accessibility tree.
+`var(--transition-fast)` (the same duration its chevron rotates with; a fold’s glyph
+swaps at once), with `overflow: hidden` during travel and `visibility: hidden` at rest
+so collapsed content leaves the tab order and the accessibility tree.
 `interpolate-size: allow-keywords` is scoped to each animated body; engines without it
 swap instantly. Collapse is always class-driven (`.tree-children-collapsed`,
 `.diff-file-body-collapsed`, `.diff-fold-collapsed`,

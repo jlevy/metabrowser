@@ -37,6 +37,10 @@ Rendered Markdown draws its own chrome from KPress’s icon set, the same Lucide
 ([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)),
 Mermaid diagrams’ toolbar and dialog included: in an untrusted document, whose allowlist
 drops KPress’s inline sprites, KPress’s diagram controls fetch them.
+One pair in the chrome is KPress’s own: a fold expander draws KPress’s table-of-contents
+expand-all pair, `chevrons-up-down` and `chevrons-down-up`, from the shell’s stylesheet,
+so that a fold outside a rendered document has it too, and `tests/test_icon_catalog.py`
+holds the two drawings to KPress’s sprite.
 
 A glyph enters the registry only when a folder’s first paint can draw it: every page
 fetches the registry before it paints, so each glyph there is paid for by every folder
@@ -56,6 +60,9 @@ break this rule ([Known Departures](#known-departures)).
   a heading-like title ends with the section-disclosure mask.
   Both point right when closed and rotate down when open
   ([One Chevron, One Row Contract](design-system.md#one-chevron-one-row-contract)).
+- **A fold is the expand/contract pair, never the chevron.** A fold expander leads with
+  `chevrons-up-down` while closed and `chevrons-down-up` while open, which its primitive
+  draws; it does not turn ([Fold Expanders](design-system.md#fold-expanders)).
 - **Ink comes from the context, never the icon.** `--muted` at rest, `--text` on hover,
   `--link` for the chosen value, and a status’s or a family’s own token where the icon
   carries one. Color is never the only signal: the shapes differ, and a name is there.
@@ -303,12 +310,14 @@ The title carries the meaning; the symbol only marks the tab.
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
-| `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and menu triggers. In menus it points down and stays fixed while open | `static/icons.js` | Muted gray at rest, stronger neutral ink on interaction | Centered in its target. A ref chip’s action cue overlays its trailing edge. The Files revision row uses one standalone chevron for the chooser |
+| `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, the filter drawer, and menu triggers. In menus it points down and stays fixed while open. Never a fold expander’s, which draws the pair below | `static/icons.js` | Muted gray at rest, stronger neutral ink on interaction | Centered in its target. A ref chip’s action cue overlays its trailing edge. The Files revision row uses one standalone chevron for the chooser |
 | `info`, custom circled i | Registry | Open folder details from the navigation heading | `static/icons.js` | `--muted` at rest, `--text` on interaction | `--icon-glyph` in the shared icon-button target |
 | `chevron.down` | SF Symbol | A window’s title opens its folder chooser | `apps/macos/Sources/Metabrowser/TitleAccessory.swift` | Secondary label color at rest, primary on hover or open, tertiary in an inactive window | Seven tenths of the title font’s point size, centered vertically |
 | `checkmark` | SF Symbol | The folder this window shows, in the Switch Folder panel’s list | `apps/macos/Sources/Metabrowser/SwitchFolderWindow.swift` | Secondary label color, or the selection’s ink on the selected row | The row’s default symbol size |
 | `checkmark` | SF Symbol | The folder this window shows, in the title’s folder chooser: AppKit’s own check mark for a menu item’s state, redrawn into a taller image so that it stands on the name’s line of a two-line row, beside the row’s mark | `apps/macos/Sources/ShellViews/TitleLineMenuItem.swift` | The menu’s ink and highlight, as a template image | The menu font’s 13 points, bold, small: AppKit’s own check, drawn at its size |
 | `.section-disclosure-trigger::after`, Lucide `chevron-right` | CSS mask | Show or hide a section, after its heading, and a rendered document’s `summary` | `static/styles.css` | `--section-disclosure-chevron-color` | `--section-disclosure-chevron-size`, in `em` of the heading |
+| `.fold-expander::before`, Lucide `chevrons-up-down` | CSS mask | Expand: a closed fold expander opens the content it withholds, in place. KPress’s table-of-contents expand-all glyph | `static/styles.css` | `--muted`, the expander’s ink, at rest; `--text` under the pointer or the focus ring | `--toggle-chevron-size`, leading the expander’s label where a chevron would |
+| `.fold-expander[aria-expanded="true"]::before`, Lucide `chevrons-down-up` | CSS mask | Contract: an open fold expander, a button’s `aria-expanded` or a native summary’s `details[open]`, folds its content back. KPress’s table-of-contents collapse-all glyph | `static/styles.css` | As `chevrons-up-down` | As `chevrons-up-down` |
 | `.mb-image-fallback::before`, Lucide `image` | CSS mask | An image a rendered document’s page does not load, drawn before its alt text | `static/styles.css` | The link’s own ink (`currentcolor`) | `1.1em` of the chip’s text |
 | `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `print`, Lucide `printer` | Registry | Print the document | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |

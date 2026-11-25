@@ -2082,8 +2082,15 @@ summary {
   font-weight: var(--count-numeral-weight);
 }
 /* ── Fold expander — a run of content withheld until asked for ───
-   The tree's disclosure vocabulary on a full-width row: the registry's chevron, at row
-   height, hovering with the shared token like every other clickable row. */
+   A full-width row at row height, hovering with the shared token like every other
+   clickable row, that leads with the expand/contract pair KPress's table of contents
+   draws: Lucide chevrons-up-down while closed, chevrons-down-up while open
+   (docs/design-system.md, "Fold Expanders"). It is not the registry's chevron, which
+   turns for a row's disclosure: a fold opens lines in place, above and below its bar.
+   The primitive draws the glyph, so a fold's markup holds only its words; the state is
+   a button's aria-expanded or a native summary's details[open]. The glyph is the
+   chevron's size and weight, muted at rest and in the text's ink under the pointer or
+   the focus ring, and it swaps at once: only the group a fold opens travels. */
 .fold-expander {
   display: flex;
   align-items: center;
@@ -2101,8 +2108,25 @@ summary {
   text-align: left;
   cursor: pointer;
 }
+.fold-expander::before {
+  flex: none;
+  width: var(--toggle-chevron-size);
+  height: var(--toggle-chevron-size);
+  background-color: currentcolor;
+  content: "";
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.fold-expander[aria-expanded="true"]::before,
+details[open] > summary.fold-expander::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 20 5-5 5 5'/%3E%3Cpath d='m7 4 5 5 5-5'/%3E%3C/svg%3E");
+}
 .fold-expander:hover {
   background: var(--hover-bg);
+}
+.fold-expander:is(:hover, :focus-visible)::before {
+  background-color: var(--text);
 }
 .fold-expander:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
