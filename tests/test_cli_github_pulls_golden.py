@@ -815,7 +815,7 @@ def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_eve
     waiting = session.post({"state": "closed", "target": 400, "background": True})
     assert json.loads(waiting.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
     session.say(
-        "A reader's Reload is never held. Its scan observes 4,000 points left, and the "
+        "A reader's Refresh is never held. Its scan observes 4,000 points left, and the "
         "backfill resumes from the top to the oldest pull request in the same job."
     )
     resumed = session.post({"state": "closed", "target": 400, "retry": True}, summarize=True)
@@ -896,7 +896,7 @@ def test_golden_pull_list_probe_answers_an_automatic_ask(
     ]
     assert session.get("?state=all&limit=1").payload()["rows"][0]["title"] == changed["title"]
 
-    session.say("A reader's Reload never probes: it scans.")
+    session.say("A reader's Refresh never probes: it scans.")
     reloaded = session.post({"retry": True}, summarize=True)
     assert reloaded.exit_code == 0, reloaded.stderr
     assert PROBE not in session.blocks[-1]

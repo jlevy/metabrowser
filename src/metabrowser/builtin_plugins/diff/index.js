@@ -664,7 +664,7 @@ mb.registerView("diff", "diff", {
       const message =
         typeof failure?.payload?.message === "string" && failure.payload.message
           ? failure.payload.message
-          : "Could not load this diff. Refresh the page to try again.";
+          : "Could not load this diff. Reload the page to try again.";
       console.error(
         "metabrowser diff: view load failed",
         {
@@ -704,7 +704,7 @@ mb.registerView("diff", "diff", {
         },
         error,
       );
-      return renderFailure(container, "Could not load this diff. Refresh the page to try again.");
+      return renderFailure(container, "Could not load this diff. Reload the page to try again.");
     }
     if (signal?.aborted) {
       return null;

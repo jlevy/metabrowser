@@ -161,6 +161,9 @@ def _resolve_sidekick(spec: str) -> Callable[[Request], Awaitable[Response] | Re
 
 
 FolderOffer = Callable[[Path], bool]
+# A file kind's offered view: the file's leading logical bytes, at most
+# `CONTENT_PREDICATE_MAX_BYTES` + 1 of them, and its logical extension.
+FileOffer = Callable[[bytes, str], bool]
 
 
 def resolve_folder_offers(plugins: list[LoadedPlugin]) -> dict[str, FolderOffer | None]:
@@ -171,19 +174,44 @@ def resolve_folder_offers(plugins: list[LoadedPlugin]) -> dict[str, FolderOffer 
     rather than offering it everywhere, and the log says why.
     """
 
-    offers: dict[str, FolderOffer | None] = {}
+    return {
+        view_id: cast(FolderOffer | None, predicate)
+        for (kind, view_id), predicate in _resolve_offers(plugins).items()
+        if kind == "folder"
+    }
+
+
+def resolve_file_offers(plugins: list[LoadedPlugin]) -> dict[tuple[str, str], FileOffer | None]:
+    """Each offered file view's predicate, by kind and view id; ``None`` where it never
+    applies, for the same reasons as :func:`resolve_folder_offers`. A view id is unique
+    only within its kind: the delimited, SQLite, and structured kinds each have a
+    ``table`` view."""
+
+    return {
+        key: cast(FileOffer | None, predicate)
+        for key, predicate in _resolve_offers(plugins).items()
+        if key[0] != "folder"
+    }
+
+
+def _resolve_offers(
+    plugins: list[LoadedPlugin],
+) -> dict[tuple[str, str], Callable[..., bool] | None]:
+    offers: dict[tuple[str, str], Callable[..., bool] | None] = {}
     for plugin in plugins:
         for view in plugin.manifest.view:
             if view.offer is None:
                 continue
+            key = (view.kind, view.id)
             if plugin.source.startswith("local:"):
                 LOG.warning(
-                    "metabrowser local plugin '%s' offers folder view %s through Python; "
+                    "metabrowser local plugin '%s' offers %s view %s through Python; "
                     "operator-directory plugins are JavaScript-only, so it is never offered",
                     plugin.name,
+                    view.kind,
                     view.id,
                 )
-                offers[view.id] = None
+                offers[key] = None
                 continue
             module_name, _, attr = view.offer.partition(":")
             try:
@@ -192,14 +220,15 @@ def resolve_folder_offers(plugins: list[LoadedPlugin]) -> dict[str, FolderOffer 
                     raise TypeError(f"{view.offer} is not callable")
             except (ImportError, AttributeError, TypeError) as exc:
                 LOG.warning(
-                    "metabrowser plugin '%s' folder view %s is never offered: %s",
+                    "metabrowser plugin '%s' %s view %s is never offered: %s",
                     plugin.name,
+                    view.kind,
                     view.id,
                     exc,
                 )
-                offers[view.id] = None
+                offers[key] = None
                 continue
-            offers[view.id] = cast(FolderOffer, predicate)
+            offers[key] = cast(Callable[..., bool], predicate)
     return offers
 
 

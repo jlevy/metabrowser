@@ -349,7 +349,7 @@ async function run() {
     const during = paint();
     assert.match(during.pending ?? "", /Fetching changes/, "the walk will settle on Changes");
     assert.equal(during.spinner, true);
-    assert.equal(during.fetch, false, "no Fetch changes the settled address makes needless");
+    assert.equal(during.fetch, false, "no Fetch the settled address makes needless");
     assert.equal(during.posts, 0, "the request waits for the address");
     if (end !== "settled") {
       if (end === "cancelled") {

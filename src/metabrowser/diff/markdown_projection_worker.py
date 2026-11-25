@@ -217,7 +217,7 @@ _MAX_STARTS = 3
 # import (0.2 to 0.3 s), so a broken installation costs at most three of either per
 # cool-off while reloads continue; what makes a start fail and then pass (a full process
 # table, an interpreter replaced mid-upgrade) passes in seconds, so the notice's "Reload
-# to try again" holds a few seconds later.
+# the page to try again" holds a few seconds later.
 _START_COOL_OFF_S = 10.0
 # Distinct inert renders in flight at once, the one in the child among them; past it a
 # render is refused renderer_busy, not kept. A page reaches the server over at most six

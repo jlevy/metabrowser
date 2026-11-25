@@ -20,6 +20,8 @@ const MAX_INLINE_DELIMITER_PASSES = 5;
  * inline content, so they add no block before it and no text to its title or slug:
  * KPress names a heading from its text, not from inline HTML.
  *
+ * Leading front matter is copied verbatim and read as nothing (`frontMatterLength`).
+ *
  * @param {string} source
  */
 export function preprocessObsidianWiki(source) {
@@ -31,7 +33,8 @@ export function preprocessObsidianWiki(source) {
   }
 
   const metrics = createWorkMetrics();
-  if (!hasPreprocessingTrigger(source, metrics)) {
+  const bodyStart = frontMatterLength(source);
+  if (!hasPreprocessingTrigger(source, metrics, bodyStart)) {
     return preprocessingResult(source, false, 0, 0, metrics, source.length);
   }
 
@@ -47,9 +50,9 @@ export function preprocessObsidianWiki(source) {
   const output = [];
   let outputOffset = 0;
   const outputBudget = createOutputBudget(source);
-  const literal = markdownLiteralMask(source);
+  const literal = markdownLiteralMask(source, bodyStart);
   metrics.literalMaskCodeUnitsVisited = literal.codeUnitsVisited;
-  const lines = createLineCursor(source, metrics);
+  const lines = createLineCursor(source, metrics, bodyStart);
   let current = lines.next();
   let next = lines.next();
 
@@ -313,7 +316,7 @@ function selectHeadingSection(source, target, metrics) {
   if (!target) {
     return selectionFailure("missing-location", metrics);
   }
-  const lines = createLineCursor(source, metrics);
+  const lines = createLineCursor(source, metrics, frontMatterLength(source));
   const headingStack = [];
   let fence = null;
   let selectedStart = -1;
@@ -368,9 +371,10 @@ function selectNamedBlock(source, target, metrics) {
   if (!/^[A-Za-z0-9-]+$/.test(target)) {
     return selectionFailure("missing-location", metrics);
   }
-  const lines = createLineCursor(source, metrics);
+  const bodyStart = frontMatterLength(source);
+  const lines = createLineCursor(source, metrics, bodyStart);
   let fence = null;
-  let blockStart = 0;
+  let blockStart = bodyStart;
   let current = lines.next();
   let next = lines.next();
   while (current) {
@@ -441,9 +445,31 @@ function createWorkMetrics() {
   };
 }
 
-/** @param {string} source @param {ReturnType<typeof createWorkMetrics>} metrics */
-function hasPreprocessingTrigger(source, metrics) {
-  for (let index = 0; index < source.length; index += 1) {
+/**
+ * The front matter KPress strips before it renders a document: its own pattern,
+ * `_strip_leading_frontmatter` in kpress/runtime.py (`\A---\r?\n.*?\r?\n---\r?\n?`).
+ */
+const LEADING_FRONT_MATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+
+/**
+ * How many code units of *source* are its leading front matter, or 0 when it has none.
+ *
+ * Front matter is the file's metadata, not Markdown: KPress's document profile strips the
+ * block before Markdown reads it, and the server parses it from the file's own bytes. So
+ * no line of it is a heading, a named block, or a wiki link here, and none is rewritten;
+ * otherwise its last line, over the closing `---`, reads as a setext heading and gains an
+ * anchor inside the YAML. The block ends where KPress's ends, so the text both read as
+ * the body is the same.
+ *
+ * @param {string} source
+ */
+export function frontMatterLength(source) {
+  return LEADING_FRONT_MATTER.exec(source)?.[0].length ?? 0;
+}
+
+/** @param {string} source @param {ReturnType<typeof createWorkMetrics>} metrics @param {number} start */
+function hasPreprocessingTrigger(source, metrics, start) {
+  for (let index = start; index < source.length; index += 1) {
     metrics.triggerCodeUnitsVisited += 1;
     const character = source[index];
     if (
@@ -459,9 +485,9 @@ function hasPreprocessingTrigger(source, metrics) {
   return false;
 }
 
-/** @param {string} source @param {ReturnType<typeof createWorkMetrics>} metrics */
-function createLineCursor(source, metrics) {
-  let offset = 0;
+/** @param {string} source @param {ReturnType<typeof createWorkMetrics>} metrics @param {number} start */
+function createLineCursor(source, metrics, start) {
+  let offset = start;
   return Object.freeze({
     next() {
       if (offset >= source.length) {
@@ -907,12 +933,16 @@ function findPair(source, start, first, second, state, metrics) {
  * cross a block boundary, so pairing restarts at blank lines, headings, and
  * wholly literal lines.
  *
+ * *from* is where the Markdown begins, past any front matter (`frontMatterLength`): the
+ * text before it is not read, and stays unmarked.
+ *
  * @param {string} source
+ * @param {number} [from]
  */
-export function markdownLiteralMask(source) {
+export function markdownLiteralMask(source, from = 0) {
   const mask = new Uint8Array(source.length);
   let codeUnitsVisited = 0;
-  let offset = 0;
+  let offset = from;
   let fence = null;
   let inComment = false;
   let rawLiteralElement = "";
@@ -1028,7 +1058,7 @@ export function markdownLiteralMask(source) {
   const nextEqualRun = new Int32Array(source.length);
   const lastRunByLength = new Map();
   let boundary = blockBoundaries.length - 1;
-  for (let index = source.length - 1; index >= 0; ) {
+  for (let index = source.length - 1; index >= from; ) {
     codeUnitsVisited += 1;
     if (boundary >= 0 && index < blockBoundaries[boundary]) {
       // Crossing into an earlier block: no later run can close a span here.
@@ -1042,7 +1072,7 @@ export function markdownLiteralMask(source) {
       continue;
     }
     const end = index + 1;
-    while (index >= 0 && !mask[index] && source[index] === "`") {
+    while (index >= from && !mask[index] && source[index] === "`") {
       index -= 1;
     }
     const start = index + 1;
@@ -1054,7 +1084,7 @@ export function markdownLiteralMask(source) {
     lastRunByLength.set(length, start);
   }
 
-  for (let index = 0; index < source.length; ) {
+  for (let index = from; index < source.length; ) {
     codeUnitsVisited += 1;
     if (mask[index] || source[index] !== "`") {
       index += 1;

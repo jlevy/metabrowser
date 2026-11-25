@@ -206,7 +206,7 @@ const PLACE = `(async () => {
   place(
     "md-body-message",
     [],
-    view('<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>'),
+    view('<div class="preview-empty" role="alert">Could not display this view. Reload the page to try again.</div>'),
   );
   place(
     "md-body-chrome-prose",

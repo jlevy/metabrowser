@@ -3282,9 +3282,9 @@ async function run() {
   assertContains(
     "gate: helper failure has an actionable explanation",
     document.getElementById("tab-git").textContent,
-    "Could not load Git view controls. Refresh to try again.",
+    "Could not load Git view controls.",
   );
-  const retry = document.getElementById("tab-git").querySelector(".git-panel-refresh");
+  const retry = document.getElementById("tab-git").querySelector(".git-panel-retry");
   assertTrue("gate: helper failure exposes a real retry button", retry !== null);
   retry.dispatch("click");
   await new Promise(setImmediate);
@@ -3386,7 +3386,7 @@ async function run() {
     renderedDiffRevisions.length,
     renderedBeforeLanding,
   );
-  document.getElementById("tab-git").querySelector(".git-panel-refresh").dispatch("click");
+  document.getElementById("tab-git").querySelector(".git-panel-retry").dispatch("click");
   await new Promise(setImmediate);
   assetWaits.shift().resolve();
   for (
@@ -3458,8 +3458,8 @@ async function run() {
   assertEqual("cursor: rejected cursor is discarded", rejectedCursor.cursor, null);
   assertTrue("cursor: rejected cursor offers recovery", rejectedCursor.failed);
   assertEqual(
-    "cursor: rejected cursor renders refresh",
-    document.getElementById("tab-git").querySelectorAll(".git-panel-refresh").length,
+    "cursor: rejected cursor renders Retry",
+    document.getElementById("tab-git").querySelectorAll(".git-panel-retry").length,
     1,
   );
 
@@ -5320,7 +5320,7 @@ async function run() {
     await recovering;
     serveDetail(at(4));
 
-    // D1: Reload history after the refs moved, and the repository request fails, with a
+    // D1: Refresh after the refs moved, and the repository request fails, with a
     // 500 and with a rejection. The summary shows none of the old session's refs, its
     // diff stays, and the refresh that succeeds confirms the refs.
     for (const failure of ["500", "rejection"]) {
@@ -5333,7 +5333,7 @@ async function run() {
       );
       diffRenders = renderedDiffRevisions.length;
       comparisons = comparisonFetches.length;
-      // The next page says the history changed, which offers Reload history.
+      // The next page says the history changed, which offers Refresh.
       responses.set("/api/git/log", {
         httpStatus: 409,
         body: { error: "git history changed; refresh required", code: "history_stale" },
@@ -5341,8 +5341,8 @@ async function run() {
       await internals.loadNextPage(false);
       const reload = container
         .querySelector(".git-history-stale")
-        ?.querySelector(".git-history-reload");
-      assertTrue(`D1 ${failure}: Reload history is offered`, reload);
+        ?.querySelector(".git-history-refresh");
+      assertTrue(`D1 ${failure}: Refresh is offered`, reload);
       moved = true;
       responses.set(
         "/api/git/repo",
@@ -5369,7 +5369,7 @@ async function run() {
         comparisons,
       );
       serveAll();
-      container.querySelector(".git-panel-refresh")?.dispatch("click");
+      container.querySelector(".git-panel-retry")?.dispatch("click");
       for (let attempt = 0; attempt < 20 && !mountedRefs().includes("b0-now"); attempt += 1) {
         await tick();
       }
@@ -5477,8 +5477,8 @@ async function run() {
       notice?.textContent ?? "",
       "History changed since this list loaded.",
     );
-    const reload = notice?.querySelector(".git-history-reload");
-    assertTrue("stale: the notice offers a reload", reload);
+    const reload = notice?.querySelector(".git-history-refresh");
+    assertTrue("stale: the notice offers Refresh", reload);
     responses.set("/api/git/log", historyPage(0, [commit(SHA_B, [], "reloaded")], 1, SHA_A));
     reload?.dispatch("click");
     for (let tick = 0; tick < 50 && internals.stateForTests().commits.length === 0; tick += 1) {

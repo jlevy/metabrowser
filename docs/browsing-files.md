@@ -263,7 +263,10 @@ folder’s Markdown is not changed.
   **Table** (`A`) shows a file whose top level is a list of mappings as a table, one row
   a mapping and one column a key, with the CSV table’s sort, filters, search, and
   records; a nested value is its JSON in the table and a collapsible tree in the record.
-  Any other document says there that it is not a list of records.
+  A YAML file of several documents that are mappings is a table of them, one row each.
+  Only such a file has the tab: Metabrowser decides from the file’s start, so a list
+  that begins with a mapping but holds something else further on has the tab, which then
+  says why it shows no table.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
   text, tool calls, and tool results, and each row expands to its raw JSON. For the
   session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in

@@ -1252,11 +1252,12 @@ Every button belongs to one role-specific primitive:
 | --- | --- |
 | Labelled action | `.btn` |
 | Icon-only action | `.icon-btn` |
-| Filter value or filter menu | `.chip` and its variants |
+| Filter value or filter menu | `.chip` and its variants, with `.chip-clear` the quiet reset ([Filter Controls](#filter-controls)) |
 | Exclusive choice among labelled values | `.chip-group[data-select="one"]` |
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
 | Collapsible section title | `.section-disclosure-trigger` |
+| Lines or content folded in place, which a press shows | [`.fold-expander`](#fold-expanders) |
 | Action among links: a text action, below | The context’s text-action class, on `<a>` and `<button>` alike |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
@@ -1266,6 +1267,13 @@ primitive class in the markup and must not recreate the primitive’s border, fi
 typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
+`test_every_plugin_button_carries_a_control_family_class` and
+`test_every_shell_button_carries_a_control_family_class` in
+`tests/test_plugin_design_consistency.py` hold every button the built-in plugins, the
+shell’s modules, and the server’s markup build to one of these, or to an allowlisted
+class with its reason.
+A control that asks for something again takes its word and its widget from
+[Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page).
 
 A **text action** is an action that sits among links in a line of chrome, with no border
 or fill, because a bordered button would read as a different thing from the link beside
@@ -1287,6 +1295,51 @@ has the one focus ring.
 Each context sets one look for the `<a>` and the `<button>`, box included: a `<button>`
 is always an atomic inline box, so where a label can wrap, the `<a>` is one too, and
 what follows a wrapped label starts on the next line in both forms.
+
+### Refresh, Retry, and Reload Page
+
+**A control that asks for something again says which of four things it does, in one
+word, and a word means the same thing wherever it appears.** The words come from what
+the control does, not from where the answer comes from:
+
+| Word | What it does | Where |
+| --- | --- | --- |
+| Refresh | Asks for the current state of what the view shows, in place: the page stays, and what is on screen stays until the answer replaces it ([Refreshing Content](#refreshing-content)). The answer may come from the disk, the repository, GitHub, or a mirror’s origin; the reader asks for the same thing, so the word is the same | The Pulls tab’s toolbar, a pull request’s row of ages, the Commits tab after “No commits yet.” and after “History changed since this list loaded.” |
+| Fetch | The first ask for something not held at all, where there is nothing yet to refresh | A pull request’s header before its record, and the Changes body’s “Changes have not been fetched.” |
+| Retry | Asks again for what failed, beside the sentence that says what failed | The Changes body, a page of history, a commit a mirror lacks, a folder Overview panel |
+| Reload page | Reloads the whole page, as the browser’s Reload does, where the page itself is out of date | The ref selector’s and the freshness row’s “The server now serves another revision” |
+
+- **A label is the verb alone.** The sentence beside the control says what it acts on,
+  so a failed page of history reads “Could not load these commits.”
+  and then Retry, never “Retry loading history”.
+  Reload page names the page because the page is what sets it apart.
+- **Prose uses the same words.** A sentence that sends the reader to the browser says
+  “Reload the page to try again.”, and one that points at a Refresh on screen names it
+  by its label, Refresh.
+  Nothing says “Refresh the page”: Refresh never reloads the page, so the phrase would
+  name the one thing it does not do.
+  A lowercase “refresh to try again” names no control, so it says “Reload the page”
+  instead. Such a sentence is a reader message’s one remedy, and
+  [Reader Messages](design-system-messages.md#what-a-message-contains) holds the rest of
+  it: one statement, at most one remedy, no internals.
+- **The same widget for the same word.** A `.btn` in a toolbar or after a notice’s
+  sentence; a [text action](#control-families) in a line of chrome among links, as a
+  pull request’s Refresh ends its row of ages.
+  A Refresh that waits for a refresh already running stays in its place,
+  `aria-disabled`, and a press does nothing.
+- **Keys.** Refresh in the Pulls tab and on a pull request’s page is situational and
+  numbered; Retry and Reload page are rare and take no key ([The Rules](#the-rules)).
+- **One exception.** A mirror’s freshness row has no Refresh of its own: its age line,
+  “Fetched 3 min ago”, is the control, and its tooltip and accessible name say it
+  refreshes now.
+
+The owner found the Pulls tab’s Reload and a pull request’s Refresh doing the same thing
+under two names (2026-11-24); before that a Reload meant three different things.
+`test_asking_again_has_one_word_for_each_meaning` in `tests/test_browser_copy.py` holds
+the shipped browser code to these words: no “Refresh the page”, no lowercase “refresh
+to”, no Reload that does not name the page, and none of the labels this replaced.
+It reads what a reader could see through the reader-message check’s extractor, so a
+console line or an error’s own text is not held to it.
 
 ### External GitHub Links
 
@@ -1416,6 +1469,22 @@ has no room for a ring; `_FOCUS_RING_OUTSET` in `tests/test_design_vocabulary.py
 the controls that take it.
 `test_every_focus_ring_is_the_one_ring` fails a stylesheet, a plugin’s included, that
 writes a literal ring.
+
+A button or `summary` that no rule rings draws the same ring:
+`:where(button:focus-visible, summary:focus-visible)` in `static/styles.css` states it
+at zero specificity, as [the link base](#links-have-a-base-color) states a link’s color,
+so a family’s own rule wins and a control that sets no ring draws this one, not the user
+agent’s outline in the platform’s accent color outside its box.
+A diff file bar’s label drew the user agent’s until 2026-11-24. Links are not included:
+a link’s ring is its context’s. `test_a_control_no_rule_rings_takes_the_one_ring` holds
+the base.
+
+Any rule that rings a control wins over the base, and that includes KPress’s document
+sheet, which rings a `summary` inside `article.kpress` with a wider ring outside the
+box. A `summary` the app draws inside a KPress article therefore states the one ring
+itself. A rendered diff’s run of unchanged blocks draws the diff’s fold bar there, a
+`button`, which KPress does not ring, so it keeps the base’s;
+`tests/test_diff_markdown_fold_chrome.py` reads that ring with KPress’s sheets loaded.
 
 ### Text Fields
 
@@ -2813,7 +2882,7 @@ is nothing to refresh, so its coming moves nothing; the ages are cut short befor
 and it never is. It follows View on GitHub and Browse code, so it takes the number after
 theirs and renumbers neither
 ([Numbered Controls](keyboard-shortcuts.md#numbered-controls)). While a refresh it
-offered runs or is due, or a rate limit holds it, it waits, as the Pulls tab’s Reload
+offered runs or is due, or a rate limit holds it, it waits, as the Pulls tab’s Refresh
 does: shown and muted, `aria-disabled`, it keeps its slot and its number, so an offer
 numbered after it keeps its own, and a press does nothing.
 Once the refresh ends, Refresh shows only where it is offered: on Conversation and
@@ -2821,8 +2890,8 @@ Checks, with nothing left to refresh, it goes, and an offer after it takes its n
 The status row is the next metadata line, as tall as the row of ages, there only while
 it has something to say: a failure and its remedy, a message, and the offers at its end,
 its text and then its offers’ sentences cut short, never their controls.
-A comparison’s refusal is said in the Changes body, beside its Retry changes, not on the
-status row, which would then show it on Changes alone and move the tab bar between tabs.
+A comparison’s refusal is said in the Changes body, beside its Retry, not on the status
+row, which would then show it on Changes alone and move the tab bar between tabs.
 A pull request that cannot be shown has no author’s row and no row of ages, so its
 message and Refresh’s slot are on the status row.
 Only a failure, which says what to do, wraps the status row.
@@ -3462,10 +3531,10 @@ holds the one helper and the one rule in source.
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one icon slot and gap in, each state icon under the Layers icon and each title under the label | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total bold ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)), the words in the line’s regular weight, and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
-| Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
+| Refresh | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
 | Connection | The second, muted line of the navigation metadata line, one live status: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures, which wraps only when it is longer than the pane | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
-| Reload | `.btn` | Reload checks GitHub for updates. See [Control Families](#control-families). |
+| Refresh | `.btn` | Refresh checks GitHub for changes to the list. See [Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page). |
 
 A pull request is three lines, one item, and two targets, because a pane is narrower
 than its parts. Its link is the first two: the state icon and the title alone, from the
@@ -3612,7 +3681,7 @@ surface keeps a copy of either.
 
 **The Pulls tab always groups by stack** once the repository’s stacks are known; there
 is no option to turn it off, because a Group by stack chip, worded or a glyph alone,
-does not fit the Pulls toolbar beside the Show group and Reload at the default pane
+does not fit the Pulls toolbar beside the Show group and Refresh at the default pane
 width.
 
 - **Rows.** Each stack with a pull request in the list has a row, open by default, and
@@ -3764,7 +3833,7 @@ rather than restate them.
   of which a page has many; and a control that shows only on hover take no key.
   Each stays reachable by pointer and Tab.
   A key goes on a major tab or a major button, and a rare one, such as the Metabrowser
-  menu, print, retry, or the freshness row’s Reload, goes without.
+  menu, print, Retry, or Reload page, goes without.
 - **One key, and Control only for next and previous.** Every shortcut is a single key
   but Control-N and Control-P on macOS and iOS ([Control Chords](#control-chords)),
   Shift changes nothing, and Command, Option, and every other Control chord stay the
@@ -5621,12 +5690,12 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   A mirror or checkout shows the [revision row](#the-ref-selector) above the filters,
   directly below the tabs.
   The trailing group, which takes the line’s end with an auto margin, moves down whole
-  and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
+  and stays right-aligned: Clear and the chevron on Files, Refresh on Pulls.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
   and the tab bar between its tabs.
   A segmented group in the cluster layout (below) is the one exception: it is one
   control drawn over several lines, and what follows it starts a line of its own.
-  So where the Pulls Show group is the cluster, Reload takes a line under it even where
+  So where the Pulls Show group is the cluster, Refresh takes a line under it even where
   it would fit beside the cluster’s last chip.
 - **Line spacing.** A row’s lines are `--nav-toolbar-line-height` tall, a chip’s height,
   and `--nav-toolbar-gap` apart.
@@ -5634,7 +5703,7 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
   it grows by a line and a gap for each line it adds.
   Every control is one line tall: a shorter one is centered in a line’s height, and a
-  taller one, a `.btn` such as Reload, is held to it, so no line is cramped and none
+  taller one, a `.btn` such as Refresh, is held to it, so no line is cramped and none
   stands taller than the rest.
   An open drawer’s controls wrap on the same gap and are one line tall too, Show
   ignored’s checkbox centered in its line, and a closed drawer adds nothing under the
@@ -6264,7 +6333,7 @@ revisions.
   The Info button’s menu describes the pinned source beside its local path.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
-  freshness row a mirror offers its reload in, with one `.btn`, “Reload”
+  freshness row a mirror offers its reload in, with one `.btn`, “Reload page”
   (`.source-ref-selector-stale`). Every tab shows it because the Pulls tab and
   comparison requests can also be refused.
   The chooser belongs to Files.

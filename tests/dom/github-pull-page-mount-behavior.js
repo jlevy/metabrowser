@@ -3721,7 +3721,7 @@ async function run() {
   assert.equal(stagedBody.querySelector(".spinner"), null, "nothing is on its way to spin for");
   assert.equal(
     stagedBody.querySelector(".github-pull-fetch-changes")?.textContent,
-    "Fetch changes",
+    "Fetch",
     "the reader can still fetch what the address does not ask for",
   );
   window.location.pathname = "/pull/10/files/src/app.txt";
@@ -3785,7 +3785,7 @@ async function run() {
   );
   assert.equal(checkoutBody.querySelector(".spinner"), null);
   const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
-  assert.equal(retryChanges?.textContent, "Retry changes");
+  assert.equal(retryChanges?.textContent, "Retry");
   retryChanges.events.get("click")();
   retryChanges.events.get("click")();
   await settle();

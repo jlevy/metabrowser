@@ -13,7 +13,7 @@ groups list a stack's pull requests in the menu's order; and that the choice per
 It also holds the Pulls toolbar to the navigation toolbars' wrap rule (docs/design-system.md,
 "Navigation Toolbars Wrap"): at every pane width from the narrowest, 179 px, to 420, in
 both font sets, with three- and four-digit tallies, nothing is cut, the toolbar is one line
-exactly while it fits and wraps in order otherwise, Reload last and at the line's end, its
+exactly while it fits and wraps in order otherwise, Refresh last and at the line's end, its
 lines a line height and a gap apart; the Show group is joined where its line holds it and
 the chip cluster below, through the row's own observers, holding one layout at the break
 and switching once across it, and already the cluster in the first frame of a tab shown

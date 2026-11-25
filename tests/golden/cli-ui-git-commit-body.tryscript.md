@@ -471,8 +471,8 @@ $ node tests/dom/git-commit-body-session.js
     "body_too_large": "This message is too long to render, so it is shown as written.",
     "render_deadline": "This message took too long to render, so it is shown as written.",
     "renderer_exited": "This message could not be rendered, so it is shown as written.",
-    "renderer_unavailable": "This message could not be rendered, so it is shown as written. Reload to try again.",
-    "renderer_busy": "This message could not be rendered, so it is shown as written. Reload to try again.",
+    "renderer_unavailable": "This message could not be rendered, so it is shown as written. Reload the page to try again.",
+    "renderer_busy": "This message could not be rendered, so it is shown as written. Reload the page to try again.",
     "render_failed": "This message could not be rendered, so it is shown as written.",
     "commit_not_found": null,
     "none": null

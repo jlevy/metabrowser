@@ -174,8 +174,8 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   switch back: Metabrowser tries again by itself, as Retry does, and the window says so.
   Any other failure waits for Retry, since trying again on every switch could restart a
   long clone from the beginning or ask GitHub again while it asks for fewer requests.
-  After installing GitHub CLI, choose Find Again in Settings first, so that Metabrowser
-  finds it, then Retry.
+  After installing GitHub CLI, choose Find Again in Settings > Runtime first, so that
+  Metabrowser finds it, then Retry.
 - **A link `metab` refuses**, such as an issues page, shows `metab`’s message, which
   says what to do. A link to another site, an `http` link, and a link with a user name, a
   password, or a port other than 443 show the app’s own message.
@@ -213,11 +213,11 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   window, and Escape to close the panel.
   Command-Delete clears what you typed; with nothing typed, it closes the selected open
   folder.
-- **Tabs or windows:** Settings > Open folders in decides where a newly opened folder
-  goes: as System Settings > Desktop & Dock > “Prefer tabs when opening documents” says
-  (the default), as a tab of the front window, or in a window of its own.
-  Window > Merge All Windows, Move Tab to New Window, and dragging a tab combine folders
-  either way.
+- **Tabs or windows:** Settings > General > Open folders in decides where a newly opened
+  folder goes: as System Settings > Desktop & Dock > “Prefer tabs when opening
+  documents” says (the default), as a tab of the front window, or in a window of its
+  own. Window > Merge All Windows, Move Tab to New Window, and dragging a tab combine
+  folders either way.
 - **Links:** a link to the same server stays in the window, and Command-click opens it
   in a new tab of that folder’s window.
   A clicked link to another site opens in your default browser; a page cannot open one
@@ -355,33 +355,40 @@ loads its page. The servers start one at a time, the front tab’s first.
   when a window shows it.
   If no window was open, the one you looked at last opens in a window of its own.
 - **The budget:** a launch rebuilds at most the front 20 windows and 50 tabs.
-- **Turning it off:** clear Settings > “Reopen the last session’s folders when
+- **Turning it off:** clear Settings > General > “Reopen the last session’s folders when
   Metabrowser opens”. The session is still saved.
 
 A restore brings back windows, tabs, frames, and pages, but not full screen, Spaces,
 minimized windows, or each tab’s Back and Forward history.
 
-## Choosing a metab
+## Settings
 
-**Metabrowser → Settings…** groups runtime information above preferences.
+**Metabrowser → Settings…** has four tabs along its toolbar, and opens at the one it
+showed last, General at first.
+Each tab sizes the window to fit, keeping its top edge in place.
 
-- **Information** shows the selected `metab`, its path, how the app found it, and the
-  `git` and `gh` it hands each server.
-  Expand **Plugins** to see the plugin names, versions, sources, required plugins, and
-  discovery errors for new servers started with this runtime.
+- **General:** where a newly opened folder goes ([Windows and Tabs](#windows-and-tabs)),
+  and whether the [last session](#the-last-session) reopens.
+- **Runtime:** the selected `metab`, its path, how the app found it, and the `git` and
+  `gh` it hands each server, with **Find Again** and **Choose metab…**
+  ([Choosing a metab](#choosing-a-metab)). **Places looked** lists the last runtime
+  search, and **Reveal Logs** shows the app’s logs in Finder.
+- **Plugins:** the plugins a new server started with this runtime discovers, each with
+  its name, ID, version, source, and the plugins it requires, then any discovery errors.
   The app runs [the CLI’s plugin inventory](plugins.md#inspecting-plugins) with the same
-  environment it uses to start its servers.
-  **Places looked** shows the last runtime search.
-  **Check Setup…** opens the [full diagnostic report](#checking-the-setup).
-- **Preferences** lets you find or choose a different runtime and change how folders
-  open and whether the last session reopens.
+  environment it uses to start its servers, the first time the tab shows a runtime and
+  again on **Refresh**, so the list is the inventory `metab --plugins` reports for that
+  runtime.
+- **Check Setup:** the [setup report](#checking-the-setup).
 
 **Metabrowser → About Metabrowser** shows the app build and links to the
 [Metabrowser GitHub repository](https://github.com/jlevy/metabrowser).
 
-At first launch, and again on Find Again, the app looks for `metab` in several places,
-among them the one it used last, `METABROWSER_METAB`, and where uv and Homebrew install
-commands; Places looked lists them in the order tried.
+## Choosing a metab
+
+At first launch, and again on Settings > Runtime > Find Again, the app looks for `metab`
+in several places, among them the one it used last, `METABROWSER_METAB`, and where uv
+and Homebrew install commands; Places looked lists them in the order tried.
 Your login shell’s `PATH` comes last: the login shell runs only when the other places
 miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the app’s name,
 which can take seconds.
@@ -390,8 +397,8 @@ which can take seconds.
   running `metab --exit-on-eof --present --recent --version`. A build from before any of
   those flags is too old whatever its number says.
 - **Trust:** the app runs a `metab` it found only if no other account can change it.
-  A standard Homebrew prefix, writable by the `admin` group, fails that rule; Settings
-  names each file it would not run, and why.
+  A standard Homebrew prefix, writable by the `admin` group, fails that rule; Settings >
+  Runtime names each file it would not run, and why.
 - **Choose metab…** runs the file you pick even so, such as a source checkout’s
   `.venv/bin/metab`. `open --env METABROWSER_METAB=/path/to/metab -a Metabrowser`
   instead names a `metab` for the search to try, under the same trust rule.
@@ -404,36 +411,40 @@ which can take seconds.
 
 ## Checking the Setup
 
-Help > Check Setup… runs `metab --doctor --json` with the `metab`, `git`, and `gh` the
-app hands its servers, and shows the report: one row each for the plugins, opening from
-a terminal, `metab`, Git, the configuration directory, the cache directory, the event
-log, and GitHub CLI. Each row shows its state and what it found.
-**Setup Help** opens the
+Help > Check Setup… opens Settings at its Check Setup tab, which runs
+`metab --doctor --json` with the `metab`, `git`, and `gh` the app hands its servers each
+time it comes on screen.
+A line at the top says whether `metab` can serve a folder with this setup, and names
+each check that needs a look.
+Below it is the whole report as plain text, headed by the app’s build and the `metab` it
+ran: one block each for the plugins, opening from a terminal, `metab`, Git, the
+configuration directory, the cache directory, the event log, and GitHub CLI, in the form
+`metab --doctor` prints, a line with the check’s name, state, and summary, then what it
+found, indented. A long line wraps under its own indent, and the report scrolls.
+Select any part of it and copy it with Command-C. **Setup Help** opens the
 [README’s installation and troubleshooting section](https://github.com/jlevy/metabrowser#installation).
 [Diagnostics](command-line.md#diagnostics-and-plugins) says what each check covers.
-Settings’ Check Setup… opens the same window.
-The `metab` row compares with the oldest `metab` this build of the app runs.
-The Git row names that `git`, its version, and whether it reads file ages on a Git
+The `metab` check compares with the oldest `metab` this build of the app runs.
+The Git check names that `git`, its version, and whether it reads file ages on a Git
 revision; a Git too old for them is a warning that says which release it needs.
 
 - **Check Again** runs it again, as after following a step or choosing a `metab` in
-  Settings.
-- **Copy Report** copies the report as text, headed by the app’s build and the `metab`
-  it ran, for a bug report.
-- **A `metab` built before the setup checks** shows its problems as it words them, says
-  the checks are missing.
+  Settings > Runtime.
+- **Copy Report** copies the whole report, for a bug report.
+- **A `metab` built before the setup checks** shows its problems as it words them, and
+  says the checks are missing.
   Use **Setup Help** to choose a newer runtime.
-- **A row this app cannot read,** such as a check from a later `metab`, says so, and the
-  other rows still show.
+- **A check this app cannot read,** such as one from a later `metab`, says so, and the
+  other checks still show.
 - **No report:** when `metab` cannot run, does not finish within a minute, or prints
-  something other than a report, the window says so and shows what it printed.
+  something other than a report, the tab says so and shows what it printed.
 
 The check changes nothing, and only GitHub CLI’s sign-in check reaches the network.
 
 ## What the App Shows Without a Usable metab
 
-If discovery finds no usable `metab`, Settings shows the required version and why it
-skipped or rejected any runtimes it found.
+If discovery finds no usable `metab`, Settings > Runtime shows the required version and
+why it skipped or rejected any runtimes it found.
 **Installation and troubleshooting on GitHub** opens the
 [README](https://github.com/jlevy/metabrowser#installation) for installing or updating
 the CLI and for preview builds whose runtime is pending on PyPI. After setup, use **Find

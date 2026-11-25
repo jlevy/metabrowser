@@ -131,7 +131,7 @@ argv = ["--plugins", "--json"]
 source = "Sources/ShellCore/Setup/PluginInventory.swift"
 json = ["plugins[].name", "plugins[].display_name", "plugins[].version", "plugins[].source", "plugins[].requires[]", "errors[]"]
 shown = ["plugins[].display_name", "plugins[].version", "plugins[].source", "errors[]"]
-note = "Settings > Information > Plugins uses the selected metab and the server's environment. A partial discovery exits 1 and still prints the plugin list with its errors."
+note = "Settings > Plugins uses the selected metab and the server's environment, when the tab first shows it and on Refresh. A partial discovery exits 1 and still prints the plugin list with its errors."
 
 [[command]]
 id = "doctor"
@@ -178,7 +178,7 @@ shown = [
     "github.gh_minimum",
     "github.account",
 ]
-note = "Help > Check Setup…: one row per entry of `checks`, the plugins and `open_in` among them, then GitHub CLI, each with its step from a `remedy` object; `problems` is read only from a report without `checks`, and a check's `id` names its row. A report with a problem exits 1 and is still a report. It runs with a server's environment (`ChildEnvironment`, the behavior python-environment) and no working directory, so a folder's `.env` never reaches it, and it names the app's bundle in METABROWSER_DOCTOR_APP."
+note = "Settings > Check Setup, which Help > Check Setup… opens: one row of the report per entry of `checks`, the plugins and `open_in` among them, then GitHub CLI, each with its step from a `remedy` object; `problems` is read only from a report without `checks`, and a check's `id` names its row. A report with a problem exits 1 and is still a report. It runs with a server's environment (`ChildEnvironment`, the behavior python-environment) and no working directory, so a folder's `.env` never reaches it, and it names the app's bundle in METABROWSER_DOCTOR_APP."
 
 [[command]]
 id = "acquire"

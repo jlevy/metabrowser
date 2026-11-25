@@ -353,13 +353,17 @@
   flex: none;
 }
 
+/* The toggle's box is its content, so its end padding is the room the inset focus ring
+   takes past the path's last letter, which the ring otherwise covered (seen in Chrome on
+   2026-11-24, mb-2t80); the end margin gives it back, so the bar lays out as before. */
 .metabrowser-diff-host .diff-file-toggle {
   flex: 0 1 auto;
   min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0;
+  padding: 0 4px 0 0;
+  margin-inline-end: -4px;
   border: 0;
   background: transparent;
   color: var(--text);

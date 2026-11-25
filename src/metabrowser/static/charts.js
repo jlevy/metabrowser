@@ -215,7 +215,7 @@
       () => {
         if (typeof Chart === "undefined") {
           container.innerHTML +=
-            '<div class="preview-empty" role="alert">Charts are unavailable. Refresh the page to try again.</div>';
+            '<div class="preview-empty" role="alert">Charts are unavailable. Reload the page to try again.</div>';
           return;
         }
 

@@ -280,15 +280,24 @@ heading with Apple’s warning triangle.
 | --- | --- | --- | --- | --- | --- |
 | `exclamationmark.triangle.fill` | SF Symbol | The server could not serve the folder: the heading of the app’s failure screen | `apps/macos/Sources/Metabrowser/StatusView.swift` | Its own colors, as a multicolor symbol | The heading’s `.title3` font |
 
-Help > Check Setup… leads each row with a mark for its state.
-The state’s word beside the row’s title carries the meaning without the color.
+Settings > Check Setup leads its verdict with a mark for the whole report.
+The verdict’s sentence carries the meaning without the color, and the report below it
+names each check’s state in words.
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
-| `checkmark.circle.fill` | SF Symbol | A setup check that is ok, in Help > Check Setup… | `apps/macos/Sources/Metabrowser/CheckSetupWindow.swift` | SwiftUI’s `.green` | The row’s body font |
-| `exclamationmark.triangle.fill` | SF Symbol | A setup check’s warning: some work needs its fix | `apps/macos/Sources/Metabrowser/CheckSetupWindow.swift` | SwiftUI’s `.orange` | The row’s body font |
-| `xmark.octagon.fill` | SF Symbol | A setup check’s problem: `metab` cannot serve a folder until it is fixed | `apps/macos/Sources/Metabrowser/CheckSetupWindow.swift` | SwiftUI’s `.red` | The row’s body font |
-| `questionmark.circle` | SF Symbol | A state this app does not know, shown as `metab` names it | `apps/macos/Sources/Metabrowser/CheckSetupWindow.swift` | SwiftUI’s `.secondary` | The row’s body font |
+| `checkmark.circle.fill` | SF Symbol | No problems: `metab` can serve a folder with this setup, in Settings > Check Setup | `apps/macos/Sources/Metabrowser/CheckSetupPane.swift` | SwiftUI’s `.green` | The verdict’s `.headline` font |
+| `xmark.octagon.fill` | SF Symbol | A problem: `metab` cannot serve a folder until it is fixed, in Settings > Check Setup | `apps/macos/Sources/Metabrowser/CheckSetupPane.swift` | SwiftUI’s `.red` | The verdict’s `.headline` font |
+
+Each Settings tab shows a symbol above its title in the window’s toolbar.
+The title carries the meaning; the symbol only marks the tab.
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `gearshape` | SF Symbol | Settings > General | `apps/macos/Sources/Metabrowser/SettingsWindow.swift` | AppKit’s toolbar ink for a template image | AppKit’s preference-style toolbar item |
+| `terminal` | SF Symbol | Settings > Runtime: the `metab` command the app runs | `apps/macos/Sources/Metabrowser/SettingsWindow.swift` | AppKit’s toolbar ink for a template image | AppKit’s preference-style toolbar item |
+| `puzzlepiece.extension` | SF Symbol | Settings > Plugins | `apps/macos/Sources/Metabrowser/SettingsWindow.swift` | AppKit’s toolbar ink for a template image | AppKit’s preference-style toolbar item |
+| `stethoscope` | SF Symbol | Settings > Check Setup: the setup report | `apps/macos/Sources/Metabrowser/SettingsWindow.swift` | AppKit’s toolbar ink for a template image | AppKit’s preference-style toolbar item |
 
 ## UI Chrome and Actions
 

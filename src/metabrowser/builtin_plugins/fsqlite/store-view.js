@@ -60,7 +60,7 @@ export function mountStoreInfo(container, ctx, sdk) {
     },
     () => {
       if (!disposed) {
-        loading.textContent = "Could not load this view. Reload to try again.";
+        loading.textContent = "Could not load this view. Reload the page to try again.";
       }
     },
   );

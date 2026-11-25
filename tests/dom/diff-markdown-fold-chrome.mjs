@@ -320,6 +320,35 @@ const BACKGROUND = (/** @type {string} */ selector) => `new Promise((resolve) =>
 })`;
 const MARKDOWN_BAR = "article.diff-markdown .fold-expander";
 const CODE_BAR = ".diff-file-code .fold-expander";
+// The bars whose keyboard ring the session reads, and how many presses of Tab it allows to
+// reach both from the page's start: a handful do on this small page, so the bound only
+// stops a page that lost one.
+const RINGED = { fold: MARKDOWN_BAR, code: CODE_BAR };
+const TAB_STEPS = 20;
+// In the page, once the keyboard has focused the control *selector* names: the ring it
+// draws, beside the shell's ring tokens resolved where it is; null while focus is elsewhere.
+const RING = `(selector) => {
+  const control = document.querySelector(selector);
+  if (document.activeElement !== control) return null;
+  const probe = document.createElement("span");
+  probe.style.outline = "var(--focus-ring-width) solid var(--focus-ring-color)";
+  probe.style.outlineOffset = "var(--focus-ring-offset)";
+  control.append(probe);
+  const token = getComputedStyle(probe);
+  const ring = { width: token.outlineWidth, color: token.outlineColor, offset: token.outlineOffset };
+  probe.remove();
+  const style = getComputedStyle(control);
+  return {
+    visible: control.matches(":focus-visible"),
+    ring,
+    drawn: {
+      style: style.outlineStyle,
+      width: style.outlineWidth,
+      color: style.outlineColor,
+      offset: style.outlineOffset,
+    },
+  };
+}`;
 // In the page: a comparison of a quote and a code block, its rows built as the views
 // build them, beside a document holding the same blocks.
 const MOUNT_QUOTED = `(blocks) => {
@@ -489,6 +518,24 @@ try {
   const hovered = await chrome.evaluate(BACKGROUND(MARKDOWN_BAR));
   await point(codeResting);
   const codeHovered = await chrome.evaluate(BACKGROUND(CODE_BAR));
+  // The keyboard walks the page from its start to the Markdown fold's bar, then to the code
+  // fold's, so `:focus-visible` holds on each as it does for a reader.
+  await chrome.evaluate("(document.activeElement?.blur(), true)");
+  /** @type {Record<string, any>} */
+  const rings = {};
+  for (let step = 0; step < TAB_STEPS && !(rings.fold && rings.code); step += 1) {
+    for (const type of ["keyDown", "keyUp"]) {
+      await chrome.send("Input.dispatchKeyEvent", {
+        type,
+        key: "Tab",
+        code: "Tab",
+        windowsVirtualKeyCode: 9,
+      });
+    }
+    for (const [part, selector] of Object.entries(RINGED)) {
+      rings[part] ??= await chrome.evaluate(`(${RING})(${JSON.stringify(selector)})`);
+    }
+  }
   const quotedMounted = await chrome.evaluate(`(${MOUNT_QUOTED})(${JSON.stringify(INPUT.quoted)})`);
   await chrome.evaluate("document.fonts.ready.then(() => true)");
   /** @type {Record<string, any>} */
@@ -498,7 +545,33 @@ try {
     quoted[theme] = await chrome.evaluate(QUOTED);
   }
   process.stderr.write(
-    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, codeResting, codeHovered, quoted }, rounded)}\n`,
+    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, codeResting, codeHovered, rings, quoted }, rounded)}\n`,
+  );
+
+  // The fold draws the shell's one ring (docs/design-system.md, "Focus Ring"). KPress's
+  // document sheet rings a `summary` inside `article.kpress` 3px wide and 2px outside its
+  // box; the fold's bar is a `button` there, which it does not ring, so the bar keeps the
+  // shell's ring, as the code fold's bar outside the article does.
+  for (const [part, label] of [
+    ["fold", "the Markdown fold's bar"],
+    ["code", "a code fold's bar"],
+  ]) {
+    check(
+      `Tab reaches ${label}, which matches :focus-visible`,
+      rings[part]?.visible === true,
+      JSON.stringify(rings[part] ?? null),
+    );
+    const drawn = rings[part]?.drawn;
+    const oneRing = rings[part]?.ring;
+    check(
+      `the focused ${label.replace(/^a |^the /, "")} draws the shell's one ring`,
+      drawn?.style === "solid" &&
+        drawn.width === oneRing.width &&
+        drawn.color === oneRing.color &&
+        drawn.offset === oneRing.offset,
+      JSON.stringify(rings[part] ?? null),
+    );
+  }
   );
 
   // One bar for every fold: the Markdown file's computes as the code file's does.

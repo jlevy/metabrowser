@@ -311,7 +311,7 @@ $ node tests/dom/diff-view-file-session.js
       ],
       "busy": [],
       "notices": {
-        "M README.md": "[role=status] This pull request's head has moved; reload to see the newer changes."
+        "M README.md": "[role=status] This pull request's head has moved; reload the page to see the newer changes."
       }
     },
     {
@@ -480,7 +480,7 @@ $ node tests/dom/diff-view-file-session.js
       "requests": [],
       "bars": {},
       "failure": [
-        "Could not load this diff. Refresh the page to try again."
+        "Could not load this diff. Reload the page to try again."
       ],
       "logged": [
         "metabrowser diff: view load failed · diff/view-file · Failed to fetch dynamically imported module"

@@ -239,7 +239,7 @@ export function switchRefusal(body) {
   if (code === "ref_moved") {
     // Only a pull request's switch names the ref it is served under (`under`), and the
     // server says it moved when the page was drawn for an earlier head than its ref's.
-    return "This pull request's head has moved; reload to see the newer changes.";
+    return "This pull request's head has moved; reload the page to see the newer changes.";
   }
   // The answer's status and code are in its JSON, which the network panel and
   // `metab --api` show.
