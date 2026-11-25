@@ -34,6 +34,9 @@
 // line's gap; it gives way whole first, then the line; and the estimated line goes from view
 // where the exact one does (review A on #529, H2 and L1).
 //
+// It then serves #286 a change of no lines, in each theme at every width (mb-efum): the
+// heading shows a muted "0 lines" at the line's weight, whole wherever the long line is.
+//
 // It also lays out the line totals of this repository's own stacks (`REAL_LINES`, measured
 // 2026-11-16 with pull_stack_change.py's `comparison_sums`), to say how wide a typical line
 // is, which the placeholder's width is set from.
@@ -257,10 +260,10 @@ const INKS = `(() => {
   const heading = document.querySelector('.github-pulls-stack-row[data-stack="286"] .github-pulls-stack-change');
   const reference = document.getElementById("reference");
   const answers = window.__answers.changes.current.body;
-  // The line totals alone, as the heading draws them (mb-lqkb).
+  // The line totals alone, a zero one left out, as the heading draws them (mb-lqkb, mb-efum).
   const said = window.metabrowser.changeLine({
     statuses: [], additions: answers.additions, deletions: answers.deletions,
-  });
+  }, { omitZeroTotals: true });
   reference.replaceChildren(...window.metabrowser.changeLineNodes(said));
   const dot = heading?.querySelector(":scope > .summary-punctuation");
   const probe = document.createElement("span");
@@ -282,7 +285,7 @@ const REAL = `((lines) => {
   const widths = lines.map((line) => {
     const said = window.metabrowser.changeLine({
       statuses: [], additions: line.additions, deletions: line.deletions,
-    });
+    }, { omitZeroTotals: true });
     host.replaceChildren(...window.metabrowser.countPartsNodes([{ separator: "·" }]), ...window.metabrowser.changeLineNodes(said));
     const em = parseFloat(getComputedStyle(host).fontSize);
     const width = host.querySelector(".change-line").getBoundingClientRect().width;
@@ -459,7 +462,7 @@ async function main() {
           );
           check(
             `${at}: the name says the line's totals in words`,
-            now.name.startsWith("Stack #286: 5 lines added, 0 deleted; "),
+            now.name.startsWith("Stack #286: 5 lines added; "),
             now.name,
           );
           for (const [part, ink] of Object.entries(inks.reference)) {
@@ -584,8 +587,79 @@ async function main() {
         lap(`${at}: ${state}`);
       }
     }
+    // A change of no lines (mb-efum): a muted "0 lines" at the line's weight, said "no lines
+    // changed", and whole wherever the long exact line, which is wider, shows.
+    await browser.evaluate(
+      `(window.__line286 = ${JSON.stringify({ status: 200, body: { ...ANSWERS.changes.current.body, additions: 0, deletions: 0 } })}, true)`,
+    );
+    const noLines = {};
+    for (const theme of THEMES) {
+      for (const width of WIDTHS) {
+        const at = `${width} px ${theme} no lines`;
+        await browser.evaluate(`(${MOUNT})(${width}, ${JSON.stringify(theme)})`);
+        await browser.waitFor(
+          `(window.__release(), document.querySelector('.github-pulls-stack-row[data-stack="286"] .change-line') !== null)`,
+        );
+        await browser.evaluate(
+          `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
+        );
+        const now = (await browser.evaluate(READ))["286"];
+        const ink = await browser.evaluate(`(() => {
+          const line = document.querySelector('.github-pulls-stack-row[data-stack="286"] .change-line');
+          const none = line?.querySelector(".change-line-stats > .change-line-none") ?? null;
+          const probe = document.createElement("span");
+          probe.style.color = "var(--muted)";
+          document.body.append(probe);
+          const muted = getComputedStyle(probe).color;
+          probe.remove();
+          return {
+            none: none ? [getComputedStyle(none).color, getComputedStyle(none).fontWeight] : null,
+            line: line ? getComputedStyle(line).fontWeight : null,
+            muted,
+          };
+        })()`);
+        if (process.env.SHOTS_DIR && width === 299) {
+          const shot = await browser.send("Page.captureScreenshot", {
+            format: "png",
+            clip: { x: 0, y: 0, width: width + 16, height: 360, scale: 2 },
+          });
+          fs.writeFileSync(
+            path.join(process.env.SHOTS_DIR, `stack-lines-${theme}-${width}-no-lines.png`),
+            Buffer.from(shot.data, "base64"),
+          );
+        }
+        const shown =
+          now.line !== null &&
+          now.line.top >= now.heading.top - TOLERANCE_PX &&
+          now.line.bottom <= now.heading.bottom + TOLERANCE_PX &&
+          now.line.right <= now.heading.right + TOLERANCE_PX;
+        check(
+          `${at}: the heading says "0 lines", and its name "no lines changed"`,
+          now.text === "·0 lines" && now.name.startsWith("Stack #286: no lines changed; "),
+          JSON.stringify({ text: now.text, name: now.name }),
+        );
+        check(
+          `${at}: "0 lines" is muted, at the line's weight`,
+          ink.none !== null && ink.none[0] === ink.muted && ink.none[1] === ink.line,
+          JSON.stringify(ink),
+        );
+        check(
+          `${at}: "0 lines" is whole where it shows`,
+          !shown || now.statsWhole,
+          JSON.stringify({ stats: now.stats, line: now.line }),
+        );
+        check(
+          `${at}: "0 lines" shows wherever the long exact line does`,
+          states.exact[width] === "dropped" || shown,
+          JSON.stringify({ long: states.exact[width], shown }),
+        );
+        noLines[at] = shown ? "whole" : "dropped";
+        lap(`${at}: ${noLines[at]}`);
+      }
+    }
     await browser.evaluate(`(window.__line286 = null, true)`);
     measured.long = states;
+    measured.noLines = noLines;
     const order = ["whole, noted", "whole", "dropped"];
     const ranks = WIDTHS.map((width) => order.indexOf(states.estimated[width]));
     check(

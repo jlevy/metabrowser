@@ -4410,9 +4410,10 @@ export function mountPullsPanel(container, ctx, mb) {
   /**
    * The lines a row's pull request changes, as it is now (row-lines.js), after the author on
    * the row's third line: "+1,234 −567", the shell's brief change line of its line totals
-   * alone, with no file total and no file statuses (mb-lqkb); the shell's pending placeholder
-   * while it is read or its list is listed, so nothing moves when it arrives; or nothing
-   * where it cannot be had. Each holds the separator before it, and nothing holds none. The
+   * alone, with no file total and no file statuses (mb-lqkb), a total of zero left out,
+   * "+1,234" where it only adds lines, and "0 lines" where it changes none (mb-efum); the
+   * shell's pending placeholder while it is read or its list is listed, so nothing moves
+   * when it arrives; or nothing where it cannot be had. Each holds the separator before it, and nothing holds none. The
    * lines are said in words, as a stack's row says its line (`rowLineHint`), in the hidden
    * text that describes the row, so the row is read with them.
    *
@@ -4432,7 +4433,7 @@ export function mountPullsPanel(container, ctx, mb) {
     entry.changeKey = shown;
     let words = null;
     if (line.phase === "shown") {
-      const said = mb.changeLine(rowLineInput(line.summary, null));
+      const said = mb.changeLine(rowLineInput(line.summary, null), { omitZeroTotals: true });
       entry.changeLine.replaceChildren(entry.changeSep, ...mb.changeLineNodes(said));
       words = said.label;
     } else if (line.phase === "waiting") {
@@ -4583,9 +4584,9 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.label.textContent = group.label;
       let name = group.hint;
       if (line.phase === "shown") {
-        // Its line totals alone, with no file statuses, as a pull request's row says its own
-        // (mb-lqkb).
-        const said = mb.changeLine(stackLineInput(line.change));
+        // Its line totals alone, with no file statuses, a total of zero left out, as a pull
+        // request's row says its own (mb-lqkb, mb-efum).
+        const said = mb.changeLine(stackLineInput(line.change), { omitZeroTotals: true });
         // "Stack #286 · +1,234 −567": the dot is a count summary's separator, which the name,
         // saying the line in words, needs no word for.
         // Totals a member's list could not count, a binary file it listed, are not exact:

@@ -2383,6 +2383,12 @@ the Pulls tab ([The Pulls Tab](#the-pulls-tab)), and a stack’s heading there
 ([Stack Groups](#stack-groups-in-the-pulls-tab)) draw it too; the last two draw its line
 totals alone, with no statuses, as the Pulls column’s change line shares its row with
 the number and the author.
+Those two also build it with `omitZeroTotals`, which leaves out a total of zero, so a
+pull request that only adds lines reads “+1,234” and one that only deletes them “−567”,
+since a “−0” beside the number is noise there; totals both nonzero, or not known, read
+as they do everywhere, and a change of no lines reads “0 lines”, muted at its line’s
+weight (`.change-line-none`), said “no lines changed”.
+Every other surface says both totals, “+0 −0” included, as a change set’s full account.
 It sets no size or ink of its own, so it takes its line’s.
 `tests/dom/count-parts-session.js` pins its markup (`cli-ui-count-parts.tryscript.md`),
 and `test_count_summaries_mute_their_punctuation_and_ink_their_status_counts` its rule
@@ -3288,7 +3294,8 @@ A pull request is one item of three lines, with one hover, one selection, and on
 keyboard stop: its link, the first two lines, its title’s, and its change line, the
 third: the registry’s chevron, then the number, the author, and the lines the pull
 request changes, its [brief change line](#brief-change-line) of its line totals alone,
-“#455 · jlevy · +1,234 −567”, with the age at the row’s end.
+“#455 · jlevy · +1,234 −567”, a total of zero left out, “+1,234” for a pull request that
+only adds lines, with the age at the row’s end.
 The item holds the pull request’s changed-files tree, which hangs under it, is owned by
 the row’s link through `aria-owns`, whose `aria-expanded` alone says whether it is open,
 and starts collapsed.
@@ -3760,16 +3767,16 @@ width.
   stack’s row passed over, and the first pull requests drawn.
 - **Change line.** A stack’s row shows the lines of the stack’s combined change as its
   [brief change line](#brief-change-line) of its line totals alone, after its label and
-  a muted dot: “Stack #286 · +1,234 −567”. A stack is the accumulation of its pull
-  requests, merged or open, so its change is theirs: each member’s own changed files,
-  the list its expanded row shows, bottom first, every file once with a status composed
-  from what the members did to it (removed if the last one removed it, else added if the
-  first one added it, else renamed or modified), and every member’s lines summed
-  (`pull_change_sums.py`). The server accumulates them from the cache
-  (`GET stack-change`); it never asks GitHub, fetches, or runs Git.
-  Totals a member’s list could not count, a binary file it listed, are followed by the
-  Diff summary’s muted “(estimated)”, which gives way first, and the accessible name
-  says “estimated” after the line’s words.
+  a muted dot: “Stack #286 · +1,234 −567”, a total of zero left out as a row’s is.
+  A stack is the accumulation of its pull requests, merged or open, so its change is
+  theirs: each member’s own changed files, the list its expanded row shows, bottom
+  first, every file once with a status composed from what the members did to it (removed
+  if the last one removed it, else added if the first one added it, else renamed or
+  modified), and every member’s lines summed (`pull_change_sums.py`). The server
+  accumulates them from the cache (`GET stack-change`); it never asks GitHub, fetches,
+  or runs Git. Totals a member’s list could not count, a binary file it listed, are
+  followed by the Diff summary’s muted “(estimated)”, which gives way first, and the
+  accessible name says “estimated” after the line’s words.
   It is read for the stacks the list draws, one at a time when the browser is idle,
   within the lines’ own hourly cap, apart from the comparison warms’, and read again
   never on a timer but when what it is made of may have changed: when a member moves or
