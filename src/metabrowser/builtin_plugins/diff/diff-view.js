@@ -4574,13 +4574,21 @@ function holdPlace(view, anchor = null) {
   }
 }
 
-// The least drift `holdPlace` puts back. The pane's scroll position takes whole pixels, so a
-// smaller move is made as a whole one, past the row, and Chrome's own anchoring, which keeps a
-// row's rounded place, then holds it there. Measured 2026-11-25 in headless Chrome, opening a
-// hunk gap above the pane's top (tests/dom/diff-hunk-gap-chrome.mjs): at half a pixel, a
-// drift of 0.5 px moved the pane from 1146 to 1147, and the row at the pane's top ended 1 px
-// above where it was, 1.1-1.5 px while the gap's group grew; at a whole pixel it ended where
-// it was and stayed within 0.48 px of it at every frame.
+// The least drift `holdPlace` puts back: no finer than the step the pane's scroll position
+// takes, so a correction never leaves a drift it would correct again. A move under the step
+// is made as a whole step, past the row, and Chrome's own anchoring, which keeps a row's
+// rounded place, then holds it there. Chrome's step is a device pixel: set to 1146.25,
+// 1146.5, and 1146.75, an element's scrollTop read back 1146, 1147, and 1147 at a device
+// pixel ratio of 1, which the Chrome tier forces (tests/dom/chrome-session.mjs), and 1146.5,
+// 1146.5, and 1147 at 2 (headless Chrome, 2026-11-25). At 1, opening a hunk gap above the
+// pane's top (tests/dom/diff-hunk-gap-chrome.mjs) with half a pixel here, a drift of 0.5 px
+// moved the pane from 1146 to 1147, and the row at the pane's top ended 1 px above where it
+// was, 1.1-1.5 px while the gap's group grew; with a whole pixel it ended where it was and
+// stayed within 0.48 px of it at every frame. It is not `1 / devicePixelRatio`, which in
+// Chrome at 2 would put back a drift of half a pixel this leaves: WebKit's step is
+// unmeasured, and on any scroller coarser than a device pixel that would bring the overshoot
+// back. A drift it leaves is under a pixel, and each call measures it from the place first
+// kept, so it does not grow.
 const HOLD_PLACE_MIN_PX = 1;
 
 /**
