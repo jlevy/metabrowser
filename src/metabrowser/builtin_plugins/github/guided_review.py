@@ -362,9 +362,9 @@ def _collection(fence: Token) -> Collection:
         "status": _CONTRACT.status,
     }:
         raise GuideError("The guided-review block needs the enforced Collection/v1 contract.")
-    outside = _outside_shape(document["collection"])
-    if outside is not None:
-        raise GuideError(_schema_refusal(outside))
+    refusal = _outside_shape(document["collection"])
+    if refusal is not None:
+        raise GuideError(refusal)
     result = validate_artifact(Path("guided-review"), contract=_CONTRACT, document=document)
     if not result.ok:
         raise GuideError(_schema_refusal(result.structural.errors[0].get("path")))
@@ -375,8 +375,15 @@ def _collection(fence: Token) -> Collection:
         raise GuideError(f"Invalid guided-review reference at {location}.") from exc
 
 
-def _outside_shape(collection: object) -> list[str | int] | None:
-    """Where *collection* leaves the shape the v1 schema closes, or ``None`` within it.
+# The refusal of a guide past MAX_ITEMS. No one list's bound states the total, so the
+# compiled schema admits such a block, and a refusal in the schema's name would send an
+# author who checks the block against it nowhere (A6 of review A on #807).
+_TOO_MANY: Final = f"This guide has more than {MAX_ITEMS} steps and groups."
+
+
+def _outside_shape(collection: object) -> str | None:
+    """The refusal of *collection* where it leaves the shape the v1 schema closes, or
+    ``None`` within it.
 
     The shape is each object a mapping of its declared keys and each list within its
     bound. softschema's refusal of undeclared keys is quadratic in their number: it writes
@@ -392,37 +399,40 @@ def _outside_shape(collection: object) -> list[str | int] | None:
 
     An entry is a group or an item as :func:`_entry_kind` tells them apart, as the schema
     does. One bound is the models' alone, since no one list states it: MAX_ITEMS counts a
-    group's items with the entries, and a block past it is refused at `items` as soon as a
-    group's items pass it.
+    group's items with the entries. A block past it is refused in plain words, as soon as
+    the count passes it, so a group's long list is never walked; a list past its own
+    bound, the entries' or a group's, passes the total too.
     """
     if not _closed(collection, Collection):
-        return []
+        return _schema_refusal([])
     if "comparison" in collection and not _closed(collection["comparison"], CollectionComparison):
-        return ["comparison"]
+        return _schema_refusal(["comparison"])
     if "items" not in collection:
         return None
     entries = collection["items"]
-    if not isinstance(entries, list) or len(entries) > MAX_ITEMS:
-        return ["items"]
+    if not isinstance(entries, list):
+        return _schema_refusal(["items"])
     counted = len(entries)
+    if counted > MAX_ITEMS:
+        return _TOO_MANY
     for at, entry in enumerate(entries):
         if _entry_kind(entry) == "item":
             outside = _outside_item(entry, ["items", at])
         elif not _closed(entry, CollectionGroup):
-            return ["items", at]
+            return _schema_refusal(["items", at])
         else:
             items = entry["items"]
-            if not isinstance(items, list) or len(items) > MAX_ITEMS - 1:
-                return ["items", at, "items"]
+            if not isinstance(items, list):
+                return _schema_refusal(["items", at, "items"])
             counted += len(items)
             if counted > MAX_ITEMS:
-                return ["items"]
+                return _TOO_MANY
             places = (
                 _outside_item(item, ["items", at, "items", to]) for to, item in enumerate(items)
             )
             outside = next((place for place in places if place is not None), None)
         if outside is not None:
-            return outside
+            return _schema_refusal(outside)
     return None
 
 

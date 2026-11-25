@@ -41,8 +41,8 @@ the QA runbook's pull-request page walkthrough does::
     github_pull_fixture.py <directory> --serve <number> <port>
 
 With ``--guided`` the descriptions of 7 and 8 carry guides, and 9's two blocks;
-``--describe`` then writes one of ``GUIDE_VARIANTS`` into a cached description, pinned as
-the guide already there is::
+``--describe`` then writes one of ``GUIDE_VARIANTS`` or ``BUILT_VARIANTS`` into a cached
+description, pinned as the guide already there is::
 
     github_pull_fixture.py <directory> --describe <number> <variant>
 """
@@ -60,7 +60,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Generator, Mapping
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1433,9 +1433,27 @@ def _in_group(step: str) -> str:
     return "".join(f"    {line}\n" for line in step.splitlines())
 
 
+# Two more steps over the stand-in's changes, so each group of a longer guide can hold two:
+# the count's old side, and each changed file whole.
+_OLD_COUNT_STEP = """\
+    - title: Compare the old count
+      note: Check what the count replaced.
+      references:
+        - {path: src/app.txt, side: old, start_line: 1, end_line: 1}
+"""
+_WHOLE_STEP = """\
+    - title: Read each file whole
+      note: Check the two changes together.
+      references:
+        - {path: src/app.txt}
+        - {path: docs/new.md}
+"""
+
+
 # The guides `--describe` writes into a cached description: the stand-in guide's steps each
-# in a group, the first with a note; groups mixed with a step; and two blocks the page
-# refuses, an empty group and a group inside a group.
+# in a group, the first with a note; groups mixed with a step; a longer guide, two groups
+# of two steps each, which tells numbering through the groups from numbering by entry; and
+# two blocks the page refuses, an empty group and a group inside a group.
 GUIDE_VARIANTS: Final[dict[str, str]] = {
     "grouped": (
         "    - title: The count\n"
@@ -1448,6 +1466,11 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "      note: Read the value before its explanation.\n"
         "      items:\n" + _in_group(_COUNT_STEP) + _DOCS_STEP
     ),
+    "longer": (
+        "    - title: The count\n"
+        "      items:\n" + _in_group(_COUNT_STEP + _OLD_COUNT_STEP) + "    - title: The docs\n"
+        "      items:\n" + _in_group(_DOCS_STEP + _WHOLE_STEP)
+    ),
     "empty-group": "    - title: The count\n      items: []\n" + _DOCS_STEP,
     "nested-group": (
         "    - title: The count\n"
@@ -1456,6 +1479,20 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "          items:\n" + _in_group(_in_group(_COUNT_STEP))
     ),
 }
+
+
+def _past_max_items() -> str:
+    """Two groups whose steps pass MAX_ITEMS together, though each list is within its own
+    bound, so only the total refuses the guide."""
+    from metabrowser.builtin_plugins.github.guided_review import MAX_ITEMS
+
+    group = _in_group(_COUNT_STEP) * (MAX_ITEMS // 2)
+    return "".join(f"    - title: Part {part}\n      items:\n{group}" for part in (1, 2))
+
+
+# The guides `--describe` builds from the format's bounds as it writes one, so they follow
+# the constants: a guide past MAX_ITEMS.
+BUILT_VARIANTS: Final[dict[str, Callable[[], str]]] = {"past-max-items": _past_max_items}
 
 
 def grouped_guide_body(origin: Origin) -> str:
@@ -1504,11 +1541,11 @@ def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: tuple[str
 
 
 def describe(directory: Path, number: int, variant: str) -> None:
-    """Write the guide *variant* of :data:`GUIDE_VARIANTS` into the cached description of
-    pull request *number* in the home :func:`build_home` wrote with ``--guided``, pinned as
-    the guide already there is, as a fetch of the edited description would leave it. The
-    pins are read as :func:`_guide_body` writes them, so a variant the page refuses can follow
-    another."""
+    """Write the guide *variant* of :data:`GUIDE_VARIANTS` or :data:`BUILT_VARIANTS` into the
+    cached description of pull request *number* in the home :func:`build_home` wrote with
+    ``--guided``, pinned as the guide already there is, as a fetch of the edited description
+    would leave it. The pins are read as :func:`_guide_body` writes them, so a variant the
+    page refuses can follow another."""
 
     from metabrowser.builtin_plugins.github.pull_record import (
         PullRecord,
@@ -1523,7 +1560,8 @@ def describe(directory: Path, number: int, variant: str) -> None:
         r'^    merge_base: "([0-9a-f]{40})"\n    head: "([0-9a-f]{40})"$', record.pull.body, re.M
     )
     assert pins is not None, f"pull request {number} has no guide to rewrite"
-    body = _guide_body(pins[1], pins[2], GUIDE_VARIANTS[variant])
+    items = GUIDE_VARIANTS[variant] if variant in GUIDE_VARIANTS else BUILT_VARIANTS[variant]()
+    body = _guide_body(pins[1], pins[2], items)
     pull = record.pull.model_copy(update={"body": body})
     write_pull_record(home, _source_slug(), record.model_copy(update={"pull": pull}))
 
@@ -1769,7 +1807,11 @@ if __name__ == "__main__":
             documents=True,
             large=sys.argv[2] == "--guided-large-document",
         )
-    elif len(sys.argv) == 5 and sys.argv[2] == "--describe" and sys.argv[4] in GUIDE_VARIANTS:
+    elif (
+        len(sys.argv) == 5
+        and sys.argv[2] == "--describe"
+        and sys.argv[4] in {*GUIDE_VARIANTS, *BUILT_VARIANTS}
+    ):
         describe(Path(sys.argv[1]).resolve(), int(sys.argv[3]), sys.argv[4])
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
@@ -1778,6 +1820,6 @@ if __name__ == "__main__":
             "usage: github_pull_fixture.py <directory> "
             "[--files | --guided | --guided-documents | --guided-large-document | --checkout "
             "| --serve <number> <port> [--exit-on-eof] "
-            f"| --describe <number> {{{','.join(GUIDE_VARIANTS)}}}] "
+            f"| --describe <number> {{{','.join([*GUIDE_VARIANTS, *BUILT_VARIANTS])}}}] "
             "or --files-refresh <metab arguments>"
         )
