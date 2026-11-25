@@ -376,8 +376,20 @@ ROUTE=$(jq -er .comparison_route <tmp>/pull.json) &&
   jq -r '.manifest.files[] | "\(.id) \(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"' <tmp>/diff.json
 ```
 
-The same answer holds each file’s hunks: `.patches["<id>"].hunks` for the file whose
-`.id` is `<id>`.
+The same answer holds the hunks of its first few files only, `.patches["<id>"].hunks`
+for the file whose `.id` is `<id>`; every file after them has `.availability` `deferred`
+and no patch. Ask for one file by its path, the new one or a deleted file’s old one, and
+the answer holds that file alone, with its hunks, whatever its place:
+
+```shell
+ROUTE=$(jq -er .comparison_route <tmp>/pull.json) &&
+<invocation> <url> --api "$ROUTE&file=<path>" --format json > <tmp>/file.json &&
+  jq -r '.patches[].hunks[] | "old \(.old_start)-\(.old_start + .old_count - 1) new \(.new_start)-\(.new_start + .new_count - 1)"' <tmp>/file.json
+```
+
+Each line is one hunk, its first and last line on each side; a side a hunk has no lines
+on, such as an added file’s old side, ends before it starts.
+Percent-encode a path that holds a space, `&`, `#`, `%`, or `+`, as any URL query needs.
 
 Read a file at the head with Git, in the clone that `/api/source/status` names, whose
 `location` may start with `~`. The `select` stops the recipe when the pin is not the
@@ -617,15 +629,17 @@ collection:
   groups do not nest, and an empty group is refused.
   Steps outside a group may sit between groups.
   The page numbers the steps 1 to n through the groups, as `step` counts them.
-- Pin `merge_base` to the merge base of the head and the base branch, after
-  `git fetch origin <base branch>`: `git merge-base origin/<base branch> <head>`. For a
-  stacked pull request the base branch is the base layer’s, not the default branch.
-  Pin `head` to the full ID of the head you pushed, `git rev-parse HEAD`.
+- Pin `merge_base` and `head` to the comparison Metabrowser holds for the pull request,
+  which the route checks the pins against: `.record.comparison.base` and
+  `.record.comparison.head`, the `left=` and `right=` of its `.comparison_route`, as
+  [Publish and Confirm It](#publish-and-confirm-it) reads them.
+  Never compute `merge_base` with `git merge-base`, which answers the head itself once
+  the base branch holds the head, as after a merge.
 - A reference names a changed `path`, alone for the file’s whole diff, or with a `side`,
   `old` or `new`, and lines that lie inside one hunk on that side.
-  Test each range against the hunks the comparison route answers
-  (`.patches["<id>"].hunks`, as [From a Pull-Request URL](#from-a-pull-request-url)
-  reads them), not a local `git diff`, whose options can draw other hunks.
+  Test each range against the hunks the comparison route answers for its file
+  (`&file=<path>`, as [From a Pull-Request URL](#from-a-pull-request-url) reads them),
+  not a local `git diff`, whose options can draw other hunks.
 - Three more kinds cite past this pull request, each read from what the reader’s copy
   already has and never out of date:
   - `{pull: 811}`, another pull request, which the page shows as a row with its state,
@@ -651,6 +665,33 @@ collection:
 
 ### Publish and Confirm It
 
+The record of the pull request holds the pins and the hunks a guide is written against,
+so open the pull request first, with its prose, and add the block once its record is
+read.
+The `guided-review` route reads the cached description, and no route checks a block
+before it is published, so the order is: pin, check what you can, publish, then read
+every step through the route and fix what it reports.
+
+Refresh the record after every push and every edit of the description.
+From a pull-request URL, run `<invocation> <url> --no-serve` and the record check of
+[From a Pull-Request URL](#from-a-pull-request-url), which must show the fetch
+succeeded; beside a checkout, POST the refresh of
+[Beside a Checkout](#beside-a-checkout) and use `<checkout>` in place of `<url>`. Either
+leaves the record in `<tmp>/pull.json`; read the pins from it:
+
+```shell
+jq -r '.record.comparison.base, .record.comparison.head' <tmp>/pull.json
+```
+
+Pin `merge_base` to the first line and `head` to the second, which must be the full ID
+of the head you pushed, `git rev-parse HEAD`; when it is not, the record is older than
+the push, so refresh it again.
+
+Before you publish, parse the block’s YAML with a parser you have, and test each range
+against its file’s hunks with the `&file=<path>` recipe of
+[From a Pull-Request URL](#from-a-pull-request-url).
+That is all a check can do before publishing: whether the page reads the guide, and each
+reference, is the route’s answer alone.
 Write the whole description to a file, the prose and then the block, and publish it:
 
 ```shell
@@ -661,18 +702,28 @@ To change a guide that is already published, start from the description GitHub h
 `gh pr view <n> --json body --jq .body`, and replace its block in place.
 Never add a second block: the page refuses a description with two.
 
-The `guided-review` route reads the cached description, so refresh the record first, or
-the route answers for the description you replaced.
-From a pull-request URL, run `<invocation> <url> --no-serve` and the record check of
-[From a Pull-Request URL](#from-a-pull-request-url), which must show the fetch
-succeeded; beside a checkout, POST the refresh of
-[Beside a Checkout](#beside-a-checkout) and use `<checkout>` in place of `<url>`. Then
-read each step, with `<k>` from 1 to the `.step_count` the first answer gives:
+Refresh the record again, or the route answers for the description you replaced.
+Then read the guide without a step: the answer is step 1, and it also holds the whole
+guide, its `.step_count`, every step’s title in `.titles`, and `.outline`, its groups
+and steps in reading order, a group with its `title`, `note`, and the numbers of its
+steps:
+
+```shell
+<invocation> <url> --api '/api/plugin/github/guided-review?number=<n>' --format json > <tmp>/guide.json &&
+  jq -r '.state, (.message // empty), .step_count, (.outline[]? | if .kind == "group" then "\(.title): steps \([.children[].step] | map(tostring) | join(" "))" else "\(.step) \(.title)" end)' <tmp>/guide.json
+```
+
+Then read each step, with `<k>` from 1 to `.step_count`, and check its title, its note,
+and each reference’s state, with its range:
 
 ```shell
 <invocation> <url> --api '/api/plugin/github/guided-review?number=<n>&step=<k>' --format json > <tmp>/step.json &&
-  jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
+  jq -r '.state, (.message // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
 ```
+
+A step’s `.group` is the index of its group in `.outline`, or null outside one.
+Fix what the steps report in the description, publish it again, refresh, and read again
+until every step and reference reads as below:
 
 - `.state` is `ready` when the page can show the guide and its pins are the pull
   request’s, and each reference’s state follows what it names: every one should be
@@ -700,10 +751,10 @@ changed:
 
 `.stale.changed_steps` are those steps, and `.stale.changed_paths` the files; a list is
 null when it could not be read, and then every step needs rechecking.
-Recheck only those steps’ ranges against the new hunks and their notes against what is
-now true, add or change a step only when the push changed what a reviewer must read,
-move both pins as above, and publish and confirm the guide again.
-A step that cites no changed file still matches the pull request.
+Recheck only those steps’ ranges against the new hunks, read with `&file=<path>`, and
+their notes against what is now true, add or change a step only when the push changed
+what a reviewer must read, move both pins as above, and publish and confirm the guide
+again. A step that cites no changed file still matches the pull request.
 
 ## Write a Stack Guide
 
@@ -732,7 +783,7 @@ first step. Give it these groups and steps, in this order:
 | Documents | One for each document a reviewer must read | What it now promises | The file, whole |
 | Areas | Three to five, by subsystem, in dependency order | What it does now and what to verify | Up to three ranges that matter, and the layer’s `{pull}` |
 | Open questions | One | What a person must decide | The code in doubt |
-| Testing and merging | One or two | Automated, agent-checked, and needs a person; the merge order; deferred work with its tracker IDs | Tests, the plan |
+| Testing and merging | One or two | Automated, agent-checked, and needs a person; the merge order, while a layer is open; deferred work with its tracker IDs | Tests, the plan |
 
 - Write eight to twelve steps.
   A group of one step stays a step of its own, whose title names its group, as in a pull
@@ -804,26 +855,54 @@ Read the stack first: its state, its pins, and its layers, bottom up:
   fetches, and `absent` when it cannot be shown, with `.reason` saying why.
 - `.comparison.left` is the stack’s base and `.comparison.right` the top layer’s head:
   pin `merge_base` and `head` to them, with no `git merge-base`.
+- A stack whose layers have all merged still answers `current`, with `.open` false and
+  every layer’s state `merged`, and its guide still reads `ready`: write it as for an
+  open stack, but leave the merge order out of its testing step.
 
-List the documents the stack changes, which the Orientation and Documents steps cite,
-from the stack’s comparison:
+Read a file’s hunks in the stack’s comparison, which a range must lie inside, with
+`&file=<path>` on its route, as [From a Pull-Request URL](#from-a-pull-request-url)
+reads a pull request’s:
+
+```shell
+<invocation> <url> --api "$(jq -r .comparison.route <tmp>/stack.json)&file=<path>" --format json > <tmp>/file.json &&
+  jq -r '.patches[].hunks[] | "old \(.old_start)-\(.old_start + .old_count - 1) new \(.new_start)-\(.new_start + .new_count - 1)"' <tmp>/file.json
+```
+
+List the documents the stack changes, which the Orientation and Documents steps cite.
+`&group=type:docs` narrows the comparison to the Documentation file type, which holds
+changelog fragments, test transcripts, and fixtures too, so the filter below drops the
+folders those usually sit in; cite only the plans, specs, architecture documents, and
+guides a reviewer must read:
 
 ```shell
 <invocation> <url> --api "$(jq -r .comparison.route <tmp>/stack.json)&group=type:docs" --format json > <tmp>/docs.json &&
-  jq -r '.manifest.files[] | (.new // .old).path' <tmp>/docs.json
+  jq -r '.manifest.files[] | select((.new // .old).path | test("(^|/)(changelog\\.d|tests?|fixtures|golden)/") | not) | "\(.kind) +\(.additions) \((.new // .old).path)"' <tmp>/docs.json
 ```
 
-Read each layer’s description and guide with `gh pr view <n> --json body --jq .body`.
+Read each layer’s description from its record, which a `current` stack has cached for
+every layer, rather than from GitHub, and its own guide with the outline and step
+recipes of [Publish and Confirm It](#publish-and-confirm-it), `<n>` the layer’s number:
+
+```shell
+<invocation> <url> --api '/api/plugin/github/pull?number=<n>' --format json > <tmp>/layer.json &&
+  jq -r '.state, .record.pull.body' <tmp>/layer.json
+```
+
+Only the description you edit starts from the copy GitHub has, `gh pr view`, as in
+[Publish and Confirm It](#publish-and-confirm-it).
 Write the top layer’s whole description to a file, its own prose and guide and then the
 `stack-review` block, and publish it with `gh pr edit <top> --body-file <tmp>/body.md`.
 An edit of a description moves no head, so it starts no CI run and leaves the layer’s
-own guide current. Refresh the top layer’s record as in
-[Publish and Confirm It](#publish-and-confirm-it), then read each step, with `<k>` from
-1 to the `.step_count` the first answer gives:
+own guide current. As for a pull request’s guide, nothing checks the block before it is
+published: refresh the top layer’s record as in
+[Publish and Confirm It](#publish-and-confirm-it), read the guide’s outline from
+`/api/plugin/github/guided-review?stack=<s>` with that section’s outline recipe, then
+read each step, with `<k>` from 1 to `.step_count`, and fix and publish again until
+every step reads as below:
 
 ```shell
 <invocation> <url> --api '/api/plugin/github/guided-review?stack=<s>&step=<k>' --format json > <tmp>/step.json &&
-  jq -r '.state, .carrier, (.message // .reason // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
+  jq -r '.state, .carrier, (.message // .reason // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
 ```
 
 - `.carrier` is the layer whose block the page reads, which should be the top layer.
@@ -871,8 +950,9 @@ which names the far port; the address answers once the far server is up.
 - Prefer `--walk --format json` when the task needs machine-readable inventory rather
   than an interactive browser
 - Parse JSON from standard output; human-readable diagnostics, such as the `selection`
-  and `pull_request` lines of a URL-backed `--api` or `--show`, use standard error.
-  `--no-serve` prints its report for a person on standard output
+  and `pull_request` lines of a URL-backed `--api` or `--show`, use standard error, as
+  does a `slow server request` line, which reports a request’s time and is not a
+  failure. `--no-serve` prints its report for a person on standard output
 - In a headless environment, avoid opening a browser: serve with `--no-open` rather than
   presenting, which may start a browser, and report the local URL and whether the server
   is still running

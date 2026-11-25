@@ -112,6 +112,31 @@ $ jq -c '.patches["f2"].hunks[] | [.old_start, .new_start, [.lines[] | .op]]' tm
 ? 0
 ```
 
+That holds only the first few files’ hunks, and marks the rest `deferred`; `&file=`
+answers one file alone, with its hunks, whatever its place.
+Each line is one hunk, its first and last line on each side.
+
+```console
+$ ROUTE=$(jq -er .comparison_route tmp/pull.json) &&
+> METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api "$ROUTE&file=src/app.txt" --format json > tmp/file.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.patches[].hunks[] | "old \(.old_start)-\(.old_start + .old_count - 1) new \(.new_start)-\(.new_start + .new_count - 1)"' tmp/file.json
+old 1-1 new 1-2
+? 0
+```
+
+```console
+$ jq -c '[.manifest.files[] | [.id, .availability]]' tmp/file.json
+[["f2","ready"]]
+? 0
+```
+
 ## Test: a file at the head, read with Git in the mirror
 
 ```console
@@ -214,8 +239,45 @@ no_store
 
 ## Test: a guided review, read step by step
 
-The guide of 7 is pinned to its head and merge base, so it answers `ready`; the first
-answer gives the count of steps to read.
+A guide’s pins are the base and head of its pull request’s comparison in the record,
+which the guide of 7 is pinned to.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7' --format json > tmp/pull.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.record.comparison.base, .record.comparison.head' tmp/pull.json
+f92fd713acd521d4ebb62fb9f345ec927b8b6d1b
+85fcb2fa9e77eb5db485ffef445cbbc645d6db4a
+? 0
+```
+
+So the guide answers `ready`. Read without a step, it answers step 1 with the whole
+guide: the count of steps to read and its outline.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json > tmp/guide.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, (.message // empty), .step_count, (.outline[]? | if .kind == "group" then "\(.title): steps \([.children[].step] | map(tostring) | join(" "))" else "\(.step) \(.title)" end)' tmp/guide.json
+ready
+2
+1 Start with the count
+2 Read the new guide
+? 0
+```
+
+Each step answers its title, its note, and each reference, with its range.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=1' --format json > tmp/step.json
@@ -226,10 +288,11 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```
 
 ```console
-$ jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
+$ jq -r '.state, (.message // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
 ready
-2
-file src/app.txt ready
+Start with the count
+Check that the original value is preserved.
+file src/app.txt new 1 2 ready
 ? 0
 ```
 
@@ -245,13 +308,14 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```
 
 ```console
-$ jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
+$ jq -r '.state, (.message // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
 ready
-2
-file docs/new.md ready
+Read the new guide
+Check the new docs against the behavior.
+file docs/new.md new 1 1 ready
 file src/app.txt ready
 file missing.txt path_not_changed
-file src/app.txt range_unavailable
+file src/app.txt old 2 4 range_unavailable
 ? 0
 ```
 
@@ -266,10 +330,9 @@ pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```
 
 ```console
-$ jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
+$ jq -r '.state, (.message // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
 invalid
 Use one guided-review block in the pull request description.
-null
 ? 0
 ```
 
