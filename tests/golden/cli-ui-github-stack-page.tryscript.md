@@ -31,6 +31,11 @@ them.
   Each pending member is asked for once at its head, and the top member’s automatic ask
   is sent at its interval with the record revision the stack route names, so its answer
   leaves the record out.
+- `recovery` is a read that fails while an answer is drawn, which says so in the page’s
+  own words and not the route’s, and then one that finds the drawn answer current again
+  (a 304), which ends the failure.
+- `order` is the header’s order of 71’s members, the top first, as every stack menu
+  lists them.
 
 ```console
 $ node tests/dom/github-stack-page-session.js
@@ -70,7 +75,7 @@ $ node tests/dom/github-stack-page-session.js
         "number": 10,
         "path": "docs/draft.md",
         "text": "2/2",
-        "label": "Layer 2 of 2, #10: this file's changes there",
+        "label": "Layer 2 of 2, #10: this file’s changes there",
         "href": "/pull/10/files/docs/draft.md"
       }
     ],
@@ -79,8 +84,8 @@ $ node tests/dom/github-stack-page-session.js
   "said": {
     "lacking": "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them.",
     "lacking_none": null,
-    "two_lacking": "The top of this stack does not contain #7 and #9, so this view leaves out each one's changes. Open each to see them.",
-    "not_linear": "The bottom pull request's base is not in the top one's history, so this stack has no single comparison. Open each pull request for its changes.",
+    "two_lacking": "The top of this stack does not contain #7 and #9, so this view leaves out each one’s changes. Open each to see them.",
+    "not_linear": "This stack’s changes cannot be shown together. Open each pull request for its changes.",
     "unknown": "This stack cannot be shown."
   },
   "delays": {
@@ -174,6 +179,25 @@ $ node tests/dom/github-stack-page-session.js
       "comparison": "offer",
       "error": null
     }
+  ],
+  "recovery": [
+    {
+      "state": "current",
+      "error": null
+    },
+    {
+      "state": "current",
+      "error": "Could not read this stack."
+    },
+    {
+      "state": "current",
+      "error": null
+    }
+  ],
+  "order": [
+    10,
+    7,
+    8
   ]
 }
 ? 0
