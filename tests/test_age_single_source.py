@@ -2,7 +2,8 @@
 
 An age is drawn by one builder, `MetabrowserFormatters.ageLabel` and `ageLabelHtml` in
 `static/formatters.js`, which plugins reach as `metabrowser.ageLabel` and
-`metabrowser.ageLabelHtml`, and told again by `retellAge`. The builder puts the age's
+`metabrowser.ageLabelHtml`, and told again by `metabrowser.retellAge` (`plugin-sdk-views.js`),
+which swaps its freshness class by the class namespace. The builder puts the age's
 freshness class on it, and that class's one rule in `static/styles.css` sets its ink,
 weight, and numerals. Two things could still bypass it, and these guards hold the
 mechanism rather than restating any colour:
@@ -147,4 +148,29 @@ def test_no_module_paints_an_age_from_the_primitives_class() -> None:
     assert findings == [], (
         "draw an age with ageLabel or ageLabelHtml, which put its freshness class on it, "
         "not with formatAge's class:\n" + "\n".join(findings)
+    )
+
+
+# A class in the freshness namespace, as a stylesheet selects it or a module names it.
+_NAMESPACED_CSS = re.compile(r"\.(age-[\w-]+)")
+_NAMESPACED_JS = re.compile(r"[\"'`](age-[\w-]*)")
+
+
+def test_the_age_namespace_holds_only_freshness_classes() -> None:
+    # `retellAge` (plugin-sdk-views.js) swaps an age's freshness class by its namespace,
+    # age-*, and keeps every other class. That is right only while every class in the
+    # namespace is a freshness class and no call site's own class is in it.
+    findings: list[str] = []
+    for path, pattern in [
+        *((sheet, _NAMESPACED_CSS) for sheet in _tracked("*.css")),
+        *((module, _NAMESPACED_JS) for module in _tracked("src/metabrowser/*.js")),
+    ]:
+        text = path.read_text(encoding="utf-8")
+        for match in pattern.finditer(text):
+            if not FRESHNESS_CLASS.match(match.group(1)):
+                line = text.count("\n", 0, match.start()) + 1
+                findings.append(f"{path.relative_to(ROOT)}:{line}: {match.group(1)}")
+    assert findings == [], (
+        "a class beginning `age-` is a freshness class, which retellAge replaces; name a call "
+        "site's class `<surface>-age`:\n" + "\n".join(findings)
     )

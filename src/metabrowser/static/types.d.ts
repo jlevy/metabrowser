@@ -693,15 +693,10 @@ type MetabrowserFormatterRuntime = Readonly<{
     epochSeconds: number | null | undefined,
     options?: MetabrowserAgeLabelOptions,
   ): string;
-  /** Tell a drawn age as of now, its freshness class swapped in place; returns its label. */
-  retellAge(
-    element: Element,
-    epochSeconds: number | null | undefined,
-    options?: MetabrowserAgeOptions,
-  ): string;
   countClass(value: number): "" | "count-large";
   /** What a change set's summary says, in a count summary's parts: "35 files changed · 2 A,
-   *  3 D, 30 M · +1,234 −3,423", its text, and its words for a screen reader. */
+   *  3 D, 30 M · +1,234 −3,423", its file count and its brief change line, its text, and its
+   *  words for a screen reader (docs/design-system.md, "Diff Summary"). */
   changeSummary(
     totals: {
       files: number | null;
@@ -712,7 +707,10 @@ type MetabrowserFormatterRuntime = Readonly<{
     entries: MetabrowserChangeLineInput["statuses"],
     formatCount: (count: number) => string,
   ): MetabrowserChangedFilesSummary;
-  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from statuses and line totals. */
+  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from statuses and line totals, each
+   *  count written with `formatCount` and an unknown one as "?": `text` as it reads, and
+   *  `label` in words, "10 added, 5 deleted, 4 modified; 1,234 lines added, 567 deleted". A
+   *  total of zero is left out; a change of no lines reads "0 lines". */
   changeLine(
     change: MetabrowserChangeLineInput,
     formatCount: (count: number) => string,

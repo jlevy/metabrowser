@@ -152,8 +152,6 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
   // no stack, and named for assistive technology by its hint.
   const place = make(layout.flow ? "span" : "strong", layout.place);
   const position = layout.flow ? make("span", "github-pull-stack-position") : place;
-  /** @type {Array<Node | string>} */
-  let fields;
   /** @type {Node[]} */
   let authorSeparator = [];
   if (layout.flow) {
@@ -165,15 +163,24 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
     for (const node of authorSeparator) {
       /** @type {HTMLElement} */ (node).hidden = true;
     }
-    fields = [title, place, ...separator(), number, ...authorSeparator, by];
-  } else {
-    fields = [title, " ", place, ...separator(), number, by];
   }
   const holder = layout.copy === null ? null : make("span", layout.copy);
-  holder?.append(...fields);
-  const after = holder === null ? fields : [holder];
   let icon = emptyIcon();
-  link.replaceChildren(icon, ...after);
+  // The fields after the icon. A run's place hides itself, its dot with it; a line's place and
+  // the dot after it are laid out only while there is a place, so a pull request in no stack
+  // reads "title #N" and never "title · #N".
+  const lay = (/** @type {boolean} */ placed) => {
+    const fields = layout.flow
+      ? [title, place, ...separator(), number, ...authorSeparator, by]
+      : [title, " ", ...(placed ? [place, ...separator()] : []), number, by];
+    if (holder === null) {
+      link.replaceChildren(icon, ...fields);
+    } else {
+      holder.replaceChildren(...fields);
+    }
+  };
+  link.replaceChildren(icon, ...(holder === null ? [] : [holder]));
+  lay(false);
   /** @type {{words: string | null, place: string | null | undefined, state: StackMemberLine["state"] | undefined, author: string | null}} */
   const shown = { words: null, place: undefined, state: undefined, author: null };
   return {
@@ -203,6 +210,10 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
           }
         } else {
           place.textContent = member.place ?? "";
+          const had = shown.place !== undefined && shown.place !== null;
+          if (had !== (placed !== null)) {
+            lay(placed !== null);
+          }
         }
         shown.place = placed;
       }

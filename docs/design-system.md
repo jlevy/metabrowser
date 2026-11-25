@@ -133,20 +133,23 @@ freshness class (`.age-live` … `.age-old`), and the shared class rule owns its
 weight, and tabular numerals.
 One builder draws every age shown: `ageLabel` and `ageLabelHtml` in
 `static/formatters.js` draw a span of the label in its freshness class, after the call
-site’s own class, and `retellAge` tells a drawn age again as time passes, swapping that
-class in place.
-Plugins reach them as `metabrowser.ageLabel`, `metabrowser.ageLabelHtml`,
-and `metabrowser.retellAge`. So no surface puts an age on the page without its ink, and
-a call site’s class only places the age.
+site’s own class. `retellAge` in `static/plugin-sdk-views.js` tells a drawn age again as
+time passes, swapping its freshness class, the one in the `age-` namespace, and keeping
+every other. It is not a startup script’s, as only a view that keeps its ages tells them
+again. Plugins reach them as `metabrowser.ageLabel`, `metabrowser.ageLabelHtml`, and
+`metabrowser.retellAge`. So no surface puts an age on the page without its ink, and a
+call site’s class only places the age.
 No stylesheet sets an age’s color, weight, size, or numerals but the freshness rule, and
 `tests/test_age_single_source.py` holds both halves: no rule whose subject is an age
 sets them, and no module paints an age from `formatAge`’s class.
-A Pulls row’s age drew gray when its column’s rule set `--muted` on it, a selector more
-specific than the freshness rule’s. It sets no size: an age reads at the size of the
-text it sits in, a navigation row’s or a header line’s ([Type Scale](#type-scale)).
-Dense navigation uses the compact style (`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata
-and conversation cards use the relative style: `2h ago`, `just now`, or `in 2h` for a
-future timestamp. Unknown times have no age label.
+It also holds the `age-` namespace to freshness classes, so a call site names its own
+class `<surface>-age`. A Pulls row’s age drew gray when its column’s rule set `--muted`
+on it, a selector more specific than the freshness rule’s. It sets no size: an age reads
+at the size of the text it sits in, a navigation row’s or a header line’s
+([Type Scale](#type-scale)). Dense navigation uses the compact style (`<1m`, `5m`, `2h`,
+`3d`, `2w`). Full metadata and conversation cards use the relative style: `2h ago`,
+`just now`, or `in 2h` for a future timestamp.
+Unknown times have no age label.
 The Pulls sidebar, file tree, compact Git history, and the ref selector’s list remain
 condensed navigation; PR headers, comments, reviews, full commit summaries and file and
 folder view headers use relative ages.
@@ -3679,9 +3682,10 @@ number.
 One builder draws the fields on every row of the GitHub plugin that shows them,
 `stackMemberRow` in `stack-member-row.js`: a Pulls row’s run (`PULLS_RUN`), and a
 stack’s member in the stack menu and on the stack’s own page (`MEMBER_LINE`). The order,
-and the muted dot before each field after the title, are its; a surface chooses only its
-layout, a run that wraps in the text column or one line whose title is cut short before
-the rest.
+and the muted dots that part the fields, are its; a surface chooses only its layout, a
+run that wraps in the text column or one line whose title is cut short before the rest.
+A field that is absent draws neither itself nor the dot before it, in either layout and
+whether the row was drawn without it or lost it later, so no row shows a stray dot.
 
 The shell cannot import the GitHub plugin, so its own rows keep the order in their own
 code: Quick Search’s pull request results, “title #N · Merged”, and a ref selector row’s

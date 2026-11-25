@@ -438,9 +438,7 @@ function formatAge(mtimeSec, options) {
   if (mtimeSec === null) {
     return '<span class="tally-pending tally-pending-narrow"></span>';
   }
-  // One age builder for the whole product (formatters.js): same
-  // abbreviations, same freshness tiers, same colours, wherever an age
-  // appears.
+  // The one age builder (formatters.js).
   return window.MetabrowserFormatters.ageLabelHtml(mtimeSec, options);
 }
 
