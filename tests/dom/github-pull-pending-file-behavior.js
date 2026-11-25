@@ -93,7 +93,10 @@ async function run() {
           },
         }),
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: { href: () => "/view/" },
         sourceKind: () => "git_revision",
@@ -235,7 +238,10 @@ async function run() {
         }),
       }),
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "age",
+      })),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/" },
       sourceKind: () => "git_revision",
@@ -321,7 +327,10 @@ async function run() {
           throw new Error("no comparison exists before acquisition");
         },
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: { href: () => "/view/" },
         sourceKind: () => "filesystem",

@@ -21,8 +21,13 @@
 // (`eventLogDetails`) and tests/dom/event-reports-session.js. Prints one line of checks.
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+
+// The SDK's age builder over the ages a fake plays (sdk-ref-fixture.js), its source
+// interpolated into a page script, so a page draws the labels the session chose.
+const { agesFrom } = createRequire(import.meta.url)("./sdk-ref-fixture.js");
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -227,7 +232,7 @@ const MOUNT = `(async () => {
     ensureKindAssets: async () => {},
     loadChangedFilesTree: async () => window.MetabrowserChangedFilesTree,
     getRegisteredView: () => ({ prefetch: () => new Promise(() => {}) }),
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
     navigation: { href: () => "/view/", async open() {} },
     sourceKind: () => "filesystem",

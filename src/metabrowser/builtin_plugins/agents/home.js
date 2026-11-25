@@ -249,12 +249,12 @@ export function mountHome(container, ctx, mb) {
               session_id: row.session_id,
               title: titleOf(row),
               path: sessionFile(row),
-              age: ageText(row.last_activity, now),
+              at: row.last_activity,
               project: row.project,
               models: row.models,
               status: row.status,
             })),
-            { label: "Latest sessions" },
+            { label: "Latest sessions", now },
           );
     element.innerHTML =
       '<div class="agents-heading-row"><h3 class="section-heading agents-heading">Latest sessions</h3>' +
@@ -271,12 +271,12 @@ export function mountHome(container, ctx, mb) {
         session_id: row.session_id,
         title: row.name || titleOf(row),
         path: sessionFile(row),
-        age: ageText(row.updated_at, liveNow),
+        at: row.updated_at,
         project: row.project,
         models: row.models,
         status: null,
       })),
-      { label: "Active sessions" },
+      { label: "Active sessions", now: liveNow },
     );
     const emptyText =
       liveTotal === 0

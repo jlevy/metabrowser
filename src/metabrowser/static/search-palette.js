@@ -473,7 +473,9 @@
       option.classList.add("search-palette-option-pull");
       const number = `#${result.number}`;
       const state = result.state[0].toUpperCase() + result.state.slice(1);
-      option.setAttribute("aria-label", `Pull request ${number}, ${result.label}, ${state}`);
+      // Said in the order it shows, the title, then the number, as every row of a pull request's
+      // fields keeps them (docs/design-system.md, "One Order for a Pull Request's Fields").
+      option.setAttribute("aria-label", `${result.label}, pull request ${number}, ${state}`);
 
       const text = hostDocument.createElement("span");
       text.className = "search-palette-option-text";

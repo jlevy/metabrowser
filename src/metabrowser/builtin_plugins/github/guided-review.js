@@ -569,7 +569,7 @@ function pullRow(reference, ways) {
     place: stack === null ? null : stackPosition(stack.place - 1, stack.count),
     ...(stack === null
       ? {}
-      : { placeTip: stackPlaceHint(stack.number, stack.place - 1, stack.count) }),
+      : { placeHint: stackPlaceHint(stack.number, stack.place - 1, stack.count) }),
     title: target?.title ?? null,
     state: target?.state ?? null,
     author: author === null ? null : { login: author, avatar: target?.avatar ?? null },

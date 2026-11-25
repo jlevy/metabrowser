@@ -39,7 +39,7 @@ $ node tests/dom/quick-search-pulls-session.js
   "mixed": [
     "render.js",
     "src/renderer.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged"
+    "Fix <em>renderer</em>, pull request #123, Merged"
   ],
   "afterMerge": "src/renderer.js",
   "titleHighlight": "render",
@@ -47,10 +47,10 @@ $ node tests/dom/quick-search-pulls-session.js
   "grown": [
     "render.js",
     "src/renderer.js",
-    "Pull request #124, Render the latest state, Closed",
-    "Pull request #123, Fix <em>renderer</em>, Merged"
+    "Render the latest state, pull request #124, Closed",
+    "Fix <em>renderer</em>, pull request #123, Merged"
   ],
-  "selectedAfterGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
+  "selectedAfterGrowth": "Fix <em>renderer</em>, pull request #123, Merged",
   "truncatedStatus": "2 matching files in 3 indexed files. Scanning continues. 2 pull requests shown. Showing the top matches.",
   "mixedKeptReading": true,
   "afterFileGrowth": [
@@ -58,28 +58,28 @@ $ node tests/dom/quick-search-pulls-session.js
     "src/renderer.js",
     "z/render-guide.md",
     "z/render-notes.md",
-    "Pull request #124, Render the latest state, Closed",
-    "Pull request #123, Fix <em>renderer</em>, Merged"
+    "Render the latest state, pull request #124, Closed",
+    "Fix <em>renderer</em>, pull request #123, Merged"
   ],
-  "selectedAfterFileGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
+  "selectedAfterFileGrowth": "Fix <em>renderer</em>, pull request #123, Merged",
   "limitedStatus": "No matches in 5 indexed files. Scanning continues. No matching pull requests. Search by number for older pull requests.",
   "recents": [
-    "Pull request #124, Render the latest state, Closed",
-    "Pull request #123, Fix <em>renderer</em>, Merged"
+    "Render the latest state, pull request #124, Closed",
+    "Fix <em>renderer</em>, pull request #123, Merged"
   ],
   "prefix": [
-    "Pull request #12, Exact number, Draft",
-    "Pull request #124, Render the latest state, Closed",
-    "Pull request #123, Fix <em>renderer</em>, Merged"
+    "Exact number, pull request #12, Draft",
+    "Render the latest state, pull request #124, Closed",
+    "Fix <em>renderer</em>, pull request #123, Merged"
   ],
-  "selectedAfterPrefixGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
+  "selectedAfterPrefixGrowth": "Fix <em>renderer</em>, pull request #123, Merged",
   "explicitTitle": [
-    "Pull request #124, Render the latest state, Closed",
-    "Pull request #123, Fix <em>renderer</em>, Merged"
+    "Render the latest state, pull request #124, Closed",
+    "Fix <em>renderer</em>, pull request #123, Merged"
   ],
   "explicitTitleHighlight": "Render",
   "prefixedChoices": [
-    "Pull request #125, feat(chart): chart the strategies, Open"
+    "feat(chart): chart the strategies, pull request #125, Open"
   ],
   "prefixedTitle": [
     {
@@ -102,19 +102,19 @@ $ node tests/dom/quick-search-pulls-session.js
     "notes/#render.md"
   ],
   "exact": [
-    "Pull request #123, Fix <em>renderer</em>, Merged"
+    "Fix <em>renderer</em>, pull request #123, Merged"
   ],
   "staleRequestAborted": true,
   "bare": [
     "notes/123.md",
-    "Pull request #123, Fix <em>renderer</em>, Merged"
+    "Fix <em>renderer</em>, pull request #123, Merged"
   ],
   "opened": [
     123,
     123
   ],
   "cold": [
-    "Pull request #77, Cold catalog match, Open"
+    "Cold catalog match, pull request #77, Open"
   ],
   "exactKeptReading": true,
   "pullOpenFailure": "Could not open this pull request. Try again.",

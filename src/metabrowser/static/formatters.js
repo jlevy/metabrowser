@@ -57,11 +57,20 @@
     ["m", 60 * 1000, "age-min"],
   ]);
 
+  // Every freshness class `age` gives, so `retellAge` can swap one for the next.
+  const AGE_CLASSES = Object.freeze([
+    ...new Set([...AGE_TIERS.map(([, , name]) => name), "age-sec"]),
+  ]);
+
   /**
-   * Compact or relative age and its tier class for an epoch-seconds timestamp.
+   * Compact or relative age and its tier class for an epoch-seconds timestamp, as of
+   * `options.now` (epoch seconds), or of the clock when it is not given: a view whose answer
+   * carries its own time passes it, so the view reads the same however late it is drawn.
+   * Its label is for words, a sentence or an accessible name; an age that is drawn is drawn
+   * by `ageLabel` or `ageLabelHtml`, which apply its class (docs/design-system.md, "Age").
    *
    * @param {number} epochSeconds
-   * @param {{style?: "compact" | "relative"}} [options]
+   * @param {{style?: "compact" | "relative", now?: number}} [options]
    * @returns {{label: string, className: string}}
    */
   function age(epochSeconds, options = {}) {
@@ -69,7 +78,8 @@
     if (!Number.isFinite(value) || value <= 0) {
       return { label: "", className: "" };
     }
-    const delta = Date.now() - value * 1000;
+    const now = options.now === undefined ? Date.now() : options.now * 1000;
+    const delta = now - value * 1000;
     const elapsed = Math.abs(delta);
     const relative = options.style === "relative";
     for (const [suffix, span, className] of AGE_TIERS) {
@@ -84,9 +94,69 @@
     return { label: relative ? "just now" : "<1m", className: "age-sec" };
   }
 
-  /** @param {number} epochSeconds @returns {string} */
-  function ageClass(epochSeconds) {
-    return age(epochSeconds).className;
+  /**
+   * Tell a drawn age as of now: its label, and its freshness class in place of the one it
+   * had, its other classes kept. Every drawn age is told here, so none can lose its ink: the
+   * freshness class alone sets an age's colour, weight, and numerals (static/styles.css),
+   * and a call site's own class places it and nothing more. Returns the label.
+   *
+   * @param {Element} element
+   * @param {number | null | undefined} epochSeconds
+   * @param {{style?: "compact" | "relative", now?: number}} [options]
+   * @returns {string}
+   */
+  function retellAge(element, epochSeconds, options = {}) {
+    const { label, className } = age(Number(epochSeconds) || 0, options);
+    if (element.textContent !== label) {
+      element.textContent = label;
+    }
+    const had = element.getAttribute("class") ?? "";
+    const kept = had.split(/\s+/).filter((name) => name !== "" && !AGE_CLASSES.includes(name));
+    const wanted = (className === "" ? kept : [...kept, className]).join(" ");
+    if (had !== wanted) {
+      element.setAttribute("class", wanted);
+    }
+    return label;
+  }
+
+  /**
+   * An age as every surface draws one: a span of its label in its freshness class, after
+   * `options.className`, the call site's own class, which places it; `options.tip` is its
+   * `data-tip-text`, the exact time. Empty, with no freshness class, where the time is not
+   * known, so a row can keep its place for one.
+   *
+   * @param {Document} doc
+   * @param {number | null | undefined} epochSeconds
+   * @param {{style?: "compact" | "relative", now?: number, className?: string, tip?: string}} [options]
+   * @returns {HTMLSpanElement}
+   */
+  function ageLabel(doc, epochSeconds, options = {}) {
+    const element = doc.createElement("span");
+    if (options.className) {
+      element.setAttribute("class", options.className);
+    }
+    if (options.tip) {
+      element.setAttribute("data-tip-text", options.tip);
+    }
+    retellAge(element, epochSeconds, options);
+    return element;
+  }
+
+  /**
+   * `ageLabel` as escaped markup, or "" where the time is not known.
+   *
+   * @param {number | null | undefined} epochSeconds
+   * @param {{style?: "compact" | "relative", now?: number, className?: string, tip?: string}} [options]
+   * @returns {string}
+   */
+  function ageLabelHtml(epochSeconds, options = {}) {
+    const { label, className } = age(Number(epochSeconds) || 0, options);
+    if (label === "") {
+      return "";
+    }
+    const classes = options.className ? `${options.className} ${className}` : className;
+    const tip = options.tip ? ` data-tip-text="${escaped(options.tip)}"` : "";
+    return `<span class="${escaped(classes)}"${tip}>${escaped(label)}</span>`;
   }
 
   // How much of a commit ID a line shows, as many characters as GitHub shows
@@ -429,7 +499,8 @@
 
   window.MetabrowserFormatters = Object.freeze({
     age,
-    ageClass,
+    ageLabel,
+    ageLabelHtml,
     changeLine,
     changeLineHtml,
     changeLineNodes,
@@ -440,6 +511,7 @@
     formatBytes,
     formatFileCount,
     formatInteger,
+    retellAge,
     shortCommit,
     sizeClass,
     titleHtml,

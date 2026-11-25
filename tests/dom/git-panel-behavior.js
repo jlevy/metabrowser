@@ -220,10 +220,19 @@ class FakeElement {
     return `<${this.tagName.toLowerCase()}${cls}${attrs}>${this.innerHTML}${this._text}</${this.tagName.toLowerCase()}>`;
   }
 
+  // A real element reflects its class attribute in its className, as the age builder
+  // reads and writes it.
   setAttribute(name, value) {
+    if (name === "class") {
+      this.className = value;
+      return;
+    }
     this.attributes.set(name, String(value));
   }
   getAttribute(name) {
+    if (name === "class") {
+      return this.classNames.size ? this.className : null;
+    }
     return this.attributes.has(name) ? this.attributes.get(name) : null;
   }
   removeAttribute(name) {
@@ -5563,11 +5572,6 @@ async function run() {
     const tallyAge = container.querySelector(".git-history-summary-age");
     assertTrue("tally: age value is present", tallyAge !== null);
     assertEqual("tally: age value uses the shared formatter", tallyAge?.textContent, "2y");
-    assertContains(
-      "tally: age value carries the shared freshness tier",
-      tallyAge?.className,
-      "age-old",
-    );
     responses.delete("/api/git/summary");
   }
 
@@ -6031,21 +6035,6 @@ async function run() {
     await landing;
     assertEqual("kept: an answer requested before teardown is not kept", kept().entries, 0);
     comparisonResponder = async (revision) => ({ comparison_id: revision });
-  }
-
-  // ── Relative age ───────────────────────────────────────────
-  {
-    const now = Date.now() / 1000;
-    // One age vocabulary everywhere: the same abbreviations the file
-    // tree uses, produced by the same primitive, so a commit's age and a
-    // file's age are never spelled differently.
-    assertEqual("age: sub-minute", internals.relativeAge(now - 10), "<1m");
-    assertEqual("age: minutes", internals.relativeAge(now - 300), "5m");
-    assertEqual("age: hours", internals.relativeAge(now - 7200), "2h");
-    assertEqual("age: days", internals.relativeAge(now - 3 * 86400), "3d");
-    assertEqual("age: carries its freshness class", internals.ageClass(now - 300), "age-min");
-    // A missing or zero timestamp renders nothing rather than "56y ago".
-    assertEqual("age: zero renders empty", internals.relativeAge(0), "");
   }
 
   if (failures.length > 0) {

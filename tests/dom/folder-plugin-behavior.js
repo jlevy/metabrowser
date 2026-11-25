@@ -347,6 +347,7 @@ for (const relative of [
   "src/metabrowser/static/view-state.js",
   "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin-sdk.js",
+  "src/metabrowser/static/plugin-sdk-views.js",
   "src/metabrowser/static/filter-controls.js",
   "src/metabrowser/static/menus.js",
 ]) {

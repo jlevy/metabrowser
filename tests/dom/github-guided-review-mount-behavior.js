@@ -10,7 +10,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
-const { refHelpers } = require("./sdk-ref-fixture.js");
+const { agesFrom, refHelpers } = require("./sdk-ref-fixture.js");
 
 const pagePath = path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js");
 const GUIDE_ROUTE = "/api/plugin/github/guided-review";
@@ -292,7 +292,7 @@ function host({ allowlist = true } = {}) {
           ensureAsset: async () => {},
           loadKpressAssets: async () => {},
           ...refHelpers(document),
-          formatAge: () => ({ label: "now", className: "age" }),
+          ...agesFrom(document, () => ({ label: "now", className: "age" })),
           formatTimestamp: () => "now",
           navigation: { href: () => "/view/" },
           sourceKind: () => "git_revision",

@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle } = require("./github-pull-page-mount-behavior.js");
-const { refHelpers } = require("./sdk-ref-fixture.js");
+const { agesFrom, refHelpers } = require("./sdk-ref-fixture.js");
 
 class TimelineElement extends Element {
   contains(node) {
@@ -164,7 +164,7 @@ function mount(mountPullPage, envelope, how = {}) {
       ensureAsset: async () => {},
       loadKpressAssets: async () => {},
       ...refHelpers(document),
-      formatAge: how.formatAge ?? (() => ({ label: "1d ago", className: "age" })),
+      ...agesFrom(document, how.formatAge ?? (() => ({ label: "1d ago", className: "age" }))),
       formatTimestamp: () => "Sep 16, 2026",
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
