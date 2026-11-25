@@ -1043,10 +1043,10 @@ measurements that set them:
   The answer’s `moved` gives, for each member in both whose head moved, the commits its
   new head adds that the comparison drawn did not show, in neither the earlier head’s
   history nor its top’s, nor its merge base, or `null` when the earlier head is not in
-  its history, or 0 when the top drawn already holds the new head (`stack_moves`, read
-  against the pair `pull_stack_retained.py` keeps for that key and counted once each,
-  `MAX_KEPT_COUNTS`). A file the reader opens is scrolled to when its diff is drawn,
-  never on a later answer (`bodyPlan`).
+  its history, or 0 when the top drawn holds the new head and not the earlier one, a
+  record that caught up (`stack_moves`, read against the pair `pull_stack_retained.py`
+  keeps for that key and counted once each, `MAX_KEPT_COUNTS`). A file the reader opens
+  is scrolled to when its diff is drawn, never on a later answer (`bodyPlan`).
 - **The guide.** When a member’s description carries the stack’s guide, the answer’s
   `guide` names that member and its record revision, Guided Review leads the tabs, and
   `/stack/<n>` opens on it; without one the front page is Changes

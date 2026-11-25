@@ -331,6 +331,13 @@ def test_a_moved_member_counts_the_commits_the_drawn_comparison_did_not_show(
     assert asyncio.run(pull_stack.stack_moves(target, older, caught)) == [
         {"number": 8, "commits": 0}
     ]
+    # 10, the top, is reset to b1: the drawn top held its new head and its earlier one, so
+    # its record did not catch up; its branch was rewritten, and no count says what is new.
+    reset_members = ((8, base, b1), (10, b1, b1))
+    reset = StackPair(70, base, b1, stack_digest(reset_members), reset_members, (True, True))
+    assert asyncio.run(pull_stack.stack_moves(target, caught, reset)) == [
+        {"number": 10, "commits": None}
+    ]
 
 
 def test_an_unreadable_file_answers_unknown_and_a_malformed_one_nothing(
