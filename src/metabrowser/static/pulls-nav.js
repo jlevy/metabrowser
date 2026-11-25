@@ -37,9 +37,13 @@
       return Object.freeze({ page: null, filter: list.state, file: null });
     }
     const page = routes.parsePull(pathname);
-    return page === null
-      ? null
-      : Object.freeze({ page: page.number, filter: null, file: page.file || null });
+    if (page === null) {
+      // A stack's page is in this space too, and names no one pull request.
+      return routes.parseStack(pathname) === null
+        ? null
+        : Object.freeze({ page: null, filter: null, file: null });
+    }
+    return Object.freeze({ page: page.number, filter: null, file: page.file || null });
   }
 
   /**

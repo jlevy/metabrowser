@@ -1,7 +1,8 @@
 // GitHub built-in plugin.
 //
-// Owns two views. ("pull-request", "pull-request") is a pull request's page at
+// Owns three views. ("pull-request", "pull-request") is a pull request's page at
 // /pull/<n> and its tab routes, which the shell mounts; pull-page.js holds it.
+// ("pull-stack", "pull-stack") is a native stack's page at /stack/<n>; stack-page.js.
 // ("pull-request-list", "pull-request-list") is the list of them: the shell mounts it in the
 // Pulls tab, with its host, and in the pane at /pulls; pulls-panel.js holds it.
 // The URL reducer, the gh credential helper, and the records are Python.
@@ -13,6 +14,7 @@
 import { mountPullPage } from "./pull-page.js";
 import { pullStateIcon } from "./pull-state.js";
 import { mountPullsLanding, mountPullsPanel } from "./pulls-panel.js";
+import { mountStackPage } from "./stack-page.js";
 
 export { pullStateIcon };
 
@@ -23,6 +25,10 @@ if (!mb) {
 
 mb.registerView("pull-request", "pull-request", {
   render: (container, ctx) => mountPullPage(container, ctx, mb),
+});
+
+mb.registerView("pull-stack", "pull-stack", {
+  render: (container, ctx) => mountStackPage(container, ctx, mb),
 });
 
 mb.registerView("pull-request-list", "pull-request-list", {

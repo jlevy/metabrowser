@@ -9028,10 +9028,16 @@ function deliverNavigationFragment(target) {
 // meet; the shell supplies the pane and the history. The host is null until a route opened.
 var PULL_ROUTE_PREFIX = "/pull/";
 var PULLS_ROUTE = "/pulls";
+// A native stack's page belongs to the same space: the Pulls tab in front, the same host.
+var STACK_ROUTE_PREFIX = "/stack/";
 
 /** @param {string} pathname */
 function isPullAddress(pathname) {
-  return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname === PULLS_ROUTE;
+  return (
+    pathname.startsWith(PULL_ROUTE_PREFIX) ||
+    pathname.startsWith(STACK_ROUTE_PREFIX) ||
+    pathname === PULLS_ROUTE
+  );
 }
 /** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
 var pullPageHost = null;
@@ -9133,6 +9139,8 @@ function pullPageHostDeps(routes) {
         open: open,
       }),
     mountList: (claim) => mountView(claim, "pull-request-list", {}),
+    mountStack: (claim, route, open) =>
+      mountView(claim, "pull-stack", { number: route.number, tab: route.tab, open: open }),
     pathname: () => window.location.pathname,
     // A pull request's page, one of its tabs, or one of its changed files, opened by a link,
     // a key, or a row.
@@ -9272,6 +9280,10 @@ async function applyNavigationTarget(target, context) {
       var pullRoute = window.MetabrowserPullRoute?.parsePull(window.location.pathname);
       if (pullRoute) {
         return pullHost.show(pullRoute);
+      }
+      var stackRoute = window.MetabrowserPullRoute?.parseStack(window.location.pathname);
+      if (stackRoute) {
+        return pullHost.showStack(stackRoute);
       }
       if (window.location.pathname === PULLS_ROUTE) {
         return pullHost.showList();

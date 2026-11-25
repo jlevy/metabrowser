@@ -27,6 +27,11 @@ type MetabrowserRenderContext = {
   /** How the host opens one of a comparison's changed files at its own address, as a pull
    *  request's Changes does at `/pull/<n>/files/<path>`; absent where a file has none. */
   openFile?: (path: string) => void;
+  /** A host's marks on each file's bar and Diff summary row, each a short link, as a stack's
+   *  page names the layers that change a file ("2/4"); a plain press takes *open* if given. */
+  fileMarks?: (
+    path: string,
+  ) => ReadonlyArray<{ text: string; label: string; href: string; open?: () => void }>;
   /** How long a comparison's first screen of Markdown files waits for Rendered, for a page
    *  that keeps the comparison out of sight until its handle's `firstScreen` settles. */
   markdownHoldMs?: number;
@@ -106,6 +111,8 @@ type MetabrowserPullRoute = {
   jumped?: boolean;
   reader?: unknown;
   replace?: boolean;
+  /** The number is a native stack's, and the address its page, `/stack/<n>[/<tab>]`. */
+  stack?: boolean;
 };
 
 type MetabrowserPullsNavHost = Readonly<{
@@ -894,6 +901,11 @@ type MetabrowserPullRouteRuntime = Readonly<{
       open: (route: MetabrowserPullRoute) => Promise<{ status: string }>,
     ): Promise<Handle | null | undefined>;
     mountList(claim: number): Promise<Handle | null | undefined>;
+    mountStack?(
+      claim: number,
+      route: Readonly<{ number: number; tab: string }>,
+      open: (route: MetabrowserPullRoute) => Promise<{ status: string }>,
+    ): Promise<Handle | null | undefined>;
     pathname(): string;
     pushHref(href: string): void;
     replaceHref(href: string): void;
@@ -907,16 +919,20 @@ type MetabrowserPullRouteRuntime = Readonly<{
     ): Readonly<
       | { action: "tab"; tab: string; file?: string }
       | { action: "mount"; number: number; tab: string; file?: string }
+      | { action: "stack"; number: number; tab: string; file?: string }
       | { action: "list" }
     > | null;
     open(route: MetabrowserPullRoute): Promise<{ status: "opened" | "cancelled" }>;
     show(route: Readonly<MetabrowserPullRoute>): Promise<{ status: "opened" | "cancelled" }>;
     showList(): Promise<{ status: "opened" | "cancelled" }>;
+    showStack(
+      route: Readonly<{ number: number; tab: string; file?: string }>,
+    ): Promise<{ status: "opened" | "cancelled" }>;
     /** The handle of the pull request's page holding the pane; null for the list or none. */
     page(): Handle | null;
     /** The page of that pull request when it holds the pane, else null. */
     pageFor(number: number): Handle | null;
-    shown(): number | "list" | null;
+    shown(): number | "list" | `stack:${number}` | null;
   }>;
   createViewMount(shell: {
     sdk: MetabrowserSdk;
@@ -943,17 +959,20 @@ type MetabrowserPullRouteRuntime = Readonly<{
   onPageChange(listener: () => void): () => void;
   parsePull(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
   parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;
+  parseStack(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
   pullHistoryAction(
     pathname: string,
-    shown: number | "list" | null,
+    shown: number | "list" | `stack:${number}` | null,
     heldTarget: boolean,
   ): Readonly<
     | { action: "tab"; tab: string; file?: string }
     | { action: "mount"; number: number; tab: string; file?: string }
+    | { action: "stack"; number: number; tab: string; file?: string }
     | { action: "list" }
   > | null;
   pullHref(number: number, tab?: string, file?: string): string;
   pullsHref(state?: string): string;
+  stackHref(number: number, tab?: string, file?: string): string;
 }>;
 
 type MetabrowserSourceLineAnchorsRuntime = Readonly<{

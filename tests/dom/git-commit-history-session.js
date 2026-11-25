@@ -600,7 +600,8 @@ async function createPage(start, options = {}) {
     `
     var PULL_ROUTE_PREFIX = "/pull/";
     var PULLS_ROUTE = "/pulls";
-    function isPullAddress(pathname) { return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname === PULLS_ROUTE; }
+    var STACK_ROUTE_PREFIX = "/stack/";
+    function isPullAddress(pathname) { return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname.startsWith(STACK_ROUTE_PREFIX) || pathname === PULLS_ROUTE; }
     var previewPane = __previewPane;
     var navigationController = null;
     var activeNavPanelId = "files";

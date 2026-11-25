@@ -6,8 +6,8 @@
 // URL; the shell supplies the pane, this loads that plugin, and the view gets the host's `open`.
 // The view owns everything else: fetching the record, polling, refreshing, and Files changed.
 //
-// `/pull/<n>` and its subroutes, and `/pulls`, are the pull requests' address space
-// (Browser URL Grammar). Only such an address, or the Pulls tab, reaches this code, so it is no startup
+// `/pull/<n>` and its subroutes, `/stack/<n>` and its subroutes, a native stack's page, and
+// `/pulls` are the pull requests' address space (Browser URL Grammar). Only such an address, or the Pulls tab, reaches this code, so it is no startup
 // script of any other page. The server writes it into the shell of a pull-request address,
 // where the page needs it before it can show anything; anything else takes it as the
 // `pull-route` on-demand bundle.
@@ -24,6 +24,10 @@
   // Keep aligned with view_routes.PULLS_ROUTE and cache.paths.PULL_LIST_NAMES.
   const PULLS_PATH = "/pulls";
   const PULL_LISTS = Object.freeze(["open", "closed", "all"]);
+  // Keep aligned with view_routes.STACK_ROUTE_PREFIX and STACK_ROUTE_TABS. A stack's number
+  // is GitHub's, spelled as a pull request's is.
+  const STACK_PREFIX = "/stack/";
+  const STACK_TABS = Object.freeze(["", "files", "docs", "changes"]);
 
   /**
    * Whether *segment* may be one segment of a changed file's path: a path in the pull
@@ -56,21 +60,47 @@
    * @returns {string}
    */
   function pullHref(number, tab = "", file = "") {
-    if (!PULL_NUMBER_PATTERN.test(String(number)) || !PULL_TABS.includes(tab)) {
-      throw new TypeError("pull route requires a pull-request number and a known tab");
+    return tabbedHref(PULL_PREFIX, PULL_TABS, "files", "pull", number, tab, file);
+  }
+
+  /**
+   * Encode a native stack's page: `/stack/<n>` for its front page, `/stack/<n>/files`,
+   * `/stack/<n>/docs`, and `/stack/<n>/changes` for its tabs. Only Changes can name a file.
+   *
+   * @param {number} number
+   * @param {string} [tab]
+   * @param {string} [file]
+   * @returns {string}
+   */
+  function stackHref(number, tab = "", file = "") {
+    return tabbedHref(STACK_PREFIX, STACK_TABS, "changes", "stack", number, tab, file);
+  }
+
+  /**
+   * @param {string} prefix
+   * @param {readonly string[]} tabs
+   * @param {string} fileTab The one tab that names a file.
+   * @param {string} what
+   * @param {number} number
+   * @param {string} tab
+   * @param {string} file
+   */
+  function tabbedHref(prefix, tabs, fileTab, what, number, tab, file) {
+    if (!PULL_NUMBER_PATTERN.test(String(number)) || !tabs.includes(tab)) {
+      throw new TypeError(`${what} route requires a ${what} number and a known tab`);
     }
-    const head = `${PULL_PREFIX}${number}${tab ? `/${tab}` : ""}`;
+    const head = `${prefix}${number}${tab ? `/${tab}` : ""}`;
     if (!file) {
       return head;
     }
-    const segments = typeof file === "string" && tab === "files" ? file.split("/") : [""];
+    const segments = typeof file === "string" && tab === fileTab ? file.split("/") : [""];
     if (!segments.every(isFileSegment)) {
-      throw new TypeError("pull route requires a normalized changed-file path");
+      throw new TypeError(`${what} route requires a normalized changed-file path`);
     }
     try {
       return `${head}/${segments.map((segment) => encodeURIComponent(segment)).join("/")}`;
     } catch (error) {
-      throw new TypeError("pull route names a file by a path that is not Unicode", {
+      throw new TypeError(`${what} route names a file by a path that is not Unicode`, {
         cause: error,
       });
     }
@@ -84,10 +114,32 @@
    * @returns {Readonly<{number: number, tab: string, file: string}> | null}
    */
   function parsePull(pathname) {
-    if (typeof pathname !== "string" || !pathname.startsWith(PULL_PREFIX)) {
+    return parseTabbed(pathname, PULL_PREFIX, PULL_TABS, "files");
+  }
+
+  /**
+   * Parse a native stack's page route, or null when the location is not one. `file` is the
+   * file of its comparison that Changes names, or "" for the page.
+   *
+   * @param {string} pathname
+   * @returns {Readonly<{number: number, tab: string, file: string}> | null}
+   */
+  function parseStack(pathname) {
+    return parseTabbed(pathname, STACK_PREFIX, STACK_TABS, "changes");
+  }
+
+  /**
+   * @param {string} pathname
+   * @param {string} prefix
+   * @param {readonly string[]} tabs
+   * @param {string} fileTab
+   * @returns {Readonly<{number: number, tab: string, file: string}> | null}
+   */
+  function parseTabbed(pathname, prefix, tabs, fileTab) {
+    if (typeof pathname !== "string" || !pathname.startsWith(prefix)) {
       return null;
     }
-    const segments = pathname.slice(PULL_PREFIX.length).split("/");
+    const segments = pathname.slice(prefix.length).split("/");
     // A trailing slash names the same page; a file has none.
     if ((segments.length === 2 || segments.length === 3) && segments[segments.length - 1] === "") {
       segments.pop();
@@ -95,9 +147,9 @@
     const [number, tab = "", ...inner] = segments;
     if (
       !PULL_NUMBER_PATTERN.test(number) ||
-      !PULL_TABS.includes(tab) ||
+      !tabs.includes(tab) ||
       (segments.length >= 2 && !tab) ||
-      (inner.length > 0 && tab !== "files")
+      (inner.length > 0 && tab !== fileTab)
     ) {
       return null;
     }
@@ -156,11 +208,13 @@
    *
    * A landing on one changed file's address, `/pull/<n>/files/<path>`, also names the
    * file: the page shows it in Files changed, as a click on its row in the Pulls tab does.
+   * A stack's page is held as `stack:<n>`, and a landing on another stack's address, or on
+   * one while no stack's page holds the pane, is `stack`.
    *
    * @param {string} pathname
-   * @param {number | "list" | null} shown
+   * @param {number | "list" | `stack:${number}` | null} shown
    * @param {boolean} heldTarget
-   * @returns {Readonly<{action: "tab", tab: string, file?: string} | {action: "mount", number: number, tab: string, file?: string} | {action: "list"}> | null}
+   * @returns {Readonly<{action: "tab", tab: string, file?: string} | {action: "mount", number: number, tab: string, file?: string} | {action: "stack", number: number, tab: string, file?: string} | {action: "list"}> | null}
    */
   function pullHistoryAction(pathname, shown, heldTarget) {
     if (heldTarget) {
@@ -168,6 +222,13 @@
     }
     if (parsePulls(pathname) !== null) {
       return shown === "list" ? null : Object.freeze({ action: "list" });
+    }
+    const stack = parseStack(pathname);
+    if (stack !== null) {
+      const file = stack.file ? { file: stack.file } : {};
+      return shown === stackKey(stack.number)
+        ? Object.freeze({ action: "tab", tab: stack.tab, ...file })
+        : Object.freeze({ action: "stack", number: stack.number, tab: stack.tab, ...file });
     }
     const route = parsePull(pathname);
     if (route === null) {
@@ -177,6 +238,16 @@
     return route.number === shown
       ? Object.freeze({ action: "tab", tab: route.tab, ...file })
       : Object.freeze({ action: "mount", number: route.number, tab: route.tab, ...file });
+  }
+
+  /**
+   * The key a stack's page holds the pane by, apart from a pull request of its number.
+   *
+   * @param {number} number
+   * @returns {`stack:${number}`}
+   */
+  function stackKey(number) {
+    return `stack:${number}`;
   }
 
   /**
@@ -199,6 +270,10 @@
    * `pageFor` hands it to what sits beside the pane, the Pulls tab, which walks a pull
    * request's files without moving the address on every key.
    *
+   * A native stack's page (`/stack/<n>`) is held the same way, by its own key, and mounted
+   * by *mountStack*; its `open` takes `{stack: true}` for another of its tabs and a plain
+   * route for a member's page.
+   *
    * @template {{land?: (route: {tab: string, file?: string}) => void, setTab?: (tab: string) => void, showFile?: (path: string) => unknown, flush?: () => void, ready?: Promise<void>, cancelPending?: () => void, dispose?: () => void}} Handle
    * @param {{
    *   claim: () => number,
@@ -209,13 +284,18 @@
    *     open: (route: {number: number, tab: string, file?: string, reader?: unknown, replace?: boolean}) => Promise<{status: string}>,
    *   ) => Promise<Handle | null | undefined>,
    *   mountList: (claim: number) => Promise<Handle | null | undefined>,
+   *   mountStack?: (
+   *     claim: number,
+   *     route: Readonly<{number: number, tab: string}>,
+   *     open: (route: {number: number, tab: string, file?: string, stack?: boolean, reader?: unknown, replace?: boolean}) => Promise<{status: string}>,
+   *   ) => Promise<Handle | null | undefined>,
    *   pathname: () => string,
    *   pushHref: (href: string) => void,
    *   replaceHref: (href: string) => void,
    * }} deps
    */
   function createPullPageHost(deps) {
-    /** @type {{number: number | "list", claim: number, handle: Handle | null, ready: boolean, opening: Promise<{status: "opened" | "cancelled"}> | null, pendingRoute: {tab: string, file?: string, jumped?: boolean} | null, restore: boolean} | null} */
+    /** @type {{number: number | "list" | `stack:${number}`, claim: number, handle: Handle | null, ready: boolean, opening: Promise<{status: "opened" | "cancelled"}> | null, pendingRoute: {tab: string, file?: string, jumped?: boolean} | null, restore: boolean} | null} */
     let page = null;
 
     // The page that holds the pane, or null once anything else claimed it or while it
@@ -278,13 +358,14 @@
     /**
      * Claim the pane for a page and mount it.
      *
-     * @param {number | "list"} number
+     * @param {number | "list" | `stack:${number}`} number
      * @param {(claim: number) => Promise<Handle | null | undefined>} mount
      * @param {string} [file] The changed file the route names, which the page lands on.
      * @param {boolean} [restore] A route landing, rather than a reader's new selection.
+     * @param {string} [fileTab] The tab that shows a file: Files changed, or a stack's Changes.
      * @returns {Promise<{status: "opened" | "cancelled"}>}
      */
-    async function take(number, mount, file = "", restore = true) {
+    async function take(number, mount, file = "", restore = true, fileTab = "files") {
       const claim = deps.claim();
       /** @type {NonNullable<typeof page>} */
       const mine = {
@@ -332,7 +413,7 @@
       if (mine.pendingRoute) {
         land(handle, mine.pendingRoute, mine.restore);
       } else if (file) {
-        land(handle, { tab: "files", file }, restore);
+        land(handle, { tab: fileTab, file }, restore);
       }
       return { status: "opened" };
     }
@@ -346,25 +427,53 @@
      * @returns {Promise<{status: "opened" | "cancelled"}>}
      */
     async function show(route, how = {}) {
+      return showAt(route.number, route, (claim) => deps.mount(claim, route, open), how, "files");
+    }
+
+    /**
+     * Show a native stack's page, or switch its tab, or go to its file in Changes.
+     *
+     * @param {Readonly<{number: number, tab: string, file?: string}>} route
+     * @param {{restore?: boolean}} [how]
+     * @returns {Promise<{status: "opened" | "cancelled"}>}
+     */
+    async function showStack(route, how = {}) {
+      const mount = deps.mountStack;
+      if (typeof mount !== "function") {
+        return { status: "cancelled" };
+      }
+      return showAt(
+        stackKey(route.number),
+        route,
+        (claim) => mount(claim, route, open),
+        how,
+        "changes",
+      );
+    }
+
+    /**
+     * @param {number | `stack:${number}`} key
+     * @param {Readonly<{number: number, tab: string, file?: string, jumped?: boolean}>} route
+     * @param {(claim: number) => Promise<Handle | null | undefined>} mount
+     * @param {{restore?: boolean}} how
+     * @param {string} fileTab
+     * @returns {Promise<{status: "opened" | "cancelled"}>}
+     */
+    async function showAt(key, route, mount, how, fileTab) {
       const current = shown();
-      if (current !== null && current.number === route.number) {
+      if (current !== null && current.number === key) {
         land(current.handle, route, how.restore !== false);
         return { status: "opened" };
       }
-      if (page !== null && page.number === route.number && deps.isCurrent(page.claim)) {
+      if (page !== null && page.number === key && deps.isCurrent(page.claim)) {
         // Route changes during the core wait join the same instance and keep only the
         // latest tab/file intent. They must not restart its selected provider request.
         page.pendingRoute = route;
         page.restore = how.restore !== false;
         return page.opening ?? { status: "cancelled" };
       }
-      const opening = take(
-        route.number,
-        (claim) => deps.mount(claim, route, open),
-        route.file ?? "",
-        how.restore !== false,
-      );
-      if (page?.number === route.number) {
+      const opening = take(key, mount, route.file ?? "", how.restore !== false, fileTab);
+      if (page?.number === key) {
         page.opening = opening;
       }
       return opening;
@@ -391,14 +500,17 @@
      * the page of that number shows the file already, since a walk of its files jumped it key
      * by key, so only the address moves.
      *
-     * @param {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}} route
+     * A route with *stack* is a native stack's page, `/stack/<n>`, and one of its tabs.
+     *
+     * @param {{number: number, tab: string, file?: string, jumped?: boolean, stack?: boolean, reader?: unknown, replace?: boolean}} route
      */
     function open(route) {
       const number = Number(route.number);
       const file = typeof route.file === "string" ? route.file : "";
+      const stack = route.stack === true;
       let href;
       try {
-        href = pullHref(number, route.tab, file);
+        href = stack ? stackHref(number, route.tab, file) : pullHref(number, route.tab, file);
       } catch (error) {
         return Promise.reject(error);
       }
@@ -409,6 +521,11 @@
         } else {
           deps.pushHref(href);
         }
+      }
+      if (stack) {
+        return showStack(Object.freeze({ number, tab: route.tab, ...(file ? { file } : {}) }), {
+          restore: false,
+        });
       }
       return show(
         Object.freeze({
@@ -441,16 +558,24 @@
             ...(landing.file ? { file: landing.file } : {}),
           }),
         );
+      } else if (landing?.action === "stack") {
+        void showStack(
+          Object.freeze({
+            number: landing.number,
+            tab: landing.tab,
+            ...(landing.file ? { file: landing.file } : {}),
+          }),
+        );
       } else if (landing?.action === "list") {
         void showList();
       }
       return landing;
     }
 
-    /** The handle of the pull request's page holding the pane, or null. */
+    /** The handle of the pull request's page holding the pane, or null: never a stack's. */
     function shownPage() {
       const current = shown();
-      return current === null || current.number === "list" ? null : current.handle;
+      return current === null || typeof current.number !== "number" ? null : current.handle;
     }
 
     const host = Object.freeze({
@@ -469,6 +594,7 @@
       pageFor: (number) => (shown()?.number === number ? shownPage() : null),
       show,
       showList,
+      showStack,
       shown: () => shown()?.number ?? null,
     });
     attached = host;
@@ -514,9 +640,15 @@
      */
     return async (claim, kind, context) => {
       const { sdk } = shell;
-      // Each kind says what it is: a pull request's page, or the list at its address.
-      const page = kind === "pull-request";
-      const what = page ? "pull-request pages" : "the list of pull requests";
+      // Each kind says what it is: a pull request's page, a stack's, or the list at its address.
+      const stack = kind === "pull-stack";
+      const page = kind === "pull-request" || stack;
+      const what = stack
+        ? "stack pages"
+        : page
+          ? "pull-request pages"
+          : "the list of pull requests";
+      const failed = stack ? "the stack page" : page ? "the pull-request page" : what;
       let view = null;
       try {
         await sdk.ensureKindAssets(kind);
@@ -524,7 +656,7 @@
       } catch (error) {
         // Not the same as no plugin rendering such pages; the next route tries again.
         console.error(`metabrowser: ${what} could not load`, error);
-        shell.showLoadFailure(claim, page ? "the pull-request page" : what);
+        shell.showLoadFailure(claim, failed);
         return null;
       }
       if (!shell.isCurrent(claim)) {
@@ -551,7 +683,7 @@
         cleanupStage?.();
         shell.endNavigation(claim);
         if (shell.isCurrent(claim)) {
-          shell.showLoadFailure(claim, page ? "the pull-request page" : what);
+          shell.showLoadFailure(claim, failed);
         }
         console.error(`metabrowser: ${what} could not render`, error);
         return null;
@@ -593,7 +725,7 @@
         (error) => {
           dispose();
           if (shell.isCurrent(claim)) {
-            shell.showLoadFailure(claim, "the pull-request page");
+            shell.showLoadFailure(claim, failed);
           }
           console.error("metabrowser: pull-request readiness failed", error);
           throw error;
@@ -615,8 +747,10 @@
     createViewMount,
     parsePull,
     parsePulls,
+    parseStack,
     pullHistoryAction,
     pullHref,
     pullsHref,
+    stackHref,
   });
 })();

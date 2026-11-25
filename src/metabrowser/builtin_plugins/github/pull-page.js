@@ -46,6 +46,7 @@ import {
   diffComparisonLoader,
 } from "./comparison-prefetch.js";
 import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
+import { CHANGES_DRAWING, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
 import {
   createStackIndex,
   memberRoute,
@@ -328,38 +329,6 @@ export function routeForTab(id, description) {
 export function diffTab(tab) {
   return tab === "files" || tab === "docs";
 }
-
-/** The File type group the Docs tab shows, in the diff's `group=` vocabulary. */
-const DOCS_GROUP = "type:docs";
-
-/** The preference the Docs tab remembers its Diff | Current choice as, apart from the
- * `diff.show` that Changes, a commit's page and a patch share, so a choice on one tab does
- * not move the other. */
-const DOCS_SHOW_PREFERENCE = "github.docs.show";
-
-/**
- * How Docs draws a document, which a Markdown file a guided step cites whole shares
- * (`loadDrawDocument`), so it opens as the Docs tab opens it: every fold open, Unified with
- * no layout choice, since a rendered document has no layout and its Source reads as its
- * Rendered does in one column, and on the new version (Current), remembered apart from
- * Changes' `diff.show`. An option Docs gives its documents belongs here, so both take it.
- */
-const DOCS_DRAWING = Object.freeze({
-  unfold: true,
-  layout: /** @type {const} */ ("unified"),
-  show: /** @type {const} */ ("current"),
-  showPreference: DOCS_SHOW_PREFERENCE,
-});
-
-/**
- * How Changes draws a file, which a YAML or JSON file a guided step cites whole shares
- * (`loadDrawDocument`): the diff view's own defaults, so it opens as Changes opens it, on
- * Diff as `diff.show` remembers it, its long runs folded, in the reader's layout. Docs lists
- * neither format: they are the `data` File type, and Docs the `docs` one
- * (`recommended-file-types.toml`). An option Changes gives its files belongs here, so both
- * take it.
- */
-const CHANGES_DRAWING = Object.freeze({});
 
 /**
  * Whether a diff document lists no changed file, and its list was not cut short at its
@@ -4266,9 +4235,12 @@ let stackMenuSerial = 0;
  * current member, the row checked, as a filter's menu opens on its checked row
  * (docs/design-system.md, "Keys in a Menu"); Escape closes it and gives focus back to the
  * trigger.
+ *
+ * With `wholeStack`, the menu's first row, **Whole stack**, opens the stack's own page
+ * (`/stack/<n>`, stack-page.js), before the members.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean}} deps
+ * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -4326,7 +4298,27 @@ export function createStackMenu(initial, number, deps) {
     stackLabel(stack.number),
   ]);
   const group = h("div", { class: "menu-group" });
+  /** The Whole stack row, made once, for the stack the menu was made for. It is no member,
+   * so it takes none of a member's classes, and the keys move over it as over a member.
+   * @type {HTMLElement | null} */
+  let whole = null;
   let populated = false;
+
+  function wholeRow() {
+    if (whole === null && deps.wholeStack) {
+      whole = deps.wholeStack(stack.number);
+      whole.setAttribute("class", "menu-item github-pull-stack-whole");
+      whole.setAttribute("role", "menuitem");
+      whole.setAttribute("tabindex", "-1");
+      whole.replaceChildren(
+        h("span", { class: "chip-menu-check", "aria-hidden": "true" }, [""]),
+        h("span", { class: "github-pull-stack-member-copy" }, [
+          h("span", { class: "github-pull-stack-member-title" }, ["Whole stack"]),
+        ]),
+      );
+    }
+    return whole;
+  }
 
   function updateTitles() {
     for (let at = 0; at < stack.pulls.length; at += 1) {
@@ -4359,6 +4351,10 @@ export function createStackMenu(initial, number, deps) {
       }
     }
     links.length = 0;
+    const first = wholeRow();
+    if (first !== null) {
+      links.push(first);
+    }
     for (const target of stackMenuOrder(stack)) {
       let row = rows.get(target);
       if (!row) {
@@ -5624,6 +5620,22 @@ export function mountPullPage(container, ctx, mb) {
     return link;
   }
 
+  /**
+   * A link to a native stack's own page, `/stack/<n>`, which the host opens in place.
+   * @param {number} id
+   */
+  function stackPageLink(id) {
+    const link = h("a", { href: `/stack/${id}` });
+    link.addEventListener("click", (event) => {
+      if (listening.signal.aborted || !isPlainClick(event)) {
+        return;
+      }
+      event.preventDefault();
+      void open({ number: id, tab: "", stack: true });
+    });
+    return link;
+  }
+
   /** @param {string} state @param {string} label @param {string} [kind] */
   const badge = (state, label, kind = "state") =>
     h(
@@ -5731,6 +5743,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       menu = createStackMenu(stack, number, {
         link: (target) => pageLink(memberRoute(target, stackTab(model.tab)), "", []),
+        wholeStack: (id) => stackPageLink(id),
         icon: stackSvg === null ? null : document.importNode(stackSvg, true),
         currentTitle: model.pull?.title ?? "",
         named,

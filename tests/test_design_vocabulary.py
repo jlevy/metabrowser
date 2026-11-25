@@ -1716,6 +1716,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
         "diff/styles.css",
         ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
     ): "a fold's control",
+    ("diff/styles.css", ".diff-file-marks"): "a row of layer chips, each a link (fileMarks)",
     ("github/styles.css", ".github-pull-labels"): "a row of label chips",
     ("github/styles.css", ".github-pull-label"): "a label chip",
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",

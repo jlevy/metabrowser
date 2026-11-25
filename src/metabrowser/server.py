@@ -314,6 +314,7 @@ from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
     decode_safe_commit_route,
     decode_safe_pull_route,
+    decode_safe_stack_route,
     decode_safe_view_path,
 )
 
@@ -2800,6 +2801,21 @@ async def pull_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_pull_route(raw_path) is None:
         return PlainTextResponse("Invalid pull-request route.", status_code=400)
+    return await index(request, pull_page=True)
+
+
+async def stack_shell(request: Request) -> Response:
+    """Serve the SPA shell for a native stack's page and its subroutes.
+
+    A stack is an address space of its own, as a pull request is, and its shell is a pull
+    request page's: the Pulls tab in front and the same startup script. The view that
+    renders it is the one a plugin registers for the `pull-stack` kind; the stack route
+    says what this server has of that number.
+    """
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_stack_route(raw_path) is None:
+        return PlainTextResponse("Invalid stack route.", status_code=400)
     return await index(request, pull_page=True)
 
 
@@ -5731,6 +5747,7 @@ routes = [
     Route("/view/{path:path}", view_shell),
     Route("/commit/{rest:path}", commit_shell),
     Route("/pull/{rest:path}", pull_shell),
+    Route("/stack/{rest:path}", stack_shell),
     Route("/pulls", pulls_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),

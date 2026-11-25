@@ -70,6 +70,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
 | `comparison` | No file; the Commits tab selects it for `/commit/<rev>[/<inner>]` | The `diff` kind’s views | `diff/comparison` document in File Diff Format |
 | `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>] or /checks]` | Pull request, which draws its own Conversation `C`, Changes `G`, and Checks `E` tabs | `github/pull` envelope and the hooks it names |
+| `pull-stack` | No file; the shell selects it for `/stack/<n>[/files, /docs, or /changes[/<path>]]` | Stack, which draws its own Files, Docs, and Changes tabs | `github/stack` envelope and the `github/stack-comparison` document it names |
 | `pull-request-list` | No file; the Pulls tab mounts it, and the pane at `/pulls` | Pull requests | `github/pulls` envelope |
 
 A view’s key is its manifest `[[view]] key`, written here uppercase as the keyboard
@@ -164,6 +165,8 @@ the last column names.
 | `/pull/<n>`, `/pull/<n>/conversation`, `/pull/<n>/docs`, `/pull/<n>/files`, `/pull/<n>/guided`, `/pull/<n>/checks` | A pull request’s front page (Guided Review when its description carries a guide, Conversation otherwise), or its Conversation, Docs, Changes, Guided Review, or Checks tab | A pull-request number, then a tab | [GitHub Pull Requests](arch-github-pull-requests.md) |
 | `/pull/<n>/files/<path>` | Changes, at one changed file | A number, then a path in its comparison, never looked up on disk | [GitHub Pull Requests](arch-github-pull-requests.md) |
 | `/pulls` | A repository’s pull requests, with none selected | None; `?state=` names the filter | [GitHub Pull Requests](arch-github-pull-requests.md) |
+| `/stack/<n>`, `/stack/<n>/files`, `/stack/<n>/docs`, `/stack/<n>/changes` | A native stack’s front page (Files until a stack has a guide), or its Files, Docs, or Changes tab | GitHub’s stack number, then a tab | [GitHub Pull Requests](arch-github-pull-requests.md#the-stack-page) |
+| `/stack/<n>/changes/<path>` | Changes, at one file of the stack’s comparison | A number, then a path in that comparison, never looked up on disk | [GitHub Pull Requests](arch-github-pull-requests.md#the-stack-page) |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison, `...` for the merge base | Two revisions, then a path | Planned, not built |
 
 A revision is not a path in the served tree, so it gets its own route rather than a
@@ -252,8 +255,9 @@ container children
 `github/pull-size`, `github/pull-timeline`, `github/pull-markdown`,
 `github/guided-review`, `github/pulls`, `github/pulls-refresh`, `github/pulls-prefetch`,
 `github/pull-files`, `github/pull-files-refresh`, `github/pull-files-summary`,
-`github/stacks`, `github/stacks-refresh`, `github/stack-change`, `github/labels`,
-`github/labels-refresh`, `github/cache-clear`, and `github/status`
+`github/stacks`, `github/stacks-refresh`, `github/stack-change`, `github/stack`,
+`github/stack-comparison`, `github/labels`, `github/labels-refresh`,
+`github/cache-clear`, and `github/status`
 ([GitHub Pull Requests](arch-github-pull-requests.md)).
 
 ## Agent Catalog

@@ -109,6 +109,20 @@ route = "stack-change"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:stack_change_handler"
 methods = ["GET"]
 
+# A native stack's page at /stack/<n>: its members, the comparison from its bottom's merge
+# base to its top's head restricted to the files its layers change, the members the top
+# lacks, and each file's layers. Reads never contact GitHub or fetch.
+[[data_hook]]
+route = "stack"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stack_handler"
+methods = ["GET"]
+
+# That comparison as a diff document, immutable at the address the stack route names.
+[[data_hook]]
+route = "stack-comparison"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stack_comparison_handler"
+methods = ["GET"]
+
 # The repository's whole label set, cached, which colors a label a record names alone.
 # Reads never contact GitHub. Only labels-refresh asks for it, which a pull request's page
 # sends when it shows a label named alone that its envelope has no entry for.
@@ -173,6 +187,16 @@ methods = ["POST"]
 kind = "pull-request"
 id = "pull-request"
 label = "Pull request"
+default = true
+container_class = "content-body github-pull-host"
+render_runtime = "client"
+
+# A native stack's page at /stack/<n>[/files|/docs|/changes[/<path>]]. No file is ever this
+# kind: the shell selects it for the stack route and mounts this view there.
+[[view]]
+kind = "pull-stack"
+id = "pull-stack"
+label = "Stack"
 default = true
 container_class = "content-body github-pull-host"
 render_runtime = "client"

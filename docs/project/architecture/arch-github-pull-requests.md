@@ -960,17 +960,49 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `stacks` | `GET` | The native stack snapshot |
 | `stacks-refresh` | `POST` | The stack job |
 | `stack-change` | `GET` | A native stack’s change line: its members’ lists accumulated |
+| `stack` | `GET` | A native stack’s page: its members, its combined comparison’s address, the members its top lacks, and each file’s layers ([The Stack Page](#the-stack-page)) |
+| `stack-comparison` | `GET` | That combined comparison as a diff document |
 | `labels` | `GET` | The repository’s cached label set |
 | `labels-refresh` | `POST` | The label-set job |
 | `pulls-prefetch` | `GET`, `POST` | The background lane’s report, or a new queue for it |
 | `cache-clear` | `POST` | Removal of the plugin’s records for the repository |
 | `status` | `POST` | [The GitHub status check](#the-github-status-check): `gh`, the account, its scopes, and one state |
 
-The plugin registers two views: `pull-request`, which the shell mounts at `/pull/<n>`,
+The plugin registers three views: `pull-request`, which the shell mounts at `/pull/<n>`,
 `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, and `/pull/<n>/checks`
-(`pull-page.js`), and `pull-request-list`, the Pulls tab and `/pulls`
+(`pull-page.js`); `pull-stack`, a native stack’s page at `/stack/<n>`,
+`/stack/<n>/files`, `/stack/<n>/docs`, and `/stack/<n>/changes[/<path>]`
+(`stack-page.js`); and `pull-request-list`, the Pulls tab and `/pulls`
 (`pulls-panel.js`). Their visual rules are in the
 [design system](../../design-system.md#the-pulls-tab).
+
+### The Stack Page
+
+A native stack’s page shows the whole stack as one comparison
+([Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#phase-1-the-stack-page-mb-vad1)).
+`pull_stack.py` holds the rules, and its module docstring states them with the
+measurements that set them:
+
+- **The comparison** runs from the bottom member’s merge base to the top member’s head,
+  and keeps only the files some member’s own comparison names, on either side of a
+  rename. A member the top’s head does not contain, by its head or its merge commit, adds
+  no file and is named in `lacking`; a bottom merge base outside the top’s history
+  answers `absent` with `not_linear`.
+- **Its identity** is the store, both commits, and a digest of every member’s number,
+  merge base, and head in stack order (`stack_key`). The digest is in the comparison’s
+  address, its in-memory key (`scope` of the diff plugin’s `comparison_at`), its entity
+  tag, and its kept manifest beside the store (`load_stack_manifest` in
+  `pull_manifest.py`), so a member that moves names a new comparison and nothing is
+  invalidated by hand.
+- **Admission.** `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
+  `number` and admit only the stack’s current pair (`_stack_admission` in
+  `pull_snapshot.py`).
+- **The page** (`stack-page.js`) draws Files with the diff plugin’s Diff summary open,
+  Docs with `DOCS_DRAWING` and Changes with `CHANGES_DRAWING` (`diff-drawing.js`, which
+  `pull-page.js` shares), and puts each file’s layers on its row and bar through the
+  diff view’s `fileMarks`. It polls `stack`, asks `pull-refresh` once for each pending
+  member at its head, sends the top member’s automatic ask the answer’s `probe` names,
+  and offers a new comparison rather than swapping it in.
 
 ### Guided Review
 
@@ -1050,8 +1082,8 @@ it, gives it no hunks, and charges it nothing against the step’s budget for wh
 rendered route’s own bounds.
 The page draws it (`referenceDrawing` in `guided-review.js`) with the diff plugin’s own
 view of that file (`mountRenderedFile` in `diff/index.js`): a Markdown file with the
-options the Docs tab gives its documents (`DOCS_DRAWING` in `pull-page.js`), and a YAML
-or JSON file, which Docs does not list, with the options Changes draws with
+options the Docs tab gives its documents (`DOCS_DRAWING` in `diff-drawing.js`), and a
+YAML or JSON file, which Docs does not list, with the options Changes draws with
 (`CHANGES_DRAWING`), so its file bar, its rendered layer and that layer’s chooser, and
 its Diff and Current are that tab’s, and whatever the tab learns to draw a file with,
 the step’s document draws with too.

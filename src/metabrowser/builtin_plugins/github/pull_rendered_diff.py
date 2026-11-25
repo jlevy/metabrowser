@@ -28,14 +28,19 @@ import hashlib
 import json
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
+from functools import partial
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from metabrowser.builtin_plugins.github.pull_route import PullRequestError, requested_number
-from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot, admitted_snapshot
+from metabrowser.builtin_plugins.github.pull_route import PullRequestError, pull_host
+from metabrowser.builtin_plugins.github.pull_snapshot import (
+    Snapshot,
+    admitted_snapshot,
+    requested_snapshot,
+)
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.format import (
@@ -77,6 +82,7 @@ from metabrowser.git.wire import is_full_revision
 from metabrowser.loading_cache import LoadingCache
 
 if TYPE_CHECKING:
+    from metabrowser.builtin_plugins.diff.comparison_cache import ResolvedManifest
     from metabrowser.cache.acquire import PublishedSource
 
 type Status = Literal["unsupported", "too_large"]
@@ -334,16 +340,18 @@ class _Patches:
 
 
 async def _project(
-    published: PublishedSource, snapshot: Snapshot, file_id: str, namespace: str, state: Any
+    published: PublishedSource,
+    snapshot: Snapshot,
+    file_id: str,
+    namespace: str,
+    state: Any,
+    listed: Callable[[], Awaitable[ResolvedManifest]],
 ) -> dict[str, Any]:
-    from metabrowser.builtin_plugins.github.pull_manifest import shared_pull_manifest
     from metabrowser.kpress_adapter import document_stylesheets
 
     target = RepositoryStoreTarget(published.git_dir, published.object_format)
     source = GitDiffSource(GitLocation.revision(target, snapshot.head))
-    comparison = await shared_pull_manifest(
-        published, snapshot.number, snapshot.base, snapshot.head
-    )
+    comparison = await listed()
     resolved, manifest = comparison.resolved, comparison.manifest
     if resolved.left.id != snapshot.base or resolved.right.id != snapshot.head:
         return _fallback()
@@ -428,11 +436,15 @@ async def _project(
 
 
 async def pull_rendered_diff_handler(request: Request) -> Response:
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_manifest import shared_pull_manifest
+    from metabrowser.builtin_plugins.github.pull_stack import combined, read_stack
+
     params = request.query_params
     try:
-        number = requested_number(params)
+        number, scope = requested_snapshot(params)
     except PullRequestError:
-        number = None
+        number, scope = None, "pull"
     base, head = params.get("left", ""), params.get("right", "")
     file_id = params.get("file", "")
     if (
@@ -443,7 +455,7 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
         or len(file_id) > 128
     ):
         return JSONResponse({"code": "invalid_rendered_diff"}, status_code=400, headers=_NO_STORE)
-    snapshot = Snapshot(number, base, head, params.get("store", ""))
+    snapshot = Snapshot(number, base, head, params.get("store", ""), scope)
     published, admission = await admitted_snapshot(request, snapshot)
     if admission == "unknown":
         return JSONResponse({"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE)
@@ -467,7 +479,26 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     if slot is None:
         slot = state.pull_rendered_diff_slot = _Slot()
     slot = cast("_Slot", slot)
-    key = (published.store_id, snapshot.store, str(number), base, head, file_id)
+    listed: Callable[[], Awaitable[ResolvedManifest]] = partial(
+        shared_pull_manifest, published, number, base, head
+    )
+    named = str(number)
+    if scope == "stack":
+        # The stack's own manifest, restricted to its layers' files, whose digest names it:
+        # a pull request keeps the key, and so the rendered namespace, it had.
+        host = pull_host(request.app)
+        reader = host.pulls.observed_reader if host is not None else None
+        pair = (await read_stack(served_repository(request.app), published, number, reader)).pair
+        if pair is None or (pair.base, pair.head) != (base, head):
+            return JSONResponse({"code": "snapshot_expired"}, status_code=410, headers=_NO_STORE)
+        named = f"stack-{number}-{pair.digest}"
+
+        async def restricted() -> ResolvedManifest:
+            assert pair is not None
+            return (await combined(published, pair)).manifest
+
+        listed = restricted
+    key = (published.store_id, snapshot.store, named, base, head, file_id)
     namespace = "diff-" + hashlib.sha256("\0".join(key).encode()).hexdigest()[:20]
     # The pairs the child was stopped on, each with when and with the refusal it answered.
     stopped = getattr(state, "pull_rendered_diff_stopped", None)
@@ -483,7 +514,7 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
         del stopped[key]
 
     async def load() -> bytes:
-        return _encoded(await _project(published, snapshot, file_id, namespace, state))
+        return _encoded(await _project(published, snapshot, file_id, namespace, state, listed))
 
     try:
         body = await cache.get(key, lambda: slot.run(load))

@@ -333,6 +333,7 @@ async def comparison_at(
         [GitDiffSource, dict[str, Any], tuple[str, ...]], Awaitable[ResolvedManifest]
     ]
     | None = None,
+    scope: tuple[str, ...] = (),
 ) -> Response:
     """A Git comparison at the supplied trusted location, as a ChangeSetDocument.
 
@@ -367,6 +368,12 @@ async def comparison_at(
     naming this store it is immutable as well, since the address then says everything
     its answer depends on; a folder's address names no store, and its answer carries
     neither header.
+
+    *scope* names a manifest that is not the two commits' whole comparison, as a native
+    stack's is restricted to the files its layers change (``github/pull_stack.py``). It
+    extends the key in memory, and so the entity tag and every kept answer, so such a
+    manifest never shares an entry with the whole comparison of the same two commits; only a
+    *manifest_loader* can answer for one.
     """
     if not 1 <= max_initial_files <= MAX_HYDRATED_FILES:
         raise ValueError(f"max_initial_files must be between 1 and {MAX_HYDRATED_FILES}")
@@ -419,6 +426,10 @@ async def comparison_at(
         else ""
     )
     kept_key = comparison_cache_key(location, intent, store)
+    if scope:
+        if manifest_loader is None or kept_key is None:
+            raise ValueError("a scoped comparison needs a store and its own manifest loader")
+        kept_key = (*kept_key, *scope)
     body_generation = _COMPARISONS.body_generation()
     answer_key: tuple[str, ...] | None = None
     headers: dict[str, str] = {}
@@ -564,10 +575,10 @@ async def comparison_at(
 
     if wanted_file:
         manifest = manifest.model_copy(
-            update={"totals": _listed_totals(projected), "truncated": False, "cursor": None}
+            update={"totals": listed_totals(projected), "truncated": False, "cursor": None}
         )
     elif types or group is not None:
-        manifest = manifest.model_copy(update={"totals": _listed_totals(projected)})
+        manifest = manifest.model_copy(update={"totals": listed_totals(projected)})
     if hydration.left_out:
         projected, resolved = say_left_out(projected, resolved, hydration.left_out)
     projected = mark_past_the_bounds(projected, hydration)
@@ -609,7 +620,7 @@ def _type_tally_answer(
     }
 
 
-def _listed_totals(changes: list[FileChange]) -> Totals:
+def listed_totals(changes: list[FileChange]) -> Totals:
     """The totals of a narrowed answer's own files, by the rule a listing follows.
 
     A binary change contributes zero lines exactly; an uncounted text change (unmerged,

@@ -1,0 +1,223 @@
+{
+  "pending": {
+    "state": "pending",
+    "reason": null,
+    "number": 70,
+    "base_ref": "topic",
+    "open": true,
+    "members": [
+      {
+        "number": 8,
+        "place": 1,
+        "title": null,
+        "state": null,
+        "base": null,
+        "head": null,
+        "in_top": null,
+        "pending": true
+      },
+      {
+        "number": 10,
+        "place": 2,
+        "title": null,
+        "state": null,
+        "base": null,
+        "head": null,
+        "in_top": null,
+        "pending": true
+      }
+    ],
+    "pending": [
+      8,
+      10
+    ],
+    "lacking": [],
+    "comparison": null,
+    "totals": null,
+    "truncated": false,
+    "files": [],
+    "guide": null,
+    "github_url": "https://github.com/octo/demo/pull/10",
+    "probe": null
+  },
+  "current": {
+    "state": "current",
+    "reason": null,
+    "number": 70,
+    "base_ref": "topic",
+    "open": true,
+    "members": [
+      {
+        "number": 8,
+        "place": 1,
+        "title": "Say more in the guide",
+        "state": "merged",
+        "base": "<base>",
+        "head": "<merged_head>",
+        "in_top": true,
+        "pending": false
+      },
+      {
+        "number": 10,
+        "place": 2,
+        "title": "WIP: draft the next page",
+        "state": "draft",
+        "base": "<topic>",
+        "head": "<draft_head>",
+        "in_top": true,
+        "pending": false
+      }
+    ],
+    "pending": [],
+    "lacking": [],
+    "comparison": {
+      "left": "<base>",
+      "right": "<draft_head>",
+      "key": "ebfe45cd812c6d00f8d4a921576b31d7",
+      "route": "/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>",
+      "image_route": "/api/plugin/github/pull-image?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
+      "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=70&left=<base>&right=<draft_head>&store=<STORE>"
+    },
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false,
+    "files": [
+      {
+        "path": "docs/draft.md",
+        "layers": [
+          {
+            "number": 10,
+            "place": 2,
+            "path": "docs/draft.md"
+          }
+        ]
+      }
+    ],
+    "guide": null,
+    "github_url": "https://github.com/octo/demo/pull/10",
+    "probe": {
+      "number": 10,
+      "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+      "every_s": 5.0
+    }
+  },
+  "lacking": {
+    "state": "current",
+    "reason": null,
+    "number": 71,
+    "base_ref": "topic",
+    "open": true,
+    "members": [
+      {
+        "number": 8,
+        "place": 1,
+        "title": "Say more in the guide",
+        "state": "merged",
+        "base": "<base>",
+        "head": "<merged_head>",
+        "in_top": true,
+        "pending": false
+      },
+      {
+        "number": 7,
+        "place": 2,
+        "title": "Count to two in the app",
+        "state": "open",
+        "base": "<base>",
+        "head": "<fork_head>",
+        "in_top": false,
+        "pending": false
+      },
+      {
+        "number": 10,
+        "place": 3,
+        "title": "WIP: draft the next page",
+        "state": "draft",
+        "base": "<topic>",
+        "head": "<draft_head>",
+        "in_top": true,
+        "pending": false
+      }
+    ],
+    "pending": [],
+    "lacking": [
+      7
+    ],
+    "comparison": {
+      "left": "<base>",
+      "right": "<draft_head>",
+      "key": "4477f6ee951f57617055456af12caf4e",
+      "route": "/api/plugin/github/stack-comparison?number=71&left=<base>&right=<draft_head>&base_policy=direct&key=4477f6ee951f57617055456af12caf4e&build=<BUILD>&store=<STORE>",
+      "image_route": "/api/plugin/github/pull-image?stack=71&left=<base>&right=<draft_head>&store=<STORE>",
+      "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=71&left=<base>&right=<draft_head>&store=<STORE>"
+    },
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false,
+    "files": [
+      {
+        "path": "docs/draft.md",
+        "layers": [
+          {
+            "number": 10,
+            "place": 3,
+            "path": "docs/draft.md"
+          }
+        ]
+      }
+    ],
+    "guide": null,
+    "github_url": "https://github.com/octo/demo/pull/10",
+    "probe": {
+      "number": 10,
+      "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+      "every_s": 5.0
+    }
+  },
+  "not_linear": {
+    "state": "absent",
+    "reason": "not_linear",
+    "number": 72,
+    "base_ref": "topic",
+    "open": true,
+    "members": [
+      {
+        "number": 10,
+        "place": 1,
+        "title": "WIP: draft the next page",
+        "state": "draft",
+        "base": "<topic>",
+        "head": "<draft_head>",
+        "in_top": null,
+        "pending": false
+      },
+      {
+        "number": 8,
+        "place": 2,
+        "title": "Say more in the guide",
+        "state": "merged",
+        "base": "<base>",
+        "head": "<merged_head>",
+        "in_top": null,
+        "pending": false
+      }
+    ],
+    "pending": [],
+    "lacking": [],
+    "comparison": null,
+    "totals": null,
+    "truncated": false,
+    "files": [],
+    "guide": null,
+    "github_url": null,
+    "probe": null
+  }
+}

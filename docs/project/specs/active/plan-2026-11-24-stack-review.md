@@ -4,7 +4,12 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Phase 0 is built (`mb-mxcm`, `mb-kkib`); phases 1 to 3 are planned.
+**Status:** Phases 0 (`mb-mxcm`, `mb-kkib`) and 1 (`mb-vad1`) are built; phases 2 and 3
+are planned. Phase 1 leaves out the Pulls tab’s **Stack #N** heading as an entry point,
+since that heading is the stack row’s disclosure toggle, and the Chrome measurement of
+Docs that [Bounds](#bounds) asks for.
+**View on GitHub** opens the top pull request, since the plugin knows no address for
+GitHub’s own page of a stack.
 Epic `mb-bxff`. The owner’s decisions of 2026-11-24 are under [Decisions](#decisions).
 This plan replaces the stack rollup that
 [Guided Review Groups](plan-2026-11-24-guided-review-groups.md#phase-3-stack-review)

@@ -2121,3 +2121,49 @@
 .github-pull-guide-references {
   padding: 0 var(--github-pull-text-inset) var(--content-padding-y);
 }
+
+/* ── The stack page (stack-page.js; arch-github-pull-requests.md, "The Stack Page") ──
+   A native stack's header: "Stack #N into base", its counts, then its members top first,
+   each its place, state, number, and title, as a stack menu's member reads
+   (`.github-pull-stack-member`): the place is a stack's bold position
+   (`.github-pull-stack-position`) and the number a pull request's (`.github-pull-number`),
+   in the header's link ink. The page's tabs and diff views are the shell's and the diff
+   plugin's. */
+.github-pull-stack-page-base {
+  color: var(--muted);
+  font-weight: normal;
+}
+.github-pull-stack-page-line,
+.github-pull-stack-page-lacking {
+  color: var(--muted);
+}
+.github-pull-stack-page-members {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.github-pull-stack-page-member {
+  display: flex;
+  align-items: baseline;
+  gap: 0 0.4em;
+  min-width: 0;
+}
+.github-pull-stack-page-link {
+  white-space: nowrap;
+}
+.github-pull-stack-page-member-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.github-pull-stack-page-note {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.github-pull-stack-page-status:empty {
+  display: none;
+}
+.github-pull-stack-page-take {
+  margin-inline-start: 0.4em;
+}
