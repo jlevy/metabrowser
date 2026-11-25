@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from metabrowser.builtin_plugins.structured import offer, records
-from metabrowser.builtin_plugins.structured.offer import OFFER_YAML_PREFIX_BYTES, offers_table
+from metabrowser.builtin_plugins.structured.offer import OFFER_PREFIX_BYTES, offers_table
 from metabrowser.builtin_plugins.structured.parser import parse_structured_bytes
 from metabrowser.plugin_api import SourceUnreadableError
 
@@ -91,9 +91,16 @@ def test_a_long_list_is_decided_by_its_first_item() -> None:
     assert offers_table(data, ".yaml") is True
 
 
+def test_json_is_read_no_further_than_the_prefix() -> None:
+    records = b'[{"name": "Ada"}]'
+    padding = b" " * (OFFER_PREFIX_BYTES - 2)
+    assert offers_table(padding + records, ".json") is True
+    assert offers_table(b" " * OFFER_PREFIX_BYTES + records, ".json") is False
+
+
 def test_a_mapping_longer_than_the_yaml_prefix_is_the_only_document() -> None:
     first = b"---\n" + b"".join(b"key_%d: value\n" % i for i in range(5_000))
-    assert len(first) > OFFER_YAML_PREFIX_BYTES
+    assert len(first) > OFFER_PREFIX_BYTES
     assert offers_table(first + b"---\nkey: value\n", ".yaml") is False
     short = b"---\n" + b"".join(b"key_%d: value\n" % i for i in range(50))
     assert offers_table(short + b"---\nkey: value\n", ".yaml") is True
@@ -101,7 +108,7 @@ def test_a_mapping_longer_than_the_yaml_prefix_is_the_only_document() -> None:
 
 def test_a_prefix_cut_inside_a_character_or_a_token_is_still_read() -> None:
     data = "- name: Adá\n".encode() * 2_000
-    cut = OFFER_YAML_PREFIX_BYTES - 1
+    cut = OFFER_PREFIX_BYTES - 1
     assert data[cut - 1 : cut + 1].decode("utf-8", errors="replace") != "á"
     assert offers_table(data[: cut + 1], ".yaml") is True
 

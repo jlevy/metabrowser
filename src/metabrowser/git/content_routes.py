@@ -447,11 +447,15 @@ def _views_for_kind(kind: str, *, prefix: tuple[bytes, str] | None = None) -> li
 
 async def _text_views_off_loop(kind: str, ext: str, body: bytes) -> list[dict[str, Any]]:
     """A text blob's views, its kind's offered views decided from its leading bytes on a
-    worker thread, since an offer may parse a bounded prefix."""
+    worker thread, since an offer may parse a bounded prefix; a kind with none is listed
+    on the loop."""
 
-    return await asyncio.to_thread(
-        _views_for_kind, kind, prefix=(body[:_PREDICATE_PREFIX_BYTES], ext)
-    )
+    from metabrowser.server import _FILE_OFFER_KINDS
+
+    prefix = (body[:_PREDICATE_PREFIX_BYTES], ext)
+    if kind not in _FILE_OFFER_KINDS:
+        return _views_for_kind(kind, prefix=prefix)
+    return await asyncio.to_thread(_views_for_kind, kind, prefix=prefix)
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:

@@ -5205,8 +5205,9 @@ for _idx, _plugin in enumerate(_LOADED_PLUGINS):
 # Folder views a plugin offers only where its predicate accepts the folder, by view id.
 _FOLDER_OFFERS: dict[str, FolderOffer | None] = resolve_folder_offers(_LOADED_PLUGINS)
 # File views a plugin offers only where its predicate accepts the file's leading bytes,
-# by kind and view id.
+# by kind and view id, and the kinds that have one.
 _FILE_OFFERS: dict[tuple[str, str], FileOffer | None] = resolve_file_offers(_LOADED_PLUGINS)
+_FILE_OFFER_KINDS: frozenset[str] = frozenset(kind for kind, _view in _FILE_OFFERS)
 
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
 _PLUGIN_CLASSIFY_BINARY = build_classifier(_PLUGIN_BINARY_KIND_RULES)
@@ -5467,14 +5468,19 @@ def _views_for_kind(
     For a file kind, :func:`_offered_file_views` keeps a plugin's offered view only
     where its predicate accepts the file's leading bytes: *prefix*, the bytes and the
     logical extension, when the caller holds them, as a pinned blob's does, or else
-    read from *target*. With neither, no offered view is kept. Reading *target* touches
-    the disk, so a caller on the event loop that passes it runs this in a thread.
+    read from *target*. Only a file served as text passes either, `/api/file`'s text
+    answer and a pinned text blob's; an image, a binary, a JSONL log, or a container's
+    entry passes neither, so its kind's offered views are never kept, and the first such
+    answer logs a warning for the plugin's author. Reading *target* touches the disk, so
+    a caller on the event loop that passes it runs this in a thread.
     """
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
     if kind == "folder" and _FOLDER_OFFERS:
         out = _offered_folder_views(out, target)
-    elif any(key[0] == kind for key in _FILE_OFFERS):
+    elif kind in _FILE_OFFER_KINDS:
+        if prefix is None and target is None:
+            _warn_offers_never_read(kind)
         out = _offered_file_views(kind, out, prefix if prefix is not None else _file_prefix(target))
     if kind == "html":
         out = _html_kind_views(out, target, active_content=active_content)
@@ -5515,6 +5521,19 @@ def _offered_folder_views(views: list[dict[str, Any]], target: Path | None) -> l
     if offered_default is not None:
         kept = [{**view, "default": view["id"] == offered_default} for view in kept]
     return kept
+
+
+@functools.cache
+def _warn_offers_never_read(kind: str) -> None:
+    """Say once that *kind*'s offered views are left out of an answer that reads no
+    leading bytes, since an offer is decided only for a file served as text."""
+
+    LOG.warning(
+        "%s views declare an offer, but a %s file is not served as text, so no leading "
+        "bytes are read and those views are never offered",
+        kind,
+        kind,
+    )
 
 
 def _file_prefix(target: Path | None) -> tuple[bytes, str] | None:

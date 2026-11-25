@@ -19,6 +19,7 @@ import pytest
 
 from metabrowser import server
 from metabrowser.plugin_loader.classify import CONTENT_PREDICATE_MAX_BYTES
+from tests.required_tools import needs_git
 
 _MAPPING = b'{"name": "metabrowser", "version": 1}'
 _RECORDS = b'[{"name": "Ada"}, {"name": "Grace"}]'
@@ -89,15 +90,63 @@ def test_a_prefix_in_hand_is_read_instead_of_the_file(monkeypatch: pytest.Monkey
     assert seen == [(_RECORDS, ".yaml")]
 
 
-def test_a_pinned_blob_offers_from_its_leading_bytes() -> None:
-    """Both of a pin's text responses list views through this, with the blob in hand;
-    `tests/golden/cli-git-pin-files.txt` pins a mapping's views without the Table."""
-    from metabrowser.git.content_routes import _text_views_off_loop
+@needs_git
+@pytest.mark.parametrize("ceiling", [None, 16], ids=["whole", "windowed"])
+def test_a_pinned_blob_offers_from_its_leading_bytes(tmp_path: Path, ceiling: int | None) -> None:
+    """A pin lists a blob's views from the blob it read, whole or, past the pin's
+    ceiling, from the window it streamed; `tests/golden/cli-git-pin-files.txt` pins a
+    mapping's views without the Table."""
+    from metabrowser.git.tree_source import GitPath
+    from tests.git_pin_harness import fast_import_store
+    from tests.test_git_revision_content_routes import _pinned_client
 
-    offered = asyncio.run(_text_views_off_loop("structured", ".json", _RECORDS))
-    refused = asyncio.run(_text_views_off_loop("structured", ".json", _MAPPING))
+    store, commit = fast_import_store(tmp_path, {b"rows.json": _RECORDS, b"meta.json": _MAPPING})
+    assert len(_RECORDS) > 16 and len(_MAPPING) > 16
 
-    assert (_ids(offered), _ids(refused)) == (["tree", "table", "source"], ["tree", "source"])
+    async def views(name: bytes) -> list[str]:
+        async with _pinned_client(store, commit, max_blob_bytes=ceiling) as (client, _subject):
+            path = GitPath.from_segments(name).to_wire()
+            answer = (await client.get("/api/file", params={"path": path})).json()
+            return _ids(answer["views"])
+
+    assert asyncio.run(views(b"rows.json")) == ["tree", "table", "source"]
+    assert asyncio.run(views(b"meta.json")) == ["tree", "source"]
+
+
+def test_an_offer_on_a_kind_not_served_as_text_is_never_kept_and_said_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An image, a binary, a JSONL log, or a container's entry reads no leading bytes, so
+    its kind's offered view is left out, and the plugin's author is told once."""
+
+    monkeypatch.setitem(server._FILE_OFFERS, ("binary", "bytes"), lambda _p, _e: True)
+    monkeypatch.setattr(server, "_FILE_OFFER_KINDS", server._FILE_OFFER_KINDS | {"binary"})
+    server._warn_offers_never_read.cache_clear()
+
+    with caplog.at_level(logging.WARNING, logger=server.LOG.name):
+        first = _ids(server._views_for_kind("binary"))
+        again = _ids(server._views_for_kind("binary"))
+
+    assert (first, again) == ([], [])
+    warnings = [r for r in caplog.records if "never offered" in r.getMessage()]
+    assert [r.getMessage() for r in warnings] == [
+        "binary views declare an offer, but a binary file is not served as text, so no "
+        "leading bytes are read and those views are never offered"
+    ]
+    server._warn_offers_never_read.cache_clear()
+
+
+def test_a_pinned_text_blob_of_a_kind_without_offers_stays_on_the_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from metabrowser.git import content_routes
+
+    async def no_thread(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("a kind with no offers took a thread")
+
+    monkeypatch.setattr(content_routes.asyncio, "to_thread", no_thread)
+    views = asyncio.run(content_routes._text_views_off_loop("markdown", ".md", b"# Hi\n"))
+    assert "source" in _ids(views)
 
 
 def test_without_a_file_or_a_prefix_in_hand_no_view_is_offered() -> None:

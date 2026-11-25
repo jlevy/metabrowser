@@ -313,11 +313,12 @@ class ViewSpec(BaseModel):
             "the ``folder`` kind it receives the folder's path; it runs for every folder "
             "page, off the event loop, so it reads no more than a few directory entries, "
             "and an offered view with ``default = true`` is then the folder's only "
-            "default. For a file kind it receives the file's leading logical bytes (at "
-            "most ``CONTENT_PREDICATE_MAX_BYTES`` + 1) and its logical extension, and "
-            "runs for every response that lists the file's views, so it decides from "
-            "those bytes alone. Python plugins only: an operator directory's plugin "
-            "never offers the view."
+            "default. For a kind served as text it receives the file's leading logical "
+            "bytes (at most ``CONTENT_PREDICATE_MAX_BYTES`` + 1) and its logical "
+            "extension, and runs for every response that lists a text file's views, so "
+            "it decides from those bytes alone; an image, binary, JSONL, or container "
+            "entry's kind reads no bytes for it and never offers the view. Python "
+            "plugins only: an operator directory's plugin never offers the view."
         ),
     )
 

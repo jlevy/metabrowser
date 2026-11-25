@@ -325,12 +325,15 @@ directory’s JavaScript-only plugin cannot declare one.
   than a few directory entries.
   A Git revision’s folders never offer a view.
 
-- **A file kind’s view’s predicate** receives the file’s leading logical bytes, at most
+- **A text kind’s view’s predicate** receives the file’s leading logical bytes, at most
   `CONTENT_PREDICATE_MAX_BYTES` + 1 of them (`plugin_loader/classify.py`), and its
   logical extension, and the view is served only on files where it returns true.
-  It runs for every response that lists the file’s views, the hover prefetch included,
-  for a pinned revision’s blobs as for a folder’s files, so it decides from those bytes
-  and never parses the whole file.
+  It runs for every response that lists a text file’s views, the hover prefetch
+  included, for a pinned revision’s blobs as for a folder’s files, so it decides from
+  those bytes and never parses the whole file.
+  Only a file served as text is asked: an image, a binary, a JSONL log, or a container’s
+  entry reads no leading bytes for it, so a view of such a kind that declares `offer` is
+  never served, and the server logs a warning the first time it leaves one out.
   The structured kind offers its Table view this way, only on a file that starts as a
   list of records (`structured/offer.py`).
 

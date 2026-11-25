@@ -27,16 +27,18 @@ from collections.abc import Iterator
 
 import yaml
 
-# The most of a YAML file's start read for its shape: as much as the content predicates
-# that classify a file read of a YAML prefix (`_YAML_PREFIX_BYTES` in
-# plugin_loader/classify.py). Every offer is decided within a document's first item, or
-# for a mapping by the start of the next document. A first document longer than this is
-# taken as the only one, so the rare stream whose first document is larger has no Table
-# tab. A 16 KiB mapping, the case that reads all of it, took 2.9 ms with libyaml and 34 ms
-# with PyYAML's Python parser, and a list of records or a stream of small documents was
-# settled in under 0.3 ms with either (best of 30, Python 3.14, a 10-core arm64 Mac at a
-# load average of 130 to 170, 2026-11-24). The JSON check reads a few bytes, under 1 µs.
-OFFER_YAML_PREFIX_BYTES = 16 * 1024
+# The most of a file's start read for its shape. A list is decided by its first item and
+# JSON by its first two tokens, so only a stream of mappings reads far: a mapping is taken
+# as a record when the next document's first key and its colon fall within the bound, so
+# a stream whose first document is longer than this, nearly, is taken as one mapping and
+# has no Table tab. Its cost set the bound: a 16 KiB mapping, the case that reads all of
+# it, took 2.9 ms with libyaml and 34 ms with PyYAML's Python parser, and a list of
+# records or a stream of small documents was settled in under 0.3 ms with either (best of
+# 30, Python 3.14, a 10-core arm64 Mac at a load average of 130 to 170, 2026-11-24). For
+# JSON the bound caps the walk over leading whitespace and comments: 16 KiB of spaces,
+# `//` lines, or `/**/` took at most 0.9 ms, and a list of records under 1 µs (best of 30,
+# Python 3.14, the same Mac at a load average of 350, 2026-11-24).
+OFFER_PREFIX_BYTES = 16 * 1024
 
 _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
@@ -54,9 +56,9 @@ def offers_table(prefix: bytes, ext: str) -> bool:
     records."""
 
     if ext == ".json":
-        return _json_starts_records(prefix)
+        return _json_starts_records(prefix[:OFFER_PREFIX_BYTES])
     if ext in (".yaml", ".yml"):
-        return _yaml_starts_records(prefix[:OFFER_YAML_PREFIX_BYTES])
+        return _yaml_starts_records(prefix[:OFFER_PREFIX_BYTES])
     return False
 
 
