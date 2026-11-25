@@ -1900,9 +1900,11 @@
   display: none;
 }
 
-/* KPress sets the guide's headings, paragraphs, and the space between them. The text is
-   plain, so its own line breaks stand, and an unbroken run wraps inside the column. */
-.github-pull-guide-prose p {
+/* KPress sets the guide's headings, paragraphs, and the space between them. A note is
+   Markdown, rendered as a description is, so its blocks are set as a description's. A note
+   whose render did not come is shown as typed: its own line breaks stand, and an unbroken
+   run wraps inside the column. */
+.github-pull-guide-commentary {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1986,13 +1988,24 @@
   padding: 0;
   list-style: none;
 }
-/* A group's note above its first step's card: the author's text, as typed, at the card
-   text's inset. */
+/* A group's note above its first step's card, at the card text's inset: its Markdown
+   rendered as a step's note is, in a `.github-pull-text` host whose first and last block
+   keep no margin of their own, as in a card, or its text as typed when the render did
+   not come. */
 .github-pull-guide-group-note {
   margin: 0 0 0.75rem;
+  padding-block: 0;
   padding-inline: var(--github-pull-text-inset);
+}
+/* The typed fallback keeps its line breaks, as a step's typed note does. */
+.github-pull-guide-group-note-typed {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+/* The line that says why a typed group note's render did not come sits under the note, as a
+   description's sits under its plain text, and stands apart from the card as the note does. */
+.github-pull-guide-step > .github-pull-guide-note-refused {
+  margin-block: 0 0.75rem;
 }
 /* A changed step's mark is metadata, at its row's or its card head's size ("Type Scale"). */
 .github-pull-guide-step-changed {
@@ -2057,4 +2070,125 @@
    does. */
 .github-pull-guide-references {
   padding: 0 var(--github-pull-text-inset) var(--content-padding-y);
+}
+
+/* A file of another pull request names that pull request before its path, in a pull request
+   number's weight (docs/design-system.md, "Pull Request Numbers"). */
+.github-pull-guide-reference-pull {
+  flex: none;
+  margin-inline-end: 0.4em;
+  color: var(--muted);
+  font-weight: var(--pull-number-weight);
+  font-variant-numeric: var(--tabular-numerals);
+}
+/* A pull request or a commit a step cites is one row in an excerpt's card, as the stack menu
+   lists a member (`.github-pull-stack-member`): its state icon or short ID, its number in
+   bold, a muted dot, and its title, which alone gives way, then its stack place or when it
+   was committed, muted at the row's end. */
+.github-pull-guide-row {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  overflow: hidden;
+}
+.github-pull-guide-row-link {
+  display: flex;
+  align-items: center;
+  gap: var(--tree-icon-gap);
+  min-height: var(--ui-row-height);
+  padding: 0 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+.github-pull-guide-row-link[href]:hover {
+  background: var(--hover-bg);
+}
+.github-pull-guide-row-copy {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 0.25em;
+  min-width: 0;
+}
+.github-pull-guide-row-id {
+  flex: none;
+  color: var(--text);
+  white-space: nowrap;
+}
+/* A pull request's number, in a pull request number's weight (docs/design-system.md, "Pull
+   Request Numbers"). */
+.github-pull-guide-row-number {
+  font-weight: var(--pull-number-weight);
+  font-variant-numeric: var(--tabular-numerals);
+}
+/* The dot is a stack menu's (`.github-pull-stack-dot`), and keeps its width as the number
+   does. */
+.github-pull-guide-row-copy > .github-pull-stack-dot {
+  flex: none;
+}
+.github-pull-guide-row-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pull-guide-row-place {
+  flex: none;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* A commit this copy lacks says so in its title's place, and gives way as a title does. */
+.github-pull-guide-row-link > .github-pull-quiet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── The stack page (stack-page.js; arch-github-pull-requests.md, "The Stack Page") ──
+   A native stack's header: "Stack #N into base", its counts, then its members top first,
+   each its place, state, number, and title, as a stack menu's member reads
+   (`.github-pull-stack-member`): the place is a stack's bold position
+   (`.github-pull-stack-position`) and the number a pull request's (`.github-pull-number`),
+   in the header's link ink. The page's tabs and diff views are the shell's and the diff
+   plugin's. */
+.github-pull-stack-page-base {
+  color: var(--muted);
+  font-weight: normal;
+}
+.github-pull-stack-page-line,
+.github-pull-stack-page-lacking {
+  color: var(--muted);
+}
+.github-pull-stack-page-members {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.github-pull-stack-page-member {
+  display: flex;
+  align-items: baseline;
+  gap: 0 0.4em;
+  min-width: 0;
+}
+.github-pull-stack-page-link {
+  white-space: nowrap;
+}
+.github-pull-stack-page-member-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.github-pull-stack-page-note {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.github-pull-stack-page-status:empty {
+  display: none;
+}
+.github-pull-stack-page-take {
+  margin-inline-start: 0.4em;
 }

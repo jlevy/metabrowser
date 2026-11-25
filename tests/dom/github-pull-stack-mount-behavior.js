@@ -302,7 +302,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   disclosure.open = true;
   disclosure.events.get("toggle")();
   const members = warm.querySelector(".github-pull-stack-menu");
-  const memberLinks = () => [...members.descendants()].filter((item) => item.tag === "a");
+  // The menu's links: Whole stack first (mb-vad1), then the members.
+  const allLinks = () => [...members.descendants()].filter((item) => item.tag === "a");
+  const memberLinks = () =>
+    allLinks().filter((item) => item.getAttribute("class")?.includes("github-pull-stack-member"));
+  assert.deepEqual(
+    allLinks().map((item) => item.getAttribute("href")),
+    ["/stack/286", "/pull/8/files", "/pull/7/files", "/pull/6/files"],
+  );
+  assert.equal(allLinks()[0].textContent, "Whole stack");
   assert.deepEqual(
     memberLinks().map((item) => item.textContent),
     ["Stack change 8 3/3 · #8", "Stack change 7 2/3 · #7", "Stack change 6 1/3 · #6"],
@@ -457,7 +465,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const following = anchors.find((element) => element.getAttribute("href") === "/pull/8/files");
   assert(previous);
   assert(following);
-  assert.equal(anchors[1].getAttribute("aria-current"), "page");
+  assert.equal(anchors[2].getAttribute("aria-current"), "page");
   next.activate();
   assert.equal(next.hasStack(), true);
   assert.equal(next.moveStack(-1), true);
@@ -498,6 +506,14 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     assert.equal(opened.length, count, "modified clicks do not open a local page");
     assert.equal(following.getAttribute("href"), "/pull/8/files");
   }
+  // The menu's first row opens the stack's own page in place (mb-vad1).
+  const wholeStack = anchors[0];
+  assert.equal(wholeStack.getAttribute("href"), "/stack/286");
+  const wholeCount = opened.length;
+  wholeStack.events.get("click")({ preventDefault() {} });
+  assert.equal(opened.length, wholeCount + 1);
+  assert.deepEqual(opened.at(-1), { number: 286, tab: "", stack: true });
+  opened.pop();
   const outsideFocus = new Element("button");
   document.activeElement = outsideFocus;
   disclosure.open = true;
@@ -738,6 +754,37 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "Navigate Stack #90, position 2 of 3",
   );
   named.dispose();
+  // With `wholeStack`, the menu's first row opens the stack's own page (mb-vad1), and the
+  // menu still opens on the current member, now third, with the keys moving over all rows.
+  const whole = page.createStackMenu(menuStack, 7, {
+    link: (target) => page.h("a", { href: `/pull/${target}` }),
+    wholeStack: (id) => page.h("a", { href: `/stack/${id}` }),
+    icon: null,
+    currentTitle: "Current",
+    titleNodes: api.titleNodes,
+    onOpen() {},
+  });
+  const wholeKey = (name) =>
+    whole.element.events.get("keydown")({
+      key: name,
+      target: null,
+      preventDefault() {},
+      stopPropagation() {},
+    });
+  wholeKey("ArrowDown");
+  const wholeLinks = whole.element.querySelectorAll("a[href]");
+  assert.deepEqual(
+    wholeLinks.map((link) => link.getAttribute("href")),
+    ["/stack/90", "/pull/8", "/pull/7", "/pull/6"],
+  );
+  assert.equal(wholeLinks[0].textContent, "Whole stack");
+  assert.equal(wholeLinks[0].getAttribute("role"), "menuitem");
+  assert.equal(wholeLinks[0].getAttribute("aria-current"), null);
+  assert.equal(document.activeElement, wholeLinks[2], "Down opens at the current member");
+  wholeKey("Home");
+  assert.equal(document.activeElement, wholeLinks[0], "Home reaches Whole stack");
+  wholeKey("Escape");
+  whole.dispose();
   for (const listener of documentEvents.get("pointerdown")) {
     listener({ target: new Element("button") });
   }

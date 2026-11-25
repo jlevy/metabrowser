@@ -196,20 +196,34 @@ fenced YAML block to the GitHub PR description.
 Give the agent the PR description and the diff from its merge base to its head.
 Ask it to choose the code to review in dependency or execution order.
 Each step should explain why the reviewer is looking there and what to verify.
+Keep a guide short: one step for each area of the change and one for each concern that
+has something to say, such as the key decisions, open questions, and testing, each note
+one to three sentences and citing what a reviewer must read rather than every changed
+file, which Changes already lists.
+A group gathers two steps or more; a concern of one step stays a step of its own.
+The [agent skill](../skills/metabrowser/SKILL.md) has the full recipe.
 
 The description is the guide’s overview.
 Guided Review opens with it, rendered as Conversation renders it and without the block,
-so write it to be read first: what the change does and why, then how its parts fit
-together. The block itself has no prose of its own.
+so write it to be read first: a few lines on what is true once the change lands, then
+why, then how its parts fit together.
+The block itself has no prose of its own.
 
 The block is a collection (`metabrowser.collection:Collection/v1`), a general format for
 ordered annotated items that guided reviews are the first use of
 ([Collection Format](project/architecture/arch-collection-format.md)). In a guided
 review it holds the comparison it was written against and ordered `items`, each a step
 with a `title`, a `note` saying what to verify, and its `references`, or a group of
-steps with a `title`, an optional `note`, and its own `items`. Write each field as plain
-text: the page shows them as typed and keeps their line breaks, so Markdown such as
-backticks, lists, and links prints literally.
+steps with a `title`, an optional `note`, and its own `items`. A title is plain text,
+shown as typed. A note is Markdown, rendered as the description is, inert, in every
+guide: raw HTML is cut to the same safe subset, a single line break joins two lines into
+one paragraph, and a blank line starts the next.
+A Mermaid block in a note shows as code.
+Write a link in a note as a full URL: a relative one resolves against the pull request’s
+page on GitHub, not the repository, so `docs/plan.md` leads nowhere.
+A note whose render takes too long, or fails, shows as typed, with its line breaks kept
+and the line a description’s refusal says under it; when the renderer was only busy,
+returning to the step or reloading the page renders it.
 
 ````markdown
 ```guided-review
@@ -259,6 +273,33 @@ A step’s other whole files share that budget (`MAX_STEP_PATCH_BYTES` in
 `guided_review.py`); a file past it says its diff is too large to show in the step, and
 **Open full diff** shows it in Changes.
 A binary change or a rename without a text diff says it has no text changes to show.
+
+A step can also cite past its pull request, so a layer’s guide can point at its
+neighbors:
+
+```yaml
+references:
+  - {pull: 805}                      # another pull request
+  - {pull: 805, path: docs/plan.md}  # a file as that pull request changes it
+  - {commit: "<full commit ID>"}     # a commit
+```
+
+A pull request shows as a row the way the stack menu lists a member: its state, number,
+and title, and its place in a stack when it has one; it opens that pull request.
+A file of another pull request is drawn as a file of this one is, from that pull
+request’s own changes, under a bar that names the pull request, and its **Open full
+diff** opens the file there.
+It takes no line range, since that pull request may move after the guide is written.
+A commit shows as a row of its subject, when it was made, and its short ID, and opens
+the commit.
+These are read from what this copy already has: a pull request not loaded yet
+shows by its number, a file of one not loaded yet says to open it, and a commit the copy
+lacks says it is unavailable.
+A commit fetched with a pull request but missing from the checkout you are browsing
+shows without a link, since its page reads that checkout.
+None of them makes the guide out of date, except a file this pull request itself
+changes, cited with its own number, which counts as a file of the guide.
+
 The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
 describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_review.py` bound
@@ -299,6 +340,44 @@ metab <pull request URL> --api '/api/plugin/github/guided-review?number=<n>'
 
 There is no check for a guide before the description carries it, and a block inside
 another fence, as in the example above, is not a guide even where the tab appears.
+
+#### A Stack’s Guide
+
+A native stack can have a guide of its own: one guided review of the whole stack, read
+against the stack’s comparison, from its bottom layer’s merge base to its top layer’s
+head. The stack’s page, which **Whole stack** in the stack menu opens, then leads with a
+**Guided Review** tab and opens on it; without a guide it opens on Files.
+
+To publish one, add one top-level `stack-review` block, in the format above, to a
+layer’s description, usually the top layer’s, beside that layer’s own `guided-review`
+block. Pin its `merge_base` to the stack’s base and its `head` to the top layer’s head.
+A description may hold one block of each kind; two of either is refused.
+The stack’s guide is the block of the top-most layer that has one, so a layer added
+above it leaves the guide in place, and out of date until its author moves the pins.
+Editing a description starts no CI run and leaves the layer’s own guide current.
+
+The description that carries the block introduces its layer, not the stack, so a stack’s
+guide opens on its first step, and its first steps orient the reader.
+On that layer’s page, Conversation leaves the block out and shows a card that says it
+has a stack guide and opens the page of each stack the layer belongs to.
+A step’s files open in the stack’s Changes, and a step can cite each layer as
+`{pull: <n>}`. The guide is read at the comparison the page shows, as Files, Docs, and
+Changes are. While a layer is being fetched, or the stack cannot be shown as one
+comparison, the guide on screen stays, and a step you have not read yet says why in its
+place; when the stack moves, the page offers its new comparison, and the guide is read
+again there, out of date where a layer moved past its pins, when you take it.
+Until you take it, a step written for the new comparison, as one is once the guide’s
+layer moved and its author pinned it again, says the stack has moved, and the guide’s
+steps stay. The same answer is the `guided-review` route’s, by stack, at the current
+comparison or at one the stack’s page named, by the `left`, `right`, and `key` of its
+`comparison`:
+
+```shell
+metab <pull request URL> --api '/api/plugin/github/guided-review?stack=<n>'
+```
+
+The [agent skill](../skills/metabrowser/SKILL.md) has the recipe for writing one, with
+what each step says.
 
 ### Code Controls
 

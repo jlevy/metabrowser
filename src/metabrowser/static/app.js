@@ -9004,7 +9004,7 @@ var PULLS_ROUTE = "/pulls";
 
 /** @param {string} pathname */
 function isPullAddress(pathname) {
-  return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname === PULLS_ROUTE;
+  return /^\/(pull|stack)\//.test(pathname) || pathname === PULLS_ROUTE;
 }
 /** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
 var pullPageHost = null;
@@ -9099,7 +9099,7 @@ function pullPageHostDeps(routes) {
     },
     isCurrent: isPreviewClaimCurrent,
     mount: (claim, route, open) =>
-      mountView(claim, "pull-request", {
+      mountView(claim, route.stack ? "pull-stack" : "pull-request", {
         number: route.number,
         tab: route.tab,
         reader: route.reader,
@@ -9242,7 +9242,9 @@ async function applyNavigationTarget(target, context) {
       if (!context.isCurrent()) {
         return { status: "cancelled" };
       }
-      var pullRoute = window.MetabrowserPullRoute?.parsePull(window.location.pathname);
+      var pullRoute =
+        window.MetabrowserPullRoute?.parsePull(window.location.pathname) ??
+        window.MetabrowserPullRoute?.parseStack(window.location.pathname);
       if (pullRoute) {
         return pullHost.show(pullRoute);
       }

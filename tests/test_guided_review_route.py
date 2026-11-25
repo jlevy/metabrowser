@@ -10,31 +10,63 @@ handler does. The stand-in's pull request 7 is ``base`` → ``fork_earlier`` ("e
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import html
 import json
-from collections.abc import Iterator
+import re
+import subprocess
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
+from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github import (
     guided_review,
     pull_manifest,
     pull_markdown,
     pull_rendered_diff,
+    pull_text_render,
 )
 from metabrowser.builtin_plugins.github.guided_review import parse_guide
-from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES, PullRecord
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_BODY_BYTES,
+    PullRecord,
+    PullRefreshStamp,
+)
 from metabrowser.builtin_plugins.github.pull_route import PullHost, PullView
+from metabrowser.builtin_plugins.github.pull_stacks import (
+    NativeStack,
+    StackPage,
+    StackSnapshot,
+    publish_stacks,
+)
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
+from metabrowser.diff import markdown_projection_worker as worker_module
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.git.process import GitError, GitLocation, GitOutputCutError, RepositoryStoreTarget
+from metabrowser.diff.markdown_projection_worker import InertRenderRefused, RefusalCode
+from metabrowser.git.process import (
+    GitCommandError,
+    GitError,
+    GitLocation,
+    GitOutputCutError,
+    RepositoryStoreTarget,
+)
 from tests.diff_fixture_repo import git
 from tests.github_pull_fixture import (
     _DOCUMENT_FILES,  # pyright: ignore[reportPrivateUsage]
+    DEFAULT_BRANCH,
+    FETCHED_AT,
+    READER,
+    commits_guide_body,
     grouped_guide_body,
     guide_body,
+    kinds_guide_body,
+    markdown_guide_body,
     scenario,
 )
 from tests.required_tools import needs_git
@@ -43,6 +75,35 @@ from tests.test_github_pulls import stand as stand
 from tests.test_guided_review import PUBLISHED_GUIDE
 
 _MISSING = "e" * 40
+
+
+@dataclass
+class _NoteChild:
+    """The Markdown child's stand-in for a step's notes: each render asked of it, and its
+    answer, the note's text in a paragraph, or the refusal it was told to give."""
+
+    asked: list[Any] = field(default_factory=list[Any])
+    refusal: InertRenderRefused | None = None
+
+    async def render_inert(self, request: Any) -> dict[str, Any]:
+        self.asked.append(request)
+        if self.refusal is not None:
+            raise self.refusal
+        return {"html": f"<p>{html.escape(request.source_text)}</p>"}
+
+
+@pytest.fixture(autouse=True)
+def notes(monkeypatch: pytest.MonkeyPatch) -> _NoteChild:
+    """Every answer with a step renders its note through the Markdown child, which a test
+    of something else need not start: those notes are a stand-in's. The tests of the render
+    itself put the real child back (`_real_child`)."""
+    child = _NoteChild()
+    monkeypatch.setattr(pull_text_render, "shared_worker", lambda: child)
+    return child
+
+
+def _real_child(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pull_text_render, "shared_worker", worker_module.shared_worker)
 
 
 def _cache(stand: _Stand, body: str) -> PullRecord:
@@ -69,9 +130,11 @@ def _pinned(stand: _Stand, *, merge_base: str | None = None, head: str | None = 
     return body
 
 
-def _ask(stand: _Stand, step: int = 1, number: int = 7) -> dict[str, Any]:
+def _ask(
+    stand: _Stand, step: int = 1, number: int = 7, repository: ListedRepository | None = None
+) -> dict[str, Any]:
     host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
-    return asyncio.run(guided_review.guided_review(host, number, step))
+    return asyncio.run(guided_review.guided_review(host, number, step, repository))
 
 
 def _rows(answer: dict[str, Any], at: int = 0) -> list[str]:
@@ -361,6 +424,147 @@ def test_a_published_guide_without_groups_answers_each_step_as_before(stand: _St
         assert {reference["state"] for reference in answer["references"]} == {"path_not_changed"}
 
 
+def test_a_step_answers_its_note_rendered_beside_its_source(
+    stand: _Stand, notes: _NoteChild
+) -> None:
+    """A step's note renders as the description does, from the pull request's page, and its
+    group's note on the group's first step alone; a title is never rendered. The render is
+    kept with the parse, so the step read again asks nothing more of the child."""
+    record = _cache(stand, markdown_guide_body(stand.origin))
+    first = _ask(stand, step=1)
+    assert (first["state"], first["title"]) == ("ready", "Start with the <b>count</b>")
+    assert first["note"].startswith("Check that the **original** value\n")
+    assert first["note_html"] == f"<p>{html.escape(first['note'])}</p>"
+    group_note = "Read the `count` before *its* explanation."
+    assert first["outline"][0]["note"] == group_note
+    assert first["group_note_html"] == f"<p>{html.escape(group_note)}</p>"
+    assert [request.source_text for request in notes.asked] == [first["note"], group_note]
+    request = notes.asked[0]
+    assert (request.kind, request.view, request.ext, request.include_toc) == (
+        "markdown",
+        "document",
+        ".md",
+        "off",
+    )
+    assert (request.link_base, request.source_path) == (
+        record.pull.html_url,
+        "pull-7-guided-review-note.md",
+    )
+    # The group's second step opens nothing, and a step outside a group has no group.
+    second, third = _ask(stand, step=2), _ask(stand, step=3)
+    assert (second["group"], second["group_note_html"]) == (0, None)
+    assert (third["group"], third["group_note_html"]) == (None, None)
+    assert second["note_html"] == "<p>Check what the count replaced.</p>"
+    asked = len(notes.asked)
+    assert _ask(stand, step=1) == first
+    assert len(notes.asked) == asked
+
+
+def test_a_note_past_the_kept_renders_renders_again(
+    stand: _Stand, notes: _NoteChild, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cache(stand, guide_body(stand.origin))
+    monkeypatch.setattr(guided_review, "_MAX_KEPT_NOTE_CHARS", 0)
+    assert _ask(stand)["note_html"] == _ask(stand)["note_html"] is not None
+    assert len(notes.asked) == 2
+
+
+@pytest.mark.parametrize(
+    "code", ["render_deadline", "renderer_exited", "renderer_busy", "renderer_unavailable"]
+)
+def test_a_refused_render_answers_the_note_and_why(
+    stand: _Stand, notes: _NoteChild, code: RefusalCode
+) -> None:
+    """A note whose render is refused is answered as written, with no HTML and the code the
+    pull-markdown route answers the refusal with, and the step reads as before: the page
+    shows the note as typed, with the line a description's refusal says. A refusal is not
+    kept here, so the next read asks again, and the child answers from the refusal it keeps
+    or, for a busy renderer or one that could not start, renders."""
+    _cache(stand, markdown_guide_body(stand.origin))
+    notes.refusal = InertRenderRefused(code)
+    answer = _ask(stand)
+    assert (
+        answer["state"],
+        answer["note_html"],
+        answer["note_refusal"],
+        answer["group_note_html"],
+        answer["group_note_refusal"],
+    ) == ("ready", None, code, None, code)
+    assert answer["note"].startswith("Check that the **original** value")
+    assert [ref["state"] for ref in answer["references"]] == ["ready"]
+    _ask(stand)
+    assert len(notes.asked) == 4
+    notes.refusal = None
+    again = _ask(stand)
+    assert (again["note_refusal"], again["group_note_refusal"]) == (None, None)
+    assert again["note_html"] == f"<p>{html.escape(again['note'])}</p>"
+
+
+def test_a_note_kpress_cannot_render_answers_render_failed(
+    stand: _Stand, notes: _NoteChild, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """KPress's own failure is answered as the pull-markdown route answers it, ``render_failed``."""
+    _cache(stand, guide_body(stand.origin))
+
+    async def failing(_request: Any) -> dict[str, Any]:
+        raise kpress_adapter.KPressRenderError("no")
+
+    monkeypatch.setattr(notes, "render_inert", failing)
+    answer = _ask(stand)
+    assert (answer["note_html"], answer["note_refusal"]) == (None, "render_failed")
+    assert (answer["group_note_html"], answer["group_note_refusal"]) == (None, None)
+
+
+def test_the_published_guides_notes_render_inert(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every note of the guide #785 published renders in the real Markdown child, as its
+    text: plain prose reads the same as Markdown, its flags included."""
+    _real_child(monkeypatch)
+    published = PUBLISHED_GUIDE.read_text("utf-8")
+    guide = parse_guide(published)
+    assert guide is not None
+    _cache(
+        stand,
+        published.replace(guide.comparison.merge_base, stand.origin["base"]).replace(
+            guide.comparison.head, stand.origin["fork_head"]
+        ),
+    )
+    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
+    steps = guide.flat_items()
+
+    async def every_step() -> list[dict[str, object]]:
+        # One event loop, so one child renders every note.
+        return [await guided_review.guided_review(host, 7, k) for k in range(1, len(steps) + 1)]
+
+    for answer, step in zip(asyncio.run(every_step()), steps, strict=True):
+        paragraph = html.escape(step.note, quote=False)
+        assert answer["note_html"] == f"\n<div><div><p>{paragraph}</p></div></div>"
+
+
+def test_a_note_past_the_render_deadline_shows_as_typed(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A note KPress takes seconds to render, 100 unpaired ``[`` before 60 KiB of ``%``
+    (``tests/test_inert_render_deadline.py``), is stopped at the real child's deadline and
+    answered as written."""
+    _real_child(monkeypatch)
+    monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.25)
+    slow = "[" * 100 + "%" * (60 * 1024)
+    body = guide_body(stand.origin).replace(
+        "note: Check that the original value is preserved.", f"note: |-\n        {slow}"
+    )
+    assert slow in body
+    _cache(stand, body)
+    answer = _ask(stand)
+    assert (answer["state"], answer["note"], answer["note_html"], answer["note_refusal"]) == (
+        "ready",
+        slow,
+        None,
+        "render_deadline",
+    )
+
+
 def test_a_step_past_the_guide_and_an_uncached_pull_request(stand: _Stand) -> None:
     _cache(stand, guide_body(stand.origin))
     assert _ask(stand, step=3)["state"] == "step_not_found"
@@ -446,6 +650,305 @@ def test_a_description_cut_inside_its_block_is_truncated_not_invalid(stand: _Sta
     assert _ask(stand)["state"] == "description_truncated"
 
 
+def _repository(stand: _Stand, *stacks: tuple[int, ...]) -> ListedRepository:
+    """The stand-in's repository, as the server serves it, with a stack snapshot of each of
+    *stacks*, numbered from 70, when any is given."""
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    if stacks:
+        native = tuple(
+            NativeStack(number=70 + at, base_ref=DEFAULT_BRANCH, open=True, pulls=pulls)
+            for at, pulls in enumerate(stacks)
+        )
+        stamp = FETCHED_AT.strftime("%Y-%m-%dT%H:%M:%SZ")
+        snapshot = StackSnapshot(
+            source=repository.source,
+            reader=f"gh:{READER}",
+            fetched_at=stamp,
+            complete=True,
+            pages=(StackPage(etag=None, has_next=False, stacks=native),),
+        )
+        refresh = PullRefreshStamp(outcome="succeeded", at=stamp, reader=f"gh:{READER}")
+        assert publish_stacks(repository, None, snapshot, refresh)
+    return repository
+
+
+def _cited(answer: dict[str, Any]) -> list[tuple[Any, ...]]:
+    return [
+        (ref["kind"], ref["pull"] or ref["commit"], ref["state"], ref["href"])
+        for ref in answer["references"]
+    ]
+
+
+def test_a_step_cites_other_pull_requests_and_commits(stand: _Stand) -> None:
+    """A `{pull}` is a row naming that pull request, a `{pull, path}` its file at its own
+    current comparison, and a `{commit}` a row naming that commit, each read from this copy
+    alone: a pull request it has not read is `not_cached` until it has."""
+    origin = stand.origin
+    _cache(stand, kinds_guide_body(origin))
+    repository = _repository(stand, (8, 10), (8, 7, 10))
+    before = _ask(stand, step=2, repository=repository)
+    assert before["state"] == "ready"
+    assert _cited(before) == [
+        ("pull", 8, "not_cached", "/pull/8"),
+        ("pull_file", 10, "not_cached", "/pull/10/files/docs/draft.md"),
+        ("pull_file", 9, "not_cached", "/pull/9/files/src/app.txt"),
+        ("pull", 50, "not_cached", "/pull/50"),
+        ("pull", 2000, "not_cached", "/pull/2000"),
+        ("commit", origin["fork_head"], "ready", f"/commit/{origin['fork_head']}"),
+        ("commit", _MISSING, "commit_unavailable", None),
+    ]
+    for number in (8, 9, 10):
+        stand.refresh(number)
+    answer = _ask(stand, step=2, repository=repository)
+    assert _cited(answer)[:3] == [
+        ("pull", 8, "ready", "/pull/8"),
+        ("pull_file", 10, "ready", "/pull/10/files/docs/draft.md"),
+        ("pull_file", 9, "ready", "/pull/9/files/src/app.txt"),
+    ]
+    layer, document, patch, *_rest = answer["references"]
+    # 8 is in both stacks; its place is in 71, the stack that holds 7, the guide's own.
+    assert layer["target"] == {
+        "title": "Say more in the guide",
+        "state": "merged",
+        "stack": {"number": 71, "place": 1, "count": 3},
+    }
+    assert (layer["path"], layer["comparison"], layer["hunks"]) == (None, None, [])
+    # A document another pull request changes is drawn whole from that pull request's own
+    # comparison, which its answer names, as a document of the guide's own is.
+    assert (document["rendered"], document["hunks"]) == ("markdown", [])
+    record = stand.record(10)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    comparison = document["comparison"]
+    assert (comparison["merge_base"], comparison["head"]) == (
+        record.comparison.base,
+        record.comparison.head,
+    )
+    assert comparison["route"].startswith("/api/plugin/github/pull-comparison?number=10&")
+    assert comparison["rendered_route"].startswith(
+        "/api/plugin/github/pull-rendered-diff?number=10&"
+    )
+    assert comparison["image_route"].startswith("/api/plugin/github/pull-image?number=10&")
+    # A file that is not a document is its whole patch, as a `{path}` without a range is.
+    assert patch["rendered"] is None
+    assert [
+        f"{line['op']}:{line['text']}" for hunk in patch["hunks"] for line in hunk["lines"]
+    ] == [
+        "context:one",
+        "add:spam",
+    ]
+    commit = answer["references"][5]
+    assert commit["target"] == {"subject": "count to two", "committed_at": "2026-08-29T14:40:00Z"}
+    assert answer["references"][6]["target"] is None
+
+
+def test_a_pull_request_in_no_stack_or_with_no_snapshot_has_no_place(stand: _Stand) -> None:
+    """Outside a stack, and on a server that lists no repository, a `{pull}` names no place;
+    in stacks without the guide's pull request, its place is in the first that holds it."""
+    _cache(stand, kinds_guide_body(stand.origin))
+    stand.refresh(8)
+    unlisted = _ask(stand, step=2)
+    assert unlisted["references"][0]["target"]["stack"] is None
+    elsewhere = _ask(stand, step=2, repository=_repository(stand, (9,), (10, 8)))
+    assert elsewhere["references"][0]["target"]["stack"] == {"number": 71, "place": 2, "count": 2}
+
+
+def test_a_reference_past_the_pull_request_is_never_stale(stand: _Stand) -> None:
+    """What a push to the guide's own pull request changed is read from its `{path}`
+    references alone: a `{pull, path}` to a file of the same name is another pull request's,
+    and a `{pull}` or a `{commit}` names something no push to this one moves."""
+    origin = stand.origin
+    body = kinds_guide_body(origin).replace(
+        f'head: "{origin["fork_head"]}"', f'head: "{origin["fork_earlier"]}"'
+    )
+    _cache(stand, body)
+    answer = _ask(stand, step=2)
+    assert answer["state"] == "stale"
+    assert answer["stale"]["changed_paths"] == ["src/app.txt"]
+    assert answer["stale"]["changed_steps"] == [1]
+
+
+def test_the_guides_own_pull_request_cited_with_a_path_is_its_own_file(stand: _Stand) -> None:
+    """A `{pull, path}` that names the guide's own pull request is that comparison's
+    `{path}`: read at the guide's comparison, and marked when a push changes it (A4 of
+    review A on #834)."""
+    origin = stand.origin
+    body = (
+        kinds_guide_body(origin)
+        .replace(f'head: "{origin["fork_head"]}"', f'head: "{origin["fork_earlier"]}"')
+        .replace("{pull: 9, path: src/app.txt}", "{pull: 7, path: src/app.txt}")
+    )
+    _cache(stand, body)
+    answer = _ask(stand, step=2)
+    assert answer["stale"]["changed_paths"] == ["src/app.txt"]
+    assert answer["stale"]["changed_steps"] == [1, 2]
+    own = answer["references"][2]
+    assert (own["kind"], own["pull"], own["href"], own["comparison"]) == (
+        "file",
+        None,
+        "/pull/7/files/src/app.txt",
+        None,
+    )
+    assert _rows(answer, 2) == ["context:one", "add:two"]
+
+
+def test_another_pull_requests_comparison_the_store_cannot_read_says_so_in_its_place(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `{pull, path}` whose pull request's comparison this copy cannot read is
+    unavailable in its place; the step's other references still draw."""
+    _cache(stand, kinds_guide_body(stand.origin))
+    for number in (8, 9, 10):
+        stand.refresh(number)
+    nine = stand.record(9)
+    assert isinstance(nine, PullRecord) and nine.comparison is not None
+    nines = nine.comparison.head
+    real = guided_review._read_files  # pyright: ignore[reportPrivateUsage]
+
+    async def unreadable(store: Any, compared: Any, head: str, refs: Any) -> Any:
+        if head == nines:
+            raise DiffSourceError("the store cannot read it")
+        return await real(store, compared, head, refs)
+
+    monkeypatch.setattr(guided_review, "_read_files", unreadable)
+    answer = _ask(stand, step=2)
+    assert [ref["state"] for ref in answer["references"][:3]] == [
+        "ready",
+        "ready",
+        "comparison_unavailable",
+    ]
+    assert (answer["references"][2]["href"], answer["references"][2]["comparison"]) == (
+        "/pull/9/files/src/app.txt",
+        None,
+    )
+
+
+def test_a_commit_whose_line_passes_its_bound_names_no_subject(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git prints a subject whole, so commits whose lines pass the bound are read again for
+    their IDs and times: each is still the commit, named by its SHA and when it was made."""
+    _cache(stand, kinds_guide_body(stand.origin))
+    monkeypatch.setattr(guided_review, "_MAX_COMMIT_ROW_BYTES", 8)
+    commit, missing = _ask(stand, step=2)["references"][5:7]
+    assert (commit["state"], commit["href"], commit["target"]) == (
+        "ready",
+        f"/commit/{stand.origin['fork_head']}",
+        {"subject": None, "committed_at": "2026-08-29T14:40:00Z"},
+    )
+    assert (missing["state"], missing["target"]) == ("commit_unavailable", None)
+
+
+@pytest.mark.parametrize("refused", [False, True], ids=["left out", "run refused"])
+def test_an_id_that_names_no_commit_leaves_the_steps_other_commits_ready(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, refused: bool
+) -> None:
+    """A tree, a blob, an annotated tag, and a missing ID beside a commit are each
+    `commit_unavailable`, and the commit stays ready: whether Git leaves them out of the
+    step's one `git log`, or refuses that run, which is then read one ID a run."""
+    origin = stand.origin
+    head = origin["fork_head"]
+    # An annotated tag of the head, which the store is given once it holds the head.
+    tag = f"object {head}\ntype commit\ntag probe\ntagger A <a@example.invalid> 0 +0000\n\nA tag.\n"
+    named = {
+        "tree": git(origin.path, "rev-parse", f"{head}^{{tree}}").decode().strip(),
+        "blob": git(origin.path, "rev-parse", f"{head}:src/app.txt").decode().strip(),
+        "tag": hashlib.sha1(b"tag %d\0%s" % (len(tag), tag.encode())).hexdigest(),
+        "missing": _MISSING,
+    }
+    commits = [named["tree"], head, named["blob"], named["tag"], named["missing"]]
+    _cache(stand, commits_guide_body(origin, commits))
+    written = subprocess.run(
+        ["git", "-C", str(stand.published.git_dir), "hash-object", "-t", "tag", "-w", "--stdin"],
+        input=tag.encode(),
+        capture_output=True,
+        check=True,
+    )
+    assert written.stdout.decode().strip() == named["tag"]
+    batches: list[int] = []
+    real = guided_review.run_git_at
+
+    async def refusing(args: Sequence[str], location: GitLocation, **kwargs: Any) -> bytes:
+        ids = [arg for arg in args if re.fullmatch(r"[0-9a-f]{40}", arg)]
+        if args[0] == "log" and "--no-walk=unsorted" in args:
+            batches.append(len(ids))
+            if refused and len(ids) > 1:
+                raise GitCommandError(args, 128, "fatal: not a commit")
+        return await real(args, location, **kwargs)
+
+    monkeypatch.setattr(guided_review, "run_git_at", refusing)
+    answer = _ask(stand, step=2)
+    assert answer["state"] == "ready"
+    assert [(ref["commit"], ref["state"], ref["href"]) for ref in answer["references"]] == [
+        (named["tree"], "commit_unavailable", None),
+        (head, "ready", f"/commit/{head}"),
+        (named["blob"], "commit_unavailable", None),
+        (named["tag"], "commit_unavailable", None),
+        (named["missing"], "commit_unavailable", None),
+    ]
+    assert answer["references"][1]["target"] == {
+        "subject": "count to two",
+        "committed_at": "2026-08-29T14:40:00Z",
+    }
+    # One run for the step's five IDs, or, once Git refuses it, one more for each.
+    assert batches == ([5, 1, 1, 1, 1, 1] if refused else [5])
+
+
+def test_a_pull_requests_file_with_no_kept_manifest_is_not_listed_here(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `{pull, path}` reads only the manifest its pull request's page kept: one with none
+    is `not_cached`, opened from its Changes, and no whole comparison is listed on the
+    guide's request (A1 of review A on #834)."""
+    _cache(stand, kinds_guide_body(stand.origin))
+    for number in (8, 9, 10):
+        stand.refresh(number)
+    real = guided_review.kept_pull_manifest
+    listed: list[int] = []
+
+    def kept(published: Any, number: int, base: str, head: str) -> Any:
+        return None if number == 9 else real(published, number, base, head)
+
+    async def listing(published: Any, number: int, *args: Any, **kwargs: Any) -> Any:
+        listed.append(number)
+        raise AssertionError("a cited pull request's comparison is listed on this request")
+
+    monkeypatch.setattr(guided_review, "kept_pull_manifest", kept)
+    monkeypatch.setattr(guided_review, "shared_pull_manifest", listing)
+    answer = _ask(stand, step=2)
+    assert _cited(answer)[1:3] == [
+        ("pull_file", 10, "ready", "/pull/10/files/docs/draft.md"),
+        ("pull_file", 9, "not_cached", "/pull/9/files/src/app.txt"),
+    ]
+    assert listed == []
+
+
+def test_a_commit_the_served_checkout_lacks_is_answered_with_no_address(
+    stand: _Stand, tmp_path: Path
+) -> None:
+    """A `{commit}`'s page reads Git where the session does: on a served checkout that
+    lacks a commit the store fetched, the commit is named and dated with no address, and
+    one the checkout has links its page (A3 of review A on #834)."""
+    origin = stand.origin
+    _cache(stand, kinds_guide_body(origin))
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    git(checkout, "init", "-q", "-b", "main")
+    git(checkout, "commit", "-q", "--allow-empty", "-m", "the checkout's own")
+    links = GitLocation.filesystem(checkout)
+    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
+    answer: Any = asyncio.run(guided_review.guided_review(host, 7, 2, None, links=links))
+    commit = answer["references"][5]
+    assert (commit["state"], commit["href"], commit["target"]) == (
+        "ready",
+        None,
+        {"subject": "count to two", "committed_at": "2026-08-29T14:40:00Z"},
+    )
+    # A checkout that has the commit links it, as a mirror does.
+    git(checkout, "fetch", "-q", str(stand.published.git_dir), origin["fork_head"])
+    linked: Any = asyncio.run(guided_review.guided_review(host, 7, 2, None, links=links))
+    assert linked["references"][5]["href"] == f"/commit/{origin['fork_head']}"
+
+
 async def _commits_since(root: Path, subject: str) -> dict[str, object]:
     root.mkdir()
     git(root, "init", "-q", "-b", "main")
@@ -517,12 +1020,8 @@ def _moved(root: Path, shas: dict[str, str], base: str, head: str) -> dict[str, 
         }
     )
     store = SimpleNamespace(git_dir=root / ".git", object_format="sha1")
-    record = SimpleNamespace(
-        comparison=SimpleNamespace(base=shas[base]),
-        pull=SimpleNamespace(head=SimpleNamespace(sha=shas[head])),
-    )
     staleness = guided_review._staleness(  # pyright: ignore[reportPrivateUsage]
-        cast(Any, store), cast(Any, record), guide, newer=False
+        cast(Any, store), (shas[base], shas[head]), guide, newer=False
     )
     return asyncio.run(staleness)
 
@@ -585,6 +1084,47 @@ def test_paths_past_the_bound_stop_git(tmp_path: Path, monkeypatch: pytest.Monke
     assert asyncio.run(guided_review._paths_between(location, old, new)) == set(names)
 
 
+@needs_git
+def test_a_guide_pinned_past_a_kept_pair_is_one_written_for_a_later_comparison(
+    tmp_path: Path,
+) -> None:
+    """A stack's guide read at a pair its page still draws is past it when it is pinned to
+    the stack's current pair, or to a head that comes after the kept head, as when the member
+    that carries it moved and its author pinned it again; otherwise its pins are the
+    staleness read's to report (B1 of review B on #838)."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    line: list[str] = []
+    for n in range(4):
+        (root / "a.txt").write_text(f"{n}\n", encoding="utf-8")
+        git(root, "add", "a.txt")
+        git(root, "commit", "-q", "-m", f"commit {n}")
+        line.append(git(root, "rev-parse", "HEAD").decode().strip())
+    base, kept_head, later, newest = line
+    git(root, "checkout", "-q", "-b", "side", base)
+    (root / "b.txt").write_text("side\n", encoding="utf-8")
+    git(root, "add", "b.txt")
+    git(root, "commit", "-q", "-m", "side")
+    side = git(root, "rev-parse", "HEAD").decode().strip()
+    location = GitLocation.revision(RepositoryStoreTarget(root / ".git", "sha1"), kept_head)
+    kept = (base, kept_head)
+    current = (base, newest)
+
+    def past(merge_base: str, head: str) -> bool:
+        pinned = guided_review.CollectionComparison(merge_base=merge_base, head=head)
+        return asyncio.run(guided_review._pinned_past(location, pinned, kept, current))
+
+    assert past(base, kept_head) is False, "pinned to the kept pair itself"
+    assert past(base, newest) is True, "pinned to the stack's current pair"
+    assert past(base, later) is True, "pinned to a head after the kept head"
+    assert past(kept_head, later) is True, "a head after the kept head, from another base"
+    assert past(later, kept_head) is False, "the kept head, from another base"
+    assert past(base, base) is False, "pinned before the kept head: out of date, as before"
+    assert past(base, side) is False, "rewritten: the staleness read says so"
+    assert past(base, _MISSING) is False, "a head the store lacks: the staleness read says so"
+
+
 _VIEW = PullView(
     number=7,
     host=SimpleNamespace(pulls=SimpleNamespace(home=Path(), slug="octo/demo")),  # pyright: ignore[reportArgumentType]
@@ -606,7 +1146,7 @@ def rendered(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
             texts.append(request.source_text)
             return {"html": "<p>rendered</p>"}
 
-    monkeypatch.setattr(pull_markdown, "shared_worker", Child)
+    monkeypatch.setattr(pull_text_render, "shared_worker", Child)
     monkeypatch.setattr(pull_markdown.kpress_adapter, "document_stylesheets", dict)
     guided_review._READS.clear()
     yield texts

@@ -28,7 +28,9 @@ commit, the build the skill is written for:
    skill's own text. The refresh beside a checkout cannot run offline there:
    ``tests/test_cli_github_checkout_golden.py`` posts its body, :func:`refresh_body`, and
    :func:`refresh_findings` holds every field its filter reads to the answer that test
-   pins.
+   pins. Nor do the recipes under "Publish and Confirm a Stack Guide" run there, since
+   that transcript's stand-in has no stack: checks 1 to 3 and 5 hold them, and
+   ``tests/test_cli_github_stack_golden.py`` pins the answers of the routes they read.
 5. **Names.** A code span of prose that is a field path, such as
    ``.last_refresh.outcome``, or a name with an underscore, such as
    ``not_found_or_private``, names only words of the source under ``src/``: a key, a
@@ -47,14 +49,18 @@ commit, the build the skill is written for:
    a refusal's, a usage error's, and an ``Error:`` line's. Each rerun outside the
    sandbox carries ``--open-in app``: without it, the default ``auto`` falls back to a
    browser when no app takes the target, and starts a server outside the sandbox.
-7. **Guide values.** A one-word code span under "Write a Guided Review" and its
-   subsections, such as ``ready`` or ``side``, is a string ``guided_review.py`` spells, a
-   state its route answers or a value it compares, or a field of the block's models, so
-   a state renamed in prose fails here though check 5 leaves one-word values alone.
+7. **Guide values.** A one-word code span under "Write a Guided Review", "Write a Stack
+   Guide", and their subsections, such as ``ready`` or ``side``, is a string
+   ``guided_review.py`` or ``pull_stack.py`` spells, a state a route answers or a value it
+   compares, or a field of the block's models, so a state renamed in prose fails here
+   though check 5 leaves one-word values alone.
 8. **The block skeletons.** Each block under "Write the Block", its commit IDs filled
    in, is a guide ``parse_guide`` reads, with a quoted title holding ``: `` and a note
-   whose list keeps its lines, the two YAML rules the section states. The first is flat,
-   as a short guide is, and the second puts its steps in groups, as a longer one does.
+   whose list keeps its lines, so its Markdown renders as a list, the two YAML rules the
+   section states. The first is flat, as a short guide is, and the second puts its steps
+   in groups, as a longer one does. The block under "Write the Stack’s Block" is a stack
+   guide ``parse_stack_guide`` reads, in groups, with the same two YAML rules and a step
+   that cites every layer as a ``{pull}``.
 
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
 2, 3, and 5 read it too. Outside every check: the names of query parameters, page
@@ -81,8 +87,12 @@ import typer
 import typer.main
 
 from devtools import tryscript_blocks
-from metabrowser.builtin_plugins.github import guided_review
-from metabrowser.builtin_plugins.github.guided_review import GuideError, parse_guide
+from metabrowser.builtin_plugins.github import guided_review, pull_stack
+from metabrowser.builtin_plugins.github.guided_review import (
+    GuideError,
+    parse_guide,
+    parse_stack_guide,
+)
 from metabrowser.cli import main as cli_main
 from metabrowser.cli.exit_codes import PRESENT_REFUSED_EXIT_CODE
 from metabrowser.cli.present import DELIVERY_EXIT_CODES
@@ -147,9 +157,24 @@ GOLDEN_SPELLING: Final = {
 # The section on writing a guided review and its subsections, whose one-word code spans
 # check 7 holds to the guided-review module, and the subsection with the block skeletons.
 GUIDE_SECTIONS: Final = frozenset(
-    {"Write a Guided Review", "Write the Block", GUIDE_CONFIRM_SECTION, GUIDE_REFRESH_SECTION}
+    {
+        "Write a Guided Review",
+        "Write the Block",
+        GUIDE_CONFIRM_SECTION,
+        GUIDE_REFRESH_SECTION,
+        "Write a Stack Guide",
+        "Write the Stack’s Block",
+        "Publish and Confirm a Stack Guide",
+    }
 )
 SKELETON_SECTION: Final = "Write the Block"
+# The subsection with the stack guide's skeleton, one `stack-review` block in groups, and
+# the full commit IDs for its placeholders: the stack route's two commits.
+STACK_SKELETON_SECTION: Final = "Write the Stack’s Block"
+STACK_SKELETON_SPELLING: Final = {
+    "<full ID of the stack's base>": "3" * 40,
+    "<full ID of the top layer's head>": "4" * 40,
+}
 # A skeleton is the guide's own Markdown inside a four-backtick `markdown` fence, as the
 # format reference shows it, so the `guided-review` fence is part of what an agent copies.
 # The section has two, a flat guide and one in groups, in that order.
@@ -823,17 +848,18 @@ def name_findings(text: str, words: frozenset[str], name: str = "SKILL.md") -> l
 
 
 def guide_values() -> frozenset[str]:
-    """Every string ``guided_review.py`` spells, and every field of the block's models.
+    """Every string ``guided_review.py`` and ``pull_stack.py`` spell, and every field of
+    the block's models.
 
-    The strings are the states its route answers, the reasons a reference is not ready,
-    and the values it compares, such as a reference's ``side``; the fields are the keys a
-    block holds below ``collection``.
+    The strings are the states the guide's route and the stack's answer, the reasons a
+    reference is not ready or a stack cannot be shown, and the values they compare, such
+    as a reference's ``side``; the fields are the keys a block holds below ``collection``.
     """
 
-    tree = ast.parse(Path(guided_review.__file__).read_text(encoding="utf-8"))
     strings = {
         node.value
-        for node in ast.walk(tree)
+        for source in (guided_review.__file__, pull_stack.__file__)
+        for node in ast.walk(ast.parse(Path(source).read_text(encoding="utf-8")))
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     }
     models = (
@@ -851,6 +877,7 @@ def guide_value_findings(text: str, values: frozenset[str]) -> list[str]:
 
     return [
         f"SKILL.md:{piece.line}: `{piece.text}` is not a value or field of guided_review.py"
+        " or pull_stack.py"
         for piece in code_pieces(text)
         if not piece.block
         and piece.section in GUIDE_SECTIONS
@@ -905,6 +932,49 @@ def skeleton_findings(text: str) -> list[str]:
             found.append(f"no note of the {name} skeleton keeps a list's lines")
         if (steps != guide.items) != grouped:
             found.append(f"the {name} skeleton {'has no' if grouped else 'has a'} group")
+    return found
+
+
+def stack_skeleton(text: str) -> str:
+    """The description the skeleton of :data:`STACK_SKELETON_SECTION` makes, IDs filled in."""
+
+    found = _SKELETON.findall(_section(text, STACK_SKELETON_SECTION))
+    assert len(found) == 1, (
+        f"SKILL.md has {len(found)} block skeletons under {STACK_SKELETON_SECTION!r}, not 1"
+    )
+    body = found[0]
+    for placeholder, value in STACK_SKELETON_SPELLING.items():
+        assert placeholder in body, f"the stack skeleton has no {placeholder}"
+        body = body.replace(placeholder, value)
+    return body
+
+
+def stack_skeleton_findings(text: str) -> list[str]:
+    """Why the stack skeleton is not a stack guide the page reads, or hides a rule it states."""
+
+    body = stack_skeleton(text)
+    try:
+        guide = parse_stack_guide(body)
+    except GuideError as refusal:
+        return [f"the page refuses the stack skeleton: {refusal}"]
+    if guide is None:
+        return ["the stack skeleton has no stack-review block the page reads"]
+    found: list[str] = []
+    pins = (guide.comparison.merge_base, guide.comparison.head)
+    if pins != tuple(STACK_SKELETON_SPELLING.values()):
+        found.append(f"the stack skeleton's pins read as {pins}, not its placeholders")
+    steps = guide.flat_items()
+    if not any(": " in step.title for step in steps):
+        found.append("no title of the stack skeleton holds ': ', so it hides the quoting rule")
+    if not any("\n- " in step.note for step in steps):
+        found.append("no note of the stack skeleton keeps a list's lines")
+    if steps == guide.items:
+        found.append("the stack skeleton has no group")
+    if not any(
+        len(step.references) > 1 and all(reference.kind == "pull" for reference in step.references)
+        for step in steps
+    ):
+        found.append("no step of the stack skeleton cites its layers as {pull}")
     return found
 
 
@@ -1026,6 +1096,10 @@ def test_every_guide_value_is_one_the_module_spells(skill: str) -> None:
 
 def test_the_block_skeletons_are_guides_the_page_reads(skill: str) -> None:
     assert skeleton_findings(skill) == []
+
+
+def test_the_stack_skeleton_is_a_stack_guide_the_page_reads(skill: str) -> None:
+    assert stack_skeleton_findings(skill) == []
 
 
 # ── Each check fails its mutation ───────────────────────────────────
@@ -1189,10 +1263,11 @@ def test_a_guide_state_the_route_never_answers_fails(skill: str, source: frozens
     assert name_findings(mutated, source) == []
     assert guide_value_findings(mutated, guide_values()) == [
         f"SKILL.md:{_line(mutated, '`done`')}: `done` is not a value or field of guided_review.py"
+        " or pull_stack.py"
     ]
     field = _mutated(skill, "with a `side`,", "with a `sides`,")
     assert [found.split(": ", 1)[1] for found in guide_value_findings(field, guide_values())] == [
-        "`sides` is not a value or field of guided_review.py"
+        "`sides` is not a value or field of guided_review.py or pull_stack.py"
     ]
 
 
@@ -1248,6 +1323,26 @@ def test_a_skeleton_the_page_refuses_fails(skill: str) -> None:
     # The grouped skeleton in the flat one's place shows no flat guide.
     flat, grouped = _SKELETON.findall(_section(skill, SKELETON_SECTION))
     assert skeleton_findings(_mutated(skill, flat, grouped)) == ["the flat skeleton has a group"]
+
+
+# The stack skeleton's fence, and its layers step's last reference.
+STACK_SKELETON_FENCE: Final = "```stack-review\n"
+STACK_SKELETON_LAYER: Final = "            - {pull: 813}\n"
+
+
+def test_a_stack_skeleton_the_page_does_not_read_fails(skill: str) -> None:
+    renamed = _mutated(skill, STACK_SKELETON_FENCE, "```guided-review\n")
+    assert stack_skeleton_findings(renamed) == [
+        "the stack skeleton has no stack-review block the page reads"
+    ]
+    cited = _mutated(skill, STACK_SKELETON_LAYER, "            - {path: docs/cache-plan.md}\n")
+    assert stack_skeleton_findings(cited) == [
+        "no step of the stack skeleton cites its layers as {pull}"
+    ]
+    doubled = _mutated(
+        skill, STACK_SKELETON_FENCE, f"{STACK_SKELETON_FENCE}```\n{STACK_SKELETON_FENCE}"
+    )
+    assert stack_skeleton_findings(doubled)[0].startswith("the page refuses the stack skeleton")
 
 
 PRESENT: Final = "<invocation> --present <target> --format json\n"

@@ -19,7 +19,10 @@ A document shows its progress mark while its read is on its way, and not once it
 drawn. A step read at another merge base or another head than the page’s says the file’s
 diff is unavailable, and a comparison that names no rendered route draws the document
 without the rendered layer.
-A document the view could not draw, because the view threw or its one-file read failed,
+A document of another pull request is drawn from that pull request’s own comparison,
+whose routes the step’s answer names: its one-file read and its Rendered go to that pull
+request’s routes, and it draws in a step read at another comparison than the page’s. A
+document the view could not draw, because the view threw or its one-file read failed,
 shows the guide’s bar for it, with its name and its Open full diff, above the view’s
 notice, and the page’s end removes the notice.
 A stale guide’s changed document says so above the document’s own view, and the page’s
@@ -45,6 +48,9 @@ $ node tests/dom/github-guided-review-documents-behavior.js
   "a step read at another merge base: docs/guide.md: says This file's diff is unavailable.",
   "a step read at another head: docs/guide.md: says This file's diff is unavailable.",
   "a comparison with no rendered route: docs/guide.md: document, its rendered layer absent",
+  "another pull request's document, at another comparison: docs/draft.md: document | docs/guide.md: says This file's diff is unavailable.",
+  "its one-file read: pull-comparison number=10 left=1111 file=docs/draft.md",
+  "its Rendered is asked of: pull-rendered-diff number=10",
   "documents that could not be drawn: docs/threw.md: document says Could not load this diff. Reload the page to try again. (its bar opens /pull/7/files/docs/threw.md) | docs/refused.md: document says Could not load this diff. Reload the page to try again. (its bar opens /pull/7/files/docs/refused.md)",
   "their failures are logged: 2",
   "the page ends: 0 of 2 notices left",

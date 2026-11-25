@@ -98,6 +98,15 @@ def source_pull_snapshots(slug: str, number: int) -> str:
     return source_pull_record(slug, number).removesuffix(".json") + ".snapshots.json"
 
 
+def source_stack_snapshots(slug: str, number: int) -> str:
+    """Return ``sources/<slug>/pulls/stack-<n>.snapshots.json``: a native stack's retained
+    comparison pairs, which no pull request's file shares."""
+
+    if isinstance(number, bool) or not 1 <= number <= MAX_PULL_REQUEST_NUMBER:
+        raise ValueError("invalid stack number")
+    return f"{source_pulls_directory(slug)}/stack-{number}.snapshots.json"
+
+
 def source_pull_list_refresh(slug: str, name: PullListName) -> str:
     """Return ``sources/<slug>/pulls/list-<name>.refresh.json``: its refresh outcome."""
 
@@ -178,6 +187,7 @@ __all__ = [
     "source_pulls_directory",
     "source_record",
     "source_labels",
+    "source_stack_snapshots",
     "source_stacks",
     "staging_entry",
     "store_directory",

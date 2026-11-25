@@ -154,6 +154,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   summary is drawn on, or null where it could not be loaded.
  * @property {((path: string) => void) | null} openFile How the host opens one changed file
  *   at its own address, or null where a file has none in this diff.
+ * @property {((path: string) => ReadonlyArray<FileMark>) | null} fileMarks The host's marks
+ *   for a file's bar and its Diff summary row (`fileMarkNodes`), or null for none.
  * @property {boolean} unfold Whether folds open as they are drawn (*unfold*).
  * @property {Shown} show What the diff shows, one choice for every file (`setShow`).
  * @property {string} showPreference The preference the choice is remembered as: the
@@ -163,6 +165,13 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   select in the toolbar's chooser (`attachShowKey`).
  * @property {{dispose: () => void}[]} pdfCards The PDF cards binary changes drew, to
  *   dispose with the view.
+ */
+
+/**
+ * A host's mark on a file (`fileMarkNodes`): its text, its accessible name, the address it
+ * opens, and, for a page that moves without a load, the open that a plain press takes.
+ *
+ * @typedef {{text: string, label: string, href: string, open?: () => void}} FileMark
  */
 
 /**
@@ -2114,6 +2123,48 @@ function repaintViewFileControls(view) {
 }
 
 /**
+ * The marks a host puts on a file, each a short link: a stack's page names the layers that
+ * change the file, "2/4", each opening the file in that layer (`fileMarks`). In a Diff
+ * summary row, a tree item, a mark is reached by pointer alone and its press is the mark's,
+ * not the row's; the file bar's marks are in the tab order.
+ *
+ * @param {((path: string) => ReadonlyArray<FileMark>) | null} marks
+ * @param {string} path
+ * @param {boolean} inRow
+ * @returns {HTMLElement[]}
+ */
+export function fileMarkNodes(marks, path, inRow) {
+  const given = marks === null ? [] : marks(path);
+  if (given.length === 0) {
+    return [];
+  }
+  const group = el("span", inRow ? "diff-file-marks diff-file-marks-row" : "diff-file-marks");
+  for (const mark of given) {
+    const link = el("a", "diff-file-mark", mark.text);
+    link.setAttribute("href", mark.href);
+    link.setAttribute("aria-label", mark.label);
+    link.dataset.tipText = mark.label;
+    if (inRow) {
+      link.setAttribute("tabindex", "-1");
+    }
+    link.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (typeof mark.open === "function" && isPlainPress(event)) {
+        event.preventDefault();
+        mark.open();
+      }
+    });
+    group.append(link);
+  }
+  return [group];
+}
+
+/** @param {MouseEvent} event */
+function isPlainPress(event) {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
+/**
  * The per-file bar, per the section-disclosure and icon button primitives in the design
  * system. It leads with the group that names the file: one disclosure trigger (kind,
  * path), the copy control right after the name, and the change's stats and notes, which
@@ -2197,6 +2248,9 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
   }
   if (facts !== null) {
     lead.append(facts);
+  }
+  if (side !== undefined) {
+    lead.append(...fileMarkNodes(view.fileMarks, String(side.path), false));
   }
 
   /** @type {HTMLElement | null} */
@@ -2802,6 +2856,10 @@ function listedNote(listed, paint) {
  * @property {boolean} disposed
  * @property {MetabrowserChangedFilesTree | null} changedFiles
  * @property {(path: string) => void} jump
+ * @property {((path: string) => ReadonlyArray<FileMark>) | null} [marks] The host's marks
+ *   for each file row (`fileMarkNodes`).
+ * @property {boolean} [opens] Whether the tree is open from the first draw, as a stack's
+ *   Files tab, which is the tree, shows it.
  * @property {boolean} countsFiles Whether the header says the file count. A page header
  *   says it on its size line above the summary (docs/design-system.md, "Change Size Line"),
  *   so a summary drawn there is its statuses and line totals alone.
@@ -2829,6 +2887,7 @@ function summaryOwnerOf(view, countsFiles = true) {
       return view.disposed;
     },
     changedFiles: view.changedFiles,
+    marks: view.fileMarks,
     jump(path) {
       if (view.openFile !== null) {
         view.openFile(path);
@@ -2991,6 +3050,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
               // page does (`/pull/<n>/files/<path>`), and the address shows it; elsewhere
               // the diff goes to it in place.
               jump: (path) => view.jump(path),
+              marks: (path) => fileMarkNodes(view.marks ?? null, path, true),
             }),
           { file_count: rows.length },
         );
@@ -3011,6 +3071,14 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
     },
     { signal },
   );
+  if (view.opens === true) {
+    // Opened as a press opens it, once the header is in its slot.
+    queueMicrotask(() => {
+      if (!disposed) {
+        toggle.click();
+      }
+    });
+  }
   return {
     element: toggle,
     dispose() {
@@ -5026,7 +5094,9 @@ function measureInContainer(root, container) {
  * @param {{manifest: unknown}} document_ A ChangeSetDocument whose manifest is validated
  *   (`validateManifest`).
  * @param {DiffViewApi | undefined} api
- * @param {{changedFiles: MetabrowserChangedFilesTree | null, openFile: (path: string) => void}} options
+ * @param {{changedFiles: MetabrowserChangedFilesTree | null, openFile: (path: string) => void, fileMarks?: ((path: string) => ReadonlyArray<FileMark>) | null, open?: boolean}} options
+ *   *fileMarks* are the host's marks on each file row (`fileMarkNodes`), and *open* draws
+ *   the tree open, as a stack's Files tab does.
  * @returns {{dispose: () => void}}
  */
 export function mountDiffSummary(slot, document_, api, options) {
@@ -5042,6 +5112,8 @@ export function mountDiffSummary(slot, document_, api, options) {
     jump: options.openFile,
     // The page's header says the file count on its size line, above the summary.
     countsFiles: false,
+    marks: options.fileMarks ?? null,
+    opens: options.open === true,
   };
   const summary = summaryOrTotals(manifest.totals, manifest.files, owner);
   slot.replaceChildren(summary.element);
@@ -5074,6 +5146,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
  *   openFile?: (path: string) => void,
+ *   fileMarks?: ((path: string) => ReadonlyArray<FileMark>) | null,
  *   summaryManifest?: Record<string, unknown> | null,
  *   toolbarControl?: HTMLElement | null,
  *   emptyText?: string,
@@ -5168,6 +5241,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     pdfCards: [],
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
+    fileMarks: options.fileMarks ?? null,
     unfold: options.unfold === true,
     show: readShowPreference(api, showPreference, options.show === "current" ? "current" : "diff"),
     showPreference,

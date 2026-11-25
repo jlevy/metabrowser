@@ -280,6 +280,7 @@ function h(tag, attributes, children = []) {
  *   changeLineNodes: MetabrowserPublicSdk["changeLineNodes"],
  *   chevron: () => Node | null,
  *   jump: (path: string) => void,
+ *   marks?: (path: string) => Node[],
  * }} host
  */
 export function mountSummaryTree(host) {
@@ -356,7 +357,7 @@ export function mountSummaryTree(host) {
       },
       [row.badge],
     );
-    return [badge, name, ...statsOf(row)];
+    return [badge, name, ...statsOf(row), ...(host.marks?.(row.path) ?? [])];
   }
 
   /**

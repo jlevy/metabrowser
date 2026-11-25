@@ -1090,6 +1090,18 @@ model: pull envelope; state=absent reason=not_github tab=conversation
 ? 0
 ```
 
+A native stack’s page is in the same address space, and a folder has no stack either.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab plain --show /stack/70
+show: /stack/70
+route: /stack/70
+kind: pull-stack
+views: pull-stack (default)
+model: stack envelope; state=absent reason=not_github tab=files
+? 0
+```
+
 ## Test: a pull request with no usable record answers why
 
 Nothing is cached for 14; 12 holds a record from another schema; 13 holds something that

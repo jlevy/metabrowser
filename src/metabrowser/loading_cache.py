@@ -60,6 +60,13 @@ class LoadingCache[K: Hashable, V]:
         self._ready.move_to_end(key)
         return (self._ready[key],)
 
+    def discard(self, key: K) -> None:
+        """Forget the value kept for *key*, if one is, as when it was found corrupt. A load
+        already running is not stopped, and keeps what it finds."""
+        if key in self._ready:
+            del self._ready[key]
+            self._weight -= self._weights.pop(key)
+
     async def get(self, key: K, load: Callable[[], Awaitable[V]]) -> V:
         if key in self._ready:
             self._ready.move_to_end(key)

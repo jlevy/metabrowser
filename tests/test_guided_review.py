@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import itertools
+import json
 import re
 import threading
 from collections.abc import Iterator
@@ -29,12 +30,14 @@ from metabrowser.builtin_plugins.github.guided_review import (
     CollectionReference,
     GuideError,
     _excerpt,  # pyright: ignore[reportPrivateUsage]
+    _Files,  # pyright: ignore[reportPrivateUsage]
     _hunk_rows,  # pyright: ignore[reportPrivateUsage]
     _outline,  # pyright: ignore[reportPrivateUsage]
     _outside_shape,  # pyright: ignore[reportPrivateUsage]
     _references,  # pyright: ignore[reportPrivateUsage]
     _schema_refusal,  # pyright: ignore[reportPrivateUsage]
     parse_guide,
+    parse_stack_guide,
     read_guide,
     without_guide,
 )
@@ -81,6 +84,45 @@ def test_parses_an_ordered_guide_from_the_description() -> None:
     steps = guide.flat_items()
     assert [step.title for step in steps] == ["Read the request first", "Follow the worker"]
     assert steps[0].references[0].end_line == 5
+
+
+# A block that cannot be read: YAML that does not parse, and a block outside the format.
+_BROKEN = {"guided-review": "not: [yaml\n", "stack-review": "x: 1\n"}
+
+
+@pytest.mark.parametrize("stack_first", [False, True], ids=["guide first", "stack first"])
+@pytest.mark.parametrize(
+    "broken", [None, "guided-review", "stack-review"], ids=["both read", "guide", "stack"]
+)
+def test_a_broken_block_of_one_kind_never_hides_the_other(
+    broken: str | None, stack_first: bool
+) -> None:
+    """A description can carry its pull request's guide and a stack's, each read on its own:
+    a block of one kind that cannot be read refuses that kind alone, in either order, and
+    stays in the introduction, from which a block that reads is taken out (A9 of review A
+    on #838)."""
+
+    def block(name: str) -> str:
+        body = _GUIDE.removeprefix("```guided-review\n").removesuffix("```")
+        return f"```{name}\n{_BROKEN[name] if name == broken else body}```"
+
+    kinds = ["stack-review", "guided-review"] if stack_first else ["guided-review", "stack-review"]
+    body = f"Intro.\n\n{block(kinds[0])}\n\nMiddle.\n\n{block(kinds[1])}\n\nTail.\n"
+    for name, parse in (("guided-review", parse_guide), ("stack-review", parse_stack_guide)):
+        if name == broken:
+            with pytest.raises(GuideError):
+                parse(body)
+        else:
+            read = parse(body)
+            assert read is not None and len(read.flat_items()) == 2, name
+    introduction = without_guide(body)
+    for name in kinds:
+        assert (f"```{name}" in introduction) == (name == broken), name
+    assert [part for part in ("Intro.", "Middle.", "Tail.") if part in introduction] == [
+        "Intro.",
+        "Middle.",
+        "Tail.",
+    ]
 
 
 def test_the_description_without_its_guide_is_the_guides_introduction() -> None:
@@ -354,6 +396,98 @@ def test_a_schema_refusal_says_where(edit: tuple[str, str], where: str) -> None:
     )
 
 
+def _cite(reference: str) -> str:
+    """The guide with its second step citing *reference* alone."""
+    return _GUIDE.replace("{path: worker.py}", reference)
+
+
+@pytest.mark.parametrize(
+    ("reference", "kind"),
+    [
+        ("{path: worker.py}", "file"),
+        ("{path: worker.py, side: old, start_line: 1, end_line: 1}", "file"),
+        ("{pull: 805}", "pull"),
+        ("{pull: 805, path: docs/plan.md}", "pull_file"),
+        ('{commit: "' + "c" * 40 + '"}', "commit"),
+        ('{commit: "' + "c" * 64 + '"}', "commit"),
+        # A null field is absent, in the schema as in the model.
+        ("{path: worker.py, commit: null}", "file"),
+        (
+            "{path: worker.py, side: new, start_line: 1, end_line: 2, pull: null, commit: null}",
+            "file",
+        ),
+        ("{path: worker.py, side: new, start_line: 1, end_line: 2, pull: null}", "file"),
+        ("{pull: 805, path: null, side: null, start_line: null, end_line: null}", "pull"),
+        ('{commit: "' + "c" * 40 + '", path: null, pull: null, side: null}', "commit"),
+    ],
+)
+def test_a_reference_is_of_the_kind_its_fields_name(reference: str, kind: str) -> None:
+    guide = parse_guide(_cite(reference))
+    assert guide is not None
+    step = guide.items[1]
+    assert isinstance(step, CollectionItem)
+    assert step.references[0].kind == kind
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "{path: worker.py}",
+        "{path: worker.py, side: new, start_line: 1, end_line: 2}",
+        "{pull: 805}",
+        "{pull: 805, path: docs/plan.md}",
+        '{commit: "' + "c" * 40 + '"}',
+    ],
+)
+def test_a_reference_the_route_answers_parses_back_as_the_same_reference(reference: str) -> None:
+    """The route answers a reference's every field, null where its kind has none
+    (`**reference.model_dump()` in `_references`), so an author or agent may copy a
+    cited reference back from an answer into a guide."""
+
+    def cited(body: str) -> CollectionReference:
+        guide = parse_guide(_cite(body))
+        assert guide is not None
+        step = guide.items[1]
+        assert isinstance(step, CollectionItem)
+        return step.references[0]
+
+    first = cited(reference)
+    answered = json.dumps(first.model_dump())
+    assert "null" in answered
+    assert cited(answered) == first
+
+
+@pytest.mark.parametrize(
+    ("reference", "where"),
+    [
+        # A range moves with the file it is in, and another pull request's file is not
+        # pinned by this guide, so it takes none.
+        ("{pull: 805, path: docs/plan.md, side: new, start_line: 1, end_line: 2}", "end_line"),
+        ("{pull: 805, side: new}", "side"),
+        # A commit is cited alone.
+        ('{commit: "' + "c" * 40 + '", path: worker.py}', "path"),
+        ('{commit: "' + "c" * 40 + '", pull: 805}', "pull"),
+        ('{commit: "' + "c" * 40 + '", start_line: 1}', "start_line"),
+        # A commit by its full SHA, and a pull request by its number.
+        ('{commit: "ccccccc"}', "commit"),
+        ("{pull: 0}", "pull"),
+        ('{pull: "805"}', "pull"),
+        # A reference names a file, a pull request, or a commit.
+        ("{side: new, start_line: 1, end_line: 1}", None),
+        ("{}", None),
+    ],
+)
+def test_a_reference_of_no_kind_is_refused_where_it_goes_wrong(
+    reference: str, where: str | None
+) -> None:
+    with pytest.raises(GuideError) as refused:
+        parse_guide(_cite(reference))
+    place = "items.1.references.0" + (f".{where}" if where else "")
+    assert str(refused.value) == (
+        f"The guided-review block does not satisfy the v1 SoftSchema at {place}."
+    )
+
+
 _SHA = "a" * 40
 _HEADER = _GUIDE.split("collection:\n")[0] + "collection:\n"
 _ITEM = "{title: t, note: n, references: [{path: a.py}]}"
@@ -582,7 +716,7 @@ def parses(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     asked: list[str] = []
     real = guided_review._read_description  # pyright: ignore[reportPrivateUsage]
 
-    def counting(body: str) -> tuple[Collection | None, str]:
+    def counting(body: str) -> guided_review._Description:  # pyright: ignore[reportPrivateUsage]
         asked.append(body)
         return real(body)
 
@@ -634,7 +768,7 @@ def test_two_reads_of_one_revision_share_one_parse(
     finish = threading.Event()
     counting = guided_review._read_description  # pyright: ignore[reportPrivateUsage]
 
-    def slow(body: str) -> tuple[Collection | None, str]:
+    def slow(body: str) -> guided_review._Description:  # pyright: ignore[reportPrivateUsage]
         parsing.set()
         finish.wait(timeout=30)
         return counting(body)
@@ -763,6 +897,10 @@ def _long_row_patch(file_id: str, characters: int) -> FilePatch:
     return FilePatch(file_id=file_id, hunks=(hunk,), truncated=False)
 
 
+def _files_of(path: str) -> str:
+    return f"/pull/7/files/{path}"
+
+
 def _states(
     references: list[CollectionReference],
     changes: dict[str, FileChange],
@@ -770,7 +908,7 @@ def _states(
     *,
     truncated: bool = False,
 ) -> list[str]:
-    shown = _references(7, references, changes, patches, truncated=truncated)
+    shown = _references(_files_of, references, _Files(changes, patches, truncated))
     return [str(entry["state"]) for entry in shown]
 
 
@@ -827,9 +965,15 @@ def test_a_steps_excerpts_share_one_budget() -> None:
     assert _states(only, changes, big) == ["excerpt_too_large"]
 
 
-def _whole(references: list[CollectionReference], **kwargs: object) -> list[str]:
+def _whole(
+    references: list[CollectionReference],
+    *,
+    patches: dict[str, FilePatch],
+    too_large: frozenset[str] = frozenset(),
+) -> list[str]:
     changes = {path: _change(path, at) for at, path in enumerate(("a.py", "b.py", "c.py"), 1)}
-    return [str(entry["state"]) for entry in _references(7, references, changes, **kwargs)]  # pyright: ignore[reportArgumentType]
+    files = _Files(changes, patches, too_large=too_large)
+    return [str(entry["state"]) for entry in _references(_files_of, references, files)]
 
 
 def test_a_steps_whole_files_share_one_budget() -> None:
@@ -845,15 +989,15 @@ def test_a_steps_whole_files_share_one_budget() -> None:
         "file-2": _long_row_patch("file-2", half),
         "file-3": _long_row_patch("file-3", 3),
     }
-    assert _whole([*whole, ranged], patches=patches, truncated=False) == [
+    assert _whole([*whole, ranged], patches=patches) == [
         "ready",
         "patch_too_large",
         "ready",
     ]
     alone = {"file-1": _long_row_patch("file-1", MAX_STEP_PATCH_BYTES // 6)}
-    assert _whole(whole[:1], patches=alone, truncated=False) == ["patch_too_large"]
+    assert _whole(whole[:1], patches=alone) == ["patch_too_large"]
     # No patch: the diff source left it out for its size, or could not read it.
-    assert _whole(whole, patches={}, truncated=False, too_large=frozenset({"file-1"})) == [
+    assert _whole(whole, patches={}, too_large=frozenset({"file-1"})) == [
         "patch_too_large",
         "diff_unavailable",
     ]
@@ -872,11 +1016,9 @@ def test_a_file_with_no_range_shows_its_whole_patch() -> None:
     )
     patch = FilePatch(file_id="file-1", hunks=(_REPLACED, second), truncated=True)
     shown = _references(
-        7,
+        _files_of,
         [CollectionReference(path="a.py")],
-        {"a.py": _change("a.py", 1)},
-        {"file-1": patch},
-        truncated=False,
+        _Files({"a.py": _change("a.py", 1)}, {"file-1": patch}),
     )
     assert shown[0]["state"] == "ready"
     assert shown[0]["truncated"] is True

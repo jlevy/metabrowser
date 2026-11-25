@@ -2,7 +2,8 @@
 one pull request's (``pull``, ``pull-refresh``, and the routes of its guide, texts, timeline,
 comparison, rendered diffs, and their images), the catalog's (``pulls``, ``pulls-refresh``,
 ``pull-cores-prepare``), changed files (``pull-files``, ``pull-files-refresh``), stacks
-(``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``),
+(``stacks``, ``stacks-refresh``, ``stack-change``, and a stack's page, ``stack`` and
+``stack-comparison``), background prefetch (``pulls-prefetch``),
 ``cache-clear``, which discards all of a repository's, and ``status``, the GitHub status
 check, which any served root answers. The table in
 ``docs/project/architecture/arch-github-pull-requests.md``, checked against the manifest
@@ -286,27 +287,78 @@ async def pull_markdown_handler(request: Request) -> Response:
 
 
 async def guided_review_handler(request: Request) -> Response:
-    """Read one step of an author-provided PR guide and its pinned diff excerpts."""
-    from metabrowser.builtin_plugins.github.guided_review import guided_review
+    """Read one step of an author-provided guide and its pinned diff excerpts: a pull
+    request's, ``number=<n>``, or a native stack's, ``stack=<n>``, whose guide is a
+    member's `stack-review` block read against the stack's combined comparison."""
+    from metabrowser.builtin_plugins.github.guided_review import (
+        guided_review,
+        stack_guided_review,
+    )
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
         pull_host,
         requested_number,
     )
+    from metabrowser.git.routes import session_git_location
+    from metabrowser.git.wire import is_full_revision
     from metabrowser.view_routes import parse_pull_number
 
+    params = request.query_params
+    step = parse_pull_number(params.get("step", "1"))
+    if "stack" in params:
+        if "number" in params:
+            return _invalid_request('name a pull request by "number" or a stack by "stack"')
+        stack = parse_pull_number(params["stack"])
+        if stack is None:
+            return _invalid_request('"stack" is a native stack number')
+        if step is None:
+            return _invalid_request("step must be a positive integer")
+        # The comparison the page draws, named as `stack-comparison` names it, or none for
+        # the stack's current one.
+        drawn = tuple(params.get(name, "") for name in ("left", "right", "key"))
+        if any(drawn) and (
+            not is_full_revision(drawn[0])
+            or not is_full_revision(drawn[1])
+            or re.fullmatch(r"[0-9a-f]{32}", drawn[2]) is None
+        ):
+            return _invalid_request("a stack's comparison names its two commits and its key")
+        repository, published, reader = await _stack_sources(request)
+        if repository is None:
+            return JSONResponse({"state": "not_github"}, status_code=409, headers=_NO_STORE)
+        # A `{commit}`'s row links its page only where that page reads Git, as below.
+        answer = await unless_disconnected(
+            request,
+            stack_guided_review(
+                repository,
+                published,
+                reader,
+                stack,
+                step,
+                links=session_git_location(),
+                drawn=(drawn[0], drawn[1], drawn[2]) if any(drawn) else None,
+            ),
+        )
+        if answer is None:
+            return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
+        return JSONResponse(answer, headers=_NO_STORE)
     try:
-        number = requested_number(request.query_params)
+        number = requested_number(params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
-    step = parse_pull_number(request.query_params.get("step", "1"))
     if step is None:
         return _invalid_request("step must be a positive integer")
     await _resolve(request)
     host = pull_host(request.app)
     if host is None:
         return JSONResponse({"state": "not_github"}, status_code=409, headers=_NO_STORE)
-    answer = await unless_disconnected(request, guided_review(host, number, step))
+    # A `{commit}`'s row links its page only where that page reads Git: a served checkout's.
+    answer = await unless_disconnected(
+        request,
+        guided_review(
+            host, number, step, served_repository(request.app), links=session_git_location()
+        ),
+    )
     if answer is None:
         return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
     return JSONResponse(answer, headers=_NO_STORE)
@@ -915,6 +967,181 @@ async def stack_change_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
+async def _stack_sources(request: Request) -> tuple[Any, Any, str | None]:
+    """The served repository, its published store or ``None``, and the observed reader."""
+
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+    from metabrowser.cache.acquire import PublishedSource
+
+    await _resolve(request)
+    host = pull_host(request.app)
+    published = host.pulls.published if host is not None else None
+    store = (
+        published
+        if isinstance(published, PublishedSource) and host is not None and host.pulls.git_dir
+        else None
+    )
+    reader = host.pulls.observed_reader if host is not None else None
+    repository = served_repository(request.app) if host is not None else None
+    return repository, store, reader
+
+
+async def stack_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/stack?number=<stack>`` — a native stack's page.
+
+    Its members, its combined comparison and that comparison's routes, the members the top
+    lacks, the members still pending and which of them a refresh is fetching now, the
+    totals, and each file's layers (:mod:`.pull_stack`). No GitHub call and no fetch; the
+    first read after a member moves lists the comparison in the store.
+    """
+    from metabrowser.builtin_plugins.github.pull_route import (
+        PullRequestError,
+        pull_host,
+        requested_number,
+    )
+    from metabrowser.builtin_plugins.github.pull_stack import envelope_etag, stack_envelope
+
+    if set(request.query_params) != {"number"}:
+        return _invalid_request('a stack names itself by "number" alone')
+    try:
+        number = requested_number(request.query_params)
+    except PullRequestError:
+        return _invalid_request('"number" is a native stack number')
+    repository, published, reader = await _stack_sources(request)
+    host = pull_host(request.app)
+    answer = await unless_disconnected(
+        request,
+        stack_envelope(
+            repository,
+            published,
+            number,
+            reader,
+            host.running if host is not None else lambda _number: False,
+        ),
+    )
+    if answer is None:
+        return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
+    etag = envelope_etag(answer)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(answer), headers=headers)
+
+
+async def stack_comparison_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/stack-comparison`` — a stack's combined comparison.
+
+    The address the ``stack`` route answers names the stack, both commits, and the digest
+    of its members; the stack's current comparison is answered, or one the ``stack`` route
+    answered before and keeps (:mod:`.pull_stack_retained`), through the diff plugin's
+    ``comparison_at`` with the stack's restricted manifest, so ``group=``, ``types=``,
+    ``file=``, and ``view=types`` work as on a pull request. An address neither names
+    answers ``410 stack_moved``, and one whose retained pairs cannot be read now ``409
+    snapshot_unavailable``.
+    """
+
+    from metabrowser.builtin_plugins.diff.sidekick import comparison_at
+    from metabrowser.builtin_plugins.github.pull_manifest import invalidate_stack_manifest
+    from metabrowser.builtin_plugins.github.pull_route import PullRequestError, requested_number
+    from metabrowser.builtin_plugins.github.pull_stack import (
+        combined,
+        forget,
+        read_stack,
+        stack_key,
+        stack_scope,
+    )
+    from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import GitLocation, repository_store_target
+    from metabrowser.git.wire import is_full_revision
+    from metabrowser.home import PrivateStorageError
+
+    params = request.query_params
+    try:
+        number = requested_number(params)
+    except PullRequestError as exc:
+        return _invalid_request(str(exc))
+    left, right, key = params.get("left", ""), params.get("right", ""), params.get("key", "")
+    if (
+        params.get("base_policy") != "direct"
+        or not is_full_revision(left)
+        or not is_full_revision(right)
+        or re.fullmatch(r"[0-9a-f]{32}", key) is None
+        or "revision" in params
+    ):
+        return _invalid_request("a stack comparison names its two commits and its key")
+    repository, published, reader = await _stack_sources(request)
+    if repository is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    if published is None:
+        return JSONResponse(
+            {"error": "this comparison has no available repository store", "code": "no_store"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    read = await read_stack(repository, published, number, reader)
+    current = read.pair
+    pair = (
+        current
+        if current is not None
+        and (current.base, current.head, current.digest) == (left, right, key)
+        else await asyncio.to_thread(
+            retained_stack_pair, published, number, reader, left, right, key
+        )
+    )
+    if pair == "unknown":
+        return JSONResponse({"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE)
+    if pair is None:
+        return JSONResponse(
+            {
+                "error": "this stack has moved; read its page again for its comparison",
+                "code": "stack_moved",
+            },
+            status_code=410,
+            headers=_NO_STORE,
+        )
+
+    async def manifest(*_args: object) -> Any:
+        return (await combined(published, pair)).manifest
+
+    target = repository_store_target(git_dir=published.git_dir)
+    response = await comparison_at(
+        request,
+        GitLocation.revision(target, right),
+        max_initial_files=INITIAL_PULL_FILES,
+        manifest_loader=manifest,
+        scope=stack_scope(pair),
+    )
+    if response.status_code == 409 and any(
+        failure.state == "object_corrupt"
+        for failure in observed_object_failures.pending(target, (left, right))
+    ):
+        forget(published, pair)
+        try:
+            await asyncio.to_thread(
+                invalidate_stack_manifest, published, number, stack_key(published, pair)
+            )
+        except (OSError, PrivateStorageError):
+            # As `pull_comparison_handler` answers: the diff shows `message`, and what
+            # happened and what fixes it stay in `detail`, for `metab --api` and agents.
+            return JSONResponse(
+                {
+                    "error": "object_corrupt",
+                    "message": "This repository’s saved copy is damaged, so these changes cannot be shown.",
+                    "detail": "An object does not match its ID, and its cached comparison could "
+                    "not be discarded. Clear the affected repository cache before retrying.",
+                },
+                status_code=409,
+                headers=_NO_STORE,
+            )
+    return response
+
+
 async def stacks_refresh_handler(request: Request) -> Response:
     """Start or join optional stack work; core PR/catalog outcomes stay independent."""
     from metabrowser.builtin_plugins.github.pull_stacks import refresh_wanted
@@ -1228,6 +1455,8 @@ __all__ = [
     "pulls_handler",
     "pulls_prefetch_handler",
     "stack_change_handler",
+    "stack_comparison_handler",
+    "stack_handler",
     "stacks_handler",
     "stacks_refresh_handler",
     "labels_handler",

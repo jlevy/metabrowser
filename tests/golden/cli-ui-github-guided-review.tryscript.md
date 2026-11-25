@@ -14,6 +14,12 @@ A head GitHub reports past the cached record asks for the step again, and the se
 answers a stale guide with its step, so a stale guide’s steps still move.
 A step whose read is refused or fails keeps the guide’s steps, so the reader can still
 move, and it is read again when chosen again, the one on screen too.
+An answer whose note a busy renderer, or one that could not start, refused is not kept,
+so its step is read again when chosen again; a note refused past the deadline keeps its
+answer. A stack’s guide, under `stack`, has no overview: it opens on step 1, and no move
+goes before it. A step read while the stack is pending, or cannot be paired, is refused
+before the guide is found, with no revision: that step’s refusal, never a new guide, so
+the steps stay and the step is read again when chosen again.
 
 ```console
 $ node tests/dom/github-guided-review-session.js
@@ -32,6 +38,10 @@ $ node tests/dom/github-guided-review-session.js
     1,
     1,
     2,
+    2,
+    2,
+    2,
+    1,
     2,
     2,
     2
@@ -71,8 +81,66 @@ $ node tests/dom/github-guided-review-session.js
     "step 1: step 1 of 3",
     "step 2: loading",
     "step 2: step 2 of 3",
+    "step 2: loading",
+    "step 2: step 2 of 3",
+    "step 1: loading",
+    "step 1: step 1 of 3",
+    "step 2: loading",
+    "step 2: step 2 of 3",
+    "step 1: step 1 of 3",
+    "step 2: loading",
+    "step 2: step 2 of 3",
+    "step 1: step 1 of 3",
+    "step 2: step 2 of 3",
     "step 2: loading"
-  ]
+  ],
+  "stack": {
+    "calls": [
+      1,
+      2,
+      3,
+      3,
+      3
+    ],
+    "states": [
+      "step 1: loading",
+      "step 1: step 1 of 3",
+      "step 2: loading",
+      "step 2: step 2 of 3",
+      "step 1: step 1 of 3",
+      "step 3: loading",
+      "step 3: not_cached",
+      "step 2: step 2 of 3",
+      "step 3: loading",
+      "step 3: stack_unavailable",
+      "step 1: step 1 of 3",
+      "step 3: loading",
+      "step 3: step 3 of 3"
+    ]
+  },
+  "moved": {
+    "calls": [
+      1,
+      2,
+      3,
+      2,
+      2
+    ],
+    "states": [
+      "step 1: loading, 0 steps",
+      "step 1: step 1 of 3",
+      "step 2: loading, 3 steps",
+      "step 2: stack_moved, 3 steps",
+      "step 1: step 1 of 3",
+      "step 3: loading, 3 steps",
+      "step 3: stack_moved, 3 steps",
+      "step 2: loading, 3 steps",
+      "step 2: step 2 of 3",
+      "step 2: stack_moved, 0 steps",
+      "step 2: loading, 0 steps",
+      "step 2: step 2 of 3"
+    ]
+  }
 }
 ? 0
 ```
@@ -93,15 +161,25 @@ A tab left while the import is on its way mounts nothing, and neither does a pag
 ends there. A new record revision asks again for the step on screen and aborts the read
 still on its way, whose late answer paints nothing, and a poll of the same record asks
 for nothing. Leaving the tab, or ending the page, disposes the view and aborts its read.
-A step is inserted as text, so markup in the guide stays markup, and each row is the
-diff plugin’s, its code a span, which the shell’s highlighter, which takes `pre code`,
-skips. Open full diff reaches the page’s own `openChangedFile`, which asks the route for
-the file’s Changes address.
+A step’s title is inserted as text, so markup in it stays markup, and so is a note whose
+render was refused, and each row is the diff plugin’s, its code a span, which the
+shell’s highlighter, which takes `pre code`, skips.
+Open full diff reaches the page’s own `openChangedFile`, which asks the route for the
+file’s Changes address.
 A guide stale only because GitHub reports a newer head says nothing, since the page’s
 header already says new commits were pushed.
 A guide whose head the local copy lacks marks no step and says some may not match; above
 an excerpt it says the file may have changed, and in a reference’s place that its lines
 may have. A guide whose cited files did not change says so in a quiet line.
+A step can cite past its pull request: another pull request is a row as the stack menu
+lists a member, with its place in a stack, and goes to that pull request’s page, and one
+this copy has not read is named by its number; a file of another pull request is drawn
+under a bar that names that pull request, whose Open full diff opens the file in that
+pull request’s Changes, and one that is not loaded here says how to load it; a commit is
+a row of its subject, when it was committed, and its short ID, a plain link to the
+commit, and one the store lacks says it is unavailable.
+None of them is marked changed, even when the guide is stale and a path another pull
+request’s reference names changed.
 A guide whose merge base alone moved is out of date too: a step that cites a file
 changed on the base side is marked, and when none is, a quiet line says so.
 A refused step keeps the step list, whose buttons survive the click that chose it, and
@@ -110,10 +188,24 @@ A guide in groups lists each group as a heading, with no number and nothing to p
 above its steps, which keep their numbers through the groups; a step outside a group
 sits between them. A step’s card names its group before its place, a group’s note shows
 above its first step alone, and the list keeps its buttons and its changed marks as the
-reader moves. A core preview opens a guided pull request on its guide, which waits for
-the record, and the record’s arrival reads the guide without changing tab.
+reader moves. A note the route rendered, a step’s or its group’s, is handed to the
+description’s allowlist against the pull request’s page, and what it builds is set in
+the step’s prose after the title, or, for a group, in a KPress article above the card.
+A note whose render was refused shows as typed with the line a description’s refusal
+says under it, in a warning, and a step whose group’s note met a busy renderer is read
+again when the reader moves to it.
+Without the allowlist, a rendered note shows as typed, with nothing said beside it.
+A core preview opens a guided pull request on its guide, which waits for the record, and
+the record’s arrival reads the guide without changing tab.
 On a guided front page, Guided Review’s link and key go to the page already shown, and
 the description’s card on Conversation links the front page.
+A description that carries a stack’s guide, a `stack-review` block, gets a card on
+Conversation that says it has a stack guide and links each stack the pull request is a
+member of, or none while it is in no stack this copy knows, and no Guided Review of its
+own.
+A stack’s guide, as the stack’s page mounts it, has no introduction and no overview:
+it opens on its first step, asks the route by `stack=`, goes no further back, and says
+of the stack what a pull request’s guide says of the pull request.
 
 ```console
 $ node tests/dom/github-guided-review-mount-behavior.js
@@ -142,6 +234,8 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "a guide behind a newer head on GitHub: none; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "a guide whose head this copy lacks: warning: This guide was written for an earlier version of this pull request, so some steps may not match it. Its author can update the guide.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "and its step: Step 1; src/app.txt: This file may have changed since the guide was written. | gone.txt: This path is not in the comparison. | src/app.txt: These lines may have changed since the guide was written.",
+  "a step past its pull request: Guided Review | Step 1 of 3; row to /pull/8: #8 · Say <b>more</b> Stack #71 1/3 (tip: Stack #71, position 1 of 3) | row to /pull/2000: #2000 · Pull request #2000 | #9 src/app.txt: no note | #12 docs/plan.md: This pull request has not been loaded here. Open it to load its changes. | row to /commit/cccccccccccccccccccccccccccccccccccccccc: ccccccc Count <i>to</i> two committed now | row: eeeeeee This commit is unavailable. | row: fffffff Fetched with its pull request Not in this checkout.",
+  "its pull request row, then its other pull request's Open full diff, open: #8 front page; #9 files src/app.txt",
   "a guide whose cited files did not change: quiet: This guide was written for an earlier version of this pull request, but the files it cites have not changed.",
   "a guide whose merge base alone moved: warning: This guide was written for an earlier version of this pull request, so steps marked changed may not match it. Its author can update the guide.; > Overview | 1 Step 1 changed | 2 Step 2 | 3 Step 3",
   "and when none of its files changed: quiet: This guide was written for an earlier version of this pull request, but the files it cites have not changed.",
@@ -155,10 +249,17 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "step 3: Guided Review | Step 3 of 4; Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | > 3 Step 3 | [Testing] | 4 Step 4 changed",
   "step 4: Guided Review | Testing · Step 4 of 4 · changed; Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | 3 Step 3 | [Testing] | > 4 Step 4 changed",
   "asked: step 1, step 2, step 3, step 4",
+  "a rendered note: title Step <b>1</b>; blocks span.inert-rebuilt: <p>Check <b>this</b> first.</p>; group's note <p>Read <em>these</em>.</p>; allowlist asked <p>Check <b>this</b> first.</p> at https://github.com/octo/demo/pull/7, <p>Read <em>these</em>.</p> at https://github.com/octo/demo/pull/7",
+  "refused notes: asked step 1, step 1; group's note Read *these*. | warning: This text could not be rendered, so it is shown as written. Reload the page to try again.; step's note Check <b>this</b> first.\nThen that. | warning: This text took too long to render, so it is shown as written.; allowlist asked 0",
+  "no allowlist: step's note Check <b>this</b> first.\nThen that.; group's note Read *these*.; console metabrowser github: the guide's notes will show as typed",
   "a preview's front page: guide mounted; says The guide needs the full pull request.; asked nothing",
   "its record arrives: guide mounted; asked step 1",
   "the guided front page: Guided Review links /pull/7, Conversation /pull/7/conversation; its key opens nothing",
-  "from Conversation, the description's card links /pull/7"
+  "from Conversation, the description's card links /pull/7",
+  "a description with a stack's guide: \"This description has a stack guide, read on its stack's page. Open Stack #286\" links Open Stack #286 (/stack/286)",
+  "one in no stack this copy knows: \"This description has a stack guide, read on its stack's page.\"",
+  "a stack's guide opens on Step 1 of 2, lists 2 steps and no overview, asks stack=70&step=1, and goes no further back; it says \"This guide was written for an earlier version of this stack, so steps marked changed may not match it. Its author can update the guide.\" and of a file \"This file changed after the guide was written. | This file is no longer in the stack's changes.\"",
+  "a stack step refused while a member is fetched says \"This stack's pull requests are still being fetched.\", one whose carrier moved past the comparison drawn says \"This stack has moved since its comparison was drawn. Show the new comparison to read its guide.\", and a guide refused whole names no place and says \"The stack-review block cannot be read.\""
 ]
 ? 0
 ```

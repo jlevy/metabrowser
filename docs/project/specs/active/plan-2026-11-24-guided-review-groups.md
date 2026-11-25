@@ -4,8 +4,10 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Phases 1 and 2 in progress under epic `mb-bxff`; phase 3 is designed here
-and not yet built.
+**Status:** Phases 1 and 2 are built under epic `mb-bxff` (#807 and #806, merged
+2026-11-25). Phase 3, the stack rollup, is superseded by
+[Whole-Stack Review](plan-2026-11-24-stack-review.md); its design is kept below as this
+plan first recorded it.
 
 ## Overview
 
@@ -25,8 +27,9 @@ This plan adds four things:
 3. **Rendered documents.** A step that cites a whole Markdown, YAML, or JSON file draws
    it as the Changes and Docs tabs do, through the diff view’s rendered layer and its
    chooser, instead of as source hunks only.
-4. **Stack rollups.** A design for walking a whole stack’s guides as one, which this
-   plan does not build but which phases 1 and 2 shape their data for.
+4. **Stack rollups.** A design for walking a whole stack’s guides as one, since
+   superseded by [Whole-Stack Review](plan-2026-11-24-stack-review.md), which uses what
+   phases 1 and 2 lay down.
 
 ## Goals
 
@@ -40,11 +43,12 @@ This plan adds four things:
 ## Non-Goals
 
 - Groups inside groups in a written guide.
-  The record allows one level; only a derived rollup (phase 3) nests.
+  The record allows one level.
 - Rendering a *range* of a document.
   Projection blocks carry no source lines yet, so a ranged reference keeps its source
   hunk (`mb-8viy`).
-- Building the rollup (`mb-ri96`).
+- A stack’s guide (`mb-ri96`), which
+  [Whole-Stack Review](plan-2026-11-24-stack-review.md) plans.
 
 ## Phase 1: Groups and Rationale (`mb-enj3`, `mb-szxu`)
 
@@ -132,7 +136,8 @@ Every answer that has steps gains an **`outline`**: a tree of nodes in reading o
 
 - `titles` stays, the flat list the step pager reads.
 - A step’s answer names its `group`, the index of its group in `outline`, or null.
-- The tree is the groundwork for phase 3: a rollup is the same tree one level deeper.
+- A stack’s guide answers the same tree
+  ([Whole-Stack Review](plan-2026-11-24-stack-review.md#mechanics)).
 
 ### The Page
 
@@ -166,6 +171,11 @@ constraint, a requirement, a precedent).
 It does not retell the design, and it cites the lines or the document where the decision
 is recorded at length.
 A decision with an obvious reason needs no rationale line.
+
+**Addendum, 2026-11-25.** [Whole-Stack Review](plan-2026-11-24-stack-review.md)’s phase
+0 refines this recommendation: a guide has one step for each area of change and one for
+each concern with something to say, a concern of two steps or more is a group, and a
+concern of one step stays a step of its own, so no group holds a single step.
 
 ## Phase 2: Rendered Documents in Steps (`mb-qgz1`)
 
@@ -213,12 +223,31 @@ step’s budget for whole files (`MAX_STEP_PATCH_BYTES`), so a document past tha
 is drawn, bounded by the rendered route alone.
 Every other whole file keeps that budget and answers `patch_too_large` past it.
 
-## Phase 3: Stack Rollups (`mb-ri96`, Designed Only)
+## Phase 3: Stack Review
+
+Superseded by [Whole-Stack Review](plan-2026-11-24-stack-review.md), on the owner’s
+decisions of 2026-11-24 (`mb-ri96` and its sibling beads).
+
+This plan recommended a rollup the route derives from the stack’s layers, one group for
+each layer holding that layer’s own outline
+([approach C](#the-superseded-rollup-design)). It is rejected: a rollup of layer guides
+has no overview of the stack, inherits every layer’s detail, and needs a tree deeper
+than the record’s one level of groups.
+A stack’s guide is instead one collection of its own, written for the whole stack and
+resolved against the stack’s combined comparison.
+
+What phases 1 and 2 lay down serves it unchanged: the outline tree, the flat step
+numbers, and whole documents drawn as Docs draws them.
+
+### The Superseded Rollup Design
+
+The design as this plan recorded it on 2026-11-24, before the owner’s decisions replaced
+it, kept as written.
 
 A stack’s layers each carry their own guide, pinned to their own comparison.
 A reviewer of the whole stack wants to walk them as one.
 
-### Approaches Considered
+#### Approaches Considered
 
 | Approach | How | For | Against |
 | --- | --- | --- | --- |
@@ -236,7 +265,7 @@ guide, which the rollup shows first.
 B stays possible later as an additive field if a rollup needs layers the stack does not
 list.
 
-### What Phases 1 and 2 Lay Down
+#### What Phases 1 and 2 Lay Down
 
 - **The outline is a tree**, so a rollup is one more level of the same nodes.
 - **Steps are numbered flat** and navigation reads only step numbers, so the pager and
@@ -248,7 +277,7 @@ list.
 - **Groups have no comparison of their own today.** If B is ever needed, a group gains
   an optional `comparison`, which is additive.
 
-### Open Questions for Phase 3
+#### Open Questions for Phase 3
 
 - Where the rollup lives: the top layer’s Guided Review tab with a stack toggle, or a
   page of its own for the stack.
@@ -263,7 +292,7 @@ list.
    rationale step, the format reference, goldens and tests.
 2. Phase 2, stacked on phase 1: the diff plugin’s one-file entry point, the guide’s
    rendered references, tests, and the architecture and reviewing documents.
-3. Phase 3: build the rollup after both land and `mb-qn7e` has settled the chooser.
+3. Phase 3: [Whole-Stack Review](plan-2026-11-24-stack-review.md), in its own phases.
 
 ## Testing Strategy
 

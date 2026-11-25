@@ -72,9 +72,13 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Whole-stack review](specs/active/plan-2026-11-24-stack-review.md): a page for a
+  stack’s whole change, one consolidated diff with Docs over it; collection references
+  to a pull request, a file as one changes it, and a commit; a stack’s guide in a
+  `stack-review` block; and concise guides with Markdown notes
 - [Guided review groups, rationale, rendered documents, and stack rollups](specs/active/plan-2026-11-24-guided-review-groups.md):
-  optional groups of steps, a rationale step, documents drawn rendered in steps, and the
-  design for a stack-wide rollup
+  optional groups of steps, a rationale step, documents drawn rendered in steps, and a
+  design for a stack-wide rollup that whole-stack review supersedes
 - [Guided reviews in the agent skill](specs/active/plan-2026-11-24-guided-reviews-skill.md):
   the skill section that writes, publishes, and refreshes a pull request’s guided
   review, now shipped, and a `metab` check of a draft guide, still to build

@@ -443,13 +443,33 @@ move with it. This section has what you need to write, publish, and refresh one;
 [guide](https://github.com/jlevy/metabrowser/blob/main/docs/reviewing-pull-requests.md#guided-review)
 is the format’s full reference, with its limits.
 
-A guide does more than explain the change.
-It is the reviewer’s agenda, so give each of these concerns a step, or a run of steps,
-of its own, in this order, and title each step so the list reads as that agenda.
-A guide of more than about six steps puts each concern’s steps in a group named as
-below, so the page’s step list shows the agenda as headings; a guide of about six steps
-or fewer stays flat, even when it covers several concerns, since its step titles name
-them:
+A guide is the reviewer’s agenda, not an inventory of the change: the Changes tab
+already lists every file.
+Keep it short:
+
+- Open the description with three to five lines on the end state, what is true once the
+  change lands. That is the guide’s orientation, which the tab shows first, and no step
+  repeats it.
+- Write one step for each area of the change, never one for each file or commit, and a
+  step for each concern below that has something to say.
+  Leave out a concern with nothing to say rather than write a step to fill it, except
+  testing, which every guide has.
+- Cite what a reviewer must read, not every file the change touches.
+- Write each note in one to three sentences: what is true now, and what to check.
+- A layer of a stack says its place in one line of the description, naming the layers
+  below and above it by number, such as “Layer 2 of 3: the route, on #811; the page in
+  #813 reads it”, and does not explain the stack again.
+  A step that depends on another layer cites it, `{pull: 811}`, rather than retelling
+  it.
+
+Give each of these concerns a step, or a run of steps, of its own, in this order, and
+title each step so the list reads as the agenda.
+In a guide of more than about six steps, a concern with two steps or more is a group
+named as below, so the page’s step list shows the agenda as headings, and a concern with
+one step stays a step of its own, outside any group, whose title names the concern, such
+as “Testing: …”: a group of one step only repeats its title.
+A guide of about six steps or fewer stays flat, even when it covers several concerns,
+since its step titles name them:
 
 1. **Decisions.** Two kinds of step, in this order:
    - **Key decisions.** The few choices everything else follows from: a data shape, a
@@ -460,21 +480,21 @@ them:
      else was considered and the fact that decided it, a measurement, a constraint, a
      requirement, or a precedent.
      Split it only when it would run long.
-2. **Documents.** One step per spec, plan, architecture document, or user guide the
-   change adds or rewrites, cited whole, with a note on what each now promises.
+2. **Documents.** The specs, plans, architecture documents, and user guides the change
+   adds or rewrites that a reviewer must read, cited whole, with a note on what they now
+   promise: one step for them, or one for each only when a document needs its own.
 3. **Changes.** One step per area of change, in dependency or execution order (the
    format before its parser, the route before its page), each saying what to verify
    there, not only what changed.
-   Cite the ranges that matter, and whole files for tests, goldens, and generated
-   output. Every changed file belongs to some step, the changelog fragment with the area
-   it describes.
+   Cite the ranges that matter.
 4. **Open questions.** What you were unsure of, a guess you made where a requirement was
    silent, a behavior you could not measure, a risk you accepted.
    Say plainly that a person should decide or check it, and cite the code in doubt.
    Leave this out only when there is truly nothing; never hide a doubt in another step’s
    note.
-5. **Testing.** Keep three things apart, each its own step or line, never merged into
-   one claim, and cite the tests and goldens the change adds or changes:
+5. **Testing.** Keep three things apart, each its own sentence or paragraph of one
+   step’s note, or a step of its own when it runs long, never merged into one claim, and
+   cite the tests and goldens the change adds or changes:
    - what automated checks cover: those tests and goldens, what each pins, and CI at the
      head. CI is still running when you first publish, so say so, and update the note
      when it ends; editing the description does not move the head, so the guide stays
@@ -492,10 +512,13 @@ them:
 where each decision is recorded at length.
 A decision whose reason is obvious needs no rationale line.
 
-Every step cites at least one file this pull request changes: a step without a reference
-makes the page refuse the whole guide, and a reference to an unchanged file answers
-`path_not_changed`. When what a step is about did not change, such as the plan a
-follow-up belongs to, code you doubt but did not touch, or tests that cover the change
+Every step cites at least one reference: a step without one makes the page refuse the
+whole guide. A reference is a file this pull request changes, another pull request, a
+file as another pull request changes it, or a commit
+([Write the Block](#write-the-block)), so a step about another layer of a stack, a plan
+another pull request adds, or the commit that fixed a finding cites that directly.
+A file this pull request does not change answers `path_not_changed`: when a step is
+about one, such as code you doubt but did not touch, or tests that cover the change
 unchanged, cite the changed file closest to it, and say in the note what the step is
 about.
 
@@ -504,21 +527,25 @@ A smaller change merges concerns, so one step can be both the key decision and t
 area, and merges or leaves out their groups, but keep the testing step and its three-way
 split on every pull request, and the open questions whenever there is anything to say.
 A group needs no note.
-A note is for orientation, and the page shows it once, before the group’s first step, so
+A group’s note is for orientation, and the page shows it once, before its first step, so
 give one only when the group’s steps share something a reader should know first, and
 never repeat the description.
 
-The page shows each title and note as written, line breaks kept and Markdown printed
-literally, so write them as plain text.
-A note says what to check and why; the description says what the change is, so do not
-repeat it. When the description or a note warns of a doubt, a risk, or a check still
+A title is plain text, shown as typed.
+A note is Markdown, rendered as the description is: code spans, emphasis, links, and
+lists render, and raw HTML is cut to a safe subset.
+As in the description, a single line break joins two lines into one paragraph, so leave
+a blank line between paragraphs; a list needs no blank line before it, only its own
+lines. Write a link as a full URL: a relative one resolves against the pull request’s
+page. A note says what to check and why; the description says what the change is, so do
+not repeat it. When the description or a note warns of a doubt, a risk, or a check still
 running, make the warning short, give at most one simple remedy, and leave out internals
 such as commit IDs, commit lists, and merge-base or rebase mechanics.
 
 ### Write the Block
 
-The guide is one `guided-review` block in the description, after the prose that
-introduces it, which the tab shows first.
+The guide is one `guided-review` block in the description, after the end-state summary
+that introduces it, which the tab shows first.
 A short guide is a flat list of steps:
 
 ````markdown
@@ -533,7 +560,7 @@ collection:
     head: "<full head commit ID>"
   items:
     - title: "Keystone: the snapshot is served before the worker ends"
-      note: Check that the request returns the cached snapshot without waiting.
+      note: Check that `fetch` returns the cached snapshot without waiting.
       references:
         - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
     - title: "Testing, by a person: what still needs a human"
@@ -546,7 +573,8 @@ collection:
 ```
 ````
 
-A longer guide gathers its steps in groups, shown here with a step or two in each:
+A longer guide gathers each concern of two steps or more in a group, shown here with two
+steps in each; a concern of one step stays a step of its own between the groups:
 
 ````markdown
 ```guided-review
@@ -562,7 +590,7 @@ collection:
     - title: Decisions
       items:
         - title: "Keystone: the snapshot is served before the worker ends"
-          note: Check that the request returns the cached snapshot without waiting.
+          note: Check that `fetch` returns the cached snapshot without waiting.
           references:
             - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
         - title: "Rationale: why the snapshot, not a wait"
@@ -571,6 +599,10 @@ collection:
             - {path: docs/cache-plan.md}
     - title: Testing
       items:
+        - title: "Testing, automated and by the agent: what is covered"
+          note: The cache tests pin the snapshot, and CI passed at this head. The agent timed a cold fetch at 90 ms.
+          references:
+            - {path: tests/test_cache.py}
         - title: "Testing, by a person: what still needs a human"
           note: |-
             Tick off:
@@ -594,12 +626,21 @@ collection:
   Test each range against the hunks the comparison route answers
   (`.patches["<id>"].hunks`, as [From a Pull-Request URL](#from-a-pull-request-url)
   reads them), not a local `git diff`, whose options can draw other hunks.
+- Three more kinds cite past this pull request, each read from what the reader’s copy
+  already has and never out of date:
+  - `{pull: 811}`, another pull request, which the page shows as a row with its state,
+    title, and place in its stack;
+  - `{pull: 811, path: docs/plan.md}`, a file as that pull request changes it, drawn as
+    a `path` alone is, whole, and with no range, since that pull request may move;
+  - `{commit: "<full commit ID>"}`, a commit, alone, by its full ID, quoted, which the
+    page shows as a row with its subject.
 - Quote a title or note that contains `: ` or ` #`, or that starts with a backtick or
   another YAML indicator such as `[`, `{`, or `*`, in double quotes.
   Unquoted, a `: ` or a leading indicator makes the page refuse the block as invalid
   YAML, and a ` #` silently cuts the text there.
-- Write a note that holds a list as a literal block, `note: |-`, which keeps its lines
-  and needs no quotes; a folded block, `>-`, joins them into one.
+- Write a note that holds a list or more than one paragraph as a literal block,
+  `note: |-`, which keeps its lines as Markdown needs them and needs no quotes; a folded
+  block, `>-`, joins them, so its list reads as one paragraph.
 - A step’s whole files share one size budget, and a file past it answers
   `patch_too_large`: split the step, or cite the file’s ranges instead.
   A whole Markdown, YAML, or JSON file the page draws rendered answers its format as
@@ -630,18 +671,22 @@ read each step, with `<k>` from 1 to the `.step_count` the first answer gives:
 
 ```shell
 <invocation> <url> --api '/api/plugin/github/guided-review?number=<n>&step=<k>' --format json > <tmp>/step.json &&
-  jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' <tmp>/step.json
+  jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
 ```
 
 - `.state` is `ready` when the page can show the guide and its pins are the pull
-  request’s, and each reference’s state follows its path: every one should be `ready`
+  request’s, and each reference’s state follows what it names: every one should be
+  `ready`, except that another pull request this copy has not read answers `not_cached`,
+  which is fine to publish, since a reader who opens it loads it
 - `invalid` means the page refuses the guide, and `.message` says why, such as invalid
   YAML, a second block, or a field the schema refuses, with its place below `collection`
 - `stale` means the pull request moved past the pins, as a push moves it: refresh the
   guide, as below
 - `absent` means the description has no block, or the record is older than your edit
 - A reference that is not `ready` says why, such as `path_not_changed`,
-  `range_unavailable` for a range outside one hunk, or `patch_too_large`
+  `range_unavailable` for a range outside one hunk, `patch_too_large`, or
+  `commit_unavailable` for a commit the store lacks, a full ID mistyped or a commit a
+  force push dropped
 
 ### Refresh It After a Push
 
@@ -655,9 +700,145 @@ changed:
 
 `.stale.changed_steps` are those steps, and `.stale.changed_paths` the files; a list is
 null when it could not be read, and then every step needs rechecking.
-Recheck only those steps’ ranges against the new hunks, give each file the push added a
-step, move both pins as above, and publish and confirm the guide again.
+Recheck only those steps’ ranges against the new hunks and their notes against what is
+now true, add or change a step only when the push changed what a reviewer must read,
+move both pins as above, and publish and confirm the guide again.
 A step that cites no changed file still matches the pull request.
+
+## Write a Stack Guide
+
+A stack guide is one guided review of a whole native stack, read against the stack’s
+comparison, from the bottom layer’s merge base to the top layer’s head.
+The stack’s page, `/stack/<s>`, opens on it in its **Guided Review** tab.
+When you open the top layer of a stack you built, write its stack guide in that layer’s
+description, beside the layer’s own guide, and refresh it whenever a layer moves.
+It is a `stack-review` block, in the format of a `guided-review` block
+([Write the Block](#write-the-block)), and a description holds at most one of each.
+The stack’s guide is the block of the top-most layer that has one, so a layer added
+above it leaves the guide found, and out of date until you refresh it.
+
+A stack guide is a map of the end state, not a retelling of the layers: each layer’s own
+guide says what that layer does, so a stack guide cites the layer, `{pull: 811}`, and
+does not repeat it. The description that carries the block introduces its own layer, not
+the stack, so the stack guide’s first steps are its overview, and the tab opens on its
+first step. Give it these groups and steps, in this order:
+
+| Group | Steps | The note says | References |
+| --- | --- | --- | --- |
+| Orientation | What this stack does | The problem and the outcome, in five lines | The plan, whole |
+|  | The system after it | The parts and how they connect | The architecture document, whole |
+|  | The layers | One line for each, bottom up | `{pull}` for each |
+| Decisions | Key decisions and why | Up to five: decided X because Y, which rules out Z | Where each is recorded |
+| Documents | One for each document a reviewer must read | What it now promises | The file, whole |
+| Areas | Three to five, by subsystem, in dependency order | What it does now and what to verify | Up to three ranges that matter, and the layer’s `{pull}` |
+| Open questions | One | What a person must decide | The code in doubt |
+| Testing and merging | One or two | Automated, agent-checked, and needs a person; the merge order; deferred work with its tracker IDs | Tests, the plan |
+
+- Write eight to twelve steps.
+  A group of one step stays a step of its own, whose title names its group, as in a pull
+  request’s guide.
+- Keep each note to five lines, in the present tense, about the end state.
+- Cite at most three references a step, except in the layers step, which cites every
+  layer.
+- Never write narration by layer or by commit, a file inventory (Files lists every
+  file), anything a layer’s guide says (cite its `{pull}`), how the design evolved,
+  review rounds, commit IDs, or counts the page’s header shows.
+
+A `path` reference is a file some layer changes, read in the stack’s comparison, and a
+range lies inside one hunk of that comparison, not of a layer’s.
+
+### Write the Stack’s Block
+
+The block is a `stack-review` block, with the stack’s pins, and its steps gathered in
+the groups above:
+
+````markdown
+```stack-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "<full ID of the stack's base>"
+    head: "<full ID of the top layer's head>"
+  items:
+    - title: Orientation
+      items:
+        - title: "What this stack does: the snapshot is served before the worker ends"
+          note: A cold page waited 4.1 s for the cache worker. After this stack it draws the last snapshot at once and replaces it when the worker ends.
+          references:
+            - {path: docs/cache-plan.md}
+        - title: The layers
+          note: |-
+            Bottom up:
+            - #811, the snapshot format and its reader
+            - #812, the route that serves it
+            - #813, the page that draws it
+          references:
+            - {pull: 811}
+            - {pull: 812}
+            - {pull: 813}
+    - title: "Testing and merging: what is covered, and the order"
+      note: The cache tests pin the snapshot, and the route's golden its answer. Merge #811, then #812, then #813.
+      references:
+        - {path: tests/test_cache.py}
+```
+````
+
+The rules of [Write the Block](#write-the-block) hold here: quoting a title or note,
+writing a list as a literal block, and the bounds on steps and references.
+
+### Publish and Confirm a Stack Guide
+
+`<url>` is the top layer’s pull-request URL, and `<s>` the stack’s number.
+Read the stack first: its state, its pins, and its layers, bottom up:
+
+```shell
+<invocation> <url> --api '/api/plugin/github/stack?number=<s>' --format json > <tmp>/stack.json &&
+  jq -r '.state, .reason, .comparison.left, .comparison.right, (.members[] | [.place, .number, .state, .title] | map(tostring) | join(" "))' <tmp>/stack.json
+```
+
+- `.state` is `current` when the stack reads as one comparison, `pending` while a layer
+  this copy has not read is missing, which reading that layer’s URL with `--no-serve`
+  fetches, and `absent` when it cannot be shown, with `.reason` saying why.
+- `.comparison.left` is the stack’s base and `.comparison.right` the top layer’s head:
+  pin `merge_base` and `head` to them, with no `git merge-base`.
+
+List the documents the stack changes, which the Orientation and Documents steps cite,
+from the stack’s comparison:
+
+```shell
+<invocation> <url> --api "$(jq -r .comparison.route <tmp>/stack.json)&group=type:docs" --format json > <tmp>/docs.json &&
+  jq -r '.manifest.files[] | (.new // .old).path' <tmp>/docs.json
+```
+
+Read each layer’s description and guide with `gh pr view <n> --json body --jq .body`.
+Write the top layer’s whole description to a file, its own prose and guide and then the
+`stack-review` block, and publish it with `gh pr edit <top> --body-file <tmp>/body.md`.
+An edit of a description moves no head, so it starts no CI run and leaves the layer’s
+own guide current. Refresh the top layer’s record as in
+[Publish and Confirm It](#publish-and-confirm-it), then read each step, with `<k>` from
+1 to the `.step_count` the first answer gives:
+
+```shell
+<invocation> <url> --api '/api/plugin/github/guided-review?stack=<s>&step=<k>' --format json > <tmp>/step.json &&
+  jq -r '.state, .carrier, (.message // .reason // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
+```
+
+- `.carrier` is the layer whose block the page reads, which should be the top layer.
+- `.state` and each reference’s state read as for a pull request’s guide: every one
+  `ready`, or `not_cached` for a pull request this copy has not read.
+- `not_cached` for the whole guide means a layer is still being fetched, and
+  `stack_unavailable` that the stack cannot be shown, with `.reason` from the stack’s
+  answer.
+
+After a push to any layer, or a restack, read `.state` and `.stale.changed_steps` from
+`/api/plugin/github/guided-review?stack=<s>` as in
+[Refresh It After a Push](#refresh-it-after-a-push), fix those steps, move both pins to
+the stack’s new ones, and publish and confirm the guide again.
+A new top layer needs no move of the block: the guide is still found where it is, and
+reads out of date until you refresh it.
 
 ## Browse a Remote Directory
 

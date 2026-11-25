@@ -88,8 +88,11 @@ function step(generation, number, count = 2) {
     group: null,
     title: `Step ${number}`,
     note: "Check <b>this</b> first.\nThen that.",
+    // A note whose render was refused, which the page shows as typed.
+    note_html: null,
+    group_note_html: null,
     references: [
-      {
+      cited({
         path: "src/app.txt",
         side: "new",
         start_line: 1,
@@ -97,23 +100,58 @@ function step(generation, number, count = 2) {
         state: "ready",
         href: "/pull/7/files/src/app.txt",
         hunks,
-        truncated: false,
-      },
-      {
-        path: "gone.txt",
-        side: null,
-        start_line: null,
-        end_line: null,
-        state: "path_not_changed",
-        href: null,
-        hunks: [],
-        truncated: false,
-      },
+      }),
+      cited({ path: "gone.txt", state: "path_not_changed", href: null }),
     ],
   };
 }
 
-function host() {
+/** A reference as the route answers it, every field present: a file of the pull request
+ * named alone, unless *fields* say otherwise. */
+const cited = (fields) => ({
+  kind: "file",
+  path: null,
+  side: null,
+  start_line: null,
+  end_line: null,
+  pull: null,
+  commit: null,
+  state: "ready",
+  rendered: null,
+  href: null,
+  hunks: [],
+  truncated: false,
+  comparison: null,
+  target: null,
+  ...fields,
+});
+
+/** Step 1 of a guide whose two steps are in one group with a note, which step 1 opens: its
+ * title is markup, and *more* adds to or replaces the route's fields. */
+function grouped(more = {}) {
+  const title = "Step <b>1</b>";
+  return {
+    ...step(1, 1),
+    title,
+    outline: [
+      {
+        kind: "group",
+        title: "Decisions",
+        note: "Read *these*.",
+        children: [
+          { kind: "step", step: 1, title },
+          { kind: "step", step: 2, title: "Step 2" },
+        ],
+      },
+    ],
+    group: 0,
+    ...more,
+  };
+}
+
+/** The page's host. Without *allowlist*, the inert allowlist does not load, as when its
+ * script fails: `window.MetabrowserInertHtml` is never set. */
+function host({ allowlist = true } = {}) {
   const timers = new Map();
   /** Each read of the guide: its step, its signal, and the answer or failure that ends it. */
   const reads = [];
@@ -121,6 +159,8 @@ function host() {
   const opened = [];
   /** Each patch the page handed the diff plugin to draw, and whether it was disposed. */
   const patches = [];
+  /** Each text's HTML the page handed the allowlist, with the page it resolves against. */
+  const sanitized = [];
   /** The diff plugin's export, as `plugins.load("diff")` answers it: it draws each line as
    * the diff draws a row, its text a span. The diff plugin's own drawing (hunk bars, folds,
    * syntax) is its own, pinned by its tests and painted in the Chrome check. */
@@ -163,14 +203,26 @@ function host() {
       return id;
     },
     clearTimeout: (id) => timers.delete(id),
-    MetabrowserInertHtml: {
-      sanitizeHtml: (html) => html,
-      kpressProse(html) {
-        const node = document.createElement("p");
-        node.textContent = html;
-        return node;
-      },
-    },
+    // The allowlist's stand-in: each text it is handed comes back as one element holding the
+    // HTML as text, so a test reads where the page put it. The rebuild itself is the
+    // allowlist's, pinned by tests/dom/inert-html-session.js.
+    MetabrowserInertHtml: !allowlist
+      ? undefined
+      : {
+          sanitizeHtml(html, base) {
+            sanitized.push({ html, base });
+            const node = document.createElement("span");
+            node.className = "inert-rebuilt";
+            node.textContent = html;
+            return [node];
+          },
+          kpressProse(nodes) {
+            const prose = document.createElement("div");
+            prose.className = "kpress-prose";
+            prose.append(...nodes);
+            return prose;
+          },
+        },
   };
   globalThis.DOMParser = class {
     parseFromString() {
@@ -214,6 +266,7 @@ function host() {
     reads,
     opened,
     patches,
+    sanitized,
     set current(value) {
       current = value;
     },
@@ -309,19 +362,28 @@ function host() {
           const notice = container.querySelector(".github-pull-guide-stale");
           return notice ? said(notice) : "none";
         },
-        /** Each excerpt's path and the note it carries, as a reader reads them. */
+        /** Each excerpt's path and the note it carries, and each row as it reads, as a
+         * reader reads them. */
         references: () =>
           container
             .querySelectorAll(".github-pull-guide-reference")
-            .map(
-              (section) =>
-                `${section.querySelector(".diff-file-path").textContent}: ${
-                  [...section.descendants()]
-                    .filter((node) => node.tag === "p")
-                    .map((note) => note.textContent)
-                    .join(" ") || "no note"
-                }`,
-            )
+            .map((section) => {
+              const row = section.querySelector(".github-pull-guide-row-link");
+              if (row !== null) {
+                const place = row.querySelector(".github-pull-guide-row-place");
+                const tip = place?.dataset.tipText;
+                return `${row.tag === "a" ? `row to ${row.href}` : "row"}: ${row.textContent.replace(/\s+/g, " ").trim()}${tip ? ` (tip: ${tip})` : ""}`;
+              }
+              const pull = section.querySelector(".github-pull-guide-reference-pull");
+              return `${pull === null ? "" : `${pull.textContent} `}${
+                section.querySelector(".diff-file-path").textContent
+              }: ${
+                [...section.descendants()]
+                  .filter((node) => node.tag === "p")
+                  .map((note) => note.textContent)
+                  .join(" ") || "no note"
+              }`;
+            })
             .join(" | "),
         /** The step on screen, as the reader sees it, or null while there is none. */
         shown() {
@@ -658,16 +720,14 @@ async function run() {
       state: "stale",
       references: [
         ...answered.references,
-        {
+        cited({
           path: "src/app.txt",
           side: "old",
           start_line: 2,
           end_line: 4,
           state: "range_unavailable",
           href: "/pull/7/files/src/app.txt",
-          hunks: [],
-          truncated: false,
-        },
+        }),
       ],
       stale: {
         guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
@@ -686,6 +746,115 @@ async function run() {
     view.press("Next step");
     await settle();
     steps.push(`and its step: ${view.shown()}; ${view.references()}`);
+    view.handle.dispose();
+  }
+
+  // A step that cites past its pull request: another pull request is a row as the stack menu
+  // lists a member, which opens that pull request's page, and one this copy has not read is
+  // named by its number; a file of another pull request is drawn under a bar that names it,
+  // whose Open full diff opens that file in that pull request's Changes, and one this copy
+  // cannot read says why; a commit is a row of its subject, when it was committed, and its
+  // short ID, linking to the commit, and one the store lacks says so. A stale guide whose
+  // changed files include a path another pull request's reference names marks none of them.
+  {
+    const wide = host();
+    const view = wide.mount(page, "guided", envelope(1));
+    await settle();
+    const answered = step(1, 1, 3);
+    const head = "c".repeat(40);
+    wide.pending()[0].answer({
+      ...answered,
+      state: "stale",
+      stale: {
+        guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+        current: { merge_base: "a".repeat(40), head },
+        github_newer: false,
+        history: "ahead",
+        commit_count: 1,
+        commits: [],
+        changed_paths: ["src/app.txt"],
+        changed_steps: [3],
+      },
+      references: [
+        cited({
+          kind: "pull",
+          pull: 8,
+          href: "/pull/8",
+          target: {
+            title: "Say <b>more</b>",
+            state: "merged",
+            stack: { number: 71, place: 1, count: 3 },
+          },
+        }),
+        cited({ kind: "pull", pull: 2000, state: "not_cached", href: "/pull/2000" }),
+        cited({
+          kind: "pull_file",
+          pull: 9,
+          path: "src/app.txt",
+          href: "/pull/9/files/src/app.txt",
+          hunks: answered.references[0].hunks,
+          comparison: {
+            merge_base: "a".repeat(40),
+            head: "9".repeat(40),
+            route: "/api/plugin/github/pull-comparison?number=9",
+            image_route: "/api/plugin/github/pull-image?number=9",
+            rendered_route: "/api/plugin/github/pull-rendered-diff?number=9",
+          },
+        }),
+        cited({
+          kind: "pull_file",
+          pull: 12,
+          path: "docs/plan.md",
+          state: "not_cached",
+          href: "/pull/12/files/docs/plan.md",
+        }),
+        cited({
+          kind: "commit",
+          commit: head,
+          href: `/commit/${head}`,
+          target: { subject: "Count <i>to</i> two", committed_at: "2026-08-29T14:40:00Z" },
+        }),
+        cited({ kind: "commit", commit: "e".repeat(40), state: "commit_unavailable" }),
+        // A commit the served checkout lacks, which the route answers with no address.
+        cited({
+          kind: "commit",
+          commit: "f".repeat(40),
+          target: { subject: "Fetched with its pull request", committed_at: null },
+        }),
+      ],
+    });
+    await settle();
+    view.press("Next step");
+    await settle();
+    steps.push(`a step past its pull request: ${view.card()}; ${view.references()}`);
+    const plain = {
+      button: 0,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      preventDefault() {},
+    };
+    wide.opened.length = 0;
+    view.container.querySelector(".github-pull-guide-pull").events.get("click")(plain);
+    view.container
+      .querySelectorAll(".github-pull-guide-reference-header")
+      .map((bar) => bar.children.find((child) => child.tag === "a"))
+      .find(Boolean)
+      .events.get("click")(plain);
+    await settle();
+    steps.push(
+      `its pull request row, then its other pull request's Open full diff, open: ${wide.opened
+        .map(
+          (route) =>
+            `#${route.number} ${route.tab || "front page"}${route.file ? ` ${route.file}` : ""}`,
+        )
+        .join("; ")}`,
+    );
+    const commit = view.container
+      .querySelectorAll(".github-pull-guide-commit")
+      .find((node) => node.tag === "a");
+    assert.equal(commit.events.get("click"), undefined, "a commit opens as a plain link");
     view.handle.dispose();
   }
 
@@ -867,6 +1036,138 @@ async function run() {
     view.handle.dispose();
   }
 
+  // A note is Markdown, which the route renders inert as it renders the description: the page
+  // hands that HTML to the description's allowlist, against the pull request's page, and sets
+  // what it builds in the step's prose after the title, which stays text. A group's note on its
+  // first step is drawn the same way, in a KPress article above the card. A note whose render
+  // was refused shows as typed, holding no element (step 1 above), with the line that says why
+  // when the route says why (below).
+  {
+    const rendered = host();
+    const view = rendered.mount(page, "guided", envelope(1));
+    await settle();
+    rendered.pending()[0].answer(
+      grouped({
+        note_html: "<p>Check <b>this</b> first.</p>",
+        group_note_html: "<p>Read <em>these</em>.</p>",
+      }),
+    );
+    await settle();
+    // The overview's description is the allowlist's too; only the step's texts count here.
+    rendered.sanitized.length = 0;
+    view.press("Next step");
+    await settle();
+    const card = view.container.querySelector(".github-pull-guide-card");
+    const prose = card.querySelector(".kpress-prose");
+    const [heading, ...blocks] = prose.children;
+    assert.equal(heading.tag, "h2");
+    assert.ok(
+      heading.children.every((child) => typeof child === "string"),
+      "a title holds text and no element",
+    );
+    assert.equal(card.querySelector(".github-pull-guide-commentary"), null);
+    const note = view.container.querySelector(".github-pull-guide-group-note");
+    const article = note.querySelector(".kpress");
+    assert.ok(
+      note.tag === "div" &&
+        note.classes.has("chrome-prose") &&
+        article?.tag === "article" &&
+        article.querySelector(".kpress-prose") !== null,
+      "a group's rendered note is set in a KPress article",
+    );
+    steps.push(
+      `a rendered note: title ${heading.textContent}; blocks ${blocks
+        .map((block) => `${block.tag}.${[...block.classes].join(".")}: ${block.textContent}`)
+        .join(
+          ", ",
+        )}; group's note ${note.querySelector(".inert-rebuilt")?.textContent}; allowlist asked ${rendered.sanitized
+        .map(({ html, base }) => `${html} at ${base}`)
+        .join(", ")}`,
+    );
+    view.handle.dispose();
+  }
+
+  // A note whose render was refused shows as typed, with the line a description's refusal
+  // says under it, in a warning: for a note too slow to render, that it took too long; for a
+  // group's note whose renderer was busy, that a reload may render it. Neither names the code.
+  // An answer with a busy renderer's refusal is not kept, so the step the overview read is
+  // read again when the reader moves to it.
+  {
+    const refused = host();
+    const view = refused.mount(page, "guided", envelope(1));
+    await settle();
+    const answer = grouped({
+      note_refusal: "render_deadline",
+      group_note_refusal: "renderer_busy",
+    });
+    refused.pending()[0].answer(answer);
+    await settle();
+    view.press("Next step");
+    await settle();
+    refused.pending()[0].answer(answer);
+    await settle();
+    const card = view.container.querySelector(".github-pull-guide-card");
+    const commentary = card.querySelector(".github-pull-guide-commentary");
+    assert.ok(
+      commentary.children.every((child) => typeof child === "string"),
+      "a refused note holds text and no element",
+    );
+    const detail = view.container.querySelector(".github-pull-guide-step");
+    const lines = detail.querySelectorAll(".github-pull-guide-note-refused");
+    for (const line of lines) {
+      assert.equal(line.getAttribute("role"), "status");
+      assert.ok(!/render_|renderer_/.test(line.textContent), "the line names no code");
+    }
+    const typed = detail.querySelector(".github-pull-guide-group-note-typed");
+    assert.equal(
+      detail.children.indexOf(typed) + 1,
+      detail.children.indexOf(lines[0]),
+      "the group's line follows its note",
+    );
+    assert.ok(
+      card.querySelector(".github-pull-text").children.includes(lines[1]),
+      "the step's line is in the card's text, after the note",
+    );
+    steps.push(
+      `refused notes: asked ${asked(refused.reads)}; group's note ${typed.textContent} | ${said(lines[0])}; step's note ${commentary.textContent} | ${said(lines[1])}; allowlist asked ${refused.sanitized.filter(({ html }) => html !== "rendered").length}`,
+    );
+    view.handle.dispose();
+  }
+
+  // Without the allowlist, which failed to load, a note the route rendered shows as typed, a
+  // step's and its group's alike, as a description's text shows plain; nothing is said beside
+  // it, since the render came, and the console says why.
+  {
+    const warned = [];
+    const warn = console.warn;
+    console.warn = (...args) => warned.push(String(args[0]));
+    try {
+      const bare = host({ allowlist: false });
+      const view = bare.mount(page, "guided", envelope(1));
+      await settle();
+      bare.pending()[0].answer(
+        grouped({
+          note_html: "<p>Check <b>this</b> first.</p>",
+          group_note_html: "<p>Read <em>these</em>.</p>",
+        }),
+      );
+      await settle();
+      view.press("Next step");
+      await settle();
+      const detail = view.container.querySelector(".github-pull-guide-step");
+      const commentary = detail.querySelector(".github-pull-guide-commentary");
+      const typed = detail.querySelector(".github-pull-guide-group-note-typed");
+      assert.equal(detail.querySelector(".github-pull-guide-note-refused"), null);
+      assert.equal(detail.querySelector(".inert-rebuilt"), null);
+      steps.push(
+        `no allowlist: step's note ${commentary?.textContent ?? "not typed"}; group's note ${typed?.textContent ?? "not typed"}; console ${warned.filter((line) => line.includes("guide's notes")).join(", ")}`,
+      );
+      view.handle.dispose();
+    } finally {
+      console.warn = warn;
+    }
+  }
+
   // A core preview resolves the front page from its description, as the record will: a
   // guided pull request opens on Guided Review, which waits for the record, and the record's
   // arrival reads the guide without changing tab (B3 of review B on #677).
@@ -915,6 +1216,223 @@ async function run() {
     assert.equal(link.getAttribute("href"), "/pull/7");
     steps.push(`from Conversation, the description's card links ${link.getAttribute("href")}`);
     there.handle.dispose();
+  }
+
+  // A description that carries a stack's guide: the server renders it without the block,
+  // and Conversation's card says it has a stack guide, read on its stack's page, never that
+  // it is the stack's, since a member above may carry the one the stack shows. It links
+  // each stack the pull request is a member of once the stacks are known, and none while
+  // it is in no stack this copy knows (A7 of review A on #838).
+  {
+    const optionalStacks = require("../fixtures/github-stacks-responses.json");
+    const carrier = host();
+    const routed = globalThis.fetch;
+    globalThis.fetch = (route, init) =>
+      route === "/api/plugin/github/stacks"
+        ? Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: () => optionalStacks.current.etag },
+            json: async () => optionalStacks.current.body,
+          })
+        : routed(route, init);
+    const described = envelope(1);
+    described.record.pull.body = "Counts to two.\n\n```stack-review\nsoftschema: {}\n```\n";
+    const view = carrier.mount(page, "conversation", described);
+    await settle();
+    const card = view.container
+      .querySelectorAll(".notice")
+      .find((node) => node.textContent.includes("stack guide"));
+    const links = [...card.descendants()]
+      .filter((node) => node.tag === "a")
+      .map((node) => `${node.textContent} (${node.getAttribute("href")})`);
+    assert.deepEqual(links, ["Open Stack #286 (/stack/286)"]);
+    assert.ok(
+      !view.container.textContent.includes("Open Guided Review"),
+      "a stack's guide is not this pull request's",
+    );
+    steps.push(
+      `a description with a stack's guide: "${card.textContent}" links ${links.join(", ")}`,
+    );
+    view.handle.dispose();
+    const alone = host();
+    // The stack column, emptied, checks where focus was, as the page does in a browser.
+    globalThis.HTMLElement ??= Element;
+    const unstacked = globalThis.fetch;
+    globalThis.fetch = (route, init) =>
+      route === "/api/plugin/github/stacks"
+        ? Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: () => optionalStacks.empty.etag },
+            json: async () => optionalStacks.empty.body,
+          })
+        : unstacked(route, init);
+    const lone = alone.mount(page, "conversation", described);
+    await settle();
+    const loneCard = lone.container
+      .querySelectorAll(".notice")
+      .find((node) => node.textContent.includes("stack guide"));
+    assert.equal(
+      [...loneCard.descendants()].filter((node) => node.tag === "a").length,
+      0,
+      "a pull request in no stack this copy knows links none",
+    );
+    steps.push(`one in no stack this copy knows: "${loneCard.textContent}"`);
+    lone.handle.dispose();
+  }
+
+  // A stack's guide, as the stack's page mounts it: no introduction and no overview, so it
+  // opens on its first step and goes no further back; it asks the route by `stack=`, and an
+  // out-of-date guide and a file no longer changed say so of the stack. A step refused for
+  // the stack's own reason says it in the step's place, under the steps it keeps; a refusal
+  // of the whole guide names no place, since a stack's guide has no overview (A4 of review A
+  // and B2 of review B on #838).
+  {
+    host();
+    const routes = [];
+    /** What the route answers step *at* with, when it is not the stale step of the guide. */
+    let refuse = (_at) => null;
+    globalThis.fetch = async (route) => {
+      routes.push(route);
+      const at = Number(new URL(route, "http://localhost").searchParams.get("step"));
+      const changed = ["src/app.txt", "gone.txt"];
+      const refused = refuse(at);
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () =>
+          refused ?? {
+            ...step(1, at),
+            stack: 70,
+            carrier: 10,
+            state: "stale",
+            stale: {
+              guide: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+              current: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+              github_newer: false,
+              history: "rewritten",
+              commit_count: 1,
+              commits: [],
+              changed_paths: changed,
+              changed_steps: [1],
+            },
+          },
+      };
+    };
+    const { mountGuidedReview } = await import(
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-review.js")).href
+    );
+    const container = new Element("section");
+    const view = mountGuidedReview(
+      container,
+      null,
+      { kind: "stack", number: 70 },
+      {
+        open() {},
+        openPull() {},
+        age: () => new Element("span"),
+        shortCommit: (sha) => sha.slice(0, 7),
+        loadStyles: async () => {},
+        loadDrawPatch: async () => () => ({ dispose() {} }),
+        loadDrawDocument: async () => null,
+        loadDrawProse: async () => null,
+        refusalNote: () => null,
+      },
+    );
+    view.show(revisionOf(1), false);
+    await settle();
+    const position = container.querySelector(".github-pull-guide-position").textContent;
+    const rows = container
+      .querySelectorAll(".github-pull-guide-steps-item")
+      .map((item) => item.textContent.trim());
+    const previous = [...container.descendants()].find(
+      (node) => node.tag === "button" && node.getAttribute("aria-label") === "Previous step",
+    );
+    const warned = container.querySelector(".github-pull-guide-stale").textContent;
+    const gone = container
+      .querySelectorAll(".github-pull-guide-reference")
+      .map((section) =>
+        [...section.descendants()]
+          .filter((node) => node.tag === "p")
+          .map((note) => note.textContent)
+          .join(" "),
+      )
+      .filter(Boolean);
+    assert.equal(position, "Step 1 of 2");
+    assert.deepEqual(rows, ["1Step 1changed", "2Step 2"], "a stack's guide lists no overview");
+    assert.equal(previous.disabled, true, "nothing comes before a stack guide's first step");
+    view.move(-1);
+    view.go(0);
+    await settle();
+    assert.deepEqual(
+      routes.map((route) => route.split("?")[1]),
+      ["stack=70&step=1"],
+    );
+    steps.push(
+      `a stack's guide opens on ${position}, lists ${rows.length} steps and no overview, asks ${routes.map((route) => route.split("?")[1]).join(", ")}, and goes no further back; it says "${warned}" and of a file "${gone.join(" | ")}"`,
+    );
+    const said = () => container.querySelector(".github-pull-quiet")?.textContent ?? "";
+    const listed = () => container.querySelectorAll(".github-pull-guide-steps-item").length;
+    // Step 2 read while a member is fetched: the stack's words, in the step's place.
+    refuse = () => ({ state: "not_cached", record_revision: null, stack: 70, carrier: null });
+    view.move(1);
+    await settle();
+    const fetching = said();
+    assert.equal(fetching, "This stack's pull requests are still being fetched.");
+    assert.equal(listed(), 2, "a refused step keeps the guide's steps");
+    assert.equal(container.querySelector(".github-pull-guide-position").textContent, "Step 2 of 2");
+    // The stack moved past the comparison drawn, and its carrier with it: a step that names
+    // the guide's new revision is refused in words that say how to read it.
+    view.behind(revisionOf(1));
+    refuse = () => ({ ...step(9, 2), stack: 70, carrier: 10 });
+    view.move(-1);
+    view.move(1);
+    await settle();
+    const movedPast = said();
+    assert.equal(
+      movedPast,
+      "This stack has moved since its comparison was drawn. Show the new comparison to read its guide.",
+    );
+    assert.equal(listed(), 2);
+    view.dispose();
+
+    // A guide refused whole, as a block that cannot be read is, names no place.
+    refuse = () => ({
+      state: "invalid",
+      record_revision: revisionOf(1),
+      stack: 70,
+      carrier: 10,
+      message: "The stack-review block cannot be read.",
+    });
+    const whole = new Element("section");
+    const refusedView = mountGuidedReview(
+      whole,
+      null,
+      { kind: "stack", number: 70 },
+      {
+        open() {},
+        openPull() {},
+        age: () => new Element("span"),
+        shortCommit: (sha) => sha.slice(0, 7),
+        loadStyles: async () => {},
+        loadDrawPatch: async () => () => ({ dispose() {} }),
+        loadDrawDocument: async () => null,
+        loadDrawProse: async () => null,
+        refusalNote: () => null,
+      },
+    );
+    refusedView.show(revisionOf(1), false);
+    await settle();
+    const place = whole.querySelector(".github-pull-guide-position").textContent;
+    const refusal = whole.querySelector(".github-pull-quiet")?.textContent ?? "";
+    assert.equal(place, "", "a stack's guide refused whole names no place");
+    assert.equal(refusal, "The stack-review block cannot be read.");
+    steps.push(
+      `a stack step refused while a member is fetched says "${fetching}", one whose carrier moved past the comparison drawn says "${movedPast}", and a guide refused whole names no place and says "${refusal}"`,
+    );
+    refusedView.dispose();
   }
 
   return steps;

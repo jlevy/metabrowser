@@ -20,6 +20,9 @@ Older module names, routes, and core-placement discussion below record the origi
 design. Working-tree and index comparisons and their staleness are the
 [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) (`mb-097x`).
 Broader presets, `/compare/`, and patch anchoring remain outside this delivered subset.
+A stack’s combined comparison, two commits restricted to the files the stack’s layers
+change, is planned in
+[Whole-Stack Review](plan-2026-11-24-stack-review.md#the-combined-comparison).
 
 ## Overview
 

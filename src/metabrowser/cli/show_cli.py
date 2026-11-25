@@ -40,15 +40,19 @@ from metabrowser.normalize import NormalizeContext, normalize_payload
 from metabrowser.view_routes import (
     COMMIT_ROUTE_PREFIX,
     PULL_ROUTE_PREFIX,
+    STACK_ROUTE_PREFIX,
     VIEW_ROUTE_PREFIX,
     PullRoute,
+    StackRoute,
     decode_safe_commit_route,
     decode_safe_pull_route,
+    decode_safe_stack_route,
     decode_safe_view_path,
     format_commit_href,
     format_inventory_view_href,
     format_pull_href,
     format_pulls_href,
+    format_stack_href,
     parse_pulls_selection,
 )
 
@@ -174,6 +178,74 @@ def _describe_pull(payload: dict[str, Any], tab: str) -> str:
     if tab == "files":
         parts.append(f"comparison_route={payload.get('comparison_route')}")
     return "pull envelope; " + " ".join(parts)
+
+
+def _describe_stack(payload: dict[str, Any], tab: str, file: str) -> str:
+    """Summarize the stack envelope the page renders: its state, members, and comparison."""
+
+    parts = [f"state={payload.get('state')}"]
+    if payload.get("reason") is not None:
+        parts.append(f"reason={payload['reason']}")
+    members = payload.get("members")
+    if isinstance(members, list) and members:
+        parts.append(
+            "members="
+            + ",".join(
+                f"{member.get('number')}:{member.get('state')}"
+                for member in members
+                if isinstance(member, dict)
+            )
+        )
+    for name in ("pending", "lacking"):
+        named = payload.get(name)
+        if isinstance(named, list) and named:
+            parts.append(f"{name}=" + ",".join(str(number) for number in named))
+    totals = payload.get("totals")
+    if isinstance(totals, dict):
+        parts.append(
+            f"files={totals.get('files')} additions={totals.get('additions')}"
+            f" deletions={totals.get('deletions')}"
+        )
+    files = payload.get("files")
+    if isinstance(files, list) and isinstance(totals, dict):
+        shared = sum(
+            1 for entry in files if isinstance(entry, dict) and len(entry.get("layers") or []) > 1
+        )
+        parts.append(f"in_two_or_more_layers={shared}")
+        if file:
+            entry = next(
+                (entry for entry in files if isinstance(entry, dict) and entry.get("path") == file),
+                None,
+            )
+            layers = entry.get("layers") if isinstance(entry, dict) else None
+            parts.append(
+                f"file={file} "
+                + (
+                    "layers="
+                    + ",".join(
+                        f"{layer.get('place')}/{len(members) if isinstance(members, list) else '?'}"
+                        f":#{layer.get('number')}"
+                        for layer in layers
+                        if isinstance(layer, dict)
+                    )
+                    if isinstance(layers, list)
+                    else "not_in_stack"
+                )
+            )
+    guide = payload.get("guide")
+    carrier = guide.get("number") if isinstance(guide, dict) else None
+    if carrier is not None:
+        parts.append(f"guide=#{carrier}")
+    # The tab the page shows (stack-page.js, `shownTab`): its own, or Guided Review for a
+    # stack whose member carries its guide and Files for one with none.
+    shown = (
+        tab if tab in ("files", "docs", "changes") else "guided" if carrier is not None else "files"
+    )
+    parts.append(f"tab={shown}")
+    comparison = payload.get("comparison")
+    if isinstance(comparison, dict):
+        parts.append(f"comparison_route={comparison.get('route')}")
+    return "stack envelope; " + " ".join(parts)
 
 
 async def _pull_files_of(app: Any, number: int, index_timeout_s: float) -> dict[str, Any] | None:
@@ -428,6 +500,7 @@ async def _ashow_prepared(
 
     commit = None
     pull: PullRoute | None = None
+    stack: StackRoute | None = None
     pull_list = parse_pulls_selection(path)
     native_selection: str | None = None
     git_wire: str | None = None
@@ -439,6 +512,10 @@ async def _ashow_prepared(
     elif path.startswith(PULL_ROUTE_PREFIX):
         pull = decode_safe_pull_route(_encoded_route(path, display_path))
         if pull is None:
+            raise CLIError(f"{display_path} is not a route this grammar accepts")
+    elif path.startswith(STACK_ROUTE_PREFIX):
+        stack = decode_safe_stack_route(_encoded_route(path, display_path))
+        if stack is None:
             raise CLIError(f"{display_path} is not a route this grammar accepts")
 
     if commit is not None:
@@ -452,6 +529,11 @@ async def _ashow_prepared(
         # The page renders the pull request's cached record, which the GitHub plugin's
         # pull route answers for any number; Files changed is the comparison it names.
         route, params = "/api/plugin/github/pull", {"number": str(pull.number)}
+        needs_index = False
+    elif stack is not None:
+        # The page renders the stack route's answer: its members, its comparison, and
+        # each file's layers. Changes and Docs are that comparison's documents.
+        route, params = "/api/plugin/github/stack", {"number": str(stack.number)}
         needs_index = False
     elif pull_list is not False:
         # The list's address: what the tab shows, from the cache alone, without its rows.
@@ -547,6 +629,12 @@ async def _ashow_prepared(
             model += "; " + _describe_pull_file(
                 await _pull_files_of(server.app, number, index_timeout_s), file
             )
+    elif stack is not None:
+        number, tab, file = stack
+        shown_route = format_stack_href(number, tab, file)
+        kind = "pull-stack"
+        views = server._views_for_kind(kind)
+        model = _describe_stack(payload, tab, file)
     elif pull_list is not False:
         shown_route = format_pulls_href(pull_list)
         kind = "pull-request-list"

@@ -145,6 +145,26 @@ async function main() {
   assert.equal(states.at(-1), "step 2: step 2 of 3");
   assert.deepEqual(calls.slice(-4), [1, 2, 2, 2]);
 
+  // An answer whose note, or its group's, a busy renderer or one that could not start
+  // refused is not kept, so its step is read again when the reader returns to it and the
+  // note renders once the renderer can; a note refused for its own sake, past the deadline,
+  // keeps its answer, since the server would refuse it again at once.
+  guide.show("seventh", false);
+  await respond(answer("seventh", 2, { note_refusal: "renderer_busy" }));
+  guide.go(1);
+  await respond(answer("seventh", 1));
+  guide.go(2);
+  assert.equal(states.at(-1), "step 2: loading");
+  await respond(answer("seventh", 2, { group_note_refusal: "renderer_unavailable" }));
+  guide.go(1);
+  guide.go(2);
+  assert.equal(states.at(-1), "step 2: loading");
+  await respond(answer("seventh", 2, { note_refusal: "render_deadline" }));
+  guide.go(1);
+  guide.go(2);
+  assert.equal(states.at(-1), "step 2: step 2 of 3");
+  assert.deepEqual(calls.slice(-4), [2, 1, 2, 2]);
+
   // Disposal drops the read on its way, and its late answer paints nothing.
   guide.show("fifth", false);
   const count = states.length;
@@ -152,7 +172,119 @@ async function main() {
   assert.equal(pending[0].signal.aborted, true);
   await respond(answer("fifth", 1));
   assert.equal(states.length, count);
-  console.log(JSON.stringify({ calls, states }, null, 2));
+
+  // A stack's guide has no overview: it opens on step 1, which its first answer shows, and
+  // no move goes before it.
+  const stackCalls = [];
+  const stackStates = [];
+  const stack = createGuideNavigation({
+    first: 1,
+    read(step, signal) {
+      stackCalls.push(step);
+      return new Promise((resolve, reject) => pending.push({ signal, resolve, reject }));
+    },
+    render(answer, at) {
+      stackStates.push(
+        "step" in answer
+          ? `step ${at}: step ${answer.step} of ${answer.step_count}`
+          : `step ${at}: ${answer.state}`,
+      );
+    },
+  });
+  stack.show("stacked", false);
+  await respond(answer("stacked", 1));
+  assert.equal(stackStates.at(-1), "step 1: step 1 of 3");
+  stack.move(-1);
+  stack.go(0);
+  assert.deepEqual(stackCalls, [1]);
+  stack.move(1);
+  await respond(answer("stacked", 2));
+  stack.move(-1);
+  stack.move(-1);
+  assert.equal(stackStates.at(-1), "step 1: step 1 of 3");
+  assert.deepEqual(stackCalls, [1, 2]);
+  // A step read while the stack is pending, or cannot be paired, is refused before the guide
+  // is found, so its answer names no revision: that is the step's refusal, never a new guide
+  // (A1 of review A on #838). The guide keeps its steps, a step in hand is not read again,
+  // and the refused step is read again when the reader returns to it.
+  stack.go(3);
+  await respond({ state: "not_cached", record_revision: null, stack: 70, carrier: null });
+  assert.equal(stackStates.at(-1), "step 3: not_cached");
+  stack.move(-1);
+  assert.equal(stackStates.at(-1), "step 2: step 2 of 3");
+  stack.move(1);
+  await respond({ state: "stack_unavailable", record_revision: null, reason: "not_linear" });
+  assert.equal(stackStates.at(-1), "step 3: stack_unavailable");
+  stack.go(1);
+  stack.go(3);
+  await respond(answer("stacked", 3));
+  assert.equal(stackStates.at(-1), "step 3: step 3 of 3");
+  assert.deepEqual(stackCalls, [1, 2, 3, 3, 3]);
+  stack.dispose();
+
+  // The stack moves past the comparison its page draws, and the member that carries the
+  // guide moves with it, whose author pins the guide again (B1 of review B on #838). Until
+  // the reader takes the new comparison, an answer that names another revision is that
+  // step's `stack_moved`, never a new guide, as is the route's own `stack_moved`: the steps
+  // stay, and a step in hand is not read again. Shown the new revision then, the guide reads
+  // nothing and says the same; once the comparison drawn is the stack's own, it is read.
+  const movedCalls = [];
+  const movedStates = [];
+  const moved = createGuideNavigation({
+    first: 1,
+    read(step, signal) {
+      movedCalls.push(step);
+      return new Promise((resolve, reject) => pending.push({ signal, resolve, reject }));
+    },
+    render(answer, at, steps) {
+      movedStates.push(
+        "step" in answer
+          ? `step ${at}: step ${answer.step} of ${answer.step_count}`
+          : `step ${at}: ${answer.state}, ${steps} steps`,
+      );
+    },
+  });
+  moved.show("drawn", false);
+  await respond(answer("drawn", 1));
+  moved.behind("drawn");
+  moved.move(1);
+  await respond(answer("pinned again", 2));
+  assert.equal(movedStates.at(-1), "step 2: stack_moved, 3 steps");
+  moved.move(-1);
+  assert.equal(movedStates.at(-1), "step 1: step 1 of 3");
+  moved.go(3);
+  await respond({ state: "stack_moved", record_revision: "pinned again", stack: 70, carrier: 10 });
+  assert.equal(movedStates.at(-1), "step 3: stack_moved, 3 steps");
+  // A move of another member leaves the carrier's revision: its steps read as before.
+  moved.go(2);
+  await respond(answer("drawn", 2));
+  assert.equal(movedStates.at(-1), "step 2: step 2 of 3");
+  const asked = movedCalls.length;
+  moved.show("pinned again", false);
+  assert.equal(
+    movedCalls.length,
+    asked,
+    "a guide shown under a comparison it was not read at reads nothing",
+  );
+  assert.equal(movedStates.at(-1), "step 2: stack_moved, 0 steps");
+  moved.behind(null);
+  moved.show("pinned again", false);
+  await respond(answer("pinned again", 2));
+  assert.equal(movedStates.at(-1), "step 2: step 2 of 3");
+  assert.deepEqual(movedCalls, [1, 2, 3, 2, 2]);
+  moved.dispose();
+  console.log(
+    JSON.stringify(
+      {
+        calls,
+        states,
+        stack: { calls: stackCalls, states: stackStates },
+        moved: { calls: movedCalls, states: movedStates },
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 main().catch((error) => {

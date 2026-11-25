@@ -60,7 +60,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Generator, Mapping
+from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1448,12 +1448,52 @@ _WHOLE_STEP = """\
         - {path: src/app.txt}
         - {path: docs/new.md}
 """
+# The count's step with Markdown in its note, which renders as the description does: two
+# lines that join, a list with no blank line before it, a relative link, raw HTML, a
+# script, an image whose source is not a URL, and an image over https. Its title is markup
+# too, which stays text.
+_MARKDOWN_STEP = """\
+    - title: Start with the <b>count</b>
+      note: |-
+        Check that the **original** value
+        is preserved:
+        - `one` stays,
+        - and [the guide](docs/new.md) says so.
+
+        Raw <b>bold</b><script>alert(1)</script> <img src=x onerror=alert(1)> ![chart](https://example.com/chart.png)
+      references:
+        - {path: src/app.txt, side: new, start_line: 1, end_line: 2}
+"""
+
+# The count's step with a note KPress takes seconds to render, 100 unpaired `[` before
+# 60 KiB of `%` (SLOW in tests/test_inert_render_deadline.py), which a deadline shortened
+# through METABROWSER_INERT_RENDER_DEADLINE_MS refuses on any machine.
+_SLOW_NOTE_STEP = f"""\
+    - title: Start with the count
+      note: |-
+        {"[" * 100 + "%" * (60 * 1024)}
+      references:
+        - {{path: src/app.txt, side: new, start_line: 1, end_line: 2}}
+"""
+
+
+# References the format refuses, each in a step of its own: a range in another pull
+# request's file, a commit beside a path, a commit beside a pull request, and a commit
+# named by a short SHA.
+_REFUSED_REFERENCES: Final[dict[str, str]] = {
+    "pull-file-range": "{pull: 10, path: docs/draft.md, side: new, start_line: 1, end_line: 1}",
+    "commit-and-path": '{commit: "' + "e" * 40 + '", path: src/app.txt}',
+    "commit-and-pull": '{commit: "' + "e" * 40 + '", pull: 8}',
+    "short-commit": '{commit: "85fcb2f"}',
+}
 
 
 # The guides `--describe` writes into a cached description: the stand-in guide's steps each
 # in a group, the first with a note; groups mixed with a step; a longer guide, two groups
-# of two steps each, which tells numbering through the groups from numbering by entry; and
-# two blocks the page refuses, an empty group and a group inside a group.
+# of two steps each, which tells numbering through the groups from numbering by entry;
+# notes in Markdown, a group's of two steps and the first step's; a note too slow to
+# render; and blocks the page refuses: an empty group, a group inside a group, and each
+# reference of `_REFUSED_REFERENCES` after the count's step.
 GUIDE_VARIANTS: Final[dict[str, str]] = {
     "grouped": (
         "    - title: The count\n"
@@ -1471,6 +1511,12 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "      items:\n" + _in_group(_COUNT_STEP + _OLD_COUNT_STEP) + "    - title: The docs\n"
         "      items:\n" + _in_group(_DOCS_STEP + _WHOLE_STEP)
     ),
+    "markdown": (
+        "    - title: The count\n"
+        "      note: Read the `count` before *its* explanation.\n"
+        "      items:\n" + _in_group(_MARKDOWN_STEP + _OLD_COUNT_STEP) + _DOCS_STEP
+    ),
+    "slow-note": _SLOW_NOTE_STEP + _DOCS_STEP,
     "empty-group": "    - title: The count\n      items: []\n" + _DOCS_STEP,
     "nested-group": (
         "    - title: The count\n"
@@ -1478,10 +1524,15 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "        - title: The value\n"
         "          items:\n" + _in_group(_in_group(_COUNT_STEP))
     ),
+    **{
+        name: _COUNT_STEP
+        + f"    - title: Cite it\n      note: Check it.\n      references:\n        - {reference}\n"
+        for name, reference in _REFUSED_REFERENCES.items()
+    },
 }
 
 
-def _past_max_items() -> str:
+def _past_max_items(_head: str) -> str:
     """Two groups whose steps pass MAX_ITEMS together, though each list is within its own
     bound, so only the total refuses the guide."""
     from metabrowser.builtin_plugins.github.guided_review import MAX_ITEMS
@@ -1490,14 +1541,65 @@ def _past_max_items() -> str:
     return "".join(f"    - title: Part {part}\n      items:\n{group}" for part in (1, 2))
 
 
-# The guides `--describe` builds from the format's bounds as it writes one, so they follow
-# the constants: a guide past MAX_ITEMS.
-BUILT_VARIANTS: Final[dict[str, Callable[[], str]]] = {"past-max-items": _past_max_items}
+# A step that cites past this pull request: a layer of its stack, a document another pull
+# request changes and a patch a third does, a pull request this copy knows from its list
+# alone and one it has not read, the guide's own head as a commit, and a commit the store
+# lacks.
+_MISSING_COMMIT: Final = "e" * 40
+
+
+def _kinds_step(head: str) -> str:
+    return f"""\
+    - title: Read it beside its neighbors
+      note: Check the layer below and the draft above it.
+      references:
+        - {{pull: 8}}
+        - {{pull: 10, path: docs/draft.md}}
+        - {{pull: 9, path: src/app.txt}}
+        - {{pull: 50}}
+        - {{pull: 2000}}
+        - {{commit: "{head}"}}
+        - {{commit: "{_MISSING_COMMIT}"}}
+"""
+
+
+def _kinds(head: str) -> str:
+    """The count's step, then a step of every other kind of reference (:func:`_kinds_step`)."""
+    return _COUNT_STEP + _kinds_step(head)
+
+
+# The guides `--describe` builds as it writes one, from the format's bounds, so they follow
+# the constants, or from the guide's head: a guide past MAX_ITEMS, and one of every kind of
+# reference.
+BUILT_VARIANTS: Final[dict[str, Callable[[str], str]]] = {
+    "past-max-items": _past_max_items,
+    "kinds": _kinds,
+}
 
 
 def grouped_guide_body(origin: Origin) -> str:
     """The stand-in guide of :func:`guide_body` with each of its steps in a group."""
     return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["grouped"])
+
+
+def kinds_guide_body(origin: Origin) -> str:
+    """The stand-in guide's count step, then a step that cites every other kind of
+    reference (``kinds`` of :data:`BUILT_VARIANTS`)."""
+    return _guide_body(origin["base"], origin["fork_head"], _kinds(origin["fork_head"]))
+
+
+def commits_guide_body(origin: Origin, commits: Sequence[str]) -> str:
+    """The stand-in guide's count step, then a step that cites each of *commits*."""
+    cited = "".join(f'        - {{commit: "{commit}"}}\n' for commit in commits)
+    step = (
+        "    - title: Read the commits\n      note: Check each commit.\n      references:\n" + cited
+    )
+    return _guide_body(origin["base"], origin["fork_head"], _COUNT_STEP + step)
+
+
+def markdown_guide_body(origin: Origin) -> str:
+    """The stand-in guide with Markdown in its notes (``markdown`` of :data:`GUIDE_VARIANTS`)."""
+    return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["markdown"])
 
 
 # The files a documents build adds to pull request 7's head: a YAML file, which a step that
@@ -1560,7 +1662,9 @@ def describe(directory: Path, number: int, variant: str) -> None:
         r'^    merge_base: "([0-9a-f]{40})"\n    head: "([0-9a-f]{40})"$', record.pull.body, re.M
     )
     assert pins is not None, f"pull request {number} has no guide to rewrite"
-    items = GUIDE_VARIANTS[variant] if variant in GUIDE_VARIANTS else BUILT_VARIANTS[variant]()
+    items = (
+        GUIDE_VARIANTS[variant] if variant in GUIDE_VARIANTS else BUILT_VARIANTS[variant](pins[2])
+    )
     body = _guide_body(pins[1], pins[2], items)
     pull = record.pull.model_copy(update={"body": body})
     write_pull_record(home, _source_slug(), record.model_copy(update={"pull": pull}))

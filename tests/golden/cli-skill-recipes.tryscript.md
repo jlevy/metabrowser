@@ -226,10 +226,10 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```
 
 ```console
-$ jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' tmp/step.json
+$ jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
 ready
 2
-src/app.txt ready
+file src/app.txt ready
 ? 0
 ```
 
@@ -245,13 +245,13 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```
 
 ```console
-$ jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' tmp/step.json
+$ jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
 ready
 2
-docs/new.md ready
-src/app.txt ready
-missing.txt path_not_changed
-src/app.txt range_unavailable
+file docs/new.md ready
+file src/app.txt ready
+file missing.txt path_not_changed
+file src/app.txt range_unavailable
 ? 0
 ```
 
@@ -266,7 +266,7 @@ pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```
 
 ```console
-$ jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' tmp/step.json
+$ jq -r '.state, (.message // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
 invalid
 Use one guided-review block in the pull request description.
 null

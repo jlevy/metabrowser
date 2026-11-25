@@ -52,6 +52,7 @@ import {
   setupHelp,
   unavailableText,
 } from "./copy.js";
+import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
 import {
   createStackIndex,
   memberRoute,
@@ -277,6 +278,9 @@ const PULL_TABS = Object.freeze([
 // guide exists, and counts only a top-level fence, so a description that shows the format inside
 // another fence gets a tab that says there is no guide (arch-github-pull-requests.md, "Guided Review").
 const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-review[ \t]*$/m;
+// The same hint for a native stack's guide, a `stack-review` block, which the stack's page
+// reads (`stack_guided_review` in guided_review.py) and Conversation names in its place.
+const STACK_GUIDE_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*stack-review[ \t]*$/m;
 
 /**
  * The tab a route shows, by its id in `PULL_TABS`. `/pull/<n>` is the pull request's front
@@ -335,38 +339,6 @@ export function routeForTab(id, description) {
 export function diffTab(tab) {
   return tab === "files" || tab === "docs";
 }
-
-/** The File type group the Docs tab shows, in the diff's `group=` vocabulary. */
-const DOCS_GROUP = "type:docs";
-
-/** The preference the Docs tab remembers its Diff | Current choice as, apart from the
- * `diff.show` that Changes, a commit's page and a patch share, so a choice on one tab does
- * not move the other. */
-const DOCS_SHOW_PREFERENCE = "github.docs.show";
-
-/**
- * How Docs draws a document, which a Markdown file a guided step cites whole shares
- * (`loadDrawDocument`), so it opens as the Docs tab opens it: every fold open, Unified with
- * no layout choice, since a rendered document has no layout and its Source reads as its
- * Rendered does in one column, and on the new version (Current), remembered apart from
- * Changes' `diff.show`. An option Docs gives its documents belongs here, so both take it.
- */
-const DOCS_DRAWING = Object.freeze({
-  unfold: true,
-  layout: /** @type {const} */ ("unified"),
-  show: /** @type {const} */ ("current"),
-  showPreference: DOCS_SHOW_PREFERENCE,
-});
-
-/**
- * How Changes draws a file, which a YAML or JSON file a guided step cites whole shares
- * (`loadDrawDocument`): the diff view's own defaults, so it opens as Changes opens it, on
- * Diff as `diff.show` remembers it, its long runs folded, in the reader's layout. Docs lists
- * neither format: they are the `data` File type, and Docs the `docs` one
- * (`recommended-file-types.toml`). An option Changes gives its files belongs here, so both
- * take it.
- */
-const CHANGES_DRAWING = Object.freeze({});
 
 /**
  * Whether a diff document lists no changed file, and its list was not cut short at its
@@ -1898,7 +1870,19 @@ export function refusedTextNote(status, body) {
   if (status === 200 || body === null || typeof body.code !== "string") {
     return null;
   }
-  switch (body.code) {
+  return textRefusalNote(body.code);
+}
+
+/**
+ * What a text's notice says for the refusal *code* the Markdown route answers, or null for
+ * a code with nothing a reader needs (`refusedTextNote`). Guided Review says the same under
+ * a note whose render was refused (`note_refusal` in guided_review.py).
+ *
+ * @param {string} code
+ * @returns {string | null}
+ */
+export function textRefusalNote(code) {
+  switch (code) {
     case "render_deadline":
       return "This text took too long to render, so it is shown as written.";
     case "renderer_exited":
@@ -4351,9 +4335,12 @@ export function stackMemberState(source, target, number, current) {
  * current member, the row marked, as a filter's menu opens on its checked row
  * (docs/design-system.md, "Keys in a Menu"); Escape closes it and gives focus back to the
  * trigger.
+ *
+ * With `wholeStack`, the menu's first row, **Whole stack**, opens the stack's own page
+ * (`/stack/<n>`, stack-page.js), before the members.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, menus?: MetabrowserMenus}} deps
+ * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, menus?: MetabrowserMenus}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -4423,7 +4410,29 @@ export function createStackMenu(initial, number, deps) {
     stackLabel(stack.number),
   ]);
   const group = h("div", { class: "menu-group" });
+  /** The Whole stack row, made once, for the stack the menu was made for. It is no member,
+   * so it takes none of a member's classes, and the keys move over it as over a member.
+   * @type {HTMLElement | null} */
+  let whole = null;
   let populated = false;
+
+  // The Whole stack row's state slot is empty, as an unknown member's is, so its words
+  // start where every member's place does.
+  function wholeRow() {
+    if (whole === null && deps.wholeStack) {
+      whole = deps.wholeStack(stack.number);
+      whole.setAttribute("class", "menu-item github-pull-stack-whole");
+      whole.setAttribute("role", "menuitem");
+      whole.setAttribute("tabindex", "-1");
+      whole.replaceChildren(
+        h("span", { class: "github-pull-state-icon", "aria-hidden": "true" }),
+        h("span", { class: "github-pull-stack-member-copy" }, [
+          h("span", { class: "github-pull-stack-member-title" }, ["Whole stack"]),
+        ]),
+      );
+    }
+    return whole;
+  }
 
   /** Each drawn member's state icon, place, and title, from the stack and `deps.state`. */
   function updateMembers() {
@@ -4477,6 +4486,10 @@ export function createStackMenu(initial, number, deps) {
       }
     }
     links.length = 0;
+    const first = wholeRow();
+    if (first !== null) {
+      links.push(first);
+    }
     for (const target of stackMenuOrder(stack)) {
       let row = rows.get(target);
       if (!row) {
@@ -5435,20 +5448,32 @@ export function mountPullPage(container, ctx, mb) {
    * @param {Element} element The text element the host goes in.
    */
   function kpressHost(inert, rendered, element) {
-    const nodes = inert.sanitizeHtml(
-      String(rendered.html),
-      shown?.pull?.htmlUrl ?? "https://github.com/",
-    );
     const article = h("article", { class: "kpress kpress-inert" }, [
-      inert.kpressProse(nodes, document),
+      inertProse(inert, String(rendered.html)),
     ]);
-    // Only this newly sanitized, lazily opened message is visited. Authored SVG and
-    // state attributes have already been discarded; known state comes from our record.
-    for (const anchor of article.querySelectorAll("a[href]")) {
-      decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
-    }
     drawTextDiagrams(element, article);
     return h("div", { class: "metabrowser-kpress-host" }, [article]);
+  }
+
+  /**
+   * A text's inert HTML in KPress's prose element, as `kpressHost` sets a description's and
+   * Guided Review sets a note's (`DrawProse` in guided-review.js): rebuilt from the allowlist,
+   * links absolute against the pull request.
+   *
+   * @param {MetabrowserInertHtmlRuntime} inert
+   * @param {string} html
+   */
+  function inertProse(inert, html) {
+    const prose = inert.kpressProse(
+      inert.sanitizeHtml(html, shown?.pull?.htmlUrl ?? "https://github.com/"),
+      document,
+    );
+    // Only this newly sanitized, lazily opened message is visited. Authored SVG and
+    // state attributes have already been discarded; known state comes from our record.
+    for (const anchor of prose.querySelectorAll("a[href]")) {
+      decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
+    }
+    return prose;
   }
 
   /**
@@ -5715,6 +5740,22 @@ export function mountPullPage(container, ctx, mb) {
     return link;
   }
 
+  /**
+   * A link to a native stack's own page, `/stack/<n>`, which the host opens in place.
+   * @param {number} id
+   */
+  function stackPageLink(id) {
+    const link = h("a", { href: `/stack/${id}` });
+    link.addEventListener("click", (event) => {
+      if (listening.signal.aborted || !isPlainClick(event)) {
+        return;
+      }
+      event.preventDefault();
+      void open({ number: id, tab: "", stack: true });
+    });
+    return link;
+  }
+
   /** @param {string} state @param {string} label @param {string} [kind] */
   const badge = (state, label, kind = "state") =>
     h(
@@ -5787,6 +5828,7 @@ export function mountPullPage(container, ctx, mb) {
    * @param {PullModel} model
    */
   function paintStacks(model) {
+    paintStackGuideLinks();
     const memberships =
       model.pull === null ? [] : stackMembership(stackIndex, stackIdentity, number);
     const key = JSON.stringify([stackIdentity, model.tab]);
@@ -5815,6 +5857,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       menu = createStackMenu(stack, number, {
         link: (target) => pageLink(memberRoute(target, stackTab(model.tab)), "", []),
+        wholeStack: (id) => stackPageLink(id),
         icon: stackSvg === null ? null : document.importNode(stackSvg, true),
         currentTitle: model.pull?.title ?? "",
         named,
@@ -6717,6 +6760,7 @@ export function mountPullPage(container, ctx, mb) {
       () =>
         descriptionCard(pull, textBlock("body", pull.text, pull.truncated), [
           ...(GUIDED_FENCE.test(pull.text) ? [guideCard(pull.text)] : []),
+          ...(STACK_GUIDE_FENCE.test(pull.text) ? [stackGuideCard()] : []),
         ]),
     );
     /** @type {Map<string, {node: HTMLElement, pending: boolean}>} */
@@ -8196,6 +8240,48 @@ export function mountPullPage(container, ctx, mb) {
     ]);
   }
 
+  /** Where Conversation's card about a stack's guide links the stacks that read it, and
+   * the stacks it links, as JSON: filled when the card is drawn and again as the stacks
+   * this pull request is a member of become known (`paintStacks`).
+   * @type {{slot: HTMLElement, key: string} | null} */
+  let stackGuideLinks = null;
+
+  /**
+   * Where Conversation's description had its stack-review block: the server renders the
+   * description without it (`render_part`), and this says a stack guide is read on a
+   * stack's page. It names a stack guide, not the stack's: a stack shows the block of its
+   * top-most member that has one, which may be a member above this one.
+   */
+  function stackGuideCard() {
+    const slot = h("span", { class: "github-pull-stack-guide-links" }, ["."]);
+    stackGuideLinks = { slot, key: "" };
+    paintStackGuideLinks();
+    return notice(null, ["This description has a stack guide, read on its stack's page", slot]);
+  }
+
+  /** Link each stack this pull request is a member of from the stack guide's card, once
+   * the stacks are known; with none, the card links nothing. */
+  function paintStackGuideLinks() {
+    const shownLinks = stackGuideLinks;
+    if (shownLinks === null) {
+      return;
+    }
+    const stacks = stackMembership(stackIndex, stackIdentity, number).map((stack) => stack.number);
+    const key = JSON.stringify(stacks);
+    if (key === shownLinks.key) {
+      return;
+    }
+    shownLinks.key = key;
+    shownLinks.slot.replaceChildren(
+      ".",
+      ...stacks.flatMap((id, at) => {
+        const link = stackPageLink(id);
+        link.append(`Open ${stackLabel(id)}`);
+        return [at === 0 ? " " : " · ", link];
+      }),
+    );
+  }
+
   /**
    * The guide's introduction: the description's card, as Conversation draws it, without
    * its guided-review block. It is drawn again only when its text or its render changes.
@@ -8257,9 +8343,21 @@ export function mountPullPage(container, ctx, mb) {
         if (guided !== mount || shown === null) {
           return;
         }
+        /** @type {import("./guided-review.js").GuideSubject} */
+        const subject = { kind: "pull", number };
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
-        mount.view = mountGuidedReview(host, introduction, number, {
+        mount.view = mountGuidedReview(host, introduction, subject, {
           open: openChangedFile,
+          // Another pull request a step cites, or a file in its Changes, opened as a stack
+          // member's link opens it.
+          openPull: (target, path) =>
+            void open(
+              path === null
+                ? { number: target, tab: "" }
+                : { number: target, tab: "files", file: path, replace: false, jumped: false },
+            ),
+          age: (iso) => age(iso),
+          shortCommit: (sha) => mb.shortCommit(sha),
           loadStyles: (assets) =>
             Promise.all([
               textStyles(
@@ -8275,12 +8373,20 @@ export function mountPullPage(container, ctx, mb) {
           },
           // A file a step cites whole that the rendered route renders is the diff plugin's
           // own view of it, from this page's comparison while it is the one the step was read
-          // at: a Markdown file drawn as Docs draws it (`DOCS_DRAWING`), and a YAML or JSON
-          // file as Changes does (`CHANGES_DRAWING`).
+          // at, or, a file of another pull request, from that one's comparison, whose routes
+          // the step's answer names: a Markdown file drawn as Docs draws it (`DOCS_DRAWING`),
+          // and a YAML or JSON file as Changes does (`CHANGES_DRAWING`).
           loadDrawDocument: async () => {
             const diff = await mb.plugins.load("diff");
-            /** @param {{merge_base: string | null, head: string}} pins */
+            /**
+             * @param {{merge_base: string | null, head: string, route?: string,
+             *   image_route?: string, rendered_route?: string}} pins
+             */
             const at = (pins) => {
+              const cited = citedPullComparison(pins);
+              if (cited !== null) {
+                return cited;
+              }
               const comparison = shown?.comparison ?? null;
               return comparison !== null &&
                 comparison.left === pins.merge_base &&
@@ -8304,6 +8410,17 @@ export function mountPullPage(container, ctx, mb) {
               },
             };
           },
+          // A note's Markdown, which the route renders inert as it renders a description, is
+          // inserted through the description's allowlist.
+          loadDrawProse: async () => {
+            const inert = await inertReady;
+            if (inert === null) {
+              throw new Error("the inert HTML allowlist did not load");
+            }
+            return (html) => inertProse(inert, html);
+          },
+          // A refused note says why in a description's words.
+          refusalNote: textRefusalNote,
         });
         mount.view.show(shown.recordRevision, shown.newCommits !== null);
       },

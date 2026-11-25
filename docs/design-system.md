@@ -289,7 +289,7 @@ it.
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
 | Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, and raw JSON, at the controls’ size |
 | Ref chip | `--git-ref-font-size` | `--git-ref-font-scale` of the size it inherits, so slightly smaller than the text it sits in: the ramp’s one relative size, because a chip sits in text of several sizes and reads as part of it ([Branch Chips](#branch-chips)) |
-| Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu and in a Pulls row |
+| Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu and in a Pulls row, and between a guide’s pull request row’s number and title |
 
 A path reads at its region’s size, and its metadata with it.
 The navigation column’s header path is list text, the size of the rows it heads, in a
@@ -3296,13 +3296,16 @@ reader does with it.
 | Badge | A state badge’s outlined box leading a head, 8px from its label, as a page header’s state badge leads its line | `guideBadge`, `.github-pull-guide-card-head` |
 | Step list | A card above the step: the badge, the arrows around the place, then each step, numbered, the one shown marked as a table of contents marks its section | `.github-pull-guide-outline`, `--highlight-bg`, `--highlight-bar` |
 | Group | In the step list, the group’s title as the shell’s [group heading](#groups-in-a-menu), on the edge the rows’ numbers start on, with no number and nothing to press, above its steps, which keep their numbers; on a step’s card, its title before the place, “Decisions · Step 2 of 12” | `.group-heading`, `.github-pull-guide-steps-heading`, `groupedPlace` |
-| Group note | The group’s note, as typed, above its first step’s card at the card text’s inset | `.github-pull-guide-group-note` |
+| Group note | The group’s note above its first step’s card at the card text’s inset, its Markdown rendered as a step’s note is, or as typed when the render did not come, with a refused render’s line under it as a step’s note has | `.github-pull-guide-group-note`, `.github-pull-guide-note-refused` |
 | Arrows | Icon buttons, `arrowLeft` and `arrowRight`, centered in an icon button’s box, with no label of their own | `.github-pull-guide-arrow` |
 | Way on and back | Worded buttons below a step that name the step they go to | `.github-pull-guide-pager` |
-| Step | A page card, as Conversation draws a comment: the badge and the place, the title and note at the description’s inset, then its excerpts | `.github-pull-guide-card`, `.github-pull-text` |
+| Step | A page card, as Conversation draws a comment: the badge and the place, the title as text and the note’s Markdown rendered as the description is, at the description’s inset, then its excerpts; a note whose render did not come, as typed, and, when it was refused, the warning a description’s refusal has under it, in its words | `.github-pull-guide-card`, `.github-pull-text`, `.github-pull-guide-commentary`, `.github-pull-guide-note-refused`, `textRefusalNote` |
 | Excerpt | The diff plugin’s own drawing, as in Changes: hunk bars, rows, and fold bars that expand | `mountFilePatch` in the diff plugin |
 | Document | A Markdown file a step cites whole, as Docs draws it, and a YAML or JSON file, as Changes draws it: the file bar, the rendered layer and its Rendered and Source choice, and Diff and Current; one that could not be drawn, the guide’s bar for it above the view’s notice | `mountRenderedFile` in the diff plugin, `DOCS_DRAWING`, `CHANGES_DRAWING`, `.github-pull-guide-document` |
 | Out of date | One warning notice above the guide and its one remedy, or a quiet line when no file it cites changed; a step that cites a changed file is marked “changed” in the list and on its card, in muted text | `OUTDATED`, `CHANGED`, `.github-pull-guide-stale`, `.github-pull-guide-step-changed` |
+| Another pull request’s file | An excerpt or a document, as a file of this pull request is drawn, under a bar that names that pull request’s number before the path, in a pull request number’s weight and muted ink; its Open full diff opens the file in that pull request’s Changes | `referenceBar`, `.github-pull-guide-reference-pull` |
+| Pull request | One row in an excerpt’s card, as the [stack menu](#stacks) lists a member: the state icon, the number in bold, a muted dot, and the title, which alone gives way, then its stack place, muted, “Stack #71 1/3”; one this copy has not read keeps the icon’s slot empty and names itself by its number | `pullRow`, `pullStateIcon`, `stackLabel`, `stackPosition`, `.github-pull-guide-row` |
+| Commit | One such row, as the Commits tab lists a commit: its [short ID](#short-commit-ids), its subject, and when it was committed, muted; a plain link to the commit’s page; one the store lacks says it is unavailable beside its ID | `commitRow`, `COMMIT_UNAVAILABLE`, `.github-pull-guide-commit` |
 
 A new part of the guide takes its words from these constants and its look from an
 existing part of the design system.
@@ -3581,6 +3584,8 @@ that shows a number takes it:
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
 | The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
+| A guide’s pull request row | `.github-pull-guide-row-number`, after the state icon |
+| A guide’s file of another pull request | `.github-pull-guide-reference-pull`, before the path |
 
 The GitHub plugin’s three are one rule.
 A number in prose, a commit subject, or a tooltip is text, and keeps its line’s weight.

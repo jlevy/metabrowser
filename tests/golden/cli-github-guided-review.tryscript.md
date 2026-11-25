@@ -10,6 +10,9 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+patterns:
+  BUILD: '[0-9a-f]{12}'
+  STORE: '[0-9a-f]{16}'
 before: >-
   METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
@@ -59,12 +62,19 @@ status: 200
   "group": null,
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
+  "note_html": "\n<div><div><p>Check that the original value is preserved.</p></div></div>",
+  "note_refusal": null,
+  "group_note_html": null,
+  "group_note_refusal": null,
   "references": [
     {
+      "kind": "file",
       "path": "src/app.txt",
       "side": "new",
       "start_line": 1,
       "end_line": 2,
+      "pull": null,
+      "commit": null,
       "state": "ready",
       "rendered": null,
       "href": "/pull/7/files/src/app.txt",
@@ -91,7 +101,9 @@ status: 200
           ]
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     }
   ],
   "assets": {
@@ -258,12 +270,19 @@ status: 200
   "group": null,
   "title": "Read the new guide",
   "note": "Check the new docs against the behavior.",
+  "note_html": "\n<div><div><p>Check the new docs against the behavior.</p></div></div>",
+  "note_refusal": null,
+  "group_note_html": null,
+  "group_note_refusal": null,
   "references": [
     {
+      "kind": "file",
       "path": "docs/new.md",
       "side": "new",
       "start_line": 1,
       "end_line": 1,
+      "pull": null,
+      "commit": null,
       "state": "ready",
       "rendered": null,
       "href": "/pull/7/files/docs/new.md",
@@ -284,13 +303,18 @@ status: 200
           ]
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     },
     {
+      "kind": "file",
       "path": "src/app.txt",
       "side": null,
       "start_line": null,
       "end_line": null,
+      "pull": null,
+      "commit": null,
       "state": "ready",
       "rendered": null,
       "href": "/pull/7/files/src/app.txt",
@@ -317,29 +341,41 @@ status: 200
           ]
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     },
     {
+      "kind": "file",
       "path": "missing.txt",
       "side": null,
       "start_line": null,
       "end_line": null,
+      "pull": null,
+      "commit": null,
       "state": "path_not_changed",
       "rendered": null,
       "href": null,
       "hunks": [],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     },
     {
+      "kind": "file",
       "path": "src/app.txt",
       "side": "old",
       "start_line": 2,
       "end_line": 4,
+      "pull": null,
+      "commit": null,
       "state": "range_unavailable",
       "rendered": null,
       "href": "/pull/7/files/src/app.txt",
       "hunks": [],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     }
   ],
   "assets": {
@@ -541,17 +577,26 @@ status: 200
   "group": null,
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
+  "note_html": "\n<div><div><p>Check that the original value is preserved.</p></div></div>",
+  "note_refusal": null,
+  "group_note_html": null,
+  "group_note_refusal": null,
   "references": [
     {
+      "kind": "file",
       "path": "src/app.txt",
       "side": "new",
       "start_line": 1,
       "end_line": 2,
+      "pull": null,
+      "commit": null,
       "state": "path_not_changed",
       "rendered": null,
       "href": null,
       "hunks": [],
-      "truncated": false
+      "truncated": false,
+      "comparison": null,
+      "target": null
     }
   ],
   "assets": {
@@ -1026,6 +1071,117 @@ status: 200
 ? 0
 ```
 
+# Notes
+
+A note is Markdown, rendered as the description is: KPress in its sanitized mode, then
+the inert allowlist against the pull request’s page, in the server’s Markdown child
+under its deadline.
+Each answer with a step carries its note as written, `note`, and that
+render beside it, `note_html`, which is null when the render is refused; the page then
+shows the note as typed.
+The step that opens a group with a note carries the group’s note rendered so,
+`group_note_html`, and the outline keeps it as written.
+A title stays text.
+In 7’s guide with Markdown in its notes, the first step’s two opening
+lines join into one paragraph, as two lines do in a description, its list needs no blank
+line before it, and its link is made absolute against the pull request’s page.
+Its raw HTML is reduced to the allowlist: the `<b>` stays, the script is dropped, an
+image from a relative source becomes a link to it, and an image over `https` keeps its
+source and sends no referrer.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 markdown
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=1' --format json > notes.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, .title, .note, .note_html, .outline[0].note, .group_note_html' notes.json
+ready
+Start with the <b>count</b>
+Check that the **original** value
+is preserved:
+- `one` stays,
+- and [the guide](docs/new.md) says so.
+
+Raw <b>bold</b><script>alert(1)</script> <img src=x onerror=alert(1)> ![chart](https://example.com/chart.png)
+
+<div><div><p>Check that the <strong>original</strong> value
+is preserved:</p>
+<ul>
+<li><code>one</code> stays,</li>
+<li>and <a href="https://github.com/octo/demo/pull/docs/new.md" target="_blank" rel="noopener noreferrer">the guide</a> says so.</li>
+</ul>
+<p>Raw <b>bold</b> <a href="https://github.com/octo/demo/pull/x" target="_blank" rel="noopener noreferrer"><span class="mb-image-fallback" data-tip-text="https://github.com/octo/demo/pull/x">image</span></a> <img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/chart.png" alt="chart"></p></div></div>
+Read the `count` before *its* explanation.
+
+<div><div><p>Read the <code>count</code> before <em>its</em> explanation.</p></div></div>
+? 0
+```
+
+The group’s second step is in the group but does not open it, so it carries no group’s
+note.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=2' --format json > notes.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.group, .group_note_html, .note_html' notes.json
+0
+null
+"\n<div><div><p>Check what the count replaced.</p></div></div>"
+? 0
+```
+
+A note whose render is refused answers why beside its null `note_html`: `note_refusal`
+is the code the pull-markdown route answers a text’s refusal with, and
+`group_note_refusal` says the same of a group’s note.
+The page shows the note as typed with the line a description’s refusal says, and keeps
+no answer whose renderer was busy or could not start, so that step is read again
+(`cli-ui-github-guided-review.tryscript.md`). In 7’s guide with a slow note, the first
+step’s note is 100 unpaired `[` before 60 KiB of `%`, which KPress takes seconds to
+render, so a deadline shortened to 250 ms through its environment variable refuses it on
+any machine.
+The server says on standard error which note it refused, and after how long;
+the step reads as before, with its excerpt.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 slow-note
+? 0
+```
+
+```console
+$ METABROWSER_INERT_RENDER_DEADLINE_MS=250 METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=1' --format json > notes.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+[..] metabrowser.diff.markdown_projection_worker | Refused rendering 'pull-7-guided-review-note.md' (sha256:6d547e03b6bb237dc4ebdb452e24980c5a74749b35eef82755adf7ab51270c30) after [..] s: render_deadline
+? 0
+```
+
+```console
+$ jq -c '.state, .note_html, .note_refusal, (.note | length), .group_note_refusal, [.references[].state]' notes.json
+"ready"
+null
+"render_deadline"
+61540
+null
+["ready"]
+? 0
+```
+
 # Documents
 
 A file a step cites whole that the rendered route renders, by that route’s own rule on
@@ -1060,6 +1216,156 @@ $ jq -c '.state, .title, (.references[] | [.path, .side, .state, .rendered, (.hu
 ["config/settings.yaml",null,"ready","yaml",0]
 ["docs/large.md",null,"ready","markdown",0]
 ["src/app.txt",null,"ready",null,1]
+? 0
+```
+
+# References past the pull request
+
+A step can cite three things besides a file of its own pull request: another pull
+request, `{pull}`; a file another pull request changes, `{pull, path}`; and a commit,
+`{commit}`. Each answer names its `kind` and carries every field, null where its kind
+has none. Each is read from this copy alone, and none is ever stale.
+In 7’s guide of every kind, the second step cites 8, which is merged, then 10’s draft
+document and 9’s change to `src/app.txt`, then 50, which this copy knows from its list
+of pull requests alone, and 2000, which it does not know at all.
+Then it cites 7’s own head as a commit, and a commit the store lacks.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 kinds
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=2' --format json > kinds.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+A `{pull}` answers the title, state, and stack place a row names, from the pull
+request’s record or else its row in the list, or `not_cached` when this copy has
+neither. Its address is the pull request’s page either way.
+No stack is known here, so `stack` is null.
+A `{commit}` answers its subject and when it was committed, and `commit_unavailable`
+when the store lacks it.
+
+```console
+$ jq -c '.state, (.references[] | {kind, pull, commit, state, href, target})' kinds.json
+"ready"
+{"kind":"pull","pull":8,"commit":null,"state":"ready","href":"/pull/8","target":{"title":"Say more in the guide","state":"merged","stack":null}}
+{"kind":"pull_file","pull":10,"commit":null,"state":"ready","href":"/pull/10/files/docs/draft.md","target":null}
+{"kind":"pull_file","pull":9,"commit":null,"state":"ready","href":"/pull/9/files/src/app.txt","target":null}
+{"kind":"pull","pull":50,"commit":null,"state":"ready","href":"/pull/50","target":{"title":"Work item 50","state":"open","stack":null}}
+{"kind":"pull","pull":2000,"commit":null,"state":"not_cached","href":"/pull/2000","target":null}
+{"kind":"commit","pull":null,"commit":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","state":"ready","href":"/commit/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","target":{"subject":"count to two","committed_at":"2026-08-29T14:40:00Z"}}
+{"kind":"commit","pull":null,"commit":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","state":"commit_unavailable","href":null,"target":null}
+? 0
+```
+
+A `{pull, path}` is read at that pull request’s current comparison, as a `{path}` alone
+is at the guide’s: a document whole, from that pull request’s own routes, which its
+`comparison` names, and any other file as its whole patch.
+
+```console
+$ jq -c '.references[1:3][] | [.path, .rendered, (.hunks | length), .comparison.merge_base, .comparison.head]' kinds.json
+["docs/draft.md","markdown",0,"c691256511d05858850bc7684ae062fea0d41132","7a7d6596e515735d244dc1d942463c95851e139c"]
+["src/app.txt",null,1,"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd"]
+? 0
+```
+
+```console
+$ jq '.references[1].comparison' kinds.json
+{
+  "merge_base": "c691256511d05858850bc7684ae062fea0d41132",
+  "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+  "route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=[BUILD]&store=[STORE]",
+  "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=[STORE]",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=[STORE]"
+}
+? 0
+```
+
+A `{pull, path}` takes no range, and a commit is cited alone, by its full SHA. The
+refusal names the field that goes wrong.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 pull-file-range
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "c45e40d11fbc230d39524aff52ffa37f378017259dde655aa23a909f91802bd3",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.end_line."
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 commit-and-path
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "0ce2d3510d198ed3b03078eca300f119df0ed8cc7f7f5af79bfbb5c9ff9caaee",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.path."
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 commit-and-pull
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "e14cf2d1446e0c28e8f103be8d021fe69c95d3c54dc7ccdc11d5d2e8e97873f6",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.pull."
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 short-commit
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "2b982a9c15ef3d15368f831ebe65701b7e459949f32411cd0e7457e7354df853",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.commit."
+}
 ? 0
 ```
 
