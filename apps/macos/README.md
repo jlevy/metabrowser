@@ -17,8 +17,8 @@ an Xcode whose Swift meets its `swift-tools-version`, and a `metab` the app acce
 `MetabRequirement.minimumRelease` in `Sources/ShellCore/Setup/MetabVersion.swift` is the
 oldest. While `MetabRequirement.isReleased` is false, only a source checkout’s `metab`
 meets it: `make install` at the repository root builds `.venv/bin/metab`, and Settings >
-Choose metab… points the app at it (so does `open --env METABROWSER_METAB=…`). Once the
-floor is published, a CLI install does, as
+Runtime > Choose metab… points the app at it (so does `open --env METABROWSER_METAB=…`).
+Once the floor is published, a CLI install does, as
 [the installation guide](../../docs/installation.md) describes.
 
 From the repository root (each target delegates to `apps/macos/Makefile`, whose header
@@ -134,10 +134,10 @@ and nothing on disk names a server to stop, so no copy can stop another’s.
 
 `make macos-test` runs `make test` in `apps/macos`: it builds the WebKit gate’s driver,
 which no product ships, so a change to the views or configuration it shares with the app
-cannot break it unnoticed; runs the Swift suites in three processes, since the WebKit
-suites and the exit stress suite each stall the main actor that every suite shares (the
-Makefile says which); runs `scripts/test-scripts.sh`; and runs the gate’s Node tests
-(`webkit-gate/*.test.mjs`), which need no browser.
+cannot break it unnoticed; runs the Swift suites in four processes, since the WebKit
+suites, the Settings window suite, and the exit stress suite each stall the main actor
+that every suite shares (the Makefile says which); runs `scripts/test-scripts.sh`; and
+runs the gate’s Node tests (`webkit-gate/*.test.mjs`), which need no browser.
 `scripts/test-scripts.sh` runs `scripts/test-release-logic.sh`, which checks what the
 release scripts decide on stand-ins for Apple’s tools and runs in the repository’s
 `make test` too, and, on a CI runner only, the signing doctor against a throwaway
