@@ -47,6 +47,13 @@ page’s glue between them.
   aborts the read, and draws Changes as a pull request’s page draws its own, with no
   summary of its own; the header’s Diff summary is drawn once for each comparison the
   page drew.
+- `failed`: Docs and Changes that could not load.
+  Each says so in a pull request’s error notice, “Docs could not load.”
+  or “Changes could not load.”, with Retry, whether the diff failed to draw or drew and
+  then failed its first screen.
+  Retry disposes the view a failed draw left and draws once more, and a Retry left
+  behind by a tab switch, or pressed after the page is disposed, draws nothing.
+  The page logs each failure once.
 
 ```console
 $ node tests/dom/github-stack-guide-mount-session.js
@@ -156,6 +163,38 @@ $ node tests/dom/github-stack-guide-mount-session.js
       "onTypes": "function",
       "markdownHoldMs": 200
     }
+  },
+  "failed": {
+    "docs": {
+      "notice": "error: Docs could not load. Retry",
+      "retry": "Retry",
+      "after_retry": {
+        "shows": "the diff",
+        "draws": 1
+      }
+    },
+    "changes": {
+      "notice": "error: Changes could not load. Retry",
+      "left_view_disposed": false,
+      "after_retry": {
+        "shows": "the diff",
+        "draws": 1,
+        "left_view_disposed": true
+      }
+    },
+    "retry_after_tab_switch": {
+      "shows": "the diff",
+      "draws": 0
+    },
+    "retry_after_dispose": {
+      "draws": 0
+    },
+    "logged": [
+      "metabrowser github: the stack's diff could not load",
+      "metabrowser github: the stack's diff could not load",
+      "metabrowser github: the stack's diff could not load",
+      "metabrowser github: the stack's diff could not load"
+    ]
   }
 }
 ? 0

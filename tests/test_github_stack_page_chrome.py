@@ -10,14 +10,25 @@ page and on a pull request's, stays where it shows; that the running app gives e
 its author, merged 8 too, and marks no member current, since none is the page; that the Diff
 summary is closed; that View on GitHub opens the whole stack; that the tabs are a pull
 request's without Files; and that the Pulls tab's Whole stack row is current and in view
-while the page is open and opens it. A member row's layout is not measured: the page draws
-it with the stack menu's builder (`stackMemberRow`), so it is the menu's by construction.
+while the page is open and opens it. A member row is not measured against the menu's: the
+page draws it with the stack menu's builder (`stackMemberRow`), so it is the menu's by
+construction; only its inset in the members' card, the page's own rule, is measured below.
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh`` whose ``gh stack``
 answers native stacks over the stand-in's pull requests, #70 (8, then 10) and #71 (8, 7,
 then 10, where the top lacks 7), and ``tests/dom/github-stack-page-chrome.mjs`` measures the
 running app. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its screenshots, and
 ``METABROWSER_STACK_PAGE_MODE=--before`` takes only those, of a shell before this design.
+
+The second test serves the stand-in with guides (``--guided-stack``): 7 carries its own, and
+10 the guide of #70, whose top it is. ``tests/dom/github-stack-page-layout-chrome.mjs`` holds
+each part the stack's page shares with a pull request's at a pull request's edges and padding,
+border and ground, within the module's ``NEAR``: the header, the tab bar, Guided Review's
+step list and step card against 7's, and the Docs and Changes bodies against 10's, in the
+light and the dark scheme at a desktop width and a phone's, each tab loaded and after the
+reader switches tabs in place; and the members' card a page card whose rows are inset as a
+card's head is. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its
+screenshots too.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node
@@ -52,6 +63,7 @@ from tests.test_nav_metadata_chrome import (
 
 FIXTURE = Path(__file__).resolve().parent / "github_pull_fixture.py"
 SESSION = Path(__file__).resolve().parent / "dom" / "github-stack-page-chrome.mjs"
+LAYOUT = Path(__file__).resolve().parent / "dom" / "github-stack-page-layout-chrome.mjs"
 # The stand-in's home, its mirror and the records of 7 to 10 fetched through the production
 # CLI path, as tests/test_github_guided_review_chrome.py builds it.
 _BUILD_BUDGET_S = 60.0
@@ -94,8 +106,17 @@ def with_stacks(answers: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_measurement(tmp_path: Path, chrome_profile: Path, *, mode: list[str]) -> GroupRun:
-    """Build the stand-in's home with stacks, serve it, and run the measurement."""
+def run_measurement(
+    tmp_path: Path,
+    chrome_profile: Path,
+    *,
+    mode: list[str],
+    session: Path = SESSION,
+    build: tuple[str, ...] = (),
+) -> GroupRun:
+    """Build the stand-in's home with stacks, serve it, and run *session* against it.
+
+    *build* are the fixture's build flags, ``--guided-stack`` for the guides."""
 
     chrome = require_chrome()
     node = require_node()
@@ -105,7 +126,7 @@ def run_measurement(tmp_path: Path, chrome_profile: Path, *, mode: list[str]) ->
     stand_in = tmp_path / "stand-in"
     stand_in.mkdir()
     built = subprocess.run(
-        [sys.executable, str(FIXTURE), str(stand_in)],
+        [sys.executable, str(FIXTURE), str(stand_in), *build],
         capture_output=True,
         text=True,
         env=env,
@@ -142,7 +163,7 @@ def run_measurement(tmp_path: Path, chrome_profile: Path, *, mode: list[str]) ->
         _wait_until_serving(server, port, log)
         shots = os.environ.get("METABROWSER_STACK_PAGE_SHOTS")
         run = run_in_own_group(
-            [node, str(SESSION), f"http://127.0.0.1:{port}", *mode],
+            [node, str(session), f"http://127.0.0.1:{port}", *mode],
             timeout_s=_MEASUREMENT_BUDGET_S,
             env={
                 **os.environ,
@@ -169,4 +190,14 @@ def test_the_stack_page_is_a_pull_request_page_that_holds_still_in_chrome(
     if mode == "--before":
         return
     passed = re.fullmatch(r"stack page in Chrome: (\d+) checks passed\n", run.stdout)
+    assert passed is not None and int(passed.group(1)) > 0, run.stdout
+
+
+def test_the_stack_page_lays_out_as_a_pull_request_page_in_chrome(
+    tmp_path: Path, chrome_profile: Path
+) -> None:
+    run = run_measurement(
+        tmp_path, chrome_profile, mode=[], session=LAYOUT, build=("--guided-stack",)
+    )
+    passed = re.fullmatch(r"stack page layout in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout

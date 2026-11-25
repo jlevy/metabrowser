@@ -1371,8 +1371,9 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     assert 'class: "github-pull-labels"' in page, "the labels row is a row of chips"
     # A native stack's page is a pull request's header for the whole stack ("The Stack
     # Page"): the same header and lines, every line under the title but its members, the
-    # stack menu's member rows in a card, at the menu's size, which
-    # tests/dom/github-stack-page-chrome.mjs measures against the menu's.
+    # stack menu's member rows in a page card, at the menu's size and a card's inset, which
+    # tests/dom/github-stack-page-chrome.mjs measures against the menu's and
+    # tests/dom/github-stack-page-layout-chrome.mjs against a card's head.
     stack = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-page.js").read_text(encoding="utf-8")
     assert 'class: "github-pull-header page-header page-reading-column"' in stack
     for row in (
@@ -1382,7 +1383,14 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
         "github-pull-summary metabrowser-diff-host",
     ):
         assert f'class: "{row} page-header-line' in stack, row
-    assert 'class: "github-pull-stack-members",' in stack, "the members are a card of rows"
+    assert 'class: "github-pull-stack-members page-card",' in stack, "the members are a card"
+    assert github[".github-pull-stack-members .github-pull-stack-member"] == {
+        "padding-inline": "var(--github-pull-text-inset)"
+    }, "a member row is inset as a card's head and text are"
+    # Its body takes a pull request's columns ("The Stack Page's Spacing"): it starts in the
+    # reading column, and `bodyInColumn` decides it with each plan, as `diffTab` does there.
+    assert 'class: "github-pull-body page-reading-column"' in stack
+    assert 'body.classList.toggle("page-reading-column", bodyInColumn(shown, tab));' in stack
 
 
 def test_a_person_is_one_identity_on_every_page() -> None:

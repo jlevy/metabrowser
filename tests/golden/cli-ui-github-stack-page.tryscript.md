@@ -30,6 +30,8 @@ them.
   stay, as the drawn comparison does, and the guide is mounted again only when the
   reader takes the comparison offered; a description that no longer carries the guide
   turns the front page to Changes.
+  `column` is the body’s column (`bodyInColumn`): the reading column, as a pull
+  request’s body takes it, except on a drawn Docs or Changes, which take the full pane.
 - `comparison` is what a new answer does to the comparison drawn: the first is shown,
   the same one kept, and another offered rather than swapped in under the reader.
 - `header` is the page’s header, row by row (`stackHeader`), a pull request’s header
@@ -88,6 +90,8 @@ them.
   reader takes the new one.
   A stack that can no longer be shown as one keeps the comparison drawn; with nothing
   drawn, the body says what is missing.
+  `column` is the body’s column, as under `guided`: the full pane once Changes is drawn,
+  and the reading column for a notice or a wait with nothing drawn.
 - `order` is the header’s order of 71’s members, the top first, as every stack menu
   lists them.
 
@@ -126,49 +130,56 @@ $ node tests/dom/github-stack-page-session.js
       "guide": null,
       "tab": "",
       "do": "wait",
-      "drawn": null
+      "drawn": null,
+      "column": "reading"
     },
     {
       "step": "current",
       "guide": "#10",
       "tab": "guided",
       "do": "mount guided",
-      "drawn": "current"
+      "drawn": "current",
+      "column": "reading"
     },
     {
       "step": "a member's push, fetched",
       "guide": "#10",
       "tab": "guided",
       "do": "keep",
-      "drawn": "current"
+      "drawn": "current",
+      "column": "reading"
     },
     {
       "step": "current again, another comparison",
       "guide": "#10",
       "tab": "guided",
       "do": "keep",
-      "drawn": "current"
+      "drawn": "current",
+      "column": "reading"
     },
     {
       "step": "the reader takes it",
       "guide": "#10",
       "tab": "guided",
       "do": "mount guided",
-      "drawn": "other"
+      "drawn": "other",
+      "column": "reading"
     },
     {
       "step": "the stack cannot be shown",
       "guide": "#10",
       "tab": "guided",
       "do": "keep",
-      "drawn": "other"
+      "drawn": "other",
+      "column": "reading"
     },
     {
       "step": "the guide's block removed",
       "guide": null,
       "tab": "changes",
       "do": "mount changes",
-      "drawn": "other"
+      "drawn": "other",
+      "column": "full pane"
     }
   ],
   "comparison": [
@@ -619,6 +630,7 @@ $ node tests/dom/github-stack-page-session.js
       "step": "opened a file, nothing read",
       "do": "wait",
       "drawn": null,
+      "column": "reading",
       "notices": []
     },
     {
@@ -626,12 +638,14 @@ $ node tests/dom/github-stack-page-session.js
       "do": "notice",
       "text": "Fetching #8 and #10 before the stack can be shown.",
       "drawn": null,
+      "column": "reading",
       "notices": []
     },
     {
       "step": "current",
       "do": "mount changes",
       "drawn": "current",
+      "column": "full pane",
       "notices": []
     },
     {
@@ -639,12 +653,14 @@ $ node tests/dom/github-stack-page-session.js
       "do": "scroll",
       "file": "docs/draft.md",
       "drawn": "current",
+      "column": "full pane",
       "notices": []
     },
     {
       "step": "current again, top revision moved",
       "do": "keep",
       "drawn": "current",
+      "column": "full pane",
       "notices": []
     },
     {
@@ -652,12 +668,14 @@ $ node tests/dom/github-stack-page-session.js
       "do": "scroll",
       "file": "docs/draft.md",
       "drawn": "current",
+      "column": "full pane",
       "notices": []
     },
     {
       "step": "a member added on top, pending",
       "do": "keep",
       "drawn": "current",
+      "column": "full pane",
       "notices": [
         "Fetching #11 before its new comparison can be shown."
       ]
@@ -666,6 +684,7 @@ $ node tests/dom/github-stack-page-session.js
       "step": "its fetch failed",
       "do": "keep",
       "drawn": "current",
+      "column": "full pane",
       "notices": [
         "Could not fetch #11 from GitHub. [retry]"
       ]
@@ -674,6 +693,7 @@ $ node tests/dom/github-stack-page-session.js
       "step": "it arrived: another comparison",
       "do": "keep",
       "drawn": "current",
+      "column": "full pane",
       "notices": [
         "This stack has changed since its comparison was drawn. [take]",
         "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
@@ -683,6 +703,7 @@ $ node tests/dom/github-stack-page-session.js
       "step": "the reader takes it",
       "do": "mount changes",
       "drawn": "other",
+      "column": "full pane",
       "notices": [
         "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
       ]
@@ -691,6 +712,7 @@ $ node tests/dom/github-stack-page-session.js
       "step": "the stack can no longer be shown as one",
       "do": "keep",
       "drawn": "other",
+      "column": "full pane",
       "notices": [
         "This stack’s changes cannot be shown together. Open each pull request for its changes."
       ]
@@ -699,6 +721,7 @@ $ node tests/dom/github-stack-page-session.js
       "step": "the reader opens Docs",
       "do": "mount docs",
       "drawn": "other",
+      "column": "full pane",
       "notices": [
         "This stack’s changes cannot be shown together. Open each pull request for its changes."
       ]
@@ -709,6 +732,7 @@ $ node tests/dom/github-stack-page-session.js
       "text": "Fetching #8 before the stack can be shown. Could not fetch #10 from GitHub.",
       "retry": true,
       "drawn": null,
+      "column": "reading",
       "notices": []
     },
     {
@@ -716,6 +740,7 @@ $ node tests/dom/github-stack-page-session.js
       "do": "notice",
       "text": "This stack’s changes cannot be shown together. Open each pull request for its changes.",
       "drawn": null,
+      "column": "reading",
       "notices": []
     }
   ],

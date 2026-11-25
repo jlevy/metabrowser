@@ -14,8 +14,9 @@
 // stack of more members than the server fetches at once, one of whose fetches fails, over
 // a read asked for while one is on its way, over a fetch that ends once the stack is no
 // longer linear, and over an answer read as a fetch ended before its record. Then the
-// body's state machine (`bodyPlan` and its events) and the notices above it
-// (`statusNotices`) over a reader who opens a file while the stack moves. What is left to
+// body's state machine (`bodyPlan` and its events), the column it is set in
+// (`bodyInColumn`), and the notices above it (`statusNotices`) over a reader who opens a
+// file while the stack moves. What is left to
 // the glue (`mountStackPage`) is the drawing, which github-stack-guide-mount-session.js
 // mounts.
 
@@ -479,6 +480,9 @@ function bodySession(page, pending, current, lacking, notLinear) {
       ...(action.text ? { text: action.text } : {}),
       ...(action.retry ? { retry: true } : {}),
       drawn: body.drawn === current.comparison ? "current" : body.drawn ? "other" : null,
+      // The body's column, a pull request's (`bodyInColumn`): the reading column but for a
+      // drawn Docs or Changes.
+      column: page.bodyInColumn(body, tab) ? "reading" : "full pane",
       notices: page
         .statusNotices(envelope, body.drawn?.key ?? null, null, failed)
         .map((notice) => `${notice.text}${notice.action ? ` [${notice.action}]` : ""}`),
@@ -571,6 +575,7 @@ function guidedSession(page, pending, current, lacking, notLinear) {
       tab,
       do: planned.action.do === "mount" ? `mount ${planned.action.tab}` : planned.action.do,
       drawn: body.drawn === current.comparison ? "current" : body.drawn ? "other" : null,
+      column: page.bodyInColumn(body, tab) ? "reading" : "full pane",
     });
   };
   step("before any answer", null);
