@@ -1246,7 +1246,7 @@ def test_the_stack_skeleton_is_a_stack_guide_the_page_reads(skill: str) -> None:
 def test_the_stack_filters_read_the_pinned_stack_answers(skill: str) -> None:
     findings, printed = stack_filter_findings(skill)
     assert findings == []
-    # The stack the top layer is in, and each changed file with the layers that change it.
+    # The stack layer 8 is in, and each changed file with the layers that change it.
     assert "70" in printed and "docs/draft.md → 10" in printed, printed
 
 
