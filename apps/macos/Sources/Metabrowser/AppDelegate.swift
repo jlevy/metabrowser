@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// folder (`gate(for:)`).
     private let repositoryLaunchGate = LaunchGate()
     private let runtimeModel = RuntimeModel()
+    /// Settings > Plugins, kept while the window is closed, so reopening it lists them at once.
+    private let pluginList = PluginListModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
     /// The window each waiting folder was asked to open in (`request(_:into:)`).
@@ -80,9 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         session: { [weak self] key in self?.sessions[key] as? FolderSession })
     /// Set when a launch found no runtime, so the last session is restored once one is.
     private var restoreAfterDiscovery = false
-    private var runtimeWindow: RuntimeWindowController?
-    /// Help > Check Setup…, made the first time it is chosen and kept.
-    private var checkSetupWindow: CheckSetupWindowController?
+    /// Metabrowser > Settings…, made the first time it is shown and kept.
+    private var settingsWindow: SettingsWindowController?
     private let checkSetupModel = CheckSetupModel()
     /// The `metab --doctor --json` run Check Setup… awaits: at most one.
     private var checkSetupRun: Task<Void, Never>?
@@ -277,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else if selection.setup != nil {
                 openFolder(nil)
             } else {
-                showSettings(nil)
+                showRuntimeSettings()
             }
         }
         return true
@@ -330,7 +331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let window { waitingWindows.wait(waiting, in: window) }
                 if separately { waitingSeparateWindows.insert(waiting) }
             }
-            if !selection.isBusy { showSettings(nil) }
+            if !selection.isBusy { showRuntimeSettings() }
             return
         }
         // A window with a sheet open refuses the switch (`FolderWindows.switchWindow`); the
@@ -363,7 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recheckChangedRuntime()
         guard selection.setupForOpening(url) != nil else {
             if selection.droppedLinks > 0 { showNextLinkModal() }
-            if !selection.isBusy { showSettings(nil) }
+            if !selection.isBusy { showRuntimeSettings() }
             return
         }
         switch links.offer(url) {
@@ -600,7 +601,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let setup = waitForRuntime ? selection.setupForOpening(link) : operations.launchableSetup()
         guard setup != nil, let session = session(for: root, link: link) else {
-            if waitForRuntime, !selection.isBusy { showSettings(nil) }
+            if waitForRuntime, !selection.isBusy { showRuntimeSettings() }
             return false
         }
         let window = session.makeWindow()
@@ -706,7 +707,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             accepted: { [weak self] in self?.operations.launchableSetup() })
         session.onWaitingForRuntime = { [weak self] in
             // A search, recheck, or choice that is running settles it, and opens Settings if it finds nothing.
-            if self?.selection.isBusy == false { self?.showSettings(nil) }
+            if self?.selection.isBusy == false { self?.showRuntimeSettings() }
         }
         session.onRootRefused = { [weak self] refused in self?.folderWindows.rootRefused(refused) }
         session.onLinkNotFound = { [weak self] missing, link, outcome in
@@ -821,7 +822,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if separately { waitingSeparateWindows.insert(repository) }
         }
         if selection.droppedLinks > 0 { showNextLinkModal() }
-        if !selection.isBusy { showSettings(nil) }
+        if !selection.isBusy { showRuntimeSettings() }
     }
 
     /// File > Close Folder, for the folder the key window shows. Returns false, having
@@ -941,7 +942,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lastLoginPath = report.loginPath
             failEnteredRuntimeWait()
             await prepareGuide()
-            showSettings(nil)
+            showRuntimeSettings()
         case (.recheck(let path, let result), .notFound):
             AppLog.app.error(
                 "\(path, privacy: .public) is no longer usable (\(RuntimeView.describe(result), privacy: .public)); searching again"
@@ -994,18 +995,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rewatch()
     }
 
+    /// Metabrowser > Settings…: the pane it showed last.
     @objc func showSettings(_ sender: Any?) {
-        if runtimeWindow == nil {
-            runtimeWindow = RuntimeWindowController(
-                model: runtimeModel,
-                actions: RuntimeActions(
+        showSettings(tab: nil)
+    }
+
+    /// Settings > Runtime, where a missing or rejected `metab` is explained and another
+    /// found or chosen: what every start, link, and menu item that needs a runtime opens.
+    func showRuntimeSettings() {
+        showSettings(tab: .runtime)
+    }
+
+    private func showSettings(tab: SettingsTab?) {
+        if settingsWindow == nil {
+            let window = SettingsWindowController(
+                runtime: runtimeModel,
+                runtimeActions: RuntimeActions(
                     findAgain: { [weak self] in self?.beginDiscovery() },
                     choose: { [weak self] in self?.chooseRuntime() },
-                    checkSetup: { [weak self] in self?.showCheckSetup(nil) },
-                    revealLogs: { [weak self] in self?.revealLogsFolder(nil) }))
+                    revealLogs: { [weak self] in self?.revealLogsFolder(nil) }),
+                plugins: pluginList,
+                checkSetup: checkSetupModel,
+                checkSetupActions: CheckSetupActions(checkAgain: { [weak self] in self?.runCheckSetup() }))
+            // Check Setup runs each time its pane comes on screen, unless a run is under way.
+            window.onShow = { [weak self] shown in
+                if shown == .checkSetup { self?.runCheckSetup() }
+            }
+            settingsWindow = window
         }
-        runtimeWindow?.showWindow(nil)
-        runtimeWindow?.window?.makeKeyAndOrderFront(nil)
+        settingsWindow?.show(tab)
     }
 
     private func chooseRuntime() {
@@ -1031,19 +1049,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         await operations.choose(path)
     }
 
-    /// Help > Check Setup…: runs `metab --doctor --json` each time the window comes on
-    /// screen, unless a run is under way, and shows its report (`DoctorRun`).
+    /// Help > Check Setup…: Settings > Check Setup, which runs `metab --doctor --json` each
+    /// time it comes on screen, unless a run is under way, and shows its report (`DoctorRun`).
     @objc func showCheckSetup(_ sender: Any?) {
-        if checkSetupWindow == nil {
-            checkSetupWindow = CheckSetupWindowController(
-                model: checkSetupModel,
-                actions: CheckSetupActions(
-                    checkAgain: { [weak self] in self?.runCheckSetup() },
-                    openSettings: { [weak self] in self?.showSettings(nil) }))
-        }
-        runCheckSetup()
-        checkSetupWindow?.showWindow(nil)
-        checkSetupWindow?.window?.makeKeyAndOrderFront(nil)
+        showSettings(tab: .checkSetup)
     }
 
     private func runCheckSetup() {
@@ -1200,7 +1209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // may have come since. With no runtime accepted now, nothing is stopped.
             guard let latest = operations.launchableSetup()?.runtime else {
                 AppLog.app.error("not restarting after the upgrade: no metab Metabrowser can run is selected now")
-                if !selection.isBusy { showSettings(nil) }
+                if !selection.isBusy { showRuntimeSettings() }
                 return
             }
             let folders = folderSessions
@@ -1254,7 +1263,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// say, is told in an alert, not left as a menu item that does nothing.
     @objc func openEventLog(_ sender: Any?) {
         guard let setup = selection.setup else {
-            if !selection.isBusy { showSettings(nil) }
+            if !selection.isBusy { showRuntimeSettings() }
             return
         }
         let folder = appIdentity.supportDirectory()

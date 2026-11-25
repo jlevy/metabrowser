@@ -86,14 +86,13 @@ When a signed disk image appears on
 [GitHub Releases](https://github.com/jlevy/metabrowser/releases), open it and drag
 Metabrowser to Applications after installing a compatible `metab`.
 
-If the app cannot start a folder, open **Settings**. It shows the required version and
-any rejected runtimes.
+If the app cannot start a folder, open **Settings → Runtime**. It shows the required
+version and any rejected runtimes.
 After installing or updating `metab`, use **Find Again** or **Choose metab…** to select
 the executable. If your preview requires a newer version than
 [PyPI](https://pypi.org/project/metabrowser/) offers, use the checkout’s `metab` as
-described below.
-**Check Setup…** checks the tools and paths the app actually uses, which
-can differ from the ones in your terminal.
+described below. **Help → Check Setup…** checks the tools and paths the app actually
+uses, which can differ from the ones in your terminal.
 Restart an open folder’s server if the app offers to after an upgrade.
 See [Choosing a metab](docs/macos-app.md#choosing-a-metab) for runtime discovery and the
 app’s trust checks.
@@ -113,8 +112,8 @@ make macos-app
 ~~~
 
 Open the app at the path printed by the build.
-To use the checkout’s runtime, select its `.venv/bin/metab` in **Settings → Choose
-metab…**. If the build fails or the runtime is rejected, check the
+To use the checkout’s runtime, select its `.venv/bin/metab` in **Settings → Runtime →
+Choose metab…**. If the build fails or the runtime is rejected, check the
 [development prerequisites](docs/development.md#set-up) and
 [preview setup guide](docs/installation.md#the-macos-app) for the checkout and version
 the app expects.
@@ -123,8 +122,8 @@ the app expects.
 
 Use `metab --plugins` to list discovered plugins with their sources and dependencies, or
 add `--json` to read that report programmatically.
-The Mac app lists the selected runtime’s plugins under **Settings → Information →
-Plugins**. Run `metab --doctor` for discovery errors.
+The Mac app lists the selected runtime’s plugins under **Settings → Plugins**, with any
+discovery errors; `metab --doctor` reports them too.
 Built-in plugins ship with `metab`. For external plugins, see
 [plugin discovery and dependency checks](docs/plugins.md#trust-model-and-discovery).
 
