@@ -3,12 +3,16 @@ type: is
 id: is-01m8a55tm5adgag0mdqwwqh3pc
 title: "Rendered diff: contiguous added blocks show white gaps between green backgrounds"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-11-25T20:08:28.027Z
-updated_at: 2026-11-25T20:08:28.027Z
+updated_at: 2026-11-25T20:16:46.489Z
+started_at: 2026-11-25T20:16:46.487Z
 ---
 In the rendered diff view (PR pages' Docs/rendered view and elsewhere the rendered diff is drawn), added content has a green background, correctly, but white gaps show between consecutive blocks (block margins outside the background). Contiguous added blocks must read as one continuous green band, and the vertical spacing must equal the same content rendered without highlighting.
