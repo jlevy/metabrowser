@@ -8248,17 +8248,19 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * Where Conversation's description had its stack-review block: the server renders the
-   * description without it (`render_part`), and this says the guide is read on the page of
-   * the stack this pull request is a member of, whose front page shows it.
+   * description without it (`render_part`), and this says a stack guide is read on a
+   * stack's page. It names a stack guide, not the stack's: a stack shows the block of its
+   * top-most member that has one, which may be a member above this one.
    */
   function stackGuideCard() {
-    const slot = h("span", { class: "github-pull-stack-guide-links" });
+    const slot = h("span", { class: "github-pull-stack-guide-links" }, ["."]);
     stackGuideLinks = { slot, key: "" };
     paintStackGuideLinks();
-    return notice(null, ["This description has a stack's guided review. ", slot]);
+    return notice(null, ["This description has a stack guide, read on its stack's page", slot]);
   }
 
-  /** Link each stack this pull request is a member of from the stack guide's card. */
+  /** Link each stack this pull request is a member of from the stack guide's card, once
+   * the stacks are known; with none, the card links nothing. */
   function paintStackGuideLinks() {
     const shownLinks = stackGuideLinks;
     if (shownLinks === null) {
@@ -8271,10 +8273,11 @@ export function mountPullPage(container, ctx, mb) {
     }
     shownLinks.key = key;
     shownLinks.slot.replaceChildren(
+      ".",
       ...stacks.flatMap((id, at) => {
         const link = stackPageLink(id);
         link.append(`Open ${stackLabel(id)}`);
-        return at === 0 ? [link] : [" · ", link];
+        return [at === 0 ? " " : " · ", link];
       }),
     );
   }

@@ -273,6 +273,7 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         f"{GUIDE}?stack=70",
     ).payload()
     assert (ready["state"], ready["carrier"], ready["step_count"]) == ("ready", 10, 2)
+    assert ready["carrier_url"] == "https://github.com/octo/demo/pull/10"
     assert current["guide"] == {"number": 10, "revision": ready["record_revision"]}
     assert [(ref["kind"], ref["state"]) for ref in ready["references"]] == [
         ("pull", "ready"),
@@ -283,6 +284,15 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert draft["references"][0]["state"] == "ready"
     assert draft["references"][0]["href"] == "/stack/70/changes/docs/draft.md"
     assert draft["comparison"] == {"merge_base": comparison["left"], "head": comparison["right"]}
+    # The page asks at the comparison it draws, here the current one, which reads the same.
+    drawn = f"&left={comparison['left']}&right={comparison['right']}&key={comparison['key']}"
+    at_drawn = run_metab((CANONICAL, "--api", f"{GUIDE}?stack=70&step=2{drawn}")).payload()
+    assert at_drawn == draft
+    half = read_guide(
+        "## A comparison named by less than its two commits and its key is refused.\n",
+        f"{GUIDE}?stack=70&left={comparison['left']}",
+    )
+    assert "status: 400" in half.stdout
     beyond = read_guide("## A step past its last.\n", f"{GUIDE}?stack=70&step=3")
     assert beyond.payload()["state"] == "step_not_found"
     described = read_guide(
@@ -424,6 +434,8 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "guide=#10 tab=guided" in shown.stdout
     files_shown = in_guide("", "--show", "/stack/70/files")
     assert "tab=files" in files_shown.stdout
+    guided_shown = in_guide("", "--show", "/stack/70/guided")
+    assert "guide=#10 tab=guided" in guided_shown.stdout
 
     blocks.append("## The stack's page at a file, as `--show` reports it: its kind and layers.\n")
     file_shown = run(CANONICAL, "--show", "/stack/70/changes/docs/draft.md")
@@ -461,6 +473,21 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "status: 410" not in kept_rendered.stdout
     never = api(comparison["route"].replace(comparison["key"], "0" * 32))
     assert "status: 410" in never.stdout
+    # The guide follows the comparison the page draws, as Files, Docs, and Changes do: at the
+    # current pair, 10 alone, its pins are behind; at the pair the page still draws, it reads
+    # as it did, until the reader takes the new comparison.
+    now = run_metab((CANONICAL, "--api", f"{GUIDE}?stack=70&step=2")).payload()
+    assert (now["state"], now["comparison"]["merge_base"]) == ("stale", pull_origin["topic"])
+    still = read_guide(
+        "## Its guide, asked at the comparison a page still draws, reads as it did there.\n",
+        f"{GUIDE}?stack=70&step=2{drawn}",
+    ).payload()
+    assert {**still, "record_revision": None} == {**draft, "record_revision": None}
+    gone = read_guide(
+        "## A comparison the route never gave has moved, as the stack's comparison route says.\n",
+        f"{GUIDE}?stack=70&step=2{drawn.replace(comparison['key'], '0' * 32)}",
+    ).payload()
+    assert (gone["state"], gone["carrier"]) == ("stack_moved", 10)
 
     answers["api"][STACKS] = ok(
         STACKS,

@@ -45,9 +45,12 @@ import { pullStateIcon } from "./pull-state.js";
  *   Docs tab draws it and a YAML or JSON file as Changes does. *settled* is true once the
  *   file is drawn, and false when the view's notice says why it is not, or the handle was
  *   disposed first.
- * @typedef {{kind: "pull" | "stack", number: number}} GuideSubject What carries the guide: a
+ * @typedef {{kind: "pull" | "stack", number: number,
+ *   at?: {left: string, right: string, key: string}}} GuideSubject What carries the guide: a
  *   pull request, whose description's `guided-review` block it is, or a native stack, whose
- *   guide is a member's `stack-review` block, read against the stack's combined comparison.
+ *   guide is a member's `stack-review` block, read against a combined comparison of the
+ *   stack: *at*, the one its page draws, by its two commits and its key, or without it the
+ *   stack's current one.
  * @typedef {{open: (path: string) => void,
  *   openPull: (number: number, path: string | null) => void,
  *   age: (iso: string) => HTMLElement, shortCommit: (sha: string) => string,
@@ -74,27 +77,32 @@ import { pullStateIcon } from "./pull-state.js";
  *   group: number | null, title: string, note: string, note_html: string | null,
  *   note_refusal?: string | null, group_note_html: string | null,
  *   group_note_refusal?: string | null, references: Reference[], comparison: Pins,
- *   stale?: Staleness, assets?: unknown}} Step `group` is the index in `outline` of the
+ *   stale?: Staleness, assets?: unknown, carrier_url?: string | null}} Step `group` is the
+ *   index in `outline` of the
  *   step's group, or null for a step outside one (`_outline` in guided_review.py);
  *   *note_html* is the note's Markdown rendered inert, as the description's is, and
  *   *group_note_html* the note of the group the step opens, each null when its render was
  *   refused or there is none, and *note_refusal* and *group_note_refusal* the code each
  *   refusal was answered with, as the Markdown route answers a text's (`_rendered_note` in
  *   guided_review.py); *comparison* is the one the references were read at, the pull
- *   request's current one.
- * @typedef {(html: string) => HTMLElement} DrawProse The page's insertion of a text's
- *   rendered Markdown (`inertProse` in pull-page.js): the server's inert HTML rebuilt from
- *   static/inert-html.js's allowlist into a `.kpress-prose` element, its links made absolute
- *   against the pull request and marked as a description's are.
+ *   request's current one. A stack's step names its carrier's page as *carrier_url*, which
+ *   its notes' links were made absolute against.
+ * @typedef {(html: string, base: string | null) => HTMLElement} DrawProse The page's
+ *   insertion of a text's rendered Markdown (`inertProse` in pull-page.js): the server's
+ *   inert HTML rebuilt from static/inert-html.js's allowlist into a `.kpress-prose` element,
+ *   its links made absolute against *base*, the page of the pull request that carries the
+ *   guide, or the page's own pull request when null, and marked as a description's are.
  * @typedef {(code: string) => string | null} RefusalNote What the page says under a text
  *   whose render was refused with *code* (`textRefusalNote` in pull-page.js), or null when
  *   the code needs no word to the reader.
  * @typedef {{state: "absent" | "invalid" | "comparison_unavailable" |
- *   "description_truncated" | "step_not_found" | "not_cached" | "stack_unavailable",
- *   record_revision: string | null, message?: string, stale?: Staleness}} Refusal A
- *   stack's answer names its member that carries the guide too, as `carrier`, and a stack
- *   this copy cannot pair is `stack_unavailable` (`stack_guided_review` in
- *   guided_review.py).
+ *   "description_truncated" | "step_not_found" | "not_cached" | "stack_unavailable" |
+ *   "stack_moved", record_revision: string | null, message?: string, stale?: Staleness}}
+ *   Refusal A stack's answer names its member that carries the guide too, as `carrier`; a
+ *   stack this copy cannot pair is `stack_unavailable`, and a comparison of it neither
+ *   current nor kept is `stack_moved` (`stack_guided_review` in guided_review.py). A
+ *   refusal before the guide is found, a stack's `not_cached` or `stack_unavailable`,
+ *   names no revision.
  * @typedef {"unchanged" | "changed" | "unknown"} Change Whether a reference's file changed
  *   since the guide was written: "unknown" when the guide is out of date and what changed
  *   could not be read.
@@ -121,6 +129,8 @@ const renderRetried = (step) =>
  * the reader returns to it, so its note renders once the renderer can, as a reload would.
  * A step whose read was refused or failed keeps the guide's steps, from the last answer that
  * had them, so the reader can still move, and is read again when the reader returns to it.
+ * A refusal that names no revision, a stack's while it is pending or cannot be paired, is
+ * that step's, never a new guide: only an answer that names another revision is.
  *
  * A stack's guide has no overview of its own, since no member's description introduces the
  * stack: with *first* 1 it opens on step 1, and no move goes before it.
@@ -173,7 +183,7 @@ export function createGuideNavigation(deps) {
       if (request.signal.aborted) {
         return;
       }
-      if (result.record_revision !== expected) {
+      if (result.record_revision !== null && result.record_revision !== expected) {
         deps.render({ state: "updated" }, selected, count);
         return;
       }
@@ -265,6 +275,8 @@ const STACK_MESSAGES = Object.freeze({
     "Only part of the description that carries this stack's guide was loaded, and it holds no complete guide.",
   not_cached: "This stack's pull requests are still being fetched.",
   stack_unavailable: "This stack cannot be shown.",
+  stack_moved:
+    "This stack has moved since its comparison was drawn. Show the new comparison to read its guide.",
   updated: "The stack's guide changed. Reopen the guide to read the new version.",
 });
 
@@ -274,6 +286,9 @@ const STEP_MESSAGES = Object.freeze({
   refused: "This step could not be read. Choose it again to retry.",
   error: "Could not load this step. Choose it again to retry.",
 });
+// A stack's step refused for the stack's own reason says that reason, in its whole
+// refusal's words: the stack's members are fetched, or the comparison drawn has moved.
+const STACK_STEP_REFUSALS = new Set(["not_cached", "stack_unavailable", "stack_moved"]);
 
 const REFERENCE_MESSAGES = Object.freeze({
   manifest_truncated: "This path is outside the available changed-file list.",
@@ -406,7 +421,10 @@ function refusalLine(code, refusalNote) {
  */
 function stepProse(state, drawProse, refusalNote) {
   const html = state.note_html;
-  const prose = typeof html === "string" && drawProse !== null ? drawProse(html) : null;
+  const prose =
+    typeof html === "string" && drawProse !== null
+      ? drawProse(html, state.carrier_url ?? null)
+      : null;
   const shown = prose ?? element("div", "", "kpress-prose");
   if (prose === null) {
     shown.append(element("p", state.note, "github-pull-guide-commentary"));
@@ -427,7 +445,12 @@ function stepProse(state, drawProse, refusalNote) {
 function groupNote(note, state, drawProse, refusalNote) {
   const html = state.group_note_html;
   if (typeof html === "string" && drawProse !== null) {
-    return [proseHost(drawProse(html), "github-pull-text github-pull-guide-group-note")];
+    return [
+      proseHost(
+        drawProse(html, state.carrier_url ?? null),
+        "github-pull-text github-pull-guide-group-note",
+      ),
+    ];
   }
   const typed = element(
     "p",
@@ -916,7 +939,11 @@ export function mountGuidedReview(host, introduction, subject, deps) {
   const said = stacked ? STACK_MESSAGES : MESSAGES;
   // The card the overview shows, which a stack's guide never places.
   const intro = introduction ?? element("div");
-  const asks = `${stacked ? "stack" : "number"}=${subject.number}`;
+  // A stack's guide is read at the comparison its page draws, as its other tabs are.
+  const at = subject.at;
+  const asks = `${stacked ? "stack" : "number"}=${subject.number}${
+    at === undefined ? "" : `&left=${at.left}&right=${at.right}&key=${at.key}`
+  }`;
   /** @type {Promise<unknown> | null} */
   let styles = null;
   /** @type {Promise<DrawPatch | null> | null} */
@@ -1045,8 +1072,9 @@ export function mountGuidedReview(host, introduction, subject, deps) {
   function paintOutline(at) {
     outline.hidden = titles.length === 0;
     const count = titles.length;
-    // What is shown, by name: the overview, or a step and how many there are.
-    status.textContent = placeName(at, count);
+    // What is shown, by name: the overview, or a step and how many there are. A stack's
+    // guide has no overview, so before its first step it names no place.
+    status.textContent = at < first ? "" : placeName(at, count);
     previous.disabled = at <= first;
     next.disabled = at >= count;
     const key = JSON.stringify(entries);
@@ -1174,7 +1202,9 @@ export function mountGuidedReview(host, introduction, subject, deps) {
             ? (state.message ?? "This guide is invalid.")
             : state.state === "error"
               ? STEP_MESSAGES.error
-              : STEP_MESSAGES.refused;
+              : stacked && STACK_STEP_REFUSALS.has(state.state)
+                ? (said[state.state] ?? STEP_MESSAGES.refused)
+                : STEP_MESSAGES.refused;
         return;
       }
       // A refusal says one thing, its own reason, whatever a stale guide's answer carries.

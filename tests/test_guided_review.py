@@ -37,6 +37,7 @@ from metabrowser.builtin_plugins.github.guided_review import (
     _references,  # pyright: ignore[reportPrivateUsage]
     _schema_refusal,  # pyright: ignore[reportPrivateUsage]
     parse_guide,
+    parse_stack_guide,
     read_guide,
     without_guide,
 )
@@ -83,6 +84,45 @@ def test_parses_an_ordered_guide_from_the_description() -> None:
     steps = guide.flat_items()
     assert [step.title for step in steps] == ["Read the request first", "Follow the worker"]
     assert steps[0].references[0].end_line == 5
+
+
+# A block that cannot be read: YAML that does not parse, and a block outside the format.
+_BROKEN = {"guided-review": "not: [yaml\n", "stack-review": "x: 1\n"}
+
+
+@pytest.mark.parametrize("stack_first", [False, True], ids=["guide first", "stack first"])
+@pytest.mark.parametrize(
+    "broken", [None, "guided-review", "stack-review"], ids=["both read", "guide", "stack"]
+)
+def test_a_broken_block_of_one_kind_never_hides_the_other(
+    broken: str | None, stack_first: bool
+) -> None:
+    """A description can carry its pull request's guide and a stack's, each read on its own:
+    a block of one kind that cannot be read refuses that kind alone, in either order, and
+    stays in the introduction, from which a block that reads is taken out (A9 of review A
+    on #838)."""
+
+    def block(name: str) -> str:
+        body = _GUIDE.removeprefix("```guided-review\n").removesuffix("```")
+        return f"```{name}\n{_BROKEN[name] if name == broken else body}```"
+
+    kinds = ["stack-review", "guided-review"] if stack_first else ["guided-review", "stack-review"]
+    body = f"Intro.\n\n{block(kinds[0])}\n\nMiddle.\n\n{block(kinds[1])}\n\nTail.\n"
+    for name, parse in (("guided-review", parse_guide), ("stack-review", parse_stack_guide)):
+        if name == broken:
+            with pytest.raises(GuideError):
+                parse(body)
+        else:
+            read = parse(body)
+            assert read is not None and len(read.flat_items()) == 2, name
+    introduction = without_guide(body)
+    for name in kinds:
+        assert (f"```{name}" in introduction) == (name == broken), name
+    assert [part for part in ("Intro.", "Middle.", "Tail.") if part in introduction] == [
+        "Intro.",
+        "Middle.",
+        "Tail.",
+    ]
 
 
 def test_the_description_without_its_guide_is_the_guides_introduction() -> None:

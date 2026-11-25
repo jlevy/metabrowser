@@ -1714,7 +1714,8 @@ async def _step_answer(
         **identity,
         "state": "ready" if staleness is None else "stale",
         **diagnostics,
-        # The comparison the excerpts are read from: the carrier's current one.
+        # The comparison the excerpts are read from: a pull request's current one, or the
+        # stack's pair the page asked at, else its current one.
         "comparison": comparison,
         "step_count": len(steps),
         # Every step's title, so the page names each step it can move to.
@@ -1751,22 +1752,36 @@ async def stack_guided_review(
     stack: int,
     step_number: int,
     links: GitLocation | None = None,
+    drawn: tuple[str, str, str] | None = None,
 ) -> dict[str, object]:
     """Return the first or selected step of native stack *stack*'s guide and only its
     excerpts, in the envelope a pull request's guide has.
 
     The guide is the `stack-review` block of the top-most member whose description has one
-    (:func:`stack_guide_carrier`), and the answer names that member as ``carrier`` and its
-    record's revision as ``record_revision``. Its references are read against the stack's
-    combined comparison, the one its page's Files, Docs, and Changes draw, and its pins
-    against the stack's pair: the bottom member's merge base and the top member's head. A
-    stack this copy cannot pair is `stack_unavailable`, with the stack route's ``reason``,
-    and one with a member not read yet is `not_cached`, since that member may carry the
-    guide. Runs no ``gh`` and no fetch.
+    (:func:`stack_guide_carrier`), and the answer names that member as ``carrier``, its
+    page, which the notes' links were made absolute against, as ``carrier_url``, and its
+    record's revision as ``record_revision``. Its references are read against a combined
+    comparison of the stack, the one its page's Files, Docs, and Changes draw, and its pins
+    against that comparison's pair: the bottom member's merge base and the top member's
+    head. *drawn* names the comparison the page draws, by its two commits and its key, as
+    ``stack-comparison`` takes it: the stack's current pair, or one the stack route gave
+    before and keeps (:func:`retained_stack_pair`), so a page reads its guide at the
+    comparison it shows until the reader takes the new one. Without *drawn*, the current
+    pair. A pair neither names is `stack_moved`, and kept pairs that cannot be read now are
+    `stack_unavailable` with the reason ``snapshot_unavailable``. A stack this copy cannot
+    pair is `stack_unavailable`, with the stack route's ``reason``, and one with a member
+    not read yet is `not_cached`, since that member may carry the guide. Runs no ``gh`` and
+    no fetch.
     """
     from metabrowser.builtin_plugins.github.pull_stack import combined, read_stack
+    from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
 
-    identity: dict[str, object] = {"stack": stack, "carrier": None, "record_revision": None}
+    identity: dict[str, object] = {
+        "stack": stack,
+        "carrier": None,
+        "carrier_url": None,
+        "record_revision": None,
+    }
     read = await read_stack(repository, published, stack, reader)
     if read.reason is not None:
         return {**identity, "state": "stack_unavailable", "reason": read.reason}
@@ -1780,7 +1795,7 @@ async def stack_guided_review(
     number, revision = found
     record = next(member.record for member in read.members if member.number == number)
     assert record is not None
-    identity.update(carrier=number, record_revision=revision)
+    identity.update(carrier=number, carrier_url=record.pull.html_url, record_revision=revision)
     hit = await asyncio.to_thread(
         _reading, (str(published.home), published.slug, number), revision, record.pull.body
     )
@@ -1789,8 +1804,16 @@ async def stack_guided_review(
             return {**identity, "state": "description_truncated"}
         return {**identity, "state": "invalid", "message": hit.stack_message}
     guide = hit.stack
-    # GitHub reports a head past a member's record: what changed is this copy's to say.
+    # GitHub reports a head past a member's record: what changed is this copy's to say. A
+    # pair kept from before is read in the store as it was, whatever moved since.
     newer = any(member.moved for member in read.members)
+    if drawn is not None and (pair.base, pair.head, pair.digest) != drawn:
+        kept = await asyncio.to_thread(retained_stack_pair, published, stack, reader, *drawn)
+        if kept == "unknown":
+            return {**identity, "state": "stack_unavailable", "reason": "snapshot_unavailable"}
+        if kept is None:
+            return {**identity, "state": "stack_moved"}
+        pair, newer = kept, False
     stale = newer or guide.comparison.head != pair.head or guide.comparison.merge_base != pair.base
     try:
         staleness = (

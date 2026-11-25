@@ -301,6 +301,7 @@ async def guided_review_handler(request: Request) -> Response:
         requested_number,
     )
     from metabrowser.git.routes import session_git_location
+    from metabrowser.git.wire import is_full_revision
     from metabrowser.view_routes import parse_pull_number
 
     params = request.query_params
@@ -313,6 +314,15 @@ async def guided_review_handler(request: Request) -> Response:
             return _invalid_request('"stack" is a native stack number')
         if step is None:
             return _invalid_request("step must be a positive integer")
+        # The comparison the page draws, named as `stack-comparison` names it, or none for
+        # the stack's current one.
+        drawn = tuple(params.get(name, "") for name in ("left", "right", "key"))
+        if any(drawn) and (
+            not is_full_revision(drawn[0])
+            or not is_full_revision(drawn[1])
+            or re.fullmatch(r"[0-9a-f]{32}", drawn[2]) is None
+        ):
+            return _invalid_request("a stack's comparison names its two commits and its key")
         repository, published, reader = await _stack_sources(request)
         if repository is None:
             return JSONResponse({"state": "not_github"}, status_code=409, headers=_NO_STORE)
@@ -320,7 +330,13 @@ async def guided_review_handler(request: Request) -> Response:
         answer = await unless_disconnected(
             request,
             stack_guided_review(
-                repository, published, reader, stack, step, links=session_git_location()
+                repository,
+                published,
+                reader,
+                stack,
+                step,
+                links=session_git_location(),
+                drawn=(drawn[0], drawn[1], drawn[2]) if any(drawn) else None,
             ),
         )
         if answer is None:

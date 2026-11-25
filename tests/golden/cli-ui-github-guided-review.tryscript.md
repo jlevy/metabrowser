@@ -17,7 +17,9 @@ move, and it is read again when chosen again, the one on screen too.
 An answer whose note a busy renderer, or one that could not start, refused is not kept,
 so its step is read again when chosen again; a note refused past the deadline keeps its
 answer. A stack’s guide, under `stack`, has no overview: it opens on step 1, and no move
-goes before it.
+goes before it. A step read while the stack is pending, or cannot be paired, is refused
+before the guide is found, with no revision: that step’s refusal, never a new guide, so
+the steps stay and the step is read again when chosen again.
 
 ```console
 $ node tests/dom/github-guided-review-session.js
@@ -95,14 +97,25 @@ $ node tests/dom/github-guided-review-session.js
   "stack": {
     "calls": [
       1,
-      2
+      2,
+      3,
+      3,
+      3
     ],
     "states": [
       "step 1: loading",
       "step 1: step 1 of 3",
       "step 2: loading",
       "step 2: step 2 of 3",
-      "step 1: step 1 of 3"
+      "step 1: step 1 of 3",
+      "step 3: loading",
+      "step 3: not_cached",
+      "step 2: step 2 of 3",
+      "step 3: loading",
+      "step 3: stack_unavailable",
+      "step 1: step 1 of 3",
+      "step 3: loading",
+      "step 3: step 3 of 3"
     ]
   }
 }
@@ -164,10 +177,12 @@ the record’s arrival reads the guide without changing tab.
 On a guided front page, Guided Review’s link and key go to the page already shown, and
 the description’s card on Conversation links the front page.
 A description that carries a stack’s guide, a `stack-review` block, gets a card on
-Conversation that links each stack the pull request is a member of, and no Guided Review
-of its own. A stack’s guide, as the stack’s page mounts it, has no introduction and no
-overview: it opens on its first step, asks the route by `stack=`, goes no further back,
-and says of the stack what a pull request’s guide says of the pull request.
+Conversation that says it has a stack guide and links each stack the pull request is a
+member of, or none while it is in no stack this copy knows, and no Guided Review of its
+own.
+A stack’s guide, as the stack’s page mounts it, has no introduction and no overview:
+it opens on its first step, asks the route by `stack=`, goes no further back, and says
+of the stack what a pull request’s guide says of the pull request.
 
 ```console
 $ node tests/dom/github-guided-review-mount-behavior.js
@@ -218,7 +233,8 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "its record arrives: guide mounted; asked step 1",
   "the guided front page: Guided Review links /pull/7, Conversation /pull/7/conversation; its key opens nothing",
   "from Conversation, the description's card links /pull/7",
-  "a description with a stack's guide: \"This description has a stack's guided review. Open Stack #286\" links Open Stack #286 (/stack/286)",
+  "a description with a stack's guide: \"This description has a stack guide, read on its stack's page. Open Stack #286\" links Open Stack #286 (/stack/286)",
+  "one in no stack this copy knows: \"This description has a stack guide, read on its stack's page.\"",
   "a stack's guide opens on Step 1 of 2, lists 2 steps and no overview, asks stack=70&step=1, and goes no further back; it says \"This guide was written for an earlier version of this stack, so steps marked changed may not match it. Its author can update the guide.\" and of a file \"This file changed after the guide was written. | This file is no longer in the stack's changes.\""
 ]
 ? 0

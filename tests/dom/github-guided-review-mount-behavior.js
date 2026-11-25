@@ -1219,8 +1219,10 @@ async function run() {
   }
 
   // A description that carries a stack's guide: the server renders it without the block,
-  // and Conversation's card says the guide is read on the page of each stack the pull
-  // request is a member of, which it links once the stacks are known.
+  // and Conversation's card says it has a stack guide, read on its stack's page, never that
+  // it is the stack's, since a member above may carry the one the stack shows. It links
+  // each stack the pull request is a member of once the stacks are known, and none while
+  // it is in no stack this copy knows (A7 of review A on #838).
   {
     const optionalStacks = require("../fixtures/github-stacks-responses.json");
     const carrier = host();
@@ -1240,7 +1242,7 @@ async function run() {
     await settle();
     const card = view.container
       .querySelectorAll(".notice")
-      .find((node) => node.textContent.includes("stack's guided review"));
+      .find((node) => node.textContent.includes("stack guide"));
     const links = [...card.descendants()]
       .filter((node) => node.tag === "a")
       .map((node) => `${node.textContent} (${node.getAttribute("href")})`);
@@ -1253,6 +1255,31 @@ async function run() {
       `a description with a stack's guide: "${card.textContent}" links ${links.join(", ")}`,
     );
     view.handle.dispose();
+    const alone = host();
+    // The stack column, emptied, checks where focus was, as the page does in a browser.
+    globalThis.HTMLElement ??= Element;
+    const unstacked = globalThis.fetch;
+    globalThis.fetch = (route, init) =>
+      route === "/api/plugin/github/stacks"
+        ? Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: () => optionalStacks.empty.etag },
+            json: async () => optionalStacks.empty.body,
+          })
+        : unstacked(route, init);
+    const lone = alone.mount(page, "conversation", described);
+    await settle();
+    const loneCard = lone.container
+      .querySelectorAll(".notice")
+      .find((node) => node.textContent.includes("stack guide"));
+    assert.equal(
+      [...loneCard.descendants()].filter((node) => node.tag === "a").length,
+      0,
+      "a pull request in no stack this copy knows links none",
+    );
+    steps.push(`one in no stack this copy knows: "${loneCard.textContent}"`);
+    lone.handle.dispose();
   }
 
   // A stack's guide, as the stack's page mounts it: no introduction and no overview, so it

@@ -358,13 +358,16 @@ Editing a description starts no CI run and leaves the layer’s own guide curren
 
 The description that carries the block introduces its layer, not the stack, so a stack’s
 guide opens on its first step, and its first steps orient the reader.
-On that layer’s page, Conversation leaves the block out and shows a card that opens the
-stack’s guide.
-A step’s files open in the stack’s Changes, and a step can cite each layer
-as `{pull: <n>}`. While a layer is being fetched, or the stack cannot be shown as one
-comparison, the guide on screen stays; when the stack moves, the page offers its new
-comparison, and the guide is read again, out of date where a layer moved past its pins,
-when you take it. The same answer is the `guided-review` route’s, by stack:
+On that layer’s page, Conversation leaves the block out and shows a card that says it
+has a stack guide and opens the page of each stack the layer belongs to.
+A step’s files open in the stack’s Changes, and a step can cite each layer as
+`{pull: <n>}`. The guide is read at the comparison the page shows, as Files, Docs, and
+Changes are. While a layer is being fetched, or the stack cannot be shown as one
+comparison, the guide on screen stays, and a step you have not read yet says why in its
+place; when the stack moves, the page offers its new comparison, and the guide is read
+again there, out of date where a layer moved past its pins, when you take it.
+The same answer is the `guided-review` route’s, by stack, at the current comparison or
+at one the stack’s page named, by the `left`, `right`, and `key` of its `comparison`:
 
 ```shell
 metab <pull request URL> --api '/api/plugin/github/guided-review?stack=<n>'

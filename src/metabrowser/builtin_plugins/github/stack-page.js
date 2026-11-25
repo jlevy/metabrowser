@@ -1088,11 +1088,14 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   /**
-   * The stack's guide (guided-review.js): its steps, read against the stack's comparison
-   * (`guided-review?stack=`). A file a step cites opens in this page's Changes, and another
-   * pull request, or a file of it, in that pull request's page. A file the rendered route
-   * renders is drawn whole from *comparison*, the one this page drew, while that is the one
-   * the step was read at, or, a file of another pull request, from that one's.
+   * The stack's guide (guided-review.js): its steps, read against *comparison*, the one this
+   * page drew (`guided-review?stack=` with its commits and key), so the guide shows what
+   * Files, Docs, and Changes show, and follows the reader to a new comparison only when they
+   * take it. A file a step cites opens in this page's Changes, and another pull request, or
+   * a file of it, in that pull request's page. A file the rendered route renders is drawn
+   * whole from *comparison* while that is the one the step was read at, or, a file of
+   * another pull request, from that one's. A note's links are absolute against the page of
+   * the member that carries the guide, and marked as a description's are.
    *
    * @param {StackComparison} comparison
    * @param {() => boolean} owns Whether the body still shows what this was drawn for.
@@ -1124,7 +1127,11 @@ export function mountStackPage(container, ctx, mb) {
     const view = mountGuidedReview(
       host,
       null,
-      { kind: "stack", number },
+      {
+        kind: "stack",
+        number,
+        at: { left: comparison.left, right: comparison.right, key: comparison.key },
+      },
       {
         open: (path) => open({ number, tab: "changes", file: path, stack: true }),
         openPull: (target, path) =>
@@ -1191,9 +1198,18 @@ export function mountStackPage(container, ctx, mb) {
           if (inert === null) {
             throw new Error("the inert HTML allowlist did not load");
           }
-          // A note's links were made absolute against the member that carries the guide.
-          const base = envelope?.github_url ?? "https://github.com/";
-          return (html) => inert.kpressProse(inert.sanitizeHtml(html, base), document);
+          // A note's links were made absolute against the member that carries the guide,
+          // whose page the step names; an outside link is marked as a description's is.
+          return (html, base) => {
+            const prose = inert.kpressProse(
+              inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/"),
+              document,
+            );
+            for (const anchor of prose.querySelectorAll("a[href]")) {
+              mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor), {});
+            }
+            return prose;
+          };
         },
         refusalNote: textRefusalNote,
       },
@@ -1206,8 +1222,12 @@ export function mountStackPage(container, ctx, mb) {
     shown = plan.body;
     const action = plan.action;
     if (action.do === "keep") {
-      // An edit of the description that carries the guide is read again.
-      if (guide !== null) {
+      // An edit of the description that carries the guide is read again while the
+      // comparison drawn is the stack's current one. A new comparison is offered, not
+      // swapped in: until the reader takes it, the guide stays as it was read at the drawn
+      // one, as Files, Docs, and Changes stay.
+      const current = envelope?.state === "current" ? (envelope.comparison?.key ?? null) : null;
+      if (guide !== null && current !== null && current === shown.drawn?.key) {
         guidedView?.show(guide.revision, false);
       }
       return;
@@ -1256,7 +1276,9 @@ export function mountStackPage(container, ctx, mb) {
         adopt(view);
         if (view !== null && handle === view) {
           guidedView = view;
-          view.show(carried.revision, false);
+          // An answer that came while the guide was imported may name a newer revision,
+          // which the keep path could not tell a view not yet mounted.
+          view.show((guide ?? carried).revision, false);
         }
       } catch (failure) {
         if (owns()) {

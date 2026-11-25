@@ -1221,28 +1221,41 @@ member’s own guide current.
   date. The `stack` answer’s `guide` names it and its record revision while the stack is
   current, and is null otherwise, since a member not read yet may carry a block.
 - **The route.** `guided-review?stack=<n>&step=<k>` (`stack_guided_review`) answers in
-  the envelope a pull request’s guide has, naming the `stack` and its `carrier`. A stack
-  this copy cannot pair is `stack_unavailable`, with the `stack` answer’s `reason`, and
-  one with a member not read yet is `not_cached`. The guide’s pins are the stack’s base
-  and top head; its `{path}` references read the stack’s kept manifest (`combined` in
-  `pull_stack.py`), each step’s address is the file in the stack page’s Changes, and
-  `_staleness` compares the pins with the stack’s pair, a member’s newer known head
-  counting as a newer head.
+  the envelope a pull request’s guide has, naming the `stack`, its `carrier`, and the
+  carrier’s page, `carrier_url`, which a note’s links are absolute against.
+  A stack this copy cannot pair is `stack_unavailable`, with the `stack` answer’s
+  `reason`, and one with a member not read yet is `not_cached`; both come before the
+  carrier is found, so they name no `record_revision`, and the page takes them as that
+  step’s refusal. `left`, `right`, and `key` name the comparison to read at, as
+  `stack-comparison` takes them: the current pair, or one the `stack` route gave before
+  and keeps (`retained_stack_pair`); one it never gave is `stack_moved`, and kept pairs
+  that cannot be read now are `stack_unavailable` with `snapshot_unavailable`. Without
+  them the route reads at the current pair.
+  The guide’s pins are the stack’s base and top head; its `{path}` references read that
+  pair’s kept manifest (`combined` in `pull_stack.py`), each step’s address is the file
+  in the stack page’s Changes, and `_staleness` compares the pins with that pair, a
+  member’s newer known head counting as a newer head at the current pair alone.
   `{pull}`, `{pull, path}`, and `{commit}` references read as in a pull request’s guide,
   the carrier’s stack first for a `{pull}`’s place.
 - **The page.** `stack-page.js` mounts `mountGuidedReview` with no introduction: the
   description that carries the guide introduces its member, not the stack, so the
   navigation starts at step 1 (`first` in `createGuideNavigation`), and the refusals
-  speak of the stack (`STACK_MESSAGES` in `guided-review.js`). The guide shown stays
-  while the stack is pending or cannot be shown, as the drawn comparison does
-  (`guideShown`), and is mounted again when the reader takes the comparison offered; a
-  new revision of the carrier’s record is read in place.
-  A whole document a step cites is drawn from the comparison the page drew while that is
-  the one the step was read at.
+  speak of the stack (`STACK_MESSAGES` in `guided-review.js`). The guide is read at the
+  comparison the page draws, so it shows what Files, Docs, and Changes show, and follows
+  the offer and take they follow: it is mounted again only when the reader takes the
+  comparison offered. The guide shown stays while the stack is pending or cannot be
+  shown, as the drawn comparison does (`guideShown`), and a step read then says so in
+  its place, under the guide’s steps.
+  A new revision of the carrier’s record is read in place while the comparison drawn is
+  the current one. A whole document a step cites is drawn from the comparison the page
+  drew while that is the one the step was read at.
+  `tests/dom/github-stack-guide-mount-session.js` runs this glue on the production page.
 - **The member’s page.** `render_part` leaves a block that reads as a stack’s guide out
   of the description, as it leaves a guide’s, and Conversation puts a card in its place
-  that links the page of each stack the pull request belongs to (`STACK_GUIDE_FENCE` in
-  `pull-page.js`, a hint as `GUIDED_FENCE` is).
+  that says it has a stack guide, not the stack’s, since a member above may carry the
+  one the stack shows, and links the page of each stack the pull request belongs to once
+  the stacks are known (`STACK_GUIDE_FENCE` in `pull-page.js`, a hint as `GUIDED_FENCE`
+  is).
 - **The command line.** `--show /stack/<n>` reports `guide=#<member>` and the tab the
   front page shows.
 

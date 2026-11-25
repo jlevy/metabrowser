@@ -203,6 +203,23 @@ async function main() {
   stack.move(-1);
   assert.equal(stackStates.at(-1), "step 1: step 1 of 3");
   assert.deepEqual(stackCalls, [1, 2]);
+  // A step read while the stack is pending, or cannot be paired, is refused before the guide
+  // is found, so its answer names no revision: that is the step's refusal, never a new guide
+  // (A1 of review A on #838). The guide keeps its steps, a step in hand is not read again,
+  // and the refused step is read again when the reader returns to it.
+  stack.go(3);
+  await respond({ state: "not_cached", record_revision: null, stack: 70, carrier: null });
+  assert.equal(stackStates.at(-1), "step 3: not_cached");
+  stack.move(-1);
+  assert.equal(stackStates.at(-1), "step 2: step 2 of 3");
+  stack.move(1);
+  await respond({ state: "stack_unavailable", record_revision: null, reason: "not_linear" });
+  assert.equal(stackStates.at(-1), "step 3: stack_unavailable");
+  stack.go(1);
+  stack.go(3);
+  await respond(answer("stacked", 3));
+  assert.equal(stackStates.at(-1), "step 3: step 3 of 3");
+  assert.deepEqual(stackCalls, [1, 2, 3, 3, 3]);
   stack.dispose();
   console.log(
     JSON.stringify({ calls, states, stack: { calls: stackCalls, states: stackStates } }, null, 2),
