@@ -486,10 +486,16 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
       "the summary starts collapsed",
       header.getAttribute("aria-expanded") === "false" && header.classList.contains("collapsed"),
     );
+    // Its chevron comes after its words, as on every toggle that expands a diff summary,
+    // where a folder's toggle and a stack's lead with theirs (docs/design-system.md, "Diff
+    // Summary").
+    const lastPart = header.children.filter((child) => typeof child === "object").at(-1);
     check(
-      "the header is a disclosure toggle with the registry's chevron box",
+      "the header is a disclosure toggle with the registry's chevron box, after its words",
       header.classList.contains("disclosure-toggle") &&
-        header.find("diff-summary-chevron").length === 1,
+        header.find("diff-summary-chevron").length === 1 &&
+        lastPart?.className === "diff-summary-chevron",
+      lastPart?.className ?? "",
     );
     check(
       "nothing of the tree is mounted until it is opened",

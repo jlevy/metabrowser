@@ -4336,10 +4336,10 @@ export function stackMemberState(source, target, number, current) {
  * position badge, the menu's heading is the stack's label, and its members come in
  * `stackMenuOrder`, the order the Pulls tab's stack groups list them in.
  *
- * Every member is one line in one layout, as a Pulls row's first line is (mb-as06): the pull
- * request's state icon, its place in the stack in bold, "14/15", a muted dot, and its title,
- * the SDK's `titleNodes` (docs/design-system.md, "Titles"), cut short at the line's end with
- * the whole title in its tip. The state is `deps.state`'s, read again each time the menu
+ * Every member is one line in one layout (mb-as06): the pull request's state icon, its title,
+ * the SDK's `titleNodes` (docs/design-system.md, "Titles"), cut short with the whole title in
+ * its tip, and at the line's end its place in the stack in bold, "14/15", a muted dot, and its
+ * number, in a Pulls row's order (mb-pw8t). The state is `deps.state`'s, read again each time the menu
  * opens or the page repaints, and a member whose state is not known yet keeps the icon's
  * slot empty, so every member's place starts at one edge. The current member is marked by
  * the Pulls list's current-row mark and `aria-current`, not by a check before its icon.
@@ -4479,19 +4479,20 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
-        // The state icon, then the place, a muted dot, and the title, and the number at the
-        // line's end, as a Pulls row draws it (mb-1kzu): the place, the dot, and the number
-        // never give way, and the title is cut short before the number.
+        // The state icon, then the title, and at the line's end the place, a muted dot, and
+        // the number, "14/15 · #N", in a Pulls row's order, the title, the place, and the
+        // number (mb-1kzu, mb-pw8t): the place, the dot, and the number never give way, and
+        // the title is cut short before them.
         const title = h("span", { class: "github-pull-stack-member-title" });
         const position = h("strong", { class: "github-pull-stack-member-position" });
         const dot = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
         const shown = h("span", { class: "github-pull-stack-member-number" }, [`#${target}`]);
         const copy = h("span", { class: "github-pull-stack-member-copy" }, [
+          title,
+          " ",
           position,
           " ",
           dot,
-          " ",
-          title,
           " ",
           shown,
         ]);

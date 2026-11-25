@@ -305,12 +305,12 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const memberLinks = () => [...members.descendants()].filter((item) => item.tag === "a");
   assert.deepEqual(
     memberLinks().map((item) => item.textContent),
-    ["3/3 · Stack change 8 #8", "2/3 · Stack change 7 #7", "1/3 · Stack change 6 #6"],
+    ["Stack change 8 3/3 · #8", "Stack change 7 2/3 · #7", "Stack change 6 1/3 · #6"],
   );
-  // Every member is one line in one layout (mb-as06): the state icon, then the bold place, a
-  // muted dot, and the title, whose whole is the member's tip, then the number, shown at the
-  // line's end as a Pulls row shows it (mb-1kzu), so a reader and a screen reader alike tell
-  // two members of one title apart. The page's own member has the header's state; a member
+  // Every member is one line in one layout (mb-as06): the state icon, then the title, whose
+  // whole is the member's tip, then, together at the line's end, the bold place, a muted dot,
+  // and the number, in a Pulls row's order, the title, the place, and the number (mb-1kzu,
+  // mb-pw8t), so a reader and a screen reader alike tell two members of one title apart. The page's own member has the header's state; a member
   // the Pulls list has not listed keeps the icon's slot, empty.
   const classOf = (node) => node.className || node.getAttribute("class");
   const layout = (link) => ({
@@ -323,9 +323,9 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     tip: link.getAttribute("data-tip-text"),
   });
   const line = [
+    "span.github-pull-stack-member-title",
     "strong.github-pull-stack-member-position",
     "span.github-pull-stack-dot",
-    "span.github-pull-stack-member-title",
     "span.github-pull-stack-member-number",
   ];
   const parts = ["github-pull-state-icon", "github-pull-stack-member-copy"];

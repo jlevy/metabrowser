@@ -224,14 +224,14 @@ const MEASURE = `async (titles) => {
     await document.fonts.ready;
     await frames();
     out.pullsRow = { prefixed: read(title(rows[0].number)), plain: read(title(rows[1].number)) };
-    // The title's two lines (mb-85op): its heading, cut short at the second line's end, past
-    // which the rest of the title runs.
+    // The row's run (mb-pw8t): the title, the number, and the toggle, wrapping in as many lines
+    // as they take, never cut short.
     const heading = title(rows[0].number).closest(".github-pulls-heading");
     const lineHeight = parseFloat(getComputedStyle(heading).lineHeight);
     out.pullsHeading = {
       clamped: heading.scrollHeight > heading.clientHeight + 1,
       lineClamp: getComputedStyle(heading).webkitLineClamp,
-      lines: Math.round((heading.clientHeight / lineHeight) * 100) / 100,
+      lines: Math.round((heading.getBoundingClientRect().height / lineHeight) * 100) / 100,
     };
     handle?.dispose?.();
   }
@@ -581,15 +581,17 @@ async function main() {
           bare.rest.weight,
         );
       }
-      // A Pulls row's title cut short at its second line ends in the clamp's ellipsis, with all
-      // of its title its text (mb-85op): it was one line, cut short by text-overflow.
+      // A Pulls row's long title wraps in its run and is never cut short, all of its title its
+      // text (mb-pw8t): it was one line, cut short by text-overflow, and then two, cut short
+      // by a line clamp's ellipsis (mb-85op).
       const row = measured.pullsRow?.prefixed;
       const heading = measured.pullsHeading;
       check(
-        "a Pulls row's long title is cut short at two lines with an ellipsis, whole in its text",
-        heading?.clamped === true &&
-          heading.lineClamp === "2" &&
-          heading.lines === 2 &&
+        "a Pulls row's long title wraps in its run, never cut short, whole in its text",
+        heading?.clamped === false &&
+          heading.lineClamp === "none" &&
+          heading.lines >= 2 &&
+          Math.abs(heading.lines - Math.round(heading.lines)) < 0.01 &&
           row?.text === PULL,
         JSON.stringify({ row, heading }),
       );

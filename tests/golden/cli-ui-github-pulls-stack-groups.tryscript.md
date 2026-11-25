@@ -27,8 +27,8 @@ pull requests is in one, the list stays flat; there is no option.
 A stack’s row is a row of the tree, as a folder is: J and K stop on it and open nothing,
 Enter opens or closes it, Right opens it or goes to its first pull request, and Left
 closes it, or from a pull request in it goes to it.
-A pull request’s row, its three lines one item (mb-1z7j), is a folder too: Right opens
-its changed files, and Left closes them before it goes to the stack.
+A pull request’s row, its run and last line one item (mb-1z7j), is a folder too: Right
+opens its changed files, and Left closes them before it goes to the stack.
 Home, the folder’s name or `0`, puts the list back as a fresh load draws it, from the
 rows it holds and with no request: every stack open, no pull request’s changed files
 open, and the Tab stop on the first row.
@@ -41,14 +41,15 @@ neighbours as drawn, a stack’s row passed over, then the first pull requests d
 `mounted` mounts the panel over a stand-in for the DOM and drives its handle, as Space,
 Right, and Left reach it, and a press on a stack’s row, printing the tree’s roles,
 levels, places, expansion, and Tab stop at each step, and each member’s title line as
-drawn: its place in its stack and the stack menu’s muted dot before its title, “3/3 ·
-Say more in the guide”, where a pull request in no stack has its title alone (mb-vkhd).
-`menu` is the page’s stack menu, mounted over a stand-in for the DOM: its heading is the
-stack’s label on the shared label classes, its trigger shows its bare position, a press
-opens it with focus on the current member, and its members are the group’s, in one
-order. `lines` is each member’s one line as drawn: its state icon’s state, as the list
-said it, then its bold place, a muted dot, its title, and its number at the line’s end,
-as a Pulls row shows it (mb-1kzu); `layout` is the parts that line is made of, one for
+drawn: its title, then the stack menu’s muted dot and its place in its stack, and the
+number, “Say more in the guide · 3/3 · #8”, where a pull request in no stack has no
+place (mb-vkhd). `menu` is the page’s stack menu, mounted over a stand-in for the DOM:
+its heading is the stack’s label on the shared label classes, its trigger shows its bare
+position, a press opens it with focus on the current member, and its members are the
+group’s, in one order.
+`lines` is each member’s one line as drawn: its state icon’s state, as the list said it,
+then its title, and at the line’s end its bold place, a muted dot, and its number, the
+order a Pulls row has (mb-1kzu); `layout` is the parts that line is made of, one for
 every member, the current one too.
 `named` is #8’s two chips, one for each of its stacks, each naming its stack before its
 position, as its page draws them.
@@ -372,11 +373,11 @@ $ node tests/dom/github-pulls-stack-groups-session.js
   ],
   "mounted": {
     "member lines": [
-      "#8: 3/3 · Say more in the guide",
-      "#7: 2/3 · Count to two in the app",
-      "#6: 1/3 · Work item 6"
+      "#8: Say more in the guide · 3/3 · #8",
+      "#7: Count to two in the app · 2/3 · #7",
+      "#6: Work item 6 · 1/3 · #6"
     ],
-    "a pull request in no stack": "#106: Work item 106",
+    "a pull request in no stack": "#106: Work item 106 · #106",
     "files": {
       "Right on #8": "true",
       "then Left": "false"
@@ -391,13 +392,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
           "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "  #8's change line · hidden · chevron collapsed",
+          "  #8's toggle · hidden · chevron collapsed",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
@@ -406,7 +407,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
@@ -415,13 +416,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
           "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "  #8's change line · hidden · chevron collapsed",
+          "  #8's toggle · hidden · chevron collapsed",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
@@ -430,13 +431,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
           "#8 · treeitem · level 2 · 1/3 · expanded false · Tab stop · focused",
-          "  #8's change line · hidden · chevron collapsed",
+          "  #8's toggle · hidden · chevron collapsed",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ],
         "opened": [
           8
@@ -448,13 +449,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
           "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop · focused",
-          "  #8's change line · hidden · chevron expanded",
+          "  #8's toggle · hidden · chevron expanded",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
@@ -463,13 +464,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
           "#8 · treeitem · level 2 · 1/3 · expanded false · Tab stop · focused",
-          "  #8's change line · hidden · chevron collapsed",
+          "  #8's toggle · hidden · chevron collapsed",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
@@ -478,13 +479,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop · focused",
           "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "  #8's change line · hidden · chevron collapsed",
+          "  #8's toggle · hidden · chevron collapsed",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
@@ -493,7 +494,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop · focused",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
@@ -501,13 +502,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop · focused",
           "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "  #8's change line · hidden · chevron collapsed",
+          "  #8's toggle · hidden · chevron collapsed",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
@@ -516,13 +517,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
           "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop · focused",
-          "  #8's change line · hidden · chevron expanded",
+          "  #8's toggle · hidden · chevron expanded",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ],
         "opened": [
           8
@@ -534,7 +535,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ],
         "opened": [
           8,
@@ -546,13 +547,13 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
           "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "  #8's change line · hidden · chevron collapsed",
+          "  #8's toggle · hidden · chevron collapsed",
           "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "  #7's change line · hidden · chevron collapsed",
+          "  #7's toggle · hidden · chevron collapsed",
           "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "  #6's change line · hidden · chevron collapsed",
+          "  #6's toggle · hidden · chevron collapsed",
           "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's change line · hidden · chevron collapsed"
+          "  #106's toggle · hidden · chevron collapsed"
         ]
       }
     ]
@@ -573,16 +574,16 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       8
     ],
     "lines": [
-      "draft 3/3 · Stack change 10 #10",
-      "closed 2/3 · Stack change 9 #9",
-      "merged 1/3 · Stack change 8 #8"
+      "draft Stack change 10 3/3 · #10",
+      "closed Stack change 9 2/3 · #9",
+      "merged Stack change 8 1/3 · #8"
     ],
     "layout": [
       "github-pull-state-icon",
       "github-pull-stack-member-copy",
+      "github-pull-stack-member-title",
       "github-pull-stack-member-position",
       "github-pull-stack-dot",
-      "github-pull-stack-member-title",
       "github-pull-stack-member-number"
     ],
     "groupRow": {

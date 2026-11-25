@@ -62,22 +62,25 @@ Metabrowser fetches the repository’s list of pull requests in the background a
 each page as it arrives; scroll toward the end to load more, and a spinner below the
 last row says how many have been fetched so far.
 
-Each row’s title takes its first two lines, and a longer title ends in an ellipsis; the
-page shows all of it.
-The third line is the number, the author, and the lines the pull request adds and
-deletes, such as **#455 · octo · +1,234 −567**, so walking the list shows the size of
-each change. The lines sum the same list of changed files the row’s tree shows, as a
-stack’s heading sums its pull requests’, and ask GitHub for nothing: the lists come from
-what the Pulls tab already reads behind you for the rows in view and from trees you
-open, and a gray placeholder holds their place until one arrives.
+Each row reads as one run: the title, the number, and the lines the pull request adds
+and deletes, with a chevron after them, such as **Fix the reader · #455 · +1,234 −567
+›**, wrapping as far as it needs, each line starting under the title, so walking the
+list shows the size of each change.
+The author and the age are on the line below.
+At the Pulls tab’s default width most rows take four lines, and a short title three; a
+wider tab fits more rows in three.
+The lines sum the same list of changed files the row’s tree shows, as a stack’s heading
+sums its pull requests’, and ask GitHub for nothing: the lists come from what the Pulls
+tab already reads behind you for the rows in view and from trees you open, and a gray
+placeholder holds their place until one arrives.
 
-Click a row’s title to open its pull request; its files stay as they were.
-The third line carries the chevron for the files, which start collapsed: click anywhere
-on that line, the number and the author included, to show or hide them under the row.
+Click a row anywhere to open its pull request; its files stay as they were.
+The lines and the chevron after them show and hide the files, which start collapsed:
+click either to show or hide them under the row.
 No row expands on its own.
 Click a file to open **Changes** at that file.
-Move between pull requests with `J` and `K` or the arrow keys; each one’s three lines
-are one row. Enter opens the focused pull request, and Space shows or hides its files.
+Move between pull requests with `J` and `K` or the arrow keys; each pull request is one
+row. Enter opens the focused pull request, and Space shows or hides its files.
 Right shows them, or moves into them once shown, and Left hides them.
 The file list says **Listing changed files…** until GitHub answers.
 Once the files show, a later page or an updated list does not move the rows you are
@@ -94,15 +97,16 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), th
 tab groups the pull requests of each native GitHub stack under a **Stack #N** row, open
 by default, top of the stack first; pull requests in no stack follow, and a stack’s row
 opens and closes like a folder.
-A member’s row shows its place before its title, such as **1/6 · Fix the reader**; a
-pull request in no stack shows its title alone.
+A member’s row shows its place after its title and before its number, such as **Fix the
+reader · 1/6 · #455**; a pull request in no stack shows no place.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
 On the page, a stack button at the end of the line of state and dates shows the same
 position, and a pull request in two stacks has a button for each, which names its stack,
 such as **⧉300 2/2**. The button opens a menu of the stack’s members, from top to base,
-each on one line: its state, its position, and its title.
+each on one line: its state and its title, then its position and its number at the
+line’s end, such as **Fix the reader 1/6 · #455**, the order a row in the Pulls tab has.
 On macOS, Control-N goes to the next member toward the top and Control-P to the previous
 one toward the base; on Windows and Linux, where those keys are the browser’s, use the
 menu. Without the extension, or when GitHub cannot answer, pull requests read as usual

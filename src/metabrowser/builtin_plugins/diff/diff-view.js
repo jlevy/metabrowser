@@ -2054,7 +2054,9 @@ function summaryOwnerOf(view, countsFiles = true) {
 /**
  * A multi-file diff's Diff summary: the header that says what the change set holds, "35
  * files changed · 2 A, 3 D, 30 M · +1,234 −3,423", and is the disclosure toggle of its files
- * as a tree by folder. Each status is its count and its rows' letter, both bold in the
+ * as a tree by folder, its chevron after its words, as every toggle that expands a diff
+ * summary has it (docs/design-system.md, "Diff Summary"; mb-f0pz). Each status is its
+ * count and its rows' letter, both bold in the
  * status's ink, and the dots between the groups, the commas, and the notes after the totals
  * are muted. It starts collapsed, and the tree is not mounted, or its module imported, until
  * the header is first opened; hovering or focusing the header asks for the module first.
@@ -2114,7 +2116,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   chevron.setAttribute("aria-hidden", "true");
   const chevronSvg = shellIcon("toggle");
   chevron.innerHTML = chevronSvg;
-  toggle.append(chevron, ...parts);
+  toggle.append(...parts, chevron);
 
   summaryIds += 1;
   const id = `diff-summary-tree-${summaryIds}`;

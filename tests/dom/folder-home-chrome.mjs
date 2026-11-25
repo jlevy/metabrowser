@@ -16,7 +16,7 @@
 // file's Source view with the Files tab grouped, filtered, opened, and scrolled, Shift-0
 // from Commits, and `0` on the root itself showing another view. After Home, Pulls opens
 // its list rather than the pull request it last showed, and `0` from a Pulls list whose
-// Tab stop `J` moved and whose changed files Right opened, from its change line, leaves it as
+// Tab stop `J` moved and whose changed files Right opened, from its toggle, leaves it as
 // a fresh load draws it: `P` then focuses the first row, with no stack closed and no files
 // open. The name is announced as "Home: <folder>".
 //
@@ -74,7 +74,7 @@ const STATE = `(() => {
 // In the page: what the Pulls list decides that a fresh load draws, as a reader sees it,
 // each row named as it reads: its stacks closed, the pull requests whose changed files are
 // open, which their rows say (mb-1z7j), the row that takes Tab, and the row with focus, or
-// a change line, which never takes it.
+// a toggle, which never takes it.
 const PULLS = `(() => {
   const rows = [...document.querySelectorAll("#tab-pulls .github-pulls-row")];
   const name = (row) =>
@@ -89,7 +89,7 @@ const PULLS = `(() => {
       .filter((row) => !row.dataset.stack && row.getAttribute("aria-expanded") === "true")
       .map(name),
     tabStop: name(rows.find((row) => row.getAttribute("tabindex") === "0")),
-    focused: line ? "#" + line.dataset.number + " change line" : name(document.activeElement?.closest?.(".github-pulls-row")),
+    focused: line ? "#" + line.dataset.number + " toggle" : name(document.activeElement?.closest?.(".github-pulls-row")),
   };
 })()`;
 

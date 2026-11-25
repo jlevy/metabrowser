@@ -668,7 +668,7 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
     assert result == {
         "case": "viewport-height-increase",
         "before": 43,
-        "after": 90,
+        "after": 78,
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
@@ -679,12 +679,12 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         # start time ("Refreshing Content" in docs/design-system.md; review A on #354).
         "titleBreathing": {
             "admitted": {
-                "asked": [438, 437, 436, 435],
-                "breathing": [438, 437, 436, 435],
+                "asked": [454, 453, 452, 451],
+                "breathing": [454, 453, 452, 451],
                 "busyRows": 0,
             },
             "settled": [],
-            "moved": {"asked": [372, 371, 370], "breathing": [372, 371, 370]},
+            "moved": {"asked": [404, 403, 402], "breathing": [404, 403, 402]},
             "offline": [],
             "beat": [100, 100, 50, 100],
         },

@@ -7990,7 +7990,7 @@ pre.code-block.metabrowser-source-lines > code {
    size and the two ellipses at the chips' smaller one.
    The equal growth gives each name at least its chip's frame and an
    ellipsis, and what is left is the arrow's. A line too short for that floor moves the merge
-   to a line of its own (the Pulls tab's `.github-pulls-line`). */
+   to a line of its own. */
 .merge-refs {
   display: inline-grid;
   grid-template-columns: minmax(0, max-content) max-content minmax(0, max-content);

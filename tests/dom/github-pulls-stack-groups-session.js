@@ -177,8 +177,7 @@ async function mountStory() {
     );
     await paint();
     const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
-    // A stack's row is its item's one line; a pull request's row leads its three lines' zone
-    // (mb-1z7j).
+    // A stack's row is its item's one line; a pull request's row is its zone's link (mb-1z7j).
     const rowOf = (item) =>
       item.childNodes[0].classList.contains("github-pulls-entry")
         ? item.childNodes[0].childNodes[0]
@@ -186,13 +185,16 @@ async function mountStory() {
     const drawnRows = () =>
       list.childNodes.filter((item) => item.classList.contains("github-pulls-item")).map(rowOf);
     const stackRow = () => drawnRows().find((row) => row.dataset.stack === "286");
-    // A pull request's change line, its third line, which carries the toggle of the changed
-    // files its row owns (mb-1z7j).
-    const changeOf = (row) =>
-      row.parentNode.childNodes.find((node) => node.classList?.contains("github-pulls-change")) ??
-      null;
+    /** The first element under *node*, at any depth, with the class *name*, or null. */
+    const find = (node, name) =>
+      node.classList?.contains(name)
+        ? node
+        : (node.childNodes ?? []).reduce((found, child) => found ?? find(child, name), null);
+    // A pull request's toggle, the lines and the chevron at its run's end, which opens and
+    // closes the changed files its row owns (mb-1z7j, mb-pw8t).
+    const changeOf = (row) => find(row, "github-pulls-change");
     const pullRow = (number) => drawnRows().find((row) => row.dataset.number === String(number));
-    /** The line under a row: hidden from assistive technology, its chevron turned or not. */
+    /** A row's toggle: hidden from assistive technology, its chevron turned or not. */
     const saidLine = (line, name) =>
       [
         name,
@@ -218,7 +220,7 @@ async function mountStory() {
         .filter(Boolean)
         .join(" · ");
     /** The tree as drawn, to the first pull request in no stack, with its roles and places:
-     * each pull request's row, then the change line under it. */
+     * each pull request's row, then its toggle. */
     const tree = () => {
       const rows = drawnRows();
       const end = rows.findIndex(
@@ -231,7 +233,7 @@ async function mountStory() {
             ? [said(row, `Stack #${row.dataset.stack}`)]
             : [
                 said(row, `#${row.dataset.number}`),
-                saidLine(changeOf(row), `  #${row.dataset.number}'s change line`),
+                saidLine(changeOf(row), `  #${row.dataset.number}'s toggle`),
               ],
         );
     };
@@ -247,15 +249,11 @@ async function mountStory() {
       });
     };
     await step("mounted: Stack #286 open, its pull requests a level in", () => undefined);
-    // Each member's title line as drawn (pulls-panel.js, `paintPlace` and `buildRow`): the
-    // state icon, then its place in bold and the stack menu's muted dot, "3/3 · ", where
-    // another stack's glyph is written ⧉, then the title, and no stack icon on its row, whose
-    // stack's row has it (mb-dzsi, mb-vkhd). A pull request in no stack has no place and no
-    // dot.
-    const find = (node, name) =>
-      node.classList?.contains(name)
-        ? node
-        : (node.childNodes ?? []).reduce((found, child) => found ?? find(child, name), null);
+    // Each member's run as drawn (pulls-panel.js, `paintPlace` and `buildRow`): the state
+    // icon, then the title, then the stack menu's muted dot and its place in bold, " · 3/3",
+    // where another stack's glyph is written ⧉, then the dot and the number, and no stack icon
+    // on its row, whose stack's row has it (mb-dzsi, mb-vkhd, mb-pw8t). A pull request in no
+    // stack has no place and no dot before one.
     const textOf = (node) =>
       node.data !== undefined
         ? node.data
@@ -266,13 +264,23 @@ async function mountStory() {
     const titleLine = (row) => {
       const heading = find(row, "github-pulls-heading");
       assert.deepEqual(
-        heading.childNodes.map(classOf),
-        ["github-pull-state-icon", "github-pulls-place", "github-pulls-title"],
-        "the state icon, then the place, then the title, one flow",
+        heading.childNodes.map(classOf).slice(0, 5),
+        [
+          "github-pull-state-icon",
+          "github-pulls-title",
+          "github-pulls-place",
+          "github-pulls-sep",
+          "github-pulls-number",
+        ],
+        "the state icon, then the title, the place, and the number, one flow",
       );
-      const place = heading.childNodes[1];
-      // The no-break space before the dot is written as a space.
-      const text = `${textOf(place)}${textOf(heading.childNodes[2])}`.replaceAll("\u00a0", " ");
+      const place = heading.childNodes[2];
+      const number = heading.childNodes[4];
+      // The no-break space before each dot is written as a space.
+      const text = [heading.childNodes[1], place, heading.childNodes[3], number.firstChild]
+        .map(textOf)
+        .join("")
+        .replaceAll("\u00a0", " ");
       return { heading, place, text };
     };
     const memberLines = drawnRows()
@@ -285,17 +293,16 @@ async function mountStory() {
         );
         const { place, text } = titleLine(row);
         assert.equal(place.hidden, false, "a member's place is shown");
-        // The place and its dot lead the title: the position, a no-break space, so no line
-        // starts with the dot, the dot, and a space, where the title may wrap.
+        // The place and its dot follow the title: a no-break space, so no line starts with the
+        // dot, the dot, and a space, where the run may wrap, then the position.
         assert.deepEqual(
           place.childNodes.map((node) => classOf(node) ?? node.data),
-          ["github-pull-stack-position", "\u00a0", "github-pull-stack-dot", " "],
-          "the place is the position, then the dot, before the title",
+          ["\u00a0", "github-pull-stack-dot", " ", "github-pull-stack-position"],
+          "the place is the dot, then the position, after the title",
         );
-        const dot = place.childNodes[2];
+        const dot = place.childNodes[1];
         assert.equal(textOf(dot), "·");
         assert.equal(dot.getAttribute("aria-hidden"), "true", "the place's label says it");
-        assert.equal(find(row, "github-pulls-number"), null, "the number is not on the title line");
         return `#${row.dataset.number}: ${text}`;
       });
     const loose = drawnRows().find(

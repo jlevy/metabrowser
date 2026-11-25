@@ -127,10 +127,10 @@ const ROWS = `(() => {
   const round = (value) => Math.round(value * 100) / 100;
   // Each plugin's depth indent, the formula it gives its rows.
   const DEPTH = {
-    // One level under the change line's chevron, which is under the state icon (mb-3vil).
+    // One level under the row's state icon (mb-3vil).
     pulls: "calc(var(--github-pulls-indent, 0px) + var(--github-pull-file-depth, 1) * var(--tree-indent))",
     summary:
-      "calc((var(--diff-summary-depth, 0) + 1) * var(--tree-indent) + var(--diff-summary-header-inset) - var(--diff-summary-toggle-pull) - var(--pane-header-padding-x))",
+      "calc((var(--diff-summary-depth, 0) + 1) * var(--tree-indent) + var(--diff-summary-header-inset) - var(--pane-header-padding-x))",
   };
   const indentOf = (row, tree) => {
     const probe = document.createElement("span");

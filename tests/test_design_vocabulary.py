@@ -2486,8 +2486,8 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "test_the_pulls_tab_carries_the_shells_primitives" in doc
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring. A
-    # pull request's three lines are one item (mb-1z7j): its zone hovers, carries the current
-    # mark, and takes the ring of the link inside it, as a Files row's `.tree-item` does.
+    # pull request's run and last line are one item (mb-1z7j): its zone hovers, carries the
+    # current mark, and takes the ring of the link inside it, as a Files row's `.tree-item` does.
     row = github[".github-pulls-row"]
     assert row["min-height"] == "var(--ui-row-height)"
     item = ".github-pulls-entry"
@@ -2505,8 +2505,9 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         == "var(--focus-ring-width) solid var(--focus-ring-color)"
     )
     assert github[f"{item} > .github-pulls-row:focus-visible"]["outline"] == "none"
-    # The change line is the item's inner target: no ground of its own, and only its chevron's
-    # plate answers the pointer, so its status inks keep the grounds their contrast is held on.
+    # The toggle, the lines and the chevron, is the item's inner target: no ground of its own,
+    # and only its chevron's plate answers the pointer, so its status inks keep the grounds
+    # their contrast is held on.
     assert ".github-pulls-change:hover" not in github
     assert github[".github-pulls-change:hover > .github-pulls-toggle"]["background"] == (
         "var(--border)"
@@ -2914,53 +2915,25 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # The Pulls tab's number's line names no branches (the pull request's page does) and is
-    # one line, the row's third, its change line (mb-lkkt, mb-lqkb): the number never gives
-    # way; the author and the lines changed after it are a wrap laid out from its end, the
-    # lines its first item and the author its second, each carrying its separator, so the
-    # author leaves first onto a second line the box clips, one change line tall, and the
-    # lines leave it whole where the number leaves them no room.
+    # A Pulls row names no branches (the pull request's page does) (mb-lkkt, mb-pw8t): its
+    # run is the title, the place, the number, and the lines, the number never breaking, and
+    # its last line the author, in the row's type, then the age, the author's name ending in
+    # an ellipsis where the line has no room for it.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
-    meta = github[".github-pulls-meta"]
-    assert (meta["min-width"], meta["overflow"], meta["height"]) == (
-        "0",
-        "clip",
+    assert ".github-pulls-meta" not in github and ".github-pulls-line" not in github
+    assert github[".github-pulls-number"]["white-space"] == "nowrap", "the number never breaks"
+    byline = github[".github-pulls-byline"]
+    assert (byline["height"], byline["grid-template-columns"]) == (
         "var(--github-pulls-change-line)",
+        "minmax(0, 1fr) 5ch",
     )
-    assert meta["font-size"] == "var(--nav-font-size)", "the number's line is the nav's type"
-    assert github[".github-pulls-number"]["flex"] == "none", "the number never gives way"
-    # The author is the number's line's secondary metadata, at its size, which it inherits.
+    # The author is the last line's secondary metadata, at its size, which it inherits.
     assert "font-size" not in github[".github-pulls-by"]
-    assert "text-overflow" not in meta
-    line = github[".github-pulls-line"]
-    assert (line["display"], line["flex-direction"], line["flex-wrap"]) == (
-        "flex",
-        "row-reverse",
-        "wrap",
-    )
-    assert (line["overflow"], line["height"]) == ("clip", "var(--github-pulls-change-line)")
-    assert github[".github-pulls-line::before"]["order"] == "-2", "a zero-width first item"
-    lines = github[".github-pulls-line > .github-pulls-change-line"]
-    assert (lines["flex"], lines["order"]) == ("none", "-1"), "the lines, whole, before the author"
-    assert ".github-pulls-id" not in github, "the number's line starts with the number"
-    assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
-    by_rule = github[".github-pulls-by"]
-    assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")
+    assert ".github-pulls-id" not in github, "the run names the number once"
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
     by = github[".github-pulls-by"]
-    assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
-    avatar = " ".join(github[".github-pulls-by:has(.actor-avatar)"]["min-width"].split())
-    assert avatar == (
-        "calc( var(--github-pulls-sep) + var(--actor-avatar-size) +"
-        " var(--actor-identity-gap) + 1.75em )"
-    ), "a name beside it"
-    # The floor counts the avatar's box and its gap, through the two tokens that size them in
-    # the shell's identity (mb-xlla, mb-nunw).
-    shell = dict(_rules_of(STATIC / "styles.css"))
-    assert (shell[".actor-avatar"]["width"], shell[".actor-identity"]["gap"]) == (
-        "var(--actor-avatar-size)",
-        "var(--actor-identity-gap)",
-    ), "the floor counts the avatar and its gap"
+    assert (by["min-width"], by["overflow"]) == ("0", "hidden"), "the author gives way to the age"
+    assert ".github-pulls-by:has(.actor-avatar)" not in github
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
     assert ".github-pulls-who" not in github
@@ -3470,7 +3443,6 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
     for selector in (
         ".github-pull-commit",
         ".github-pull-meta-details > .github-pull-identity",
-        ".github-pulls-by:has(.actor-avatar)",
     ):
         geometry = " ".join(
             rules[selector].get("padding", rules[selector].get("min-width", "")).split()
