@@ -81,6 +81,10 @@ const SDK = [
   "view-state.js",
   "navigation.js",
   "plugin-sdk.js",
+  // `metabrowser.menus`, the closing every menu has, which the stack menu and the
+  // views' menus use, and the shell tool it forwards to.
+  "filter-controls.js",
+  "menus.js",
   "plugin-sdk-views.js",
 ];
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>pull header</title>
