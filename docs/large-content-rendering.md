@@ -197,9 +197,13 @@ The source and binary views do not virtualize their loaded text; the Pulls panel
 Git history, the branch and tag chooser, and a table past `WHOLE_TABLE_MAX_ROWS`
 virtualize their rows.
 The table view states what replaces find, select all, copy, and print
-([Data Tables](design-system.md#data-tables)). For file content, reach for
-virtualization when the view must open files larger than memory allows, and say in the
-plan what replaces the native behaviors.
+([Data Tables](design-system.md#data-tables)). A rendered Markdown diff past
+`WHOLE_UNITS` or `WHOLE_BYTES` draws its blocks a chunk at a time over spacers of
+estimated height and never undraws one: a link to a heading draws every chunk through
+it, and printing draws them all, while find in page and select all reach only the chunks
+drawn ([Markdown Views](project/architecture/arch-diff-pipeline.md#markdown-views)). For
+file content, reach for virtualization when the view must open files larger than memory
+allows, and say in the plan what replaces the native behaviors.
 
 Canvas rendering is not on this ladder: the design system reserves canvas for charts,
 because text must stay selectable.
@@ -330,6 +334,10 @@ this standard. Paths are under `src/metabrowser/`.
 | `MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES` | `builtin_plugins/diff/comparison_cache.py` | Server memory for kept comparisons |
 | `KEPT_COMPARISON_CHARS` | `builtin_plugins/github/comparison-prefetch.js` | The document’s memory for the pull-request comparisons its pages read, which outlives every page; the Commits panel keeps its own within `GIT_COMPARISON_CACHE_BYTES` (`settings.py`), so a document holds both |
 | `WINDOW_ROWS`, `DISPLAY_ROWS`, `PULL_ROWS_OVERSCAN` | `builtin_plugins/github/pulls-panel.js` | Pulls rows per cached-page request, read at first, and mounted beyond the viewport |
+| `INLINE_FOLD_MAX_LINES` | `diff/markdown_views.py` | The source lines a rendered Markdown diff’s fold may span and come with a Concise answer; a longer fold’s blocks are asked for when it opens |
+| `FULL_MAX_BLOCKS`, `FULL_MAX_BYTES` | `diff/markdown_views.py` | The blocks and HTML bytes of a Markdown document a pull request’s Docs tab opens in Full rather than Concise |
+| `WHOLE_UNITS`, `WHOLE_BYTES` | `builtin_plugins/diff/diff-markdown.js` | The blocks and HTML bytes a rendered Markdown diff may hold and still be drawn whole, keeping the browser’s find and select all; equal to the Full bounds |
+| `CHUNK_UNITS`, `CHUNK_BYTES`, `BLOCK_PX`, `BYTE_PX`, `FOLD_PX` | `builtin_plugins/diff/diff-markdown.js` | A longer rendered Markdown diff’s main-thread work per chunk drawn, and the estimated height of a chunk not drawn yet |
 | `INERT_RENDER_DEADLINE_MS` | `diff/markdown_projection_worker.py` | One untrusted Markdown document’s render in the server’s Markdown child; past it the child is stopped and the page shows the document’s source |
 | `_MAX_RENDERS` | `diff/markdown_projection_worker.py` | Distinct untrusted Markdown renders in flight at once, the one in the Markdown child among them; past it a render is answered `503` with the code `renderer_busy`, which is not kept |
 | `ROWS_OVERSCAN` | `static/source-ref-selector.js` | Rows the branch and tag chooser draws beyond its list’s view; the list holds every ref, so the window, not the repository, bounds the rows drawn |

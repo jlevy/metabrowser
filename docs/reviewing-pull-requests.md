@@ -147,7 +147,9 @@ The page has up to five tabs:
 - **Docs** (`D`): the changed documents alone (the File type menu’s Documentation group:
   Markdown, plain text, reStructuredText, and the rest), each in its rendered view with
   nothing folded, so you can read what the pull request says in its docs without the
-  code around it. A document with no rendered view shows its text diff, also unfolded.
+  code around it: a Markdown document in **Full**, unless it is long, when it opens in
+  **Concise**, its changes with the unchanged runs between them folded.
+  A document with no rendered view shows its text diff, also unfolded.
   Docs has no Split or Unified choice: its text diffs, a document’s **Source** among
   them, are always Unified.
   It opens on **Current**, each document’s new version, and its **Diff** | **Current**
@@ -301,8 +303,9 @@ The diff in **Changes** and **Docs**, and on a commit’s page, has a **Diff** |
 
 - In **Source**, the new file’s lines in one column, its added lines marked, whatever
   the layout. Each hunk’s header names the lines of the new file it shows.
-- In **Rendered**, a Markdown file’s added blocks and front matter keys marked and its
-  removed ones left out, and a YAML or JSON tree without its removed entries.
+- In **Full** and **Concise**, a Markdown file’s added blocks and front matter keys
+  marked and its removed ones left out, and in **Rendered**, a YAML or JSON tree without
+  its removed entries.
 - A deleted file, and a file the change left empty, say that they have no lines to show.
 
 The choice is one for the whole diff: it switches every file, and what you are reading
@@ -311,21 +314,30 @@ stays where it was on the screen, the line or block at the top of the pane, or, 
 `N` switches too. **Changes** and a commit’s page open on **Diff**, and **Docs** on
 **Current**. Metabrowser remembers your choice for **Docs** apart from the one for
 **Changes** and commits, so choosing on one tab does not change what the other opens on.
-A file’s choice of **Rendered** or **Source** is its own.
+A file’s choice of view, such as **Concise** or **Source**, is its own.
 While **Current** is shown the layout control stays, its choices unavailable, since
 Current is one column; choosing **Diff** brings back the layout you had.
 
 ### Rendered Markdown in Changes
 
-**Rendered** shows each changed block of a Markdown file as removed and added, with the
-changed words marked.
-Long runs of unchanged blocks fold into one quiet line that opens them in place, and a
-file’s **Rendered** | **Source** chooser switches between the two.
+**Concise**, where Changes opens a Markdown file, shows each changed block as removed
+and added, with the changed words marked, and a few unchanged blocks on each side of it.
+A longer run of unchanged blocks between two changes folds behind the diff’s fold bar,
+the bar a code file’s long run of changed lines folds behind, which opens the run in
+place. A long run’s blocks are fetched when you open it, or follow a link to a heading
+inside it. **Full** shows every block, none folded, and **Source** the file’s text diff;
+the file’s **Full** | **Concise** | **Source** chooser switches among the three.
 
-Rendered shows what a change does to the document as it reads, so a change that does not
-show in the document appears only in **Source**: a link or image destination or title,
-an image’s alt text, an HTML comment, attribute syntax such as `{#name}`, a code fence’s
-language, or only whitespace and line wrapping.
+A very long file, longer than any the Docs tab opens in Full, is drawn as you scroll
+near it, so the page keeps its place in the scroll bar without drawing all of it at
+once. In such a file, find in page finds text only in what is drawn, and Select All
+selects only that; scroll to a part, or follow a link to it, to draw it.
+Printing draws the whole file first.
+
+The rendered views show what a change does to the document as it reads, so a change that
+does not show in the document appears only in **Source**: a link or image destination or
+title, an image’s alt text, an HTML comment, attribute syntax such as `{#name}`, a code
+fence’s language, or only whitespace and line wrapping.
 A block whose destination, title, alt text, comment, attribute, or fence language
 changed is never folded away.
 
@@ -336,8 +348,8 @@ such as a class, a style, a second copy of an attribute, or words in a checkbox�
 A `<details>` in a changed block shows open, so the words marked inside it show; the
 Document view shows it closed.
 A task list draws its boxes, each ticked as the document ticks it, so ticking or
-unticking one is a change that **Rendered** shows; so does a checkbox written in raw
-HTML, such as one in a table cell.
+unticking one is a change that the rendered views show; so does a checkbox written in
+raw HTML, such as one in a table cell.
 
 A footnote’s reference shows its number where it is written, numbered as the Document
 view numbers it, and its note shows where its definition is written rather than at the
@@ -345,13 +357,13 @@ end; an inline note shows after the paragraph that holds it.
 
 A file with bytes that are not UTF-8, a NUL, or lines that end at a carriage return
 alone renders as the Document view renders it, a byte it cannot read as `�`. Files too
-large for the rendered view open in **Source**.
+large for the rendered views open in **Source**.
 
-Rendered also shows math and Mermaid diagrams as their source text, and does not
+The rendered views also show math and Mermaid diagrams as their source text, and do not
 highlight code blocks.
 So a footnote reference written inside math, which the Document view renders as math, is
-a footnote in Rendered, and the notes after it can number differently from the Document
-view’s.
+a footnote in the rendered views, and the notes after it can number differently from the
+Document view’s.
 
 A Markdown file’s front matter shows as the Frontmatter disclosure the file’s Document
 view shows above it.
