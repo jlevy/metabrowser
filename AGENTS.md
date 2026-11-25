@@ -24,6 +24,12 @@ isolated installed-wheel smoke tests.
 Run `make hooks-install` once per checkout to install the Lefthook pre-commit and
 pre-push gates.
 
+Prefer a construction that makes a mistake impossible to a test that catches it, and
+test invariants, never a restatement of the source: a test that repeats a colour, class,
+or order the code spells out doubles every change and still passes when both copies are
+wrong. [Correct by Construction](docs/development.md#correct-by-construction) has the
+rules.
+
 ## CLI and Functional UI Parity
 
 Every route, kind, and model the browser consumes, and every state the system persists,

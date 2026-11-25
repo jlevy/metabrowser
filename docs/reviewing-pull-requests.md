@@ -295,13 +295,16 @@ references:
   - {commit: "<full commit ID>"}     # a commit
 ```
 
-A pull request shows as a row the way the stack menu lists a member: its state, number,
-title, and author, and its place in a stack when it has one; it opens that pull request.
+A pull request shows as a row the way the stack menu lists a member: its state, its
+title, its place in a stack when it has one, its number, and its author; it opens that
+pull request.
+The place is bare in the guide’s own stack and names any other stack, “⧉300
+2/2”, and hovering it names the stack in words.
 A file of another pull request is drawn as a file of this one is, from that pull
 request’s own changes, under a bar that names the pull request, and its **Open full
 diff** opens the file there.
 It takes no line range, since that pull request may move after the guide is written.
-A commit shows as a row of its subject, when it was made, and its short ID, and opens
+A commit shows as a row of its short ID, its subject, and when it was made, and opens
 the commit.
 These are read from what this copy already has: a pull request not loaded yet
 shows by its number, a file of one not loaded yet says to open it, and a commit the copy

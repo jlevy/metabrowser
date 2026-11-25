@@ -1531,63 +1531,74 @@
     );
   }
 
-  // Age buckets shared with the shell's tree column. The thresholds
-  // mirror app.js formatAge exactly (sec <1m, min <1h, hr <1d, day
-  // <7d, wk <30d, old beyond); keep the two lists in sync so a
-  // treemap fill and a tree row never disagree about freshness.
-  /** @type {Array<[string, number]>} */
-  const AGE_BUCKET_STEPS = [
-    ["sec", 60 * 1000],
-    ["min", 60 * 60 * 1000],
-    ["hr", 24 * 60 * 60 * 1000],
-    ["day", 7 * 24 * 60 * 60 * 1000],
-    ["wk", 30 * 24 * 60 * 60 * 1000],
-  ];
+  // A drawn age, the shell's one builder (`MetabrowserFormatters.ageLabel` in formatters.js):
+  // its label in its freshness class, which alone sets its ink, after the call site's own
+  // class, which places it (docs/design-system.md, "Age"). A plugin draws every age it shows
+  // with these, so none can be drawn without its ink.
 
-  /** @param {unknown} mtimeSeconds */
-  function ageBucket(mtimeSeconds) {
-    if (typeof mtimeSeconds !== "number" || !Number.isFinite(mtimeSeconds) || mtimeSeconds <= 0) {
-      return null;
-    }
-    const absMs = Math.abs(Date.now() - mtimeSeconds * 1000);
-    for (const [bucket, limitMs] of AGE_BUCKET_STEPS) {
-      if (absMs < limitMs) {
-        return bucket;
-      }
-    }
-    return "old";
+  /**
+   * An age as an element, empty where the time is not known.
+   * @param {number | null | undefined} secondsSinceEpoch
+   * @param {MetabrowserAgeLabelOptions} [options]
+   * @returns {HTMLSpanElement}
+   */
+  function ageLabel(secondsSinceEpoch, options) {
+    return global.MetabrowserFormatters.ageLabel(global.document, secondsSinceEpoch, options);
   }
 
-  // Compact age text mirrors app.js formatAge ("3h", "2d", "<1m", …)
-  // so a plugin label and a tree row read identically.
-  /** @type {Array<[string, number]>} */
-  const AGE_LABEL_STEPS = [
-    ["y", 365 * 24 * 60 * 60 * 1000],
-    ["mo", 30 * 24 * 60 * 60 * 1000],
-    ["w", 7 * 24 * 60 * 60 * 1000],
-    ["d", 24 * 60 * 60 * 1000],
-    ["h", 60 * 60 * 1000],
-    ["m", 60 * 1000],
-  ];
+  /**
+   * An age as markup, or "" where the time is not known.
+   * @param {number | null | undefined} secondsSinceEpoch
+   * @param {MetabrowserAgeLabelOptions} [options]
+   * @returns {string}
+   */
+  function ageLabelHtml(secondsSinceEpoch, options) {
+    return global.MetabrowserFormatters.ageLabelHtml(secondsSinceEpoch, options);
+  }
 
-  /** @param {unknown} mtimeSeconds */
-  function ageLabelHtml(mtimeSeconds) {
-    // The colored age chip the shell shows in tree rows and headers:
-    // `<span class="age-<bucket>">3h</span>` on the shared freshness
-    // tokens, or "" when there is no meaningful mtime.
-    const bucket = ageBucket(mtimeSeconds);
-    if (bucket === null) {
-      return "";
+  // A freshness class is one of the stylesheet's age-* classes, and a call site's own class
+  // ends in "-age" instead; tests/test_age_single_source.py holds both, so telling an age again
+  // can swap its freshness class and keep every other. Not a startup script's: only a view
+  // that keeps its ages tells them again, and the startup scripts' budget had no room for it.
+  const FRESHNESS_CLASS = /^age-/;
+
+  /**
+   * Tell a drawn age as of now, as a ticking or kept view does: its label, and its freshness
+   * class in place of the one it had, its other classes kept. Returns its label.
+   * @param {Element} element
+   * @param {number | null | undefined} secondsSinceEpoch
+   * @param {MetabrowserAgeOptions} [options]
+   * @returns {string}
+   */
+  function retellAge(element, secondsSinceEpoch, options) {
+    const { label, className } = global.MetabrowserFormatters.age(
+      Number(secondsSinceEpoch) || 0,
+      options,
+    );
+    if (element.textContent !== label) {
+      element.textContent = label;
     }
-    const absMs = Math.abs(Date.now() - /** @type {number} */ (mtimeSeconds) * 1000);
-    let text = "<1m";
-    for (const [suffix, stepMs] of AGE_LABEL_STEPS) {
-      if (absMs >= stepMs) {
-        text = `${Math.round(absMs / stepMs)}${suffix}`;
-        break;
-      }
+    const had = element.getAttribute("class") ?? "";
+    const kept = had.split(/\s+/).filter((name) => name !== "" && !FRESHNESS_CLASS.test(name));
+    const wanted = [...kept, className].filter(Boolean).join(" ");
+    if (had !== wanted) {
+      element.setAttribute("class", wanted);
     }
-    return `<span class="age-${bucket}">${escapeHtml(text)}</span>`;
+    return label;
+  }
+
+  /**
+   * An age's freshness tier, "sec" … "old", as a treemap's fill reads it, or null where the
+   * time is not known: the drawn age's own tier, so a fill and a label never disagree.
+   * @param {unknown} mtimeSeconds
+   * @returns {MetabrowserAgeBucket | null}
+   */
+  function ageBucket(mtimeSeconds) {
+    if (typeof mtimeSeconds !== "number") {
+      return null;
+    }
+    const { className } = global.MetabrowserFormatters.age(mtimeSeconds);
+    return className === "" ? null : /** @type {MetabrowserAgeBucket} */ (className.slice(4));
   }
 
   const HIGHLIGHT_TOKEN_CLASS_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
@@ -2860,7 +2871,9 @@
     mountRefMenus,
     mountRefCopies: mountRefMenus,
     ageBucket,
+    ageLabel,
     ageLabelHtml,
+    retellAge,
     highlightSyntax: highlightSyntax,
     isLargeTextPreview: isLargeTextPreview,
     langForExtension: langForExtension,

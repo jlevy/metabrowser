@@ -345,7 +345,10 @@ async function releasedFilesMounts(page, initial, diffView, errors) {
                 },
               },
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: {
           href: () => "/view/",
@@ -516,7 +519,10 @@ async function markdownOwnership() {
             return delayed === "styles" ? waiting : Promise.resolve();
           },
           ...require("./sdk-ref-fixture.js").refHelpers(document),
-          formatAge: () => ({ label: "now", className: "age" }),
+          ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+            label: "now",
+            className: "age",
+          })),
           formatTimestamp: () => "now",
           navigation: {
             href: () => "/view/",
@@ -702,7 +708,10 @@ async function textRefusal() {
       },
       loadKpressAssets: () => Promise.resolve(),
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "age",
+      })),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/", async open() {} },
       sourceKind: () => "git_revision",
@@ -959,7 +968,10 @@ async function textDiagrams() {
       return null;
     },
     ...require("./sdk-ref-fixture.js").refHelpers(document),
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
     formatTimestamp: () => "now",
     navigation: { href: () => "/view/", async open() {} },
     sourceKind: () => served,
@@ -1090,7 +1102,10 @@ async function mountOn(page, body, tab, ageLabel, more = {}) {
       whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: (seconds) => ({ label: ageLabel(seconds), className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, (seconds) => ({
+        label: ageLabel(seconds),
+        className: "age",
+      })),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: {
         href: () => "/view/",
@@ -1158,7 +1173,10 @@ async function switchUnavailable(page) {
           },
         }),
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: { href: () => "/view/" },
         sourceKind: () => "git_revision",
@@ -1339,7 +1357,10 @@ async function tabKeys(page) {
         ensureKindAssets: async () => {},
         getRegisteredView: () => ({ switchPin: pinSwitch.switchTo }),
         ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(globalThis.document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: {
           href: () => "/view/",
@@ -2353,7 +2374,10 @@ async function mountScripted(page, tab, options = {}) {
       loadChangedFilesTree: async () => {},
       getRegisteredView: () => diffView,
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "age",
+      })),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/", async open() {} },
       sourceKind: () => "filesystem",
@@ -2478,7 +2502,10 @@ async function statusRemedies(page) {
         whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
         navigation: { href: () => "/view/", async open() {} },
         sourceKind: () => "filesystem",
@@ -3548,7 +3575,10 @@ async function run() {
           },
         }),
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: {
           href: () => "/view/",
@@ -3753,7 +3783,10 @@ async function run() {
           },
         }),
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: {
           href: () => "/view/",
@@ -3871,7 +3904,10 @@ async function run() {
         throw new Error("no comparison exists before acquisition");
       },
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "age",
+      })),
       formatTimestamp: () => "now",
       navigation: {
         href: () => "/view/",
@@ -4002,7 +4038,10 @@ async function run() {
           ensureKindAssets: async () => {},
           getRegisteredView: () => diffView,
           ...require("./sdk-ref-fixture.js").refHelpers(document),
-          formatAge: () => ({ label: "now", className: "age" }),
+          ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+            label: "now",
+            className: "age",
+          })),
           formatTimestamp: () => "now",
           navigation: {
             href: () => "/view/",
@@ -4068,7 +4107,10 @@ async function run() {
       }),
     }),
     ...require("./sdk-ref-fixture.js").refHelpers(document),
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
     formatTimestamp: () => "now",
     navigation: { href: () => "/view/" },
     sourceKind: () => "git_revision",

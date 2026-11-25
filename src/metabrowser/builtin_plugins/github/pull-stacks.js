@@ -5,7 +5,8 @@
 // Pulls row's place, and the Pulls tab's stack groups say one thing one way
 // (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N" every heading, menu
 // and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row, and
-// `namedStackPosition` the "300 2/2" of one that names its stack; `stackPositionHint` is
+// `namedStackPosition` the "300 2/2" of one that names its stack, which
+// `namedStackPositionNodes` draws; `stackPositionHint` is
 // the tip that names both; and `stackMenuOrder` is the one member order, top of the stack
 // first. `groupByStack` is the Pulls tab's grouping of its rows.
 
@@ -52,6 +53,27 @@ export function stackPosition(at, length) {
  */
 export function namedStackPosition(position, stack) {
   return stack === null ? position : `${stack} ${position}`;
+}
+
+/** `namedStackPosition` as a row draws it: the position bare, or after the Layers glyph and
+ * the stack's number, the glyph hidden from assistive technology, so the words read as the
+ * text does, "300 2/2".
+ * @param {string} position @param {number | null} stack The stack to name, or null.
+ * @param {() => Node | null} glyph A new copy of the Layers glyph, or null where there is none.
+ * @returns {Array<Node | string>}
+ */
+export function namedStackPositionNodes(position, stack, glyph) {
+  if (stack === null) {
+    return [position];
+  }
+  const mark = document.createElement("span");
+  mark.setAttribute("class", "github-pull-stack-other");
+  mark.setAttribute("aria-hidden", "true");
+  const drawn = glyph();
+  if (drawn !== null) {
+    mark.append(drawn);
+  }
+  return [mark, `${stack} `, position];
 }
 
 /** The tip that names a member's stack and place: "Stack #286, position 2 of 4".

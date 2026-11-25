@@ -1133,9 +1133,12 @@ async def _pull_files(
 
 def _stack_place(
     stacks: Sequence[NativeStack], number: int, within: int | None
-) -> dict[str, int] | None:
-    """Pull request *number*'s place in stack *within* when it is a member, else in the
-    first stack that holds it, as `{number, place, count}`, or ``None`` in none."""
+) -> dict[str, int | bool] | None:
+    """Pull request *number*'s place in stack *within*, the guide's own, when it is a
+    member, else in the first stack that holds it, as `{number, place, count, own}`, or
+    ``None`` in none. *own* says the place is in the guide's own stack, which goes without
+    saying, so its row shows the position bare, and another stack's it names
+    (`namedStackPosition` in pull-stacks.js; docs/design-system.md, "Stacks")."""
     holding = [stack for stack in stacks if number in stack.pulls]
     if not holding:
         return None
@@ -1144,6 +1147,7 @@ def _stack_place(
         "number": stack.number,
         "place": stack.pulls.index(number) + 1,
         "count": len(stack.pulls),
+        "own": stack.number == within,
     }
 
 

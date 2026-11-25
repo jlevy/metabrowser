@@ -44,8 +44,13 @@
 // header as a run's status badge changes its label in place (RUN_BADGE below).
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+
+// The SDK's age builder over the ages a fake plays (sdk-ref-fixture.js), its source
+// interpolated into a page script, so a page draws the labels the session chose.
+const { agesFrom } = createRequire(import.meta.url)("./sdk-ref-fixture.js");
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -273,14 +278,17 @@ const MEASURE = `async (name, change, tab, width) => {
       // two read the same and the row of ages is as long as a real one: "now" for all of them
       // made a 275 px row, whole to 480 px, that never reached the links (B4 of review B on
       // #506).
-      formatAge: (() => {
-        const labels = ["12d ago", "5h ago", "3d ago"];
-        const given = new Map();
-        return (seconds) => {
-          if (!given.has(seconds)) given.set(seconds, labels[given.size % labels.length]);
-          return { label: given.get(seconds), className: "age" };
-        };
-      })(),
+      ...(${agesFrom})(
+        document,
+        (() => {
+          const labels = ["12d ago", "5h ago", "3d ago"];
+          const given = new Map();
+          return (seconds) => {
+            if (!given.has(seconds)) given.set(seconds, labels[given.size % labels.length]);
+            return { label: given.get(seconds), className: "age" };
+          };
+        })(),
+      ),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
@@ -969,7 +977,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       changeLine: mb.changeLine,
       changeLineNodes: mb.changeLineNodes,
       formatInteger: mb.formatInteger,
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
@@ -1146,7 +1154,7 @@ const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
     titleNodes: mb.titleNodes,
     shortCommit: mb.shortCommit,
     countPartsNodes: mb.countPartsNodes,
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
     formatInteger: (value) => Number(value).toLocaleString("en-US"),
     navigation: { href: () => "/view/" },
@@ -1351,7 +1359,7 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       titleNodes: mb.titleNodes,
       shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },

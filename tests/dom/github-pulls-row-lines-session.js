@@ -509,7 +509,10 @@ async function rowStory(lines, totals = null) {
           },
           bind: () => () => {},
         },
-        formatAge: () => ({ label: "1m", className: "age-min" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "1m",
+          className: "age-min",
+        })),
         formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
         whenIdle(callback) {
           idle.push(callback);
@@ -1227,7 +1230,10 @@ async function windowStory(idleAfter) {
         ...require("./sdk-ref-fixture.js").refHelpers(document),
         perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
         filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
-        formatAge: () => ({ label: "1m", className: "age-min" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "1m",
+          className: "age-min",
+        })),
         formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
         whenIdle(callback) {
           idle.push(callback);

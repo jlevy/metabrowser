@@ -1823,13 +1823,18 @@ def write_damaged_records(home: Path) -> None:
     write_private_file_atomic(home, source_pull_record(slug, 13), b"{not json")
 
 
-def serve_stand_in(directory: Path, number: int, port: int, *, exit_on_eof: bool = False) -> None:
+def serve_stand_in(
+    directory: Path, number: int, port: int, *, exit_on_eof: bool = False, checkout: bool = False
+) -> None:
     """Serve pull request *number* from a home :func:`build_home` wrote, for a browser.
 
     The same seams as :func:`build_home`, with the real clock, so the records read as
     stale and a refresh through the page asks the fake ``gh`` again. Nothing leaves
     ``127.0.0.1``: the mirror refreshes from the ``file://`` origin. With *exit_on_eof* the
-    server stops when its standard input closes, as a test that owns it needs.
+    server stops when its standard input closes, as a test that owns it needs. With
+    *checkout* it serves a reader's clone of the origin (:func:`clone_checkout`), made beside
+    the home, which lacks 7's head, so a guide's commit row names that commit, fetched with
+    its pull request, as not in this checkout.
     """
 
     from metabrowser.cache import acquire
@@ -1846,13 +1851,16 @@ def serve_stand_in(directory: Path, number: int, port: int, *, exit_on_eof: bool
     def remote_url_for(source: GitSource) -> str:
         return local if source.normalized == CANONICAL else source.normalized
 
+    served = f"{CANONICAL}/pull/{number}"
+    if checkout:
+        origin = Origin(directory / "github-pull-origin.git", {})
+        served = str(clone_checkout(origin, directory / "checkout"))
     with (
         _patched(acquire, "remote_url_for", remote_url_for),
         _patched(acquire, "require_acquisition_git", lambda: version),
     ):
         _run_cli(
-            [f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)]
-            + (["--exit-on-eof"] if exit_on_eof else [])
+            [served, "--no-open", "--port", str(port)] + (["--exit-on-eof"] if exit_on_eof else [])
         )
 
 
@@ -1936,15 +1944,16 @@ if __name__ == "__main__":
     elif len(sys.argv) == 3 and sys.argv[2] == "--checkout":
         build_checkout_home(Path(sys.argv[1]).resolve())
     elif (
-        len(sys.argv) in (5, 6)
+        len(sys.argv) in (5, 6, 7)
         and sys.argv[2] == "--serve"
-        and sys.argv[5:] in ([], ["--exit-on-eof"])
+        and sys.argv[5:] in ([], ["--exit-on-eof"], ["--checkout"], ["--checkout", "--exit-on-eof"])
     ):
         serve_stand_in(
             Path(sys.argv[1]).resolve(),
             int(sys.argv[3]),
             int(sys.argv[4]),
-            exit_on_eof=sys.argv[5:] == ["--exit-on-eof"],
+            exit_on_eof="--exit-on-eof" in sys.argv[5:],
+            checkout="--checkout" in sys.argv[5:],
         )
     elif len(sys.argv) == 3 and sys.argv[2] == "--files":
         build_home(Path(sys.argv[1]).resolve(), files=True)
@@ -1972,7 +1981,7 @@ if __name__ == "__main__":
             "usage: github_pull_fixture.py <directory> "
             "[--files | --guided | --guided-stack | --guided-documents "
             "| --guided-large-document | --checkout "
-            "| --serve <number> <port> [--exit-on-eof] "
+            "| --serve <number> <port> [--checkout] [--exit-on-eof] "
             f"| --describe <number> {{{','.join([*GUIDE_VARIANTS, *BUILT_VARIANTS])}}}] "
             "or --files-refresh <metab arguments>"
         )

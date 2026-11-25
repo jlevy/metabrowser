@@ -67,6 +67,7 @@ import {
 import {
   createStackIndex,
   groupByStack,
+  namedStackPositionNodes,
   stackCaption,
   stackGroupHint,
   stackLabel,
@@ -76,7 +77,7 @@ import {
   wholeStackOfKey,
   wholeStackRowKey,
 } from "./pull-stacks.js";
-import { displayState, noteListed, PULL_STATES, pullStateIcon } from "./pull-state.js";
+import { displayState, noteListed, PULL_STATES } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
 import {
   createRowLines,
@@ -85,6 +86,7 @@ import {
   rowLineInput,
 } from "./row-lines.js";
 import { createStackLines, STACK_CHANGE_ROUTE, stackLineInput } from "./stack-lines.js";
+import { PULLS_RUN, stackMemberRow } from "./stack-member-row.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
@@ -3980,12 +3982,10 @@ export function mountPullsPanel(container, ctx, mb) {
    *   age: HTMLElement,
    *   said: HTMLElement,
    *   heading: HTMLElement,
+   *   run: import("./stack-member-row.js").StackMemberRow,
+   *   line: import("./stack-member-row.js").StackMemberLine,
    *   stack: HTMLElement,
    *   title: HTMLElement,
-   *   icon: HTMLElement,
-   *   number: HTMLElement,
-   *   by: HTMLElement,
-   *   author: HTMLElement,
    *   change: HTMLElement,
    *   changeLine: HTMLElement,
    *   changeWords: HTMLElement,
@@ -4113,6 +4113,7 @@ export function mountPullsPanel(container, ctx, mb) {
   const chevron = () => (chevronSvg === null ? null : document.importNode(chevronSvg, true));
   const stackSvg = new DOMParser().parseFromString(mb.icons?.layers || "", "text/html").body
     .firstElementChild;
+  const layersGlyph = () => (stackSvg === null ? null : document.importNode(stackSvg, true));
   // Narrowed once, for the functions below that run later.
   const tab = nav;
 
@@ -4416,101 +4417,85 @@ export function mountPullsPanel(container, ctx, mb) {
     }
   }
 
-  /** @param {PullRow} row */
-  function rowAge(row) {
+  /** When a row's pull request was updated, in epoch seconds, or null. @param {PullRow} row */
+  function rowUpdatedAt(row) {
     const parsed = row.updatedAt === null ? Number.NaN : Date.parse(row.updatedAt) / 1000;
-    const at = Number.isFinite(parsed) ? parsed : null;
-    const when = at === null ? { label: "", className: "" } : mb.formatAge(at);
-    return { at, ...when };
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   /**
-   * A stack member's place in its stack, at the start of its title's flow, after the state
-   * icon, then a muted dot before the title: "14/15 · title" (docs/design-system.md, "Stacks";
-   * mb-vkhd), the stack menu's member line's dot (`.github-pull-stack-dot`). It has no stack
+   * A stack member's place in its stack, after its title with a muted dot before it, "title ·
+   * 14/15", where the row's run puts it (stack-member-row.js; docs/design-system.md,
+   * "Stacks"), the stack menu's member line's dot (`.github-pull-stack-dot`). It has no stack
    * icon of its own: the stack's row it sits under has it. The place of its row's own stack
    * comes first, bare, and any other stack's is named by the Layers glyph before its number.
    * A pull request in no stack has neither place nor dot, so its title follows the icon. A
    * passive part of the row's one primary link, named by its accessible name; the Pulls
    * column shows no tooltips (docs/design-system.md, "Tooltips Add Information").
    *
-   * @param {HTMLElement} element
+   * @param {PaintedRow} entry
    * @param {number} number
    * @param {number | null} [under]
    */
-  function paintPlace(element, number, under = null) {
+  function paintPlace(entry, number, under = null) {
     const caption = stackCaption(stackIndex, stackIdentity, number, under);
-    const text = caption?.text ?? "";
+    const text = caption?.text ?? null;
     const hint = caption?.hint ?? "";
-    if (
-      element.dataset.stackLabel === text &&
-      (element.getAttribute("aria-label") ?? "") === hint
-    ) {
+    if (entry.line.place === text && (entry.line.placeHint ?? "") === hint) {
       return;
     }
-    element.dataset.stackLabel = text;
-    element.hidden = caption === null;
-    if (caption === null) {
-      element.replaceChildren();
-      element.removeAttribute("aria-label");
-      return;
-    }
-    element.setAttribute("aria-label", hint);
-    // After the title, with the dot before it, as every part of the row's run after the title
-    // has (`separator`; mb-pw8t).
-    element.replaceChildren(
-      "\u00a0",
-      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-      " ",
-      h(
-        "span",
-        { class: "github-pull-stack-position" },
-        caption.parts.flatMap((part, at) => [
-          ...(at === 0 ? [] : [" · "]),
-          ...(part.stack === null
-            ? []
-            : [
-                h("span", { class: "github-pull-stack-other", "aria-hidden": "true" }, [
-                  stackSvg === null ? null : document.importNode(stackSvg, true),
-                ]),
-                `${part.stack} `,
-              ]),
-          part.position,
-        ]),
-      ),
-    );
+    entry.line = {
+      ...entry.line,
+      place: text,
+      placeHint: hint,
+      placeNodes:
+        caption === null
+          ? []
+          : caption.parts.flatMap((part, at) => [
+              ...(at === 0 ? [] : [" · "]),
+              ...namedStackPositionNodes(part.position, part.stack, layersGlyph),
+            ]),
+    };
+    entry.run.show(entry.line);
   }
-
-  /**
-   * The dot before a part of a row's run after its title, the place, the number, and the
-   * author (mb-pw8t, mb-rb3n): a no-break space before it and a text space after it, so the
-   * run breaks after the dot as after a word and never before it (github/styles.css,
-   * `.github-pulls-heading`). It is the stack menu's dot (`.github-pull-stack-dot`), so the
-   * two surfaces read alike.
-   */
-  const separator = () =>
-    h("span", { class: "github-pulls-sep", "aria-hidden": "true" }, [
-      "\u00a0",
-      h("span", { class: "github-pull-stack-dot" }, ["·"]),
-      " ",
-    ]);
 
   /**
    * The author, its avatar and its name, which ends the row's run, after the number (mb-rb3n;
    * github/styles.css, `.github-pulls-by`).
    *
-   * @param {PullRow} row
+   * @param {string} login
+   * @param {string | null} avatar
    */
-  function rowAuthor(row) {
+  function rowAuthor(login, avatar) {
     // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so this asks
     // for no avatar outside that window, and a row the window mounts again as the list scrolls
     // back draws its avatar at once: WebKit fetches a new lazy image again
     // (docs/design-system.md, "A Repaint Keeps Its Images"). A dense row draws no box for an
     // author with no avatar: its avatar comes with the row.
-    return authorLabel(mb, row.author, row.avatar, "github-pulls-author", {
+    return authorLabel(mb, login, avatar, "github-pulls-author", {
       loading: "eager",
       placeholder: false,
     });
+  }
+
+  /**
+   * A row's fields as its run shows them (stack-member-row.js), with the place it showed
+   * last: the place is the list's to decide (`paintPlace`).
+   *
+   * @param {PullRow} row
+   * @param {import("./stack-member-row.js").StackMemberLine | null} shown
+   * @returns {import("./stack-member-row.js").StackMemberLine}
+   */
+  function runLine(row, shown) {
+    return {
+      number: row.number,
+      place: shown?.place ?? null,
+      placeNodes: shown?.placeNodes,
+      placeHint: shown?.placeHint,
+      title: row.title,
+      state: row.state,
+      author: { login: row.author, avatar: row.avatar },
+    };
   }
 
   /**
@@ -4530,26 +4515,12 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @param {PaintedRow} entry @param {PullRow} row @param {string} key */
   function patchRow(entry, row, key) {
     const before = entry.info;
-    if (row.title !== before.title) {
-      entry.title.replaceChildren(...mb.titleNodes(row.title));
-    }
-    if (row.state !== before.state) {
-      const icon = pullStateIcon(row.state);
-      entry.heading.insertBefore(icon, entry.icon);
-      entry.icon.remove();
-      entry.icon = icon;
-    }
+    // The run changes only the fields that differ (stack-member-row.js).
+    entry.line = runLine(row, entry.line);
+    entry.run.show(entry.line);
     if (row.updatedAt !== before.updatedAt) {
-      const when = rowAge(row);
-      entry.at = when.at;
-      entry.label = when.label;
-      entry.age.textContent = when.label;
-      entry.age.className = `github-pulls-age ${when.className}`;
-    }
-    if (row.avatar !== before.avatar || row.meta !== before.meta) {
-      const author = rowAuthor(row);
-      entry.by.replaceChild(author, entry.author);
-      entry.author = author;
+      entry.at = rowUpdatedAt(row);
+      entry.label = mb.retellAge(entry.age, entry.at);
     }
     entry.said.textContent = rowSaid(row, entry.label);
     entry.info = row;
@@ -4564,20 +4535,7 @@ export function mountPullsPanel(container, ctx, mb) {
    * @returns {PaintedRow}
    */
   function buildRow(row, key) {
-    const when = rowAge(row);
-    const { at } = when;
-    // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
-    // "Titles").
-    const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
-    // A stack member's place and the dot before it, after the title (`paintPlace`); empty and
-    // hidden while the row is in no stack.
-    const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
-    const icon = pullStateIcon(row.state);
-    // The number, after the title and the place, as the stack menu's member line ends with
-    // them (mb-pw8t). The link's name says it (`rowSaid`).
-    const number = h("span", { class: "github-pulls-number", "aria-hidden": "true" }, [
-      `#${row.number}`,
-    ]);
+    const at = rowUpdatedAt(row);
     const changeId = `github-pull-change-${row.number}`;
     // The lines the pull request changes (`paintChange`), then the registry's chevron, after
     // the summary it expands, as every toggle of a diff summary has it (mb-f0pz): the row's
@@ -4604,32 +4562,27 @@ export function mountPullsPanel(container, ctx, mb) {
     // (docs/design-system.md, "Ages End the Row"). No tooltip, as nothing in the Pulls column
     // has one: the page has the exact time (docs/design-system.md, "Tooltips Add
     // Information"). The link's name says it (`rowSaid`).
-    const updated = h(
-      "span",
-      { class: `github-pulls-age ${when.className}`, "aria-hidden": "true" },
-      [when.label],
-    );
+    const updated = mb.ageLabel(at, { className: "github-pulls-age" });
+    updated.setAttribute("aria-hidden", "true");
+    const label = updated.textContent ?? "";
     // The row's last line, the lines and the chevron in the text column under the run, and the
     // age at its end: one line tall whether the lines are shown, waited for, or cannot be had,
     // so nothing moves when they arrive (github/styles.css, `.github-pulls-tail`).
     const tail = h("span", { class: "github-pulls-tail" }, [change, updated]);
-    // The author, which ends the run (github/styles.css, `.github-pulls-by`).
-    const author = rowAuthor(row);
-    const by = h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [author]);
-    // The row's run (mb-pw8t, mb-rb3n): the state icon, then the title, the place, the number,
-    // and the author, a dot between each two, one flow that wraps with every line
-    // after the first in the text column, past the icon, as a tree's title does
-    // (github/styles.css, `.github-pulls-heading`).
-    const heading = h("span", { class: "github-pulls-heading" }, [
-      icon,
-      title,
-      stack,
-      separator(),
-      number,
-      separator(),
-      by,
-    ]);
-    const said = h("span", { class: "sr-only" }, [rowSaid(row, when.label)]);
+    // The row's run: the state icon, then the title, the place, the number, and the author,
+    // in the one order every row of a pull request's fields has, drawn by the one builder that
+    // draws a stack's members too (stack-member-row.js), a dot before each field after the
+    // title; one flow that wraps with every line after the first in the text column, past the
+    // icon, as a tree's title does (github/styles.css, `.github-pulls-heading`). The title's
+    // conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+    // "Titles"). The place is the list's to draw (`paintPlace`), hidden while the row is in no
+    // stack. The number and the author are hidden from assistive technology: the link's name
+    // says them (`rowSaid`).
+    const heading = h("span", { class: "github-pulls-heading" });
+    const run = stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN);
+    const line = runLine(row, null);
+    run.show(line);
+    const said = h("span", { class: "sr-only" }, [rowSaid(row, label)]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place. Its changed files
     // are its children, as a folder's are, closed until the reader opens them; the tree that
@@ -4672,12 +4625,10 @@ export function mountPullsPanel(container, ctx, mb) {
       age: updated,
       said,
       heading,
-      stack,
-      title,
-      icon,
-      number,
-      by,
-      author,
+      run,
+      line,
+      stack: run.place,
+      title: run.title,
       change,
       changeLine,
       changeWords,
@@ -4686,7 +4637,7 @@ export function mountPullsPanel(container, ctx, mb) {
       info: row,
       key,
       at,
-      label: when.label,
+      label,
     };
   }
 
@@ -5256,7 +5207,7 @@ export function mountPullsPanel(container, ctx, mb) {
       } else if (entry.key !== key) {
         patchRow(entry, row, key);
       }
-      paintPlace(entry.stack, row.number, placed.stack);
+      paintPlace(entry, row.number, placed.stack);
       // A pull request under a stack's row is a level in, and its changed files with it
       // (`--github-pulls-level` in github/styles.css; pull-files-view.js reads the level).
       entry.row.setAttribute("aria-level", String(placed.level));
@@ -5393,11 +5344,9 @@ export function mountPullsPanel(container, ctx, mb) {
       if (entry.at === null) {
         continue;
       }
-      const { label, className } = mb.formatAge(entry.at);
+      const label = mb.retellAge(entry.age, entry.at);
       if (label !== entry.label) {
         entry.label = label;
-        entry.age.textContent = label;
-        entry.age.className = `github-pulls-age ${className}`;
         entry.said.textContent = rowSaid(entry.info, label);
       }
     }

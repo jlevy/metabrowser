@@ -438,14 +438,8 @@ function formatAge(mtimeSec, options) {
   if (mtimeSec === null) {
     return '<span class="tally-pending tally-pending-narrow"></span>';
   }
-  // One age primitive for the whole product (formatters.js): same
-  // abbreviations, same freshness tiers, same colours, wherever an age
-  // appears.
-  var age = window.MetabrowserFormatters.age(mtimeSec, options);
-  if (!age.label) {
-    return "";
-  }
-  return `<span class="${age.className}">${age.label}</span>`;
+  // The one age builder (formatters.js).
+  return window.MetabrowserFormatters.ageLabelHtml(mtimeSec, options);
 }
 
 function formatTimestamp(mtimeSec) {

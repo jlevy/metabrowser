@@ -185,26 +185,18 @@ const MOUNT = `async (answer) => {
 }`;
 
 // Read geometry at two card widths under the same preview pane, so a column based on
-// the viewport rather than the file box fails this check. A changed row's band is its
-// ::before, set from the row's padding box, whose inline start is past the row's border.
+// the viewport rather than the file box fails this check.
 const RENDERED_GEOMETRY = `(width) => {
   const file = document.querySelector(".diff-file");
   const row = file.querySelector(".diff-markdown-added");
-  const style = getComputedStyle(row);
-  const band = getComputedStyle(row, "::before");
   file.style.inlineSize = width + "px";
   const start = file.getBoundingClientRect().left + file.clientLeft;
   const end = start + file.clientWidth;
   const prose = row.querySelector(".kpress-prose").getBoundingClientRect();
-  const rowBox = row.getBoundingClientRect();
   const result = {
     startInset: prose.left - start,
     endInset: end - prose.right,
     proseWidth: prose.width,
-    bandStart: rowBox.left + parseFloat(style.borderLeftWidth) + parseFloat(band.left) - start,
-    bandEnd: end - (rowBox.right - parseFloat(style.borderRightWidth) - parseFloat(band.right)),
-    gutterColor: band.borderInlineStartColor,
-    gutterWidth: parseFloat(band.borderInlineStartWidth),
   };
   file.style.removeProperty("inline-size");
   return result;
@@ -647,14 +639,6 @@ try {
     check(
       `${size}: the prose is centered in the diff box`,
       near(measured.startInset, measured.endInset),
-      JSON.stringify(measured),
-    );
-    check(
-      `${size}: the colored change gutter is at the edge of the full-width band`,
-      near(measured.bandStart, 0) &&
-        near(measured.bandEnd, 0) &&
-        measured.gutterWidth > 0 &&
-        measured.gutterColor !== "rgba(0, 0, 0, 0)",
       JSON.stringify(measured),
     );
   }

@@ -1410,7 +1410,6 @@
 }
 .github-pulls-tail > .github-pulls-age {
   justify-self: end;
-  color: var(--muted);
 }
 /* The toggle: the lines, then the registry's chevron, a space's width on (0.25em, about 3 px
    at the nav's 13 px). Its words, the lines said in full, are hidden. Where the lines and the
@@ -1721,8 +1720,12 @@
   flex: none;
 }
 /* The place, the dot, and the number end the line together: the place takes the room the
-   title leaves (mb-pw8t). */
-.github-pull-stack-member-copy > .github-pull-stack-member-position {
+   title leaves (mb-pw8t). A guide's pull request in no stack has no place, and its number
+   takes that room, so its number and its author end the line as a member's do. */
+.github-pull-stack-member-copy > .github-pull-stack-member-position,
+.github-pull-stack-member-copy
+  > .github-pull-stack-member-title
+  + .github-pull-stack-member-number {
   margin-inline-start: auto;
 }
 /* The number as a Pulls row shows it (`.github-pulls-number`): the text's ink, the number's
@@ -1738,10 +1741,8 @@
    takes at most a third of the line, so GitHub's longest login, 39 characters, leaves the
    title two thirds of it, and past that its name ends in an ellipsis
    (tests/dom/github-pulls-stacks-chrome.mjs). A member whose author is not known has neither
-   the dot nor the author. A guide's pull request row draws its author after its title alike
-   (`.github-pull-guide-row-by`, docs/design-system.md, "Authors Follow Pull Requests"). */
-.github-pull-stack-member-by,
-.github-pull-guide-row-by {
+   the dot nor the author. A guide's pull request row is a member's row, and ends alike. */
+.github-pull-stack-member-by {
   --actor-avatar-size: var(--github-pull-row-avatar-size);
   display: flex;
   flex: none;
@@ -1753,13 +1754,11 @@
 .github-pull-stack-member-by[hidden] {
   display: none;
 }
-.github-pull-stack-member-by > .github-pull-identity,
-.github-pull-guide-row-by > .github-pull-identity {
+.github-pull-stack-member-by > .github-pull-identity {
   min-width: 0;
   overflow: hidden;
 }
-.github-pull-stack-member-by .github-pull-stack-member-author,
-.github-pull-guide-row-by .github-pull-guide-row-author {
+.github-pull-stack-member-by .github-pull-stack-member-author {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2197,10 +2196,12 @@
   font-weight: var(--pull-number-weight);
   font-variant-numeric: var(--tabular-numerals);
 }
-/* A pull request or a commit a step cites is one row in an excerpt's card, as the stack menu
-   lists a member (`.github-pull-stack-member`): its state icon or short ID, its number in
-   bold, a muted dot, and its title, which gives way first, a pull request's author after
-   another dot, then its stack place or when it was committed, muted at the row's end. */
+/* A pull request or a commit a step cites is one row in an excerpt's card. A pull request's
+   is a stack's member row (`.github-pull-stack-member`, drawn by stack-member-row.js), in the
+   order a member reads in everywhere: its state icon, its title, which gives way first, and
+   at the row's end its place, its number, and its author (docs/design-system.md, "Stacks").
+   A commit's is its short ID and its subject, and at the row's end when it was committed, the
+   age in its freshness ink (docs/design-system.md, "Ages End the Row"). */
 .github-pull-guide-row {
   margin: 12px 0;
   border: 1px solid var(--border);
@@ -2231,17 +2232,6 @@
   color: var(--text);
   white-space: nowrap;
 }
-/* A pull request's number, in a pull request number's weight (docs/design-system.md, "Pull
-   Request Numbers"). */
-.github-pull-guide-row-number {
-  font-weight: var(--pull-number-weight);
-  font-variant-numeric: var(--tabular-numerals);
-}
-/* The dot is a stack menu's (`.github-pull-stack-dot`), and keeps its width as the number
-   does. */
-.github-pull-guide-row-copy > .github-pull-stack-dot {
-  flex: none;
-}
 .github-pull-guide-row-title {
   min-width: 0;
   overflow: hidden;
@@ -2250,13 +2240,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.github-pull-guide-row-place {
+/* When a commit was made, "committed 3mo ago", which ends its row whole, the word muted and
+   the age in its freshness ink. */
+.github-pull-guide-row-when {
   flex: none;
   color: var(--muted);
   white-space: nowrap;
 }
-/* A commit this copy lacks says so in its title's place, and gives way as a title does. */
-.github-pull-guide-row-link > .github-pull-quiet {
+/* A commit this copy lacks says so in its title's place, and gives way as a title does; one
+   this checkout lacks says so after its subject, before when it was committed, so the age
+   still ends the row. */
+.github-pull-guide-row-link > .github-pull-quiet,
+.github-pull-guide-row-copy > .github-pull-quiet {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

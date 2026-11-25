@@ -1126,7 +1126,7 @@ const rollupError = (status) =>
       return match[0];
     };
     const shellPage = {
-      MetabrowserFormatters: { age: () => ({ className: "age", label: "3h" }) },
+      MetabrowserFormatters: { ageLabelHtml: () => '<span class="age">3h</span>' },
     };
     shellPage.window = shellPage;
     vm.createContext(shellPage);

@@ -731,6 +731,48 @@ def test_optional_native_stack_state_is_shared_and_owned() -> None:
     }
 
 
+def test_a_pull_requests_absent_field_draws_neither_itself_nor_its_dot() -> None:
+    # stackMemberRow's two layouts (docs/design-system.md, "One Order for a Pull Request's
+    # Fields"): a pull request in no stack, or with no author, reads its other fields in
+    # their order with no stray dot, whether it was drawn so or lost its place later.
+    session = run_session("github-stack-member-row-behavior.js")
+    line_member = "github-pull-stack-member"
+    line_place = [f"{line_member}-position", "github-pull-stack-dot"]
+    line_seen = {name: drawn["seen"] for name, drawn in session["line"].items()}
+    assert line_seen == {
+        "placed": "feat: one order 14/15 · #455 · jlevy",
+        "noPlace": "feat: one order #455 · jlevy",
+        "noPlaceNoAuthor": "feat: one order #455",
+        "placeLost": "feat: one order #455 · jlevy",
+        "placeFound": "feat: one order 2/3 · #455 · jlevy",
+        "placeMoved": "feat: one order 2/3 · #455 · jlevy",
+    }
+    assert session["line"]["placed"]["parts"] == [
+        f"{line_member}-title",
+        *line_place,
+        f"{line_member}-number",
+        f"{line_member}-by",
+    ]
+    assert session["line"]["noPlace"]["parts"] == [
+        f"{line_member}-title",
+        f"{line_member}-number",
+        f"{line_member}-by",
+    ]
+    run_seen = {name: drawn["seen"] for name, drawn in session["run"].items()}
+    assert run_seen == {
+        "placed": "feat: one order · 14/15 · #455 · jlevy",
+        "noPlace": "feat: one order · #455 · jlevy",
+        "noPlaceNoAuthor": "feat: one order · #455",
+        "placeLost": "feat: one order · #455 · jlevy",
+    }
+    assert session["run"]["noPlaceNoAuthor"]["parts"] == [
+        "github-pull-state-icon",
+        "github-pulls-title",
+        "github-pulls-sep",
+        "github-pulls-number",
+    ]
+
+
 def test_native_stack_navigation_and_cold_page_skeleton_preserve_cached_content() -> None:
     assert run_session("github-pull-stack-mount-behavior.js") == {
         "coldSkeleton": True,

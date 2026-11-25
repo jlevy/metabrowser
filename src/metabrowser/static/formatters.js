@@ -57,19 +57,14 @@
     ["m", 60 * 1000, "age-min"],
   ]);
 
-  /**
-   * Compact or relative age and its tier class for an epoch-seconds timestamp.
-   *
-   * @param {number} epochSeconds
-   * @param {{style?: "compact" | "relative"}} [options]
-   * @returns {{label: string, className: string}}
-   */
+  /** @param {number} epochSeconds @param {MetabrowserAgeOptions} [options] @returns {{label: string, className: string}} */
   function age(epochSeconds, options = {}) {
     const value = Number(epochSeconds);
     if (!Number.isFinite(value) || value <= 0) {
       return { label: "", className: "" };
     }
-    const delta = Date.now() - value * 1000;
+    const now = options.now === undefined ? Date.now() : options.now * 1000;
+    const delta = now - value * 1000;
     const elapsed = Math.abs(delta);
     const relative = options.style === "relative";
     for (const [suffix, span, className] of AGE_TIERS) {
@@ -84,9 +79,32 @@
     return { label: relative ? "just now" : "<1m", className: "age-sec" };
   }
 
-  /** @param {number} epochSeconds @returns {string} */
-  function ageClass(epochSeconds) {
-    return age(epochSeconds).className;
+  /** @param {number | null | undefined} epochSeconds @param {MetabrowserAgeLabelOptions} options @returns {{className: string, attributes: Array<[string, string]>, text: string}} */
+  function agePaint(epochSeconds, options) {
+    const { label, className } = age(Number(epochSeconds) || 0, options);
+    /** @type {Array<[string, string]>} */
+    const attributes = options.tip ? [["data-tip-text", options.tip]] : [];
+    const classes = [options.className, className].filter(Boolean).join(" ");
+    return { className: classes, attributes, text: label };
+  }
+
+  /** @param {Document} doc @param {number | null | undefined} epochSeconds @param {MetabrowserAgeLabelOptions} [options] */
+  function ageLabel(doc, epochSeconds, options = {}) {
+    const paint = agePaint(epochSeconds, options);
+    const element = doc.createElement("span");
+    for (const [name, value] of [["class", paint.className], ...paint.attributes]) {
+      if (value) {
+        element.setAttribute(name, value);
+      }
+    }
+    element.textContent = paint.text;
+    return element;
+  }
+
+  /** @param {number | null | undefined} epochSeconds @param {MetabrowserAgeLabelOptions} [options] */
+  function ageLabelHtml(epochSeconds, options = {}) {
+    const paint = agePaint(epochSeconds, options);
+    return paint.text && paintHtml(paint);
   }
 
   // How much of a commit ID a line shows, as many characters as GitHub shows
@@ -303,9 +321,6 @@
   const NO_LINES = "0 lines";
 
   /**
-   * A brief change line, each count written with *formatCount* and an unknown one as "?":
-   * `text` as it reads, and `label` in words, "10 added, 5 deleted, 4 modified; 1,234 lines
-   * added, 567 deleted". A total of zero is left out; a change of no lines reads "0 lines".
    * @param {MetabrowserChangeLineInput} change
    * @param {(count: number) => string} formatCount
    * @returns {MetabrowserChangeLine}
@@ -403,8 +418,6 @@
   }
 
   /**
-   * What every summary of a change set says: its file count, "35 files changed", and its
-   * brief change line (docs/design-system.md, "Diff Summary").
    * @param {{files: number | null, additions: number | null, deletions: number | null, exact: boolean}} totals
    * @param {MetabrowserChangeLineInput["statuses"]} entries
    * @param {(count: number) => string} formatCount
@@ -429,7 +442,8 @@
 
   window.MetabrowserFormatters = Object.freeze({
     age,
-    ageClass,
+    ageLabel,
+    ageLabelHtml,
     changeLine,
     changeLineHtml,
     changeLineNodes,

@@ -4185,11 +4185,12 @@ export function avatarUrl(value) {
 }
 
 /**
- * An age on a pull request's page or a stack's, from the one primitive, `mb.formatAge`, so
- * it draws in its freshness ink (docs/design-system.md, "File Age"), with the exact time in
- * its tooltip and its time in `data-age-at`, from which the page tells it again as time
- * passes. `also` is a time the row leaves out because its age reads the same as this one;
- * its exact time joins this tooltip, so leaving the age out loses nothing.
+ * An age on a pull request's page or a stack's, drawn by the SDK's one age builder,
+ * `mb.ageLabel`, so it draws in its freshness ink (docs/design-system.md, "Age"), with the
+ * exact time in its tooltip and its time in `data-age-at`, from which the page tells it
+ * again as time passes (`mb.retellAge`). `also` is a time the row leaves out because its age
+ * reads the same as this one; its exact time joins this tooltip, so leaving the age out
+ * loses nothing.
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {string} iso
@@ -4203,17 +4204,14 @@ export function pullAge(mb, iso, also = null) {
   }
   /** @param {number} ms */
   const exact = (ms) => mb.formatTimestamp(ms / 1000);
-  const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
   const alsoAt = also === null ? Number.NaN : Date.parse(also.iso);
   const tip =
     also !== null && Number.isFinite(alsoAt)
       ? `${exact(at)} · ${also.label} ${exact(alsoAt)}`
       : exact(at);
-  return h(
-    "span",
-    { class: `github-pull-age ${className}`, "data-tip-text": tip, "data-age-at": String(at) },
-    [label],
-  );
+  const element = mb.ageLabel(at / 1000, { style: "relative", className: "github-pull-age", tip });
+  element.setAttribute("data-age-at", String(at));
+  return element;
 }
 
 /** An actor, as the shell draws every person (docs/design-system.md, "Actor Identity"): the
@@ -5243,13 +5241,7 @@ export function mountPullPage(container, ctx, mb) {
     for (const element of node.querySelectorAll(".github-pull-age")) {
       const at = Number(element.getAttribute("data-age-at"));
       if (Number.isFinite(at)) {
-        const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-        if (element.textContent !== label) {
-          element.textContent = label;
-        }
-        if (element.getAttribute("class") !== `github-pull-age ${className}`) {
-          element.setAttribute("class", `github-pull-age ${className}`);
-        }
+        mb.retellAge(element, at / 1000, { style: "relative" });
       }
     }
   };
@@ -8385,9 +8377,14 @@ export function mountPullPage(container, ctx, mb) {
             ),
           age: (iso) => age(iso),
           shortCommit: (sha) => mb.shortCommit(sha),
-          // A cited pull request's author, as a stack menu's member draws it.
+          // A cited pull request's title and author, as a stack menu's member draws them, and
+          // the Layers glyph that names a stack other than the guide's.
+          titleNodes: mb.titleNodes,
+          stackGlyph: () => (stackSvg === null ? null : document.importNode(stackSvg, true)),
           identity: (login, avatar) =>
-            authorLabel(mb, login, avatar, "github-pull-guide-row-author", { placeholder: false }),
+            authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
+              placeholder: false,
+            }),
           loadStyles: (assets) =>
             Promise.all([
               textStyles(

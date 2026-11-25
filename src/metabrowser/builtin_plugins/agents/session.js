@@ -13,7 +13,7 @@
 // shows the catalog's progress and asks again, through `createPoller`, until the answer is
 // a session or a refusal that says the file is none.
 
-import { ageText, durationText, progressView } from "./home-model.js";
+import { durationText, progressView } from "./home-model.js";
 import { browserClock, createPoller, PROGRESS_POLL_MS, retrying } from "./poller.js";
 import {
   agentLabel,
@@ -159,8 +159,10 @@ export function eventHtml(mb, event) {
  */
 function headerHtml(mb, session, family) {
   const esc = (/** @type {string} */ value) => mb.escapeHtml(value);
+  const factHtml = (/** @type {string} */ label, /** @type {string} */ html) =>
+    `<div class="agents-stat"><span class="agents-stat-label">${esc(label)}</span><span class="agents-stat-value">${html}</span></div>`;
   const fact = (/** @type {string} */ label, /** @type {string} */ value) =>
-    `<div class="agents-stat"><span class="agents-stat-label">${esc(label)}</span><span class="agents-stat-value">${esc(value)}</span></div>`;
+    factHtml(label, esc(value));
   const status = {
     running: "badge-running",
     finished: "badge-completed",
@@ -193,7 +195,10 @@ function headerHtml(mb, session, family) {
     '<div class="agents-stats">' +
     fact("Models", session.models.join(", ") || "-") +
     fact("Started", session.started_at === null ? "-" : mb.formatTimestamp(session.started_at)) +
-    fact("Active", ageText(session.last_activity, family.now)) +
+    factHtml(
+      "Active",
+      mb.ageLabelHtml(session.last_activity, { style: "relative", now: family.now }) || "-",
+    ) +
     fact("Duration", durationText(session.duration_seconds)) +
     fact("Turns", mb.formatInteger(session.turns)) +
     fact(

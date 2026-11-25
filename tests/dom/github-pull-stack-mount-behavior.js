@@ -177,7 +177,10 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     getRegisteredView: () => ({ render: async () => ({ dispose() {} }) }),
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
     formatTimestamp: () => "now",
     navigation: { href: () => "/view/" },
     sourceKind: () => "git_revision",

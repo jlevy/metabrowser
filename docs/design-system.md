@@ -131,34 +131,50 @@ OKLCH structure, semantic ordering, and dark-theme surface contrast.
 One primitive produces every age: `MetabrowserFormatters.age()` returns a label and
 freshness class (`.age-live` … `.age-old`), and the shared class rule owns its hue,
 weight, and tabular numerals.
-It sets no size: an age reads at the size of the text it sits in, a navigation row’s or
-a header line’s ([Type Scale](#type-scale)). Dense navigation uses the compact style
-(`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata and conversation cards use the relative
-style: `2h ago`, `just now`, or `in 2h` for a future timestamp.
+One builder draws every age shown: `ageLabel` and `ageLabelHtml` in
+`static/formatters.js` draw a span of the label in its freshness class, after the call
+site’s own class. `retellAge` in `static/plugin-sdk-views.js` tells a drawn age again as
+time passes, swapping its freshness class, the one in the `age-` namespace, and keeping
+every other. It is not a startup script’s, as only a view that keeps its ages tells them
+again. Plugins reach them as `metabrowser.ageLabel`, `metabrowser.ageLabelHtml`, and
+`metabrowser.retellAge`. So no surface puts an age on the page without its ink, and a
+call site’s class only places the age.
+No stylesheet sets an age’s color, weight, size, or numerals but the freshness rule, and
+`tests/test_age_single_source.py` holds both halves: no rule whose subject is an age
+sets them, and no module paints an age from `formatAge`’s class.
+It also holds the `age-` namespace to freshness classes, so a call site names its own
+class `<surface>-age`. A Pulls row’s age drew gray when its column’s rule set `--muted`
+on it, a selector more specific than the freshness rule’s. It sets no size: an age reads
+at the size of the text it sits in, a navigation row’s or a header line’s
+([Type Scale](#type-scale)). Dense navigation uses the compact style (`<1m`, `5m`, `2h`,
+`3d`, `2w`). Full metadata and conversation cards use the relative style: `2h ago`,
+`just now`, or `in 2h` for a future timestamp.
 Unknown times have no age label.
 The Pulls sidebar, file tree, compact Git history, and the ref selector’s list remain
 condensed navigation; PR headers, comments, reviews, full commit summaries and file and
 folder view headers use relative ages.
 Call sites choose the presentation style and positioning, never their own suffix,
 abbreviation, color, weight, or size.
-A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
-in `data-tip-text`, on a surface that has tooltips
-([Tooltips Add Information](#tooltips-add-information)). Freshness sentences such as
-“Fetched 2 min ago via GitHub CLI” retain their sentence formatter.
-When a summary shows created or opened and updated ages, omit the updated age when its
-displayed label matches the closed or merged age beside it, or else the created or
-opened age, and add the exact updated time to the tooltip of the age it repeats.
+A plugin draws an age with `metabrowser.ageLabel` and puts the exact time in its `tip`,
+its `data-tip-text`, on a surface that has tooltips
+([Tooltips Add Information](#tooltips-add-information)). `metabrowser.formatAge` gives
+the label alone, for words: an accessible name, or a sentence.
+Freshness sentences such as “Fetched 2 min ago via GitHub CLI” retain their sentence
+formatter. When a summary shows created or opened and updated ages, omit the updated age
+when its displayed label matches the closed or merged age beside it, or else the created
+or opened age, and add the exact updated time to the tooltip of the age it repeats.
 
 ### Ages End the Row
 
-In a list row, a timestamp or an age ends the row, right-aligned at its end, so the ages
-of a list read as one column a reader scans down for what changed last.
-A Pulls row’s age ends its last line, in a 5ch column after its lines and its chevron
-([The Pulls Tab](#the-pulls-tab)); a Commits row’s ends its line after the author
-(`.git-graph-age`), a ref selector row’s after its commit (`.source-ref-selector-age`),
-an agents session row’s after its title (`.agents-row-age`), and a guide’s commit row’s
-after its subject. A table, such as the agents Sessions table or an event log’s rows,
-gives its times a column of their own, so they read as one wherever its columns put it.
+In a list row with an age and no size, a timestamp or an age ends the row, right-aligned
+at its end, so the ages of a list read as one column a reader scans down for what
+changed last. A Pulls row’s age ends its last line, in a 5ch column after its lines and
+its chevron ([The Pulls Tab](#the-pulls-tab)); a Commits row’s ends its line after the
+author (`.git-graph-age`), a ref selector row’s after its commit
+(`.source-ref-selector-age`), an agents session row’s after its title
+(`.agents-row-age`), and a guide’s commit row’s after its subject.
+A table, such as the agents Sessions table or an event log’s rows, gives its times a
+column of their own, so they read as one wherever its columns put it.
 An age that is not in a list row stays where its words put it:
 
 - inline prose, such as a freshness sentence, “Fetched 2 min ago via GitHub CLI”, or a
@@ -168,8 +184,15 @@ An age that is not in a list row stays where its words put it:
 - a single-line item with no column under it, such as a tally, “3,310 commits begun 4mo
   ago”.
 
-`tests/test_reserved_chrome.py` holds the Pulls row’s age column in source, and
-`tests/dom/github-pulls-row-lines-chrome.mjs` its place at the row’s end in Chrome.
+A size outranks an age for the row’s end.
+When a row shows both, its size or count ends the row, right-aligned, and its age sits
+before it, because sizes compared down one column are worth more than ages are.
+A Files tree row is the standing case and keeps its layout: its age follows the name
+(`.tree-item-age-inline`) and its size or count ends the row (`.tree-item-size`). Only a
+row with an age and no size gives the age the row’s end.
+
+`tests/dom/github-pulls-row-lines-chrome.mjs` holds a Pulls row’s age at the row’s end
+in Chrome.
 
 ## Typography
 
@@ -311,7 +334,7 @@ it.
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
 | Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, and raw JSON, at the controls’ size |
 | Ref chip | `--git-ref-font-size` | `--git-ref-font-scale` of the size it inherits, so slightly smaller than the text it sits in: the ramp’s one relative size, because a chip sits in text of several sizes and reads as part of it ([Branch Chips](#branch-chips)) |
-| Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu and in a Pulls row, and between a guide’s pull request row’s number and title |
+| Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu, in a Pulls row, and in a guide’s pull request row |
 
 A path reads at its region’s size, and its metadata with it.
 The navigation column’s header path is list text, the size of the rows it heads, in a
@@ -362,9 +385,8 @@ It holds the navigation column’s one size on `.tree-pane`, the hint strips to 
 keycaps’ token, and the metadata named in its `_INHERITED_METADATA`, whose containers
 set its size, the notice and a tooltip’s detail lines among it, to setting none; a rule
 left off that list is not checked.
-`test_age_is_one_primitive_everywhere` holds the age primitive and every age call site
-to setting none.
-`tests/test_type_scale_chrome.py` reads the computed size of one of each
+`tests/test_age_single_source.py` holds the age primitive and every age call site to
+setting none. `tests/test_type_scale_chrome.py` reads the computed size of one of each
 role on the Files, Pulls, and Commits panels and the navigation column’s foot, a file’s
 and a folder’s header, a commit’s page and its Diff summary’s files, a pull request’s
 Conversation and Checks, a tooltip, a menu, Help, and Quick Search in headless Chrome,
@@ -980,27 +1002,39 @@ margins added up, and an h2 sat well below where the document puts it
 ([Rendered Diff Block Spacing](../explorations/performance-loop/design-rule-measurements.md#rendered-diff-block-spacing)
 has the before and after).
 
-- **A changed block’s band** (its fill and its change gutter) is drawn by its row’s
-  `::before`, not laid out, so it moves no text.
-  It reaches `--diff-markdown-band-extent` past the block’s text above and below, behind
-  the text of every block, since the article isolates its paint.
-  Two changed blocks in a row draw two bands with the document’s space between them,
-  less the two extents.
-  The extent is half the least space KPress puts between two blocks, so two bands meet
-  there and never overlap into a darker seam.
-  One band across a run of changed blocks and the document’s spacing cannot both hold
-  while a band is drawn per row and no row can read the margin its neighbor collapses
-  into.
+- **A change’s band** (its fill and its change gutter) is one box for each run of
+  changed blocks of one kind, so consecutive added blocks read as one band and
+  consecutive removed blocks as another, with nothing between them.
+  `changeRuns` in the diff plugin’s `diff-markdown.js` places each run of changed rows
+  in a `.diff-markdown-change`, and each run of one kind in it in a
+  `.diff-markdown-run`, whose `::before` draws the band; a row draws none.
+  Neither wrapper sets block padding or a border or starts a formatting context, so the
+  rows’ margins collapse through them as they do through a row, and the band, which is
+  drawn rather than laid out, moves no text: a block sits where it sits with no band at
+  all. The band spans the run’s rows and the space between them, and reaches
+  `--diff-markdown-band-extent` past the first row’s text and the last row’s, behind the
+  text of every block, since the article isolates its paint.
+  Current hides a change’s removed runs, and the change then draws one added band across
+  the runs left, which draw none, so the edits it shows read as one band too.
+  A removed run meets an added run only across the space between two blocks, and the
+  extent is half the least of those, so their bands meet there at most and never overlap
+  into a darker seam. An article drawn a chunk at a time joins a chunk to the change on
+  either side of it (`joinChanges`), so a run that crosses chunks is still one box.
+  When each row drew its own band, two changed blocks in a row left the document’s space
+  between them unpainted, less the two extents: a 24 px gap from a paragraph to an added
+  h2.
 - **A list or a quote split into rows**, as a changed list is, one row per item, reads
   as one: between two rows of one list or quote, its own margins give way, so its items
   are spaced as KPress spaces them inside it, and its first and last rows keep the
   margins that set it apart in the document.
 - **KPress’s rules that key on a previous sibling** see none, since the previous block
   is in another row. A paragraph straight after an h4, h5, or h6, which KPress sets close
-  under it, is joined across rows, and across the one hidden row an edited paragraph’s
-  removed version leaves when the removed blocks are hidden.
+  under it, is joined across rows, and past the removed run that Current hides, which
+  leaves the heading the block before the paragraph.
   `h2 + h3` is not: joining it would restate KPress’s margin, so an h3 straight after an
-  h2 keeps the space it has after a paragraph, a little more than the document’s.
+  h2 keeps the space it has after a paragraph, a little more than the document’s. These
+  rules read the row before a row across the edges of runs and changes: the last row of
+  the run before, the row before a change, or a change’s last row.
 - **The fold of unchanged blocks** is the diff’s [fold bar](#fold-expanders) and the
   group it opens, whose rows are its content.
   The group clips its content with `overflow: clip` where a code file’s fold uses
@@ -1010,11 +1044,17 @@ has the before and after).
   `withoutRenderWrappers` in `static/inert-html.js` unwraps the `<div>` KPress keeps
   around a table when it is the block’s only element, so the diff’s table has no
   `.kpress-table-wrap` and none of the wrapper’s margins.
+  So an edited table’s removed and added versions have no space between them, and their
+  bands overlap by two extents.
 
 `tests/test_diff_markdown_spacing_chrome.py` measures the diff, the diff with its
 removed blocks hidden, and both versions’ Document views in Chrome, in the serif and the
-sans reading font, and holds every gap to the document’s, the h2-to-h3 case to the h3’s
-own space, and each band to its extent with no two overlapping.
+sans reading font, and holds every gap to the document’s and the h2-to-h3 case to the
+h3’s own space. No test restates the band’s geometry or colors: the band is one box per
+run by construction, and `tests/dom/diff-markdown-session.js` fails on any rendered row
+placed otherwise, a changed row outside a run of its kind, two runs of one kind side by
+side, or two changes side by side, through every step it plays, a long document’s chunks
+drawn out of order among them.
 `tests/test_diff_markdown_fold_chrome.py` measures the fold closed and open.
 
 ### Embedded Document Themes
@@ -3269,7 +3309,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | Username | The shell’s [actor identity](#actor-identity): an avatar’s box, then `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor, and the person glyph stands in its box where there is none, as on a commit’s page |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places |
-| Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
+| Opened, updated, commented | `metabrowser.ageLabel` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, at the card head’s size | A path is chrome, and in the main view it reads at the body size, as a diff file bar’s does ([Type Scale](#type-scale)) |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
 | View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
@@ -3336,8 +3376,8 @@ reader does with it.
 | Document | A Markdown file a step cites whole, as Docs draws it, and a YAML or JSON file, as Changes draws it: the file bar, the rendered layer and its Rendered and Source choice, and Diff and Current; one that could not be drawn, the guide’s bar for it above the view’s notice | `mountRenderedFile` in the diff plugin, `DOCS_DRAWING`, `CHANGES_DRAWING`, `.github-pull-guide-document` |
 | Out of date | One warning notice above the guide and its one remedy, or a quiet line when no file it cites changed; a step that cites a changed file is marked “changed” in the list and on its card, in muted text | `OUTDATED`, `CHANGED`, `.github-pull-guide-stale`, `.github-pull-guide-step-changed` |
 | Another pull request’s file | An excerpt or a document, as a file of this pull request is drawn, under a bar that names that pull request’s number before the path, in a pull request number’s weight and muted ink; its Open full diff opens the file in that pull request’s Changes | `referenceBar`, `.github-pull-guide-reference-pull` |
-| Pull request | One row in an excerpt’s card, as the [stack menu](#stacks) lists a member: the state icon, the number in bold, a muted dot, and the title, which alone gives way, then its stack place, muted, “Stack #71 1/3”; one this copy has not read keeps the icon’s slot empty and names itself by its number | `pullRow`, `pullStateIcon`, `stackLabel`, `stackPosition`, `.github-pull-guide-row` |
-| Commit | One such row, as the Commits tab lists a commit: its [short ID](#short-commit-ids), its subject, and when it was committed, muted; a plain link to the commit’s page; one the store lacks says it is unavailable beside its ID | `commitRow`, `COMMIT_UNAVAILABLE`, `.github-pull-guide-commit` |
+| Pull request | One row in an excerpt’s card, a stack’s [member row](#stacks) in its order: the state icon and the title, which alone gives way, then at the row’s end its place in a stack, its number after a muted dot, and its author after another; the place is bare in the guide’s own stack, “1/3”, names any other stack by the Layers glyph and its number, “⧉300 2/2”, and says its stack in its tip and its accessible name, “Stack #71, position 1 of 3”; one in no stack has no place, and one this copy has not read keeps the icon’s slot empty and names itself by its number | `pullRow`, `stackMemberRow`, `namedStackPositionNodes`, `stackPlaceHint`, `.github-pull-guide-row`, `.github-pull-stack-member` |
+| Commit | One such row, as the Commits tab lists a commit: its [short ID](#short-commit-ids), its subject, and at the row’s end when it was committed, the age in its freshness ink ([Ages End the Row](#ages-end-the-row)); a plain link to the commit’s page; one the store lacks says it is unavailable beside its ID, and one this checkout cannot open says so after its subject | `commitRow`, `COMMIT_UNAVAILABLE`, `.github-pull-guide-commit` |
 
 A new part of the guide takes its words from these constants and its look from an
 existing part of the design system.
@@ -3617,7 +3657,7 @@ that shows a number takes it:
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
 | The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
-| A guide’s pull request row | `.github-pull-guide-row-number`, after the state icon |
+| A guide’s pull request row | `.github-pull-stack-member-number`, as a stack menu’s member has it |
 | A guide’s file of another pull request | `.github-pull-guide-reference-pull`, before the path |
 
 The GitHub plugin’s three are one rule.
@@ -3628,6 +3668,31 @@ own number, in “Stack #286”, is part of the stack’s label, in the label re
 ([Stacks](#stacks)). `test_the_pulls_tab_carries_the_shells_primitives` holds the rules
 to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` read each surface’s computed weight in Chrome.
+
+### One Order for a Pull Request’s Fields
+
+Wherever a row names a pull request by more than its title, its fields keep one order:
+the state icon, the title, its place in its stack, its number, and its author, “title ·
+14/15 · #455 · jlevy”.
+A reader who learns the order once reads every such row the same way.
+A surface that leaves a field out keeps the order of the rest: a pull request in no
+stack reads “title · #455 · jlevy”, and a row with no room for an author ends with its
+number.
+
+One builder draws the fields on every row of the GitHub plugin that shows them,
+`stackMemberRow` in `stack-member-row.js`: a Pulls row’s run (`PULLS_RUN`), and a
+stack’s member in the stack menu and on the stack’s own page and a guide’s pull request
+row (`MEMBER_LINE`). The order, and the muted dots that part the fields, are its; a
+surface chooses only its layout, a run that wraps in the text column or one line whose
+title is cut short before the rest.
+A field that is absent draws neither itself nor the dot before it, in either layout and
+whether the row was drawn without it or lost it later, so no row shows a stray dot.
+
+The shell cannot import the GitHub plugin, so its own rows keep the order in their own
+code: Quick Search’s pull request results, “title #N · Merged”, and a ref selector row’s
+pull request line, its state icon, title, and number.
+An accessible name or a tooltip says the fields in the order the row shows them, “title,
+pull request #455”, never the number first.
 
 ### Authors Follow Pull Requests
 
@@ -3643,7 +3708,7 @@ author after the number.
 | A Pulls row | `.github-pulls-by`, ending the run after the number, cut short only where it is wider than a line |
 | A stack menu’s member | `.github-pull-stack-member-by`, ending the line after the number, at most a third of it |
 | A member on a stack’s page | The stack menu’s member row itself, drawn by its builder, `stackMemberRow` |
-| A guide’s pull request row | `.github-pull-guide-row-by`, after the title, at most a third of the line |
+| A guide’s pull request row | `.github-pull-stack-member-by`, as a stack menu’s member has it |
 | The pull request page’s title | The header’s sentence, “jlevy wants to merge 3 commits”, which names the merger once the pull request is merged, as github.com’s does |
 
 Two surfaces show no author:
@@ -3724,7 +3789,7 @@ holds the one helper and the one rule in source.
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, in the run’s start padding, centered on its first line, so every line of the run starts in the text column past it | [One Glyph Size](#one-glyph-size) |
 | Lines and chevron | The row’s last line, `.github-pulls-change` in `.github-pulls-tail`, from the text column, before the age, and one line tall whatever it holds: the [brief change line](#brief-change-line) of the line totals alone, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read, then the registry’s chevron, a space’s width on; with no lines, the chevron alone; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The toggle, the summary the chevron expands, so a click on it toggles the changed files, and a click elsewhere on the item opens it ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)); a diff summary’s toggle ends with its chevron ([Diff Summary](#diff-summary)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the run’s first part, after the state icon, wrapping in the text column and never cut short (`.github-pulls-heading`) | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
-| Updated time | `metabrowser.formatAge`, muted, at the row’s end on its last line, in a 5ch column of the row’s type after the lines and the chevron (`.github-pulls-age` in `.github-pulls-tail`); the page gives the exact time | [Ages End the Row](#ages-end-the-row); [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
+| Updated time | `metabrowser.ageLabel`, in its freshness ink, at the row’s end on its last line, in a 5ch column of the row’s type after the lines and the chevron (`.github-pulls-age` in `.github-pulls-tail`); the page gives the exact time | [Ages End the Row](#ages-end-the-row); [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`), in the run after the title and the place, after a muted dot, never breaking | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--nav-font-size`; `.actor-name`, in the run after the number and a muted dot, ending it, never breaking. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and a row’s username ellipsizes only where it is wider than a line ([Authors Follow Pull Requests](#authors-follow-pull-requests)) |
 | Stack place | `.github-pulls-place`, after the title and before the number, in the run’s size: a muted dot, `.github-pull-stack-dot`, in `--muted` at `--micro-font-size`, then the position bold in text ink, as a stack menu’s member line has them, “title · 14/15 · #N”, with what it shows set in [Stacks](#stacks); a row in no stack has neither | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
@@ -3853,9 +3918,12 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   text’s size: “3/4 · ⧉300 2/2”, where ⧉ is the glyph.
   A number alone, “#300”, would read as the pull request number on the same row.
   Its own stack is its only stack, the one a group places it under, or else the first
-  GitHub lists. On the page a pull request in more than one stack has a stack button for
-  each, and each names its stack, “⧉286 4/4” and “⧉300 2/2”, since no button is the
-  page’s own stack; two bare positions told the stacks apart only by their tips
+  GitHub lists. On a guide’s pull request row the stack that goes without saying is the
+  guide’s own, the one its pull request is in or the one it was written for, so the row
+  names any other, since nothing around it says which stack a bare position counts in.
+  On the page a pull request in more than one stack has a stack button for each, and
+  each names its stack, “⧉286 4/4” and “⧉300 2/2”, since no button is the page’s own
+  stack; two bare positions told the stacks apart only by their tips
   (`namedStackPosition` in `pull-stacks.js`). In one stack the button is the glyph and
   the bare position, “⧉3/4”.
 - **Ink.** The position is in normal text ink wherever it appears: in a Pulls row’s
@@ -3865,11 +3933,14 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   visited, hover, focus, or current state changes them; a part that set none would take
   the link’s blue.
 - **Member row.** A stack’s member reads in one order wherever it appears: its title,
-  its place, its number, and its author, “Fix the reader · 14/15 · #455 · jlevy”.
+  its place, its number, and its author, “Fix the reader 14/15 · #455 · jlevy”.
   A Pulls row’s run has all four, its age at the row’s end on the line below
   ([The Pulls Tab](#the-pulls-tab)); the stack menu’s member row has all four on one
-  line; and the stack button shows the place alone, “⧉14/15”, with no author, since the
-  row it ends has no room for one
+  line, and so does a guide’s pull request row, drawn by the same builder
+  (`stackMemberRow` in `stack-member-row.js`), whose place says its stack in its tip and
+  its accessible name, and which, for a pull request in no stack, has no place and keeps
+  the rest in order; and the stack button shows the place alone, “⧉14/15”, with no
+  author, since the row it ends has no room for one
   ([Authors Follow Pull Requests](#authors-follow-pull-requests)). Every member in the
   menu has one layout, one line tall, so the members line up and every row of the menu
   is as tall as the others: the state icon in the tree’s icon slot, a tree row’s gap,
@@ -5771,7 +5842,7 @@ The tooltip names the cell as the navigation does: a file’s icon, its complete
 which wraps inside the tooltip however long, then a folder’s file count and size or a
 file’s size, and its age, through the navigation columns’ own formatters, hues, and
 freshness classes (`mb.formatFileCount` and `mb.countClass`, `mb.sizeHtml`, and
-`mb.formatAge`).
+`mb.ageLabelHtml`).
 
 Treemap navigation preserves the user’s spatial context.
 Activating a folder cell opens that folder with Treemap selected, and Backspace opens
