@@ -4,18 +4,19 @@ description: >-
   Browse local or remote directories and files with Metabrowser, including Markdown,
   structured data, source code, images, logs, and binary metadata; read Git commits
   and diffs; review GitHub pull requests from a repository URL or an existing
-  checkout; and write guided reviews for pull requests. Use when a user asks to
-  explore a directory, inspect a file or live log, open a local file browser, show
-  them a file, commit, or diff in the Metabrowser app or a browser, inventory a
-  directory, read or review a GitHub pull request or its diff, or inspect and validate
-  Metabrowser plugins, and whenever you open or update a GitHub pull request, to add
-  or refresh its guided review.
+  checkout; and write guided reviews for pull requests and whole stacks. Use when a
+  user asks to explore a directory, inspect a file or live log, open a local file
+  browser, show them a file, commit, or diff in the Metabrowser app or a browser,
+  inventory a directory, read or review a GitHub pull request or its diff, or inspect
+  and validate Metabrowser plugins, and whenever you open or update a GitHub pull
+  request, to add or refresh its guided review.
 compatibility: >-
   Requires either a local metab command or uv (for the zero-install uvx fallback, which
-  needs network access on first use). Recipes that read JSON read it with jq. Git-backed
-  browsing requires Git; fetching fresh GitHub metadata requires gh and a verified
-  sign-in. Cached PR records remain readable without new provider work. Handing a page
-  to the Metabrowser app needs macOS and the installed app.
+  needs network access on first use). Recipes that read JSON read it with jq, and a
+  YAML parser such as yq checks that a guide's block parses before it is published.
+  Git-backed browsing requires Git; fetching fresh GitHub metadata requires gh and a
+  verified sign-in. Cached PR records remain readable without new provider work.
+  Handing a page to the Metabrowser app needs macOS and the installed app.
 ---
 # Metabrowser
 
@@ -86,6 +87,8 @@ handoff, the app needs `metab` 0.13.0 or later.
 - Read or review a GitHub pull request: see [Read a Pull Request](#read-a-pull-request)
 - Open or update a pull request: write or refresh its guided review, as
   [Write a Guided Review](#write-a-guided-review) says
+- Write or refresh the guided review of a whole stack: see
+  [Write a Stack Guide](#write-a-stack-guide)
 - Browse a remote directory through SSH: see
   [Browse a Remote Directory](#browse-a-remote-directory)
 - Inspect or validate plugins: use `--plugins --json` for structured discovery,
@@ -104,8 +107,8 @@ the user an address for a browser:
   takes it, and otherwise in their browser, on a `metab` server it starts and leaves
   running. The user’s `open_in` preference can choose the app only or the browser only
 - **A server you start** answers any address, so serve for what a target cannot name,
-  such as a heading, a commit of a local checkout, or one file of a pull request’s
-  changes; in a headless environment; and whenever presenting fails
+  such as a heading, a commit of a local checkout, one file of a pull request’s changes,
+  or a stack’s page; in a headless environment; and whenever presenting fails
 - **The user’s recent folders** list what they open.
   A target you present to the app enters the list as if they had opened it, since the
   app cannot tell the two apart; a server you start stays out of it, since it runs
@@ -264,8 +267,9 @@ Start one server in the background and give the user addresses on it:
   Controls on the page, such as **Browse code** and the branch selector, move the pin
   (`POST /api/source/pin`); from then on the server’s pages show the new commit, and a
   tab still showing the old one offers a reload.
-  Its `/pull/<n>` pages answer for any pull request of the repository whatever the pin,
-  so reuse the server for another pull request of the same repository too
+  Its `/pull/<n>` and `/stack/<s>` pages answer for any pull request or stack of the
+  repository whatever the pin, so reuse the server for another pull request of the same
+  repository too
 - Stop it when the user is done, unless they ask to keep it
 
 Addresses on that server, after its origin:
@@ -278,6 +282,11 @@ Addresses on that server, after its origin:
 - `/pulls` for a GitHub repository’s pull requests, and `/pull/<n>`, `/pull/<n>/files`,
   or `/pull/<n>/checks` for one of them
 - `/pull/<n>/files/<path>` for one changed file in a pull request’s **Changes**
+- `/stack/<s>` for a native stack’s page, which opens on its guide when it has one, and
+  `/stack/<s>/guided`, `/stack/<s>/docs`, or `/stack/<s>/changes` for its guide, its
+  documents, or its changes;
+  [Publish and Confirm a Stack Guide](#publish-and-confirm-a-stack-guide) finds `<s>`
+- `/stack/<s>/changes/<path>` for one changed file in a stack’s **Changes**
 
 The page updates as files change, so the user can keep watching while you work.
 
@@ -328,9 +337,10 @@ The commands below read everything without a browser or a port.
 With `--format json`, `--api` prints one JSON document.
 Each recipe writes it to a file in `<tmp>`, a folder of your own such as one `mktemp -d`
 made and never the user’s checkout, and reads the file with `jq` only when `metab`
-succeeded.
-So a recipe that fails exits nonzero, and standard error says why; a pipe from
-`metab` into `jq` would end with `jq`’s status and hide the failure.
+succeeded. When the repository’s own rules say where scratch files go, as a
+durable-storage rule may, use that place instead.
+So a recipe that fails exits nonzero, and standard error says why; a pipe from `metab`
+into `jq` would end with `jq`’s status and hide the failure.
 
 ### From a Pull-Request URL
 
@@ -390,6 +400,21 @@ ROUTE=$(jq -er .comparison_route <tmp>/pull.json) &&
 Each line is one hunk, its first and last line on each side; a side a hunk has no lines
 on, such as an added file’s old side, ends before it starts.
 Percent-encode a path that holds a space, `&`, `#`, `%`, or `+`, as any URL query needs.
+
+To pick a range without a checkout, number the new side’s lines from the same answer:
+`--` starts each hunk, `+` marks an added line, and a deleted line, which the new side
+lacks, is left out:
+
+```shell
+jq -r '.patches[].hunks[] | "--", (reduce .lines[] as $l ({n: .new_start, out: []}; if $l.op == "del" then . else .out += ["\(.n) \({add: "+", context: " "}[$l.op]) \($l.text)"] | .n += 1 end) | .out[])' <tmp>/file.json
+```
+
+A range must lie inside one hunk on its side, `old` or `new`. This says whether lines
+`<start>` to `<end>` of side `<side>` do:
+
+```shell
+jq -r --arg side <side> --argjson start_line <start> --argjson end_line <end> '[.patches[].hunks[] | if $side == "old" then [.old_start, .old_count] else [.new_start, .new_count] end | select(.[0] <= $start_line and $start_line <= $end_line and $end_line < .[0] + .[1])] | if length > 0 then "inside" else "outside" end' <tmp>/file.json
+```
 
 Read a file at the head with Git, in the clone that `/api/source/status` names, whose
 `location` may start with `~`. The `select` stops the recipe when the pin is not the
@@ -702,12 +727,12 @@ and GitHub’s, `gh pr view <n> --json headRefOid --jq .headRefOid`, for any oth
 it is not, the record is older than the push, so refresh it again.
 A guide whose pins differ from these reads `stale`.
 
-Before you publish, parse the block’s YAML with a parser you have, and test each range
-against its file’s hunks with the `&file=<path>` recipe of
-[From a Pull-Request URL](#from-a-pull-request-url), which reads the record: for a pull
-request you open with its guide, test them as soon as it opens.
-That is all a check can do before publishing: whether the page reads the guide, and each
-reference, is the route’s answer alone.
+Before you publish, parse the block’s YAML with a parser you have, such as yq, and test
+each range against its file’s hunks with the `&file=<path>` recipe of
+[From a Pull-Request URL](#from-a-pull-request-url), which reads the record, and the
+range test after it: for a pull request you open with its guide, test them as soon as it
+opens. That is all a check can do before publishing: whether the page reads the guide,
+and each reference, is the route’s answer alone.
 Write the whole description to a file, the prose and then the block, and publish it,
 with `gh pr create` as above when you open the pull request, and otherwise:
 
@@ -796,10 +821,10 @@ first step. Give it these groups and steps, in this order:
 | Orientation | What this stack does | The problem and the outcome, in five lines | The plan, whole |
 |  | The system after it | The parts and how they connect | The architecture document, whole |
 |  | The layers | One line for each, bottom up | `{pull}` for each |
-| Decisions | Key decisions and why | Up to five: decided X because Y, which rules out Z | Where each is recorded |
-| Documents | One for each document a reviewer must read | What it now promises | The file, whole |
-| Areas | Three to five, by subsystem, in dependency order | What it does now and what to verify | Up to three ranges that matter, and the layer’s `{pull}` |
-| Open questions | One | What a person must decide | The code in doubt |
+| Decisions | One step, titled “Decisions: …”, on the key decisions and why | Up to five: decided X because Y, which rules out Z | Where each is recorded |
+| Documents | One for the documents a reviewer must read, or one for each only when a document needs its own | What they now promise | The files, whole |
+| Areas | Three to five, by subsystem, in dependency order | What it does now and what to verify | Up to two ranges that matter, and the layer’s `{pull}` |
+| Open questions | One step, titled “Open questions: …” | What a person must decide | The code in doubt |
 | Testing and merging | One or two | Automated, agent-checked, and needs a person; the merge order, while a layer is open; deferred work with its tracker IDs | Tests, the plan |
 
 - Write eight to twelve steps.
@@ -808,9 +833,9 @@ first step. Give it these groups and steps, in this order:
 - Keep each note to five lines, in the present tense, about the end state.
 - Cite at most three references a step, except in the layers step, which cites every
   layer.
-- Never write narration by layer or by commit, a file inventory (Files lists every
-  file), anything a layer’s guide says (cite its `{pull}`), how the design evolved,
-  review rounds, commit IDs, or counts the page’s header shows.
+- Never write narration by layer or by commit, a file inventory (the page lists every
+  file the stack changes), anything a layer’s guide says (cite its `{pull}`), how the
+  design evolved, review rounds, commit IDs, or counts the page’s header shows.
 
 A `path` reference is a file some layer changes, read in the stack’s comparison, and a
 range lies inside one hunk of that comparison, not of a layer’s.
@@ -859,8 +884,26 @@ writing a list as a literal block, and the bounds on steps and references.
 
 ### Publish and Confirm a Stack Guide
 
-`<url>` is the top layer’s pull-request URL, and `<s>` the stack’s number.
-Read the stack first: its state, its pins, and its layers, bottom up:
+`<url>` is the repository’s URL, `https://github.com/<owner>/<repo>`, or any of its pull
+requests’ URLs, since the stack’s routes answer from either, and `<s>` is the stack’s
+number. Find `<s>` from the number `<n>` of any of its layers:
+
+```shell
+<invocation> <url> --api /api/plugin/github/stacks --format json > <tmp>/stacks.json &&
+  jq -r '.stacks[] | select(.pulls | index(<n>)) | .number' <tmp>/stacks.json
+```
+
+The list is the one the cache holds, so a stack made since it was last read can be
+missing. Then POST a refresh, which the command waits for, and read the list again:
+
+```shell
+echo '{"retry": true}' > <tmp>/retry.json &&
+<invocation> <url> --api /api/plugin/github/stacks-refresh --data <tmp>/retry.json --format json > <tmp>/refresh.json
+```
+
+Read the stack: its state, its pins, and its layers, bottom up.
+The last layer, `.members[-1].number`, is the top layer, whose description carries the
+stack guide:
 
 ```shell
 <invocation> <url> --api '/api/plugin/github/stack?number=<s>' --format json > <tmp>/stack.json &&
@@ -876,9 +919,17 @@ Read the stack first: its state, its pins, and its layers, bottom up:
   every layer’s state `merged`, and its guide still reads `ready`: write it as for an
   open stack, but leave the merge order out of its testing step.
 
+The same answer’s `.files` holds the files the stack changes, all of them unless
+`.truncated` is true, each with the layers that change it, bottom up, so an Areas step
+can cite the `{pull}` of the layer that makes the change it is about:
+
+```shell
+jq -r '.files[] | "\(.path) → \([.layers[].number] | map(tostring) | join(" "))"' <tmp>/stack.json
+```
+
 Read a file’s hunks in the stack’s comparison, which a range must lie inside, with
 `&file=<path>` on its route, as [From a Pull-Request URL](#from-a-pull-request-url)
-reads a pull request’s:
+reads a pull request’s, and pick and test its ranges with the two range recipes there:
 
 ```shell
 <invocation> <url> --api "$(jq -r .comparison.route <tmp>/stack.json)&file=<path>" --format json > <tmp>/file.json &&
@@ -945,6 +996,14 @@ After a push to any layer, or a restack, read `.state` and `.stale.changed_steps
 the stack’s new ones, and publish and confirm the guide again.
 A new top layer needs no move of the block: the guide is still found where it is, and
 reads out of date until you refresh it.
+
+`--present` cannot name a stack’s page.
+To show the user the guide, present the top layer’s pull-request URL and tell them to
+choose **Whole stack** in its stack menu, or serve the repository’s URL with `--no-open`
+([Serve It](#serve-it)) and give them `<origin>/stack/<s>/guided`, `<origin>` being the
+start of the address on its `Serving <root> at <url>` line.
+`<invocation> <url> --show /stack/<s>` reports `guide=#N tab=guided` when the page opens
+on the guide, `N` being the layer that carries it.
 
 ## Browse a Remote Directory
 

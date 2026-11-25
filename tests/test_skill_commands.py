@@ -151,6 +151,10 @@ GOLDEN_SPELLING: Final = {
     "<n>": "7",
     "<k>": "1",
     "<path>": "src/app.txt",
+    # The range test's side and lines: the new side of the file's one hunk.
+    "<side>": "new",
+    "<start>": "1",
+    "<end>": "2",
     "<tmp>": "tmp",
 }
 
@@ -1036,7 +1040,7 @@ def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     named = {_value(command.args, "--api") for command in found if command.whole}
     assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
-    assert len(_recipes(skill)) == 8
+    assert len(_recipes(skill)) == 10
     assert len(present_recipes(skill)) == 4
     assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 

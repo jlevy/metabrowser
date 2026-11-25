@@ -36,7 +36,8 @@ failure stops the recipe with a nonzero status.
 `tests/test_skill_commands.py` fails when a recipe there is not a run of consecutive
 blocks here joined with `&&`, with `<invocation>` read as `metab` and the fixture’s
 cache and configuration directories, `<url>` as `https://github.com/octo/demo/pull/7`,
-`<n>` as `7`, `<k>` as `1`, `<path>` as `src/app.txt`, and `<tmp>` as `tmp`.
+`<n>` as `7`, `<k>` as `1`, `<path>` as `src/app.txt`, `<side>` as `new`, `<start>` as
+`1`, `<end>` as `2`, and `<tmp>` as `tmp`.
 
 `tests/github_pull_fixture.py` builds two homes before these commands run.
 `url/home` holds a mirror of `https://github.com/octo/demo` and the records of pull
@@ -128,6 +129,31 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```console
 $ jq -r '.patches[].hunks[] | "old \(.old_start)-\(.old_start + .old_count - 1) new \(.new_start)-\(.new_start + .new_count - 1)"' tmp/file.json
 old 1-1 new 1-2
+? 0
+```
+
+The same answer numbers the new side’s lines, to pick a range from, without a checkout.
+
+```console
+$ jq -r '.patches[].hunks[] | "--", (reduce .lines[] as $l ({n: .new_start, out: []}; if $l.op == "del" then . else .out += ["\(.n) \({add: "+", context: " "}[$l.op]) \($l.text)"] | .n += 1 end) | .out[])' tmp/file.json
+--
+1   one
+2 + two
+? 0
+```
+
+A range inside one hunk on its side is one a step can cite; the old side’s lines 2 to 4,
+which step 2 of 7’s guide cites as `range_unavailable` below, are not.
+
+```console
+$ jq -r --arg side new --argjson start_line 1 --argjson end_line 2 '[.patches[].hunks[] | if $side == "old" then [.old_start, .old_count] else [.new_start, .new_count] end | select(.[0] <= $start_line and $start_line <= $end_line and $end_line < .[0] + .[1])] | if length > 0 then "inside" else "outside" end' tmp/file.json
+inside
+? 0
+```
+
+```console
+$ jq -r --arg side old --argjson start_line 2 --argjson end_line 4 '[.patches[].hunks[] | if $side == "old" then [.old_start, .old_count] else [.new_start, .new_count] end | select(.[0] <= $start_line and $start_line <= $end_line and $end_line < .[0] + .[1])] | if length > 0 then "inside" else "outside" end' tmp/file.json
+outside
 ? 0
 ```
 

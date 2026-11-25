@@ -87,7 +87,8 @@ One server serves every page under its folder, so the agent can hand you several
 addresses on the same port.
 A server of a repository or pull-request URL shows one commit at a time, starting where
 the URL points; controls on the page, such as **Browse code** and the branch selector,
-move it, and its pull-request pages answer for any pull request of the repository.
+move it, and its pull-request and stack pages answer for any pull request or stack of
+the repository.
 
 | Address | Shows |
 | --- | --- |
@@ -98,6 +99,12 @@ move it, and its pull-request pages answer for any pull request of the repositor
 | `/pulls` | The repository’s pull requests |
 | `/pull/<n>`, `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, `/pull/<n>/checks` | A pull request (its guide when it has one, else its conversation), its conversation, its changes, its guide, and its checks |
 | `/pull/<n>/files/<path>` | One changed file in a pull request’s changes |
+| `/stack/<s>`, `/stack/<s>/guided`, `/stack/<s>/docs`, `/stack/<s>/changes` | A native stack (its guide when it has one), its guide, its documents, and its changes |
+| `/stack/<s>/changes/<path>` | One changed file in a stack’s changes |
+
+`--present` cannot name a stack’s page, so to show you a stack’s guide the agent either
+presents the top layer’s pull request, where **Whole stack** in the stack menu opens the
+stack’s page, or serves the repository and gives you its `/stack/<s>/guided` address.
 
 The page stays live while the agent works: new and changed files appear in the tree, and
 a log being written tails in place ([live updates](browsing-files.md#live-updates)). The
