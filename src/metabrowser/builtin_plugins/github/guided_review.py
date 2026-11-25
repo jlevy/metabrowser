@@ -1166,7 +1166,38 @@ async def _commit_rows(
     """`git log`'s *fields*, separated by `%x00`, of each of *commits* that *location* holds
     as a commit, in no order, or ``None`` past *row_bytes* a commit. An ID that names no
     commit, missing or another kind of object, is left out (`--ignore-missing`), never
-    refused. A line a commit: a subject is its first paragraph on one line."""
+    refused. A line a commit: a subject is its first paragraph on one line.
+
+    One run reads every ID. A Git that fails that run for one ID instead of leaving it out
+    would leave the step with no commit at all, so a failed run is read again one ID a run,
+    the separate runs whose cost is measured beside MAX_REFERENCES, and an ID whose own run
+    fails is left out. The first run's error is raised only when every ID's run fails too,
+    as when *location* cannot be read."""
+    try:
+        return await _log_rows(location, commits, fields, row_bytes)
+    except GitCommandError as failed:
+        if len(commits) < 2:
+            raise
+        rows: list[list[str]] = []
+        read = False
+        for commit in commits:
+            try:
+                found = await _log_rows(location, [commit], fields, row_bytes)
+            except GitCommandError:
+                continue
+            if found is None:
+                return None
+            read = True
+            rows.extend(found)
+        if not read:
+            raise failed
+        return rows
+
+
+async def _log_rows(
+    location: GitLocation, commits: Sequence[str], fields: str, row_bytes: int
+) -> list[list[str]] | None:
+    """One `git log` of :func:`_commit_rows`, over *commits*."""
     try:
         out = await run_git_at(
             [

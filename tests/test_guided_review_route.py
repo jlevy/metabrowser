@@ -10,9 +10,12 @@ handler does. The stand-in's pull request 7 is ``base`` → ``fork_earlier`` ("e
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import json
-from collections.abc import Iterator
+import re
+import subprocess
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,13 +49,20 @@ from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.diff import markdown_projection_worker as worker_module
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.markdown_projection_worker import InertRenderRefused, RefusalCode
-from metabrowser.git.process import GitError, GitLocation, GitOutputCutError, RepositoryStoreTarget
+from metabrowser.git.process import (
+    GitCommandError,
+    GitError,
+    GitLocation,
+    GitOutputCutError,
+    RepositoryStoreTarget,
+)
 from tests.diff_fixture_repo import git
 from tests.github_pull_fixture import (
     _DOCUMENT_FILES,  # pyright: ignore[reportPrivateUsage]
     DEFAULT_BRANCH,
     FETCHED_AT,
     READER,
+    commits_guide_body,
     grouped_guide_body,
     guide_body,
     kinds_guide_body,
@@ -826,6 +836,61 @@ def test_a_commit_whose_line_passes_its_bound_names_no_subject(
         {"subject": None, "committed_at": "2026-08-29T14:40:00Z"},
     )
     assert (missing["state"], missing["target"]) == ("commit_unavailable", None)
+
+
+@pytest.mark.parametrize("refused", [False, True], ids=["left out", "run refused"])
+def test_an_id_that_names_no_commit_leaves_the_steps_other_commits_ready(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, refused: bool
+) -> None:
+    """A tree, a blob, an annotated tag, and a missing ID beside a commit are each
+    `commit_unavailable`, and the commit stays ready: whether Git leaves them out of the
+    step's one `git log`, or refuses that run, which is then read one ID a run."""
+    origin = stand.origin
+    head = origin["fork_head"]
+    # An annotated tag of the head, which the store is given once it holds the head.
+    tag = f"object {head}\ntype commit\ntag probe\ntagger A <a@example.invalid> 0 +0000\n\nA tag.\n"
+    named = {
+        "tree": git(origin.path, "rev-parse", f"{head}^{{tree}}").decode().strip(),
+        "blob": git(origin.path, "rev-parse", f"{head}:src/app.txt").decode().strip(),
+        "tag": hashlib.sha1(b"tag %d\0%s" % (len(tag), tag.encode())).hexdigest(),
+        "missing": _MISSING,
+    }
+    commits = [named["tree"], head, named["blob"], named["tag"], named["missing"]]
+    _cache(stand, commits_guide_body(origin, commits))
+    written = subprocess.run(
+        ["git", "-C", str(stand.published.git_dir), "hash-object", "-t", "tag", "-w", "--stdin"],
+        input=tag.encode(),
+        capture_output=True,
+        check=True,
+    )
+    assert written.stdout.decode().strip() == named["tag"]
+    batches: list[int] = []
+    real = guided_review.run_git_at
+
+    async def refusing(args: Sequence[str], location: GitLocation, **kwargs: Any) -> bytes:
+        ids = [arg for arg in args if re.fullmatch(r"[0-9a-f]{40}", arg)]
+        if args[0] == "log" and "--no-walk=unsorted" in args:
+            batches.append(len(ids))
+            if refused and len(ids) > 1:
+                raise GitCommandError(args, 128, "fatal: not a commit")
+        return await real(args, location, **kwargs)
+
+    monkeypatch.setattr(guided_review, "run_git_at", refusing)
+    answer = _ask(stand, step=2)
+    assert answer["state"] == "ready"
+    assert [(ref["commit"], ref["state"], ref["href"]) for ref in answer["references"]] == [
+        (named["tree"], "commit_unavailable", None),
+        (head, "ready", f"/commit/{head}"),
+        (named["blob"], "commit_unavailable", None),
+        (named["tag"], "commit_unavailable", None),
+        (named["missing"], "commit_unavailable", None),
+    ]
+    assert answer["references"][1]["target"] == {
+        "subject": "count to two",
+        "committed_at": "2026-08-29T14:40:00Z",
+    }
+    # One run for the step's five IDs, or, once Git refuses it, one more for each.
+    assert batches == ([5, 1, 1, 1, 1, 1] if refused else [5])
 
 
 def test_a_pull_requests_file_with_no_kept_manifest_is_not_listed_here(

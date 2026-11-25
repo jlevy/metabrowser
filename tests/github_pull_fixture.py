@@ -60,7 +60,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Generator, Mapping
+from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1586,6 +1586,15 @@ def kinds_guide_body(origin: Origin) -> str:
     """The stand-in guide's count step, then a step that cites every other kind of
     reference (``kinds`` of :data:`BUILT_VARIANTS`)."""
     return _guide_body(origin["base"], origin["fork_head"], _kinds(origin["fork_head"]))
+
+
+def commits_guide_body(origin: Origin, commits: Sequence[str]) -> str:
+    """The stand-in guide's count step, then a step that cites each of *commits*."""
+    cited = "".join(f'        - {{commit: "{commit}"}}\n' for commit in commits)
+    step = (
+        "    - title: Read the commits\n      note: Check each commit.\n      references:\n" + cited
+    )
+    return _guide_body(origin["base"], origin["fork_head"], _COUNT_STEP + step)
 
 
 def markdown_guide_body(origin: Origin) -> str:
