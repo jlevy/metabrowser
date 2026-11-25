@@ -34,6 +34,19 @@ concurrency:
 
 env:
   UV_EXCLUDE_NEWER: "14 days"
+  # A cache restore's deadline in minutes, in setup-node, setup-uv, and
+  # actions/cache/restore alike (@actions/cache's getDownloadOptions): each 128 MiB segment
+  # of the download must arrive within it, or the restore gives up and the job goes on as
+  # on a miss. It is a wall-clock limit, not a stall detector. Every cache here is one
+  # segment (in run 45545935794 npm's was 111 MB, the admitted Git build's 49 MB, and uv's
+  # 9 MB), so a restore still moving becomes a miss below about 1.85 MB/s for npm. The
+  # default, 10 minutes, outlasts every job's limit here: one npm restore stalled at 87 %
+  # for 7.5 minutes until its job's limit ended it (run 44387846150, mb-z4i7). The slowest
+  # restores that finished took 25 s (npm, in 81 setup-node logs of runs 43916652624 to
+  # 45539408952) and 20 s (the admitted Git build, over runs 43910077901 to 45542298244).
+  # A miss costs the next step's fetch of what the cache held. The Git build is the one
+  # measured: 66 to 109 s in those runs' nine builds, which the admitted-git limit holds.
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
 jobs:
   plan:
@@ -127,6 +140,13 @@ jobs:
           enable-cache: true
           python-version: "3.13"
 
+      # setup-node downloads a Node the runner image lacks and copies it into the tool cache
+      # file by file, and each has stalled for over a minute; it does neither when the
+      # pinned Node is already in the tool cache, where this step unpacks a checksum-pinned
+      # download fetched with retries (devtools/install_node.sh).
+      - name: Install Node
+        run: bash devtools/install_node.sh 24.18.0
+
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -163,6 +183,13 @@ jobs:
           checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
           enable-cache: true
           python-version: "3.13"
+
+      # setup-node downloads a Node the runner image lacks and copies it into the tool cache
+      # file by file, and each has stalled for over a minute; it does neither when the
+      # pinned Node is already in the tool cache, where this step unpacks a checksum-pinned
+      # download fetched with retries (devtools/install_node.sh).
+      - name: Install Node
+        run: bash devtools/install_node.sh 24.18.0
 
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -221,6 +248,13 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
+      # setup-node downloads a Node the runner image lacks and copies it into the tool cache
+      # file by file, and each has stalled for over a minute; it does neither when the
+      # pinned Node is already in the tool cache, where this step unpacks a checksum-pinned
+      # download fetched with retries (devtools/install_node.sh).
+      - name: Install Node
+        run: bash devtools/install_node.sh 24.18.0
+
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -274,6 +308,13 @@ jobs:
           checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
           enable-cache: true
           python-version: ${{ matrix.python-version }}
+
+      # setup-node downloads a Node the runner image lacks and copies it into the tool cache
+      # file by file, and each has stalled for over a minute; it does neither when the
+      # pinned Node is already in the tool cache, where this step unpacks a checksum-pinned
+      # download fetched with retries (devtools/install_node.sh).
+      - name: Install Node
+        run: bash devtools/install_node.sh 24.18.0
 
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -337,6 +378,13 @@ jobs:
           checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
           enable-cache: true
           python-version: ${{ matrix.python-version }}
+
+      # setup-node downloads a Node the runner image lacks and copies it into the tool cache
+      # file by file, and each has stalled for over a minute; it does neither when the
+      # pinned Node is already in the tool cache, where this step unpacks a checksum-pinned
+      # download fetched with retries (devtools/install_node.sh).
+      - name: Install Node
+        run: bash devtools/install_node.sh 24.18.0
 
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -446,6 +494,13 @@ jobs:
           enable-cache: true
           python-version: "3.13"
 
+      # setup-node downloads a Node the runner image lacks and copies it into the tool cache
+      # file by file, and each has stalled for over a minute; it does neither when the
+      # pinned Node is already in the tool cache, where this step unpacks a checksum-pinned
+      # download fetched with retries (devtools/install_node.sh).
+      - name: Install Node
+        run: bash devtools/install_node.sh 24.18.0
+
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -535,6 +590,13 @@ jobs:
           checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
           enable-cache: true
           python-version: "3.13"
+
+      # setup-node downloads a Node the runner image lacks and copies it into the tool cache
+      # file by file, and each has stalled for over a minute; it does neither when the
+      # pinned Node is already in the tool cache, where this step unpacks a checksum-pinned
+      # download fetched with retries (devtools/install_node.sh).
+      - name: Install Node
+        run: bash devtools/install_node.sh 24.18.0
 
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0

@@ -395,8 +395,13 @@ failed, and the legs that passed stay as evidence.
 **Time limits and shards.** Each job’s `timeout-minutes` is about 1.5 times its measured
 90th percentile, with the measurement in a comment beside it.
 A limit that trips means a tier grew by half: split its job further, or make its slowest
-tests cheaper. A job that nears its limit while its sibling parts do not is uneven, not
-grown: the parts are dealt by the measured seconds in `devtools/shard_weights.json`, and
+tests cheaper. The limit covers the job’s setup too, so each setup download that has
+stalled is bounded: `devtools/install_uv.sh` and `devtools/install_node.sh` fetch the
+pinned uv and Node with retries that end a stalled transfer, and put them where their
+setup actions look first, and `SEGMENT_DOWNLOAD_TIMEOUT_MINS` in a workflow’s `env`
+gives a cache restore a deadline, after which the job goes on as on a miss.
+A job that nears its limit while its sibling parts do not is uneven, not grown: the
+parts are dealt by the measured seconds in `devtools/shard_weights.json`, and
 `make shard-weights` rewrites that file from the newest green run of `main` as `gh`
 reads its job logs. Run it when `make ci-report CI_REPORT_FLAGS=--check` names a sharded
 job, and after a change that moves a tier’s time between tests, such as a new slow test;
