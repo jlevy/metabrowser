@@ -1,0 +1,50 @@
+created_at: 2026-11-25T23:52:07.093Z
+ops:
+  - bead_id: is-01m8ahev7t0174z3a2vhhnpw81
+    client_id: 6f903eec-ab37-494d-8aa0-dde216250a32
+    kind: create_issue
+    patch:
+      hold: null
+      priority: 2
+      resolution: null
+      slot: in_progress
+      status: in_progress
+      title: Lean language support and a repeatable language recipe
+  - attachments:
+      - metadata:
+          assignee: null
+          bead_id: mb-h7f9
+          children: 5
+          created_at: 2026-11-25T23:43:06.490Z
+          dependencies: []
+          internal_id: is-01m8ahev7t0174z3a2vhhnpw81
+          kind: epic
+          labels:
+            - linear
+            - Feature
+          parent_id: null
+          priority: 2
+          ready_children: 0
+          spec_path: docs/project/specs/active/plan-2026-11-25-lean-language-support.md
+          status: in_progress
+          updated_at: 2026-11-25T23:43:14.654Z
+        subtitle: in_progress · P2
+        title: mb-h7f9 · epic
+        url: tbd://bead/mb-h7f9
+    bead_id: is-01m8ahev7t0174z3a2vhhnpw81
+    external_id: 6f903eec-ab37-494d-8aa0-dde216250a32
+    kind: upsert_attachments
+  - bead_id: is-01m8ahev7t0174z3a2vhhnpw81
+    block: |-
+      ⟦tbd⟧
+      `mb-h7f9` · epic · in_progress · P2
+      Children: 5 (0 ready)
+      Bead: `tbd show mb-h7f9`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 6f903eec-ab37-494d-8aa0-dde216250a32
+    kind: splice_description
+provider: linear
+run_id: 01m8ahzb5mzvs8dh1recer023v
+type: in
