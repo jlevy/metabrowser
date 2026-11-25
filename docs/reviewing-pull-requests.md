@@ -321,6 +321,21 @@ does while Changes shows an earlier head than the pull request’s, which no bra
 any more. If the pull request moves on in the moment before the page has followed it,
 View on branch and Browse code switch nothing and say that the head has moved.
 
+### Lines Between Hunks
+
+A code file’s diff in **Changes** and **Docs**, and on a commit’s page, shows each
+change with a few unchanged lines around it.
+Each hunk’s `@@` bar opens to the unchanged lines above it, back to the hunk before or
+the file’s start, and the bar after the last hunk, **Rest of the file**, to the lines
+after it. The bar says how many lines it holds, and opens a long run a part at a time,
+the part nearest the hunk first, with a bar for the rest.
+Opening a bar above the line you are reading leaves that line where it is on the screen.
+The lines are read from the pull request’s or the commit’s files when you open the bar,
+and stay open as you switch between **Split**, **Unified**, and **Current**. Where they
+cannot be read, as for a binary file or one Git converts for its diff, the file’s hunk
+bars stay plain, and the file says so.
+A guided review step draws a code file’s hunks with plain bars, as a patch file does.
+
 ### Diff or Current
 
 The diff in **Changes** and **Docs**, and on a commit’s page, has a **Diff** |
