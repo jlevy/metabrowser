@@ -282,13 +282,13 @@
         "limit": 200
       }
     },
-    "schema?path=config.json": {
+    "schema?path=mixed.json": {
       "status": 422,
       "body": {
         "type": "table_error",
-        "path": "config.json",
+        "path": "mixed.json",
         "code": "source_unreadable",
-        "error": "This document is not a list of records: its top level is a mapping, not a list."
+        "error": "This document is not a list of records: item 2 of its list is text, not a mapping."
       }
     }
   }

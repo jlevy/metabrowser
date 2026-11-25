@@ -52,7 +52,6 @@ $ node tests/dom/nav-collapse-session.js
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
-        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
@@ -80,7 +79,6 @@ $ node tests/dom/nav-collapse-session.js
         ["T or /","quick-file.open",null],
         ["\\","shell.nav-toggle","Show navigation"],
         ["V","view-tabs.v","Tree tab"],
-        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"]
       ],
@@ -129,7 +127,6 @@ $ node tests/dom/nav-collapse-session.js
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
-        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
@@ -186,7 +183,6 @@ $ node tests/dom/nav-collapse-session.js
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
-        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
@@ -221,7 +217,6 @@ $ node tests/dom/nav-collapse-session.js
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
-        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
@@ -268,7 +263,6 @@ $ node tests/dom/nav-collapse-session.js
         ["T or /","quick-file.open",null],
         ["\\","shell.nav-toggle","Show navigation"],
         ["V","view-tabs.v","Tree tab"],
-        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"]
       ],

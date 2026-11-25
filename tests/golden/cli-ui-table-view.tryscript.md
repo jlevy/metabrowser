@@ -57,9 +57,11 @@ The structured kind’s Table view draws a JSON list of mappings through the sam
 A nested value is its JSON text in the grid, and in the record it is drawn by the
 renderer the source’s view hands the table, the structured plugin’s inline tree, which a
 stand-in takes the place of here; going back to the table releases each tree.
-A field whose values are of several types sorts numbers before text, and a document that
-is not a list of records says so in place of the table, with no toolbar and no way back
-to a table it does not have.
+A field whose values are of several types sorts numbers before text.
+The server offers the Table tab only on a file that starts as a list of records, so a
+mapping has none; a list one of whose items is not a mapping still has the tab, and it
+says the file is not a list of records in place of the table, with no toolbar and no way
+back to a table it does not have.
 
 ```console
 $ node tests/dom/table-view-session.js
@@ -1265,13 +1267,13 @@ $ node tests/dom/table-view-session.js
     "record": null,
     "focus": null
   },
-  "a JSON mapping: not a list of records, said in place of the table": {
+  "a JSON list with an item that is not a mapping: said in place of the table": {
     "requests": [
-      "schema?path=config.json"
+      "schema?path=mixed.json"
     ],
     "toolbar": "hidden",
     "notes": [
-      "This document is not a list of records: its top level is a mapping, not a list."
+      "This document is not a list of records: item 2 of its list is text, not a mapping."
     ],
     "table": "hidden",
     "links": 0
