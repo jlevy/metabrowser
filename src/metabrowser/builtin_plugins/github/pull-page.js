@@ -8377,8 +8377,10 @@ export function mountPullPage(container, ctx, mb) {
             ),
           age: (iso) => age(iso),
           shortCommit: (sha) => mb.shortCommit(sha),
-          // A cited pull request's title and author, as a stack menu's member draws them.
+          // A cited pull request's title and author, as a stack menu's member draws them, and
+          // the Layers glyph that names a stack other than the guide's.
           titleNodes: mb.titleNodes,
+          stackGlyph: () => (stackSvg === null ? null : document.importNode(stackSvg, true)),
           identity: (login, avatar) =>
             authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
               placeholder: false,

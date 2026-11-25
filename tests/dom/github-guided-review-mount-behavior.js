@@ -807,10 +807,24 @@ async function run() {
           target: {
             title: "Say <b>more</b>",
             state: "merged",
-            stack: { number: 71, place: 1, count: 3 },
+            // In the guide's own stack, so its place is bare.
+            stack: { number: 71, place: 1, count: 3, own: true },
             // Its author, drawn by the page's `identity` in a stack member's row
             // (stack-member-row.js).
             author: "maintainer",
+            avatar: null,
+          },
+        }),
+        // In another stack, which its place names (A2 of review A on #853).
+        cited({
+          kind: "pull",
+          pull: 50,
+          href: "/pull/50",
+          target: {
+            title: "Work item 50",
+            state: "open",
+            stack: { number: 300, place: 2, count: 2, own: false },
+            author: "contributor",
             avatar: null,
           },
         }),

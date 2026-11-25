@@ -1698,8 +1698,10 @@ export function mountStackPage(container, ctx, mb) {
         // A pull request's page's age, in its freshness ink.
         age: (iso) => pullAge(mb, iso),
         shortCommit: (sha) => mb.shortCommit(sha),
-        // A cited pull request's title and author, as a stack menu's member draws them.
+        // A cited pull request's title and author, as a stack menu's member draws them, and
+        // the Layers glyph that names a stack other than the guide's.
         titleNodes: mb.titleNodes,
+        stackGlyph: () => (layers === null ? null : document.importNode(layers, true)),
         identity: (login, avatar) =>
           authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
             placeholder: false,

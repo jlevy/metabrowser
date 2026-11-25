@@ -67,6 +67,7 @@ import {
 import {
   createStackIndex,
   groupByStack,
+  namedStackPositionNodes,
   stackCaption,
   stackGroupHint,
   stackLabel,
@@ -4112,6 +4113,7 @@ export function mountPullsPanel(container, ctx, mb) {
   const chevron = () => (chevronSvg === null ? null : document.importNode(chevronSvg, true));
   const stackSvg = new DOMParser().parseFromString(mb.icons?.layers || "", "text/html").body
     .firstElementChild;
+  const layersGlyph = () => (stackSvg === null ? null : document.importNode(stackSvg, true));
   // Narrowed once, for the functions below that run later.
   const tab = nav;
 
@@ -4451,15 +4453,7 @@ export function mountPullsPanel(container, ctx, mb) {
           ? []
           : caption.parts.flatMap((part, at) => [
               ...(at === 0 ? [] : [" · "]),
-              ...(part.stack === null
-                ? []
-                : [
-                    h("span", { class: "github-pull-stack-other", "aria-hidden": "true" }, [
-                      stackSvg === null ? null : document.importNode(stackSvg, true),
-                    ]),
-                    `${part.stack} `,
-                  ]),
-              part.position,
+              ...namedStackPositionNodes(part.position, part.stack, layersGlyph),
             ]),
     };
     entry.run.show(entry.line);

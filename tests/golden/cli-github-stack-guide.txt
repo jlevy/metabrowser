@@ -75,7 +75,8 @@ status: 200
         "stack": {
           "number": 70,
           "place": 1,
-          "count": 2
+          "count": 2,
+          "own": true
         },
         "author": "maintainer",
         "avatar": null
@@ -101,7 +102,8 @@ status: 200
         "stack": {
           "number": 70,
           "place": 2,
-          "count": 2
+          "count": 2,
+          "own": true
         },
         "author": "maintainer",
         "avatar": null

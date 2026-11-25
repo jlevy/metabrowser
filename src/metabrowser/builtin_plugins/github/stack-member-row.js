@@ -24,8 +24,9 @@ import { pullStateIcon } from "./pull-state.js";
 
 /**
  * A pull request's fields as a row shows them. `place` is its place in its stack, "14/15",
- * or null where it is in none; a run draws `placeNodes` for it where given, and names it
- * `placeHint`.
+ * or null where it is in none; a row draws `placeNodes` for it where given, as a guide's row
+ * and a Pulls row's run draw a place that names another stack (`namedStackPositionNodes` in
+ * pull-stacks.js), and names it by `placeHint`, a line in its tip too.
  *
  * @typedef {{
  *   number: number,
@@ -202,7 +203,19 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
             place.setAttribute("aria-label", member.placeHint ?? member.place);
           }
         } else {
-          place.textContent = member.place ?? "";
+          place.replaceChildren(...(member.placeNodes ?? [member.place ?? ""]));
+          // A place whose stack nothing around the line names, as on a guide's row, says it
+          // in its hint, which is its accessible name, as a run's is, and its tip.
+          const hint = member.place === null ? null : (member.placeHint ?? null);
+          if (hint === null) {
+            place.removeAttribute("role");
+            place.removeAttribute("aria-label");
+            place.removeAttribute("data-tip-text");
+          } else {
+            place.setAttribute("role", "img");
+            place.setAttribute("aria-label", hint);
+            place.setAttribute("data-tip-text", hint);
+          }
         }
         shown.place = placed;
       }

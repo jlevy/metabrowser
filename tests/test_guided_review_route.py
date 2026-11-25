@@ -712,7 +712,7 @@ def test_a_step_cites_other_pull_requests_and_commits(stand: _Stand) -> None:
     assert layer["target"] == {
         "title": "Say more in the guide",
         "state": "merged",
-        "stack": {"number": 71, "place": 1, "count": 3},
+        "stack": {"number": 71, "place": 1, "count": 3, "own": True},
         "author": "maintainer",
         "avatar": None,
     }
@@ -747,13 +747,19 @@ def test_a_step_cites_other_pull_requests_and_commits(stand: _Stand) -> None:
 
 def test_a_pull_request_in_no_stack_or_with_no_snapshot_has_no_place(stand: _Stand) -> None:
     """Outside a stack, and on a server that lists no repository, a `{pull}` names no place;
-    in stacks without the guide's pull request, its place is in the first that holds it."""
+    in stacks without the guide's pull request, its place is in the first that holds it,
+    which is not the guide's own (A2 of review A on #853)."""
     _cache(stand, kinds_guide_body(stand.origin))
     stand.refresh(8)
     unlisted = _ask(stand, step=2)
     assert unlisted["references"][0]["target"]["stack"] is None
     elsewhere = _ask(stand, step=2, repository=_repository(stand, (9,), (10, 8)))
-    assert elsewhere["references"][0]["target"]["stack"] == {"number": 71, "place": 2, "count": 2}
+    assert elsewhere["references"][0]["target"]["stack"] == {
+        "number": 71,
+        "place": 2,
+        "count": 2,
+        "own": False,
+    }
 
 
 def test_a_reference_past_the_pull_request_is_never_stale(stand: _Stand) -> None:

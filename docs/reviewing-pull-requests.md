@@ -298,8 +298,10 @@ references:
 A pull request shows as a row the way the stack menu lists a member: its state, its
 title, its place in a stack when it has one, its number, and its author; it opens that
 pull request.
-A file of another pull request is drawn as a file of this one is, from that
-pull request’s own changes, under a bar that names the pull request, and its **Open full
+The place is bare in the guide’s own stack and names any other stack, “⧉300
+2/2”, and hovering it names the stack in words.
+A file of another pull request is drawn as a file of this one is, from that pull
+request’s own changes, under a bar that names the pull request, and its **Open full
 diff** opens the file there.
 It takes no line range, since that pull request may move after the guide is written.
 A commit shows as a row of its short ID, its subject, and when it was made, and opens

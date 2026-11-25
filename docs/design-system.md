@@ -3373,7 +3373,7 @@ reader does with it.
 | Document | A Markdown file a step cites whole, as Docs draws it, and a YAML or JSON file, as Changes draws it: the file bar, the rendered layer and its Rendered and Source choice, and Diff and Current; one that could not be drawn, the guide’s bar for it above the view’s notice | `mountRenderedFile` in the diff plugin, `DOCS_DRAWING`, `CHANGES_DRAWING`, `.github-pull-guide-document` |
 | Out of date | One warning notice above the guide and its one remedy, or a quiet line when no file it cites changed; a step that cites a changed file is marked “changed” in the list and on its card, in muted text | `OUTDATED`, `CHANGED`, `.github-pull-guide-stale`, `.github-pull-guide-step-changed` |
 | Another pull request’s file | An excerpt or a document, as a file of this pull request is drawn, under a bar that names that pull request’s number before the path, in a pull request number’s weight and muted ink; its Open full diff opens the file in that pull request’s Changes | `referenceBar`, `.github-pull-guide-reference-pull` |
-| Pull request | One row in an excerpt’s card, a stack’s [member row](#stacks) in its order: the state icon and the title, which alone gives way, then at the row’s end its place in a stack, “1/3”, whose tip names the stack, “Stack #71, position 1 of 3”, its number, and its author, each after a muted dot; one in no stack has no place, and one this copy has not read keeps the icon’s slot empty and names itself by its number | `pullRow`, `stackMemberRow`, `stackPosition`, `stackPlaceHint`, `.github-pull-guide-row`, `.github-pull-stack-member` |
+| Pull request | One row in an excerpt’s card, a stack’s [member row](#stacks) in its order: the state icon and the title, which alone gives way, then at the row’s end its place in a stack, its number after a muted dot, and its author after another; the place is bare in the guide’s own stack, “1/3”, names any other stack by the Layers glyph and its number, “⧉300 2/2”, and says its stack in its tip and its accessible name, “Stack #71, position 1 of 3”; one in no stack has no place, and one this copy has not read keeps the icon’s slot empty and names itself by its number | `pullRow`, `stackMemberRow`, `namedStackPositionNodes`, `stackPlaceHint`, `.github-pull-guide-row`, `.github-pull-stack-member` |
 | Commit | One such row, as the Commits tab lists a commit: its [short ID](#short-commit-ids), its subject, and at the row’s end when it was committed, the age in its freshness ink ([Ages End the Row](#ages-end-the-row)); a plain link to the commit’s page; one the store lacks says it is unavailable beside its ID, and one this checkout cannot open says so after its subject | `commitRow`, `COMMIT_UNAVAILABLE`, `.github-pull-guide-commit` |
 
 A new part of the guide takes its words from these constants and its look from an
@@ -3678,10 +3678,10 @@ number.
 
 One builder draws the fields on every row of the GitHub plugin that shows them,
 `stackMemberRow` in `stack-member-row.js`: a Pulls row’s run (`PULLS_RUN`), and a
-stack’s member in the stack menu and on the stack’s own page (`MEMBER_LINE`). The order,
-and the muted dot before each field after the title, are its; a surface chooses only its
-layout, a run that wraps in the text column or one line whose title is cut short before
-the rest.
+stack’s member in the stack menu and on the stack’s own page and a guide’s pull request
+row (`MEMBER_LINE`). The order, and the muted dot before each field after the title, are
+its; a surface chooses only its layout, a run that wraps in the text column or one line
+whose title is cut short before the rest.
 
 The shell cannot import the GitHub plugin, so its own rows keep the order in their own
 code: Quick Search’s pull request results, “title #N · Merged”, and a ref selector row’s
@@ -3913,9 +3913,12 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   text’s size: “3/4 · ⧉300 2/2”, where ⧉ is the glyph.
   A number alone, “#300”, would read as the pull request number on the same row.
   Its own stack is its only stack, the one a group places it under, or else the first
-  GitHub lists. On the page a pull request in more than one stack has a stack button for
-  each, and each names its stack, “⧉286 4/4” and “⧉300 2/2”, since no button is the
-  page’s own stack; two bare positions told the stacks apart only by their tips
+  GitHub lists. On a guide’s pull request row the stack that goes without saying is the
+  guide’s own, the one its pull request is in or the one it was written for, so the row
+  names any other, since nothing around it says which stack a bare position counts in.
+  On the page a pull request in more than one stack has a stack button for each, and
+  each names its stack, “⧉286 4/4” and “⧉300 2/2”, since no button is the page’s own
+  stack; two bare positions told the stacks apart only by their tips
   (`namedStackPosition` in `pull-stacks.js`). In one stack the button is the glyph and
   the bare position, “⧉3/4”.
 - **Ink.** The position is in normal text ink wherever it appears: in a Pulls row’s
@@ -3925,14 +3928,14 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   visited, hover, focus, or current state changes them; a part that set none would take
   the link’s blue.
 - **Member row.** A stack’s member reads in one order wherever it appears: its title,
-  its place, its number, and its author, “Fix the reader · 14/15 · #455 · jlevy”.
+  its place, its number, and its author, “Fix the reader 14/15 · #455 · jlevy”.
   A Pulls row’s run has all four, its age at the row’s end on the line below
   ([The Pulls Tab](#the-pulls-tab)); the stack menu’s member row has all four on one
   line, and so does a guide’s pull request row, drawn by the same builder
-  (`stackMemberRow` in `stack-member-row.js`), whose place’s tip names its stack, and
-  which, for a pull request in no stack, has no place and keeps the rest in order; and
-  the stack button shows the place alone, “⧉14/15”, with no author, since the row it
-  ends has no room for one
+  (`stackMemberRow` in `stack-member-row.js`), whose place says its stack in its tip and
+  its accessible name, and which, for a pull request in no stack, has no place and keeps
+  the rest in order; and the stack button shows the place alone, “⧉14/15”, with no
+  author, since the row it ends has no room for one
   ([Authors Follow Pull Requests](#authors-follow-pull-requests)). Every member in the
   menu has one layout, one line tall, so the members line up and every row of the menu
   is as tall as the others: the state icon in the tree’s icon slot, a tree row’s gap,
