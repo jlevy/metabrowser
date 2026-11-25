@@ -301,6 +301,43 @@ def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, objec
 
 
 _SUMMARY_LINES = pytest.StashKey[list[str]]()
+_TMP_PATH = pytest.StashKey[Path]()
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_fixture_setup(
+    fixturedef: pytest.FixtureDef[object], request: pytest.FixtureRequest
+) -> Generator[None, object, object]:
+    """Note the test's ``tmp_path``, however it was asked for, for the teardown below."""
+
+    result = yield
+    if fixturedef.argname == "tmp_path" and isinstance(result, Path):
+        request.node.stash[_TMP_PATH] = result
+    return result
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item: pytest.Item) -> Generator[None, object, object]:
+    """Keep the name of a passing test's ``tmp_path``, which pytest has just removed
+    (``tmp_path_retention_policy``), as an empty directory.
+
+    pytest numbers a test's directory one past the highest of its name that exists
+    (``_mk_tmp`` in ``_pytest/tmpdir.py`` keeps the start of the test's name). Without
+    this, the next test whose name starts the same, as a parametrized test's next case
+    does, is handed the same path, and a process-wide cache keyed by path carries the
+    last test's state into it: ``metabrowser.git.tree_source``'s reader pools handed
+    ``test_displayed_missing_blob_repairs_after_record_and_head_advance[True]`` a reader
+    on the event loop of its ``[False]`` case, in every unit job of the first CI run of
+    the policy.
+    """
+
+    try:
+        return (yield)
+    finally:
+        path = item.stash.get(_TMP_PATH, None)
+        if path is not None and not path.exists():
+            with contextlib.suppress(OSError):
+                path.mkdir(mode=0o700)
 
 
 @pytest.hookimpl(tryfirst=True)

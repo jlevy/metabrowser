@@ -214,6 +214,9 @@ directory (`$TMPDIR` on macOS), one directory per test and, under pytest-xdist, 
 `popen-gw<N>` per worker.
 `tmp_path_retention_policy = "failed"` in `pyproject.toml` removes a passing test’s
 `tmp_path` as the test ends and a passing session’s whole directory as it ends.
+`tests/conftest.py` then leaves an empty directory at the passing test’s path, so that
+no later test in the session is handed the same one: a process-wide cache keyed by path
+would carry the earlier test’s state into it.
 A failing test’s `tmp_path` stays for debugging, beside the directories that
 session-scoped fixtures made, until pytest prunes the session among the oldest beyond
 `tmp_path_retention_count`. A session killed before it ended leaves its lock, which

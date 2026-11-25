@@ -1,6 +1,6 @@
-"""A passing test's ``tmp_path`` and a passing session's base directory are removed, a
-failing test's stays, and a killed session's directory is pruned like any other
-(``tests/transient_output.py``).
+"""A passing test's ``tmp_path`` is emptied and a passing session's base directory removed,
+a failing test's stays, no test is handed a path an earlier one had, and a killed
+session's directory is pruned like any other (``tests/transient_output.py``).
 
 Nested pytest sessions of this module's ``probe_*`` functions run under a temporary root
 of their own (``PYTEST_DEBUG_TEMPROOT``), so that what they leave, and what they prune, is
@@ -18,12 +18,18 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_suite_gates import MAX_INNER_BOUND_S
 from tests.transient_output import LOCK_NAME, release_dead_locks
 
 ROOT = Path(__file__).resolve().parents[1]
 THIS = Path(__file__).relative_to(ROOT)
 RECORD_ENV = "METABROWSER_TEST_TRANSIENT_RECORD"
+# One nested session: pytest's start, the suite's conftest, and the first probe's deferred
+# imports in its setup and teardown. On CI the whole module took 6 to 7 s. On a 10-core
+# Mac at a load average of 330 on 2026-11-24 a passing session took 22.7 s alone; in
+# one run of this module two were cut off at the suite's 50 s inner bound, and in the
+# next the four took 15 to 30 s.
+NESTED_BOUND_S = 150
+pytestmark = pytest.mark.timeout(NESTED_BOUND_S + 30)
 # A process id no process can hold: above Linux's PID_MAX_LIMIT (2**22) and macOS's
 # highest, 99998. A session that was killed holds one that is no longer running.
 NO_SUCH_PID = 2**22 + 1
@@ -94,6 +100,14 @@ def probe_a_passing_test_with_a_large_tree(tmp_path: Path) -> None:
     _record("large", tmp_path)
 
 
+@pytest.mark.parametrize("case", ["first", "second"])
+def probe_a_parametrized_test(tmp_path: Path, case: str) -> None:
+    """Its cases' names start the same, as pytest names their directories."""
+
+    (tmp_path / "case.txt").write_text(case, encoding="utf-8")
+    _record(case, tmp_path)
+
+
 def probe_a_test_that_calls_gh() -> None:
     subprocess.run(["gh", "auth", "status"], capture_output=True, check=False, timeout=10)
 
@@ -118,7 +132,7 @@ def _nested(
         env={**os.environ, "PYTEST_DEBUG_TEMPROOT": str(temproot), RECORD_ENV: str(record)},
         capture_output=True,
         text=True,
-        timeout=MAX_INNER_BOUND_S,
+        timeout=NESTED_BOUND_S,
         check=False,
     )
     lines = record.read_text(encoding="utf-8").splitlines()
@@ -145,12 +159,15 @@ def test_a_passing_session_leaves_nothing_and_prunes_a_killed_one(
     # Among the newest kept: the nested session's own is pytest-6.
     newest = _session(root, "pytest-5", None)
 
-    completed, recorded = _nested(tmp_path, temproot, workers, "large_tree or calls_gh")
+    completed, recorded = _nested(
+        tmp_path, temproot, workers, "large_tree or calls_gh or parametrized"
+    )
 
     report = completed.stdout + completed.stderr
     assert completed.returncode == 0, report
     assert "gh guard: 1 gh call(s) reached the failing stand-in" in completed.stdout, report
     assert not recorded["large"].exists()
+    assert recorded["first"] != recorded["second"]
     assert not (root / "pytest-6").exists()
     assert not killed.exists()
     assert (running / LOCK_NAME).exists()
@@ -162,10 +179,16 @@ def test_a_failing_session_keeps_only_the_failing_tests_tmp_path(
     tmp_path: Path, workers: list[str]
 ) -> None:
     temproot = tmp_path / "temproot"
-    completed, recorded = _nested(tmp_path, temproot, workers, "large_tree or failing_test")
+    completed, recorded = _nested(
+        tmp_path, temproot, workers, "large_tree or failing_test or parametrized"
+    )
 
     assert completed.returncode == 1, completed.stdout + completed.stderr
-    assert not recorded["large"].exists()
+    # A passing test's directory is kept empty, so that no later test is handed its path
+    # (pytest_runtest_teardown in tests/conftest.py).
+    for passed in ("large", "first", "second"):
+        assert list(recorded[passed].iterdir()) == [], passed
+    assert recorded["first"] != recorded["second"]
     assert (recorded["failing"] / "evidence.txt").read_text(encoding="utf-8") == (
         "what went wrong\n"
     )

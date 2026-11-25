@@ -5,8 +5,9 @@ pytest gives each session a numbered directory, ``pytest-<N>``, under ``pytest-o
 in the system temporary directory (``PYTEST_DEBUG_TEMPROOT`` moves it), and each test a
 directory in that; under pytest-xdist each worker's tests are in ``popen-gw<N>`` there.
 ``tmp_path_retention_policy = "failed"`` in ``pyproject.toml`` removes a passing test's
-``tmp_path`` as the test ends, and a passing session's whole directory as the session
-ends. A failing test's ``tmp_path`` stays for debugging, beside the directories the
+``tmp_path`` as the test ends, leaving an empty directory in its place so that no later
+test is handed its path (``pytest_runtest_teardown`` in ``tests/conftest.py``), and a
+passing session's whole directory as the session ends. A failing test's ``tmp_path`` stays for debugging, beside the directories the
 session's own fixtures made (the largest measured, ``drawn-from-disk``, 2.9 MiB), until
 pytest prunes the session among those older than the newest
 ``tmp_path_retention_count`` (pytest's default, which this suite keeps). The directory is
