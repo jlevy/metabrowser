@@ -435,11 +435,26 @@ def _git_frontmatter_envelope(
 _PIN_CAPABILITIES = UNTRUSTED_CAPABILITIES
 
 
-def _views_for_kind(kind: str) -> list[dict[str, Any]]:
+def _views_for_kind(kind: str, *, prefix: tuple[bytes, str] | None = None) -> list[dict[str, Any]]:
     # Plugin kinds such as diff live in manifests, not VIEW_REGISTRY.
     from metabrowser.server import _views_for_kind as merged_views_for_kind
 
-    return merged_views_for_kind(kind, active_content=_PIN_CAPABILITIES.active_content)
+    return merged_views_for_kind(
+        kind, prefix=prefix, active_content=_PIN_CAPABILITIES.active_content
+    )
+
+
+async def _text_views_off_loop(kind: str, ext: str, body: bytes) -> list[dict[str, Any]]:
+    """A text blob's views, its kind's offered views decided from its leading bytes on a
+    worker thread, since an offer may parse a bounded prefix; a kind with none is listed
+    on the loop."""
+
+    from metabrowser.server import _FILE_OFFER_KINDS
+
+    prefix = (body[:_PREDICATE_PREFIX_BYTES], ext)
+    if kind not in _FILE_OFFER_KINDS:
+        return _views_for_kind(kind, prefix=prefix)
+    return await asyncio.to_thread(_views_for_kind, kind, prefix=prefix)
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
@@ -2072,7 +2087,7 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
         {
             "type": "text",
             "kind": kind,
-            "views": _views_for_kind(kind),
+            "views": await _text_views_off_loop(kind, ext, body),
             **_git_text_preview_fields(request, entry, ext, body),
             **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }
@@ -2156,7 +2171,7 @@ async def _windowed_blob_file_response(
         {
             "type": "text",
             "kind": kind,
-            "views": _views_for_kind(kind),
+            "views": await _text_views_off_loop(kind, ext, head),
             **_git_text_fields(offset, limit, head[offset : offset + limit], size),
             **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }

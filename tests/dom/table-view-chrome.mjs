@@ -21,8 +21,9 @@
 // bound on history calls (200 in 10 seconds) still lets Enter push the record's address,
 // whose Back link returns to the grid where the keys left it, and that a reload returns
 // there too; and that the structured kind's Table tab draws a JSON list of records with
-// each nested value of a record as the structured plugin's own tree, and says a JSON
-// mapping is not one. Which rows, columns, and cells exist, what a key does, and what the
+// each nested value of a record as the structured plugin's own tree, that a JSON mapping
+// has no Table tab, and that the tab says a list with an item that is not a mapping is
+// not a list of records. Which rows, columns, and cells exist, what a key does, and what the
 // address holds run browserlessly in tests/dom/table-view-session.js.
 
 // Key presses in a run: past the 200 history calls Chrome allows in 10 seconds.
@@ -394,8 +395,9 @@ async function main() {
     phase("fit");
 
     // The structured kind's Table tab, which is not its default: a JSON list of records,
-    // a record whose nested values are the structured plugin's own tree, and a mapping,
-    // which the tab says is not a list of records.
+    // a record whose nested values are the structured plugin's own tree; a mapping, which
+    // has no Table tab; and a list with an item that is not a mapping, whose tab says it
+    // is not a list of records.
     const tableTab = async (address) => {
       await chrome.send("Page.navigate", { url: `${base}/view/${address}` });
       await chrome.waitFor(
@@ -421,11 +423,18 @@ async function main() {
       `__t().qa(".table-record-json .structured-tree").map((tree) => tree.textContent.replace(/\\s+/g, " ").trim())`,
     );
     await shot("6-record");
-    await tableTab("mapping.json");
+    await chrome.send("Page.navigate", { url: `${base}/view/mapping.json` });
+    await chrome.waitFor(
+      `(() => { const pane = document.querySelector("#preview-pane"); return pane?.dataset.renderedPath === "mapping.json" && Boolean(pane.querySelector('.tab-btn[data-tab="tree"]')); })()`,
+    );
+    measured.mappingTabs = await chrome.evaluate(
+      `[...document.querySelectorAll("#preview-pane .tab-btn")].map((tab) => tab.dataset.tab)`,
+    );
+    await tableTab("mixed.json");
     await chrome.waitFor(
       `(() => { try { ${VIEW}; return Boolean(__t().q(".table-notice")); } catch { return false; } })()`,
     );
-    measured.mapping = await chrome.evaluate(`({
+    measured.mixed = await chrome.evaluate(`({
       notice: __t().q(".table-notice").textContent,
       toolbar: !__t().q(".table-toolbar").hidden,
       links: __t().qa(".table-reset").length,

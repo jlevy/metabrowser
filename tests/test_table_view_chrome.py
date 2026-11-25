@@ -23,8 +23,9 @@ shell's own page, and measures what no browserless DOM computes:
   the record's address; its Back link returns to the grid at the row and scroll the keys
   left; and a reload returns there too.
 - the structured kind's Table tab draws a JSON list of records, a record's nested values
-  as the structured plugin's own tree, through the view it hands the table, and a JSON
-  mapping as a notice that it is not a list of records;
+  as the structured plugin's own tree, through the view it hands the table; a JSON
+  mapping has no Table tab; and a list with an item that is not a mapping is a notice
+  that it is not a list of records;
 - a real SQLite table refreshes after a WAL-only commit and after its file is replaced at
   the same path.
 
@@ -102,6 +103,7 @@ def _write_folder(root: Path) -> None:
     ]
     (root / "records.json").write_text(json.dumps(records), encoding="utf-8")
     (root / "mapping.json").write_text('{"name": "metabrowser"}', encoding="utf-8")
+    (root / "mixed.json").write_text('[{"name": "Ada"}, "Grace"]', encoding="utf-8")
 
 
 def _measure(tmp_path: Path, chrome_profile: Path) -> dict[str, Any]:
@@ -245,11 +247,12 @@ def _check_a_record_list_draws_its_records_and_their_trees(measured: dict[str, A
     assert records["rows"] == 2
     assert len(records["trees"]) == 2
     assert "math" in records["trees"][0] and "born" in records["trees"][1]
-    mapping = measured["mapping"]
-    assert mapping["notice"] == (
-        "This document is not a list of records: its top level is a mapping, not a list."
+    assert measured["mappingTabs"] == ["tree", "source"]
+    mixed = measured["mixed"]
+    assert mixed["notice"] == (
+        "This document is not a list of records: item 2 of its list is text, not a mapping."
     )
-    assert (mapping["toolbar"], mapping["links"]) == (False, 0)
+    assert (mixed["toolbar"], mixed["links"]) == (False, 0)
 
 
 def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:

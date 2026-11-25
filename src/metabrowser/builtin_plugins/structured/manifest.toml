@@ -27,14 +27,15 @@ label = "Tree"
 key = "v"
 default = true
 
-# A JSON or YAML list of mappings as a table (plan Decision 12): every structured file
-# has the tab, and one that is not a list of records says so there. Tree stays the
-# default. `t`, the label's first letter, is Quick Search's, so the tab takes `a`.
+# A JSON or YAML list of mappings as a table (plan Decision 12), offered only on a file
+# that starts as one (offer.py), so a mapping or a scalar has no Table tab. Tree stays
+# the default. `t`, the label's first letter, is Quick Search's, so the tab takes `a`.
 [[view]]
 kind = "structured"
 id = "table"
 label = "Table"
 key = "a"
+offer = "metabrowser.builtin_plugins.structured.offer:offers_table"
 container_class = "content-body table-view-host"
 printable = true
 print_profile = "table"

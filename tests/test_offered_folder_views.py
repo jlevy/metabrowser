@@ -17,7 +17,7 @@ import pytest
 from metabrowser import server
 from metabrowser.plugin_loader.discovery import LoadedPlugin
 from metabrowser.plugin_loader.manifest import PluginManifest, view_entry
-from metabrowser.plugin_loader.static_assets import resolve_folder_offers
+from metabrowser.plugin_loader.static_assets import resolve_file_offers, resolve_folder_offers
 
 _HOME_VIEW = {
     "id": "agent-home",
@@ -101,11 +101,24 @@ def _manifest(view: dict[str, Any]) -> PluginManifest:
     )
 
 
-def test_only_a_folder_view_may_declare_an_offer() -> None:
+def test_a_file_kinds_view_may_declare_an_offer_too() -> None:
+    """A file's kind chose the file, but a view of the kind may suit only some of its
+    files; ``tests/test_offered_file_views.py`` pins the server's half of that."""
     manifest = _manifest(
         {"kind": "markdown", "id": "x", "label": "X", "offer": "tests.module:predicate"}
     )
-    assert any("only a view of the folder kind" in p for p in manifest.validate_consistency())
+    assert manifest.validate_consistency() == []
+
+
+def test_folder_and_file_offers_resolve_apart() -> None:
+    folder = _manifest({"kind": "folder", "id": "home", "label": "Home", "offer": "os.path:isdir"})
+    file = _manifest({"kind": "markdown", "id": "home", "label": "Home", "offer": "os.path:isfile"})
+    plugins = [
+        LoadedPlugin(name="offers", static_root=Path("."), manifest=manifest, source="builtin")
+        for manifest in (folder, file)
+    ]
+    assert resolve_folder_offers(plugins) == {"home": os.path.isdir}
+    assert resolve_file_offers(plugins) == {("markdown", "home"): os.path.isfile}
 
 
 def test_an_offer_must_name_a_module_and_a_function() -> None:

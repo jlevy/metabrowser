@@ -137,7 +137,11 @@ gives the reasons.
 4. An extension in `BROWSER_IMAGE_EXTS` is `image`.
 5. A file read as text, because its extension is in `BROWSER_TEXT_EXTS` or because
    `content_sniff` finds text, runs the plugin classifier, then the fallback chain
-   `FILE_KIND_DETECTORS` in `file_kinds.py`, then defaults to `text`.
+   `FILE_KIND_DETECTORS` in `file_kinds.py`, then defaults to `text`. A view of its kind
+   that declares `offer` is served only where its predicate accepts the file’s leading
+   bytes (`_offered_file_views` in `server.py`), as a pinned text blob’s view is; the
+   other steps read no bytes for an offer, so their kinds’ offered views are never
+   served.
 6. Anything else is checked against every `magic` rule, whatever its name, from the
    sniff prefix step 5 already read, on the bytes on disk; the first match is its kind.
 7. Anything left is asked of the `binary = true` rules, which match by path alone
