@@ -1232,10 +1232,13 @@ Cached refreshes stay readable.
 Native stack members are created on disclosure; Previous PR and Next PR preserve the
 active tab, clear file selection, and carry a reader’s explicit fetch intent.
 An identity-only response removes the old source’s enrichment.
+A member the Pulls list no longer holds in the state it said is drawn with its state
+icon’s slot empty, not that state, and the page notes its own fresher record back over
+the list’s older word.
 
 ```console
 $ node tests/dom/github-pull-stack-mount-behavior.js
-{"coldSkeleton":true,"pendingSkeleton":true,"cachedRefreshRetained":true,"authoritativeStack":true,"orderedNeighbors":true,"stackActivationFocus":true,"tabPreserved":true,"fileCleared":true,"explicitReaderIntent":true,"disposedWorkReleased":true}
+{"coldSkeleton":true,"pendingSkeleton":true,"cachedRefreshRetained":true,"authoritativeStack":true,"orderedNeighbors":true,"stackActivationFocus":true,"tabPreserved":true,"fileCleared":true,"explicitReaderIntent":true,"disposedWorkReleased":true,"memberStateTakenBack":true,"recordNotedBack":true}
 ? 0
 ```
 

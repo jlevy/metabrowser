@@ -208,6 +208,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const warm = new Element("main");
   const current = structuredClone(recorded.current);
   current.body.refreshing = true;
+  // The page notes its record back over an older list's word for it (mb-as06): the list said
+  // draft, earlier than GitHub's last update of the record, which says open.
+  const pullState = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-state.js")).href
+  );
+  const source = current.body.source;
+  pullState.noteListed(source, "all", [
+    { number: 7, state: "draft", updatedAt: "2026-09-15T00:00:00Z", title: "Listed seven" },
+  ]);
   const next = page.mountPullPage(
     warm,
     {
@@ -223,6 +232,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     warm.querySelector(".recent-loading"),
     null,
     "cached refreshing page remains readable",
+  );
+  assert.deepEqual(
+    pullState.listedState(source, 7),
+    {
+      state: "open",
+      updatedAt: current.body.record.pull.updated_at,
+      title: current.body.record.pull.title,
+    },
+    "the page notes its fresher record back",
   );
   assert(warm.textContent.includes(current.body.record.pull.title));
   // The freshness note ends the author's row (mb-ne91).
@@ -287,10 +305,141 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   disclosure.open = true;
   disclosure.events.get("toggle")();
   const members = warm.querySelector(".github-pull-stack-menu");
+  const memberLinks = () => [...members.descendants()].filter((item) => item.tag === "a");
   assert.deepEqual(
-    [...members.descendants()].filter((item) => item.tag === "a").map((item) => item.textContent),
-    ["3/3 · Stack change 8 · #8", "✓2/3 · Stack change 7 · #7", "1/3 · Stack change 6 · #6"],
+    memberLinks().map((item) => item.textContent),
+    ["3/3 · Stack change 8 #8", "2/3 · Stack change 7 #7", "1/3 · Stack change 6 #6"],
   );
+  // Every member is one line in one layout (mb-as06): the state icon, then the bold place, a
+  // muted dot, and the title, whose whole is the member's tip, then the number, visually
+  // hidden, so a screen reader tells two members of one title apart. The page's own member
+  // has the header's state; a member the Pulls list has not listed keeps the icon's slot,
+  // empty.
+  const classOf = (node) => node.className || node.getAttribute("class");
+  const layout = (link) => ({
+    parts: link.children.map(classOf),
+    line: link.children[1].children
+      .filter((node) => typeof node === "object")
+      .map((node) => `${node.tag}.${classOf(node)}`),
+    state: link.children[0].dataset.state ?? null,
+    named: link.children[0].getAttribute("aria-label") ?? null,
+    tip: link.getAttribute("data-tip-text"),
+  });
+  const line = [
+    "strong.github-pull-stack-member-position",
+    "span.github-pull-stack-dot",
+    "span.github-pull-stack-member-title",
+    "span.visually-hidden",
+  ];
+  const parts = ["github-pull-state-icon", "github-pull-stack-member-copy"];
+  assert.deepEqual(memberLinks().map(layout), [
+    { parts, line, state: null, named: null, tip: "Stack change 8" },
+    { parts, line, state: "open", named: "Open", tip: "Stack change 7" },
+    { parts, line, state: null, named: null, tip: "Stack change 6" },
+  ]);
+  assert.deepEqual(
+    memberLinks().map((link) => link.children[1].children.at(-1).textContent),
+    ["#8", "#7", "#6"],
+    "each member's number is said",
+  );
+  // Once the Pulls list has said the others' states, the menu opened again draws them.
+  pullState.noteListed(source, "all", [
+    { number: 8, state: "draft", updatedAt: "2026-11-24T00:00:00Z" },
+    { number: 6, state: "merged", updatedAt: "2026-11-24T00:00:00Z" },
+  ]);
+  const linksBefore = memberLinks();
+  disclosure.open = false;
+  disclosure.events.get("toggle")();
+  disclosure.open = true;
+  disclosure.events.get("toggle")();
+  assert.deepEqual(
+    memberLinks().map((link) => link.children[0].dataset.state ?? null),
+    ["draft", "open", "merged"],
+  );
+  assert(
+    memberLinks().every((link, at) => link === linksBefore[at]),
+    "a state drawn anew keeps each member's link",
+  );
+  // A state the list takes back is drawn no longer (mb-as06): the Open list, the Pulls tab's
+  // first filter, said #8 open, and its next answer leaves #8 out, as it does once #8 merges
+  // or closes. The menu opened again keeps #8's slot empty and unnamed, where it had drawn
+  // the Open icon and named it "Open"; the merge the All list said of #6 stands.
+  const reopen = () => {
+    disclosure.open = false;
+    disclosure.events.get("toggle")();
+    disclosure.open = true;
+    disclosure.events.get("toggle")();
+  };
+  const drawn = () =>
+    memberLinks().map((link) => [
+      link.children[0].dataset.state ?? null,
+      link.children[0].getAttribute("aria-label") ?? null,
+    ]);
+  pullState.noteListed(source, "open", [
+    { number: 8, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+    { number: 7, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+  ]);
+  reopen();
+  assert.deepEqual(drawn(), [
+    ["open", "Open"],
+    ["open", "Open"],
+    ["merged", "Merged"],
+  ]);
+  pullState.noteListed(source, "open", [
+    { number: 7, state: "open", updatedAt: "2026-11-24T02:00:00Z" },
+  ]);
+  reopen();
+  assert.deepEqual(
+    drawn(),
+    [
+      [null, null],
+      ["open", "Open"],
+      ["merged", "Merged"],
+    ],
+    "a member the Open list no longer holds is not drawn open",
+  );
+  assert.equal(page.stackMemberState(source, 8, 7, "open"), null);
+  // Each list takes back only the states it holds, never a merge, and an answer older than
+  // what is noted of a row replaces nothing. A record fresher than the list is noted back;
+  // one no list has noted is noted only when merged, as no list could take another back.
+  const elsewhere = "https://github.com/octo/elsewhere";
+  const statesOf = (...numbers) =>
+    numbers.map((at) => pullState.listedState(elsewhere, at)?.state ?? null);
+  pullState.noteListed(elsewhere, "all", [
+    { number: 1, state: "merged", updatedAt: "2026-11-24T01:00:00Z" },
+    { number: 2, state: "closed", updatedAt: "2026-11-24T01:00:00Z" },
+    { number: 3, state: "draft", updatedAt: "2026-11-24T01:00:00Z" },
+    { number: 4, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+  ]);
+  pullState.noteListed(elsewhere, "open", [
+    { number: 4, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+  ]);
+  assert.deepEqual(statesOf(1, 2, 3, 4), ["merged", "closed", null, "open"]);
+  pullState.noteListed(elsewhere, "closed", []);
+  assert.deepEqual(statesOf(1, 2, 3, 4), ["merged", null, null, "open"]);
+  const four = { number: 4, state: "closed", merged: true, title: "Four" };
+  pullState.noteRecord(elsewhere, { ...four, updated_at: "2026-11-24T00:30:00Z" });
+  assert.deepEqual(statesOf(4), ["open"], "an older record replaces nothing");
+  pullState.noteRecord(elsewhere, { ...four, updated_at: "2026-11-24T02:00:00Z" });
+  assert.deepEqual(pullState.listedState(elsewhere, 4), {
+    state: "merged",
+    updatedAt: "2026-11-24T02:00:00Z",
+    title: "Four",
+  });
+  // An Open answer read before the merge, as a cached one is, says #4 open: it is older news.
+  pullState.noteListed(elsewhere, "open", [
+    { number: 4, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+  ]);
+  pullState.noteListed(elsewhere, "all", []);
+  assert.deepEqual(statesOf(4), ["merged"], "a merge noted back stands");
+  pullState.noteRecord(elsewhere, { number: 5, state: "open", updated_at: "2026-11-24T00:00:00Z" });
+  pullState.noteRecord(elsewhere, {
+    number: 6,
+    state: "closed",
+    merged: true,
+    updated_at: "2026-11-24T00:00:00Z",
+  });
+  assert.deepEqual(statesOf(5, 6), [null, "merged"]);
   // A menu of one group is named once, by the heading over its members: the host's group
   // heading, in the stack's label class (docs/design-system.md, "Stacks").
   const heading = [...members.descendants()].find(
@@ -452,7 +601,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     });
     assert.equal(prevented || Boolean(standalone.element.open), false, `${name} opens nothing`);
   }
-  // Every way the menu opens puts focus on the current member, #7, the row checked, whose
+  // Every way the menu opens puts focus on the current member, #7, the row marked, whose
   // place in the top-first list is second (mb-xlla).
   key("ArrowDown");
   const menuLinks = standalone.element.querySelectorAll("a[href]");
@@ -635,6 +784,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       fileCleared: true,
       explicitReaderIntent: true,
       disposedWorkReleased: true,
+      memberStateTakenBack: true,
+      recordNotedBack: true,
     }),
   );
 })().catch((error) => {

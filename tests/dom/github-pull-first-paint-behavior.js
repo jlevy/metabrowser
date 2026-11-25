@@ -1101,7 +1101,9 @@ async function run() {
       draft: false,
       updated_at: "2026-09-17T12:00:00Z",
     });
-    states.noteListed(cached.source, [{ number: 7, state: "merged", updatedAt: listedAt }]);
+    states.noteListed(cached.source, "closed", [
+      { number: 7, state: "merged", updatedAt: listedAt },
+    ]);
     session.current = cached;
     const opened = session.mount(page, cached);
     // Read in the mount's own task: the first paint of the header.
@@ -1114,10 +1116,11 @@ async function run() {
     opened.handle.dispose();
     return text;
   };
-  facts.listedState = {
-    newerList: await badge("2026-09-18T00:00:00Z"),
-    olderList: await badge("2026-09-16T00:00:00Z"),
-  };
+  // The older list first: a list's answer older than what is noted of a row replaces nothing
+  // (`noteListed`), so the newer one, second, is still news.
+  const olderList = await badge("2026-09-16T00:00:00Z");
+  const newerList = await badge("2026-09-18T00:00:00Z");
+  facts.listedState = { newerList, olderList };
 
   // Changes with rendered Markdown stays out of sight until its first screen settles, or
   // its bound passes, and is ready only then.

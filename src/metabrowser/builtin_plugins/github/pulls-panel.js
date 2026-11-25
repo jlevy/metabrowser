@@ -1689,7 +1689,7 @@ export function createPullsController(deps, options = {}) {
   function holdRows(list, rows, source) {
     const next = rows.map((row) => describeRow(row));
     if (source !== null) {
-      noteListed(source, next);
+      noteListed(source, filter, next);
     }
     const same =
       next.length === list.rows.length &&

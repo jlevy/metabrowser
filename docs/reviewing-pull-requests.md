@@ -101,11 +101,11 @@ by its number, such as **3/4 · ⧉300 2/2**.
 On the page, a stack button at the end of the line of state and dates, just before
 Refresh, shows the same position, and a pull request in two stacks has a button for
 each, which names its stack, such as **⧉300 2/2**. The button opens a menu of the
-stack’s members, from top to base.
-On macOS, Control-N goes to the next member toward the top and Control-P to the previous
-one toward the base; on Windows and Linux, where those keys are the browser’s, use the
-menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
-and the list stays flat, unless stacks are cached.
+stack’s members, from top to base, each on one line: its state, its position, and its
+title. On macOS, Control-N goes to the next member toward the top and Control-P to the
+previous one toward the base; on Windows and Linux, where those keys are the browser’s,
+use the menu. Without the extension, or when GitHub cannot answer, pull requests read as
+usual and the list stays flat, unless stacks are cached.
 Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
