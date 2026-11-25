@@ -235,6 +235,16 @@ private func loginShellOutput(path: String) -> [String] {
         }
     }
 
+    @Test func theConfigurationDirectoryPassesThrough() {
+        // An app started with a scratch METABROWSER_CONFIG_DIR, as the hand checks start a
+        // development build, hands it to every `metab` it runs, so its recent targets stay
+        // out of the user's own list.
+        let parent = ["METABROWSER_CONFIG_DIR": "/Volumes/Scratch/config", "XDG_CONFIG_HOME": "/Volumes/Home/.xdg"]
+        let built = ChildEnvironment.build(inherited: parent, toolDirectories: [])
+        #expect(built["METABROWSER_CONFIG_DIR"] == "/Volumes/Scratch/config")
+        #expect(built["XDG_CONFIG_HOME"] == nil)
+    }
+
     @Test func toolDirectoriesComeFirstOnAFixedPath() {
         let tools = ToolPaths(git: "/opt/homebrew/bin/git", gh: "/opt/homebrew/bin/gh")
         let built = ChildEnvironment.build(inherited: [:], toolDirectories: tools.directories + ["relative", "/a:b"])

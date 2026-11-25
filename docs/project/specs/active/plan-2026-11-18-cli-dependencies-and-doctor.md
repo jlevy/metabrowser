@@ -317,7 +317,11 @@ Of the other ways a setup breaks that [Background](#background) lists:
 - **Configuration overrides** are built: a directory that `METABROWSER_CONFIG_DIR`,
   `METABROWSER_CACHE_DIR`, or an `XDG_` variable names in a terminal is a warning when
   an app was found, naming the directory the app’s servers use, since the app passes
-  none of them (`ChildEnvironment`). The reverse cannot happen: the app sets none.
+  none of the others (`ChildEnvironment`), and `METABROWSER_CONFIG_DIR` only as the app
+  was launched with it, which a terminal’s `export` does not reach.
+  Run from the app’s Check Setup…, a `METABROWSER_CONFIG_DIR` the doctor sees is the
+  app’s own, which its servers use, so it is no warning (`LAUNCH_STORAGE_OVERRIDES`).
+  The reverse cannot happen: the app sets none.
 
 - **A full disk** is built: free space on the cache’s volume below the reserve a first
   clone leaves free (`cache/free_space.py`), so that every first clone that does not

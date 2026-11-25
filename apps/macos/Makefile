@@ -96,10 +96,12 @@ app:
 	VARIANT=$(dev_variant) scripts/build-app.sh
 
 # A development run records nothing in the recent targets, the one list it shares with the
-# installed app: agents launch the app this way for hand checks, and the folders they open
-# are not the user's (mb-1q02). The app passes the variable on to every `metab` it runs
+# installed app: agents launch the app this way, and the folders they open are not the
+# user's (mb-1q02). The app passes the variable on to every `metab` it runs
 # (`ChildEnvironment.passedThrough`), so whatever the run opens later stays out too; open
-# your own folders in the installed app.
+# your own folders in the installed app. The hand checks, which record and clear a list,
+# launch the app with a scratch METABROWSER_CONFIG_DIR instead
+# (docs/project/qa/qa-macos-app-hand-checks.md).
 run: app
 	set -e; source scripts/common.sh; variant_settings $(dev_variant); \
 	open --env METABROWSER_RECORD_RECENT=0 -a "$(CURDIR)/$$app" $(if $(FOLDER),"$(FOLDER)")

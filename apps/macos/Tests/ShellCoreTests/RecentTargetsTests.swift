@@ -210,13 +210,54 @@ import Testing
         let setup = RuntimeSetup(
             runtime: Runtime(executable: "/opt/tools/metab", version: "0.12.1", source: .chosen),
             tools: ToolPaths(git: "/opt/git/bin/git", gh: nil))
-        let inherited = ["HOME": "/Volumes/Home", "METABROWSER_CONFIG_DIR": "/elsewhere", "UV_PYTHON": "3.14"]
+        let inherited = [
+            "HOME": "/Volumes/Home", "METABROWSER_CONFIG_DIR": "/Volumes/Scratch/config", "UV_PYTHON": "3.14",
+        ]
         let spec = RecentTargets.spec(RecentTargets.listArguments, with: setup, inherited: inherited)
         #expect(spec.executable == "/opt/tools/metab")
         #expect(spec.arguments == ["--recent", "--json"])
         #expect(spec.environment == ChildEnvironment.build(inherited: inherited, toolDirectories: setup.tools.directories))
-        // The servers the app starts get no storage override either, so both use one list.
-        #expect(spec.environment["METABROWSER_CONFIG_DIR"] == nil)
+        // The command that lists the menu, the one that records an open, and every server
+        // the app starts get the configuration directory the app was started with, as the
+        // hand checks start a development build, so the menu lists the list the app writes.
+        let add = RecentTargets.spec(
+            RecentTargets.addArguments("/Volumes/Home/src/fdu/"), with: setup, inherited: inherited)
+        let server = CLIServeLaunch().spec(
+            serving: URL(filePath: "/Volumes/Home/src/fdu/"), with: setup, inherited: inherited, logURL: nil)
+        for environment in [spec.environment, add.environment, server.environment] {
+            #expect(environment["METABROWSER_CONFIG_DIR"] == "/Volumes/Scratch/config")
+            #expect(environment["UV_PYTHON"] == nil)
+        }
+    }
+
+    // MARK: - What records
+
+    /// Every open records exactly once: the app's one `--recent-add` as it shows the root,
+    /// a folder or a repository, whether or not it was open already. The server the open
+    /// starts records nothing (`FolderServerTests`).
+    @Test func anOpenRecordsOnce() {
+        let folder = URL(filePath: "/Volumes/Home/src/fdu/", directoryHint: .isDirectory)
+        let repository = URL(string: "https://github.com/jlevy/tbd")!
+        #expect(RecentTargets.changes(showing: folder, because: .opened)
+            == [["/Volumes/Home/src/fdu/", "--recent-add"]])
+        #expect(RecentTargets.changes(showing: repository, because: .opened)
+            == [["https://github.com/jlevy/tbd", "--recent-add"]])
+        #expect(RecentTargets.serverRecords == "0")
+    }
+
+    /// The windows a relaunch restores and the folder a Dock click with no window brings
+    /// forward are not opens, and neither is the event log's directory, which the user did
+    /// not choose: none changes the list (mb-1q02).
+    @Test func aRestoreADockClickAndTheAppsOwnOpenRecordNothing() {
+        let folder = URL(filePath: "/Volumes/Home/src/fdu/", directoryHint: .isDirectory)
+        for showing in [RecentTargets.Showing.restored, .reopenedFromTheDock, .openedForTheApp] {
+            #expect(RecentTargets.changes(showing: folder, because: showing).isEmpty, "\(showing)")
+        }
+        // Only an open records: a new way of showing a root records nothing until it is one.
+        let recording = RecentTargets.Showing.allCases.filter {
+            !RecentTargets.changes(showing: folder, because: $0).isEmpty
+        }
+        #expect(recording == [.opened])
     }
 
     /// An app started with the opt-out, as `make run` starts a development build, hands

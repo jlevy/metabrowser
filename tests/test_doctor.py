@@ -356,7 +356,8 @@ def _storage(monkeypatch: pytest.MonkeyPatch, home: Path, **variables: str) -> N
 def test_an_override_the_apps_servers_do_not_get_is_a_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The app gives its servers none of the storage variables (``ChildEnvironment``)."""
+    """The app gives its servers none of ``STORAGE_OVERRIDES`` (``ChildEnvironment``), so an
+    ``XDG_CONFIG_HOME`` is a warning wherever the doctor runs."""
 
     mine = tmp_path / "xdg"
     mine.mkdir(mode=0o700)
@@ -370,7 +371,31 @@ def test_an_override_the_apps_servers_do_not_get_is_a_warning(
     assert ("app's servers", servers) in check.details
     assert check.summary.startswith("XDG_CONFIG_HOME names this directory")
     assert check.remedy is not None
+    assert config_check(app_path=app, from_app=True).state == "warning"
     assert config_check(app_path=None).state == "ok", "without an app there is nothing to differ"
+
+
+def test_a_configuration_directory_the_app_was_launched_with_is_its_servers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The app passes on the ``METABROWSER_CONFIG_DIR`` it was launched with
+    (``ChildEnvironment``), as the hand checks launch a development build, which a
+    terminal's ``export`` does not reach: set there, it is a warning, and seen by the
+    doctor the app runs, it is the directory the app's servers use."""
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir(mode=0o700)
+    _storage(monkeypatch, tmp_path / "home", METABROWSER_CONFIG_DIR=str(scratch))
+    app = "/Applications/Metabrowser.app"
+
+    terminal = config_check(app_path=app)
+    assert terminal.state == "warning"
+    assert ("app's servers", str(tmp_path / "home" / ".config" / "metabrowser")) in terminal.details
+    assert terminal.summary.startswith("METABROWSER_CONFIG_DIR names this directory")
+    from_app = config_check(app_path=app, from_app=True)
+    assert from_app.state == "ok"
+    assert ("directory", str(scratch)) in from_app.details
+    assert not [name for name, _ in from_app.details if name == "app's servers"]
 
 
 _RESERVE: int = FREE_SPACE_RESERVE_MB * 1_000_000
@@ -489,6 +514,37 @@ def test_the_metab_check_compares_with_the_app_running_the_check(
     assert ("app", f"{running} runs metab 99.0.0 or later") in metab.details
     open_in = next(check for check in checks if check.id == "open_in")
     assert open_in.summary == "open_in auto (default)", "a terminal's lookup is unchanged"
+
+
+@pytest.mark.parametrize(("run_by_the_app", "state"), [(False, "warning"), (True, "ok")])
+def test_only_the_app_running_the_doctor_shares_its_configuration_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_by_the_app: bool, state: str
+) -> None:
+    """A ``METABROWSER_CONFIG_DIR`` reaches the app's servers when the app was launched
+    with it, which only an app that runs the doctor itself can say. Run in a terminal, with
+    an app ``open_in`` found, the doctor cannot tell, so it warns."""
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir(mode=0o700)
+    _storage(monkeypatch, tmp_path / "home", METABROWSER_CONFIG_DIR=str(scratch))
+    found = _bundle(tmp_path / "found", None)
+    if run_by_the_app:
+        monkeypatch.setenv(DOCTOR_APP_ENV, str(_bundle(tmp_path / "build", None)))
+    else:
+        monkeypatch.delenv(DOCTOR_APP_ENV, raising=False)
+    section: dict[str, object] = {
+        "value": "auto",
+        "source": "default",
+        "present_browser": None,
+        "app": str(found),
+    }
+    open_in = DoctorOpenIn(section, "open_in auto (default)", (), (), app_path=str(found))
+    checks = doctor_checks(plugin_count=1, plugin_problems=(), open_in=open_in)
+    config = next(check for check in checks if check.id == "config")
+    assert config.state == state
+    assert config.summary.startswith("METABROWSER_CONFIG_DIR names this directory") is (
+        not run_by_the_app
+    )
 
 
 def test_a_running_app_the_doctor_cannot_read_is_none(

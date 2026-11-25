@@ -497,11 +497,19 @@ The owner asked, on 2026-11-18:
    back at launch, Retry, Restart Server, and an upgrade’s restart do not record, so the
    app starts those servers with `METABROWSER_RECORD_RECENT=0`. The same variable keeps
    benchmark, test, and development servers out of the list, also the owner’s decision.
+   **Superseded by `mb-1q02`:** a serve records itself only when run at a terminal or
+   told to, so the agents’, tests’, and tools’ serves that had crowded out the user’s
+   opens record nothing.
+   The app records every open itself, once, with `metab ROOT --recent-add` as it shows
+   it, and starts every server with `METABROWSER_RECORD_RECENT=0`; a restore is still
+   not an open. [What Records](../../architecture/arch-recent-targets.md#what-records)
+   has the rules.
 5. **Repository windows are recent targets.** jlevy/metabrowser#539 kept them out of
    Open Recent because the app registered only folders with macOS. The server it starts
    for a link now records the repository, with no code in the app, so that rule is
-   dropped. The app lists a repository entry once its build opens links, which it knows
-   from `MetabrowserOpensURLs` in its `Info.plist`, the key that pull request adds.
+   dropped. Since `mb-1q02` the app records it, as it records every open (decision 4).
+   The app lists a repository entry once its build opens links, which it knows from
+   `MetabrowserOpensURLs` in its `Info.plist`, the key that pull request adds.
    Repository windows still stay out of the saved session, which names folders by path.
 6. **The list lives in the configuration directory**, in a file of its own beside
    `config.yml`: `recent-targets.yml`. The owner decided this on 2026-11-18. It is

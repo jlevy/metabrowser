@@ -52,13 +52,15 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         NSDocumentController.shared.clearRecentDocuments(nil)
     }
 
-    /// The user opened `root`, a folder or a repository by its address, which moves to the
-    /// front of the list (`metab ROOT --recent-add`). Every open comes here once, as it is
-    /// shown (`AppDelegate.showOpened`), and nothing else records one: no server the app
-    /// starts does (`RecentTargets.serverRecords`). The Dock menu, which nothing else
-    /// refreshes until the app is activated or a menu opens, lists it next.
-    func noteOpened(_ root: URL) {
-        change(RecentTargets.addArguments(RecentTargets.target(root)))
+    /// The app showed `root`, a folder or a repository by its address, because of
+    /// `showing`. An open moves it to the front of the list (`metab ROOT --recent-add`),
+    /// and anything else leaves the list as it was (`RecentTargets.changes`). Every open
+    /// comes here once, as it is shown (`AppDelegate.showOpened`), and so do the restore
+    /// and a Dock click with no window; no server the app starts records
+    /// (`RecentTargets.serverRecords`). The Dock menu, which nothing else refreshes until
+    /// the app is activated or a menu opens, lists an open next.
+    func shown(_ root: URL, _ showing: RecentTargets.Showing) {
+        RecentTargets.changes(showing: root, because: showing).forEach(change)
     }
 
     /// Asks `metab` for the list, unless an answer is on its way or is newer than

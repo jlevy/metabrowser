@@ -5,8 +5,8 @@ one list :mod:`metabrowser.recent_targets` keeps:
 
 * ``metab --recent``: the list, most recently opened first; ``--json`` for a shell.
 * ``metab TARGET --recent-add``: record TARGET as opened, as serving it would, without
-  serving. A shell uses it for an open that starts no server, such as the macOS app
-  bringing forward a folder that is already open.
+  serving. A shell that records its own opens uses it, as the macOS app does for every
+  open, whether or not a server starts for it.
 * ``metab TARGET --recent-forget``: remove TARGET's entry.
 * ``metab --recent-clear``: empty the list.
 

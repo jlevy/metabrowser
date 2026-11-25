@@ -19,6 +19,16 @@ public nonisolated enum ChildEnvironment {
         // An app started with it, as `make run` starts a development build, records no
         // recent target, and neither does any `metab` it runs.
         RecentTargets.recordVariable,
+        // The configuration directory (`configuration_directory` in `metabrowser.home`),
+        // which holds the recent targets and `config.yml`. An app started with one, as
+        // the hand checks start a development build, keeps its list there: the `metab`
+        // that records an open and the one that lists the menu read the same directory,
+        // and the user's own list is left alone. The app has one only as it was launched:
+        // by `open --env`, or from launchd's environment (`launchctl setenv`), which a
+        // launch from Finder or the Dock gets too, never from a terminal's `export`.
+        // Unset, as it usually is, every `metab` the app runs uses the default, which a
+        // terminal's `metab` uses too.
+        "METABROWSER_CONFIG_DIR",
         // The event log's location and off-switch (`metabrowser.event_log`): a server the
         // app starts logs where, and whether, the environment the app started with says.
         "METABROWSER_STATE_DIR", "XDG_STATE_HOME", "METABROWSER_EVENT_LOG",
