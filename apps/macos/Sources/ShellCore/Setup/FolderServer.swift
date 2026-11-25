@@ -2,7 +2,7 @@
 /// spawns.
 ///
 /// Every way a server starts goes through here: a folder's first start, a restored
-/// folder's start when its turn or its tab comes, Retry, Restart Server, and the restart
+/// folder's start when its turn comes or its window is brought forward, Retry, Restart Server, and the restart
 /// an upgrade offers. Each asks `accepted` twice: before it stops anything, and again at
 /// the last moment before the child spawns, after the launch gate and any earlier
 /// child's termination (`ServerSupervisor.mayLaunch`), beside a restore's `rootCheck`.
@@ -30,24 +30,18 @@ public final class FolderServer {
 
     public let supervisor: ServerSupervisor
     /// The runtime the server last spawned a child from; nil until a child is first
-    /// created, as for a restored folder still waiting for its turn or its tab, or one whose
-    /// child could not be created. Set when the supervisor reports the child created
+    /// created, as for a restored folder still waiting for its turn or to be brought forward,
+    /// or one whose child could not be created. Set when the supervisor reports the child created
     /// (`ServerSupervisor.onSpawn`).
     public private(set) var startedRuntime: Runtime?
     /// What waits for an accepted runtime.
     public private(set) var held: Request?
     /// For a restored folder, the check at the moment of spawning (`RestoreRun`): a
-    /// background one's root admitted again, and, once one of its tabs is selected, which
-    /// starts it as the user's choice, that its saved path still names its own folder.
+    /// background one's root admitted again, and, once a window showing it is brought
+    /// forward, which starts it as the user's choice, that its saved path still names its own folder.
     public var rootCheck: (() -> Bool)?
     private let accepted: () -> RuntimeSetup?
     private let spec: (RuntimeSetup) -> LaunchSpec
-    /// Whether the next child is the server of something the user just opened, which
-    /// records it among `metab`'s recent targets as it starts. No other launch is an
-    /// open: a restored folder's start, Retry, Restart Server, and the restart an upgrade
-    /// offers each tell their server not to record (`RecentTargets.recordVariable`), so
-    /// the list's order changes only when the user opens something.
-    private var recordsOpen = false
     /// The runtime the newest launch's command was built from, with its number.
     private var launching: (attempt: Int, setup: RuntimeSetup)?
     private var attempts = 0
@@ -77,20 +71,14 @@ public final class FolderServer {
     /// Starts the server unless one is starting, running, or stopping, and returns once
     /// that start is ready or has failed, or did not spawn.
     ///
-    /// - Parameters:
-    ///   - holding: whether a start that found no runtime waits in `held` for `resume()`; a
-    ///     restore passes false and keeps the root in its own queue.
-    ///   - recordsOpen: whether the user just opened this, so that its server records it
-    ///     as a recent target. It holds until a server is ready, through a wait for a
-    ///     runtime and through a child that dies before it records, and a restore passes
-    ///     false.
+    /// - Parameter holding: whether a start that found no runtime waits in `held` for
+    ///   `resume()`; a restore passes false and keeps the root in its own queue.
     @discardableResult
-    public func start(holding: Bool = true, recordsOpen: Bool = false) async -> Outcome {
+    public func start(holding: Bool = true) async -> Outcome {
         switch supervisor.state {
         case .starting, .ready, .stopping: return .launched
         case .stopped, .failed: break
         }
-        if recordsOpen { self.recordsOpen = true }
         guard let setup = accepted() else { return waiting(.start, holding: holding) }
         let outcome = await launch(setup) { await self.supervisor.start(using: $0) }
         return outcome == .waitingForRuntime ? waiting(.start, holding: holding) : outcome
@@ -127,21 +115,18 @@ public final class FolderServer {
             launching = (attempt, setup)
             await run(command(setup))
             if launching?.attempt == attempt { launching = nil }
-            // A server records before it announces itself, so one that is ready has
-            // recorded the open. One that died first has not, and the launch that follows,
-            // a Retry among them, still carries the open.
-            if case .ready = supervisor.state { recordsOpen = false }
             guard let refused = refusal, refused.attempt == attempt else { return .launched }
             guard refused.outcome == .waitingForRuntime, let now = accepted() else { return refused.outcome }
             setup = now  // replaced while it waited: the command is built again from the new one
         }
     }
 
-    /// `setup`'s command, told not to record a recent target unless this launch is the
-    /// start of something the user just opened.
+    /// `setup`'s command, told not to record a recent target (`RecentTargets.serverRecords`):
+    /// the app records each open itself, as it shows it, so no launch of a server, the
+    /// first start of an open, a restored folder's, a Retry, or a restart, moves the list.
     private func command(_ setup: RuntimeSetup) -> LaunchSpec {
         var command = spec(setup)
-        if !recordsOpen { command.environment[RecentTargets.recordVariable] = "0" }
+        command.environment[RecentTargets.recordVariable] = RecentTargets.serverRecords
         return command
     }
 

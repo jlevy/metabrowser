@@ -50,7 +50,7 @@ public nonisolated struct OpenFolders: Equatable, Sendable {
     /// folder never closes in some of its windows and stays open in others. Otherwise each
     /// window in turn shows the next folder in the background, the one shown most recently
     /// first, and closes once none is left: the windows on screen first, in the order
-    /// given, then the tabs hidden behind another of their group.
+    /// given, then the minimized ones.
     ///
     /// - Parameters:
     ///   - windows: the windows showing `key`, front to back.
@@ -69,8 +69,8 @@ public nonisolated struct OpenFolders: Equatable, Sendable {
 /// A window as a switch or File > Close Folder sees it.
 public nonisolated struct SwitchingWindow<ID: Hashable & Sendable>: Equatable, Sendable {
     public var id: ID
-    /// On screen: not minimized, and not a tab hidden behind another of its group. A window
-    /// that is not counts its folder as shown only once it is (`windowDidBecomeKey`).
+    /// On screen: not minimized. A minimized window counts its folder as shown only once it
+    /// is brought back and becomes key (`windowDidBecomeKey`).
     public var isOnScreen: Bool
     /// A sheet is open on it: an `alert`, `confirm`, or `prompt`, a file input's open
     /// panel, or the print panel, which the page it shows opened, or one of the app's own,
@@ -94,9 +94,9 @@ public nonisolated enum FolderSwitch: Equatable, Sendable {
     case refused
     /// The window shows the folder's page in the background if it has one, else a new
     /// page of it, and the page it leaves becomes `left`. The folder counts as shown only
-    /// if the window is on screen: a tab hidden behind another of its group does not
-    /// revive a discarded page, move its folder up in recency, or start a restored folder
-    /// as the user's choice until the tab is selected.
+    /// if the window is on screen: a minimized window does not revive a discarded page,
+    /// move its folder up in recency, or start a restored folder as the user's choice
+    /// until it is brought back and becomes key.
     case show(left: SwitchedAwayPage, countsAsShown: Bool)
 
     /// - Parameters:
@@ -146,15 +146,15 @@ public nonisolated struct CloseFolderStep<ID: Hashable & Sendable>: Equatable, S
     }
 }
 
-/// What becomes of each page of a folder whose tabs move to another folder's session,
-/// because the folder's saved path now leads to that one (`RestoreRun`'s `moveTabs`).
+/// What becomes of each page of a folder whose pages move to another folder's session,
+/// because the folder's saved path now leads to that one (`RestoreRun`'s `movePages`).
 ///
 /// Pages move, not windows: a page no window shows moves too, so the folder of the saved
 /// path is left with no page and closes, and the target keeps at most one page in the
 /// background, and only while no window shows it.
 public nonisolated enum MovedPage: Equatable, Sendable {
     /// A window shows it: a page of the target, at the same address, takes its place in
-    /// the window's tab group, and it closes with its window.
+    /// that window, and it closes.
     case replaceInWindow
     /// No window shows it, and the target will have no other page: a page of the target
     /// at the same address takes its place in the background, and it closes.

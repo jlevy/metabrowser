@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var folderChooser = FolderChooserMenu(
         openFolders: { [weak self] in self?.folderWindows.chooserFolders(for: $0) ?? [] },
         recent: { [weak self] in self?.recentFolders.listed() ?? [] },
-        choose: { [weak self] in self?.choose($0, in: nil, separately: true) },
+        choose: { [weak self] in self?.choose($0, in: nil) },
         hasBackgroundFolders: { [weak self] in self?.folderSessions.contains(where: \.isInBackground) ?? false },
         closeBackgroundFolders: { [weak self] in
             AppLog.app.info("closing every folder open in the background")
@@ -43,8 +43,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
     /// The window each waiting folder was asked to open in (`request(_:into:)`).
     private var waitingWindows = WaitingWindows<BrowserWindowController>()
-    /// Title-menu targets keep their separate-window placement while the runtime is checked.
-    private var waitingSeparateWindows: Set<URL> = []
     /// The recent repositories the user chose that still wait in RuntimeSelection.
     private var waitingRecentRepositories: Set<URL> = []
     /// The searches, rechecks, and choices that change `selection`, and what follows each.
@@ -124,6 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Lifecycle
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // Before the menus, which AppKit would otherwise give its tab items.
+        BrowserWindowController.refuseTabs()
         NSApp.mainMenu = MainMenu.build(appName: appIdentity.name, recentFolders: recentFolders)
         installTerminationSignals()
         presentRuntime()
@@ -286,7 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Folders
 
-    /// Opens `url`: a folder in its own server and window or tab, or a file at its page
+    /// Opens `url`: a folder in its own server and window, or a file at its page
     /// inside the open folder that holds it, else inside its own folder (`OpenTarget`). A
     /// folder already open brings its window forward. A GitHub link opens as `requestLink`
     /// says.
@@ -299,11 +299,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// With `inOwnFolder`, a file opens in its own folder even inside an open one, as
     /// `metab FILE` would serve it (Help > Open Event Log, `EventLogLocation`). With
-    /// `remember` false, the folder is not added to Open Recent, by the app or by the
-    /// server it starts.
+    /// `remember` false, the folder is not added to Open Recent (`showOpened`): the event
+    /// log's directory is not a folder the user chose to open.
     func request(
         _ url: URL, into window: BrowserWindowController? = nil, inOwnFolder: Bool = false,
-        remember: Bool = true, separately: Bool = false
+        remember: Bool = true
     ) {
         guard url.isFileURL else { return requestLink(url) }
         let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
@@ -317,31 +317,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let reason = CLIServeLaunch.unservableReason(root) {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
-        let open = sessions[SessionRoot.folder(root).key] as? FolderSession
-        if remember { recentFolders.noteOpened(root, isOpen: open != nil) }
-        if let session = open {
-            session.showFrontWindow(page: target.page, separately: separately)
+        if let session = sessions[SessionRoot.folder(root).key] as? FolderSession {
+            showOpened(session, in: .front(page: target.page), remember: remember)
             return
         }
         recheckChangedRuntime()
         // A request waiting for a runtime is resolved again when one is found.
         let waiting = URL(filePath: path)
         guard selection.setupForOpening(waiting) != nil, let session = session(for: .folder(root)) else {
-            if selection.waitingFolders.contains(waiting) {
-                if let window { waitingWindows.wait(waiting, in: window) }
-                if separately { waitingSeparateWindows.insert(waiting) }
-            }
+            if let window, selection.waitingFolders.contains(waiting) { waitingWindows.wait(waiting, in: window) }
             if !selection.isBusy { showRuntimeSettings() }
             return
         }
-        // A window with a sheet open refuses the switch (`FolderWindows.switchWindow`); the
-        // folder, whose session now exists, then opens in a window of its own rather than
-        // in the background with no page.
-        let switched = window.map { folderWindows.switchWindow($0, to: session, page: target.page) } ?? false
-        if !switched { folderWindows.place(session.makeWindow(page: target.page), separately: separately) }
-        Task {
-            await session.startServer(recording: remember)
-            if remember { self.recentFolders.refreshAfterOpen() }
+        showOpened(
+            session, in: window.map { .window($0, page: target.page) } ?? .front(page: target.page),
+            remember: remember)
+        Task { await session.startServer() }
+    }
+
+    /// Where a folder that opens is shown (`showOpened`).
+    private enum WindowForOpen {
+        /// Its front window, brought forward, showing `page` if one is given.
+        case front(page: PageAddress?)
+        /// The repository's front window, whose server opens `link` (`FolderSession.open(link:)`).
+        case link(URL, showingProgress: Bool)
+        /// `window`, in place of the folder it shows (`FolderWindows.switchWindow`).
+        case window(BrowserWindowController, page: PageAddress?)
+        /// A new window of its own, or for a folder in the background, the window its page
+        /// moves to.
+        case newWindow
+    }
+
+    /// Shows `session`, a folder that opens or is open already, in `window`. Every
+    /// open of a folder comes through here: File > Open, `open -a`, a Dock drop, Open
+    /// With, `metab --present`, a sent GitHub link, Open Recent, the Dock menu, and the
+    /// folder chooser and Switch Folder panel. A folder that has no window yet gets one of
+    /// its own, never a tab (`FolderWindows.place`).
+    ///
+    /// Each records the folder as the most recent target, once, unless `remember` is
+    /// false (`RecentTargetsMenu.noteOpened`). This is where the app records an open, so
+    /// that what Open Recent lists is what the user opened, most recent first; the server
+    /// an open starts records nothing (mb-1q02). A sent link into a repository already
+    /// open is the one open shown without this, and records with the same call.
+    ///
+    /// Three ways a window appears do not come through here. Reopening the last session
+    /// (`FolderWindows.restore`) puts the saved windows back, each alone, rather than
+    /// opening folders the user chose now. A Dock click with no window on screen brings
+    /// forward a folder already open. A page's link that opens a new window
+    /// (`FolderSession.openWindow(at:)`) opens another window of its own folder.
+    private func showOpened(_ session: FolderSession, in window: WindowForOpen, remember: Bool = true) {
+        if remember { recentFolders.noteOpened(session.root) }
+        switch window {
+        case .front(let page):
+            if session.pages.isEmpty {
+                folderWindows.place(session.makeWindow(page: page))
+            } else {
+                session.showFrontWindow(page: page)
+            }
+        case .link(let link, let showingProgress):
+            if session.pages.isEmpty {
+                // A new session holds its link until its server is ready.
+                folderWindows.place(session.makeWindow())
+            } else {
+                session.open(link: link, showingProgress: showingProgress)
+            }
+        case .window(let target, let page):
+            // A window with a sheet open refuses the switch (`FolderWindows.switchWindow`); a
+            // folder with no page then opens in a window of its own rather than in the
+            // background with none.
+            if !folderWindows.switchWindow(target, to: session, page: page), session.pages.isEmpty {
+                folderWindows.place(session.makeWindow(page: page))
+            }
+        case .newWindow:
+            // A folder in the background moves its page to the new window; one shown
+            // elsewhere gets a second page.
+            if session.isInBackground {
+                session.showFrontWindow()
+            } else {
+                folderWindows.place(session.makeWindow())
+            }
         }
     }
 
@@ -520,7 +574,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func open(_ plan: PresentPlan, with setup: RuntimeSetup) async {
         let root = SessionRoot.repository(plan.repository)
         if let session = sessions[root.key] as? FolderSession {
-            recentFolders.noteOpened(root.url, isOpen: true)
+            // Shown in the window it is in already, not through `showOpened`, so recorded here.
+            recentFolders.noteOpened(session.root)
             return session.open(link: plan.link)
         }
         let name = root.identity().fullName
@@ -550,9 +605,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Opens the plan from a native Open URL submission or a selected recent repository.
     /// That choice authorizes this open. Once its window is shown, a pending question
     /// for an earlier link into the same repository has nothing left to decide.
-    private func openEntered(_ plan: PresentPlan, separately: Bool = false) -> Bool {
+    private func openEntered(_ plan: PresentPlan) -> Bool {
         let root = SessionRoot.repository(plan.repository)
-        guard !isQuitting, openRepository(root, on: plan.link, waitForRuntime: false, separately: separately) else { return false }
+        guard !isQuitting, openRepository(root, on: plan.link, waitForRuntime: false) else { return false }
         if clones.openedExplicitly(root), let alert = cloneQuestionAlert, NSApp.modalWindow === alert.window {
             NSApp.abortModal()
         }
@@ -581,22 +636,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The repository's window, whose server opens `link`, or a new session whose first
-    /// ready server opens it. A new session's window joins the window of an open checkout of
-    /// the repository as a tab, if one is on screen (`CheckoutWindow`), and is placed as a
-    /// new folder's otherwise. A title-menu choice opens in a separate window. Returns
+    /// ready server opens it, in a window of its own, as every folder opens. Returns
     /// whether a window was shown. A sent link waits for a missing runtime and is
     /// resolved again. A native choice can handle that wait itself.
     ///
-    /// Either is an open, so the repository moves to the front of the recent targets: a
-    /// new session's server records it as it starts, and the app records one already open
-    /// itself, since opening a link in its server records nothing.
+    /// Either is an open, so the repository moves to the front of the recent targets
+    /// (`showOpened`).
     @discardableResult
     private func openRepository(
-        _ root: SessionRoot, on link: URL, waitForRuntime: Bool = true, separately: Bool = false
+        _ root: SessionRoot, on link: URL, waitForRuntime: Bool = true
     ) -> Bool {
         if let session = sessions[root.key] as? FolderSession {
-            recentFolders.noteOpened(root.url, isOpen: true)
-            session.open(link: link, showingProgress: !waitForRuntime, separately: separately)
+            showOpened(session, in: .link(link, showingProgress: !waitForRuntime))
             return true
         }
         let setup = waitForRuntime ? selection.setupForOpening(link) : operations.launchableSetup()
@@ -604,31 +655,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if waitForRuntime, !selection.isBusy { showRuntimeSettings() }
             return false
         }
-        let window = session.makeWindow()
-        if !separately, let checkout = checkout(of: root.url) {
-            AppLog.app.info(
-                "\(root.key, privacy: .public): its mirror opens as a tab of the checkout \(checkout.root.lastPathComponent, privacy: .private)")
-            folderWindows.place(window, besides: checkout)
-        } else {
-            folderWindows.place(window, separately: separately)
-        }
-        Task {
-            await session.startServer()
-            self.recentFolders.refreshAfterOpen()
-        }
+        showOpened(session, in: .link(link, showingProgress: !waitForRuntime))
+        Task { await session.startServer() }
         return true
-    }
-
-    /// The open checkout of `repository` whose window a new window of its mirror joins as
-    /// a tab, or nil (`CheckoutWindow`).
-    private func checkout(of repository: URL) -> FolderSession? {
-        let open = folderWindows.openFolders.byRecency.compactMap { sessions[$0] as? FolderSession }
-        let candidates = open.map { session in
-            CheckoutWindow.Candidate(
-                key: session.path, root: session.served, repository: session.title.identity.repository,
-                isShown: session.pages.contains { $0.host?.window?.isVisible == true })
-        }
-        return CheckoutWindow.host(for: repository, among: candidates).flatMap { sessions[$0] as? FolderSession }
     }
 
     private func noteLinkProblem(_ alert: LinkAlert) {
@@ -724,7 +753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.folderWindows.windowShown(controller, of: folder)
         }
         session.onLayoutChange = { [weak self] in self?.folderWindows.scheduleSave() }
-        session.onPlaceWindow = { [weak self] in self?.folderWindows.place($0, separately: $1) }
+        session.onPlaceWindow = { [weak self] in self?.folderWindows.place($0) }
         sessions.insert(session, for: key)
         folderWindows.folderOpened(session)
         retitleWindows()
@@ -779,7 +808,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Carries out a choice from the title menu or the Switch Folder panel over `window`.
-    private func choose(_ action: FolderChooser.Action, in window: BrowserWindowController?, separately: Bool = false) {
+    private func choose(_ action: FolderChooser.Action, in window: BrowserWindowController?) {
         let open = { (key: String) in self.folderSessions.first { $0.path == key } }
         switch action {
         case .nothing:
@@ -787,40 +816,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .showHere(let key):
             guard let window, let session = open(key) else { return }
             AppLog.app.info("switching a window to \(session.folderName, privacy: .public)")
-            folderWindows.switchWindow(window, to: session)
+            showOpened(session, in: .window(window, page: nil))
         case .bringForward(let key):
-            open(key)?.showFrontWindow(separately: separately)
+            guard let session = open(key) else { return }
+            showOpened(session, in: .front(page: nil))
         case .newWindow(let key):
             guard let session = open(key) else { return }
-            // A folder in the background moves its page to the new window; one shown
-            // elsewhere gets a second page.
-            if session.isInBackground {
-                session.showFrontWindow()
-            } else {
-                folderWindows.place(session.makeWindow())
-            }
+            showOpened(session, in: .newWindow)
         case .openHere(let url):
             recentFolders.openListed(url) { [weak self] in self?.requestRecent($0, into: window) }
         case .openInNewWindow(let url):
-            recentFolders.openListed(url) { [weak self] in self?.requestRecent($0, separately: separately) }
+            recentFolders.openListed(url) { [weak self] in self?.requestRecent($0) }
         }
     }
 
     /// Reopens the canonical repository the user chose in Open Recent, the Dock menu,
     /// or the folder chooser. A recent folder follows the usual native folder path.
-    private func requestRecent(_ url: URL, into window: BrowserWindowController? = nil, separately: Bool = false) {
+    private func requestRecent(_ url: URL, into window: BrowserWindowController? = nil) {
         guard !isQuitting else { return }
         guard let repository = PresentPlan.repositoryURL(url.absoluteString) else {
-            return request(url, into: window, separately: separately)
+            return request(url, into: window)
         }
         recheckChangedRuntime()
         let plan = PresentPlan(kind: .repository, repository: repository, link: repository)
-        guard !openEntered(plan, separately: separately) else { return }
+        guard !openEntered(plan) else { return }
         _ = selection.setupForOpening(repository)
-        if selection.waitingFolders.contains(repository) {
-            waitingRecentRepositories.insert(repository)
-            if separately { waitingSeparateWindows.insert(repository) }
-        }
+        if selection.waitingFolders.contains(repository) { waitingRecentRepositories.insert(repository) }
         if selection.droppedLinks > 0 { showNextLinkModal() }
         if !selection.isBusy { showRuntimeSettings() }
     }
@@ -861,17 +882,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openReleased(selection.takeWaitingFolders())
     }
 
-    /// Opens the folders that waited for a runtime, keeping each request's placement.
+    /// Opens the folders that waited for a runtime, each in the window it was asked to
+    /// open in, if one was named and is still open.
     private func openReleased(_ folders: [URL]) {
-        let separateWindows = waitingSeparateWindows
-        waitingSeparateWindows.removeAll()
-        for (folder, targetWindow) in waitingWindows.release(folders) {
-            let separately = separateWindows.contains(folder)
-            let window = separately ? nil : targetWindow
+        for (folder, window) in waitingWindows.release(folders) {
             if waitingRecentRepositories.remove(folder) != nil {
-                requestRecent(folder, into: window, separately: separately)
+                requestRecent(folder, into: window)
             } else {
-                request(folder, into: window, separately: separately)
+                request(folder, into: window)
             }
         }
     }
@@ -1179,7 +1197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Offers to restart the open servers that `current`'s executable started at another
     /// version. Restarting them is the user's choice: a restart reloads every window. A
-    /// folder whose server never started, such as a restored one waiting for its tab, is
+    /// folder whose server never started, such as a restored one not yet brought forward, is
     /// not offered, and one waiting for a runtime starts from `current` anyway.
     ///
     /// The offer is a sheet, not `runModal`: this runs inside a main-actor task, and a

@@ -42,23 +42,15 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
     public var kindLabel: String
     /// "fdu • Metabrowser", the plain title.
     public var title: String
-    /// The GitHub repository the folder is a checkout of, by its `origin`, or a mirror
-    /// mirrors: `https://github.com/<owner>/<repo>` in lowercase, as `metab` names a
-    /// link's repository (`PresentPlan.repository`). Nil off github.com, and until the
-    /// server answers. A link's new mirror window joins a checkout's window by it
-    /// (`CheckoutWindow`).
-    public var repository: URL?
 
     public init(
-        shortName: String, fullName: String, kind: FolderKind, kindLabel: String, title: String,
-        repository: URL? = nil
+        shortName: String, fullName: String, kind: FolderKind, kindLabel: String, title: String
     ) {
         self.shortName = shortName
         self.fullName = fullName
         self.kind = kind
         self.kindLabel = kindLabel
         self.title = title
-        self.repository = repository
     }
 
     enum CodingKeys: String, CodingKey {
@@ -67,7 +59,6 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
         case kind
         case kindLabel = "kind_label"
         case title
-        case repository
     }
 
     /// The plain title for `shortName`, worded as the server words it.
@@ -108,8 +99,7 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
         let fullName = (url.host(percentEncoded: false) ?? "") + path
         return FolderIdentity(
             shortName: name, fullName: fullName, kind: .mirror, kindLabel: FolderKind.mirror.label,
-            title: title(for: name),
-            repository: url)
+            title: title(for: name))
     }
 
     /// `path` with the home folder written `~`, as `metab` writes it.

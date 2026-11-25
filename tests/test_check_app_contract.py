@@ -193,7 +193,7 @@ def test_a_copy_of_what_the_check_reads_passes(tmp_path: Path) -> None:
         ),
         (
             _replace(GOLDEN, "--no-open --exit-on-eof --host", "--exit-on-eof --no-open --host"),
-            "`serve/folder`: runs `metab <ROOT>/served --exit-on-eof --no-open",
+            "`serve/folder`: runs `METABROWSER_RECORD_RECENT=0 metab <ROOT>/served --exit-on-eof",
         ),
         (
             _replace(GOLDEN, "  [dev build: <STATE>]\n", "  [dev build: <STATE>]\nPlugins: text\n"),
@@ -668,8 +668,8 @@ def test_a_name_or_an_order_is_no_part_of_the_contract(tmp_path: Path) -> None:
     )
     unchanged(
         declaration.replace(
-            '["short_name", "full_name", "kind", "kind_label", "title", "repository"]',
-            '["repository", "title", "kind_label", "kind", "full_name", "short_name"]',
+            '["short_name", "full_name", "kind", "kind_label", "title"]',
+            '["title", "kind_label", "kind", "full_name", "short_name"]',
         )
     )
 

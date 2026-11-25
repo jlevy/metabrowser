@@ -1,5 +1,5 @@
-// Measures what a folder tab's web view costs in WebKit and what discarding it returns:
-// the basis of TabDiscardPolicy.defaultLiveBackgroundTabs. Start a server, then:
+// Measures what a folder page's web view costs in WebKit and what discarding it returns:
+// the basis of PageDiscardPolicy.defaultLiveBackgroundPages. Start a server, then:
 //
 //   metab FOLDER --no-open --port 8650
 //   swift apps/macos/scripts/measure-web-views.swift http://127.0.0.1:8650/view/ [views]
@@ -8,7 +8,7 @@
 // one's WebContent process and footprint (`proc_pid_rusage`), whether that process
 // ends once its view is released, whether a never-loaded view has a process at all,
 // and how long a fresh view takes to load the page from the same, warm server: what a
-// discarded tab costs when it is shown again. The process id comes from WebKit's
+// discarded page costs when it is shown again. The process id comes from WebKit's
 // `_webProcessIdentifier`, a private property read only here, never by the app.
 import AppKit
 import Darwin
