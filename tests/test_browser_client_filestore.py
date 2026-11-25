@@ -750,21 +750,40 @@ def test_index_progress_updates_by_file_count_bucket() -> None:
     assert "indexProgressBucket(meta.indexed_files)" in fn_block
 
 
-def test_view_header_eyebrow_dims_the_root_and_titles_the_item() -> None:
+def test_view_header_eyebrow_links_the_root_and_titles_the_item() -> None:
     """The eyebrow carries the address of what holds the item; the item is the title.
 
-    The served root is a dimmed prefix because it is identical on every page — context
-    rather than content. Everything from the root slash rightward navigates. The item's own
-    name is the title under the eyebrow, not a crumb, so the address has no segment that
-    reopens the page it is on (docs/design-system.md, "View Headers").
+    The served root's whole address is one crumb to the root: the directories above it
+    are not open, so none is a crumb of its own. Each folder under the root that holds the
+    item is its own crumb, and every crumb is followed by a slash that is text, so the
+    address reads `~/wrk/project / docs / specs /` and a slash ends it. On the root's own
+    page the eyebrow is the directory that holds the root, dimmed, and opens nothing. The
+    item's own name is the title under the eyebrow, not a crumb, so the address has no
+    segment that reopens the page it is on (docs/design-system.md, "View Headers").
     """
 
     app = _read_app_js()
     js = _read_view_header_js()
     fn_start = js.index("function headerEyebrowAddressHtml(path)")
     fn_block = js[fn_start : js.index("\n    }\n", fn_start)]
-    assert 'class="file-header-root"' in fn_block
-    assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in fn_block
+    # The root's address is the root's crumb, its tip its own text, which the shell shows
+    # only while a long root is cut short; no "/" control of its own stands beside it.
+    assert (
+        'class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} '
+        'data-tip-text="${address}"><bdi>${address}</bdi></button>${separator}'
+    ) in fn_block
+    assert "const address = esc(root);" in fn_block
+    assert ">/</button>" not in fn_block
+    assert "Served root" not in fn_block
+    # Every crumb is followed by its separator, which is text and never a control.
+    assert """const separator = '<span class="folder-crumb-sep">/</span>';""" in fn_block
+    assert fn_block.count("</button>${separator}") == 2
+    # At the root, the directory that holds it is dimmed text, and no crumb.
+    at_root = fn_block[
+        fn_block.index("if (segments.length === 0) {") : fn_block.index("const separator")
+    ]
+    assert 'class="file-header-root"' in at_root
+    assert "<button" not in at_root
     # Every crumb is an owner-marked control; the click delegate ignores unmarked
     # copies a document could write (tests/dom/shell-delegate-owner-session.js).
     assert fn_block.count("${ownedControlAttr()}") == 2
@@ -790,7 +809,7 @@ def test_view_header_eyebrow_dims_the_root_and_titles_the_item() -> None:
     assert (
         "const name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));" in fn_block
     )
-    assert 'data-tip-text="${name}">${name}</button>' in fn_block
+    assert 'data-tip-text="${name}">${name}</button>${separator}' in fn_block
     assert "displayPath(walked)" not in fn_block
     assert "title=" not in fn_block
 
@@ -798,7 +817,7 @@ def test_view_header_eyebrow_dims_the_root_and_titles_the_item() -> None:
 def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
     """A squeezed address loses width at the start, and shows that it did.
 
-    The dimmed root prefix is the first to narrow, then the directories,
+    The root's address is the first to narrow, then the directories,
     then the folder that holds the item — the one its title is in. Every
     part that can narrow ellipsizes, so the eyebrow's clip never cuts a crumb
     mid-word, and nothing after the run is pushed outside the clipped box
@@ -817,12 +836,12 @@ def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
         assert match is not None, f"{selector} declares no shrink weight"
         return float(match.group(1))
 
-    root = shrink(".file-header-root")
+    # The root's crumb, and on the root's own page the dimmed directory that holds it,
+    # share one rule, so they narrow the same way.
+    root = shrink(".file-header-root,\n.folder-breadcrumb .folder-crumb-root")
     directory = shrink(".folder-breadcrumb .folder-crumb")
     current = shrink(".folder-breadcrumb .folder-crumb:not(.folder-crumb-root):last-of-type")
-    structure = shrink(
-        ".folder-breadcrumb .folder-crumb-root,\n.folder-breadcrumb .folder-crumb-sep"
-    )
+    structure = shrink(".folder-breadcrumb .folder-crumb-sep")
 
     assert root > directory > current > structure == 0
 
@@ -874,8 +893,10 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
     # The end is cut, not the start, and the same for a mirror's name in both headings:
     # a path's own rule reverses the direction, and a mirror's root undoes that.
     assert "direction" not in note + text
-    assert "direction: ltr;" in block(".mirror-source .file-header-root")
-    assert "direction: rtl;" in block(".file-header-root")
+    assert "direction: ltr;" in block(
+        ".mirror-source .file-header-root,\n.mirror-source .folder-crumb-root"
+    )
+    assert "direction: rtl;" in block(".file-header-root,\n.folder-breadcrumb .folder-crumb-root")
     # In the design's tokens: muted, at the header's size, which it inherits as the header's
     # other metadata does, and no color of its own (docs/design-system.md, "Type Scale").
     assert "color: var(--muted);" in note and "font-size" not in note
