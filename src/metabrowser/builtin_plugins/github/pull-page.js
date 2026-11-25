@@ -52,7 +52,7 @@ import {
   setupHelp,
   unavailableText,
 } from "./copy.js";
-import { CHANGES_DRAWING, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
+import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
 import {
   createStackIndex,
   memberRoute,
@@ -278,6 +278,9 @@ const PULL_TABS = Object.freeze([
 // guide exists, and counts only a top-level fence, so a description that shows the format inside
 // another fence gets a tab that says there is no guide (arch-github-pull-requests.md, "Guided Review").
 const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-review[ \t]*$/m;
+// The same hint for a native stack's guide, a `stack-review` block, which the stack's page
+// reads (`stack_guided_review` in guided_review.py) and Conversation names in its place.
+const STACK_GUIDE_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*stack-review[ \t]*$/m;
 
 /**
  * The tab a route shows, by its id in `PULL_TABS`. `/pull/<n>` is the pull request's front
@@ -5822,6 +5825,7 @@ export function mountPullPage(container, ctx, mb) {
    * @param {PullModel} model
    */
   function paintStacks(model) {
+    paintStackGuideLinks();
     const memberships =
       model.pull === null ? [] : stackMembership(stackIndex, stackIdentity, number);
     const key = JSON.stringify([stackIdentity, model.tab]);
@@ -6749,6 +6753,7 @@ export function mountPullPage(container, ctx, mb) {
       () =>
         descriptionCard(pull, textBlock("body", pull.text, pull.truncated), [
           ...(GUIDED_FENCE.test(pull.text) ? [guideCard(pull.text)] : []),
+          ...(STACK_GUIDE_FENCE.test(pull.text) ? [stackGuideCard()] : []),
         ]),
     );
     /** @type {Map<string, {node: HTMLElement, pending: boolean}>} */
@@ -8228,6 +8233,45 @@ export function mountPullPage(container, ctx, mb) {
     ]);
   }
 
+  /** Where Conversation's card about a stack's guide links the stacks that read it, and
+   * the stacks it links, as JSON: filled when the card is drawn and again as the stacks
+   * this pull request is a member of become known (`paintStacks`).
+   * @type {{slot: HTMLElement, key: string} | null} */
+  let stackGuideLinks = null;
+
+  /**
+   * Where Conversation's description had its stack-review block: the server renders the
+   * description without it (`render_part`), and this says the guide is read on the page of
+   * the stack this pull request is a member of, whose front page shows it.
+   */
+  function stackGuideCard() {
+    const slot = h("span", { class: "github-pull-stack-guide-links" });
+    stackGuideLinks = { slot, key: "" };
+    paintStackGuideLinks();
+    return notice(null, ["This description has a stack's guided review. ", slot]);
+  }
+
+  /** Link each stack this pull request is a member of from the stack guide's card. */
+  function paintStackGuideLinks() {
+    const shownLinks = stackGuideLinks;
+    if (shownLinks === null) {
+      return;
+    }
+    const stacks = stackMembership(stackIndex, stackIdentity, number).map((stack) => stack.number);
+    const key = JSON.stringify(stacks);
+    if (key === shownLinks.key) {
+      return;
+    }
+    shownLinks.key = key;
+    shownLinks.slot.replaceChildren(
+      ...stacks.flatMap((id, at) => {
+        const link = stackPageLink(id);
+        link.append(`Open ${stackLabel(id)}`);
+        return at === 0 ? [link] : [" · ", link];
+      }),
+    );
+  }
+
   /**
    * The guide's introduction: the description's card, as Conversation draws it, without
    * its guided-review block. It is drawn again only when its text or its render changes.
@@ -8289,8 +8333,10 @@ export function mountPullPage(container, ctx, mb) {
         if (guided !== mount || shown === null) {
           return;
         }
+        /** @type {import("./guided-review.js").GuideSubject} */
+        const subject = { kind: "pull", number };
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
-        mount.view = mountGuidedReview(host, introduction, number, {
+        mount.view = mountGuidedReview(host, introduction, subject, {
           open: openChangedFile,
           // Another pull request a step cites, or a file in its Changes, opened as a stack
           // member's link opens it.
@@ -8327,21 +8373,9 @@ export function mountPullPage(container, ctx, mb) {
              *   image_route?: string, rendered_route?: string}} pins
              */
             const at = (pins) => {
-              if (typeof pins.route === "string" && pins.merge_base !== null) {
-                // Another pull request's, which has no branch this page is on.
-                return {
-                  left: pins.merge_base,
-                  right: pins.head,
-                  route: pins.route,
-                  ...(typeof pins.image_route === "string"
-                    ? { image_route: pins.image_route }
-                    : {}),
-                  ...(typeof pins.rendered_route === "string"
-                    ? { rendered_route: pins.rendered_route }
-                    : {}),
-                  base_policy: /** @type {const} */ ("merge_base"),
-                  branch: null,
-                };
+              const cited = citedPullComparison(pins);
+              if (cited !== null) {
+                return cited;
               }
               const comparison = shown?.comparison ?? null;
               return comparison !== null &&

@@ -33,3 +33,27 @@ export const DOCS_DRAWING = Object.freeze({
  * take it.
  */
 export const CHANGES_DRAWING = Object.freeze({});
+
+/**
+ * The comparison a guided step's file of another pull request is drawn from, a
+ * `{pull, path}` reference's: that pull request's current one, whose routes the step's
+ * answer names, or null for pins that name no routes, which are the guide's own.
+ *
+ * @param {{merge_base: string | null, head: string, route?: string, image_route?: string,
+ *   rendered_route?: string}} pins
+ */
+export function citedPullComparison(pins) {
+  if (typeof pins.route !== "string" || pins.merge_base === null) {
+    return null;
+  }
+  // Another pull request's, which has no branch the page is on.
+  return {
+    left: pins.merge_base,
+    right: pins.head,
+    route: pins.route,
+    ...(typeof pins.image_route === "string" ? { image_route: pins.image_route } : {}),
+    ...(typeof pins.rendered_route === "string" ? { rendered_route: pins.rendered_route } : {}),
+    base_policy: /** @type {const} */ ("merge_base"),
+    branch: null,
+  };
+}

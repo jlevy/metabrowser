@@ -1,9 +1,12 @@
-"""Guided reviews of GitHub pull requests, and the collection format they carry.
+"""Guided reviews of GitHub pull requests and of their native stacks, and the collection
+format they carry.
 
 A guided review is an author's guide to the exact comparison of a cached pull request: a
 collection (`Collection`, contract `metabrowser.collection:Collection/v1`) in a
-`guided-review` fence of the description. The format is general and lives here only while
-guided reviews are its one carrier (docs/project/architecture/arch-collection-format.md).
+`guided-review` fence of the description. A stack's guide is the same record in a
+`stack-review` fence of a member's description, pinned to the stack's combined comparison
+(`stack_guided_review`). The format is general and lives here only while guided reviews
+are its one carrier (docs/project/architecture/arch-collection-format.md).
 """
 
 from __future__ import annotations
@@ -64,7 +67,7 @@ from metabrowser.git.process import (
     run_git_at,
 )
 from metabrowser.http_caching import store_tag
-from metabrowser.view_routes import format_commit_href, format_pull_href
+from metabrowser.view_routes import format_commit_href, format_pull_href, format_stack_href
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -92,6 +95,10 @@ _CONTRACT = Contract(
 )
 # Only block tokens matter. In particular, an example in another fence is not a guide.
 _MARKDOWN = MarkdownIt("commonmark").disable("inline")
+# The blocks a description may carry, one of each: the pull request's own guide, and the
+# guide of a native stack the pull request is a member of.
+GUIDE_FENCE: Final = "guided-review"
+STACK_FENCE: Final = "stack-review"
 
 # Each item hydrates at most as many paths as the measured first paint of Changes
 # (INITIAL_PULL_FILES in sidekick.py), in one run of the diff source. A ranged reference
@@ -395,22 +402,22 @@ def _entry_count(entries: list[CollectionItem | CollectionGroup]) -> int:
     )
 
 
-def _guide_fence(body: str) -> tuple[Token, list[str]] | None:
-    """The description's one top-level guided-review fence and the body's lines, or ``None``.
+def _guide_fence(body: str, name: str = GUIDE_FENCE) -> tuple[Token, list[str]] | None:
+    """The description's one top-level fence named *name* and the body's lines, or ``None``.
 
     Raises :class:`GuideError` for two such fences or one that is not closed.
     """
-    if "guided-review" not in body:
+    if name not in body:
         return None
     fences = [
         token
         for token in _MARKDOWN.parse(body)
-        if token.type == "fence" and token.level == 0 and token.info.strip() == "guided-review"
+        if token.type == "fence" and token.level == 0 and token.info.strip() == name
     ]
     if not fences:
         return None
     if len(fences) != 1:
-        raise GuideError("Use one guided-review block in the pull request description.")
+        raise GuideError(f"Use one {name} block in the pull request description.")
     fence = fences[0]
     mapped = fence.map
     assert mapped is not None
@@ -419,68 +426,111 @@ def _guide_fence(body: str) -> tuple[Token, list[str]] | None:
     if mapped[1] <= mapped[0] + 1 or not re.fullmatch(
         rf" {{0,3}}{marker}{{{len(fence.markup)},}}[ \t]*", lines[mapped[1] - 1]
     ):
-        raise GuideError("Close the guided-review block with a matching code fence.")
+        raise GuideError(f"Close the {name} block with a matching code fence.")
     return fence, lines
 
 
-def _read_description(body: str) -> tuple[Collection | None, str]:
-    """The guide in the raw PR description, and the description without its block.
+@dataclass(frozen=True, slots=True)
+class _Description:
+    """What a description carries: each block's guide, or why it is none, and the
+    description without the blocks that read as guides."""
 
-    Without a guide the description is *body* itself. Raises :class:`GuideError` for a
-    block that is not a guide, which is then the description's own text.
+    guide: Collection | None
+    message: str | None
+    stack: Collection | None
+    stack_message: str | None
+    introduction: str
+
+
+def carries_guide(body: str) -> bool:
+    """Whether *body* may hold a guide's block of either kind: the cheap test before a parse."""
+    return GUIDE_FENCE in body or STACK_FENCE in body
+
+
+def _read_description(body: str) -> _Description:
+    """The guides in the raw PR description, each or why it is none, and the description
+    without the blocks that are guides.
+
+    Without a block the description is *body* itself. A block that is not a guide stays in
+    the introduction, so its author sees what they wrote, and does not keep the other block
+    from being read.
     """
-    found = _guide_fence(body)
-    if found is None:
-        return None, body
-    fence, lines = found
-    guide = _collection(fence)
-    assert fence.map is not None
-    start, end = fence.map
-    return guide, "\n".join([*lines[:start], *lines[end:]]).strip("\n")
+    found: dict[str, tuple[Collection | None, str | None]] = {}
+    cut: list[tuple[int, int]] = []
+    # The body's lines as a fence found them, which a cut indexes.
+    lines: list[str] = []
+    for name in (GUIDE_FENCE, STACK_FENCE):
+        try:
+            fenced = _guide_fence(body, name)
+            if fenced is None:
+                found[name] = (None, None)
+                continue
+            fence, lines = fenced
+            found[name] = (_collection(fence, name), None)
+        except GuideError as exc:
+            found[name] = (None, str(exc))
+            continue
+        assert fence.map is not None
+        cut.append((fence.map[0], fence.map[1]))
+    introduction = body
+    if cut:
+        kept = [line for at, line in enumerate(lines) if not any(a <= at < b for a, b in cut)]
+        introduction = "\n".join(kept).strip("\n")
+    (guide, message), (stack, stack_message) = found[GUIDE_FENCE], found[STACK_FENCE]
+    return _Description(guide, message, stack, stack_message, introduction)
 
 
 def without_guide(body: str) -> str:
-    """*body* without its guided-review block: the description as the guide's introduction.
+    """*body* without its guide blocks: the description as the guide's introduction.
 
-    Only a block :func:`parse_guide` reads is taken out. A description whose block cannot
-    be read keeps it, so its author sees what they wrote.
+    Only a block :func:`parse_guide` or :func:`parse_stack_guide` reads is taken out. A
+    block that cannot be read stays, so its author sees what they wrote.
     """
-    try:
-        return _read_description(body)[1]
-    except GuideError:
-        return body
+    return _read_description(body).introduction
 
 
 def parse_guide(body: str) -> Collection | None:
     """Read one top-level fenced SoftSchema artifact from the raw PR description."""
-    return _read_description(body)[0]
+    read = _read_description(body)
+    if read.message is not None:
+        raise GuideError(read.message)
+    return read.guide
 
 
-def _collection(fence: Token) -> Collection:
-    """The guide one guided-review fence holds, or :class:`GuideError` for why it is none."""
+def parse_stack_guide(body: str) -> Collection | None:
+    """Read the description's one top-level `stack-review` block, as :func:`parse_guide`
+    reads its guide."""
+    read = _read_description(body)
+    if read.stack_message is not None:
+        raise GuideError(read.stack_message)
+    return read.stack
+
+
+def _collection(fence: Token, name: str = GUIDE_FENCE) -> Collection:
+    """The guide one fence named *name* holds, or :class:`GuideError` for why it is none."""
     try:
         document: object = parse_yaml_text(fence.content)
     except ValueError as exc:
-        raise GuideError("The guided-review block contains invalid YAML.") from exc
+        raise GuideError(f"The {name} block contains invalid YAML.") from exc
     if not isinstance(document, dict) or set(document) != {"softschema", "collection"}:
-        raise GuideError("The guided-review block needs softschema metadata and a collection.")
+        raise GuideError(f"The {name} block needs softschema metadata and a collection.")
     if document["softschema"] != {
         "contract": CONTRACT_ID,
         "envelope": _CONTRACT.envelope_key,
         "status": _CONTRACT.status,
     }:
-        raise GuideError("The guided-review block needs the enforced Collection/v1 contract.")
+        raise GuideError(f"The {name} block needs the enforced Collection/v1 contract.")
     refusal = _outside_shape(document["collection"])
     if refusal is not None:
         raise GuideError(refusal)
-    result = validate_artifact(Path("guided-review"), contract=_CONTRACT, document=document)
+    result = validate_artifact(Path(name), contract=_CONTRACT, document=document)
     if not result.ok:
-        raise GuideError(_schema_refusal(result.structural.errors[0].get("path")))
+        raise GuideError(_schema_refusal(result.structural.errors[0].get("path"), name))
     try:
         return Collection.model_validate(result.values)
     except ValidationError as exc:
         location = ".".join(str(part) for part in exc.errors()[0]["loc"] if part not in _ENTRY_TAGS)
-        raise GuideError(f"Invalid guided-review reference at {location}.") from exc
+        raise GuideError(f"Invalid {name} reference at {location}.") from exc
 
 
 # The refusal of a guide past MAX_ITEMS. No one list's bound states the total, so the
@@ -567,7 +617,7 @@ def _closed(value: object, model: type[_Model]) -> TypeGuard[dict[object, object
     return isinstance(value, dict) and value.keys() <= model.model_fields.keys()
 
 
-def _schema_refusal(path: object) -> str:
+def _schema_refusal(path: object, name: str = GUIDE_FENCE) -> str:
     """The refusal of a block the v1 schema does not admit, at *path* when there is one.
 
     *path* is a location in the collection, as softschema's error record lists it: only
@@ -575,7 +625,7 @@ def _schema_refusal(path: object) -> str:
     object, so the message is still the code's own words.
     """
     where = f" at {'.'.join(str(part) for part in path)}" if isinstance(path, list) and path else ""
-    return f"The guided-review block does not satisfy the v1 SoftSchema{where}."
+    return f"The {name} block does not satisfy the v1 SoftSchema{where}."
 
 
 @dataclass(frozen=True, slots=True)
@@ -583,8 +633,11 @@ class _Read:
     revision: str
     guide: Collection | None
     message: str | None
-    # The description the page renders: without its block only when the block is a guide.
+    # The description the page renders: without each block only when the block is a guide.
     introduction: str
+    # The description's stack guide (`stack-review`), or why its block is none.
+    stack: Collection | None = None
+    stack_message: str | None = None
     # Each note's inert HTML, by its text, once it rendered (`_rendered_note`), within
     # _MAX_KEPT_NOTE_CHARS. Only the event loop reads or writes it.
     notes: dict[str, str] = field(default_factory=dict[str, str])
@@ -619,11 +672,15 @@ def _reading(key: tuple[str, str, int], revision: str, body: str) -> _Read:
         # Then read the cache again: the parse may have been of another revision, or failed.
         pending.wait()
     try:
-        try:
-            guide, introduction = _read_description(body)
-            hit = _Read(revision, guide, None, introduction)
-        except GuideError as exc:
-            hit = _Read(revision, None, str(exc), body)
+        read = _read_description(body)
+        hit = _Read(
+            revision,
+            read.guide,
+            read.message,
+            read.introduction,
+            read.stack,
+            read.stack_message,
+        )
         with _READS_LOCK:
             if key not in _READS and len(_READS) >= _MAX_READS:
                 _READS.pop(next(iter(_READS)))
@@ -638,7 +695,7 @@ def _reading(key: tuple[str, str, int], revision: str, body: str) -> _Read:
 def _kept_read(key: tuple[str, str, int], revision: str, body: str) -> _Read:
     """The kept parse of a readable guide, or a description without one. Blocking.
 
-    Raises :class:`GuideError` when the description's block is not a guide.
+    Raises :class:`GuideError` when the description's guided-review block is not a guide.
     """
     hit = _reading(key, revision, body)
     if hit.message is not None:
@@ -653,7 +710,24 @@ def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collectio
 
 def guide_introduction(key: tuple[str, str, int], revision: str, body: str) -> str:
     """:func:`without_guide` of *body*, from the parse :func:`read_guide` keeps. Blocking."""
-    return body if "guided-review" not in body else _reading(key, revision, body).introduction
+    return _reading(key, revision, body).introduction if carries_guide(body) else body
+
+
+def stack_guide_carrier(
+    home: Path, slug: str, members: Sequence[tuple[int, PullRecord | None, str | None]]
+) -> tuple[int, str] | None:
+    """The member whose description carries the stack's guide, and its record revision: the
+    top-most of *members*, `(number, record, revision)` bottom first, whose description
+    has a `stack-review` block, readable or not, so a block that cannot be read is found and
+    says why. ``None`` when no member's cached description has one. Blocking: a description
+    is parsed only when it names the block, and that parse is kept as a guide's is."""
+    for number, record, revision in reversed(members):
+        if record is None or revision is None or STACK_FENCE not in record.pull.body:
+            continue
+        hit = _reading((str(home), slug, number), revision, record.pull.body)
+        if hit.stack is not None or hit.stack_message is not None:
+            return number, revision
+    return None
 
 
 def _excerpt(
@@ -1258,9 +1332,18 @@ async def _pins_compare(location: GitLocation, pinned: CollectionComparison) -> 
 
 
 async def _staleness(
-    store: PublishedSource | None, record: PullRecord, guide: Collection, *, newer: bool
+    store: PublishedSource | None,
+    current: tuple[str | None, str],
+    guide: Collection,
+    *,
+    newer: bool,
+    name: str = GUIDE_FENCE,
 ) -> dict[str, object]:
-    """What a stale guide was written for, what the pull request is now, and what changed.
+    """What a stale guide was written for, what its comparison is now, and what changed.
+
+    *current* is that comparison's merge base, or ``None`` when the carrier has no
+    comparison, and its head: a pull request's, or a stack's pair. *name* is the block's,
+    which a refusal names.
 
     ``changed_paths`` are the guide's referenced paths whose content differs between the
     guide's comparison and the current one, at either end, compared path by path with no
@@ -1269,18 +1352,17 @@ async def _staleness(
     force push. A step that cites no changed path cites no file whose content changed. Its
     excerpts are the current diff's all the same, which can draw a file another way, as
     when the diff now pairs it with a deleted file as a rename. With *newer*, GitHub reports
-    a head this copy lacks, so what changed is unknown: the commits since are this copy's,
-    and neither list is read.
+    a head this copy lacks, for the pull request or for a member of the stack, so what
+    changed is unknown: the commits since are this copy's, and neither list is read.
 
     Raises :class:`GuideError` for pins that do not name a comparison: a ``merge_base``
     the store has that is not an ancestor of the guide's ``head``.
     """
-    comparison = record.comparison
     pinned = guide.comparison
-    head = record.pull.head.sha
+    base, head = current
     answer: dict[str, object] = {
         "guide": pinned.model_dump(),
-        "current": {"merge_base": comparison.base if comparison else None, "head": head},
+        "current": {"merge_base": base, "head": head},
         "github_newer": newer,
         "history": "unavailable",
         "commit_count": None,
@@ -1297,17 +1379,15 @@ async def _staleness(
         else:
             answer.update(await _commits_since(location, pinned.head, head))
         if answer["history"] != "unavailable" and await _pins_compare(location, pinned) is False:
-            raise GuideError(
-                "The guided-review block's merge_base is not the merge base of its head."
-            )
+            raise GuideError(f"The {name} block's merge_base is not the merge base of its head.")
         if newer:
             return answer
         changed = (
             await _paths_between(location, pinned.head, head) if pinned.head != head else set()
         )
-        if changed is not None and comparison is not None and pinned.merge_base != comparison.base:
-            base = await _paths_between(location, pinned.merge_base, comparison.base)
-            changed = None if base is None else changed | base
+        if changed is not None and base is not None and pinned.merge_base != base:
+            moved = await _paths_between(location, pinned.merge_base, base)
+            changed = None if moved is None else changed | moved
     except GitError:
         return answer
     if changed is not None:
@@ -1443,36 +1523,76 @@ async def guided_review(
         or (comparison is not None and guide.comparison.merge_base != comparison.base)
     )
     try:
-        staleness = await _staleness(published, record, guide, newer=newer) if stale else None
+        staleness = (
+            await _staleness(
+                published,
+                (comparison.base if comparison else None, record.pull.head.sha),
+                guide,
+                newer=newer,
+            )
+            if stale
+            else None
+        )
     except GuideError as exc:
         return {**identity, "state": "invalid", "message": str(exc)}
+    if published is None or comparison is None:
+        # A stale guide's diagnostics ride on every answer, a refusal's too, for an agent
+        # that brings the guide up to date.
+        stale_part = {} if staleness is None else {"stale": staleness}
+        return {**identity, "state": "comparison_unavailable", **stale_part}
+    carrier = _Carrier(
+        store=published,
+        home=served.home,
+        slug=served.slug,
+        head=comparison.head,
+        # The record's own comparison is the pull request's kept manifest (pull_manifest.py),
+        # the one Changes reads.
+        manifest=partial(shared_pull_manifest, published, number, comparison.base, comparison.head),
+        href=partial(format_pull_href, number, "files"),
+        repository=repository,
+        pull=number,
+    )
+    return await _step_answer(
+        identity,
+        _Shown(read, guide, staleness, number, record.pull.html_url),
+        carrier,
+        {"merge_base": comparison.base, "head": comparison.head},
+        step_number,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Shown:
+    """A guide being answered: its kept parse, the guide, what is out of date, and the
+    member whose description carries it, whose page its notes' links resolve against."""
+
+    read: _Read
+    guide: Collection
+    staleness: dict[str, object] | None
+    number: int
+    link_base: str
+
+
+async def _step_answer(
+    identity: dict[str, object],
+    shown: _Shown,
+    carrier: _Carrier,
+    comparison: dict[str, object],
+    step_number: int,
+) -> dict[str, object]:
+    """One step of *shown*'s guide and only its excerpts, read against *carrier*, whose
+    current comparison is *comparison*: a pull request's or a stack's."""
+    guide = shown.guide
+    staleness = shown.staleness
     # A stale guide's diagnostics ride on every answer, a refusal's too, for an agent that
     # brings the guide up to date; the page says only that the guide may not match.
     diagnostics: dict[str, object] = {} if staleness is None else {"stale": staleness}
-    if published is None or comparison is None:
-        return {**identity, "state": "comparison_unavailable", **diagnostics}
     steps = guide.flat_items()
     if step_number > len(steps):
         return {**identity, "state": "step_not_found", **diagnostics}
     step = steps[step_number - 1]
     try:
-        references = await _step_references(
-            _Carrier(
-                store=published,
-                home=served.home,
-                slug=served.slug,
-                head=comparison.head,
-                # The record's own comparison is the pull request's kept manifest
-                # (pull_manifest.py), the one Changes reads.
-                manifest=partial(
-                    shared_pull_manifest, published, number, comparison.base, comparison.head
-                ),
-                href=partial(format_pull_href, number, "files"),
-                repository=repository,
-                pull=number,
-            ),
-            step,
-        )
+        references = await _step_references(carrier, step)
     except (DiffSourceError, GitError):
         return {**identity, "state": "comparison_unavailable", **diagnostics}
     outline, groups = _outline(guide)
@@ -1484,7 +1604,7 @@ async def guided_review(
         if isinstance(opened, CollectionGroup) and groups.index(group) == step_number - 1
         else None
     )
-    link_base = record.pull.html_url
+    read, number, link_base = shown.read, shown.number, shown.link_base
     note_html, note_refusal = await _rendered_note(read, step.note, number, link_base)
     group_note_html, group_note_refusal = (
         (None, None)
@@ -1495,8 +1615,8 @@ async def guided_review(
         **identity,
         "state": "ready" if staleness is None else "stale",
         **diagnostics,
-        # The comparison the excerpts are read from: the pull request's current one.
-        "comparison": {"merge_base": comparison.base, "head": comparison.head},
+        # The comparison the excerpts are read from: the carrier's current one.
+        "comparison": comparison,
         "step_count": len(steps),
         # Every step's title, so the page names each step it can move to.
         "titles": [item.title for item in steps],
@@ -1523,3 +1643,83 @@ async def guided_review(
         # may show this tab before any description has loaded KPress's stylesheets.
         "assets": await asyncio.to_thread(kpress_adapter.document_stylesheets),
     }
+
+
+async def stack_guided_review(
+    repository: ListedRepository | None,
+    published: PublishedSource | None,
+    reader: str | None,
+    stack: int,
+    step_number: int,
+) -> dict[str, object]:
+    """Return the first or selected step of native stack *stack*'s guide and only its
+    excerpts, in the envelope a pull request's guide has.
+
+    The guide is the `stack-review` block of the top-most member whose description has one
+    (:func:`stack_guide_carrier`), and the answer names that member as ``carrier`` and its
+    record's revision as ``record_revision``. Its references are read against the stack's
+    combined comparison, the one its page's Files, Docs, and Changes draw, and its pins
+    against the stack's pair: the bottom member's merge base and the top member's head. A
+    stack this copy cannot pair is `stack_unavailable`, with the stack route's ``reason``,
+    and one with a member not read yet is `not_cached`, since that member may carry the
+    guide. Runs no ``gh`` and no fetch.
+    """
+    from metabrowser.builtin_plugins.github.pull_stack import combined, read_stack
+
+    identity: dict[str, object] = {"stack": stack, "carrier": None, "record_revision": None}
+    read = await read_stack(repository, published, stack, reader)
+    if read.reason is not None:
+        return {**identity, "state": "stack_unavailable", "reason": read.reason}
+    pair = read.pair
+    if pair is None or published is None:
+        return {**identity, "state": "not_cached"}
+    members = [(member.number, member.record, member.revision) for member in read.members]
+    found = await asyncio.to_thread(stack_guide_carrier, published.home, published.slug, members)
+    if found is None:
+        return {**identity, "state": "absent"}
+    number, revision = found
+    record = next(member.record for member in read.members if member.number == number)
+    assert record is not None
+    identity.update(carrier=number, record_revision=revision)
+    hit = await asyncio.to_thread(
+        _reading, (str(published.home), published.slug, number), revision, record.pull.body
+    )
+    if hit.stack is None:
+        if record.pull.body_truncated:
+            return {**identity, "state": "description_truncated"}
+        return {**identity, "state": "invalid", "message": hit.stack_message}
+    guide = hit.stack
+    # GitHub reports a head past a member's record: what changed is this copy's to say.
+    newer = any(member.moved for member in read.members)
+    stale = newer or guide.comparison.head != pair.head or guide.comparison.merge_base != pair.base
+    try:
+        staleness = (
+            await _staleness(
+                published, (pair.base, pair.head), guide, newer=newer, name=STACK_FENCE
+            )
+            if stale
+            else None
+        )
+    except GuideError as exc:
+        return {**identity, "state": "invalid", "message": str(exc)}
+
+    async def manifest() -> ResolvedManifest:
+        return (await combined(published, pair)).manifest
+
+    carrier = _Carrier(
+        store=published,
+        home=published.home,
+        slug=published.slug,
+        head=pair.head,
+        manifest=manifest,
+        href=partial(format_stack_href, stack, "changes"),
+        repository=repository,
+        stack=stack,
+    )
+    return await _step_answer(
+        identity,
+        _Shown(hit, guide, staleness, number, record.pull.html_url),
+        carrier,
+        {"merge_base": pair.base, "head": pair.head},
+        step_number,
+    )

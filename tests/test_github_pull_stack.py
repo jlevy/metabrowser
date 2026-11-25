@@ -138,13 +138,14 @@ def test_a_member_the_top_lacks_adds_no_file() -> None:
     [
         (b"/stack/7", (7, "", "")),
         (b"/stack/7/", (7, "", "")),
+        (b"/stack/7/guided", (7, "guided", "")),
         (b"/stack/7/files", (7, "files", "")),
         (b"/stack/7/docs", (7, "docs", "")),
         (b"/stack/7/changes", (7, "changes", "")),
         (b"/stack/7/changes/docs/a%20b.md", (7, "changes", "docs/a b.md")),
         (b"/stack/7/files/docs/a.md", None),
         (b"/stack/7/docs/a.md", None),
-        (b"/stack/7/guided", None),
+        (b"/stack/7/guided/docs/a.md", None),
         (b"/stack/7/conversation", None),
         (b"/stack/07", None),
         (b"/stack/7/changes/../x", None),
@@ -162,7 +163,8 @@ def test_the_stack_route_grammar(raw: bytes, route: Any) -> None:
 def test_format_stack_href_refuses_what_the_route_does_not_parse() -> None:
     for number, tab, file in (
         (0, "", ""),
-        (7, "guided", ""),
+        (7, "conversation", ""),
+        (7, "guided", "a.md"),
         (7, "files", "a.md"),
         (7, "changes", "../a"),
     ):

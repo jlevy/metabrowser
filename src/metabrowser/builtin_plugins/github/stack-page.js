@@ -3,11 +3,16 @@
 // The stack route (`GET stack`, pull_stack.py) answers the stack's members and its combined
 // comparison: from the bottom member's merge base to the top member's head, restricted to
 // the files some layer changes, with each file's layers. The page draws it with the diff
-// plugin's views, as a pull request's page does, in three tabs:
+// plugin's views, as a pull request's page does, in three tabs, and in a fourth when a
+// member's description carries the stack's guide:
 //
-// - **Files** (`/stack/<n>/files`), the front page until a stack has a guide: every file
-//   in the shell's changed-files tree, the Diff summary drawn open, each row with its
-//   layers. A file opens Changes there.
+// - **Guided Review** (`/stack/<n>/guided`), the front page when the stack has a guide: the
+//   guide's steps (guided-review.js), read against the stack's comparison
+//   (`guided-review?stack=`), opening on its first step, since no member's description
+//   introduces the stack.
+// - **Files** (`/stack/<n>/files`), the front page otherwise: every file in the shell's
+//   changed-files tree, the Diff summary drawn open, each row with its layers. A file opens
+//   Changes there.
 // - **Docs** (`/stack/<n>/docs`): the documents alone, drawn as a pull request's Docs draws
 //   them (`DOCS_DRAWING`, diff-drawing.js).
 // - **Changes** (`/stack/<n>/changes[/<path>]`): every file, as a pull request's Changes.
@@ -29,12 +34,14 @@
 // one stays beneath the status line, since the server keeps answering a pair it gave
 // (pull_stack_retained.py). `bodyPlan` decides what the body does with each answer, and a
 // file is scrolled to once, when the reader opens it, never again by a later answer.
+// Guided Review stays with it (`guideShown`): the guide is read again when the reader takes
+// the comparison offered, or when the description that carries it changes.
 //
 // tests/dom/github-stack-page-session.js runs the pure parts and the controller here from
 // the command line.
 
-import { CHANGES_DRAWING, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
-import { FAST_POLL_MS, h, isPlainClick, SLOW_POLL_MS } from "./pull-page.js";
+import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
+import { FAST_POLL_MS, h, isPlainClick, SLOW_POLL_MS, textRefusalNote } from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition } from "./pull-stacks.js";
 import { pullStateIcon } from "./pull-state.js";
 
@@ -50,8 +57,10 @@ export const ASK_BACKOFF_MS = Object.freeze([2000, 4000, 8000, 16000, SLOW_POLL_
 // no remedy, and the last answer read stays drawn beneath it.
 export const UNREADABLE = "Could not read this stack.";
 
-/** The tabs, in the order the bar shows them; their ids are the route's segments. */
+/** The tabs, in the order the bar shows them; their ids are the route's segments. Guided
+ * Review shows only for a stack with a guide, and leads, as the author's reading order. */
 export const STACK_TABS = Object.freeze([
+  Object.freeze({ id: "guided", label: "Guided Review" }),
   Object.freeze({ id: "files", label: "Files" }),
   Object.freeze({ id: "docs", label: "Docs" }),
   Object.freeze({ id: "changes", label: "Changes" }),
@@ -74,22 +83,52 @@ export const STACK_TABS = Object.freeze([
  *   totals: {files: number, additions: number | null, deletions: number | null, exact: boolean} | null,
  *   truncated: boolean,
  *   files: StackFile[],
- *   guide: number | null,
+ *   guide: {number: number, revision: string} | null,
  *   github_url: string | null,
  *   probe: {number: number, held: string | null, every_s: number} | null,
  * }} StackEnvelope
  */
 
 /**
- * The tab a route shows: its own, or the front page's, Files, since the page draws no
- * stack's Guided Review yet.
+ * @typedef {{number: number, revision: string}} StackGuide The member whose description
+ * carries the stack's guide, and the revision of its record.
+ */
+
+/**
+ * The guide the page shows: the stack's answer's while the stack is current, and the one
+ * it showed while the stack is pending or cannot be shown, as the comparison drawn stays
+ * then, so a member's push does not take Guided Review away while it is fetched.
+ *
+ * @param {StackGuide | null} kept The guide shown before this answer.
+ * @param {StackEnvelope | null} envelope
+ * @returns {StackGuide | null}
+ */
+export function guideShown(kept, envelope) {
+  if (envelope === null) {
+    return kept;
+  }
+  return envelope.state === "current" ? envelope.guide : (envelope.guide ?? kept);
+}
+
+/**
+ * The tab a route shows: its own, or the front page's, Guided Review when a member's
+ * description carries the stack's guide (`guideShown`) and Files otherwise. Before the
+ * stack is read, the front page shows none, so no tab is marked that the answer then moves
+ * from; Guided Review's own address shows Files for a stack with no guide.
  *
  * @param {string} tab The route's tab, "" for the front page.
- * @param {StackEnvelope | null} _envelope
- * @returns {"files" | "docs" | "changes"}
+ * @param {StackEnvelope | null} envelope
+ * @param {StackGuide | null} guide
+ * @returns {StackTab}
  */
-export function shownTab(tab, _envelope) {
-  return tab === "docs" || tab === "changes" ? tab : "files";
+export function shownTab(tab, envelope, guide) {
+  if (tab === "docs" || tab === "changes" || tab === "files") {
+    return tab;
+  }
+  if (envelope === null) {
+    return tab === "guided" ? "guided" : "";
+  }
+  return guide === null ? "files" : "guided";
 }
 
 /**
@@ -438,19 +477,22 @@ export function bodyOpened(body, file) {
 }
 
 /**
- * @typedef {{do: "wait"} | {do: "notice", text: string, retry: boolean} | {do: "keep"} | {do: "scroll", file: string} | {do: "mount", key: string, tab: "files" | "docs" | "changes", comparison: StackComparison}} BodyAction
+ * @typedef {{do: "wait"} | {do: "notice", text: string, retry: boolean} | {do: "keep"} | {do: "scroll", file: string} | {do: "mount", key: string, tab: "guided" | "files" | "docs" | "changes", comparison: StackComparison}} BodyAction
+ * @typedef {"" | "guided" | "files" | "docs" | "changes"} StackTab The tab the page shows, ""
+ * while the front page waits for the stack's answer to choose one.
  */
 
 /**
- * What the body does now, and the body once it has: `wait` before any answer, a `notice`
- * while nothing is drawn, `mount` the drawn comparison in the tab when that is not what is
- * mounted, `scroll` to a file the reader opened once the mount is ready, and otherwise
+ * What the body does now, and the body once it has: `wait` before any answer or a tab, a
+ * `notice` while nothing is drawn, `mount` the drawn comparison in the tab when that is
+ * not what is mounted (Guided Review reads its guide against the stack's comparison, and
+ * mounts again when the reader takes another), `scroll` to a file the reader opened once the mount is ready, and otherwise
  * `keep`, so an answer that changes nothing the body shows leaves the reader where they
  * are.
  *
  * @param {StackBody} body
  * @param {StackEnvelope | null} envelope
- * @param {"files" | "docs" | "changes"} tab
+ * @param {StackTab} tab
  * @param {number[]} failed
  * @returns {{action: BodyAction, body: StackBody}}
  */
@@ -472,6 +514,9 @@ export function bodyPlan(body, envelope, tab, failed) {
       action: { do: "notice", text, retry: envelope.state !== "absent" && failed.length > 0 },
       body: { ...body, shown: "", ready: false },
     };
+  }
+  if (tab === "") {
+    return { action: { do: "wait" }, body };
   }
   const key = JSON.stringify([tab, body.drawn.key]);
   if (key !== body.shown) {
@@ -814,7 +859,9 @@ export function mountStackPage(container, ctx, mb) {
   // The route's tab, "" for the front page, and the tab it shows, which the front page's
   // choice decides once the stack is read.
   let routeTab = typeof ctx.tab === "string" ? ctx.tab : "";
-  let tab = shownTab(routeTab, null);
+  /** The guide the page shows (`guideShown`). @type {StackGuide | null} */
+  let guide = null;
+  let tab = shownTab(routeTab, null, guide);
   /** @type {StackEnvelope | null} */
   let envelope = null;
   /** @type {string | null} */
@@ -825,6 +872,12 @@ export function mountStackPage(container, ctx, mb) {
   let shown = NO_BODY;
   /** @type {{dispose?: () => void, scrollToFile?: (path: string) => unknown} | null} */
   let handle = null;
+  /** The guide's view while Guided Review is drawn, told each revision of the description
+   * that carries the guide. @type {{show: (revision: string | null, moved: boolean) => void} | null} */
+  let guidedView = null;
+  /** The allowlist a guide's notes are inserted through, loaded with the first guide.
+   * @type {Promise<MetabrowserInertHtmlRuntime | null> | null} */
+  let inertReady = null;
   let resolveReady = () => {};
   /** @type {Promise<void>} */
   const ready = new Promise((resolve) => {
@@ -895,6 +948,7 @@ export function mountStackPage(container, ctx, mb) {
 
   function paintTabs() {
     for (const { id, anchor } of tabLinks) {
+      anchor.hidden = id === "guided" && guide === null;
       anchor.classList.toggle("active", tab === id);
       anchor.setAttribute("aria-selected", String(tab === id));
     }
@@ -1020,13 +1074,135 @@ export function mountStackPage(container, ctx, mb) {
   function disposeBody() {
     handle?.dispose?.();
     handle = null;
+    guidedView = null;
+  }
+
+  /**
+   * The stack's guide (guided-review.js): its steps, read against the stack's comparison
+   * (`guided-review?stack=`). A file a step cites opens in this page's Changes, and another
+   * pull request, or a file of it, in that pull request's page. A file the rendered route
+   * renders is drawn whole from *comparison*, the one this page drew, while that is the one
+   * the step was read at, or, a file of another pull request, from that one's.
+   *
+   * @param {StackComparison} comparison
+   * @param {() => boolean} owns Whether the body still shows what this was drawn for.
+   * @returns {Promise<ReturnType<import("./guided-review.js").mountGuidedReview> | null>} The
+   *   guide's view, which the caller tells the guide's revision, or null when the body moved on.
+   */
+  async function paintGuided(comparison, owns) {
+    const host = h(
+      "section",
+      { class: "github-pull-guided-review", "aria-label": "Guided Review" },
+      [
+        h(
+          "div",
+          { class: "mb-delayed-loading", role: "status", "aria-label": "Loading the guide" },
+          [h("div", { class: "recent-loading github-pull-loading", "aria-hidden": "true" })],
+        ),
+      ],
+    );
+    body.replaceChildren(host);
+    const { mountGuidedReview } = await import("./guided-review.js");
+    if (!owns()) {
+      return null;
+    }
+    inertReady ??= mb
+      .ensureAsset("inert-html")
+      .then(() => window.MetabrowserInertHtml ?? null)
+      .catch(() => null);
+    const prose = inertReady;
+    const view = mountGuidedReview(
+      host,
+      null,
+      { kind: "stack", number },
+      {
+        open: (path) => open({ number, tab: "changes", file: path, stack: true }),
+        openPull: (target, path) =>
+          open(
+            path === null
+              ? { number: target, tab: "" }
+              : { number: target, tab: "files", file: path },
+          ),
+        age: (iso) => {
+          const at = Date.parse(iso);
+          if (!Number.isFinite(at)) {
+            return h("span", {}, [iso]);
+          }
+          const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
+          return h(
+            "span",
+            {
+              class: `github-pull-age ${className}`,
+              "data-tip-text": mb.formatTimestamp(at / 1000),
+              "data-age-at": String(at),
+            },
+            [label],
+          );
+        },
+        shortCommit: (sha) => mb.shortCommit(sha),
+        loadStyles: (assets) =>
+          Promise.all([
+            mb.loadKpressAssets(
+              /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
+            ),
+            mb.ensureKindAssets("diff"),
+          ]),
+        loadDrawPatch: async () => {
+          const diff = await mb.plugins.load("diff");
+          return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
+        },
+        loadDrawDocument: async () => {
+          const diff = await mb.plugins.load("diff");
+          /**
+           * @param {{merge_base: string | null, head: string, route?: string,
+           *   image_route?: string, rendered_route?: string}} pins
+           */
+          const at = (pins) =>
+            citedPullComparison(pins) ??
+            (comparison.left === pins.merge_base && comparison.right === pins.head
+              ? diffComparison(comparison)
+              : null);
+          return {
+            draws: (pins) => at(pins) !== null,
+            mount(body, path, format, pins) {
+              const shown = at(pins);
+              if (shown === null) {
+                return { settled: Promise.resolve(false), dispose() {} };
+              }
+              return diff.mountRenderedFile(body, shown, path, {
+                ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
+                markdownHoldMs: FIRST_SCREEN_MS,
+              });
+            },
+          };
+        },
+        loadDrawProse: async () => {
+          const inert = await prose;
+          if (inert === null) {
+            throw new Error("the inert HTML allowlist did not load");
+          }
+          // A note's links were made absolute against the member that carries the guide.
+          const base = envelope?.github_url ?? "https://github.com/";
+          return (html) => inert.kpressProse(inert.sanitizeHtml(html, base), document);
+        },
+        refusalNote: textRefusalNote,
+      },
+    );
+    return view;
   }
 
   async function paintBody() {
     const plan = bodyPlan(shown, envelope, tab, failed);
     shown = plan.body;
     const action = plan.action;
-    if (action.do === "wait" || action.do === "keep") {
+    if (action.do === "keep") {
+      // An edit of the description that carries the guide is read again.
+      if (guide !== null) {
+        guidedView?.show(guide.revision, false);
+      }
+      return;
+    }
+    if (action.do === "wait") {
       return;
     }
     if (action.do === "scroll") {
@@ -1046,8 +1222,6 @@ export function mountStackPage(container, ctx, mb) {
     }
     const key = action.key;
     disposeBody();
-    const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
-    body.replaceChildren(host);
     const owns = () => !listening.signal.aborted && shown.shown === key;
     /** @param {{dispose?: () => void, scrollToFile?: (path: string) => unknown} | null} mounted */
     const adopt = (mounted) => {
@@ -1062,6 +1236,32 @@ export function mountStackPage(container, ctx, mb) {
         handle?.scrollToFile?.(done.scroll);
       }
     };
+    if (action.tab === "guided") {
+      const carried = guide;
+      if (carried === null) {
+        return;
+      }
+      try {
+        const view = await paintGuided(action.comparison, owns);
+        adopt(view);
+        if (view !== null && handle === view) {
+          guidedView = view;
+          view.show(carried.revision, false);
+        }
+      } catch (failure) {
+        if (owns()) {
+          console.error("metabrowser github: the stack's guide could not load", failure);
+          body.replaceChildren(
+            h("p", { class: "github-pull-quiet", role: "status" }, [
+              "Could not load Guided Review.",
+            ]),
+          );
+        }
+      }
+      return;
+    }
+    const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
+    body.replaceChildren(host);
     try {
       await mb.ensureKindAssets("diff");
       const view = /** @type {any} */ (mb.getRegisteredView("diff", "diff"));
@@ -1156,7 +1356,8 @@ export function mountStackPage(container, ctx, mb) {
         error = model.error;
         failed = model.failed;
         shown = bodyAnswered(shown, envelope);
-        tab = shownTab(routeTab, envelope);
+        guide = guideShown(guide, envelope);
+        tab = shownTab(routeTab, envelope, guide);
         paintHeader();
         paintTabs();
         paintStatus();
@@ -1179,7 +1380,7 @@ export function mountStackPage(container, ctx, mb) {
   /** @param {string} next */
   function setTab(next) {
     routeTab = next;
-    tab = shownTab(next, envelope);
+    tab = shownTab(next, envelope, guide);
     shown = bodyOpened(shown, "");
     paintTabs();
     void paintBody();

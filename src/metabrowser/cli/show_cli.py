@@ -232,7 +232,16 @@ def _describe_stack(payload: dict[str, Any], tab: str, file: str) -> str:
                     else "not_in_stack"
                 )
             )
-    parts.append(f"tab={tab or 'files'}")
+    guide = payload.get("guide")
+    carrier = guide.get("number") if isinstance(guide, dict) else None
+    if carrier is not None:
+        parts.append(f"guide=#{carrier}")
+    # The tab the page shows (stack-page.js, `shownTab`): its own, or Guided Review for a
+    # stack whose member carries its guide and Files for one with none.
+    shown = (
+        tab if tab in ("files", "docs", "changes") else "guided" if carrier is not None else "files"
+    )
+    parts.append(f"tab={shown}")
     comparison = payload.get("comparison")
     if isinstance(comparison, dict):
         parts.append(f"comparison_route={comparison.get('route')}")

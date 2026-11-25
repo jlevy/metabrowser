@@ -27,7 +27,7 @@
   // Keep aligned with view_routes.STACK_ROUTE_PREFIX and STACK_ROUTE_TABS. A stack's number
   // is GitHub's, spelled as a pull request's is.
   const STACK_PREFIX = "/stack/";
-  const STACK_TABS = Object.freeze(["", "files", "docs", "changes"]);
+  const STACK_TABS = Object.freeze(["", "guided", "files", "docs", "changes"]);
 
   /**
    * Whether *segment* may be one segment of a changed file's path: a path in the pull
@@ -64,8 +64,9 @@
   }
 
   /**
-   * Encode a native stack's page: `/stack/<n>` for its front page, `/stack/<n>/files`,
-   * `/stack/<n>/docs`, and `/stack/<n>/changes` for its tabs. Only Changes can name a file.
+   * Encode a native stack's page: `/stack/<n>` for its front page, `/stack/<n>/guided`,
+   * `/stack/<n>/files`, `/stack/<n>/docs`, and `/stack/<n>/changes` for its tabs. Only
+   * Changes can name a file.
    *
    * @param {number} number
    * @param {string} [tab]

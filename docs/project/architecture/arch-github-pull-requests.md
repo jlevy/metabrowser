@@ -975,9 +975,9 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 The plugin registers three views: `pull-request`, which the shell mounts at `/pull/<n>`,
 `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, and `/pull/<n>/checks`
 (`pull-page.js`); `pull-stack`, a native stack’s page at `/stack/<n>`,
-`/stack/<n>/files`, `/stack/<n>/docs`, and `/stack/<n>/changes[/<path>]`
-(`stack-page.js`); and `pull-request-list`, the Pulls tab and `/pulls`
-(`pulls-panel.js`). Their visual rules are in the
+`/stack/<n>/guided`, `/stack/<n>/files`, `/stack/<n>/docs`, and
+`/stack/<n>/changes[/<path>]` (`stack-page.js`); and `pull-request-list`, the Pulls tab
+and `/pulls` (`pulls-panel.js`). Their visual rules are in the
 [design system](../../design-system.md#the-pulls-tab).
 
 ### The Stack Page
@@ -1024,6 +1024,10 @@ measurements that set them:
   notice above it, and a new comparison is offered rather than swapped in.
   A file the reader opens is scrolled to when its diff is drawn, never on a later answer
   (`bodyPlan`).
+- **The guide.** When a member’s description carries the stack’s guide, the answer’s
+  `guide` names that member and its record revision, Guided Review leads the tabs, and
+  `/stack/<n>` opens on it; without one the front page is Files
+  ([The Stack’s Guide](#the-stacks-guide)).
 
 ### Guided Review
 
@@ -1175,9 +1179,7 @@ to press, above its steps, which keep their flat numbers, built once for each ou
 the rows are; a step’s card names its group before its place (`groupedPlace`), and a
 group’s note shows above its first step.
 A guide without groups is an outline of steps alone, which draws as it did before
-groups. A stack’s guide, designed and not built, is a collection of its own and answers
-the same tree
-([Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#phase-3-the-stack-guide-mb-ri96)).
+groups. A stack’s guide answers the same tree ([The Stack’s Guide](#the-stacks-guide)).
 Each answer with a step is kept for its record revision, and a new revision or a moved
 head drops them. A step whose read is refused or fails keeps the guide’s steps, so the
 reader can move on, and is read again when chosen again.
@@ -1193,6 +1195,48 @@ page is `/pull/<n>`, with Conversation one click away.
 Letting the server answer for the tab, with a `has_guide` on the `pull` envelope, would
 change an envelope the browser and every `--api` golden of the route share, so it is not
 done here; mb-y0en tracks it, with a way to check a guide before it is published.
+
+### The Stack’s Guide
+
+A native stack’s guide is the collection carrier of a whole stack
+([Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#phase-3-the-stack-guide-mb-ri96)):
+a top-level `stack-review` block in a member’s description, read by the parser that
+reads a `guided-review` block (`_guide_fence` takes the fence’s name).
+A description may hold one block of each name, and two of either is refused; a block
+that cannot be read does not keep the other from being read (`_read_description`). An
+edit of a description moves no head, so the guide costs no CI run and leaves the
+member’s own guide current.
+
+- **The carrier** is the top-most member whose cached description has a `stack-review`
+  block, readable or not, so a block that cannot be read is found and says why
+  (`stack_guide_carrier`); a member added above it leaves the guide found, and out of
+  date. The `stack` answer’s `guide` names it and its record revision while the stack is
+  current, and is null otherwise, since a member not read yet may carry a block.
+- **The route.** `guided-review?stack=<n>&step=<k>` (`stack_guided_review`) answers in
+  the envelope a pull request’s guide has, naming the `stack` and its `carrier`. A stack
+  this copy cannot pair is `stack_unavailable`, with the `stack` answer’s `reason`, and
+  one with a member not read yet is `not_cached`. The guide’s pins are the stack’s base
+  and top head; its `{path}` references read the stack’s kept manifest (`combined` in
+  `pull_stack.py`), each step’s address is the file in the stack page’s Changes, and
+  `_staleness` compares the pins with the stack’s pair, a member’s newer known head
+  counting as a newer head.
+  `{pull}`, `{pull, path}`, and `{commit}` references read as in a pull request’s guide,
+  the carrier’s stack first for a `{pull}`’s place.
+- **The page.** `stack-page.js` mounts `mountGuidedReview` with no introduction: the
+  description that carries the guide introduces its member, not the stack, so the
+  navigation starts at step 1 (`first` in `createGuideNavigation`), and the refusals
+  speak of the stack (`STACK_MESSAGES` in `guided-review.js`). The guide shown stays
+  while the stack is pending or cannot be shown, as the drawn comparison does
+  (`guideShown`), and is mounted again when the reader takes the comparison offered; a
+  new revision of the carrier’s record is read in place.
+  A whole document a step cites is drawn from the comparison the page drew while that is
+  the one the step was read at.
+- **The member’s page.** `render_part` leaves a block that reads as a stack’s guide out
+  of the description, as it leaves a guide’s, and Conversation puts a card in its place
+  that links the page of each stack the pull request belongs to (`STACK_GUIDE_FENCE` in
+  `pull-page.js`, a hint as `GUIDED_FENCE` is).
+- **The command line.** `--show /stack/<n>` reports `guide=#<member>` and the tab the
+  front page shows.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

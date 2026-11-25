@@ -1,10 +1,11 @@
 # Collection Format
 
-**Status:** Built as contract `metabrowser.collection:Collection/v1`, with one carrier:
-guided reviews of GitHub pull requests, whose notes render as Markdown, and whose
+**Status:** Built as contract `metabrowser.collection:Collection/v1`, with two carriers
+in one place: guided reviews of GitHub pull requests and the guides of native stacks,
+both in a pull request’s description, whose notes render as Markdown, and whose
 references name a file, a pull request, a file as a pull request changes it, or a
-commit. Designed, not built: a stack’s guide, collections in repository files, URL
-references, a Markdown form, and the other carriers below.
+commit. Designed, not built: collections in repository files, URL references, a Markdown
+form, and the other carriers below.
 
 A collection is an ordered list of annotated items, which may be gathered in titled
 groups: each item is a title, a note, and the references it is about.
@@ -148,22 +149,25 @@ The `guided-review` route answers it, and the pull page’s Guided Review tab dr
 ([GitHub Pull Requests](arch-github-pull-requests.md#guided-review),
 [Reviewing Pull Requests](../../reviewing-pull-requests.md#guided-review)).
 
+**A stack’s guide** is the same carrier with another comparison: a `stack-review` fence
+in a member’s description, the top-most member’s that has one, pinned to the stack’s
+combined comparison, its bottom member’s merge base and its top member’s head.
+A path is a file some member changes and a range lies in one hunk of the combined diff;
+the record is stale when a member moves past those pins.
+The same route answers it, by `stack` in place of `number`, and the stack’s page draws
+it ([The Stack’s Guide](arch-github-pull-requests.md#the-stacks-guide)).
+
 The fence names the carrier, not the format, so the same record could be written
 elsewhere under its own marker.
-Each carrier keeps its own route; the format has no generic collection route of its own
-until a second carrier needs one.
+Each carrier keeps its own route; a stack’s guide is a description with another
+comparison, so it shares the guided review’s, and the format has no generic collection
+route of its own until a carrier of another kind needs one.
 
 ## Other Carriers
 
 None of these is built.
 Each would reuse the record and add only its carrier’s rules:
 
-- **A stack’s guide** (mb-ri96): a `stack-review` fence in the description of a stack’s
-  top member, holding the same record pinned to the stack’s combined comparison, its
-  bottom member’s merge base and its top member’s head.
-  It is the description carrier with another comparison, so the `guided-review` route
-  answers it and the stack’s page draws it
-  ([Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#phase-3-the-stack-guide-mb-ri96)).
 - **Other review scenarios.** A guide to a commit, or to a comparison of two branches or
   tags, would pin `comparison` as a guided review does and resolve paths against that
   diff. A working tree’s uncommitted changes have no commit for `head`, so a guide to

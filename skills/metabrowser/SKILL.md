@@ -700,6 +700,141 @@ now true, add or change a step only when the push changed what a reviewer must r
 move both pins as above, and publish and confirm the guide again.
 A step that cites no changed file still matches the pull request.
 
+## Write a Stack Guide
+
+A stack guide is one guided review of a whole native stack, read against the stack’s
+comparison, from the bottom layer’s merge base to the top layer’s head.
+The stack’s page, `/stack/<s>`, opens on it in its **Guided Review** tab.
+When you open the top layer of a stack you built, write its stack guide in that layer’s
+description, beside the layer’s own guide, and refresh it whenever a layer moves.
+It is a `stack-review` block, in the format of a `guided-review` block
+([Write the Block](#write-the-block)), and a description holds at most one of each.
+The stack’s guide is the block of the top-most layer that has one, so a layer added
+above it leaves the guide found, and out of date until you refresh it.
+
+A stack guide is a map of the end state, not a retelling of the layers: each layer’s own
+guide says what that layer does, so a stack guide cites the layer, `{pull: 811}`, and
+does not repeat it. The description that carries the block introduces its own layer, not
+the stack, so the stack guide’s first steps are its overview, and the tab opens on its
+first step. Give it these groups and steps, in this order:
+
+| Group | Steps | The note says | References |
+| --- | --- | --- | --- |
+| Orientation | What this stack does | The problem and the outcome, in five lines | The plan, whole |
+|  | The system after it | The parts and how they connect | The architecture document, whole |
+|  | The layers | One line for each, bottom up | `{pull}` for each |
+| Decisions | Key decisions and why | Up to five: decided X because Y, which rules out Z | Where each is recorded |
+| Documents | One for each document a reviewer must read | What it now promises | The file, whole |
+| Areas | Three to five, by subsystem, in dependency order | What it does now and what to verify | Up to three ranges that matter, and the layer’s `{pull}` |
+| Open questions | One | What a person must decide | The code in doubt |
+| Testing and merging | One or two | Automated, agent-checked, and needs a person; the merge order; deferred work with its tracker IDs | Tests, the plan |
+
+- Write eight to twelve steps.
+  A group of one step stays a step of its own, whose title names its group, as in a pull
+  request’s guide.
+- Keep each note to five lines, in the present tense, about the end state.
+- Cite at most three references a step, except in the layers step, which cites every
+  layer.
+- Never write narration by layer or by commit, a file inventory (Files lists every
+  file), anything a layer’s guide says (cite its `{pull}`), how the design evolved,
+  review rounds, commit IDs, or counts the page’s header shows.
+
+A `path` reference is a file some layer changes, read in the stack’s comparison, and a
+range lies inside one hunk of that comparison, not of a layer’s.
+
+### Write the Stack’s Block
+
+The block is a `stack-review` block, with the stack’s pins, and its steps gathered in
+the groups above:
+
+````markdown
+```stack-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "<full ID of the stack's base>"
+    head: "<full ID of the top layer's head>"
+  items:
+    - title: Orientation
+      items:
+        - title: "What this stack does: the snapshot is served before the worker ends"
+          note: A cold page waited 4.1 s for the cache worker. After this stack it draws the last snapshot at once and replaces it when the worker ends.
+          references:
+            - {path: docs/cache-plan.md}
+        - title: The layers
+          note: |-
+            Bottom up:
+            - #811, the snapshot format and its reader
+            - #812, the route that serves it
+            - #813, the page that draws it
+          references:
+            - {pull: 811}
+            - {pull: 812}
+            - {pull: 813}
+    - title: "Testing and merging: what is covered, and the order"
+      note: The cache tests pin the snapshot, and the route's golden its answer. Merge #811, then #812, then #813.
+      references:
+        - {path: tests/test_cache.py}
+```
+````
+
+The rules of [Write the Block](#write-the-block) hold here: quoting a title or note,
+writing a list as a literal block, and the bounds on steps and references.
+
+### Publish and Confirm a Stack Guide
+
+`<url>` is the top layer’s pull-request URL, and `<s>` the stack’s number.
+Read the stack first: its state, its pins, and its layers, bottom up:
+
+```shell
+<invocation> <url> --api '/api/plugin/github/stack?number=<s>' --format json > <tmp>/stack.json &&
+  jq -r '.state, .reason, .comparison.left, .comparison.right, (.members[] | [.place, .number, .state, .title] | map(tostring) | join(" "))' <tmp>/stack.json
+```
+
+- `.state` is `current` when the stack reads as one comparison, `pending` while a layer
+  this copy has not read is missing, which reading that layer’s URL with `--no-serve`
+  fetches, and `absent` when it cannot be shown, with `.reason` saying why.
+- `.comparison.left` is the stack’s base and `.comparison.right` the top layer’s head:
+  pin `merge_base` and `head` to them, with no `git merge-base`.
+
+List the documents the stack changes, which the Orientation and Documents steps cite,
+from the stack’s comparison:
+
+```shell
+<invocation> <url> --api "$(jq -r .comparison.route <tmp>/stack.json)&group=type:docs" --format json > <tmp>/docs.json &&
+  jq -r '.manifest.files[] | (.new // .old).path' <tmp>/docs.json
+```
+
+Read each layer’s description and guide with `gh pr view <n> --json body --jq .body`.
+Write the top layer’s whole description to a file, its own prose and guide and then the
+`stack-review` block, and publish it with `gh pr edit <top> --body-file <tmp>/body.md`.
+An edit of a description moves no head, so it starts no CI run and leaves the layer’s
+own guide current. Refresh the top layer’s record as in
+[Publish and Confirm It](#publish-and-confirm-it), then read each step, with `<k>` from
+1 to the `.step_count` the first answer gives:
+
+```shell
+<invocation> <url> --api '/api/plugin/github/guided-review?stack=<s>&step=<k>' --format json > <tmp>/step.json &&
+  jq -r '.state, .carrier, (.message // .reason // empty), .step_count, (.references[]? | [.kind, .pull, .path, .commit, .state] | map(select(. != null) | tostring) | join(" "))' <tmp>/step.json
+```
+
+- `.carrier` is the layer whose block the page reads, which should be the top layer.
+- `.state` and each reference’s state read as for a pull request’s guide: every one
+  `ready`, or `not_cached` for a pull request this copy has not read.
+- `not_cached` for the whole guide means a layer is still being fetched, and
+  `stack_unavailable` that the stack cannot be shown, with `.reason` from the stack’s
+  answer.
+
+After a push to any layer, or a restack, read `.state` and `.stale.changed_steps` from
+`/api/plugin/github/guided-review?stack=<s>` as in
+[Refresh It After a Push](#refresh-it-after-a-push), fix those steps, move both pins to
+the stack’s new ones, and publish and confirm the guide again.
+A new top layer needs no move of the block: the guide is still found where it is, and
+reads out of date until you refresh it.
+
 ## Browse a Remote Directory
 
 `<invocation> --remote <host> --path <dir> --no-open` serves a directory of another

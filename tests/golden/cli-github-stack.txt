@@ -286,11 +286,14 @@ status: 200
       ]
     }
   ],
-  "guide": null,
+  "guide": {
+    "number": 10,
+    "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+  },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+    "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
     "every_s": 5.0
   }
 }
@@ -1069,11 +1072,14 @@ status: 200
       ]
     }
   ],
-  "guide": null,
+  "guide": {
+    "number": 10,
+    "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+  },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+    "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
     "every_s": 5.0
   }
 }
@@ -1274,10 +1280,10 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
-  "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=<base>&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-  "image_route": "/api/plugin/github/pull-image?number=9&left=<base>&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE>",
-  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=<base>&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE>",
-  "size_route": "/api/plugin/github/pull-size?number=9&left=<base>&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE>",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=<base>&right=<closed_head>&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "image_route": "/api/plugin/github/pull-image?number=9&left=<base>&right=<closed_head>&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=<base>&right=<closed_head>&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=9&left=<base>&right=<closed_head>&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -1290,8 +1296,8 @@ status: 200
       "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
       "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
       "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
-      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
-      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+      "repos/octo/demo/commits/<closed_head>/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
+      "repos/octo/demo/commits/<closed_head>/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
     },
     "pull": {
       "number": 9,
@@ -1326,7 +1332,7 @@ status: 200
       },
       "head": {
         "ref": "spam",
-        "sha": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+        "sha": "<closed_head>",
         "repository": null
       },
       "html_url": "https://github.com/octo/demo/pull/9"
@@ -1365,7 +1371,7 @@ status: 200
     },
     "comparison": {
       "base": "<base>",
-      "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+      "head": "<closed_head>",
       "base_commit": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
       "base_from": "base_sha"
     },
@@ -1387,8 +1393,8 @@ status: 200
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/9
-gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1
+gh api repos/octo/demo/commits/<closed_head>/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/<closed_head>/status?per_page=100&page=1
 gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
@@ -1422,7 +1428,7 @@ status: 200
       "title": "spam",
       "state": "closed",
       "base": "<base>",
-      "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+      "head": "<closed_head>",
       "in_top": true,
       "pending": false,
       "fetching": false
@@ -1434,11 +1440,11 @@ status: 200
   ],
   "comparison": {
     "left": "<base>",
-    "right": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+    "right": "<closed_head>",
     "key": "e21776cd095d1c341f23ffc4b08869ad",
-    "route": "/api/plugin/github/stack-comparison?number=73&left=<base>&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=direct&key=e21776cd095d1c341f23ffc4b08869ad&build=<BUILD>&store=<STORE>",
-    "image_route": "/api/plugin/github/pull-image?stack=73&left=<base>&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE>",
-    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=73&left=<base>&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE>"
+    "route": "/api/plugin/github/stack-comparison?number=73&left=<base>&right=<closed_head>&base_policy=direct&key=e21776cd095d1c341f23ffc4b08869ad&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?stack=73&left=<base>&right=<closed_head>&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=73&left=<base>&right=<closed_head>&store=<STORE>"
   },
   "totals": {
     "files": 1,
@@ -1459,7 +1465,10 @@ status: 200
       ]
     }
   ],
-  "guide": null,
+  "guide": {
+    "number": 8,
+    "revision": "caf5688c2a840aba4d52b5a0cb7e639e80b007d1d98fed8876c4934d5147292a"
+  },
   "github_url": "https://github.com/octo/demo/pull/9",
   "probe": {
     "number": 9,
@@ -1506,17 +1515,7 @@ status: 400
 --- stderr ---
 Error: /api/plugin/github/stack?number=70&left=main returned HTTP 400
 --- gh ---
-## The stack's page, as `--show` reports it: its kind, and a file's layers.
-# metab https://github.com/octo/demo --show /stack/70
-exit: 0
---- stdout ---
-show: /stack/70
-route: /stack/70
-kind: pull-stack
-views: pull-stack (default)
-model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 tab=files comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
---- stderr ---
---- gh ---
+## The stack's page at a file, as `--show` reports it: its kind and layers.
 # metab https://github.com/octo/demo --show /stack/70/changes/docs/draft.md
 exit: 0
 --- stdout ---
@@ -1524,7 +1523,7 @@ show: /stack/70/changes/docs/draft.md
 route: /stack/70/changes/docs/draft.md
 kind: pull-stack
 views: pull-stack (default)
-model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 file=docs/draft.md layers=2/2:#10 tab=changes comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
+model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 file=docs/draft.md layers=2/2:#10 guide=#10 tab=changes comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
 --- stderr ---
 --- gh ---
 ## The stack moves: 70 is now 10 alone. A page still draws the comparison it was given, so that comparison keeps answering and its rendered documents keep being admitted, while an address the route never gave is still refused.
@@ -1740,11 +1739,14 @@ status: 200
       ]
     }
   ],
-  "guide": null,
+  "guide": {
+    "number": 10,
+    "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+  },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+    "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
     "every_s": 5.0
   }
 }

@@ -101,11 +101,14 @@
         ]
       }
     ],
-    "guide": null,
+    "guide": {
+      "number": 10,
+      "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+    },
     "github_url": "https://github.com/octo/demo/pull/10",
     "probe": {
       "number": 10,
-      "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+      "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
       "every_s": 5.0
     }
   },
@@ -181,11 +184,14 @@
         ]
       }
     ],
-    "guide": null,
+    "guide": {
+      "number": 10,
+      "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+    },
     "github_url": "https://github.com/octo/demo/pull/10",
     "probe": {
       "number": 10,
-      "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+      "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
       "every_s": 5.0
     }
   },

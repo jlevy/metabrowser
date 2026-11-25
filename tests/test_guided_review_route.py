@@ -870,12 +870,8 @@ def _moved(root: Path, shas: dict[str, str], base: str, head: str) -> dict[str, 
         }
     )
     store = SimpleNamespace(git_dir=root / ".git", object_format="sha1")
-    record = SimpleNamespace(
-        comparison=SimpleNamespace(base=shas[base]),
-        pull=SimpleNamespace(head=SimpleNamespace(sha=shas[head])),
-    )
     staleness = guided_review._staleness(  # pyright: ignore[reportPrivateUsage]
-        cast(Any, store), cast(Any, record), guide, newer=False
+        cast(Any, store), (shas[base], shas[head]), guide, newer=False
     )
     return asyncio.run(staleness)
 

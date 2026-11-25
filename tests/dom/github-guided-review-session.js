@@ -172,7 +172,41 @@ async function main() {
   assert.equal(pending[0].signal.aborted, true);
   await respond(answer("fifth", 1));
   assert.equal(states.length, count);
-  console.log(JSON.stringify({ calls, states }, null, 2));
+
+  // A stack's guide has no overview: it opens on step 1, which its first answer shows, and
+  // no move goes before it.
+  const stackCalls = [];
+  const stackStates = [];
+  const stack = createGuideNavigation({
+    first: 1,
+    read(step, signal) {
+      stackCalls.push(step);
+      return new Promise((resolve, reject) => pending.push({ signal, resolve, reject }));
+    },
+    render(answer, at) {
+      stackStates.push(
+        "step" in answer
+          ? `step ${at}: step ${answer.step} of ${answer.step_count}`
+          : `step ${at}: ${answer.state}`,
+      );
+    },
+  });
+  stack.show("stacked", false);
+  await respond(answer("stacked", 1));
+  assert.equal(stackStates.at(-1), "step 1: step 1 of 3");
+  stack.move(-1);
+  stack.go(0);
+  assert.deepEqual(stackCalls, [1]);
+  stack.move(1);
+  await respond(answer("stacked", 2));
+  stack.move(-1);
+  stack.move(-1);
+  assert.equal(stackStates.at(-1), "step 1: step 1 of 3");
+  assert.deepEqual(stackCalls, [1, 2]);
+  stack.dispose();
+  console.log(
+    JSON.stringify({ calls, states, stack: { calls: stackCalls, states: stackStates } }, null, 2),
+  );
 }
 
 main().catch((error) => {

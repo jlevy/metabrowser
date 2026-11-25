@@ -47,7 +47,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Final
 
 from metabrowser import kpress_adapter
-from metabrowser.builtin_plugins.github.guided_review import guide_introduction
+from metabrowser.builtin_plugins.github.guided_review import carries_guide, guide_introduction
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
 from metabrowser.builtin_plugins.github.pull_route import PullView, cached_pull_record
 from metabrowser.builtin_plugins.github.pull_text_render import render_text
@@ -80,12 +80,13 @@ def part_text(record: PullRecord, part: str) -> str | None:
 async def _description(key: tuple[str, str, int], revision: str, body: str) -> str:
     """The description as Conversation and Guided Review render it.
 
-    The guide's block is the Guided Review tab's, so the description renders as its
-    introduction, without the block, once the block reads as a guide; a block that does
-    not stays, so its author sees what they wrote. The parse is the guide route's, kept
-    for the revision (`read_guide` in guided_review.py), off the event loop.
+    The guide's block is the Guided Review tab's, and a `stack-review` block the stack
+    page's, so the description renders as its introduction, without each block that reads
+    as a guide; a block that does not stays, so its author sees what they wrote. The parse
+    is the guide route's, kept for the revision (`read_guide` in guided_review.py), off the
+    event loop.
     """
-    if "guided-review" not in body:
+    if not carries_guide(body):
         return body
     return await asyncio.to_thread(guide_introduction, key, revision, body)
 

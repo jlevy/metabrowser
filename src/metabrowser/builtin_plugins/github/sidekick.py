@@ -287,8 +287,13 @@ async def pull_markdown_handler(request: Request) -> Response:
 
 
 async def guided_review_handler(request: Request) -> Response:
-    """Read one step of an author-provided PR guide and its pinned diff excerpts."""
-    from metabrowser.builtin_plugins.github.guided_review import guided_review
+    """Read one step of an author-provided guide and its pinned diff excerpts: a pull
+    request's, ``number=<n>``, or a native stack's, ``stack=<n>``, whose guide is a
+    member's `stack-review` block read against the stack's combined comparison."""
+    from metabrowser.builtin_plugins.github.guided_review import (
+        guided_review,
+        stack_guided_review,
+    )
     from metabrowser.builtin_plugins.github.pull_list_route import served_repository
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
@@ -297,11 +302,29 @@ async def guided_review_handler(request: Request) -> Response:
     )
     from metabrowser.view_routes import parse_pull_number
 
+    params = request.query_params
+    step = parse_pull_number(params.get("step", "1"))
+    if "stack" in params:
+        if "number" in params:
+            return _invalid_request('name a pull request by "number" or a stack by "stack"')
+        stack = parse_pull_number(params["stack"])
+        if stack is None:
+            return _invalid_request('"stack" is a native stack number')
+        if step is None:
+            return _invalid_request("step must be a positive integer")
+        repository, published, reader = await _stack_sources(request)
+        if repository is None:
+            return JSONResponse({"state": "not_github"}, status_code=409, headers=_NO_STORE)
+        answer = await unless_disconnected(
+            request, stack_guided_review(repository, published, reader, stack, step)
+        )
+        if answer is None:
+            return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
+        return JSONResponse(answer, headers=_NO_STORE)
     try:
-        number = requested_number(request.query_params)
+        number = requested_number(params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
-    step = parse_pull_number(request.query_params.get("step", "1"))
     if step is None:
         return _invalid_request("step must be a positive integer")
     await _resolve(request)

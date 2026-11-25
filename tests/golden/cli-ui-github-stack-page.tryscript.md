@@ -16,8 +16,18 @@ have no record and then current, 71, whose top lacks 7, and 72, which is not lin
 This browserless session runs the production `builtin_plugins/github/stack-page.js` on
 them.
 
-- `tabs` is the tab each route shows: the front page is Files until a stack has a guide,
-  and a tab the page does not have shows Files.
+- `tabs` is the tab each route shows: the front page is Guided Review for a stack whose
+  member carries its guide, as 10 carries 70’s, and Files for one with none, where
+  Guided Review’s own address shows Files too.
+  Before the stack is read the front page marks no tab, so none is marked that the
+  answer then moves from.
+  A tab the page does not have shows what the front page shows.
+- `guided` is the front page of 70, whose guide 10 carries, while the stack moves: the
+  guide shown, the tab, and what the body does after each answer.
+  While a member is fetched or the stack cannot be shown, Guided Review and its guide
+  stay, as the drawn comparison does, and the guide is mounted again only when the
+  reader takes the comparison offered; a description that no longer carries the guide
+  turns the front page to Files.
 - `comparison` is what a new answer does to the comparison drawn: the first is shown,
   the same one kept, and another offered rather than swapped in under the reader.
 - `marks` are a file’s layer marks, each opening the file in that layer’s Changes; a
@@ -59,12 +69,82 @@ them.
 $ node tests/dom/github-stack-page-session.js
 {
   "tabs": {
-    "(front)": "files",
-    "files": "files",
-    "docs": "docs",
-    "changes": "changes",
-    "guided": "files"
+    "guided": {
+      "(front)": "guided",
+      "guided": "guided",
+      "files": "files",
+      "docs": "docs",
+      "changes": "changes",
+      "conversation": "guided"
+    },
+    "unguided": {
+      "(front)": "files",
+      "guided": "files",
+      "files": "files",
+      "docs": "docs",
+      "changes": "changes",
+      "conversation": "files"
+    },
+    "unread": {
+      "(front)": "",
+      "guided": "guided",
+      "files": "files",
+      "docs": "docs",
+      "changes": "changes",
+      "conversation": ""
+    }
   },
+  "guided": [
+    {
+      "step": "before any answer",
+      "guide": null,
+      "tab": "",
+      "do": "wait",
+      "drawn": null
+    },
+    {
+      "step": "current",
+      "guide": "#10",
+      "tab": "guided",
+      "do": "mount guided",
+      "drawn": "current"
+    },
+    {
+      "step": "a member's push, fetched",
+      "guide": "#10",
+      "tab": "guided",
+      "do": "keep",
+      "drawn": "current"
+    },
+    {
+      "step": "current again, another comparison",
+      "guide": "#10",
+      "tab": "guided",
+      "do": "keep",
+      "drawn": "current"
+    },
+    {
+      "step": "the reader takes it",
+      "guide": "#10",
+      "tab": "guided",
+      "do": "mount guided",
+      "drawn": "other"
+    },
+    {
+      "step": "the stack cannot be shown",
+      "guide": "#10",
+      "tab": "guided",
+      "do": "keep",
+      "drawn": "other"
+    },
+    {
+      "step": "the guide's block removed",
+      "guide": null,
+      "tab": "files",
+      "do": "mount files",
+      "drawn": "other"
+    }
+  ],
   "comparison": [
     [
       "nothing drawn, pending",
@@ -143,7 +223,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4"
+        "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
       }
     },
     {
@@ -156,7 +236,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4"
+        "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
       }
     },
     {
@@ -169,7 +249,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4"
+        "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
       }
     }
   ],

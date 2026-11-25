@@ -11,6 +11,7 @@ stand-in's pull requests (``tests/github_pull_fixture.py``):
 | 71 | 8, 7, 10 | 7 is a fork whose head the top lacks, so it contributes no files and is named in ``lacking`` |
 | 72 | 10, 8 | Not linear: 10's merge base is not in 8's history |
 | 73 | 8, 9 | Pending while 9 has no record, until the page asks for 9 as the reader's own open of it |
+| 74 | 7, from the last snapshot | 7's description has two ``stack-review`` blocks |
 
 The stand-in's merge of 8 keeps ``topic``'s tree, as ``git fast-import`` writes a merge
 with no file of its own, so 8's edit of ``docs/guide.md`` is not in 10's head: the
@@ -21,6 +22,13 @@ the top contains it. A file two layers change, and one a layer renames, are
 The rendered-diff and image routes take ``stack=`` in place of ``number`` and admit the
 stack's current pair, and a pair the stack route gave before and keeps
 (``pull_stack_retained.py``). Nothing here asks GitHub but the record and stack fetches.
+
+A stack's guide is a ``stack-review`` block in a member's description, the top-most
+member's that has one (mb-ri96). 10's block is pinned to stack 70's pair, so 70's
+guide reads ready, and it is left out of 10's rendered description; 8's, pinned to 8's own
+head, is below 10 there and is 73's guide, out of date, since 73's top is 9. The guide's
+answers, each under the step of the stack's story it is read at, are
+``cli-github-stack-guide.txt``, so each transcript stays inside the review budget.
 """
 
 from __future__ import annotations
@@ -66,6 +74,7 @@ pytestmark = [
 ]
 
 ROUTE = "/api/plugin/github/stack"
+GUIDE = "/api/plugin/github/guided-review"
 REFRESH = "/api/plugin/github/pull-refresh"
 STACKS = "repos/octo/demo/stacks?per_page=100&page=1"
 # An image the stack's head does not have, as the image route spells a path.
@@ -93,6 +102,42 @@ def _scoped(text: str) -> str:
     )
 
 
+def _stack_guide(merge_base: str, head: str, items: str) -> str:
+    """A `stack-review` block pinned to *merge_base* and *head*, whose `items` are the YAML
+    lines *items*."""
+    return f"""```stack-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "{merge_base}"
+    head: "{head}"
+  items:
+{items}```
+"""
+
+
+# 10's: the stack's layers, then its one file, as a stack guide orients and then reads.
+_TOP_GUIDE = """    - title: The layers
+      note: 8 extends the guide; 10 starts a draft on top of it.
+      references:
+        - {pull: 8}
+        - {pull: 10}
+    - title: The draft
+      note: Read the draft whole.
+      references:
+        - {path: docs/draft.md}
+"""
+# 8's, which no stack's top carries.
+_LOWER_GUIDE = """    - title: The guide
+      note: Check the guide's new line.
+      references:
+        - {path: docs/guide.md}
+"""
+
+
 def _paths(document: dict[str, Any]) -> list[str]:
     return [
         (change.get("new") or change.get("old"))["path"] for change in document["manifest"]["files"]
@@ -113,14 +158,33 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     answers["stack_version"] = "0.1.0"
     answers["api"][STACKS] = ok(
         STACKS,
-        [_stack(70, [8, 10]), _stack(71, [8, 7, 10]), _stack(72, [10, 8]), _stack(73, [8, 9])],
+        [
+            _stack(70, [8, 10]),
+            _stack(71, [8, 7, 10]),
+            _stack(72, [10, 8]),
+            _stack(73, [8, 9]),
+        ],
     )
+    pulls = answers["api"]
+    top = pulls["repos/octo/demo/pulls/10"]["body"]
+    top["body"] = (
+        f"{top['body']}\n\n"
+        f"{_stack_guide(pull_origin['base'], pull_origin['draft_head'], _TOP_GUIDE)}"
+    )
+    lower = pulls["repos/octo/demo/pulls/8"]["body"]
+    lower["body"] = _stack_guide(pull_origin["base"], pull_origin["merged_head"], _LOWER_GUIDE)
+    twice = _stack_guide(pull_origin["base"], pull_origin["fork_head"], _LOWER_GUIDE)
+    pulls["repos/octo/demo/pulls/7"]["body"]["body"] = f"{twice}\n{twice}"
     for key, value in install_fake_gh(tmp_path, answers).items():
         monkeypatch.setenv(key, value)
     labels = Labels()
-    for name in ("base", "topic", "merged_head", "draft_head", "fork_head"):
+    for name in ("base", "topic", "merged_head", "draft_head", "fork_head", "closed_head"):
         labels.add(pull_origin[name], f"<{name}>")
     blocks: list[str] = []
+    # The stack's guide (mb-ri96) has a transcript of its own, cli-github-stack-guide.txt,
+    # which these collect, so each stays inside the review budget (devtools/check_goldens.py).
+    guide_blocks: list[str] = []
+    into = [blocks]
 
     def run(*args: str, gh_free: bool = True) -> Any:
         result = run_metab(args)
@@ -128,11 +192,24 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         calls = in_a_stable_order(logged_gh_calls(tmp_path))
         if gh_free:
             assert calls in ([], FIRST_CLONE_GH_CALLS), "a stack read asked GitHub"
-        blocks.append(result.block(" ".join(quoted(arg) for arg in shown), gh=calls))
+        into[0].append(result.block(" ".join(quoted(arg) for arg in shown), gh=calls))
         return result
 
     def api(route: str) -> Any:
         return run(CANONICAL, "--api", route)
+
+    def in_guide(heading: str, *args: str, gh_free: bool = True) -> Any:
+        """Run `metab` on *args* into the guide's transcript under *heading*."""
+        guide_blocks.append(heading)
+        into[0] = guide_blocks
+        try:
+            return run(CANONICAL, *args, gh_free=gh_free)
+        finally:
+            into[0] = blocks
+
+    def read_guide(heading: str, route: str) -> Any:
+        """Read *route*, a guide's, into the guide's transcript under *heading*."""
+        return in_guide(heading, "--api", route)
 
     def stack(number: int) -> dict[str, Any]:
         return api(f"{ROUTE}?number={number}").payload()
@@ -158,6 +235,13 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert pending["state"] == "pending"
     assert pending["pending"] == [8, 10]
     assert pending["comparison"] is None
+    assert pending["guide"] is None
+    waits = read_guide(
+        "## Stack 70 is pending: its guide waits for the members too, since a member not read"
+        " yet may carry it.\n",
+        f"{GUIDE}?stack=70",
+    )
+    assert waits.payload()["state"] == "not_cached"
 
     blocks.append(
         "## Both records fetched: the comparison from 8's merge base to 10's head, keeping"
@@ -182,6 +266,36 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     whole = api(comparison["route"]).payload()
     assert _paths(whole) == ["docs/draft.md"]
     assert whole["manifest"]["totals"]["files"] == 1
+    ready = read_guide(
+        "## 8 and 10 read, 70 is current: 10, its top, carries a `stack-review` block pinned"
+        " to the stack's pair, so its guide reads ready, its layers as rows and its file from"
+        " the stack's Changes; 8's block below it is not the stack's.\n",
+        f"{GUIDE}?stack=70",
+    ).payload()
+    assert (ready["state"], ready["carrier"], ready["step_count"]) == ("ready", 10, 2)
+    assert current["guide"] == {"number": 10, "revision": ready["record_revision"]}
+    assert [(ref["kind"], ref["state"]) for ref in ready["references"]] == [
+        ("pull", "ready"),
+        ("pull", "ready"),
+    ]
+    assert [ref["target"]["stack"]["number"] for ref in ready["references"]] == [70, 70]
+    draft = read_guide("## Its second step.\n", f"{GUIDE}?stack=70&step=2").payload()
+    assert draft["references"][0]["state"] == "ready"
+    assert draft["references"][0]["href"] == "/stack/70/changes/docs/draft.md"
+    assert draft["comparison"] == {"merge_base": comparison["left"], "head": comparison["right"]}
+    beyond = read_guide("## A step past its last.\n", f"{GUIDE}?stack=70&step=3")
+    assert beyond.payload()["state"] == "step_not_found"
+    described = read_guide(
+        "## 10's description renders without the block, as a guide's does.\n",
+        "/api/plugin/github/pull-markdown?number=10&part=body",
+    ).payload()
+    assert "stack-review" not in described["html"] and "The layers" not in described["html"]
+    both_names = read_guide(
+        "## A request that names a pull request and a stack is refused.\n",
+        f"{GUIDE}?stack=70&number=10",
+    )
+    assert "status: 400" in both_names.stdout
+
     blocks.append(
         "## The plain diff of the same two commits holds README.md too, which topic moved"
         " before 10 began and no layer changes.\n"
@@ -253,6 +367,11 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     blocks.append("## Not linear: 10's merge base is not in 8's history.\n")
     linear = stack(72)
     assert linear["reason"] == "not_linear"
+    unpaired = read_guide(
+        "## Stack 72 is not linear, so its guide is unavailable, with the stack's reason.\n",
+        f"{GUIDE}?stack=72",
+    ).payload()
+    assert (unpaired["state"], unpaired["reason"]) == ("stack_unavailable", "not_linear")
 
     blocks.append("## A member with no record leaves its stack pending.\n")
     waiting = stack(73)
@@ -276,15 +395,39 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert fetched["state"] == "current"
     assert fetched["pending"] == []
 
+    assert fetched["guide"] is not None and fetched["guide"]["number"] == 8
+    below = read_guide(
+        "## 9 read, 73 is current. Its top, 9, carries no block, so its guide is 8's, below"
+        " it: pinned to 8's own head, it is out of date, and its file is no longer in the"
+        " stack's changes, since 9's head lacks 8's.\n",
+        f"{GUIDE}?stack=73",
+    ).payload()
+    assert (below["state"], below["carrier"]) == ("stale", 8)
+    assert below["stale"]["current"] == {
+        "merge_base": pull_origin["base"],
+        "head": pull_origin["closed_head"],
+    }
+    assert below["references"][0]["state"] == "path_not_changed"
+
     blocks.append("## A number no stack has, and a request that names more than it.\n")
     assert stack(99)["reason"] == "not_stacked"
     refused = api(f"{ROUTE}?number=70&left=main")
     assert "status: 400" in refused.stdout
 
-    blocks.append("## The stack's page, as `--show` reports it: its kind, and a file's layers.\n")
-    shown = run(CANONICAL, "--show", "/stack/70")
+    shown = in_guide(
+        "## The stack's page, as `--show` reports it: its guide, Guided Review as its front"
+        " page's tab, and Files at Files' own address.\n",
+        "--show",
+        "/stack/70",
+    )
     assert "kind: pull-stack" in shown.stdout
+    assert "guide=#10 tab=guided" in shown.stdout
+    files_shown = in_guide("", "--show", "/stack/70/files")
+    assert "tab=files" in files_shown.stdout
+
+    blocks.append("## The stack's page at a file, as `--show` reports it: its kind and layers.\n")
     file_shown = run(CANONICAL, "--show", "/stack/70/changes/docs/draft.md")
+    assert "kind: pull-stack" in file_shown.stdout
     assert "layers=2/2:#10" in file_shown.stdout
 
     blocks.append(
@@ -319,12 +462,45 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     never = api(comparison["route"].replace(comparison["key"], "0" * 32))
     assert "status: 410" in never.stdout
 
-    rendered_text = _scoped("".join(blocks))
-    # A rendered document's anchors are named by its sandbox-derived namespace.
-    rendered_text = re.sub(r"user-content-[0-9a-f]{24}-", "user-content-<ANCHORS>-", rendered_text)
-    rendered_text = label_home(labels.apply(rendered_text), home)
-    assert str(tmp_path) not in rendered_text and "file://" not in rendered_text
-    check_golden("cli-github-stack.txt", rendered_text)
+    answers["api"][STACKS] = ok(
+        STACKS,
+        [
+            _stack(70, [10]),
+            _stack(71, [8, 7, 10]),
+            _stack(72, [10, 8]),
+            _stack(73, [8, 9]),
+            _stack(74, [7]),
+        ],
+    )
+    install_fake_gh(tmp_path, answers)
+    in_guide(
+        "## Last, stack 74 arrives, 7 alone.\n",
+        "--api",
+        "/api/plugin/github/stacks-refresh",
+        "--data",
+        str(request),
+        gh_free=False,
+    )
+    refused_twice = read_guide(
+        "## 7's description has two `stack-review` blocks, so 74's guide is refused, and"
+        " says why.\n",
+        f"{GUIDE}?stack=74",
+    ).payload()
+    assert (refused_twice["state"], refused_twice["carrier"]) == ("invalid", 7)
+    assert refused_twice["message"] == "Use one stack-review block in the pull request description."
+
+    for name, written in (
+        ("cli-github-stack.txt", blocks),
+        ("cli-github-stack-guide.txt", guide_blocks),
+    ):
+        rendered_text = _scoped("".join(written))
+        # A rendered document's anchors are named by its sandbox-derived namespace.
+        rendered_text = re.sub(
+            r"user-content-[0-9a-f]{24}-", "user-content-<ANCHORS>-", rendered_text
+        )
+        rendered_text = label_home(labels.apply(rendered_text), home)
+        assert str(tmp_path) not in rendered_text and "file://" not in rendered_text
+        check_golden(name, rendered_text)
     # The answers tests/dom/github-stack-page-session.js replays, as the route gave them.
     answers = {"pending": pending, "current": current, "lacking": lacking, "not_linear": linear}
     check_recording(

@@ -45,12 +45,17 @@ import { pullStateIcon } from "./pull-state.js";
  *   Docs tab draws it and a YAML or JSON file as Changes does. *settled* is true once the
  *   file is drawn, and false when the view's notice says why it is not, or the handle was
  *   disposed first.
+ * @typedef {{kind: "pull" | "stack", number: number}} GuideSubject What carries the guide: a
+ *   pull request, whose description's `guided-review` block it is, or a native stack, whose
+ *   guide is a member's `stack-review` block, read against the stack's combined comparison.
  * @typedef {{open: (path: string) => void,
  *   openPull: (number: number, path: string | null) => void,
- *   age: (iso: string) => HTMLElement, shortCommit: (sha: string) => string}} ReferenceWays
+ *   age: (iso: string) => HTMLElement, shortCommit: (sha: string) => string,
+ *   subject: GuideSubject["kind"]}} ReferenceWays
  *   Where a reference goes and how a row says when and which: a file to its Changes
- *   address, and another pull request to its page or a file in its Changes
- *   (`mountGuidedReview`'s deps).
+ *   address, the pull request's or the stack's, and another pull request to its page or a
+ *   file in its Changes (`mountGuidedReview`'s deps); *subject* is what the guide's own
+ *   files are the changes of.
  * @typedef {{patch: DrawPatch | null, document: DrawDocument | null, pins: Pins}} Drawers
  *   What draws a step's references, each null when the diff plugin did not load, and the
  *   comparison the step was read at.
@@ -85,8 +90,11 @@ import { pullStateIcon } from "./pull-state.js";
  *   whose render was refused with *code* (`textRefusalNote` in pull-page.js), or null when
  *   the code needs no word to the reader.
  * @typedef {{state: "absent" | "invalid" | "comparison_unavailable" |
- *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
- *   message?: string, stale?: Staleness}} Refusal
+ *   "description_truncated" | "step_not_found" | "not_cached" | "stack_unavailable",
+ *   record_revision: string | null, message?: string, stale?: Staleness}} Refusal A
+ *   stack's answer names its member that carries the guide too, as `carrier`, and a stack
+ *   this copy cannot pair is `stack_unavailable` (`stack_guided_review` in
+ *   guided_review.py).
  * @typedef {"unchanged" | "changed" | "unknown"} Change Whether a reference's file changed
  *   since the guide was written: "unknown" when the guide is out of date and what changed
  *   could not be read.
@@ -114,16 +122,23 @@ const renderRetried = (step) =>
  * A step whose read was refused or failed keeps the guide's steps, from the last answer that
  * had them, so the reader can still move, and is read again when the reader returns to it.
  *
+ * A stack's guide has no overview of its own, since no member's description introduces the
+ * stack: with *first* 1 it opens on step 1, and no move goes before it.
+ *
  * @param {{
  *   read(step: number, signal: AbortSignal): Promise<Step | Refusal>,
  *   render(state: GuideState, at: number, steps: number): void,
+ *   first?: 0 | 1,
  * }} deps *render* is told the guide's step count, 0 while no answer has had a step.
+ *   *first* is the first place, 0, the overview, unless it says 1.
  */
 export function createGuideNavigation(deps) {
+  const first = deps.first ?? 0;
   /** @type {string | null | undefined} */
   let revision;
   let headMoved = false;
-  let selected = 0;
+  /** @type {number} */
+  let selected = first;
   /** The step count of the last answer of this revision that had a step, which bounds a move. */
   let count = 0;
   /** @type {Map<number, Step | Refusal>} */
@@ -189,7 +204,7 @@ export function createGuideNavigation(deps) {
     if (target === selected && (pending !== null || answers.has(Math.max(target, 1)))) {
       return;
     }
-    if (target >= 0 && target <= count) {
+    if (target >= first && target <= count) {
       selected = target;
       void load(revision);
     }
@@ -239,6 +254,20 @@ const MESSAGES = Object.freeze({
   error: "Could not load the guide. Reopen the tab to try again.",
 });
 
+// A stack's guide says the same of the stack. Its overview is its first step, so a refusal
+// shows under the step list alone; a member not read yet may carry the guide, and its page
+// fetches the members it lacks.
+const STACK_MESSAGES = Object.freeze({
+  ...MESSAGES,
+  absent: "This stack has no guide.",
+  comparison_unavailable: "The stack's comparison is unavailable. Reload the page to try again.",
+  description_truncated:
+    "Only part of the description that carries this stack's guide was loaded, and it holds no complete guide.",
+  not_cached: "This stack's pull requests are still being fetched.",
+  stack_unavailable: "This stack cannot be shown.",
+  updated: "The stack's guide changed. Reopen the guide to read the new version.",
+});
+
 // One step of a guide whose other steps read: the reader can move on, and a step whose read
 // was refused or failed is read again when chosen again.
 const STEP_MESSAGES = Object.freeze({
@@ -277,6 +306,10 @@ const CHANGED_REFERENCE_MESSAGES = Object.freeze({
   range_unavailable: "These lines may have changed since the guide was written.",
   path_not_changed: "This file is no longer in the pull request's changes.",
 });
+const STACK_CHANGED_REFERENCE_MESSAGES = Object.freeze({
+  ...CHANGED_REFERENCE_MESSAGES,
+  path_not_changed: "This file is no longer in the stack's changes.",
+});
 const UNKNOWN_REFERENCE_MESSAGES = Object.freeze({
   ready: "This file may have changed since the guide was written.",
   range_unavailable: "These lines may have changed since the guide was written.",
@@ -293,6 +326,16 @@ const OUTDATED = Object.freeze({
   remedy: "Its author can update the guide.",
   unchanged:
     "This guide was written for an earlier version of this pull request, but the files it cites have not changed.",
+});
+// A stack's guide is out of date when any member moved since it was written.
+const STACK_OUTDATED = Object.freeze({
+  marked:
+    "This guide was written for an earlier version of this stack, so steps marked changed may not match it.",
+  unknown:
+    "This guide was written for an earlier version of this stack, so some steps may not match it.",
+  remedy: "Its author can update the guide.",
+  unchanged:
+    "This guide was written for an earlier version of this stack, but the files it cites have not changed.",
 });
 
 /**
@@ -623,13 +666,13 @@ function renderReference(reference, ways, change, drawers, drawn) {
   const path = reference.path ?? "";
   const other = reference.kind === "pull_file" ? reference.pull : null;
   const open = other === null ? () => ways.open(path) : () => ways.openPull(other, path);
+  const changedWords =
+    ways.subject === "stack" ? STACK_CHANGED_REFERENCE_MESSAGES : CHANGED_REFERENCE_MESSAGES;
   const changed =
     reference.state === "ready" && change !== "unchanged"
       ? element(
           "p",
-          change === "changed"
-            ? CHANGED_REFERENCE_MESSAGES.ready
-            : UNKNOWN_REFERENCE_MESSAGES.ready,
+          change === "changed" ? changedWords.ready : UNKNOWN_REFERENCE_MESSAGES.ready,
           "github-pull-quiet github-pull-guide-changed",
         )
       : null;
@@ -663,11 +706,7 @@ function renderReference(reference, ways, change, drawers, drawn) {
   } else {
     /** @type {Readonly<Record<string, string | undefined>>} */
     const said =
-      change === "changed"
-        ? CHANGED_REFERENCE_MESSAGES
-        : change === "unknown"
-          ? UNKNOWN_REFERENCE_MESSAGES
-          : {};
+      change === "changed" ? changedWords : change === "unknown" ? UNKNOWN_REFERENCE_MESSAGES : {};
     /** @type {Readonly<Record<string, string | undefined>>} */
     const ordinary = REFERENCE_MESSAGES;
     const message =
@@ -717,21 +756,24 @@ function changeOf(stale, reference) {
  * cites changed or what changed is unknown, and a quiet line when none did.
  *
  * @param {Staleness} stale
+ * @param {GuideSubject["kind"]} [subject] What the guide was written for: a pull request, or
+ *   a stack.
  * @returns {HTMLElement | null}
  */
-export function staleNotice(stale) {
+export function staleNotice(stale, subject = "pull") {
   if (!outdated(stale)) {
     return null;
   }
+  const words = subject === "stack" ? STACK_OUTDATED : OUTDATED;
   if (stale.changed_steps !== null && stale.changed_steps.length === 0) {
-    const line = element("p", OUTDATED.unchanged, "github-pull-quiet github-pull-guide-stale");
+    const line = element("p", words.unchanged, "github-pull-quiet github-pull-guide-stale");
     line.setAttribute("role", "status");
     return line;
   }
-  const warning = stale.changed_steps === null ? OUTDATED.unknown : OUTDATED.marked;
+  const warning = stale.changed_steps === null ? words.unknown : words.marked;
   const box = element(
     "div",
-    `${warning} ${OUTDATED.remedy}`,
+    `${warning} ${words.remedy}`,
     "notice github-pull-notice github-pull-guide-stale",
   );
   box.dataset.severity = "warning";
@@ -819,9 +861,11 @@ let groupHeadings = 0;
 
 /**
  * @param {HTMLElement} host
- * @param {HTMLElement} introduction The description's card, which the page draws and keeps
- *   current: the guide's step 0, shown while it is the step and while no step can be.
- * @param {number} number
+ * @param {HTMLElement | null} introduction The description's card, which the page draws and
+ *   keeps current: the guide's step 0, shown while it is the step and while no step can be.
+ *   A stack's guide has none, since no member's description introduces the stack, and
+ *   opens on its first step.
+ * @param {GuideSubject} subject The pull request or the stack whose guide this is.
  * @param {{
  *   open: (path: string) => void,
  *   openPull: (number: number, path: string | null) => void,
@@ -843,7 +887,7 @@ let groupHeadings = 0;
  *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through, and
  *   *refusalNote* says why a note's render was refused, in a description's words.
  */
-export function mountGuidedReview(host, introduction, number, deps) {
+export function mountGuidedReview(host, introduction, subject, deps) {
   const { loadStyles, loadDrawPatch, loadDrawDocument, loadDrawProse, refusalNote } = deps;
   /** @type {ReferenceWays} */
   const ways = {
@@ -851,7 +895,16 @@ export function mountGuidedReview(host, introduction, number, deps) {
     openPull: deps.openPull,
     age: deps.age,
     shortCommit: deps.shortCommit,
+    subject: subject.kind,
   };
+  const stacked = subject.kind === "stack";
+  // A stack's guide opens on its first step: it has no overview to show.
+  const first = stacked ? 1 : 0;
+  /** @type {Readonly<Record<string, string>>} */
+  const said = stacked ? STACK_MESSAGES : MESSAGES;
+  // The card the overview shows, which a stack's guide never places.
+  const intro = introduction ?? element("div");
+  const asks = `${stacked ? "stack" : "number"}=${subject.number}`;
   /** @type {Promise<unknown> | null} */
   let styles = null;
   /** @type {Promise<DrawPatch | null> | null} */
@@ -905,12 +958,19 @@ export function mountGuidedReview(host, introduction, number, deps) {
   // What an out-of-date guide says leads the page, above its steps.
   const outdatedNote = element("div", "", "github-pull-guide-outdated");
   outdatedNote.hidden = true;
-  host.replaceChildren(outdatedNote, outline, introduction, detail, notice, pager);
+  host.replaceChildren(
+    outdatedNote,
+    outline,
+    ...(introduction === null ? [] : [introduction]),
+    detail,
+    notice,
+    pager,
+  );
   /** @param {Staleness | null | undefined} stale */
   const showStale = (stale) => {
-    const said = stale ? staleNotice(stale) : null;
-    outdatedNote.hidden = said === null;
-    outdatedNote.replaceChildren(...(said === null ? [] : [said]));
+    const warned = stale ? staleNotice(stale, subject.kind) : null;
+    outdatedNote.hidden = warned === null;
+    outdatedNote.replaceChildren(...(warned === null ? [] : [warned]));
   };
   /** @type {string[]} */
   let titles = [];
@@ -975,12 +1035,13 @@ export function mountGuidedReview(host, introduction, number, deps) {
     const count = titles.length;
     // What is shown, by name: the overview, or a step and how many there are.
     status.textContent = placeName(at, count);
-    previous.disabled = at <= 0;
+    previous.disabled = at <= first;
     next.disabled = at >= count;
     const key = JSON.stringify(entries);
     if (built.key !== key) {
+      // A row for each place, by its index; a stack's guide lists no overview.
       const rows = [stepRow(0, OVERVIEW)];
-      const items = [listItem(rows[0])];
+      const items = first === 0 ? [listItem(rows[0])] : [];
       for (const entry of entries) {
         if (entry.kind === "step") {
           const row = stepRow(entry.step, entry.title);
@@ -1009,24 +1070,22 @@ export function mountGuidedReview(host, introduction, number, deps) {
         link.removeAttribute("aria-current");
       }
     }
-    back.hidden = at <= 0;
+    back.hidden = at <= first;
     onward.hidden = at >= count;
-    backLabel.textContent = at > 0 ? nameOf(at - 1) : "";
+    backLabel.textContent = at > first ? nameOf(at - 1) : "";
     onwardLabel.textContent = at < count ? nameOf(at + 1) : "";
     // The arrows say where they go when pointed at, in the same words as the way on and back.
-    previous.dataset.tipText = at > 0 ? `Previous: ${nameOf(at - 1)}` : "Previous step";
+    previous.dataset.tipText = at > first ? `Previous: ${nameOf(at - 1)}` : "Previous step";
     next.dataset.tipText = at < count ? `Next: ${nameOf(at + 1)}` : "Next step";
   }
 
   const navigation = createGuideNavigation({
+    first,
     async read(step, signal) {
-      const response = await fetch(
-        `/api/plugin/github/guided-review?number=${number}&step=${step}`,
-        {
-          signal,
-          cache: "no-store",
-        },
-      );
+      const response = await fetch(`/api/plugin/github/guided-review?${asks}&step=${step}`, {
+        signal,
+        cache: "no-store",
+      });
       if (!response.ok) {
         throw new Error("Could not read the guide");
       }
@@ -1071,7 +1130,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
       undraw();
       if (state.state === "loading") {
         // The overview is the page's own, so it shows at once; a step waits for its read.
-        introduction.hidden = at !== 0;
+        intro.hidden = at !== 0;
         pager.hidden = true;
         previous.disabled = next.disabled = true;
         notice.hidden = true;
@@ -1095,7 +1154,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
         // The step is read again when the reader returns to it.
         paintOutline(at);
         pager.hidden = false;
-        introduction.hidden = at !== 0;
+        intro.hidden = at !== 0;
         detail.replaceChildren();
         notice.hidden = false;
         notice.textContent =
@@ -1113,14 +1172,14 @@ export function mountGuidedReview(host, introduction, number, deps) {
         entries = [];
         changedSteps = [];
         paintOutline(0);
-        introduction.hidden = false;
+        intro.hidden = false;
         pager.hidden = true;
         detail.replaceChildren();
         notice.hidden = false;
         notice.textContent =
           state.state === "invalid"
             ? (state.message ?? "This guide is invalid.")
-            : MESSAGES[state.state];
+            : (said[state.state] ?? MESSAGES.error);
         return;
       }
       notice.hidden = true;
@@ -1129,7 +1188,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
       changedSteps = outdated(state.stale) ? (state.stale.changed_steps ?? []) : [];
       paintOutline(at);
       pager.hidden = false;
-      introduction.hidden = at !== 0;
+      intro.hidden = at !== 0;
       if (at === 0) {
         detail.replaceChildren();
         return;

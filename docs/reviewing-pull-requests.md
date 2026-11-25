@@ -334,6 +334,38 @@ metab <pull request URL> --api '/api/plugin/github/guided-review?number=<n>'
 There is no check for a guide before the description carries it, and a block inside
 another fence, as in the example above, is not a guide even where the tab appears.
 
+#### A Stack’s Guide
+
+A native stack can have a guide of its own: one guided review of the whole stack, read
+against the stack’s comparison, from its bottom layer’s merge base to its top layer’s
+head. The stack’s page, which **Whole stack** in the stack menu opens, then leads with a
+**Guided Review** tab and opens on it; without a guide it opens on Files.
+
+To publish one, add one top-level `stack-review` block, in the format above, to a
+layer’s description, usually the top layer’s, beside that layer’s own `guided-review`
+block. Pin its `merge_base` to the stack’s base and its `head` to the top layer’s head.
+A description may hold one block of each kind; two of either is refused.
+The stack’s guide is the block of the top-most layer that has one, so a layer added
+above it leaves the guide in place, and out of date until its author moves the pins.
+Editing a description starts no CI run and leaves the layer’s own guide current.
+
+The description that carries the block introduces its layer, not the stack, so a stack’s
+guide opens on its first step, and its first steps orient the reader.
+On that layer’s page, Conversation leaves the block out and shows a card that opens the
+stack’s guide.
+A step’s files open in the stack’s Changes, and a step can cite each layer
+as `{pull: <n>}`. While a layer is being fetched, or the stack cannot be shown as one
+comparison, the guide on screen stays; when the stack moves, the page offers its new
+comparison, and the guide is read again, out of date where a layer moved past its pins,
+when you take it. The same answer is the `guided-review` route’s, by stack:
+
+```shell
+metab <pull request URL> --api '/api/plugin/github/guided-review?stack=<n>'
+```
+
+The [agent skill](../skills/metabrowser/SKILL.md) has the recipe for writing one, with
+what each step says.
+
 ### Code Controls
 
 | Opened with | Code controls |

@@ -1,0 +1,1010 @@
+## Stack 70 is pending: its guide waits for the members too, since a member not read yet may carry it.
+# metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=70'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/guided-review?stack=70
+status: 200
+{
+  "stack": 70,
+  "carrier": null,
+  "record_revision": null,
+  "state": "not_cached"
+}
+--- stderr ---
+--- gh ---
+## 8 and 10 read, 70 is current: 10, its top, carries a `stack-review` block pinned to the stack's pair, so its guide reads ready, its layers as rows and its file from the stack's Changes; 8's block below it is not the stack's.
+# metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=70'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/guided-review?stack=70
+status: 200
+{
+  "stack": 70,
+  "carrier": 10,
+  "record_revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
+  "state": "ready",
+  "comparison": {
+    "merge_base": "<base>",
+    "head": "<draft_head>"
+  },
+  "step_count": 2,
+  "titles": [
+    "The layers",
+    "The draft"
+  ],
+  "outline": [
+    {
+      "kind": "step",
+      "step": 1,
+      "title": "The layers"
+    },
+    {
+      "kind": "step",
+      "step": 2,
+      "title": "The draft"
+    }
+  ],
+  "step": 1,
+  "group": null,
+  "title": "The layers",
+  "note": "8 extends the guide; 10 starts a draft on top of it.",
+  "note_html": "\n<div><div><p>8 extends the guide; 10 starts a draft on top of it.</p></div></div>",
+  "note_refusal": null,
+  "group_note_html": null,
+  "group_note_refusal": null,
+  "references": [
+    {
+      "kind": "pull",
+      "path": null,
+      "side": null,
+      "start_line": null,
+      "end_line": null,
+      "pull": 8,
+      "commit": null,
+      "state": "ready",
+      "rendered": null,
+      "href": "/pull/8",
+      "hunks": [],
+      "truncated": false,
+      "comparison": null,
+      "target": {
+        "title": "Say more in the guide",
+        "state": "merged",
+        "stack": {
+          "number": 70,
+          "place": 1,
+          "count": 2
+        }
+      }
+    },
+    {
+      "kind": "pull",
+      "path": null,
+      "side": null,
+      "start_line": null,
+      "end_line": null,
+      "pull": 10,
+      "commit": null,
+      "state": "ready",
+      "rendered": null,
+      "href": "/pull/10",
+      "hunks": [],
+      "truncated": false,
+      "comparison": null,
+      "target": {
+        "title": "WIP: draft the next page",
+        "state": "draft",
+        "stack": {
+          "number": 70,
+          "place": 2,
+          "count": 2
+        }
+      }
+    }
+  ],
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+--- gh ---
+## Its second step.
+# metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=70&step=2'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/guided-review?stack=70&step=2
+status: 200
+{
+  "stack": 70,
+  "carrier": 10,
+  "record_revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
+  "state": "ready",
+  "comparison": {
+    "merge_base": "<base>",
+    "head": "<draft_head>"
+  },
+  "step_count": 2,
+  "titles": [
+    "The layers",
+    "The draft"
+  ],
+  "outline": [
+    {
+      "kind": "step",
+      "step": 1,
+      "title": "The layers"
+    },
+    {
+      "kind": "step",
+      "step": 2,
+      "title": "The draft"
+    }
+  ],
+  "step": 2,
+  "group": null,
+  "title": "The draft",
+  "note": "Read the draft whole.",
+  "note_html": "\n<div><div><p>Read the draft whole.</p></div></div>",
+  "note_refusal": null,
+  "group_note_html": null,
+  "group_note_refusal": null,
+  "references": [
+    {
+      "kind": "file",
+      "path": "docs/draft.md",
+      "side": null,
+      "start_line": null,
+      "end_line": null,
+      "pull": null,
+      "commit": null,
+      "state": "ready",
+      "rendered": "markdown",
+      "href": "/stack/70/changes/docs/draft.md",
+      "hunks": [],
+      "truncated": false,
+      "comparison": null,
+      "target": null
+    }
+  ],
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+--- gh ---
+## A step past its last.
+# metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=70&step=3'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/guided-review?stack=70&step=3
+status: 200
+{
+  "stack": 70,
+  "carrier": 10,
+  "record_revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
+  "state": "step_not_found"
+}
+--- stderr ---
+--- gh ---
+## 10's description renders without the block, as a guide's does.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-markdown?number=10&part=body'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-markdown?number=10&part=body
+status: 200
+{
+  "number": 10,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
+  "part": "body",
+  "html": "\n<div><div><p>Not ready.</p></div></div>",
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+--- gh ---
+## A request that names a pull request and a stack is refused.
+# metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=70&number=10'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/guided-review?stack=70&number=10
+status: 400
+{
+  "error": "name a pull request by \"number\" or a stack by \"stack\"",
+  "code": "invalid_request"
+}
+--- stderr ---
+Error: /api/plugin/github/guided-review?stack=70&number=10 returned HTTP 400
+--- gh ---
+## Stack 72 is not linear, so its guide is unavailable, with the stack's reason.
+# metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=72'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/guided-review?stack=72
+status: 200
+{
+  "stack": 72,
+  "carrier": null,
+  "record_revision": null,
+  "state": "stack_unavailable",
+  "reason": "not_linear"
+}
+--- stderr ---
+--- gh ---
+## 9 read, 73 is current. Its top, 9, carries no block, so its guide is 8's, below it: pinned to 8's own head, it is out of date, and its file is no longer in the stack's changes, since 9's head lacks 8's.
+# metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=73'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/guided-review?stack=73
+status: 200
+{
+  "stack": 73,
+  "carrier": 8,
+  "record_revision": "caf5688c2a840aba4d52b5a0cb7e639e80b007d1d98fed8876c4934d5147292a",
+  "state": "stale",
+  "stale": {
+    "guide": {
+      "merge_base": "<base>",
+      "head": "<merged_head>"
+    },
+    "current": {
+      "merge_base": "<base>",
+      "head": "<closed_head>"
+    },
+    "github_newer": false,
+    "history": "rewritten",
+    "commit_count": 1,
+    "commits": [
+      {
+        "sha": "<closed_head>",
+        "subject": "spam"
+      }
+    ],
+    "changed_paths": [
+      "docs/guide.md"
+    ],
+    "changed_steps": [
+      1
+    ]
+  },
+  "comparison": {
+    "merge_base": "<base>",
+    "head": "<closed_head>"
+  },
+  "step_count": 1,
+  "titles": [
+    "The guide"
+  ],
+  "outline": [
+    {
+      "kind": "step",
+      "step": 1,
+      "title": "The guide"
+    }
+  ],
+  "step": 1,
+  "group": null,
+  "title": "The guide",
+  "note": "Check the guide's new line.",
+  "note_html": "\n<div><div><p>Check the guide's new line.</p></div></div>",
+  "note_refusal": null,
+  "group_note_html": null,
+  "group_note_refusal": null,
+  "references": [
+    {
+      "kind": "file",
+      "path": "docs/guide.md",
+      "side": null,
+      "start_line": null,
+      "end_line": null,
+      "pull": null,
+      "commit": null,
+      "state": "path_not_changed",
+      "rendered": null,
+      "href": null,
+      "hunks": [],
+      "truncated": false,
+      "comparison": null,
+      "target": null
+    }
+  ],
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+--- gh ---
+## The stack's page, as `--show` reports it: its guide, Guided Review as its front page's tab, and Files at Files' own address.
+# metab https://github.com/octo/demo --show /stack/70
+exit: 0
+--- stdout ---
+show: /stack/70
+route: /stack/70
+kind: pull-stack
+views: pull-stack (default)
+model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 guide=#10 tab=guided comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --show /stack/70/files
+exit: 0
+--- stdout ---
+show: /stack/70/files
+route: /stack/70/files
+kind: pull-stack
+views: pull-stack (default)
+model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 guide=#10 tab=files comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
+--- stderr ---
+--- gh ---
+## Last, stack 74 arrives, 7 alone.
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks-refresh
+status: 202
+{
+  "refresh": "started",
+  "stacks": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "reader": "gh:octo-reader",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "fresh_for_s": 90.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "complete": true,
+    "stacks": [
+      {
+        "number": 70,
+        "base_ref": "topic",
+        "open": true,
+        "pulls": [
+          10
+        ],
+        "titles": [
+          null
+        ]
+      },
+      {
+        "number": 71,
+        "base_ref": "topic",
+        "open": true,
+        "pulls": [
+          8,
+          7,
+          10
+        ],
+        "titles": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "number": 72,
+        "base_ref": "topic",
+        "open": true,
+        "pulls": [
+          10,
+          8
+        ],
+        "titles": [
+          null,
+          null
+        ]
+      },
+      {
+        "number": 73,
+        "base_ref": "topic",
+        "open": true,
+        "pulls": [
+          8,
+          9
+        ],
+        "titles": [
+          null,
+          null
+        ]
+      }
+    ]
+  },
+  "status_route": "/api/plugin/github/stacks"
+}
+after: /api/plugin/github/stacks
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 90.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "complete": true,
+  "stacks": [
+    {
+      "number": 70,
+      "base_ref": "topic",
+      "open": true,
+      "pulls": [
+        10
+      ],
+      "titles": [
+        null
+      ]
+    },
+    {
+      "number": 71,
+      "base_ref": "topic",
+      "open": true,
+      "pulls": [
+        8,
+        7,
+        10
+      ],
+      "titles": [
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "number": 72,
+      "base_ref": "topic",
+      "open": true,
+      "pulls": [
+        10,
+        8
+      ],
+      "titles": [
+        null,
+        null
+      ]
+    },
+    {
+      "number": 73,
+      "base_ref": "topic",
+      "open": true,
+      "pulls": [
+        8,
+        9
+      ],
+      "titles": [
+        null,
+        null
+      ]
+    },
+    {
+      "number": 74,
+      "base_ref": "topic",
+      "open": true,
+      "pulls": [
+        7
+      ],
+      "titles": [
+        null
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+gh stack --version
+gh api user
+gh api repos/octo/demo/stacks?per_page=100&page=1 (If-None-Match)
+gh api user (If-None-Match)
+## 7's description has two `stack-review` blocks, so 74's guide is refused, and says why.
+# metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=74'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/guided-review?stack=74
+status: 200
+{
+  "stack": 74,
+  "carrier": 7,
+  "record_revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+  "state": "invalid",
+  "message": "Use one stack-review block in the pull request description."
+}
+--- stderr ---
+--- gh ---

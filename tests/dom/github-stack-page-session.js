@@ -398,17 +398,71 @@ function bodySession(page, pending, current, lacking, notLinear) {
   return steps;
 }
 
+/**
+ * The front page of a stack with a guide while the stack moves: the guide shown after each
+ * answer (`guideShown`), the tab, and what the body does. A member's push keeps Guided
+ * Review and its guide while the member is fetched, and the guide mounts again only when
+ * the reader takes the comparison offered; a description that no longer carries the guide
+ * takes the tab away.
+ */
+function guidedSession(page, pending, current, lacking, notLinear) {
+  const steps = [];
+  let body = page.NO_BODY;
+  let guide = null;
+  let envelope = null;
+  const step = (name, next, take = false) => {
+    envelope = next;
+    guide = page.guideShown(guide, envelope);
+    const tab = page.shownTab("", envelope, guide);
+    body = take ? page.bodyTaken(body, envelope) : page.bodyAnswered(body, envelope);
+    const planned = page.bodyPlan(body, envelope, tab, []);
+    body = planned.body;
+    if (planned.action.do === "mount") {
+      body = page.bodyMounted(body, planned.action.key).body;
+    }
+    steps.push({
+      step: name,
+      guide: guide === null ? null : `#${guide.number}`,
+      tab,
+      do: planned.action.do === "mount" ? `mount ${planned.action.tab}` : planned.action.do,
+      drawn: body.drawn === current.comparison ? "current" : body.drawn ? "other" : null,
+    });
+  };
+  step("before any answer", null);
+  step("current", current);
+  step("a member's push, fetched", pending);
+  step("current again, another comparison", lacking);
+  step("the reader takes it", lacking, true);
+  step("the stack cannot be shown", notLinear);
+  step("the guide's block removed", { ...lacking, guide: null });
+  return steps;
+}
+
 async function main() {
   const page = await import(pathToFileURL(pagePath).href);
   const { pending, current, lacking } = recorded;
   const notLinear = recorded.not_linear;
 
+  // The tab each route shows for a stack whose top carries its guide (70's), for one with
+  // no guide, and before the stack is read.
+  const unguided = { ...current, guide: null };
+  const routes = ["", "guided", "files", "docs", "changes", "conversation"];
   const tabs = Object.fromEntries(
-    ["", "files", "docs", "changes", "guided"].map((tab) => [
-      tab || "(front)",
-      page.shownTab(tab, current),
+    [
+      ["guided", current],
+      ["unguided", unguided],
+      ["unread", null],
+    ].map(([name, envelope]) => [
+      name,
+      Object.fromEntries(
+        routes.map((tab) => [
+          tab || "(front)",
+          page.shownTab(tab, envelope, page.guideShown(null, envelope)),
+        ]),
+      ),
     ]),
   );
+  const guided = guidedSession(page, pending, current, lacking, notLinear);
 
   const comparison = [
     ["nothing drawn, pending", page.comparisonAction(null, pending)],
@@ -451,6 +505,7 @@ async function main() {
     `${JSON.stringify(
       {
         tabs,
+        guided,
         comparison,
         marks,
         said,

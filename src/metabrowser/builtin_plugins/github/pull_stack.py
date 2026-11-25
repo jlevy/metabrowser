@@ -181,6 +181,14 @@ class StackProbeWire(TypedDict):
     every_s: float
 
 
+class StackGuideWire(TypedDict):
+    """The member whose description carries the stack's guide, and its record's revision,
+    which the guide route answers as ``carrier`` and ``record_revision``."""
+
+    number: int
+    revision: str
+
+
 class StackEnvelope(TypedDict):
     """What ``GET /api/plugin/github/stack`` answers."""
 
@@ -196,9 +204,10 @@ class StackEnvelope(TypedDict):
     totals: StackTotals | None
     truncated: bool
     files: list[FileLayersWire]
-    # The member whose description carries the stack's guide: None, as nothing reads a
-    # stack's guide yet.
-    guide: int | None
+    # The member whose description carries the stack's guide, its `stack-review` block
+    # (`stack_guide_carrier` in guided_review.py), or None: none does, or the stack is not
+    # current, so a member not read yet may.
+    guide: StackGuideWire | None
     # What View on GitHub opens: the top member's page, which GitHub draws with its stack.
     github_url: str | None
     # The top member's automatic ask, which keeps the repository's list probed while the
@@ -753,6 +762,7 @@ async def stack_envelope(
         )
         envelope["truncated"] = manifest.truncated
         envelope["files"] = list(found.files)
+        envelope["guide"] = await _guide(published, read)
     if repository is not None and read.stack is not None:
         envelope["github_url"] = f"{repository.source}/pull/{read.stack.pulls[-1]}"
     top = read.members[-1] if read.members else None
@@ -761,6 +771,17 @@ async def stack_envelope(
             number=top.number, held=top.revision, every_s=ATTENDED_PROBE_S
         )
     return envelope
+
+
+async def _guide(published: PublishedSource, read: StackRead) -> StackGuideWire | None:
+    """The member that carries the stack's guide, read from the records the stack's read
+    holds: a description is parsed only when it names the block, and the parse is kept."""
+
+    from metabrowser.builtin_plugins.github.guided_review import stack_guide_carrier
+
+    members = [(member.number, member.record, member.revision) for member in read.members]
+    found = await asyncio.to_thread(stack_guide_carrier, published.home, published.slug, members)
+    return None if found is None else StackGuideWire(number=found[0], revision=found[1])
 
 
 def envelope_etag(envelope: StackEnvelope) -> str:
@@ -775,6 +796,7 @@ __all__ = [
     "STACK_ROUTE",
     "Combined",
     "StackEnvelope",
+    "StackGuideWire",
     "StackPair",
     "StackRead",
     "combined",

@@ -638,7 +638,7 @@ def parses(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     asked: list[str] = []
     real = guided_review._read_description  # pyright: ignore[reportPrivateUsage]
 
-    def counting(body: str) -> tuple[Collection | None, str]:
+    def counting(body: str) -> guided_review._Description:  # pyright: ignore[reportPrivateUsage]
         asked.append(body)
         return real(body)
 
@@ -690,7 +690,7 @@ def test_two_reads_of_one_revision_share_one_parse(
     finish = threading.Event()
     counting = guided_review._read_description  # pyright: ignore[reportPrivateUsage]
 
-    def slow(body: str) -> tuple[Collection | None, str]:
+    def slow(body: str) -> guided_review._Description:  # pyright: ignore[reportPrivateUsage]
         parsing.set()
         finish.wait(timeout=30)
         return counting(body)

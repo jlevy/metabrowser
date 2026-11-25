@@ -1212,6 +1212,130 @@ async function run() {
     there.handle.dispose();
   }
 
+  // A description that carries a stack's guide: the server renders it without the block,
+  // and Conversation's card says the guide is read on the page of each stack the pull
+  // request is a member of, which it links once the stacks are known.
+  {
+    const optionalStacks = require("../fixtures/github-stacks-responses.json");
+    const carrier = host();
+    const routed = globalThis.fetch;
+    globalThis.fetch = (route, init) =>
+      route === "/api/plugin/github/stacks"
+        ? Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: () => optionalStacks.current.etag },
+            json: async () => optionalStacks.current.body,
+          })
+        : routed(route, init);
+    const described = envelope(1);
+    described.record.pull.body = "Counts to two.\n\n```stack-review\nsoftschema: {}\n```\n";
+    const view = carrier.mount(page, "conversation", described);
+    await settle();
+    const card = view.container
+      .querySelectorAll(".notice")
+      .find((node) => node.textContent.includes("stack's guided review"));
+    const links = [...card.descendants()]
+      .filter((node) => node.tag === "a")
+      .map((node) => `${node.textContent} (${node.getAttribute("href")})`);
+    assert.deepEqual(links, ["Open Stack #286 (/stack/286)"]);
+    assert.ok(
+      !view.container.textContent.includes("Open Guided Review"),
+      "a stack's guide is not this pull request's",
+    );
+    steps.push(
+      `a description with a stack's guide: "${card.textContent}" links ${links.join(", ")}`,
+    );
+    view.handle.dispose();
+  }
+
+  // A stack's guide, as the stack's page mounts it: no introduction and no overview, so it
+  // opens on its first step and goes no further back; it asks the route by `stack=`, and an
+  // out-of-date guide and a file no longer changed say so of the stack.
+  {
+    host();
+    const routes = [];
+    globalThis.fetch = async (route) => {
+      routes.push(route);
+      const at = Number(new URL(route, "http://localhost").searchParams.get("step"));
+      const changed = ["src/app.txt", "gone.txt"];
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({
+          ...step(1, at),
+          stack: 70,
+          carrier: 10,
+          state: "stale",
+          stale: {
+            guide: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+            current: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+            github_newer: false,
+            history: "rewritten",
+            commit_count: 1,
+            commits: [],
+            changed_paths: changed,
+            changed_steps: [1],
+          },
+        }),
+      };
+    };
+    const { mountGuidedReview } = await import(
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-review.js")).href
+    );
+    const container = new Element("section");
+    const view = mountGuidedReview(
+      container,
+      null,
+      { kind: "stack", number: 70 },
+      {
+        open() {},
+        openPull() {},
+        age: () => new Element("span"),
+        shortCommit: (sha) => sha.slice(0, 7),
+        loadStyles: async () => {},
+        loadDrawPatch: async () => () => ({ dispose() {} }),
+        loadDrawDocument: async () => null,
+        loadDrawProse: async () => null,
+        refusalNote: () => null,
+      },
+    );
+    view.show(revisionOf(1), false);
+    await settle();
+    const position = container.querySelector(".github-pull-guide-position").textContent;
+    const rows = container
+      .querySelectorAll(".github-pull-guide-steps-item")
+      .map((item) => item.textContent.trim());
+    const previous = [...container.descendants()].find(
+      (node) => node.tag === "button" && node.getAttribute("aria-label") === "Previous step",
+    );
+    const warned = container.querySelector(".github-pull-guide-stale").textContent;
+    const gone = container
+      .querySelectorAll(".github-pull-guide-reference")
+      .map((section) =>
+        [...section.descendants()]
+          .filter((node) => node.tag === "p")
+          .map((note) => note.textContent)
+          .join(" "),
+      )
+      .filter(Boolean);
+    assert.equal(position, "Step 1 of 2");
+    assert.deepEqual(rows, ["1Step 1changed", "2Step 2"], "a stack's guide lists no overview");
+    assert.equal(previous.disabled, true, "nothing comes before a stack guide's first step");
+    view.move(-1);
+    view.go(0);
+    await settle();
+    assert.deepEqual(
+      routes.map((route) => route.split("?")[1]),
+      ["stack=70&step=1"],
+    );
+    steps.push(
+      `a stack's guide opens on ${position}, lists ${rows.length} steps and no overview, asks ${routes.map((route) => route.split("?")[1]).join(", ")}, and goes no further back; it says "${warned}" and of a file "${gone.join(" | ")}"`,
+    );
+    view.dispose();
+  }
+
   return steps;
 }
 

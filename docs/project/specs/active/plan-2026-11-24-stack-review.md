@@ -4,9 +4,15 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Phases 0 (`mb-mxcm`, `mb-kkib`), 1 (`mb-vad1`), and 2 (`mb-9dmv`) are built;
-phase 3 is planned. Phase 2 addresses a `{pull, path}` this copy cannot read at the file
-in that pull request’s Changes, which loads it, rather than at the pull request alone.
+**Status:** Phases 0 (`mb-mxcm`, `mb-kkib`), 1 (`mb-vad1`), 2 (`mb-9dmv`), and 3
+(`mb-ri96`) are built.
+Phase 2 addresses a `{pull, path}` this copy cannot read at the file in that pull
+request’s Changes, which loads it, rather than at the pull request alone.
+Phase 3’s `stack` answer names the guide’s member and its record revision only while the
+stack is current, since a member not read yet may carry a block, so the page keeps the
+guide it showed while the stack is pending, as it keeps the drawn comparison.
+The skill’s stack recipes are held by its command checks, not run by
+`cli-skill-recipes.tryscript.md`, whose stand-in has no stack.
 Phase 1 leaves out the Pulls tab’s **Stack #N** heading as an entry point, since that
 heading is the stack row’s disclosure toggle, and the Chrome measurement of Docs that
 [Bounds](#bounds) asks for.
@@ -259,7 +265,7 @@ GitHub’s own page of a stack.
   consolidated diff, mounted with the diff plugin’s `mountDiffView` on the one
   comparison, as a commit’s page mounts its own, with the choices and preferences a pull
   request’s Changes has.
-- **Guided Review** (`/stack/<n>/guided`), from phase 3.
+- **Guided Review** (`/stack/<n>/guided`), built in phase 3.
 - **The front page** `/stack/<n>` is Guided Review when the stack has a guide, and Files
   otherwise. The `stack` answer says which, from the server’s reading of the
   descriptions, so the page needs no hint of its own.
