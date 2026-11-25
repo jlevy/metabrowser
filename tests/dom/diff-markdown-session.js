@@ -169,6 +169,24 @@ class PageElement {
     return this.children[0];
   }
 
+  get previousElementSibling() {
+    const siblings = this.parentElement?.children ?? [];
+    return siblings[siblings.indexOf(this) - 1] ?? null;
+  }
+
+  get nextElementSibling() {
+    const siblings = this.parentElement?.children ?? [];
+    return siblings[siblings.indexOf(this) + 1] ?? null;
+  }
+
+  remove() {
+    if (this.parentElement !== null) {
+      const siblings = this.parentElement.childNodes;
+      siblings.splice(siblings.indexOf(this), 1);
+      this.parentElement = null;
+    }
+  }
+
   append(...nodes) {
     for (const node of nodes) {
       if (node.tagName === "#FRAGMENT") {
@@ -507,13 +525,61 @@ function rows(article, depth = "") {
       shown.push(...rows(node, `${depth}  `));
     } else if (node.classList.contains("diff-markdown-spacer")) {
       shown.push(`${depth}[blocks ${node.dataset.span} not drawn: ${node.style.height}]`);
-    } else if (node.className.includes("diff-markdown-frontmatter")) {
-      shown.push(...frontmatter(node));
+    } else if (node.classList.contains("diff-markdown-change")) {
+      for (const row of changeRows(node)) {
+        shown.push(...rowLines(row, depth));
+      }
     } else {
-      shown.push(`${depth}${row_(node)}`);
+      assert(
+        !node.classList.contains("diff-markdown-added") &&
+          !node.classList.contains("diff-markdown-removed"),
+        "a changed row is drawn only in a run of its kind (changeRuns)",
+      );
+      shown.push(...rowLines(node, depth));
     }
   }
   return shown;
+}
+
+/** A row as a step prints it: front matter's disclosure, or a block's kind and content. */
+function rowLines(row, depth) {
+  return row.className.includes("diff-markdown-frontmatter")
+    ? frontmatter(row)
+    : [`${depth}${row_(row)}`];
+}
+
+// A change's band is drawn only by its runs (`changeRuns` in diff-markdown.js), each one box
+// across its rows, so the band of a run of one kind can have no gap in it: a run holds rows
+// of its own kind, two runs side by side in a change are of two kinds, and two changes are
+// never side by side, which would put a run's end beside the next run of its kind. The
+// rows, in order.
+function changeRows(change) {
+  const siblings = change.parentElement.childNodes;
+  const before = siblings[siblings.indexOf(change) - 1];
+  assert(
+    before === undefined || !before.classList.contains("diff-markdown-change"),
+    "two changes side by side are one",
+  );
+  const rows = [];
+  let previous = null;
+  for (const run of change.childNodes) {
+    const kind = ["added", "removed"].find(
+      (each) => run.className === `diff-markdown-run diff-markdown-run-${each}`,
+    );
+    assert(kind !== undefined, `a change holds only runs, not ${run.className}`);
+    assert(kind !== previous, `two ${kind} runs side by side in a change are one`);
+    previous = kind;
+    assert(run.childNodes.length > 0, "a run holds a row");
+    for (const row of run.childNodes) {
+      assert(
+        row.classList.contains("diff-markdown-block") &&
+          row.classList.contains(`diff-markdown-${kind}`),
+        `a ${kind} run holds only ${kind} rows`,
+      );
+      rows.push(row);
+    }
+  }
+  return rows;
 }
 
 /** A long file's rows, shortened to their first and last few. */
@@ -806,9 +872,11 @@ async function main() {
   };
   const near = (...ids) =>
     observers[0].notify(ids.map((id) => ({ target: byId[id].section, isIntersecting: true })));
-  // The reader comes near the first chunk not drawn yet.
-  const nearChunk = (file) => {
-    const spacer = observers[1].observed.find((each) => file.rendered.contains(each));
+  // The reader comes near the first chunk not drawn yet, or the one of blocks *span*.
+  const nearChunk = (file, span = undefined) => {
+    const spacer = observers[1].observed.find(
+      (each) => file.rendered.contains(each) && (span === undefined || each.dataset.span === span),
+    );
     assert(spacer !== undefined, `${file.name}: no chunk waits to be drawn`);
     observers[1].notify([{ target: spacer, isIntersecting: true }]);
   };
@@ -1079,6 +1147,12 @@ async function main() {
   nearChunk(byId.f11);
   await settle();
   step("coming near a place draws the chunk there", [byId.f11]);
+
+  // A chunk drawn before the one above it: that one, drawn later, joins the change on either
+  // side of it, so the book's one run of added blocks stays one box (`joinChanges`).
+  nearChunk(byId.f11, "400-500");
+  await settle();
+  step("coming near a later place first draws that chunk alone", [byId.f11]);
 
   steps.push({
     step: "a link into a chunk not drawn yet",

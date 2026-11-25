@@ -999,27 +999,39 @@ margins added up, and an h2 sat well below where the document puts it
 ([Rendered Diff Block Spacing](../explorations/performance-loop/design-rule-measurements.md#rendered-diff-block-spacing)
 has the before and after).
 
-- **A changed block’s band** (its fill and its change gutter) is drawn by its row’s
-  `::before`, not laid out, so it moves no text.
-  It reaches `--diff-markdown-band-extent` past the block’s text above and below, behind
-  the text of every block, since the article isolates its paint.
-  Two changed blocks in a row draw two bands with the document’s space between them,
-  less the two extents.
-  The extent is half the least space KPress puts between two blocks, so two bands meet
-  there and never overlap into a darker seam.
-  One band across a run of changed blocks and the document’s spacing cannot both hold
-  while a band is drawn per row and no row can read the margin its neighbor collapses
-  into.
+- **A change’s band** (its fill and its change gutter) is one box for each run of
+  changed blocks of one kind, so consecutive added blocks read as one band and
+  consecutive removed blocks as another, with nothing between them.
+  `changeRuns` in the diff plugin’s `diff-markdown.js` places each run of changed rows
+  in a `.diff-markdown-change`, and each run of one kind in it in a
+  `.diff-markdown-run`, whose `::before` draws the band; a row draws none.
+  Neither wrapper sets block padding or a border or starts a formatting context, so the
+  rows’ margins collapse through them as they do through a row, and the band, which is
+  drawn rather than laid out, moves no text: a block sits where it sits with no band at
+  all. The band spans the run’s rows and the space between them, and reaches
+  `--diff-markdown-band-extent` past the first row’s text and the last row’s, behind the
+  text of every block, since the article isolates its paint.
+  Current hides a change’s removed runs, and the change then draws one added band across
+  the runs left, which draw none, so the edits it shows read as one band too.
+  A removed run meets an added run only across the space between two blocks, and the
+  extent is half the least of those, so their bands meet there at most and never overlap
+  into a darker seam. An article drawn a chunk at a time joins a chunk to the change on
+  either side of it (`joinChanges`), so a run that crosses chunks is still one box.
+  Before mb-zkmy each row drew its own band, and two changed blocks in a row left the
+  document’s space between them unpainted, less the two extents: a 24 px gap from a
+  paragraph to an added h2.
 - **A list or a quote split into rows**, as a changed list is, one row per item, reads
   as one: between two rows of one list or quote, its own margins give way, so its items
   are spaced as KPress spaces them inside it, and its first and last rows keep the
   margins that set it apart in the document.
 - **KPress’s rules that key on a previous sibling** see none, since the previous block
   is in another row. A paragraph straight after an h4, h5, or h6, which KPress sets close
-  under it, is joined across rows, and across the one hidden row an edited paragraph’s
-  removed version leaves when the removed blocks are hidden.
+  under it, is joined across rows, and past the removed run that Current hides, which
+  leaves the heading the block before the paragraph.
   `h2 + h3` is not: joining it would restate KPress’s margin, so an h3 straight after an
-  h2 keeps the space it has after a paragraph, a little more than the document’s.
+  h2 keeps the space it has after a paragraph, a little more than the document’s. These
+  rules read the row before a row across the edges of runs and changes: the last row of
+  the run before, the row before a change, or a change’s last row.
 - **The fold of unchanged blocks** is the diff’s [fold bar](#fold-expanders) and the
   group it opens, whose rows are its content.
   The group clips its content with `overflow: clip` where a code file’s fold uses
@@ -1029,11 +1041,17 @@ has the before and after).
   `withoutRenderWrappers` in `static/inert-html.js` unwraps the `<div>` KPress keeps
   around a table when it is the block’s only element, so the diff’s table has no
   `.kpress-table-wrap` and none of the wrapper’s margins.
+  So an edited table’s removed and added versions have no space between them, and their
+  bands overlap by two extents.
 
 `tests/test_diff_markdown_spacing_chrome.py` measures the diff, the diff with its
 removed blocks hidden, and both versions’ Document views in Chrome, in the serif and the
-sans reading font, and holds every gap to the document’s, the h2-to-h3 case to the h3’s
-own space, and each band to its extent with no two overlapping.
+sans reading font, and holds every gap to the document’s and the h2-to-h3 case to the
+h3’s own space. No test restates the band’s geometry or colors: the band is one box per
+run by construction, and `tests/dom/diff-markdown-session.js` fails on any rendered row
+placed otherwise, a changed row outside a run of its kind, two runs of one kind side by
+side, or two changes side by side, through every step it plays, a long document’s chunks
+drawn out of order among them.
 `tests/test_diff_markdown_fold_chrome.py` measures the fold closed and open.
 
 ### Embedded Document Themes

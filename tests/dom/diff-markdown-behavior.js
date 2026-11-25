@@ -105,6 +105,23 @@ class Element {
     return this.children[0];
   }
 
+  get previousElementSibling() {
+    const siblings = this.parent?.children ?? [];
+    return siblings[siblings.indexOf(this) - 1] ?? null;
+  }
+
+  get nextElementSibling() {
+    const siblings = this.parent?.children ?? [];
+    return siblings[siblings.indexOf(this) + 1] ?? null;
+  }
+
+  remove() {
+    if (this.parent) {
+      this.parent.children.splice(this.parent.children.indexOf(this), 1);
+      this.parent = null;
+    }
+  }
+
   after(...children) {
     const siblings = this.parent.children;
     siblings.splice(siblings.indexOf(this) + 1, 0, ...children);
@@ -238,10 +255,21 @@ function texts(node) {
   );
 }
 
+// An article's rows in order: a changed row is in its change's run (`changeRuns`).
+function blockRows(node) {
+  return node.children.flatMap((child) =>
+    child.classList.contains("diff-markdown-change") ||
+    child.classList.contains("diff-markdown-run")
+      ? blockRows(child)
+      : [child],
+  );
+}
+
 async function main() {
   const {
     blockOf,
     blockRow,
+    changeRuns,
     chunkUnits,
     createMarkdownViews,
     estimatedHeight,
@@ -491,6 +519,23 @@ async function main() {
   const unchanged = blockRow({ kind: "context", html: "<p>same</p>", source_only: false }, build);
   assert.equal(unchanged.children.length, 1, "an unchanged block has no label");
   assert.deepEqual(built, ["<p>new</p>", "<p>same</p>"]);
+
+  // Each run of changed rows is one change, and each run of one kind in it one run, the one
+  // box that draws its band: unchanged rows and fold bars stand between changes.
+  const kinds = ["context", "added", "added", "removed", "added", "context", "removed"];
+  const placed = changeRuns(
+    kinds.map((kind, index) => blockRow({ kind, html: `<p>${index}</p>` }, build)),
+  );
+  const placedShape = (node) =>
+    node.classList.contains("diff-markdown-change")
+      ? node.children.map((run) => `${run.className.split("-").pop()} x${run.children.length}`)
+      : node.className.split("-").pop();
+  assert.deepEqual(placed.map(placedShape), [
+    "context",
+    ["added x2", "removed x1", "added x1"],
+    "context",
+    ["removed x1"],
+  ]);
 
   // A projection as the page holds it: a Concise answer leaves out a withheld fold's
   // blocks, which the model holds as missing until they are asked for. Full draws every
@@ -852,8 +897,8 @@ async function main() {
   assert.equal(a.rendered.hidden, false);
   assert.equal(a.source.hidden, true);
   const [shown] = a.rendered.children;
-  assert.equal(shown.children.length, 1, "the one block, with no note about Source above it");
-  assert.ok(shown.children[0].className.startsWith("diff-markdown-block"));
+  assert.equal(blockRows(shown).length, 1, "the one block, with no note about Source above it");
+  assert.ok(blockRows(shown)[0].className.startsWith("diff-markdown-block"));
   assert.equal(assets, 1);
   await a.sourceChoice.click();
   assert.equal(a.source.hidden, false);
@@ -1009,14 +1054,20 @@ async function main() {
   loads5[0].resolve(changedProjection);
   await new Promise(setImmediate);
   const [drawn5] = changed5.rendered.children;
-  const [front, kept, removed5, added5] = drawn5.children;
+  const [front, kept, removed5, added5] = blockRows(drawn5);
   const list = front.children[0].children[1];
   const [, , oldTerm, oldValue, newTerm, newValue] = list.children;
   assert.ok(removed5.className.includes("diff-markdown-removed"));
+  assert.equal(removed5.parent.className, "diff-markdown-run diff-markdown-run-removed");
+  assert.equal(added5.parent.className, "diff-markdown-run diff-markdown-run-added");
+  assert.equal(removed5.parent.parent, added5.parent.parent, "an edit's two runs are one change");
   assert.ok(oldTerm.className.includes("diff-frontmatter-removed"));
+  // The removed run is hidden with its row, so it draws no band in Current.
   const hiddenParts = () =>
-    [kept, removed5, added5, oldTerm, oldValue, newTerm, newValue].map((part) => part.hidden);
-  assert.deepEqual(hiddenParts(), [false, false, false, false, false, false, false]);
+    [kept, removed5.parent, removed5, added5, oldTerm, oldValue, newTerm, newValue].map(
+      (part) => part.hidden,
+    );
+  assert.deepEqual(hiddenParts(), [false, false, false, false, false, false, false, false]);
   assert.equal(changed5.rendered.hidden, false, "Diff draws the changed file's Rendered");
   loads5[1].resolve({ ...changedProjection, frontmatter: undefined });
   await new Promise(setImmediate);
@@ -1044,8 +1095,8 @@ async function main() {
   view5.show(true);
   assert.deepEqual(
     hiddenParts(),
-    [false, true, false, true, true, false, false],
-    "Current hides the removed block and the removed key's term and value, and only them",
+    [false, true, true, false, true, true, false, false],
+    "Current hides the removed run and block and the removed key's term and value, and only them",
   );
   assert.equal(changed5.rendered.hidden, false, "it is still the file's Rendered");
   assert.equal(deleted5.rendered.hidden, true, "a deleted file has no current version");
@@ -1054,7 +1105,7 @@ async function main() {
   assert.equal(emptied5.source.hidden, false, "so it shows its Source body, which says so");
   assert.equal(loads5.length, 3, "nothing is asked again");
   view5.show(false);
-  assert.deepEqual(hiddenParts(), [false, false, false, false, false, false, false]);
+  assert.deepEqual(hiddenParts(), [false, false, false, false, false, false, false, false]);
   assert.equal(deleted5.rendered.hidden, false, "Diff shows the deleted file's Rendered again");
   assert.equal(deleted5.source.hidden, true);
   assert.equal(emptied5.rendered.hidden, false, "and the emptied file's");
@@ -1095,8 +1146,9 @@ async function main() {
   observer.notify([{ target: section6, isIntersecting: true }]);
   loads6[0].resolve({ ...changedProjection, frontmatter: undefined });
   await new Promise(setImmediate);
-  const [, removed6, added6] = section6.children[1].children[0].children;
+  const [, removed6, added6] = blockRows(section6.children[1].children[0]);
   assert.equal(removed6.hidden, true, "its removed block is hidden as it is placed");
+  assert.equal(removed6.parent.hidden, true, "and its run");
   assert.equal(added6.hidden, false);
   view6.dispose();
 

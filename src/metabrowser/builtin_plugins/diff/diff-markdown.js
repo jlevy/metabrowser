@@ -435,9 +435,10 @@ export function sanitizeBlock(html, inert, template, scratch, isTarget) {
 }
 
 /**
- * One rendered block's row: its change gutter and its screen-reader label. A block whose
- * source says more than its render shows draws nothing to say so: the chooser's Source is
- * how a reader reaches what the rendering does not show.
+ * One rendered block's row: its kind and its screen-reader label. A changed row draws no
+ * band of its own; the run that holds it does (`changeRuns`). A block whose source says
+ * more than its render shows draws nothing to say so: the chooser's Source is how a reader
+ * reaches what the rendering does not show.
  * @param {Block} block
  * @param {(html: string) => Node} build
  */
@@ -452,6 +453,96 @@ export function blockRow(block, build) {
   }
   row.append(build(block.html));
   return row;
+}
+
+/**
+ * The kind of a changed row, `blockRow`'s or `frontmatterRow`'s; null for anything else an
+ * article holds: an unchanged row, a fold's bar or group, or a chunk's place.
+ * @param {Element} row
+ * @returns {"added" | "removed" | null}
+ */
+function changedKind(row) {
+  if (!row.classList.contains("diff-markdown-block")) {
+    return null;
+  }
+  return row.classList.contains("diff-markdown-added")
+    ? "added"
+    : row.classList.contains("diff-markdown-removed")
+      ? "removed"
+      : null;
+}
+
+/** Whether an element of an article is a change (`changeRuns`). @param {Element} element */
+function isChange(element) {
+  return element.classList.contains("diff-markdown-change");
+}
+
+/**
+ * An article's rows as it places them, so that one box draws each band: each run of changed
+ * rows is one change (`.diff-markdown-change`), and each run of one kind inside it one run
+ * (`.diff-markdown-run`, with `-added` or `-removed`), whose box draws the band, its fill
+ * and its change gutter, across its rows and the space between them. Current hides a
+ * change's removed runs, and the change then draws one band across the added runs left
+ * (styles.css, "A change's band"). A change and a run are plain blocks, with no padding,
+ * border, or formatting context, so their rows' margins collapse through them as they
+ * would with nothing around them, and no block moves. Unchanged rows, fold bars, and fold
+ * groups are placed as they are.
+ * @param {HTMLElement[]} rows Rows `blockRow` and `frontmatterRow` built, and fold bars and
+ *   groups, in order.
+ * @returns {HTMLElement[]}
+ */
+export function changeRuns(rows) {
+  return joinChanges(
+    rows.map((row) => {
+      const kind = changedKind(row);
+      if (kind === null) {
+        return row;
+      }
+      const run = document.createElement("div");
+      run.className = `diff-markdown-run diff-markdown-run-${kind}`;
+      run.append(row);
+      const change = document.createElement("div");
+      change.className = "diff-markdown-change";
+      change.append(run);
+      return change;
+    }),
+  );
+}
+
+/**
+ * *elements*, neighbours in this order, with each change that follows a change joined to
+ * it: its runs move into the change before it, and its first run's rows into that change's
+ * last run when the two are of one kind. Returns the elements that remain. An article is
+ * drawn a chunk at a time, so a chunk is joined here to the chunks drawn beside it, and a
+ * run that crosses from one chunk into the next is one box.
+ * @template {Element} T
+ * @param {(T | null)[]} elements
+ * @returns {T[]}
+ */
+export function joinChanges(elements) {
+  /** @type {T[]} */
+  const kept = [];
+  for (const element of elements) {
+    if (element === null) {
+      continue;
+    }
+    const before = kept[kept.length - 1];
+    if (before === undefined || !isChange(before) || !isChange(element)) {
+      kept.push(element);
+      continue;
+    }
+    const runs = [...element.children];
+    const end = before.children[before.children.length - 1];
+    const [start] = runs;
+    if (end !== undefined && start !== undefined && end.className === start.className) {
+      end.append(...start.children);
+      start.remove();
+      runs.shift();
+    }
+    before.append(...runs);
+    element.remove();
+  }
+  return kept;
 }
 
 /**
@@ -730,11 +821,13 @@ function emptiedModel(model) {
 
 /**
  * What Current leaves out of a Markdown file's rendered rows, before they are placed: each
- * removed block, a wholly removed front matter among them, and each removed key of a front
- * matter that changed. Every deleted word is in a removed block (`<del>` marks only those),
- * so what is left is the new version, its added blocks still marked. A fold holds only
- * unchanged blocks, so the rows are the article's own and the front matter's terms.
- * @param {Iterable<Element>} rows Rows `frontmatterRow` and `blockRow` built.
+ * removed run (`changeRuns`) and its blocks, a wholly removed front matter among them, and
+ * each removed key of a front matter that changed. A run and each of its rows are hidden
+ * together, so a hidden run draws no band, and a row says by its own attribute whether it
+ * shows. Every deleted word is in a removed block (`<del>` marks only those), so what is
+ * left is the new version, its added blocks still marked. A fold holds only unchanged
+ * blocks, so the rows are the article's own and the front matter's terms.
+ * @param {Iterable<Element>} rows What `changeRuns` placed.
  * @returns {HTMLElement[]}
  */
 export function removedParts(rows) {
@@ -750,8 +843,13 @@ export function removedParts(rows) {
     }
   };
   for (const row of rows) {
-    if (row.classList.contains("diff-markdown-removed")) {
-      parts.push(/** @type {HTMLElement} */ (row));
+    if (isChange(row)) {
+      for (const run of row.children) {
+        if (run.classList.contains("diff-markdown-run-removed")) {
+          parts.push(/** @type {HTMLElement} */ (run));
+          parts.push(.../** @type {HTMLElement[]} */ ([...run.children]));
+        }
+      }
     } else if (row.classList.contains("diff-markdown-frontmatter")) {
       keys(row);
     }
@@ -1352,11 +1450,13 @@ export function createMarkdownViews(deps) {
     clearDrawn(file);
     const content = document.createDocumentFragment();
     if (model.frontmatter !== undefined) {
-      const row = frontmatterRow(model.frontmatter);
-      content.append(row);
-      file.removed.push(...removedParts([row]));
+      const placed = changeRuns([frontmatterRow(model.frontmatter)]);
+      content.append(...placed);
+      file.removed.push(...removedParts(placed));
     }
     file.top = fillRegion(file, content, viewUnits(model, view), true);
+    // Changed front matter and a changed first block are one change.
+    joinChanges([...content.children]);
     file.drawn = view;
     file.rendered.replaceChildren(content);
     applyShow(file);
@@ -1411,7 +1511,8 @@ export function createMarkdownViews(deps) {
   }
 
   /**
-   * A chunk's rows: each block's, and each fold's bar and group.
+   * A chunk's rows: each block's, in its change and run (`changeRuns`), and each fold's bar
+   * and group.
    * @param {Region} region
    * @param {Chunk} chunk
    * @returns {HTMLElement[]}
@@ -1432,19 +1533,21 @@ export function createMarkdownViews(deps) {
         rows.push(fold.expander.control, fold.expander.group);
       }
     }
+    const placed = changeRuns(rows);
     if (region.top) {
       // A fold holds only unchanged blocks, so what Current leaves out is the article's own.
-      const parts = removedParts(rows);
+      const parts = removedParts(placed);
       for (const part of parts) {
         part.hidden = current;
       }
       file.removed.push(...parts);
     }
-    return rows;
+    return placed;
   }
 
   /**
-   * Draw a chunk in place of its spacer.
+   * Draw a chunk in place of its spacer, joined to the chunks drawn on either side of it
+   * where a change crosses from one into the other (`joinChanges`).
    * @param {Region} region
    * @param {Chunk} chunk
    */
@@ -1456,7 +1559,11 @@ export function createMarkdownViews(deps) {
     chunk.spacer = null;
     spacers.delete(spacer);
     chunkObserver?.unobserve(spacer);
-    spacer.replaceWith(...chunkRows(region, chunk));
+    const before = /** @type {HTMLElement | null} */ (spacer.previousElementSibling);
+    const after = /** @type {HTMLElement | null} */ (spacer.nextElementSibling);
+    const placed = chunkRows(region, chunk);
+    spacer.replaceWith(...placed);
+    joinChanges([before, ...placed, after]);
   }
 
   // Draw a run's chunks up to the one that holds block *index*, so the rows above it are
