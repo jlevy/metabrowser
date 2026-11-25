@@ -17,6 +17,41 @@ $defs:
     - merge_base
     title: CollectionComparison
     type: object
+  CollectionEntry:
+    else:
+      $ref: '#/$defs/CollectionItem'
+    if:
+      required:
+      - items
+    then:
+      $ref: '#/$defs/CollectionGroup'
+  CollectionGroup:
+    additionalProperties: false
+    description: |-
+      A titled run of items, read in its place: a title, an optional note, and its items.
+
+      A group's items are items, never groups, so a collection nests one level. A group is
+      an entry of the collection as each of its items is.
+    properties:
+      items:
+        items:
+          $ref: '#/$defs/CollectionItem'
+        maxItems: 39
+        minItems: 1
+        title: Items
+        type: array
+      note:
+        anyOf:
+        - $ref: '#/$defs/Prose'
+        - type: 'null'
+        default: null
+      title:
+        $ref: '#/$defs/Prose'
+    required:
+    - items
+    - title
+    title: CollectionGroup
+    type: object
   CollectionItem:
     additionalProperties: false
     properties:
@@ -77,7 +112,8 @@ $defs:
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
 description: |-
-  Ordered annotated items, each a title, a note, and the references it is about.
+  Ordered annotated items, each a title, a note, and the references it is about, which
+  may be gathered in titled groups.
 
   The format is general: a guided review is one use, a collection carried in a
   `guided-review` fence and pinned to a comparison. A collection has no prose of its own:
@@ -88,7 +124,7 @@ properties:
     $ref: '#/$defs/CollectionComparison'
   items:
     items:
-      $ref: '#/$defs/CollectionItem'
+      $ref: '#/$defs/CollectionEntry'
     maxItems: 40
     minItems: 1
     title: Items
@@ -100,4 +136,4 @@ title: Collection
 type: object
 x-softschema:
   contract: metabrowser.collection:Collection/v1
-  schema_sha256: 0ae06ce8d8f4a510270685d334b0baead719193b602d4ec8ac09a62b65f63f83
+  schema_sha256: 846cc52e2cd31bf1e367383fa03ba0e80697407ae72b871786e01aa350422555

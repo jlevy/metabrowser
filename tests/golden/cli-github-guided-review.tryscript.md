@@ -1,5 +1,7 @@
 ---
 sandbox: true
+requires:
+  - jq
 path:
   - ../fixtures/github-pull/no-gh
   - ../../.venv/bin
@@ -19,6 +21,8 @@ before: >-
 The first two steps keep the author’s order and read the actual patches from the fixture
 mirror. The second demonstrates a reference with no range, which shows its file’s whole
 patch, and missing-path and unresolved-line references.
+The guide of 7 has no groups, so its `outline` lists its steps, and each step’s `group`
+is null.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
@@ -39,7 +43,20 @@ status: 200
     "Start with the count",
     "Read the new guide"
   ],
+  "outline": [
+    {
+      "kind": "step",
+      "step": 1,
+      "title": "Start with the count"
+    },
+    {
+      "kind": "step",
+      "step": 2,
+      "title": "Read the new guide"
+    }
+  ],
   "step": 1,
+  "group": null,
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
   "references": [
@@ -224,7 +241,20 @@ status: 200
     "Start with the count",
     "Read the new guide"
   ],
+  "outline": [
+    {
+      "kind": "step",
+      "step": 1,
+      "title": "Start with the count"
+    },
+    {
+      "kind": "step",
+      "step": 2,
+      "title": "Read the new guide"
+    }
+  ],
   "step": 2,
+  "group": null,
   "title": "Read the new guide",
   "note": "Check the new docs against the behavior.",
   "references": [
@@ -490,7 +520,20 @@ status: 200
     "Start with the count",
     "Read the new guide"
   ],
+  "outline": [
+    {
+      "kind": "step",
+      "step": 1,
+      "title": "Start with the count"
+    },
+    {
+      "kind": "step",
+      "step": 2,
+      "title": "Read the new guide"
+    }
+  ],
   "step": 1,
+  "group": null,
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
   "references": [
@@ -769,6 +812,159 @@ status: 200
     "url": "https://github.com/octo/demo/pull/7"
   },
   "reason": null
+}
+? 0
+```
+
+# Groups
+
+A guide may gather its steps in groups, one level deep, and mix them with steps outside
+any group. Each answer with a step carries the guide’s `outline` in reading order: a
+group with its title, its note or null, and its steps, and a step outside a group.
+Steps are numbered through the groups, as `step`, `titles`, and `changed_steps` count
+them, and a step’s `group` is the index in `outline` of the group it is in, or null.
+An author who puts each step of 8’s guide in a group, the first with a note, and keeps
+its pins writes a guide that is still stale, whose changed steps count through the
+groups.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 8 grouped
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/guided-review?number=8&step=2' --format json > grouped.json
+selection: pull_request
+pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
+pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq '{state, changed_steps: .stale.changed_steps, step_count, titles, outline, step, group, title}' grouped.json
+{
+  "state": "stale",
+  "changed_steps": [
+    1,
+    2
+  ],
+  "step_count": 2,
+  "titles": [
+    "Start with the count",
+    "Read the new guide"
+  ],
+  "outline": [
+    {
+      "kind": "group",
+      "title": "The count",
+      "note": "Read the value before its explanation.",
+      "children": [
+        {
+          "kind": "step",
+          "step": 1,
+          "title": "Start with the count"
+        }
+      ]
+    },
+    {
+      "kind": "group",
+      "title": "The docs",
+      "note": null,
+      "children": [
+        {
+          "kind": "step",
+          "step": 2,
+          "title": "Read the new guide"
+        }
+      ]
+    }
+  ],
+  "step": 2,
+  "group": 1,
+  "title": "Read the new guide"
+}
+? 0
+```
+
+An author who moves 7’s first step into a group and leaves its second outside one writes
+a mixed guide: the first step is in group 0, and the second in none.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 mixed
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=1' --format json > mixed.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .outline, .group' mixed.json
+"ready"
+[{"kind":"group","title":"The count","note":"Read the value before its explanation.","children":[{"kind":"step","step":1,"title":"Start with the count"}]},{"kind":"step","step":2,"title":"Read the new guide"}]
+0
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=2' --format json > mixed.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .group, .title' mixed.json
+"ready"
+null
+"Read the new guide"
+? 0
+```
+
+A group without steps is refused, as a guide without steps is, and so is a group inside
+a group: each says where, below `collection`.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 empty-group
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "3a845e764c4ec13e650bcd2f0aa2070b91bbf6d5622c7e90744d03c3085a687f",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.0.items."
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 nested-group
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "7a8064e614fdf0641ca368682429b46d86d7a9f4cffd57d7757e6aa89c7acf71",
+  "state": "invalid",
+  "message": "The guided-review block does not satisfy the v1 SoftSchema at items.0.items.0."
 }
 ? 0
 ```

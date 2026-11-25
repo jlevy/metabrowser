@@ -39,6 +39,12 @@ With ``--serve``, it serves one of those pull requests from that home for a brow
 the QA runbook's pull-request page walkthrough does::
 
     github_pull_fixture.py <directory> --serve <number> <port>
+
+With ``--guided`` the descriptions of 7 and 8 carry guides, and 9's two blocks;
+``--describe`` then writes one of ``GUIDE_VARIANTS`` into a cached description, pinned as
+the guide already there is::
+
+    github_pull_fixture.py <directory> --describe <number> <variant>
 """
 
 from __future__ import annotations
@@ -1362,6 +1368,14 @@ def build_home(
 
 def guide_body(origin: Origin) -> str:
     """An author-written description for the stand-in pull request 7."""
+    return _guide_body(
+        origin["base"], origin["fork_head"], _COUNT_STEP + _DOCS_STEP + _MORE_DOCS_REFERENCES
+    )
+
+
+def _guide_body(merge_base: str, head: str, items: str) -> str:
+    """A description that introduces a guide pinned to *merge_base* and *head*, whose
+    `items` are the YAML lines *items*."""
     return f"""The app learns to count to two. Its count and its explanation live in separate
 files.
 
@@ -1372,22 +1386,67 @@ softschema:
   status: enforced
 collection:
   comparison:
-    merge_base: "{origin["base"]}"
-    head: "{origin["fork_head"]}"
+    merge_base: "{merge_base}"
+    head: "{head}"
   items:
+{items}```
+"""
+
+
+# The stand-in guide's two steps, entries at the top of `items`, which `_in_group` indents
+# into a group.
+_COUNT_STEP = """\
     - title: Start with the count
       note: Check that the original value is preserved.
       references:
-        - {{path: src/app.txt, side: new, start_line: 1, end_line: 2}}
+        - {path: src/app.txt, side: new, start_line: 1, end_line: 2}
+"""
+_DOCS_STEP = """\
     - title: Read the new guide
       note: Check the new docs against the behavior.
       references:
-        - {{path: docs/new.md, side: new, start_line: 1, end_line: 1}}
-        - {{path: src/app.txt}}
-        - {{path: missing.txt}}
-        - {{path: src/app.txt, side: old, start_line: 2, end_line: 4}}
-```
+        - {path: docs/new.md, side: new, start_line: 1, end_line: 1}
 """
+# The second step's references after its first, as guide_body cites them.
+_MORE_DOCS_REFERENCES = """\
+        - {path: src/app.txt}
+        - {path: missing.txt}
+        - {path: src/app.txt, side: old, start_line: 2, end_line: 4}
+"""
+
+
+def _in_group(step: str) -> str:
+    return "".join(f"    {line}\n" for line in step.splitlines())
+
+
+# The guides `--describe` writes into a cached description: the stand-in guide's steps each
+# in a group, the first with a note; groups mixed with a step; and two blocks the page
+# refuses, an empty group and a group inside a group.
+GUIDE_VARIANTS: Final[dict[str, str]] = {
+    "grouped": (
+        "    - title: The count\n"
+        "      note: Read the value before its explanation.\n"
+        "      items:\n" + _in_group(_COUNT_STEP) + "    - title: The docs\n"
+        "      items:\n" + _in_group(_DOCS_STEP + _MORE_DOCS_REFERENCES)
+    ),
+    "mixed": (
+        "    - title: The count\n"
+        "      note: Read the value before its explanation.\n"
+        "      items:\n" + _in_group(_COUNT_STEP) + _DOCS_STEP
+    ),
+    "empty-group": "    - title: The count\n      items: []\n" + _DOCS_STEP,
+    "nested-group": (
+        "    - title: The count\n"
+        "      items:\n"
+        "        - title: The value\n"
+        "          items:\n" + _in_group(_in_group(_COUNT_STEP))
+    ),
+}
+
+
+def grouped_guide_body(origin: Origin) -> str:
+    """The stand-in guide of :func:`guide_body` with each of its steps in a group."""
+    return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["grouped"])
 
 
 # A step whose one reference names a Markdown file whole, which the guide draws as Docs does.
@@ -1408,6 +1467,31 @@ def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: bool = Fa
         api["repos/octo/demo/pulls/7"]["body"]["body"] = fence
     api["repos/octo/demo/pulls/8"]["body"]["body"] = fence
     api["repos/octo/demo/pulls/9"]["body"]["body"] = fence + "\n" + fence
+
+
+def describe(directory: Path, number: int, variant: str) -> None:
+    """Write the guide *variant* of :data:`GUIDE_VARIANTS` into the cached description of
+    pull request *number* in the home :func:`build_home` wrote with ``--guided``, pinned as
+    the guide already there is, as a fetch of the edited description would leave it. The
+    pins are read as :func:`_guide_body` writes them, so a variant the page refuses can follow
+    another."""
+
+    from metabrowser.builtin_plugins.github.pull_record import (
+        PullRecord,
+        read_pull_record,
+        write_pull_record,
+    )
+
+    home = directory / "home"
+    record = read_pull_record(home, _source_slug(), number)
+    assert isinstance(record, PullRecord)
+    pins = re.search(
+        r'^    merge_base: "([0-9a-f]{40})"\n    head: "([0-9a-f]{40})"$', record.pull.body, re.M
+    )
+    assert pins is not None, f"pull request {number} has no guide to rewrite"
+    body = _guide_body(pins[1], pins[2], GUIDE_VARIANTS[variant])
+    pull = record.pull.model_copy(update={"body": body})
+    write_pull_record(home, _source_slug(), record.model_copy(update={"pull": pull}))
 
 
 def _source_slug() -> str:
@@ -1646,12 +1730,15 @@ if __name__ == "__main__":
         build_home(Path(sys.argv[1]).resolve(), guided=True)
     elif len(sys.argv) == 3 and sys.argv[2] == "--guided-documents":
         build_home(Path(sys.argv[1]).resolve(), guided=True, documents=True)
+    elif len(sys.argv) == 5 and sys.argv[2] == "--describe" and sys.argv[4] in GUIDE_VARIANTS:
+        describe(Path(sys.argv[1]).resolve(), int(sys.argv[3]), sys.argv[4])
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
     else:
         raise SystemExit(
             "usage: github_pull_fixture.py <directory> "
             "[--files | --guided | --guided-documents | --checkout "
-            "| --serve <number> <port> [--exit-on-eof]] "
+            "| --serve <number> <port> [--exit-on-eof] "
+            f"| --describe <number> {{{','.join(GUIDE_VARIANTS)}}}] "
             "or --files-refresh <metab arguments>"
         )

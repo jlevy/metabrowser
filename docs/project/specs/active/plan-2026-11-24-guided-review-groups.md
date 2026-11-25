@@ -77,12 +77,19 @@ collection:
 ```
 
 - A group and a step are told apart by their fields: a group has `items` and no
-  `references`, a step `references` and no `items`. The models enforce it, and the
-  compiled schema states it as a `oneOf`.
+  `references`, a step `references` and no `items`. The models enforce it (a tagged
+  union on whether an entry has `items`), and the compiled schema states it as an `if`
+  on `items`, whose `then` is a group and `else` a step.
+  The plan first said a `oneOf`, which is what pydantic writes for the union, but
+  jsonschema places a `oneOf`’s refusal at the entry alone, so a range starting at 0
+  would have been refused at `items.0` rather than at `items.0.references.0.start_line`;
+  the `if` keeps every refusal’s place as precise as before groups.
 - Groups and ungrouped steps may mix at the top level, in any order.
 - An empty group is refused, as an empty `items` is today.
 - `MAX_ITEMS` bounds every entry, steps and groups together, since its measured cost is
-  the parse per entry.
+  the parse per entry, so a group holds at most `MAX_ITEMS - 1` steps.
+  No one list’s bound states the total, so the models enforce it, and the shape walk
+  that runs before the schema (`_outside_shape`) refuses it at `items`.
 - **It stays `Collection/v1`.** Every record v1 accepts today is still accepted and
   means the same. The widened entry type is read by one consumer, the server and page
   that ship together. Guides already published in pull-request descriptions are the
@@ -91,6 +98,10 @@ collection:
   renaming, and retyping as breaks; widening an entry to a union with a new shape is
   none of those. A reviewer should confirm this reading (it is in the guide’s ambiguity
   step).
+- **Groups are optional, and that is the compatibility.** A guide without groups is the
+  record shape v1 had: it parses the same, the route answers it as before apart from the
+  added `outline` and `group`, and the page draws it as before.
+  There is no version switch and no legacy path.
 
 ### Steps Stay Flat
 
@@ -124,14 +135,16 @@ Every answer that has steps gains an **`outline`**: a tree of nodes in reading o
 - The step list shows each group as a heading above its steps, with no number.
   Steps keep their flat numbers, so “Step 5 of 12” still matches the list.
 - A step’s card shows its group’s title before its place (“Decisions · Step 2 of 12”).
-- A group’s note, when it has one, shows above the first step of the group.
+- A group’s note, when it has one, shows above the card of the group’s first step, not
+  in the step list, which stays a list of names.
 - A guide without groups draws exactly as before.
 
 ### The Skill’s Recommendation
 
-`skills/metabrowser/SKILL.md` recommends, for a guide of more than a few steps, these
-groups in this order.
-Groups are optional, and a small change merges or omits them:
+`skills/metabrowser/SKILL.md` recommends, for a guide of more than about six steps or
+one that covers several of these concerns, these groups in this order.
+Groups are optional: a short guide stays flat, and a small change merges or omits them.
+The skill shows both a flat skeleton and a grouped one:
 
 | Group | Steps |
 | --- | --- |
@@ -243,14 +256,21 @@ list.
 
 ## Testing Strategy
 
-- Route goldens for a grouped guide, a mixed guide, a refused empty group, and the
-  `outline` of an ungrouped guide
-  (`tests/golden/cli-github-guided-review.tryscript.md`).
+- Route goldens for a grouped guide, a mixed guide, a refused empty group, a refused
+  nested group, and the `outline` of an ungrouped guide
+  (`tests/golden/cli-github-guided-review.tryscript.md`). The stand-in’s guides stay
+  ungrouped, so every golden written before groups changes only by the added `outline`
+  and `group`; the grouped and mixed guides are written over a cached description by the
+  fixture’s `--describe`, keeping the pins of the guide it replaces.
+- A real ungrouped guide, four steps of one this repository published (#785), kept byte
+  for byte in `tests/fixtures/guided-review/`, parses unchanged and answers each step
+  `ready` with a flat outline.
 - Model tests for the group and step shapes and the schema drift check
   (`tests/test_guided_review.py`).
 - A browserless session of the grouped outline and its navigation against the production
   `guided-review.js`, and a Chrome check of the grouped list’s layout.
-- The skill’s command checks (`tests/test_skill_commands.py`) on the new skeleton.
+- The skill’s command checks (`tests/test_skill_commands.py`) on both skeletons: the
+  flat one has no group, and the grouped one has one.
 - For phase 2, a Chrome check that a whole-file Markdown reference draws rendered with
   its chooser, and that a ranged one draws source.
 

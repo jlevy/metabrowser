@@ -5,8 +5,8 @@ guided reviews of GitHub pull requests.
 Designed, not built: collections in repository files, URL references, a Markdown form,
 and the other carriers below.
 
-A collection is an ordered list of annotated items: each item is a title, a note, and
-the references it is about.
+A collection is an ordered list of annotated items, which may be gathered in titled
+groups: each item is a title, a note, and the references it is about.
 What the references point at, how they resolve, and what a reader sees are decided by
 the **carrier**, the place a collection is written and read.
 A guided review is the first carrier: a code-review guide in a pull request’s
@@ -27,15 +27,33 @@ collection:
     merge_base: "<full commit ID>"
     head: "<full commit ID>"
   items:
-    - title: Inspect the request path
-      note: Check that the request returns the snapshot before the worker finishes.
+    - title: The cache
+      note: Read the request before the worker.
+      items:
+        - title: Inspect the request path
+          note: Check that the request returns the snapshot before the worker finishes.
+          references:
+            - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
+    - title: Read the cache’s guide
+      note: Check that it describes the snapshot.
       references:
-        - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
         - {path: docs/cache.md}
 ```
 
-- **`items`** are ordered, and the order is the author’s. Each has a `title`, a `note`,
-  and one or more `references`, all plain text that a reader shows as typed.
+- **`items`** are ordered, and the order is the author’s. Each entry is an item or a
+  group. An item has a `title`, a `note`, and one or more `references`, all plain text
+  that a reader shows as typed.
+- **A group** has a `title`, an optional `note`, and its own `items`, at least one,
+  which are items only: groups nest one level.
+  An entry with `items` is a group and one without is an item; the models tell them
+  apart that way (`_entry_kind` in `guided_review.py`), and the compiled schema states
+  it as an `if` on `items`. Groups and items outside a group mix in any order.
+  A reader reads the items in order through the groups, so a carrier that numbers them,
+  as a guided review numbers its steps, numbers them 1 to n. Groups arrived within v1:
+  every record v1 accepted before still means the same, and
+  [Contracts](../specs/active/plan-2026-11-14-object-data-model-and-views.md#contracts)
+  counts only a field removed, renamed, or retyped as a break, which widening an entry
+  to a group or an item is not.
 - **A reference** is a `path`, optionally with a `side` and an inclusive line range.
   A carrier decides what a path names and how a range resolves: in a guided review it is
   a changed file and a range of its diff.
@@ -60,7 +78,9 @@ The
 [compiled schema](../../../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
 is generated from the Pydantic models (`Collection` and its parts in
 `builtin_plugins/github/guided_review.py`), and `tests/test_guided_review.py` fails when
-they drift. `MAX_ITEMS` and `MAX_REFERENCES` there bound a record.
+they drift. `MAX_ITEMS` and `MAX_REFERENCES` there bound a record: `MAX_ITEMS` counts
+every entry, a group and each item in it alike, which no one list’s bound in the schema
+states, so the models enforce the total.
 Both were measured on guided-review costs (the parse per item, and a step’s diff
 hydration), each beside its constant; a later carrier measures its own costs before it
 keeps or changes them.
@@ -72,7 +92,7 @@ The split keeps the format small enough to share:
 | Belongs to the format | Belongs to the carrier |
 | --- | --- |
 | The contract ID, the envelope, the fields and their types | Where the record is written, and how it is found there |
-| Item order, and a note and references per item | What a path names, and the base it is relative to |
+| Item order, groups, and a note and references per item | What a path names, and the base it is relative to |
 | `MAX_ITEMS` and `MAX_REFERENCES` | Whether `comparison` is required |
 |  | How each reference resolves: its state, address, and excerpt, and their budgets |
 |  | When the record is stale, and what the reader shows |
@@ -107,8 +127,9 @@ Each would reuse the record and add only its carrier’s rules:
   and Source views. Paths are relative to the file, and `comparison` is optional.
 - **URL references** (mb-1rte): a `{url}` reference, `https` only and never fetched, so
   a guide can cite a design document or an issue.
-- **A Markdown form** (mb-tzbp): a Markdown link list whose headings are groups and
-  whose links are items, read into the same record.
+- **A Markdown form** (mb-tzbp): a Markdown link list read into the same record, each
+  heading a group and each link an item.
+  Groups nest one level, so the form reads one level of headings.
 - **Later uses** (mb-z9ox): object references, cards, and a Documents view.
 
 The research brief on [#679](https://github.com/jlevy/metabrowser/pull/679) records the

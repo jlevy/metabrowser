@@ -16,7 +16,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeGuard
 
 from markdown_it import MarkdownIt
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    ValidationError,
+    model_validator,
+)
 from softschema.models import Contract, SchemaProfile, SchemaStatus
 from softschema.validate import parse_yaml_text, validate_artifact
 
@@ -49,6 +57,9 @@ from metabrowser.view_routes import format_pull_href
 
 if TYPE_CHECKING:
     from markdown_it.token import Token
+    from pydantic import GetJsonSchemaHandler
+    from pydantic.json_schema import JsonSchemaValue
+    from pydantic_core.core_schema import CoreSchema
 
     from metabrowser.builtin_plugins.github.pull_record import Comparison
     from metabrowser.builtin_plugins.github.pull_route import PullHost
@@ -71,6 +82,12 @@ _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 # renders its lines (MAX_EXCERPT_BYTES), and a path alone its file's whole patch
 # (MAX_STEP_PATCH_BYTES).
 MAX_REFERENCES = 8
+# Every entry of a collection's items counts: an item at the top, a group, and each item in a
+# group, so a group holds at most MAX_ITEMS - 1 items. A group is a title and an optional
+# note, which parse as an item without its references does, so counting it as an item keeps
+# the bound an upper bound on the parse: interleaved, best of nine, at a load average near
+# 205 on 10 cores (2026-11-24), 40 items of MAX_REFERENCES ranged references took 139 ms,
+# four groups of nine such items (40 entries) 128 ms, and one group of 39 137 ms.
 # A reviewer reads a guide one item at a time, and parse_guide costs by the item: markdown-it,
 # YAML, JSON Schema and pydantic, in Python that holds the GIL, take 3.3 ms an item of
 # MAX_REFERENCES references and 0.6 ms a KiB of text on top. Warm, best of nine, on a
@@ -183,8 +200,56 @@ class CollectionItem(_Model):
     references: list[CollectionReference] = Field(min_length=1, max_length=MAX_REFERENCES)
 
 
+class CollectionGroup(_Model):
+    """A titled run of items, read in its place: a title, an optional note, and its items.
+
+    A group's items are items, never groups, so a collection nests one level. A group is
+    an entry of the collection as each of its items is.
+    """
+
+    title: Prose
+    note: Prose | None = None
+    items: list[CollectionItem] = Field(min_length=1, max_length=MAX_ITEMS - 1)
+
+
+def _entry_kind(value: object) -> str:
+    """Which an entry of a collection's items is: a group has items of its own, an item none."""
+    if isinstance(value, CollectionGroup) or (isinstance(value, dict) and "items" in value):
+        return "group"
+    return "item"
+
+
+# The tags pydantic adds to an error's location inside an entry, which no field is named.
+_ENTRY_TAGS: Final = frozenset({"item", "group"})
+
+
+class _GroupWhenItHasItems:
+    """The compiled schema's statement of :func:`_entry_kind`: an entry is a group when it
+    has `items`, and an item otherwise.
+
+    Pydantic writes the union as a `oneOf`, whose refusal jsonschema places at the entry
+    alone, so a range starting at 0 would be refused at `items.0`. As an `if`, the refusal
+    is at its place inside the entry, `items.0.references.0.start_line`, as before groups.
+    """
+
+    def __get_pydantic_json_schema__(
+        self, schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        written = handler(schema)
+        item, group = written.pop("oneOf")
+        return {**written, "if": {"required": ["items"]}, "then": group, "else": item}
+
+
+type CollectionEntry = Annotated[
+    Annotated[CollectionItem, Tag("item")] | Annotated[CollectionGroup, Tag("group")],
+    Discriminator(_entry_kind),
+    _GroupWhenItHasItems(),
+]
+
+
 class Collection(_Model):
-    """Ordered annotated items, each a title, a note, and the references it is about.
+    """Ordered annotated items, each a title, a note, and the references it is about, which
+    may be gathered in titled groups.
 
     The format is general: a guided review is one use, a collection carried in a
     `guided-review` fence and pinned to a comparison. A collection has no prose of its own:
@@ -193,7 +258,29 @@ class Collection(_Model):
     """
 
     comparison: CollectionComparison
-    items: list[CollectionItem] = Field(min_length=1, max_length=MAX_ITEMS)
+    items: list[CollectionEntry] = Field(min_length=1, max_length=MAX_ITEMS)
+
+    @model_validator(mode="after")
+    def _bounded(self) -> Collection:
+        # No one list's bound states it, so the schema cannot (MAX_ITEMS).
+        if _entry_count(self.items) > MAX_ITEMS:
+            raise ValueError(f"a collection has at most {MAX_ITEMS} items and groups")
+        return self
+
+    def flat_items(self) -> list[CollectionItem]:
+        """The items in reading order, a group's in its place: a guided review's steps."""
+        return [
+            item
+            for entry in self.items
+            for item in (entry.items if isinstance(entry, CollectionGroup) else [entry])
+        ]
+
+
+def _entry_count(entries: list[CollectionItem | CollectionGroup]) -> int:
+    """Every entry MAX_ITEMS counts: each of *entries*, and each item in a group among them."""
+    return len(entries) + sum(
+        len(entry.items) for entry in entries if isinstance(entry, CollectionGroup)
+    )
 
 
 def _guide_fence(body: str) -> tuple[Token, list[str]] | None:
@@ -280,7 +367,7 @@ def _collection(fence: Token) -> Collection:
     try:
         return Collection.model_validate(result.values)
     except ValidationError as exc:
-        location = ".".join(str(part) for part in exc.errors()[0]["loc"])
+        location = ".".join(str(part) for part in exc.errors()[0]["loc"] if part not in _ENTRY_TAGS)
         raise GuideError(f"Invalid guided-review reference at {location}.") from exc
 
 
@@ -298,6 +385,11 @@ def _outside_shape(collection: object) -> list[str | int] | None:
     `test_the_shape_walk_reaches_every_nested_model` (tests/test_guided_review.py) fails
     when a model gains one this walk does not visit. The values inside the shape are the
     schema's to judge, at a cost linear in their size.
+
+    An entry is a group or an item as :func:`_entry_kind` tells them apart, as the schema
+    does. One bound is the models' alone, since no one list states it: MAX_ITEMS counts a
+    group's items with the entries, and a block past it is refused at `items` as soon as a
+    group's items pass it.
     """
     if not _closed(collection, Collection):
         return []
@@ -305,20 +397,43 @@ def _outside_shape(collection: object) -> list[str | int] | None:
         return ["comparison"]
     if "items" not in collection:
         return None
-    items = collection["items"]
-    if not isinstance(items, list) or len(items) > MAX_ITEMS:
+    entries = collection["items"]
+    if not isinstance(entries, list) or len(entries) > MAX_ITEMS:
         return ["items"]
-    for at, item in enumerate(items):
-        if not _closed(item, CollectionItem):
+    counted = len(entries)
+    for at, entry in enumerate(entries):
+        if _entry_kind(entry) == "item":
+            outside = _outside_item(entry, ["items", at])
+        elif not _closed(entry, CollectionGroup):
             return ["items", at]
-        if "references" not in item:
-            continue
-        references = item["references"]
-        if not isinstance(references, list) or len(references) > MAX_REFERENCES:
-            return ["items", at, "references"]
-        for to, reference in enumerate(references):
-            if not _closed(reference, CollectionReference):
-                return ["items", at, "references", to]
+        else:
+            items = entry["items"]
+            if not isinstance(items, list) or len(items) > MAX_ITEMS - 1:
+                return ["items", at, "items"]
+            counted += len(items)
+            if counted > MAX_ITEMS:
+                return ["items"]
+            places = (
+                _outside_item(item, ["items", at, "items", to]) for to, item in enumerate(items)
+            )
+            outside = next((place for place in places if place is not None), None)
+        if outside is not None:
+            return outside
+    return None
+
+
+def _outside_item(item: object, at: list[str | int]) -> list[str | int] | None:
+    """Where *item*, an item at *at*, leaves the shape the v1 schema closes, or ``None``."""
+    if not _closed(item, CollectionItem):
+        return at
+    if "references" not in item:
+        return None
+    references = item["references"]
+    if not isinstance(references, list) or len(references) > MAX_REFERENCES:
+        return [*at, "references"]
+    for to, reference in enumerate(references):
+        if not _closed(reference, CollectionReference):
+            return [*at, "references", to]
     return None
 
 
@@ -755,11 +870,11 @@ async def _staleness(
     except GitError:
         return answer
     if changed is not None:
-        referenced = {ref.path for item in guide.items for ref in item.references}
+        referenced = {ref.path for item in guide.flat_items() for ref in item.references}
         answer["changed_paths"] = sorted(referenced & changed)
         answer["changed_steps"] = [
             at
-            for at, item in enumerate(guide.items, start=1)
+            for at, item in enumerate(guide.flat_items(), start=1)
             if any(ref.path in changed for ref in item.references)
         ]
     return answer
@@ -769,6 +884,33 @@ def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
     return record_freshness(
         record, *catalog_member(store.home, store.slug, record.number), now=pulls.utc_now()
     ).head_moved
+
+
+def _outline(guide: Collection) -> tuple[list[dict[str, object]], list[int | None]]:
+    """The guide in reading order, as the route answers it, and each step's group.
+
+    The outline is a tree: a group node holds its steps, and a step outside a group is a
+    node of its own. Steps are numbered 1 to the step count through the groups, as
+    ``step=<k>`` and ``changed_steps`` number them. Each step's group is the index of its
+    group's node in the outline, or ``None`` outside one.
+    """
+    outline: list[dict[str, object]] = []
+    groups: list[int | None] = []
+
+    def step(item: CollectionItem, group: int | None) -> dict[str, object]:
+        groups.append(group)
+        return {"kind": "step", "step": len(groups), "title": item.title}
+
+    for entry in guide.items:
+        if isinstance(entry, CollectionGroup):
+            at = len(outline)
+            children = [step(item, at) for item in entry.items]
+            outline.append(
+                {"kind": "group", "title": entry.title, "note": entry.note, "children": children}
+            )
+        else:
+            outline.append(step(entry, None))
+    return outline, groups
 
 
 async def guided_review(host: PullHost, number: int, step_number: int) -> dict[str, object]:
@@ -813,23 +955,28 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
     diagnostics: dict[str, object] = {} if staleness is None else {"stale": staleness}
     if published is None or comparison is None:
         return {**identity, "state": "comparison_unavailable", **diagnostics}
-    if step_number > len(guide.items):
+    steps = guide.flat_items()
+    if step_number > len(steps):
         return {**identity, "state": "step_not_found", **diagnostics}
-    step = guide.items[step_number - 1]
+    step = steps[step_number - 1]
     try:
         references = await _step_references(published, number, comparison, step)
     except (DiffSourceError, GitError):
         return {**identity, "state": "comparison_unavailable", **diagnostics}
+    outline, groups = _outline(guide)
     return {
         **identity,
         "state": "ready" if staleness is None else "stale",
         **diagnostics,
         # The comparison the excerpts are read from: the pull request's current one.
         "comparison": {"merge_base": comparison.base, "head": comparison.head},
-        "step_count": len(guide.items),
-        # Every step's title, so the page lists the guide's steps above the one it shows.
-        "titles": [item.title for item in guide.items],
+        "step_count": len(steps),
+        # Every step's title, so the page names each step it can move to.
+        "titles": [item.title for item in steps],
+        # The guide's groups and steps, which the page lists above the step it shows.
+        "outline": outline,
         "step": step_number,
+        "group": groups[step_number - 1],
         "title": step.title,
         "note": step.note,
         "references": references,
