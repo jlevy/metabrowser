@@ -440,27 +440,33 @@ is the format’s full reference, with its limits.
 
 A guide does more than explain the change.
 It is the reviewer’s agenda, so give each of these concerns a step, or a run of steps,
-of its own, in this order, and title each step so the list reads as that agenda:
+of its own, in this order, and title each step so the list reads as that agenda.
+When the guide has more than about six steps, or covers several of these concerns, put
+each concern’s steps in a group named as below, so the page’s step list shows the agenda
+as headings:
 
-1. **Keystone decisions.** The few choices everything else follows from: a data shape, a
-   contract, a boundary, a trade-off you chose against an alternative.
-   Say what was decided, what it rules out, and cite the lines that embody it.
-   A reviewer who disagrees here should stop before reading the rest.
-2. **Key documents.** The specs, plans, architecture documents, and user guides the
+1. **Decisions.** Two kinds of step, in this order:
+   - **Key decisions.** The few choices everything else follows from: a data shape, a
+     contract, a boundary, a trade-off you chose against an alternative.
+     Say what was decided, what it rules out, and cite the lines that embody it, each in
+     a line or two. A reviewer who disagrees here should stop before reading the rest.
+   - **Rationale.** For each key decision, why: what else was considered and the fact
+     that decided it, a measurement, a constraint, a requirement, or a precedent.
+2. **Documents.** One step per spec, plan, architecture document, or user guide the
    change adds or rewrites, cited whole, with a note on what each now promises.
-3. **Each area of change.** One step per area, in dependency or execution order (the
+3. **Changes.** One step per area of change, in dependency or execution order (the
    format before its parser, the route before its page), each saying what to verify
    there, not only what changed.
    Cite the ranges that matter, and whole files for tests, goldens, and generated
    output. Every changed file belongs to some step, the changelog fragment with the area
    it describes.
-4. **Ambiguity and uncertainty.** What you were unsure of, a guess you made where a
-   requirement was silent, a behavior you could not measure, a risk you accepted.
+4. **Open questions.** What you were unsure of, a guess you made where a requirement was
+   silent, a behavior you could not measure, a risk you accepted.
    Say plainly that a person should decide or check it, and cite the code in doubt.
-   Leave this step out only when there is truly nothing; never hide a doubt in another
-   step’s note.
-5. **Testing and QA.** Keep three things apart, each named, never merged into one claim,
-   and cite the tests and goldens the change adds or changes:
+   Leave this out only when there is truly nothing; never hide a doubt in another step’s
+   note.
+5. **Testing.** Keep three things apart, each its own step or line, never merged into
+   one claim, and cite the tests and goldens the change adds or changes:
    - what automated checks cover: those tests and goldens, what each pins, and CI at the
      head. CI is still running when you first publish, so say so, and update the note
      when it ends; editing the description does not move the head, so the guide stays
@@ -474,6 +480,11 @@ of its own, in this order, and title each step so the list reads as that agenda:
    tracker IDs, follow-up plans, and open questions that need more planning before
    anyone builds them. Cite the plan the change adds or updates.
 
+**Keep the rationale concise.** Give each decision’s why in a sentence or two: the
+alternative rejected and the fact that decided it.
+Do not retell the design; cite the lines or the document where the decision is recorded
+at length. A decision whose reason is obvious needs no rationale line.
+
 Every step cites at least one file this pull request changes: a step without a reference
 makes the page refuse the whole guide, and a reference to an unchanged file answers
 `path_not_changed`. When what a step is about did not change, such as the plan a
@@ -481,9 +492,13 @@ follow-up belongs to, code you doubt but did not touch, or tests that cover the 
 unchanged, cite the changed file closest to it, and say in the note what the step is
 about.
 
-Smaller changes merge concerns (one step can be both the keystone and the only area),
-but keep the testing step and its three-way split on every pull request, and the
-ambiguity step whenever there is anything to say.
+Groups are optional, and a guide without them reads as it always has.
+A short guide stays flat: about six steps or fewer, its titles name the concerns.
+A smaller change merges concerns, so one step can be both the key decision and the only
+area, and merges or leaves out their groups, but keep the testing step and its three-way
+split on every pull request, and the open questions whenever there is anything to say.
+A group needs no note: give it one only when its steps share something a reader should
+know first, and never repeat the description.
 
 The page shows each title and note as written, line breaks kept and Markdown printed
 literally, so write them as plain text.
@@ -495,7 +510,8 @@ such as commit IDs, commit lists, and merge-base or rebase mechanics.
 ### Write the Block
 
 The guide is one `guided-review` block in the description, after the prose that
-introduces it, which the tab shows first:
+introduces it, which the tab shows first.
+A short guide is a flat list of steps:
 
 ````markdown
 ```guided-review
@@ -522,6 +538,45 @@ collection:
 ```
 ````
 
+A longer guide gathers its steps in groups, shown here with a step or two in each:
+
+````markdown
+```guided-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "<full merge-base commit ID>"
+    head: "<full head commit ID>"
+  items:
+    - title: Decisions
+      items:
+        - title: "Keystone: the snapshot is served before the worker ends"
+          note: Check that the request returns the cached snapshot without waiting.
+          references:
+            - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
+        - title: "Rationale: why the snapshot, not a wait"
+          note: Waiting took 4.1 s on a cold cache, and the snapshot 90 ms; the plan has the rest.
+          references:
+            - {path: docs/cache-plan.md}
+    - title: Testing
+      items:
+        - title: "Testing, by a person: what still needs a human"
+          note: |-
+            Tick off:
+            - open the page in a browser and watch it load
+            - read a cache while it is being written
+          references:
+            - {path: tests/test_cache.py}
+```
+````
+
+- A group is a `title`, an optional `note`, and its own `items`, which are steps only:
+  groups do not nest, and an empty group is refused.
+  Steps outside a group may sit between groups.
+  The page numbers the steps 1 to n through the groups, as `step` counts them.
 - Pin `merge_base` to the merge base of the head and the base branch, after
   `git fetch origin <base branch>`: `git merge-base origin/<base branch> <head>`. For a
   stacked pull request the base branch is the base layer’s, not the default branch.
@@ -540,7 +595,8 @@ collection:
 - A step’s whole files share one size budget, and a file past it answers
   `patch_too_large`: split the step, or cite the file’s ranges instead.
   `MAX_REFERENCES` caps a step’s references, so split a step that needs more.
-  `MAX_ITEMS` caps the steps; past it, cite what a reviewer must read.
+  `MAX_ITEMS` caps the steps and groups together; past it, cite what a reviewer must
+  read.
 
 ### Publish and Confirm It
 

@@ -17,9 +17,15 @@
  *   changed_steps: number[] | null}} Staleness What a stale guide was written for and what
  *   changed since (`_staleness` in guided_review.py). The page says only whether its steps
  *   may not match; the rest is for an agent that brings the guide up to date.
+ * @typedef {{kind: "step", step: number, title: string}} OutlineStep A step in the guide's
+ *   outline, numbered through the groups as `step` counts it.
+ * @typedef {{kind: "group", title: string, note: string | null, children: OutlineStep[]}}
+ *   OutlineGroup A group of the guide's steps, which the reader never lands on alone.
  * @typedef {{state: "ready" | "stale", record_revision: string, step: number,
- *   step_count: number, titles: string[], title: string, note: string, references: Reference[],
- *   stale?: Staleness, assets?: unknown}} Step
+ *   step_count: number, titles: string[], outline: Array<OutlineStep | OutlineGroup>,
+ *   group: number | null, title: string, note: string, references: Reference[],
+ *   stale?: Staleness, assets?: unknown}} Step `group` is the index in `outline` of the
+ *   step's group, or null for a step outside one (`_outline` in guided_review.py).
  * @typedef {{state: "absent" | "invalid" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
  *   message?: string, stale?: Staleness}} Refusal
@@ -437,6 +443,10 @@ const OVERVIEW = "Overview";
 /** @param {number} at @param {number} count Where the reader is: the overview, or a step of
  * how many. */
 const placeName = (at, count) => (at === 0 ? OVERVIEW : `Step ${at} of ${count}`);
+/** @param {string | null} group @param {number} at @param {number} count A step's place on its
+ * card: its group's title before it, when it has one, as "Decisions · Step 2 of 12". */
+const groupedPlace = (group, at, count) =>
+  group === null ? placeName(at, count) : `${group} · ${placeName(at, count)}`;
 /** @param {number} at @param {string} title A step by name: the overview, or its number and
  * title. */
 const stepName = (at, title) => (at === 0 ? OVERVIEW : `Step ${at}: ${title}`);
@@ -447,6 +457,8 @@ const guideBadge = () =>
  * cites a file changed since the guide was written: the word its warning names. */
 const CHANGED = "changed";
 const changedMark = () => element("span", CHANGED, "github-pull-guide-step-changed");
+/** How many group headings the page has drawn, so each has an id of its own to name its list. */
+let groupHeadings = 0;
 
 /**
  * @param {HTMLElement} host
@@ -518,17 +530,60 @@ export function mountGuidedReview(host, introduction, number, deps) {
   };
   /** @type {string[]} */
   let titles = [];
+  /** The guide's groups and steps in reading order, as the route answers them.
+   * @type {Array<OutlineStep | OutlineGroup>} */
+  let entries = [];
   /** @type {number[]} */
   let changedSteps = [];
   /** @param {number} at */
   const nameOf = (at) => stepName(at, titles[at - 1] ?? "");
   /**
-   * The step list's rows, built once for each list of titles and updated in place, so the
-   * row a reader activated keeps focus, as the tab bar keeps its links across paints.
+   * The step list's rows, built once for each outline and updated in place, so the row a
+   * reader activated keeps focus, as the tab bar keeps its links across paints. A row's
+   * index is its step's number, the overview's 0.
    *
    * @type {{key: string | null, rows: {link: HTMLButtonElement, mark: HTMLElement}[]}}
    */
   let built = { key: null, rows: [] };
+
+  /** @param {number} index @param {string} title A step's row: its number and its title. */
+  function stepRow(index, title) {
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "github-pull-guide-steps-link";
+    link.append(
+      element("span", index === 0 ? "" : String(index), "github-pull-guide-steps-number"),
+      element("span", title, "github-pull-guide-steps-title"),
+    );
+    link.addEventListener("click", () => navigation.go(index));
+    return { link, mark: changedMark() };
+  }
+
+  /** @param {{link: HTMLButtonElement}} row */
+  function listItem({ link }) {
+    const item = element("li", "", "github-pull-guide-steps-item");
+    item.append(link);
+    return item;
+  }
+
+  /**
+   * A group in the step list: its heading, with no number and nothing to press, since the
+   * reader moves between steps alone, above its steps, which keep their numbers. The
+   * heading names the group's list, as a menu's group heading names its group.
+   *
+   * @param {OutlineGroup} group @param {{link: HTMLButtonElement}[]} rows
+   */
+  function groupItem(group, rows) {
+    groupHeadings += 1;
+    const heading = element("div", group.title, "group-heading github-pull-guide-steps-heading");
+    heading.id = `github-pull-guide-group-${groupHeadings}`;
+    const steps = element("ol", "", "github-pull-guide-steps-members");
+    steps.setAttribute("aria-labelledby", heading.id);
+    steps.append(...rows.map(listItem));
+    const item = element("li", "", "github-pull-guide-steps-group");
+    item.append(heading, steps);
+    return item;
+  }
 
   /** @param {number} at */
   function paintOutline(at) {
@@ -538,29 +593,23 @@ export function mountGuidedReview(host, introduction, number, deps) {
     status.textContent = placeName(at, count);
     previous.disabled = at <= 0;
     next.disabled = at >= count;
-    const key = JSON.stringify(titles);
+    const key = JSON.stringify(entries);
     if (built.key !== key) {
-      built = {
-        key,
-        rows: [OVERVIEW, ...titles].map((title, index) => {
-          const link = document.createElement("button");
-          link.type = "button";
-          link.className = "github-pull-guide-steps-link";
-          link.append(
-            element("span", index === 0 ? "" : String(index), "github-pull-guide-steps-number"),
-            element("span", title, "github-pull-guide-steps-title"),
-          );
-          link.addEventListener("click", () => navigation.go(index));
-          return { link, mark: changedMark() };
-        }),
-      };
-      list.replaceChildren(
-        ...built.rows.map(({ link }) => {
-          const item = element("li", "", "github-pull-guide-steps-item");
-          item.append(link);
-          return item;
-        }),
-      );
+      const rows = [stepRow(0, OVERVIEW)];
+      const items = [listItem(rows[0])];
+      for (const entry of entries) {
+        if (entry.kind === "step") {
+          const row = stepRow(entry.step, entry.title);
+          rows.push(row);
+          items.push(listItem(row));
+        } else {
+          const members = entry.children.map((child) => stepRow(child.step, child.title));
+          rows.push(...members);
+          items.push(groupItem(entry, members));
+        }
+      }
+      built = { key, rows };
+      list.replaceChildren(...items);
     }
     for (const [index, { link, mark }] of built.rows.entries()) {
       if (changedSteps.includes(index)) {
@@ -658,6 +707,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
       showStale(available ? state.stale : null);
       if (!available) {
         titles = [];
+        entries = [];
         changedSteps = [];
         paintOutline(0);
         introduction.hidden = false;
@@ -672,6 +722,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
       }
       notice.hidden = true;
       titles = state.titles;
+      entries = state.outline;
       changedSteps = outdated(state.stale) ? (state.stale.changed_steps ?? []) : [];
       paintOutline(at);
       pager.hidden = false;
@@ -697,7 +748,12 @@ export function mountGuidedReview(host, introduction, number, deps) {
       const head = element("div", "", "github-pull-card-head github-pull-guide-card-head");
       // The badge leads its label as a page header's state badge leads its line, a gap
       // apart (`.github-pull-guide-card-head`), never a space's width.
-      const place = element("span", placeName(state.step, state.step_count));
+      const entry = state.group === null ? undefined : state.outline[state.group];
+      const group = entry?.kind === "group" ? entry : null;
+      const place = element(
+        "span",
+        groupedPlace(group?.title ?? null, state.step, state.step_count),
+      );
       if (changedSteps.includes(state.step)) {
         place.append(" · ", changedMark());
       }
@@ -708,7 +764,12 @@ export function mountGuidedReview(host, introduction, number, deps) {
         "page-card github-pull-card github-pull-event github-pull-guide-card",
       );
       card.append(head, proseHost(step), references);
-      detail.replaceChildren(card);
+      // A group's note opens the group: it shows above its first step, as typed.
+      const opens = group !== null && group.note !== null && group.children[0]?.step === state.step;
+      detail.replaceChildren(
+        ...(opens ? [element("p", group.note ?? "", "github-pull-guide-group-note")] : []),
+        card,
+      );
     },
   });
   previous.addEventListener("click", () => navigation.move(-1));

@@ -6,10 +6,11 @@ The shell's highlighter runs over every ``pre code`` that does not carry ``no-hi
 snippet in some language: a word became SQL, and each row got the padding, block, and gray
 background of ``pre code.hljs`` inside the tint of its own row (review A of #599, A3). Which
 rows the highlighter touched, and what a row paints, are the browser's; so this serves the
-GitHub stand-in, whose pull requests 7 to 9 have guides in their descriptions and whose 10 has
-none, and ``tests/dom/github-guided-review-chrome.mjs`` drives it: the tab and its key on a pull
-request with a guide and with none, the shell's own pass over the excerpt, a row's layout, the
-steps and Open full diff, and a guide that cannot be read. Browserless, the tab's key and its
+GitHub stand-in, whose pull requests 7 to 9 have guides in their descriptions, 8's rewritten
+into groups, and whose 10 has none, and ``tests/dom/github-guided-review-chrome.mjs`` drives it: the tab and
+its key on a pull request with a guide and with none, the shell's own pass over the excerpt, a
+row's layout, the steps and Open full diff, where a group's heading and note sit, and a guide
+that cannot be read. Browserless, the tab's key and its
 lazy mount are pinned in ``tests/dom/github-pull-page-mount-behavior.js`` and
 ``tests/dom/github-guided-review-mount-behavior.js``. An out-of-date guide's notice, its marks,
 and where a list's markers fall against the bordered box around them are paint too, so they are
@@ -69,15 +70,16 @@ def test_guided_review_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile
     env["METABROWSER_LOG_LEVEL"] = "WARNING"
     stand_in = tmp_path / "stand-in"
     stand_in.mkdir()
-    built = subprocess.run(
-        [sys.executable, str(FIXTURE), str(stand_in), "--guided"],
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=_BUILD_BUDGET_S,
-        check=False,
-    )
-    assert built.returncode == 0, built.stderr[-4000:]
+    for build in (["--guided"], ["--describe", "8", "grouped"]):
+        built = subprocess.run(
+            [sys.executable, str(FIXTURE), str(stand_in), *build],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=_BUILD_BUDGET_S,
+            check=False,
+        )
+        assert built.returncode == 0, built.stderr[-4000:]
     port = _free_port()
     log = tmp_path / "server.log"
     with log.open("w", encoding="utf-8") as output:

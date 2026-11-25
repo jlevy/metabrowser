@@ -178,6 +178,10 @@ Choose a step in the list to go straight to it, or use the arrows in the list’
 page through them; below each step, the way on names the next step and the way back the
 one before. A step can bring changes from several files together, each drawn as Changes
 draws it. **Open full diff** goes to the file in Changes.
+A guide may gather its steps in groups, such as Decisions, Changes, and Testing: the
+list names each group above its steps, which keep their numbers through the groups, a
+step’s card names its group before its place, as “Decisions · Step 2 of 12”, and a
+group’s note shows above its first step.
 
 To publish a guide, have the author or their agent add one top-level `guided-review`
 fenced YAML block to the GitHub PR description.
@@ -194,9 +198,10 @@ The block is a collection (`metabrowser.collection:Collection/v1`), a general fo
 ordered annotated items that guided reviews are the first use of
 ([Collection Format](project/architecture/arch-collection-format.md)). In a guided
 review it holds the comparison it was written against and ordered `items`, each a step
-with a `title`, a `note` saying what to verify, and its `references`. Write each step’s
-fields as plain text: the page shows them as typed and keeps their line breaks, so
-Markdown such as backticks, lists, and links prints literally.
+with a `title`, a `note` saying what to verify, and its `references`, or a group of
+steps with a `title`, an optional `note`, and its own `items`. Write each field as plain
+text: the page shows them as typed and keeps their line breaks, so Markdown such as
+backticks, lists, and links prints literally.
 
 ````markdown
 ```guided-review
@@ -216,6 +221,14 @@ collection:
 ```
 ````
 
+Groups are optional, and a guide without them reads as it always has.
+A longer guide may gather its steps in groups, as
+[Collection Format](project/architecture/arch-collection-format.md#the-record) shows: a
+group holds steps only, so groups do not nest, and a group without steps is refused, as
+a guide without steps is.
+Steps outside a group may sit between groups, and every step is numbered in reading
+order, through the groups.
+
 Use the changed path shown in Changes, the `old` or `new` side, and an inclusive line
 range within one diff hunk.
 An excerpt shows a replacement whole: a line that exists only on the other side, a
@@ -232,7 +245,7 @@ A binary change or a rename without a text diff says it has no text changes to s
 The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
 describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_review.py` bound
-its steps and each step’s references.
+its steps and groups together, and each step’s references.
 
 The guide is read from the cached description, and its excerpts come from the pull
 request’s current comparison, so a guide stays readable after new commits.
@@ -251,6 +264,8 @@ commits were pushed, and, when this copy matches the guide, the guide adds nothi
 the pull request is fetched again.
 The route’s answer, below, keeps the details: the guide’s pins and the current ones, the
 commits since, and the paths and steps that changed.
+It also gives the guide’s `outline`, its groups and steps in reading order, and the
+`group` each step is in.
 To bring the guide current, update its pins and ranges in the PR description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second

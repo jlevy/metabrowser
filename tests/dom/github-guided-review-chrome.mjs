@@ -1,5 +1,6 @@
 // Guided Review in headless Chrome against a live `metab` server that serves the GitHub stand-in
-// with guides in the descriptions of pull requests 7 to 9 and none in 10's.
+// with guides in the descriptions of pull requests 7 to 9, 8's rewritten into groups, and none
+// in 10's.
 //
 //   CHROME_BIN=... CHROME_PROFILES=<dir> node tests/dom/github-guided-review-chrome.mjs <base URL>
 //
@@ -34,6 +35,11 @@
 //    text right by the marker's width: every marker in the guide sits inside its panel's
 //    border, a description's list among them, and a list placed as the old notice drew its
 //    own is caught, which shows the measurement sees the fault.
+// 6. A guide in groups (8's, as the test rewrites it): each group is the shell's group heading in the step list,
+//    above its steps and starting on the edge their numbers start on, with nothing to press
+//    and no number, while the steps keep theirs; a step's card names its group before its
+//    place, and a group's note sits above its first step's card. A guide without groups (7's)
+//    has no heading.
 import { launchChrome } from "./chrome-session.mjs";
 
 const [base] = process.argv.slice(2);
@@ -226,6 +232,11 @@ try {
       `[...document.querySelectorAll(".github-pull-guide-steps-title")].map((title) => title.textContent)`,
     ),
     ["Overview", "Start with the count", "Read the new guide"],
+  );
+  same(
+    "a guide without groups lists no group heading",
+    await evaluate(`document.querySelectorAll(".github-pull-guide-steps-heading").length`),
+    0,
   );
   same(
     "the arrows are icons",
@@ -426,14 +437,68 @@ try {
     JSON.stringify(caught),
   );
 
+  // 6. 8's guide puts each step in a group.
+  same(
+    "a grouped guide's list: each group's heading above its steps, which keep their numbers",
+    await evaluate(
+      `[...document.querySelectorAll(".github-pull-guide-steps-heading, .github-pull-guide-steps-link")].map((node) =>
+        node.matches("button") ? node.innerText.replace(/\\s+/g, " ").trim() : \`[\${node.textContent}]\`)`,
+    ),
+    [
+      "Overview",
+      "[The count]",
+      "1 Start with the count changed",
+      "[The docs]",
+      "2 Read the new guide changed",
+    ],
+  );
+  const headings =
+    await evaluate(`[...document.querySelectorAll(".github-pull-guide-steps-heading")].map((heading) => {
+    const style = getComputedStyle(heading);
+    const probe = document.createElement("div");
+    probe.className = "group-heading";
+    probe.textContent = "Probe";
+    document.body.append(probe);
+    const shell = getComputedStyle(probe);
+    const register = ["color", "fontSize", "fontWeight", "letterSpacing", "textTransform"].every(
+      (name) => style[name] === shell[name],
+    );
+    probe.remove();
+    const steps = heading.nextElementSibling;
+    const first = steps.querySelector(".github-pull-guide-steps-link");
+    const number = first.querySelector(".github-pull-guide-steps-number");
+    const text = document.createRange();
+    text.selectNodeContents(heading);
+    return {
+      control: heading.closest("button, a") !== null || heading.tabIndex >= 0,
+      register,
+      above: heading.getBoundingClientRect().bottom <= first.getBoundingClientRect().top + 0.5,
+      onTheNumbers: Math.abs(text.getBoundingClientRect().left - number.getBoundingClientRect().left) <= 1,
+      named: steps.getAttribute("aria-labelledby") === heading.id && heading.id !== "",
+    };
+  })`);
+  same(
+    "each heading is the shell's group heading, no control, above its steps, on their numbers' edge, and names their list",
+    headings,
+    Array(2).fill({ control: false, register: true, above: true, onTheNumbers: true, named: true }),
+  );
   await click("Next step");
   await settled("Start with the count");
   same(
-    "its step is a guided-review card",
+    "its step is a guided-review card, named by its group",
     await evaluate(
       `[...document.querySelector(".github-pull-guide-card .github-pull-card-head").children].map((part) => part.textContent)`,
     ),
-    ["Guided Review", "Step 1 of 2 · changed"],
+    ["Guided Review", "The count · Step 1 of 2 · changed"],
+  );
+  same(
+    "the group's note sits above its first step's card",
+    await evaluate(`(() => {
+      const note = document.querySelector(".github-pull-guide-step > .github-pull-guide-group-note");
+      const card = document.querySelector(".github-pull-guide-card");
+      return note === null ? null : [note.textContent, note.getBoundingClientRect().bottom <= card.getBoundingClientRect().top];
+    })()`),
+    ["Read the value before its explanation.", true],
   );
   same(
     "its file, no longer in the pull request's changes, says so in its place",
@@ -450,6 +515,15 @@ try {
       return Math.round(label.getBoundingClientRect().left - badge.getBoundingClientRect().right);
     })()`),
     8,
+  );
+  await click("Next step");
+  await settled("Read the new guide");
+  same(
+    "a group without a note shows none above its step",
+    await evaluate(
+      `[document.querySelector(".github-pull-guide-card .github-pull-card-head").lastElementChild.textContent, document.querySelector(".github-pull-guide-group-note")]`,
+    ),
+    ["The docs · Step 2 of 2 · changed", null],
   );
   await go("/pull/9/guided");
   same("two blocks", await said(), "Use one guided-review block in the pull request description.");

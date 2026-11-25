@@ -3077,9 +3077,9 @@ Document image sanitization remains independent; see [Content Trust](../SECURITY
 
 **A guide names every place the same way, in one vocabulary, from one module.** The
 names, the badge, and the place labels are constants at the top of `guided-review.js`
-(`GUIDE`, `OVERVIEW`, `placeName`, `stepName`, `guideBadge`), and every part below takes
-its words from them, so the step list, the arrows’ tips, the way on and back, and a
-step’s card never disagree.
+(`GUIDE`, `OVERVIEW`, `placeName`, `groupedPlace`, `stepName`, `guideBadge`), and every
+part below takes its words from them, so the step list, the arrows’ tips, the way on and
+back, and a step’s card never disagree.
 The user guide’s [Guided Review](reviewing-pull-requests.md#guided-review) says what a
 reader does with it.
 
@@ -3091,6 +3091,8 @@ reader does with it.
 | A step by name | “Step 3: Inspect the request path”: the list, the tips, the way on and back | `stepName` |
 | Badge | A state badge’s outlined box leading a head, 8px from its label, as a page header’s state badge leads its line | `guideBadge`, `.github-pull-guide-card-head` |
 | Step list | A card above the step: the badge, the arrows around the place, then each step, numbered, the one shown marked as a table of contents marks its section | `.github-pull-guide-outline`, `--highlight-bg`, `--highlight-bar` |
+| Group | In the step list, the group’s title as the shell’s [group heading](#groups-in-a-menu), on the edge the rows’ numbers start on, with no number and nothing to press, above its steps, which keep their numbers; on a step’s card, its title before the place, “Decisions · Step 2 of 12” | `.group-heading`, `.github-pull-guide-steps-heading`, `groupedPlace` |
+| Group note | The group’s note, as typed, above its first step’s card at the card text’s inset | `.github-pull-guide-group-note` |
 | Arrows | Icon buttons, `arrowLeft` and `arrowRight`, centered in an icon button’s box, with no label of their own | `.github-pull-guide-arrow` |
 | Way on and back | Worded buttons below a step that name the step they go to | `.github-pull-guide-pager` |
 | Step | A page card, as Conversation draws a comment: the badge and the place, the title and note at the description’s inset, then its excerpts | `.github-pull-guide-card`, `.github-pull-text` |

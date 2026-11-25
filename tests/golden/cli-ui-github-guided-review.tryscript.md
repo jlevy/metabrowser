@@ -106,8 +106,12 @@ A guide whose merge base alone moved is out of date too: a step that cites a fil
 changed on the base side is marked, and when none is, a quiet line says so.
 A refused step keeps the step list, whose buttons survive the click that chose it, and
 says why in the step’s place.
-A core preview opens a guided pull request on its guide, which waits for the record, and
-the record’s arrival reads the guide without changing tab.
+A guide in groups lists each group as a heading, with no number and nothing to press,
+above its steps, which keep their numbers through the groups; a step outside a group
+sits between them. A step’s card names its group before its place, a group’s note shows
+above its first step alone, and the list keeps its buttons and its changed marks as the
+reader moves. A core preview opens a guided pull request on its guide, which waits for
+the record, and the record’s arrival reads the guide without changing tab.
 On a guided front page, Guided Review’s link and key go to the page already shown, and
 the description’s card on Conversation links the front page.
 
@@ -145,6 +149,12 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "chosen again: asked step 1, step 2, step 2",
   "and answered: Step 2 of 3; Step 2; says nothing",
   "back: Step 1 of 3; asked step 1, step 2, step 2",
+  "a guide in groups opens on: Overview; > Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | 3 Step 3 | [Testing] | 4 Step 4 changed",
+  "its first step: Guided Review | Decisions · Step 1 of 4; under the group's note: Read these first.\nEach says why.",
+  "its second: Guided Review | Decisions · Step 2 of 4 · changed",
+  "step 3: Guided Review | Step 3 of 4; Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | > 3 Step 3 | [Testing] | 4 Step 4 changed",
+  "step 4: Guided Review | Testing · Step 4 of 4 · changed; Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | 3 Step 3 | [Testing] | > 4 Step 4 changed",
+  "asked: step 1, step 2, step 3, step 4",
   "a preview's front page: guide mounted; says The guide needs the full pull request.; asked nothing",
   "its record arrives: guide mounted; asked step 1",
   "the guided front page: Guided Review links /pull/7, Conversation /pull/7/conversation; its key opens nothing",
