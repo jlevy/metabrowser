@@ -273,6 +273,71 @@ async function main() {
   assert.equal(movedStates.at(-1), "step 2: step 2 of 3");
   assert.deepEqual(movedCalls, [1, 2, 3, 2, 2]);
   moved.dispose();
+
+  // Read ahead through the document's keep (guide-reads.js), as the page reads: once a step
+  // is shown, the steps a move away are read, and a move to one shows it at once, with no
+  // loading state and no read of its own. A guide mounted again over the same keep opens on
+  // the step it kept and moves through what it kept, at once too, reading nothing; a new
+  // revision shows none of what the old one kept.
+  const { createGuideReads } = await import(
+    "../../src/metabrowser/builtin_plugins/github/guide-reads.js"
+  );
+  const fetched = [];
+  const flights = [];
+  const keep = createGuideReads({
+    fetch(url) {
+      const step = Number(new URL(url, "http://localhost").searchParams.get("step"));
+      fetched.push(step);
+      return new Promise((resolve) => flights.push(resolve));
+    },
+  });
+  async function deliver(body) {
+    flights.shift()({ ok: true, text: async () => JSON.stringify(body) });
+    for (let turn = 0; turn < 10; turn += 1) {
+      await settle();
+    }
+  }
+  const aheadStates = [];
+  const mountAhead = (label) =>
+    createGuideNavigation({
+      read: (step, _signal, revision) => keep.read("number=7", step, revision),
+      prefetch: (step, revision) => keep.prefetch("number=7", step, revision),
+      peek: (step, revision) => keep.peek("number=7", step, revision),
+      render(answer, at) {
+        const shown = at === 0 ? "overview" : `step ${at}`;
+        aheadStates.push(
+          `${label} ${shown}: ${"step" in answer ? `step ${answer.step}` : answer.state} (read ${fetched.join(" ")})`,
+        );
+      },
+    });
+  const ahead = mountAhead("first mount");
+  ahead.show("kept", false);
+  await deliver(answer("kept", 1));
+  assert.deepEqual(fetched, [1, 2], "the overview's step and the one after it");
+  await deliver(answer("kept", 2));
+  ahead.move(1);
+  ahead.move(1);
+  assert.equal(aheadStates.at(-1), "first mount step 2: step 2 (read 1 2)");
+  assert.deepEqual(fetched, [1, 2, 3], "then the step after it");
+  await deliver(answer("kept", 3));
+  ahead.move(1);
+  assert.equal(aheadStates.at(-1), "first mount step 3: step 3 (read 1 2 3)");
+  ahead.dispose();
+  const again = mountAhead("mounted again");
+  again.show("kept", false);
+  again.go(3);
+  again.move(-1);
+  assert.deepEqual(fetched, [1, 2, 3], "a guide mounted again reads nothing it kept");
+  again.show("newer", false);
+  assert.equal(aheadStates.at(-1), "mounted again step 2: loading (read 1 2 3)");
+  assert.deepEqual(fetched, [1, 2, 3, 2], "the step the new revision shows is read again");
+  await deliver(answer("newer", 2));
+  again.dispose();
+  assert.deepEqual(
+    aheadStates.filter((state) => state.includes("loading")),
+    ["first mount overview: loading (read )", "mounted again step 2: loading (read 1 2 3)"],
+    "only a step no read has answered loads",
+  );
   console.log(
     JSON.stringify(
       {
@@ -280,6 +345,7 @@ async function main() {
         states,
         stack: { calls: stackCalls, states: stackStates },
         moved: { calls: movedCalls, states: movedStates },
+        ahead: { read: fetched, states: aheadStates },
       },
       null,
       2,

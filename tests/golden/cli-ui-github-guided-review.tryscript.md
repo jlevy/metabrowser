@@ -140,6 +140,28 @@ $ node tests/dom/github-guided-review-session.js
       "step 2: loading, 0 steps",
       "step 2: step 2 of 3"
     ]
+  },
+  "ahead": {
+    "read": [
+      1,
+      2,
+      3,
+      2,
+      3,
+      1
+    ],
+    "states": [
+      "first mount overview: loading (read )",
+      "first mount overview: step 1 (read 1)",
+      "first mount step 1: step 1 (read 1 2)",
+      "first mount step 2: step 2 (read 1 2)",
+      "first mount step 3: step 3 (read 1 2 3)",
+      "mounted again overview: step 1 (read 1 2 3)",
+      "mounted again step 3: step 3 (read 1 2 3)",
+      "mounted again step 2: step 2 (read 1 2 3)",
+      "mounted again step 2: loading (read 1 2 3)",
+      "mounted again step 2: step 2 (read 1 2 3 2)"
+    ]
   }
 }
 ? 0
@@ -229,15 +251,16 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "step 1: Step 1; rows context one, del <i>two</i>, add three",
   "a path outside the comparison says: This path is not in the comparison.",
   "Open full diff: files src/app.txt",
-  "left for Conversation with step 2 on its way: read aborted true; guide gone",
-  "its tab again: asked step 1",
-  "the page ends: read aborted true",
+  "Next with step 2 on its way: step shown Step 1",
+  "left for Conversation with step 2 on its way: read aborted false; guide gone",
+  "its tab again: Overview; asked nothing",
+  "and its kept steps at once: step shown Step 2; asked nothing",
   "opened on its tab: asked step 1",
-  "a newer record arrives with the read on its way: old read aborted true; asked step 1, step 1",
+  "a newer record arrives with the read on its way: old read aborted false; asked step 1, step 1",
   "the new read's answer: Overview",
   "a poll of the same record: asked step 1, step 1",
-  "Guided Review opened and left before its import settled: guide not mounted; asked nothing",
-  "the page ended before the import settled: asked nothing",
+  "Guided Review opened and left before its import settled: guide not mounted; asked step 1",
+  "the page ended before the import settled: asked step 1",
   "a guide behind a newer head on GitHub: none; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "a guide whose head this copy lacks: warning: This guide was written for an earlier version of this pull request, so some steps may not match it. Its author can update the guide.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "and its step: Step 1; src/app.txt: This file may have changed since the guide was written. | gone.txt: This path is not in the comparison. | src/app.txt: These lines may have changed since the guide was written.",

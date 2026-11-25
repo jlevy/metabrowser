@@ -154,7 +154,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
   },
   "left": {
     "tab": "Changes",
-    "read_aborted": true,
+    "read_aborted": false,
     "summaries_drawn": 2,
     "diffs_drawn": 2,
     "changes_drawing": {

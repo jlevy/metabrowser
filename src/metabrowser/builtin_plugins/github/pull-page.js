@@ -53,6 +53,7 @@ import {
   unavailableText,
 } from "./copy.js";
 import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
+import { GUIDE_DOCUMENT_HOLD_MS, guideAsks, guideReads } from "./guide-reads.js";
 import {
   createStackIndex,
   memberRoute,
@@ -207,7 +208,7 @@ const CHANGES_KEY = "pullChanges";
 
 // How long an idle browser may take before Files changed is fetched anyway. A page rendering
 // its conversation is not idle, and the comparison should not wait for all of it.
-const PREFETCH_IDLE_TIMEOUT_MS = 300;
+export const PREFETCH_IDLE_TIMEOUT_MS = 300;
 // Pull requests' sizes, by their size route, kept for the document: a route names two
 // immutable commits, so its size never changes. Bounded as a Pulls window's rows are; each
 // entry is two numbers.
@@ -5606,7 +5607,18 @@ export function mountPullPage(container, ctx, mb) {
       refusedNotes.get(part)?.text !== value &&
         (controller.pending(part, value) || inserting.get(part) === value),
     );
+    for (const check of [...pendingWatchers]) {
+      check();
+    }
   }
+
+  /**
+   * What waits for texts to stop waiting for their Markdown (`textsSettled`), told each time
+   * one may have, as `showPending` marks it, or when the page is disposed.
+   *
+   * @type {Set<() => void>}
+   */
+  const pendingWatchers = new Set();
 
   /** @param {string} part */
   function showPendingPart(part) {
@@ -8455,6 +8467,70 @@ export function mountPullPage(container, ctx, mb) {
     askForTexts([shown.block]);
   }
 
+  /** The record revision whose guide was read ahead, so it is read once (`readGuideAhead`). */
+  /** @type {string | null} */
+  let guideAhead = null;
+  /** @type {(() => void) | null} */
+  let cancelGuideAhead = null;
+
+  /**
+   * Read the guide ahead of the reader: once a full record whose description carries a guide
+   * is shown on another tab, its module and its first step, when the page is idle, so Guided
+   * Review draws whole the moment it is opened (guide-reads.js has the cost). Guided Review's
+   * own tab reads its first step as it starts to import the module (`paintGuided`).
+   *
+   * @param {PullModel} model
+   */
+  function readGuideAhead(model) {
+    const revision = model.recordRevision;
+    if (
+      revision === null ||
+      model.corePreview ||
+      guideAhead === revision ||
+      model.tab === "guided" ||
+      !GUIDED_FENCE.test(model.pull?.text ?? "")
+    ) {
+      return;
+    }
+    guideAhead = revision;
+    cancelGuideAhead?.();
+    cancelGuideAhead = mb.whenIdle(
+      () => {
+        cancelGuideAhead = null;
+        if (listening.signal.aborted) {
+          return;
+        }
+        guideReads.prefetch(guideAsks({ kind: "pull", number }), 1, revision);
+        void import("./guided-review.js").catch(() => {});
+      },
+      { timeout: PREFETCH_IDLE_TIMEOUT_MS },
+    );
+  }
+
+  /**
+   * Resolve once *node*'s texts show as they will stay: none of them waits, out of sight,
+   * for its Markdown (`showPending`), so each is rendered, or shows its source with the line
+   * that says why.
+   *
+   * @param {HTMLElement} node
+   * @returns {Promise<void>}
+   */
+  function textsSettled(node) {
+    const waits = () => node.querySelector(".github-pull-plain-pending") !== null;
+    if (!waits()) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const check = () => {
+        if (!waits() || listening.signal.aborted) {
+          pendingWatchers.delete(check);
+          resolve();
+        }
+      };
+      pendingWatchers.add(check);
+    });
+  }
+
   /** @param {PullModel} model */
   function paintGuided(model) {
     const moved = model.newCommits !== null;
@@ -8463,7 +8539,13 @@ export function mountPullPage(container, ctx, mb) {
       guided.view?.show(model.recordRevision, moved);
       return;
     }
-    const introduction = h("div", {}, []);
+    // The guide's first step is asked for now, beside the module's import, rather than
+    // after it; the guide reads the same request (guide-reads.js).
+    if (model.recordRevision !== null) {
+      guideReads.prefetch(guideAsks({ kind: "pull", number }), 1, model.recordRevision);
+    }
+    // The description shows with the guide's first answer, as its overview.
+    const introduction = h("div", { hidden: "" }, []);
     const host = h(
       "section",
       { class: "github-pull-guided-review", "aria-label": "Guided Review" },
@@ -8555,8 +8637,9 @@ export function mountPullPage(container, ctx, mb) {
                 return diff.mountRenderedFile(body, comparison, path, {
                   ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
                   // Its rendered layer waits for Rendered with Source hidden for as long as
-                  // Changes' first screen does, so Source never shows first in its place.
-                  markdownHoldMs: CHANGES_FIRST_SCREEN_MS,
+                  // the rendered route can take, so the step never shows Source first in
+                  // its place (`GUIDE_DOCUMENT_HOLD_MS`).
+                  markdownHoldMs: GUIDE_DOCUMENT_HOLD_MS,
                 });
               },
             };
@@ -8572,6 +8655,11 @@ export function mountPullPage(container, ctx, mb) {
           },
           // A refused note says why in a description's words.
           refusalNote: textRefusalNote,
+          // The overview shows the description once its Markdown is drawn, or its source
+          // with the line that says why, never its source and then its rendering.
+          introductionReady: () => textsSettled(introduction),
+          // A step's neighbors are read when the page is idle, after what it shows.
+          ahead: (run) => mb.whenIdle(run, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
         });
         mount.view.show(shown.recordRevision, shown.newCommits !== null);
       },
@@ -8658,6 +8746,7 @@ export function mountPullPage(container, ctx, mb) {
     // Markdown, so the title shows as soon as the record is in hand (exp-099).
     paintHeader(model);
     askDocs(model);
+    readGuideAhead(model);
     paintStacks(model);
     // Conversation, Guided Review, and Checks use the reading column. Changes and Docs use the
     // full pane.
@@ -9364,6 +9453,11 @@ export function mountPullPage(container, ctx, mb) {
     wantedFile = null;
     listening.abort();
     disposeGuided();
+    cancelGuideAhead?.();
+    cancelGuideAhead = null;
+    for (const check of [...pendingWatchers]) {
+      check();
+    }
     summaryBrief?.dispose();
     // A disposed binding leaves its figures as drawn, so the handoff keeps them on screen.
     for (const text of [...textDiagrams.keys()]) {

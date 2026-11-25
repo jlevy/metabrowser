@@ -917,10 +917,12 @@ mb.registerView("diff", "diff", diffView);
  * loads the rendered layer (`markdownLayer`) as Changes does, so a page that draws no such
  * file never loads it.
  *
- * *settled* is true once the file is drawn. It is false when it is not: the view's notice
- * then says why in the file's place, as for a read that failed or a render that threw, or
- * the handle was disposed first, which leaves nothing. *dispose* ends the read on its way,
- * or removes what was drawn.
+ * *settled* is true once the file is drawn as it stays: its rendered layer drawn, or its
+ * wait for it over (`firstScreen`, at most *ctx*'s `markdownHoldMs`), so a page that keeps
+ * the file out of sight until then first shows it at the height it keeps. It is false when
+ * it is not drawn: the view's notice then says why in the file's place, as for a read that
+ * failed or a render that threw, or the handle was disposed first, which leaves nothing.
+ * *dispose* ends the read on its way, or removes what was drawn.
  *
  * @param {HTMLElement} container
  * @param {NonNullable<MetabrowserPublicRenderContext["comparison"]>} comparison
@@ -942,15 +944,22 @@ function mountRenderedFile(container, comparison, path, ctx = {}) {
       comparisonSignal: controller.signal,
     }),
   ).then(
-    (handle) => {
-      const owned = /** @type {{dispose?: () => void, currentFile?: unknown} | null} */ (handle);
+    async (handle) => {
+      const owned =
+        /** @type {{dispose?: () => void, currentFile?: unknown, firstScreen?: () => Promise<unknown>} | null} */ (
+          handle
+        );
       if (controller.signal.aborted) {
         owned?.dispose?.();
         return false;
       }
       mounted = owned;
       // A drawn diff has its file API; a failure's notice, which says why, has none.
-      return typeof owned?.currentFile === "function";
+      if (typeof owned?.currentFile !== "function") {
+        return false;
+      }
+      await owned.firstScreen?.();
+      return !controller.signal.aborted;
     },
     (error) => {
       if (controller.signal.aborted) {

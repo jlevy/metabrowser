@@ -163,6 +163,13 @@ class Element {
     if (!parent) {
       return;
     }
+    // A node already in a tree moves, as the DOM moves it, the guide's step from where it
+    // waited out of sight among them (guided-review.js).
+    for (const node of nodes) {
+      if (typeof node !== "string" && node !== this) {
+        node.remove();
+      }
+    }
     const at = parent.children.indexOf(this);
     if (at < 0) {
       return;
@@ -1622,6 +1629,11 @@ async function tabKeys(page) {
   const GUIDE = "Counts to two.\n\n```guided-review\nsoftschema: {}\n```\n";
   const EXAMPLE =
     "How to write one:\n\n````markdown\n```guided-review\nsoftschema: {}\n```\n````\n";
+  // The guide asks for what draws its steps as it mounts, which this SDK lacks: what it
+  // says of each is kept, so it does not read as a fault.
+  const warned = [];
+  const consoleWarn = console.warn;
+  console.warn = (message) => warned.push(String(message));
   arrive("");
   answer = described(1, "Counts to two.");
   await elapse();
@@ -1649,6 +1661,10 @@ async function tabKeys(page) {
   answer = described(5, EXAMPLE);
   await elapse();
   steps.push(`an example of the block inside another fence: ${keyed().join(", ")}`);
+  console.warn = consoleWarn;
+  steps.push(
+    `the guide, with no diff plugin or allowlist here, said: ${[...new Set(warned)].join("; ")}`,
+  );
   handle.dispose();
   steps.push(`disposed: keys ${attached() || "none"}`);
   assert.equal(
