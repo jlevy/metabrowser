@@ -9,7 +9,9 @@
 // `wide.json`, whose lines are long enough that the route's byte bound cuts every answer to
 // 4 of them; `tail.py`, whose last change ends three lines from its end, so the bar below it
 // holds nothing; `end.txt`, whose last line has no newline; and `moved.py`, whose answers
-// name another comparison, as a ref that moved since the diff was drawn gives. The gap loader
+// name another comparison, as a ref that moved since the diff was drawn gives; and `shrunk.py`,
+// whose answers come from a moved ref whose file is shorter than where the gap above its
+// hunk begins, so they hold no lines and start past that file's end. The gap loader
 // stands in for the comparison route's `view=lines`
 // (tests/golden/cli-api-diff-lines.tryscript.md pins what it answers), answering from the new
 // side's text, from a start or up to an end, failing once with a 503 where a step says so,
@@ -440,13 +442,18 @@ const WIDE = lines("row ", 200, 150);
 const TAIL = lines("tail ", 10, 7);
 const END = lines("end ", 20, 5);
 const MOVED = lines("moved ", 30, 15);
-/** Each such file's new side, and whether it ends with a newline. */
+const SHRUNK = lines("shrunk ", 60, 45);
+/** What the loader answers each such file from, its new side but where a ref moved, and whether
+ * it ends with a newline. */
 const SIDES = {
   "src/app.py": { lines: NEW, newline: true },
   "wide.json": { lines: WIDE, newline: true },
   "tail.py": { lines: TAIL, newline: true },
   "end.txt": { lines: END, newline: false },
   "moved.py": { lines: MOVED, newline: true },
+  // What a moved ref holds at `shrunk.py`: 10 lines, short of line 17, where the 25 lines
+  // nearest its hunk begin.
+  "shrunk.py": { lines: lines("moved shrunk ", 10, 0), newline: true },
 };
 // The lines one answer for `wide.json` holds, as the route's `MAX_LINES_ANSWER_BYTES` cuts a
 // run of long lines: those nearest the line it was asked from.
@@ -491,6 +498,7 @@ const ONCE = [
   changedOnce("f5", "tail.py", TAIL, 7),
   changedOnce("f6", "end.txt", END, 5),
   changedOnce("f7", "moved.py", MOVED, 15),
+  changedOnce("f8", "shrunk.py", SHRUNK, 45),
 ];
 
 const comparison = {
@@ -684,16 +692,20 @@ async function main() {
     }
     // A run from its start, or ending before its end or at the side's last line, as the
     // route cuts one; `wide.json`'s cut short at the end far from where it was asked from.
+    // A run up to an end starts where its lines do, so one past a shorter side holds none and
+    // starts after its last line (`side_lines_before`).
     const { lines: all, newline } = SIDES[filePath];
     const last = "start" in ask ? ask.start + ask.count : Math.min(ask.end, all.length + 1);
-    let start = "start" in ask ? ask.start : Math.max(1, ask.end - ask.count);
-    let run = all.slice(start - 1, last - 1);
+    let run = all.slice(
+      ("start" in ask ? ask.start : Math.max(1, ask.end - ask.count)) - 1,
+      last - 1,
+    );
     if (filePath === "wide.json" && run.length > WIDE_ANSWER_LINES) {
       run = "start" in ask ? run.slice(0, WIDE_ANSWER_LINES) : run.slice(-WIDE_ANSWER_LINES);
-      start = "start" in ask ? start : last - WIDE_ANSWER_LINES;
     }
+    const start = "start" in ask ? ask.start : last - run.length;
     return {
-      comparison_id: filePath === "moved.py" ? "git:moved" : "git:session",
+      comparison_id: ["moved.py", "shrunk.py"].includes(filePath) ? "git:moved" : "git:session",
       file_id: "f1",
       path: filePath,
       start,
@@ -909,10 +921,15 @@ async function main() {
   await diff.press("end.txt", "Rest of the file");
   step("A file's last line with no newline says so, as the patch's own does", diff, ["end.txt"]);
 
+  // Each answer names another comparison; `shrunk.py`'s also holds none of the lines asked
+  // for, since the moved ref's file ends before them, and is declined all the same.
   await diff.press("moved.py", "11 unchanged lines");
-  step("An answer for another comparison, as a moved ref gives, is declined, saying so", diff, [
-    "moved.py",
-  ]);
+  await diff.press("shrunk.py", "41 unchanged lines");
+  step(
+    "An answer for another comparison, as a moved ref gives, is declined, saying so, even one that holds no lines",
+    diff,
+    ["moved.py", "shrunk.py"],
+  );
   diff.handle.dispose();
 
   const patch = mount(null);

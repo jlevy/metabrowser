@@ -1563,6 +1563,13 @@ function gapAnswer(payload, ask, comparisonId) {
   ) {
     throw new Error("The comparison answered with something other than these lines.");
   }
+  // Before the run's range: another comparison's file may end before the lines asked for, and
+  // its answer is still a refusal, not a failure a Retry gets past.
+  if (answer.comparison_id !== comparisonId) {
+    throw Object.assign(new Error("The comparison answered for another comparison."), {
+      refused: true,
+    });
+  }
   const start = Number(answer.start);
   const end = start + answer.lines.length;
   if (
@@ -1572,11 +1579,6 @@ function gapAnswer(payload, ask, comparisonId) {
         end !== Math.min(ask.end, Number(answer.line_count) + 1)
   ) {
     throw new Error("The comparison answered with something other than these lines.");
-  }
-  if (answer.comparison_id !== comparisonId) {
-    throw Object.assign(new Error("The comparison answered for another comparison."), {
-      refused: true,
-    });
   }
   return /** @type {{start: number, lines: string[], line_count: number, ends_with_newline: boolean}} */ (
     /** @type {unknown} */ (answer)

@@ -30,12 +30,12 @@ from the keyboard goes on from the file’s bar.
 A last line with no newline says so, as the patch’s own does.
 A load that fails closes the bar saying so, and a press asks again.
 A file whose lines the comparison declines, or whose answer names another comparison, as
-a ref that moved since the diff was drawn gives, draws its separators as before, under
-one line that says so, and a patch file, which names no snapshot, draws plain
-separators.
+a ref that moved since the diff was drawn gives, even one whose file ends before the
+lines asked for, draws its separators as before, under one line that says so, and a
+patch file, which names no snapshot, draws plain separators.
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and
-`builtin_plugins/diff/diff-fold.js` and mounts a comparison of seven files into an
+`builtin_plugins/diff/diff-fold.js` and mounts a comparison of eight files into an
 element tree with a model of the pane’s geometry; its gap loader stands in for the
 route, whose answers `tests/golden/cli-api-diff-lines.tryscript.md` pins.
 `DIFF_GAP_LINES` is 25 here.
@@ -503,7 +503,7 @@ $ node tests/dom/diff-hunk-gap-session.js
       ]
     },
     {
-      "step": "An answer for another comparison, as a moved ref gives, is declined, saying so",
+      "step": "An answer for another comparison, as a moved ref gives, is declined, saying so, even one that holds no lines",
       "moved.py": [
         "says: The unchanged lines of this file cannot be shown.",
         "= @@ -12,7 +12,7 @@",
@@ -516,10 +516,24 @@ $ node tests/dom/diff-hunk-gap-session.js
         "17 17 | moved 17 *",
         "18 18 | moved 18 *"
       ],
+      "shrunk.py": [
+        "says: The unchanged lines of this file cannot be shown.",
+        "= @@ -42,7 +42,7 @@",
+        "42 42 | shrunk 42 *",
+        "43 43 | shrunk 43 *",
+        "44 44 | shrunk 44 *",
+        "45 - |-shrunk 45 *",
+        "- 45 |+shrunk 45, changed *",
+        "46 46 | shrunk 46 *",
+        "47 47 | shrunk 47 *",
+        "48 48 | shrunk 48 *"
+      ],
       "asks": [
-        "HEAD moved.py lines end=12 count=11"
+        "HEAD moved.py lines end=12 count=11",
+        "HEAD shrunk.py lines end=42 count=25"
       ],
       "console": [
+        "metabrowser diff: the comparison declines this file's lines",
         "metabrowser diff: the comparison declines this file's lines"
       ]
     },
