@@ -98,21 +98,22 @@ title on the line under it.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
-On the page, a stack button at the end of the author’s line shows the same position, and
-a pull request in two stacks has a button for each, which names its stack, such as
-**⧉300 2/2**. The button opens a menu of the stack’s members, from top to base.
-On macOS, Control-N goes to the next member toward the top and Control-P to the previous
-one toward the base; on Windows and Linux, where those keys are the browser’s, use the
-menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
-and the list stays flat, unless stacks are cached.
+On the page, a stack button at the end of the line of state and dates, just before
+Refresh, shows the same position, and a pull request in two stacks has a button for
+each, which names its stack, such as **⧉300 2/2**. The button opens a menu of the
+stack’s members, from top to base, each on one line: its state, its position, and its
+title. On macOS, Control-N goes to the next member toward the top and Control-P to the
+previous one toward the base; on Windows and Linux, where those keys are the browser’s,
+use the menu. Without the extension, or when GitHub cannot answer, pull requests read as
+usual and the list stays flat, unless stacks are cached.
 Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
 
-The header gives the title and number; the author’s sentence, such as “octo wants to
-merge 2 commits”, with any stack button at its end; the head and base branches on a line
-of their own, head → base; the state and dates; and the labels, each in the color GitHub
-gives it, with its description, if any, shown on hover.
+The header gives the title and number; the state and dates, with any stack button at the
+end of their line; the author’s sentence, such as “octo wants to merge 2 commits”; the
+head and base branches on a line of their own, head → base; and the labels, each in the
+color GitHub gives it, with its description, if any, shown on hover.
 The author’s GitHub avatar is beside the name, and a neutral person icon holds its place
 where GitHub gave none, as on a commit’s page; a Pulls row shows none.
 **View on GitHub**, in the page’s upper right as on a file’s, a folder’s, and a commit’s
@@ -424,7 +425,7 @@ entries.
 
 The page says when GitHub CLI fetched what it shows, as in
 `Fetched 3 min ago via GitHub CLI`, at the end of the author’s line; Refresh ends the
-row of ages under it.
+line of state and dates above it.
 While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
 repository’s list of pull requests, so new pull requests, state changes, and edits
 arrive by themselves.

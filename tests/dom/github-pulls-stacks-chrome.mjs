@@ -1392,7 +1392,7 @@ try {
       classes: heading.className,
       members: [...menu.querySelectorAll(".github-pull-stack-member")].map((a) => Number(new URL(a.href).pathname.split("/")[2])),
       tip: document.querySelector(".github-pull-stack-trigger[aria-expanded='true']")?.dataset.tipText ?? null,
-      // A member's position, title and number, and a Pulls row's place: their ink.
+      // A member's position and title, and a Pulls row's place: their ink.
       ink: (() => {
         const color = (selector) => {
           const el = document.querySelector(selector);
@@ -1406,7 +1406,6 @@ try {
         return {
           position: color(".github-pull-stack-menu .github-pull-stack-member-position"),
           title: color(".github-pull-stack-menu .github-pull-stack-member-title"),
-          number: color(".github-pull-stack-menu .github-pull-stack-member-number"),
           trigger: color(".github-pull-stack-trigger[aria-expanded='true'] .github-pull-stack-position"),
           badge: color(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
           text,
@@ -1421,15 +1420,77 @@ try {
         };
         return {
           row: weight(".github-pulls-row .github-pulls-number"),
-          member: weight(".github-pull-stack-menu .github-pull-stack-member-number"),
           title: weight(".github-pull-title .github-pull-number"),
           position: weight(".github-pull-stack-menu .github-pull-stack-member-position"),
           place: weight(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
         };
       })(),
+      // Each member's one line (mb-as06): its state icon, then its bold place, the muted dot,
+      // and its title, measured part by part, with the Pulls row of the same pull request.
+      lines: (() => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--muted)";
+        document.body.append(probe);
+        const muted = getComputedStyle(probe).color;
+        probe.remove();
+        const box = (el) => el.getBoundingClientRect();
+        return [...menu.querySelectorAll(".github-pull-stack-member")].map((link) => {
+          const number = new URL(link.href).pathname.split("/")[2];
+          const [icon, copy] = link.children;
+          const [position, dot, title, said] = copy?.children ?? [];
+          const row = document.querySelector(\`a.github-pulls-row[data-number="\${number}"] > .github-pull-state-icon\`);
+          const fontSize = parseFloat(getComputedStyle(title).fontSize);
+          return {
+            number: Number(number),
+            parts: [...link.children].map((el) => el.className),
+            line: [...(copy?.children ?? [])].map((el) => el.className),
+            state: icon?.dataset.state ?? null,
+            glyph: icon?.querySelector("svg") !== null,
+            rowState: row?.dataset.state ?? null,
+            iconLeft: Math.round(box(icon).left * 100) / 100,
+            iconWidth: Math.round(box(icon).width * 100) / 100,
+            positionLeft: Math.round(box(position).left * 100) / 100,
+            height: Math.round(box(link).height * 100) / 100,
+            copyHeight: Math.round(box(copy).height * 100) / 100,
+            fontSize,
+            positionWeight: getComputedStyle(position).fontWeight,
+            positionText: position.textContent,
+            dot: { text: dot.textContent, color: getComputedStyle(dot).color, size: getComputedStyle(dot).fontSize, hidden: dot.getAttribute("aria-hidden") },
+            muted,
+            titleWeight: getComputedStyle(title).fontWeight,
+            titleCut: { overflow: getComputedStyle(title).textOverflow, wrap: getComputedStyle(title).whiteSpace },
+            tip: link.dataset.tipText ?? null,
+            titleText: title.textContent,
+            said: said === undefined ? null : {
+              text: said.textContent,
+              width: box(said).width,
+              height: box(said).height,
+              clip: getComputedStyle(said).clip,
+            },
+            current: link.getAttribute("aria-current") === "page",
+          };
+        });
+      })(),
     };
   })()`);
   measured.menu = menu;
+  // Each member's name as Chrome computes it for assistive technology: its state, place, and
+  // title, then its number, which the line does not show (mb-as06).
+  if (!before) {
+    await send("Accessibility.enable");
+    menu.names = [];
+    for (let at = 0; at < menu.lines.length; at += 1) {
+      const { result: handle } = await send("Runtime.evaluate", {
+        expression: `document.querySelectorAll(".github-pull-stack-menu .github-pull-stack-member")[${at}]`,
+      });
+      const { nodes } = await send("Accessibility.getPartialAXTree", {
+        objectId: handle.objectId,
+        fetchRelatives: false,
+      });
+      menu.names.push(nodes?.[0]?.name?.value ?? null);
+    }
+    await send("Accessibility.disable");
+  }
   const menuClip = await evaluate(`(() => {
     const r = document.querySelector(".github-pull-stack-menu").getBoundingClientRect();
     const t = document.querySelector(".github-pull-stack-trigger[aria-expanded='true']").getBoundingClientRect();
@@ -1464,16 +1525,99 @@ try {
       menu.tip,
     );
     check(
-      "a member's position is in its row's ink, as its title and number are, not a link's",
-      menu.ink.position === menu.ink.title &&
-        menu.ink.title === menu.ink.number &&
-        menu.ink.position === menu.ink.text,
+      "a member's position is in its row's ink, as its title is, not a link's",
+      menu.ink.position === menu.ink.title && menu.ink.position === menu.ink.text,
       JSON.stringify(menu.ink),
     );
     check(
-      "a pull request's number is bold in a Pulls row, a stack member, and the page's title, as a stack's position is",
-      ["row", "member", "title", "position", "place"].every((key) => menu.weights[key] === "700"),
+      "a pull request's number is bold in a Pulls row and the page's title, as a stack's position is",
+      ["row", "title", "position", "place"].every((key) => menu.weights[key] === "700"),
       JSON.stringify(menu.weights),
+    );
+    // Every member one line in one layout (mb-as06): the state icon, the bold place, the
+    // muted dot, and the bold title cut short at the line's end; the icon is the Pulls row's
+    // state for the same pull request, and every member's icon and place start at one edge.
+    const lines = menu.lines;
+    const first = lines[0];
+    check(
+      "every stack member is the state icon, then the place, the dot, and the title",
+      lines.length === menu.members.length &&
+        lines.every(
+          (line) =>
+            JSON.stringify(line.parts) ===
+              JSON.stringify(["github-pull-state-icon", "github-pull-stack-member-copy"]) &&
+            JSON.stringify(line.line) ===
+              JSON.stringify([
+                "github-pull-stack-member-position",
+                "github-pull-stack-dot",
+                "github-pull-stack-member-title",
+                "visually-hidden",
+              ]),
+        ),
+      JSON.stringify(lines),
+    );
+    check(
+      "each member's number is said and not shown: hidden in a clipped 1px box, and its name's end",
+      lines.every(
+        (line, at) =>
+          line.said?.text === `#${line.number}` &&
+          line.said.width <= 1 &&
+          line.said.height <= 1 &&
+          line.said.clip === "rect(0px, 0px, 0px, 0px)" &&
+          typeof menu.names[at] === "string" &&
+          menu.names[at].endsWith(`${line.titleText} #${line.number}`),
+      ),
+      JSON.stringify({
+        said: lines.map(({ number, said }) => ({ number, said })),
+        names: menu.names,
+      }),
+    );
+    check(
+      "each member's icon draws its Pulls row's state",
+      lines.every((line) => line.glyph && line.state !== null && line.state === line.rowState),
+      JSON.stringify(lines.map(({ number, state, rowState }) => ({ number, state, rowState }))),
+    );
+    check(
+      "each member is one line, every member as tall as the others",
+      lines.every((line) => line.copyHeight < 2 * line.fontSize && line.height === first.height),
+      JSON.stringify(
+        lines.map(({ number, height, copyHeight, fontSize }) => ({
+          number,
+          height,
+          copyHeight,
+          fontSize,
+        })),
+      ),
+    );
+    check(
+      "every member's icon and place start at one edge, the current member's too",
+      lines.every(
+        (line) => line.iconLeft === first.iconLeft && line.positionLeft === first.positionLeft,
+      ),
+      JSON.stringify(
+        lines.map(({ number, iconLeft, positionLeft, current }) => ({
+          number,
+          iconLeft,
+          positionLeft,
+          current,
+        })),
+      ),
+    );
+    check(
+      "the place is bold, the dot muted and small, and the title bold, cut short at the line's end",
+      lines.every(
+        (line) =>
+          line.positionWeight === "700" &&
+          line.dot.text === "·" &&
+          line.dot.hidden === "true" &&
+          line.dot.color === line.muted &&
+          line.dot.size === "10px" &&
+          line.titleWeight === "700" &&
+          line.titleCut.overflow === "ellipsis" &&
+          line.titleCut.wrap === "nowrap" &&
+          line.tip === line.titleText,
+      ),
+      JSON.stringify(lines),
     );
     check(
       "a Pulls row's place is in its number's ink, the row's text",
@@ -1486,7 +1630,7 @@ try {
 
   if (!before) {
     // The stack menu's keys (docs/design-system.md, "Keys in a Menu", mb-xlla): every way
-    // it opens puts focus on the current member, #9, the row checked, and Escape gives focus
+    // it opens puts focus on the current member, #9, the row marked, and Escape gives focus
     // back to the trigger. The press above opened it.
     const FOCUS = `(() => {
       const el = document.activeElement;

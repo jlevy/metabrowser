@@ -9,7 +9,7 @@ struct SetupGuideView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Metabrowser needs metab \(MetabRequirement.minimum) or later").font(.headline)
-            Text("Use Choose metab… to select a compatible runtime, or Find Again to look for one.")
+            Text("Use Choose metab… to select a compatible runtime, or Refresh to look for one again.")
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(Array(guide.notices.enumerated()), id: \.offset) { _, notice in
                 Text(notice).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

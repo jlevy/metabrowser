@@ -2611,14 +2611,15 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
     # A pull request's number is bold wherever it names the pull request, the weight of a
     # stack's position, through one token (mb-vrvs): one rule in the GitHub plugin for the
-    # title's, a Pulls row's, and a stack member's, and the shell's Quick Search result
-    # and ref selector; no other rule sets a number's weight. In headless Chrome each
-    # computes to 700 (github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs).
+    # title's and a Pulls row's, and the shell's Quick Search result and ref selector; no
+    # other rule sets a number's weight. A stack menu's member shows no number (mb-as06).
+    # In headless Chrome each computes to 700 (github-pulls-stacks-chrome.mjs,
+    # github-pull-header-chrome.mjs).
     assert "### Pull Request Numbers" in doc
     shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert shell_css.count("--pull-number-weight:") == 1
     assert "--pull-number-weight: var(--weight-bold);" in shell_css
-    numbers = (".github-pull-number", ".github-pulls-number", ".github-pull-stack-member-number")
+    numbers = (".github-pull-number", ".github-pulls-number")
     weighted = [
         (selector, declarations["font-weight"])
         for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
@@ -2638,7 +2639,6 @@ _PULL_NUMBERS = frozenset(
     {
         ".github-pull-number",
         ".github-pulls-number",
-        ".github-pull-stack-member-number",
         ".github-pull-stack-position",
         ".github-pull-stack-member-position",
         ".search-palette-pull-number",
