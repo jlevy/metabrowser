@@ -822,7 +822,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-## The stack's page, as `--show` reports it: its guide, Guided Review as its front page's tab, and Files at Files' own address.
+## The stack's page, as `--show` reports it: the merge its header shows, its guide, Guided Review as its front page's tab, and Changes at Changes' own address. Its files are its header's Diff summary, so there is no Files tab to show.
 # metab https://github.com/octo/demo --show /stack/70
 exit: 0
 --- stdout ---
@@ -830,18 +830,24 @@ show: /stack/70
 route: /stack/70
 kind: pull-stack
 views: pull-stack (default)
-model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 guide=#10 tab=guided comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
+model: stack envelope; state=current merge=wip->topic members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 guide=#10 tab=guided comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --show /stack/70/changes
+exit: 0
+--- stdout ---
+show: /stack/70/changes
+route: /stack/70/changes
+kind: pull-stack
+views: pull-stack (default)
+model: stack envelope; state=current merge=wip->topic members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 guide=#10 tab=changes comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
 --- stderr ---
 --- gh ---
 # metab https://github.com/octo/demo --show /stack/70/files
-exit: 0
+exit: 1
 --- stdout ---
-show: /stack/70/files
-route: /stack/70/files
-kind: pull-stack
-views: pull-stack (default)
-model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 guide=#10 tab=files comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
 --- stderr ---
+Error: /stack/70/files is not a route this grammar accepts
 --- gh ---
 # metab https://github.com/octo/demo --show /stack/70/guided
 exit: 0
@@ -850,7 +856,18 @@ show: /stack/70/guided
 route: /stack/70/guided
 kind: pull-stack
 views: pull-stack (default)
-model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 guide=#10 tab=guided comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
+model: stack envelope; state=current merge=wip->topic members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 guide=#10 tab=guided comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
+--- stderr ---
+--- gh ---
+## The stack's page at a file, as `--show` reports it: its kind and layers.
+# metab https://github.com/octo/demo --show /stack/70/changes/docs/draft.md
+exit: 0
+--- stdout ---
+show: /stack/70/changes/docs/draft.md
+route: /stack/70/changes/docs/draft.md
+kind: pull-stack
+views: pull-stack (default)
+model: stack envelope; state=current merge=wip->topic members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 file=docs/draft.md layers=2/2:#10 guide=#10 tab=changes comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
 --- stderr ---
 --- gh ---
 ## Its guide, asked at the comparison a page still draws, reads as it did there.

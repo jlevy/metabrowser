@@ -779,6 +779,43 @@ status: 200
 ? 0
 ```
 
+## Test: a native stack’s page maps to the whole stack
+
+Every tab of a stack’s page, and a file of its Changes, is GitHub’s page of the stack,
+`stack/<n>`, which draws every member’s changes together, not its top member’s page.
+
+```console
+$ metab checkout --api '/api/counterpart?page=/stack/70'
+api: /api/counterpart?page=/stack/70
+status: 200
+{
+  "page": "/stack/70",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/stack/70"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ metab checkout --api '/api/counterpart?page=/stack/70/changes/docs/guide.md'
+api: /api/counterpart?page=/stack/70/changes/docs/guide.md
+status: 200
+{
+  "page": "/stack/70/changes/docs/guide.md",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/stack/70"
+  },
+  "reason": null
+}
+? 0
+```
+
 ## Test: a commit’s page maps when origin has the commit
 
 A file in a commit’s page is the same anchor on the commit’s page.
@@ -861,6 +898,20 @@ api: /api/counterpart?page=/pull/0
 status: 200
 {
   "page": "/pull/0",
+  "counterpart": null,
+  "reason": "not_a_page"
+}
+? 0
+```
+
+A stack’s files are its header’s Diff summary, so it has no Files tab.
+
+```console
+$ metab checkout --api '/api/counterpart?page=/stack/70/files'
+api: /api/counterpart?page=/stack/70/files
+status: 200
+{
+  "page": "/stack/70/files",
   "counterpart": null,
   "reason": "not_a_page"
 }

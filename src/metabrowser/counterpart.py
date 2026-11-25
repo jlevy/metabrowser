@@ -2,7 +2,7 @@
 
 A page has a counterpart when the served repository is on github.com and github.com has
 a page for the same thing: a repository, a file or a folder origin has, a pull
-request's tab, a commit, or the repository's pull requests. ``GET
+request's tab, a commit, the repository's pull requests, or a native stack. ``GET
 /api/counterpart?page=<page>`` answers which, so a page's View on GitHub control and
 ``metab --api`` read one answer, and no page builds a github.com URL itself. :data:`PAGES`
 is the mapping; ``docs/design-system.md``, "Where It Appears", restates it, and
@@ -96,6 +96,7 @@ from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
     decode_safe_commit_route,
     decode_safe_pull_route,
+    decode_safe_stack_route,
     decode_safe_view_path,
     parse_pulls_selection,
 )
@@ -149,7 +150,7 @@ REASONS: Final[tuple[CounterpartReason, ...]] = (
 )
 
 type PageKind = Literal[
-    "file", "folder", "root", "pull", "pull_file", "commit", "commit_file", "pulls"
+    "file", "folder", "root", "pull", "pull_file", "commit", "commit_file", "pulls", "stack"
 ]
 
 
@@ -196,6 +197,14 @@ PAGES: Final[dict[PageKind, PageCounterpart]] = {
         "/commit/<sha>/<path>", "commit/<sha>#diff-<hash>", ("not_on_origin",)
     ),
     "pulls": PageCounterpart("/pulls", "pulls", ()),
+    # GitHub's page of a native stack draws every member's changes together, as the stack's
+    # page does on each of its tabs and at each file of its Changes.
+    "stack": PageCounterpart(
+        "/stack/<n>, /stack/<n>/guided, /stack/<n>/docs, /stack/<n>/changes, "
+        "/stack/<n>/changes/<path>",
+        "stack/<n>",
+        (),
+    ),
 }
 
 # The refs that say origin has a commit: a checkout's remote-tracking branches of
@@ -239,7 +248,7 @@ class _Page:
     ``inside_file`` marks a pin's address of an entry inside a container file.
     """
 
-    kind: Literal["view", "pull", "pull_file", "commit", "commit_file", "pulls"]
+    kind: Literal["view", "pull", "pull_file", "commit", "commit_file", "pulls", "stack"]
     path: tuple[bytes, ...] = ()
     logical: str = ""
     inside_file: bool = False
@@ -299,8 +308,13 @@ async def page_counterpart(page: str, mirror: MirrorSession | None) -> Counterpa
     selection = await _selection(parsed, repository, host)
     if isinstance(selection, str):
         return _none(page, selection)
-    # The list of pull requests is the one page no selection names.
-    url = host.pulls_url(clone_url) if selection is None else host.web_url(clone_url, selection)
+    # The list of pull requests and a native stack are the pages no selection names.
+    if selection is not None:
+        url = host.web_url(clone_url, selection)
+    elif parsed.kind == "stack":
+        url = host.stack_url(clone_url, parsed.number)
+    else:
+        url = host.pulls_url(clone_url)
     if url is None:
         return _none(page, "no_repository")
     return CounterpartAnswer(
@@ -328,6 +342,9 @@ def _parse(page: str, pin: GitRevisionSubject | None) -> _Page | None:
         if pull.file:
             return _Page("pull_file", path=(pull.file.encode("utf-8"),), number=pull.number)
         return _Page("pull", number=pull.number, tab=pull.tab)
+    stack = decode_safe_stack_route(raw)
+    if stack is not None:
+        return _Page("stack", number=stack.number)
     commit_route = decode_safe_commit_route(raw)
     if commit_route is not None:
         commit, inner = commit_route
@@ -392,12 +409,13 @@ async def _served_repository(
 async def _selection(
     page: _Page, repository: _Repository, host: CounterpartHost
 ) -> RepositorySelection | CounterpartReason | None:
-    """*page*'s counterpart as a selection, ``None`` for the list, or why it has none."""
+    """*page*'s counterpart as a selection, ``None`` for the list or a stack, or why it
+    has none."""
 
     from metabrowser.cache.urls import RepositorySelection
 
     match page.kind:
-        case "pulls":
+        case "pulls" | "stack":
             return None
         case "pull":
             # GitHub has no Docs tab: its documents are among the files it changes.

@@ -290,6 +290,13 @@ GitHub’s own page of a stack.
   the stack moves, as it keeps a pull request’s earlier pairs
   (`pull_stack_retained.py`).
 
+**Since built (mb-cm31).** The page became a pull request’s page for the whole stack
+([The Stack Page](../../../design-system.md#the-stack-page)): it has no Files tab, since
+the header’s Diff summary lists the files as on a pull request’s page, and
+`/stack/<n>/files` is no route; its front page without a guide is Changes; no file row
+or bar carries layer chips; and View on GitHub opens GitHub’s `stack/<n>`, the address
+the counterpart route answers.
+
 **Why a page and not a switch on each pull request.** A pull request’s Changes and Docs
 carry a state machine that follows one comparison’s head (`filesAction`, `followedFrom`,
 and `rememberedChanges` in `pull-page.js`); a scope switch would double every state.

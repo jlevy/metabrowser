@@ -200,6 +200,9 @@ class StackEnvelope(TypedDict):
     reason: StackAbsence | None
     number: int
     base_ref: str | None
+    # The top member's head branch, which the page's header shows merging into
+    # ``base_ref``; None until the top member's record is read.
+    head_ref: str | None
     open: bool | None
     members: list[StackMemberWire]
     pending: list[int]
@@ -212,7 +215,8 @@ class StackEnvelope(TypedDict):
     # (`stack_guide_carrier` in guided_review.py), or None: none does, or the stack is not
     # current, so a member not read yet may.
     guide: StackGuideWire | None
-    # What View on GitHub opens: the top member's page, which GitHub draws with its stack.
+    # The top member's page on GitHub, which a guide's note is resolved against when its
+    # step names no page. View on GitHub is the counterpart route's (counterpart.py).
     github_url: str | None
     # The top member's automatic ask, which keeps the repository's list probed while the
     # stack's page is all that is open, so the catalog reports every member's head.
@@ -688,6 +692,7 @@ def _envelope(
     members = read.members if read is not None else ()
     pair = read.pair if read is not None else None
     fetching = read.fetching if read is not None else frozenset[int]()
+    top = members[-1].record if members else None
     wires: list[StackMemberWire] = []
     for place, member in enumerate(members, 1):
         pending = member.record is None or member.moved
@@ -713,6 +718,7 @@ def _envelope(
         reason=None,
         number=number,
         base_ref=stack.base_ref if stack is not None else None,
+        head_ref=top.pull.head.ref if top is not None else None,
         open=stack.open if stack is not None else None,
         members=wires,
         pending=[wire["number"] for wire in wires if wire["pending"]],

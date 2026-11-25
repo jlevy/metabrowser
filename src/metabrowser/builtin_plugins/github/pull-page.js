@@ -235,7 +235,7 @@ function keepPullSize(route, size) {
  * @param {unknown} raw
  * @returns {number | null}
  */
-function manifestFiles(raw) {
+export function manifestFiles(raw) {
   const files = /** @type {{manifest?: {totals?: {files?: unknown}}} | null} */ (raw)?.manifest
     ?.totals?.files;
   return typeof files === "number" && Number.isInteger(files) && files >= 0 ? files : null;
@@ -4761,13 +4761,16 @@ export function createStackMenu(initial, number, deps) {
  * `signal` aborts, as the page's disposal aborts it. Returns one handle per link, in
  * order, or none on a host without the surface.
  *
+ * A stack's page gives its tabs the same keys, with its own word for whose tab it is.
+ *
  * @param {MetabrowserPublicPluginShortcutsApi | undefined} shortcuts
  * @param {ReadonlyArray<{id: string, link: HTMLElement}>} tabLinks
  * @param {(tab: string) => void} setTab
  * @param {AbortSignal} signal
+ * @param {string} [owner] Whose tabs they are, in Help's words.
  * @returns {MetabrowserPublicPluginShortcutHandle[]}
  */
-export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
+export function attachTabKeys(shortcuts, tabLinks, setTab, signal, owner = "pull request") {
   if (typeof shortcuts?.attach !== "function") {
     return [];
   }
@@ -4781,7 +4784,7 @@ export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
         activate: () => setTab(id),
         copy: {
           action: tab.label,
-          description: `Show the pull request’s ${tab.label} tab.`,
+          description: `Show the ${owner}’s ${tab.label} tab.`,
           hint: tab.label,
         },
         group: "view-tabs",

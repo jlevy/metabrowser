@@ -143,7 +143,8 @@ def test_a_member_the_top_lacks_adds_no_file() -> None:
         (b"/stack/7", (7, "", "")),
         (b"/stack/7/", (7, "", "")),
         (b"/stack/7/guided", (7, "guided", "")),
-        (b"/stack/7/files", (7, "files", "")),
+        # Its files are the header's Diff summary: there is no Files tab.
+        (b"/stack/7/files", None),
         (b"/stack/7/docs", (7, "docs", "")),
         (b"/stack/7/changes", (7, "changes", "")),
         (b"/stack/7/changes/docs/a%20b.md", (7, "changes", "docs/a b.md")),

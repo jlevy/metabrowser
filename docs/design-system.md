@@ -566,10 +566,11 @@ box but the line’s own still while the line’s values change and it stays aft
 
 ### Page Headers
 
-A commit’s page and a pull request’s page open with one kind of header, a
-`.page-header`: the title, then its lines, the first `--page-title-gap` under the title,
-the space a view header leaves between its title and the metadata line after it, and the
-rest one gap apart. The title is as tall as its own lines, one or two.
+A commit’s page, a pull request’s page, and a native stack’s page open with one kind of
+header, a `.page-header`: the title, then its lines, the first `--page-title-gap` under
+the title, the space a view header leaves between its title and the metadata line after
+it, and the rest one gap apart.
+The title is as tall as its own lines, one or two.
 A title that held two lines from first paint, so a one-line title left the tab bar where
 a two-line one put it, stood its empty second line between the title and its author:
 36.5 px of space to the author’s text on a pull request’s page and 34 px on a commit’s,
@@ -579,9 +580,10 @@ bar and the content under it by a line, as their content differs.
 A pull request’s title while its record is on its way lands moving nothing
 ([The Pull Request Page](#the-pull-request-page)). Every line under the title is a
 `.page-header-line` at `--body-font-size`, the Diff summary’s row, the last line, among
-them, whose header the diff plugin sets at the same token; the one row that is not is a
-pull request’s labels, a row of chips at a chip’s size.
-An age in a line takes the line’s size, as an age does everywhere
+them, whose header the diff plugin sets at the same token; the rows that are not are a
+pull request’s labels, a row of chips at a chip’s size, and a stack’s members, the stack
+menu’s member rows in a card at the menu’s size ([The Stack Page](#the-stack-page)). An
+age in a line takes the line’s size, as an age does everywhere
 ([Type Scale](#type-scale)). A chip in a line keeps its own size, a ref chip by the
 [chip ratio](#one-ratio), and a state badge and a label at theirs
 ([Label Colors](#label-colors)), and a revision takes the line’s size
@@ -589,17 +591,18 @@ An age in a line takes the line’s size, as an age does everywhere
 
 A pull request leads with its state and ages, then shows its author and branches.
 A commit shows its author, revision, and age in that order.
+A stack shows its members, then its branches.
 
-| Line | A commit’s page | A pull request’s page |
-| --- | --- | --- |
-| Title | The subject, `.page-heading`, its own lines | The state icon, the title, and the number, `.page-heading`, cut short at two lines |
-| Author | The [actor identity](#actor-identity) | The actor identity and its sentence, “wants to merge 2 commits” |
-| Where it lives | The revision, its copy button, and its refs | The branches, head → base |
-| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …” and Browse code, and at the end the stack chip’s slot |
-| Its own | None | The labels, a row of chips; the freshness note ending the author’s row; the status line, while it has something to say |
-| Size line | “4 files changed · 56.9 KB compressed (193.9 KB raw diff)”, the [change size line](#change-size-line) | “2 commits · 36 files changed · 1.8 MB compressed (6.2 MB raw diff)” |
-| Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison |
-| Under the header | The description, a card | The tab bar |
+| Line | A commit’s page | A pull request’s page | A stack’s page |
+| --- | --- | --- | --- |
+| Title | The subject, `.page-heading`, its own lines | The state icon, the title, and the number, `.page-heading`, cut short at two lines | The Layers glyph in the state icon’s slot, “Stack”, and the number |
+| Author | The [actor identity](#actor-identity) | The actor identity and its sentence, “wants to merge 2 commits” | None: each member has its own |
+| Where it lives | The revision, its copy button, and its refs | The branches, head → base | The top member’s head → the stack’s base |
+| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …” and Browse code, and at the end the stack chip’s slot | None: each member has its own |
+| Its own | None | The labels, a row of chips; the freshness note ending the author’s row; the status line, while it has something to say | The members, top first, the stack menu’s rows in a card; the status line, while it has something to say |
+| Size line | “4 files changed · 56.9 KB compressed (193.9 KB raw diff)”, the [change size line](#change-size-line) | “2 commits · 36 files changed · 1.8 MB compressed (6.2 MB raw diff)” | “4 files changed”, the files of the stack’s combined comparison |
+| Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison | The last line, drawn from the stack’s comparison |
+| Under the header | The description, a card | The tab bar | The tab bar |
 
 The commit’s age line gives its commit time.
 Its refs and the pull request’s branches say where the change lives.
@@ -1139,9 +1142,10 @@ operate on their own destinations.
 
 Every page that github.com has a page for has one **View on GitHub** button, in the same
 place: its header’s [corner](#view-headers), at the end of the title’s first line, its
-label on the title’s baseline, on a file’s, a folder’s, a pull request’s, and a commit’s
-page alike. It is the one way to a page’s github.com counterpart, so no page also links
-to it from its metadata.
+label on the title’s baseline, on a file’s, a folder’s, a pull request’s, a native
+stack’s, and a commit’s page alike.
+It is the one way to a page’s github.com counterpart, so no page also links to it from
+its metadata.
 
 ```text
  ( [GitHub] View on GitHub | v )
@@ -1236,14 +1240,19 @@ Every page also has none when the served folder has no repository on github.com
 | `/commit/<sha>` | `commit/<sha>` | `not_on_origin` |
 | `/commit/<sha>/<path>` | `commit/<sha>#diff-<hash>` | `not_on_origin` |
 | `/pulls` | `pulls` | None |
+| `/stack/<n>`, `/stack/<n>/guided`, `/stack/<n>/docs`, `/stack/<n>/changes`, `/stack/<n>/changes/<path>` | `stack/<n>` | None |
 
 `CounterpartReason`, beside `PAGES`, says what each reason means.
 A file and a folder are told apart by the commit’s tree, not by the trailing slash.
 There is no page of a branch’s commits to map: the Commits tab is a pane, not an
 address. The pull requests’ list, `/pulls`, has a counterpart but no header to hold the
 button yet. Every other page in the table draws it: a file’s, a folder’s, and the served
-root’s view header, each of a pull request’s tabs and the changed file Changes is at,
-and a commit’s page.
+root’s view header, each of a pull request’s tabs and the changed file Changes is at, a
+commit’s page, and each of a native stack’s tabs.
+A stack’s page, each of its tabs, and each file its Changes is at open GitHub’s page of
+the whole stack, `stack/<n>`: the stack is the page’s subject, and its top member’s pull
+request, which the page’s link opened before, is one member of it
+([The Stack Page](#the-stack-page)).
 
 ## Control Families
 
@@ -3755,18 +3764,18 @@ never pushes the columns after it out of reach.
 ## Stacks
 
 **A native GitHub stack is named, placed, and listed one way wherever it appears:** the
-pull request page’s stack button and menu, a Pulls row’s place, and the Pulls tab’s
-stack groups. The words come from one place, `builtin_plugins/github/pull-stacks.js`
-(`stackLabel`, `stackPosition`, `stackPositionHint`, `stackCaption` for a Pulls row’s
-place, `stackGroupHint` for a stack group’s row, and `stackMenuOrder`), and the look
-from one set of classes in the GitHub plugin’s stylesheet on the shell’s tokens, so no
-surface keeps a copy of either.
+pull request page’s stack button and menu, a Pulls row’s place, the Pulls tab’s stack
+groups, and the stack’s own page ([The Stack Page](#the-stack-page)). The words come
+from one place, `builtin_plugins/github/pull-stacks.js` (`stackLabel`, `stackPosition`,
+`stackPositionHint`, `stackCaption` for a Pulls row’s place, `stackGroupHint` for a
+stack group’s row, and `stackMenuOrder`), and the look from one set of classes in the
+GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy of either.
 
 | Part | Primitive | Where |
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the row of ages; a Pulls row’s place, after its title and a muted dot, before the number, as a stack menu’s member line has it, with no icon |
-| Member row | One line: the pull request’s state icon, `.github-pull-state-icon`; its title, bold in normal text ink, cut short before its place; and at the line’s end, together, its position, bold, a muted dot, `.github-pull-stack-dot`, its number, `.github-pull-stack-member-number`, and, where it is known, another dot and its author, `.github-pull-stack-member-by`, the shell’s actor identity, “14/15 · #N · jlevy”, a Pulls row’s order, the title, the place, the number, and the author. On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
+| Member row | One line: the pull request’s state icon, `.github-pull-state-icon`; its title, bold in normal text ink, cut short before its place; and at the line’s end, together, its position, bold, a muted dot, `.github-pull-stack-dot`, its number, `.github-pull-stack-member-number`, and, where it is known, another dot and its author, `.github-pull-stack-member-by`, the shell’s actor identity, “14/15 · #N · jlevy”, a Pulls row’s order, the title, the place, the number, and the author. On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu; the stack’s page, in a card |
 | Whole stack row | The menu’s first row: the stack’s Layers glyph, `.github-pull-stack-icon`, muted, in the state icon’s slot, and “Whole stack” where a member’s title starts, in a member row’s gap | The stack menu, opening the stack’s page |
 | Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)); then, after a muted dot, the stack’s [brief change line](#brief-change-line) | The Pulls tab |
 
@@ -3842,8 +3851,8 @@ surface keeps a copy of either.
   that mark hovered or focused; focus on any member shows as the header’s link ring.
   The menu’s keys are [Keys in a Menu](#keys-in-a-menu)’s: every way it opens, a press,
   Enter, Space, `↓`, or `↑`, puts focus on the current member, and Escape gives it back
-  to the button. A stack group’s row is a row of the Pulls tree, not a link, since no
-  page stands for a stack: it hovers, takes the focus ring, and takes the pointer as a
+  to the button. A stack group’s row is a row of the Pulls tree, not a link, since a
+  press opens and closes it: it hovers, takes the focus ring, and takes the pointer as a
   pull request’s row does, and a press opens or closes it as a folder’s does.
 - **Tips.** The position’s tip names the stack and the place: “Stack #286, position 3 of
   4”, every stack of a pull request in two, joined by semicolons.
@@ -3858,6 +3867,99 @@ surface keeps a copy of either.
   line is shown, the name says the line in words after the label, as the Diff summary’s
   does after its file count: “Stack #286: 1,234 lines added, 567 deleted; 4 pull
   requests”.
+
+### The Stack Page
+
+**A native stack’s page, `/stack/<n>`, is a pull request’s page for the whole stack:**
+the same header, tab bar, and body, made of the same parts, with what a stack does not
+have left out and nothing added but its members.
+It shows the stack’s combined comparison, from the bottom member’s merge base to the top
+member’s head (`GET stack`, `pull_stack.py`), and is reached from the stack menu’s Whole
+stack row. `builtin_plugins/github/stack-page.js` draws it, and
+`builtin_plugins/github/stack-member-row.js` draws its members with the stack menu’s
+classes.
+
+```text
+ [Layers] Stack  #70                              ( [GitHub] View on GitHub | v )
+ +--------------------------------------------------------------+
+ | [state] WIP: draft the next page                    2/2 · #10 |
+ | [state] Say more in the guide                       1/2 · #8  |
+ +--------------------------------------------------------------+
+ wip -> main
+ This stack has changed since its comparison was drawn.  Show the new comparison
+ 1 file changed
+ 1 A · +1 >
+ DOCS   CHANGES
+```
+
+Each part of a pull request’s page, and what the stack’s page does with it:
+
+- **Eyebrow:** none on either page.
+- **Title:** adapted. The pull request’s title heading,
+  `.page-heading.github-pull-title`, with the Layers glyph in the state icon’s slot,
+  since a stack has no one state, “Stack” in the title’s place, and the number in the
+  number’s.
+- **View on GitHub:** kept.
+  The shared button in the header’s corner, from `mountCounterpart`; it opens GitHub’s
+  page of the whole stack, `stack/<n>` ([Where It Appears](#where-it-appears)), not the
+  top member’s pull request.
+- **Row of ages, with the state badge, Browse code, Refresh, and the stack chip:**
+  dropped. Each member has its own state and ages, the page reads the stack on its own
+  poll, and the page is the stack the chip would open.
+- **Author’s row and its freshness note:** dropped.
+  Each member has its own author; what the page is fetching is said on the status line.
+- **Members:** the one part a pull request’s page lacks, built from an existing
+  component. The stack menu’s member rows, top first, in a card, where the ages and
+  author rows stand on a pull request’s page; no row is the page, so none takes the
+  current-row mark.
+- **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
+  base, in the shell’s merge refs, held a line tall until the stack’s answer names the
+  head.
+- **Labels:** dropped.
+  Labels are each member’s.
+- **Status line:** kept.
+  The pull request’s status line and text actions: a failed read, “This stack has
+  changed since its comparison was drawn.”
+  with Show the new comparison, members the top does not contain, and members being
+  fetched or that could not be, with Retry.
+- **Size line:** adapted.
+  The [change size line](#change-size-line) of the files alone, “1 file changed”, since
+  the stack’s answer counts no commits or bytes yet.
+- **Diff summary:** kept.
+  The header’s last line, drawn from the stack’s comparison, closed at first paint as
+  every Diff summary is.
+  Its rows carry the tree’s marks alone: the gray places of the members that change each
+  file, which the page’s Files tab drew beside every file, were no part of this system
+  and crowded a combined diff.
+- **Tab bar:** adapted.
+  The pull request’s tabs and keys, Guided Review (only when a member’s description
+  carries the stack’s guide), Docs, and Changes; Conversation and Checks are each
+  member’s, and the Files tab the page had is gone, since the Diff summary lists the
+  files, as on a pull request’s page.
+- **Guided Review, Docs, and Changes:** kept.
+  A pull request’s tab bodies and drawings, held out of sight until the first screen is
+  ready, with the loading block under the hidden diff, and Docs’ Show every change when
+  it has no documents.
+- **Body notice and the cold hold:** kept.
+  A stack that cannot be shown as one comparison says so in the pull request’s body
+  notice, and a page with no member known yet is held out of sight for the quiet period,
+  as a pull request’s with no record is.
+- **Details for a late or failed read:** dropped for now.
+  The page offers no Details; its failures are said on the status line.
+
+Every header row but the status line is decided at first paint (`stackHeader`): the
+members come from the repository’s stack snapshot before the stack’s answer, and the
+size line and the Diff summary hold the shell’s pending placeholder until theirs, so the
+answer lands moving nothing under the title.
+`tests/dom/github-stack-page-session.js` runs the header’s rows, from first paint to
+settled, and the drawings the page asks for against the stack route’s recorded answers;
+`tests/dom/github-stack-guide-mount-session.js` mounts the page and holds that the rows
+of its first paint are its settled rows, that the Diff summary is closed, and that no
+drawing asks for layer marks.
+`tests/test_github_stack_page_chrome.py` measures in headless Chrome that the header’s
+rows are a pull request’s, in its order; that a member row is the stack menu’s; that
+View on GitHub opens the whole stack; and that nothing on the page moves from its first
+paint, opening the page or its tabs.
 
 ### Stack Groups in the Pulls Tab
 

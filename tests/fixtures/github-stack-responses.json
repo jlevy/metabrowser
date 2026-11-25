@@ -4,6 +4,7 @@
     "reason": null,
     "number": 70,
     "base_ref": "topic",
+    "head_ref": null,
     "open": true,
     "members": [
       {
@@ -47,6 +48,7 @@
     "reason": null,
     "number": 70,
     "base_ref": "topic",
+    "head_ref": "wip",
     "open": true,
     "members": [
       {
@@ -117,6 +119,7 @@
     "reason": null,
     "number": 71,
     "base_ref": "topic",
+    "head_ref": "wip",
     "open": true,
     "members": [
       {
@@ -200,6 +203,7 @@
     "reason": "not_linear",
     "number": 72,
     "base_ref": "topic",
+    "head_ref": "guide-more",
     "open": true,
     "members": [
       {

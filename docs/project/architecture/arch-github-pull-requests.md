@@ -975,9 +975,9 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 The plugin registers three views: `pull-request`, which the shell mounts at `/pull/<n>`,
 `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, and `/pull/<n>/checks`
 (`pull-page.js`); `pull-stack`, a native stack’s page at `/stack/<n>`,
-`/stack/<n>/guided`, `/stack/<n>/files`, `/stack/<n>/docs`, and
-`/stack/<n>/changes[/<path>]` (`stack-page.js`); and `pull-request-list`, the Pulls tab
-and `/pulls` (`pulls-panel.js`). Their visual rules are in the
+`/stack/<n>/guided`, `/stack/<n>/docs`, and `/stack/<n>/changes[/<path>]`
+(`stack-page.js`); and `pull-request-list`, the Pulls tab and `/pulls`
+(`pulls-panel.js`). Their visual rules are in the
 [design system](../../design-system.md#the-pulls-tab).
 
 ### The Stack Page
@@ -1007,13 +1007,18 @@ measurements that set them:
   the reader whose records named them, as `pull_snapshot_cache.py` keeps a pull
   request’s. A pair no longer kept answers `stack_moved` or `snapshot_expired`, and a
   file that cannot be read now answers `snapshot_unavailable` (409).
-- **The page** (`stack-page.js`) draws Files with the diff plugin’s Diff summary open,
-  Docs with `DOCS_DRAWING` and Changes with `CHANGES_DRAWING` (`diff-drawing.js`, which
-  `pull-page.js` shares), and puts each file’s layers on its row and bar through the
-  diff view’s `fileMarks`. It polls `stack`, asks `pull-refresh` for each pending member
-  at its head, a member with no record as the reader’s own open of it (`retry`), since
-  an automatic ask refreshes only a record the server holds, and sends the top member’s
-  automatic ask the answer’s `probe` names.
+- **The page** (`stack-page.js`) is a pull request’s page for the whole stack
+  ([The Stack Page](../../design-system.md#the-stack-page)): a page header whose
+  members, top first, are the stack menu’s rows (`stack-member-row.js`) and whose last
+  line is the Diff summary, closed; then Docs with `DOCS_DRAWING` and Changes with
+  `CHANGES_DRAWING` (`diff-drawing.js`, which `pull-page.js` shares), with no layer
+  marks. Every header row but the status line is decided at first paint from the stack
+  snapshot (`stackHeader`), and Docs and Changes are laid out out of sight until their
+  first screen is ready, as a pull request’s are.
+  Its View on GitHub is the counterpart route’s, GitHub’s `stack/<n>`. It polls `stack`,
+  asks `pull-refresh` for each pending member at its head, a member with no record as
+  the reader’s own open of it (`retry`), since an automatic ask refreshes only a record
+  the server holds, and sends the top member’s automatic ask the answer’s `probe` names.
   An ask the server refuses (429, past `MAX_PULL_JOBS`), that fails, or whose fetch ends
   with the member still pending is sent again after `ASK_BACKOFF_MS`; each member’s
   `fetching` says whether its fetch was running before its record was read (asked on the
@@ -1027,7 +1032,7 @@ measurements that set them:
   (`bodyPlan`).
 - **The guide.** When a member’s description carries the stack’s guide, the answer’s
   `guide` names that member and its record revision, Guided Review leads the tabs, and
-  `/stack/<n>` opens on it; without one the front page is Files
+  `/stack/<n>` opens on it; without one the front page is Changes
   ([The Stack’s Guide](#the-stacks-guide)).
 
 ### Guided Review

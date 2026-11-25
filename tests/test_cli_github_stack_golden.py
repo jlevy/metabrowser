@@ -425,20 +425,26 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert "status: 400" in refused.stdout
 
     shown = in_guide(
-        "## The stack's page, as `--show` reports it: its guide, Guided Review as its front"
-        " page's tab, and Files at Files' own address.\n",
+        "## The stack's page, as `--show` reports it: the merge its header shows, its guide,"
+        " Guided Review as its front page's tab, and Changes at Changes' own address. Its files"
+        " are its header's Diff summary, so there is no Files tab to show.\n",
         "--show",
         "/stack/70",
     )
     assert "kind: pull-stack" in shown.stdout
     assert "guide=#10 tab=guided" in shown.stdout
+    changes_shown = in_guide("", "--show", "/stack/70/changes")
+    assert "tab=changes" in changes_shown.stdout
     files_shown = in_guide("", "--show", "/stack/70/files")
-    assert "tab=files" in files_shown.stdout
+    assert files_shown.exit_code != 0
     guided_shown = in_guide("", "--show", "/stack/70/guided")
     assert "guide=#10 tab=guided" in guided_shown.stdout
 
-    blocks.append("## The stack's page at a file, as `--show` reports it: its kind and layers.\n")
-    file_shown = run(CANONICAL, "--show", "/stack/70/changes/docs/draft.md")
+    file_shown = in_guide(
+        "## The stack's page at a file, as `--show` reports it: its kind and layers.\n",
+        "--show",
+        "/stack/70/changes/docs/draft.md",
+    )
     assert "kind: pull-stack" in file_shown.stdout
     assert "layers=2/2:#10" in file_shown.stdout
 

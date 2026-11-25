@@ -1285,11 +1285,14 @@ _PAGE_HEADER_LINES = (
 
 
 def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
-    """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
+    """A commit's, a pull request's, and a stack's page have one header ("Page Headers").
+
+    One since mb-26zj, and the stack's since mb-cm31.
 
     Each is a `.page-header`, with its first line `--page-title-gap` under the title and
     the common line gap beneath it. The pull request adds half a gap on each side of its
-    size line. Every line under the title but the labels is a `.page-header-line` at
+    size line. Every line under the title but the labels and a stack's members card is a
+    `.page-header-line` at
     `--body-font-size`, including the ages and Diff summary, whose text the diff plugin sets at the
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
@@ -1366,6 +1369,20 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     ):
         assert f'class: "{row} page-header-line"' in page, row
     assert 'class: "github-pull-labels"' in page, "the labels row is a row of chips"
+    # A native stack's page is a pull request's header for the whole stack ("The Stack
+    # Page"): the same header and lines, every line under the title but its members, the
+    # stack menu's member rows in a card, at the menu's size, which
+    # tests/dom/github-stack-page-chrome.mjs measures against the menu's.
+    stack = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-page.js").read_text(encoding="utf-8")
+    assert 'class: "github-pull-header page-header page-reading-column"' in stack
+    for row in (
+        "github-pull-branches",
+        "github-pull-status",
+        "github-pull-size",
+        "github-pull-summary metabrowser-diff-host",
+    ):
+        assert f'class: "{row} page-header-line' in stack, row
+    assert 'class: "github-pull-stack-members",' in stack, "the members are a card of rows"
 
 
 def test_a_person_is_one_identity_on_every_page() -> None:

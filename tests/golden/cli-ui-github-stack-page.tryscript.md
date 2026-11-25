@@ -7,8 +7,9 @@ env:
 # Golden Test: A Native Stack’s Page
 
 A stack’s page at `/stack/<n>` draws the stack route’s answer (`pull_stack.py` in the
-GitHub plugin): its members, its comparison from the bottom member’s merge base to the
-top member’s head, kept to the files a layer changes, and each file’s layers.
+GitHub plugin): its members, the top member’s head and the base it merges into, and its
+comparison from the bottom member’s merge base to the top member’s head, kept to the
+files a layer changes.
 `tests/test_cli_github_stack_golden.py` records the route’s answers for the GitHub
 stand-in’s stacks in `tests/fixtures/github-stack-responses.json`: 70 while its members
 have no record and then current, 71, whose top lacks 7, and 72, which is not linear.
@@ -17,21 +18,36 @@ This browserless session runs the production `builtin_plugins/github/stack-page.
 them.
 
 - `tabs` is the tab each route shows: the front page is Guided Review for a stack whose
-  member carries its guide, as 10 carries 70’s, and Files for one with none, where
-  Guided Review’s own address shows Files too.
+  member carries its guide, as 10 carries 70’s, and Changes for one with none, where
+  Guided Review’s own address shows Changes too.
   Before the stack is read the front page marks no tab, so none is marked that the
   answer then moves from.
-  A tab the page does not have shows what the front page shows.
+  A tab the page does not have, Files among them, since the stack’s files are its
+  header’s Diff summary, shows what the front page shows.
 - `guided` is the front page of 70, whose guide 10 carries, while the stack moves: the
   guide shown, the tab, and what the body does after each answer.
   While a member is fetched or the stack cannot be shown, Guided Review and its guide
   stay, as the drawn comparison does, and the guide is mounted again only when the
   reader takes the comparison offered; a description that no longer carries the guide
-  turns the front page to Files.
+  turns the front page to Changes.
 - `comparison` is what a new answer does to the comparison drawn: the first is shown,
   the same one kept, and another offered rather than swapped in under the reader.
-- `marks` are a file’s layer marks, each opening the file in that layer’s Changes; a
-  file no layer changes has none.
+- `header` is the page’s header, row by row (`stackHeader`), a pull request’s header
+  made of the rows a stack has: its title, the View on GitHub corner, its members top
+  first, the merge it makes, the status line while it has something to say, the size
+  line, and the Diff summary.
+  The first paint draws the members from the stack the Pulls tab knows, titled as its
+  lists last read them, and holds the merge’s row and the size line and summary pending,
+  so each answer after it lands in the same rows: a member being fetched keeps its row’s
+  title, and only the status line comes and goes, as the members 71’s top lacks are said
+  there. A stack the Pulls tab does not know is held cold for the quiet period until its
+  answer names the members, and one that cannot be shown as one comparison, with none
+  drawn, has no size line or summary.
+- `drawing` is what the page passes the diff view, as a pull request’s page passes it:
+  for the Diff summary only the comparison read and where a file opens, so it starts
+  collapsed with no layer marks on its rows; and for Docs and Changes the pull request’s
+  drawings, with no summary of their own and the first screen’s Markdown held at most
+  `CHANGES_FIRST_SCREEN_MS`.
 - `said` is the line about members the top lacks, and what the page says for a stack it
   cannot show as one comparison.
 - `delays` is the poll’s cadence: soon while a member is being asked for or fetched,
@@ -66,9 +82,10 @@ them.
   stack moves. The file is scrolled to when its diff is first drawn and when the reader
   opens it again, never on a later answer.
   While a member is pending or its fetch has failed, and when another comparison
-  arrives, the drawn comparison stays and the notice above it says why, until the reader
-  takes the new one. A stack that can no longer be shown as one keeps the comparison
-  drawn; with nothing drawn, the body says what is missing.
+  arrives, the drawn comparison stays and the header’s status line says why, until the
+  reader takes the new one.
+  A stack that can no longer be shown as one keeps the comparison drawn; with nothing
+  drawn, the body says what is missing.
 - `order` is the header’s order of 71’s members, the top first, as every stack menu
   lists them.
 
@@ -79,23 +96,23 @@ $ node tests/dom/github-stack-page-session.js
     "guided": {
       "(front)": "guided",
       "guided": "guided",
-      "files": "files",
+      "files": "guided",
       "docs": "docs",
       "changes": "changes",
       "conversation": "guided"
     },
     "unguided": {
-      "(front)": "files",
-      "guided": "files",
-      "files": "files",
+      "(front)": "changes",
+      "guided": "changes",
+      "files": "changes",
       "docs": "docs",
       "changes": "changes",
-      "conversation": "files"
+      "conversation": "changes"
     },
     "unread": {
       "(front)": "",
       "guided": "guided",
-      "files": "files",
+      "files": "",
       "docs": "docs",
       "changes": "changes",
       "conversation": ""
@@ -147,8 +164,8 @@ $ node tests/dom/github-stack-page-session.js
     {
       "step": "the guide's block removed",
       "guide": null,
-      "tab": "files",
-      "do": "mount files",
+      "tab": "changes",
+      "do": "mount changes",
       "drawn": "other"
     }
   ],
@@ -174,17 +191,113 @@ $ node tests/dom/github-stack-page-session.js
       "keep"
     ]
   ],
-  "marks": {
-    "docs/draft.md": [
-      {
-        "number": 10,
-        "path": "docs/draft.md",
-        "text": "2/2",
-        "label": "Layer 2 of 2, #10: this file’s changes there",
-        "href": "/pull/10/files/docs/draft.md"
-      }
-    ],
-    "README.md": []
+  "header": {
+    "first_paint": {
+      "cold": false,
+      "rows": "title, corner, members, merge, size, summary",
+      "members": [
+        "(unknown) WIP: draft the next page 2/2 · #10",
+        "merged Say more in the guide 1/2 · #8"
+      ],
+      "merge": null,
+      "status": [],
+      "comparison": "pending"
+    },
+    "pending": {
+      "cold": false,
+      "rows": "title, corner, members, merge, size, summary",
+      "members": [
+        "(unknown) WIP: draft the next page 2/2 · #10",
+        "merged Say more in the guide 1/2 · #8"
+      ],
+      "merge": null,
+      "status": [],
+      "comparison": "pending"
+    },
+    "current": {
+      "cold": false,
+      "rows": "title, corner, members, merge, size, summary",
+      "members": [
+        "draft WIP: draft the next page 2/2 · #10",
+        "merged Say more in the guide 1/2 · #8"
+      ],
+      "merge": "wip → topic",
+      "status": [],
+      "comparison": "drawn"
+    },
+    "lacking": {
+      "cold": false,
+      "rows": "title, corner, members, merge, status, size, summary",
+      "members": [
+        "draft WIP: draft the next page 3/3 · #10",
+        "open Count to two in the app 2/3 · #7",
+        "merged Say more in the guide 1/3 · #8"
+      ],
+      "merge": "wip → topic",
+      "status": [
+        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
+      ],
+      "comparison": "drawn"
+    },
+    "unknown_first_paint": {
+      "cold": true,
+      "rows": "title, corner, merge, size, summary",
+      "members": null,
+      "merge": null,
+      "status": [],
+      "comparison": "pending"
+    },
+    "unknown_not_linear": {
+      "cold": false,
+      "rows": "title, corner, members, merge",
+      "members": [
+        "merged Say more in the guide 2/2 · #8",
+        "draft WIP: draft the next page 1/2 · #10"
+      ],
+      "merge": "guide-more → topic",
+      "status": [],
+      "comparison": "none"
+    }
+  },
+  "drawing": {
+    "summary": {
+      "openFile": "function"
+    },
+    "docs": {
+      "comparison": {
+        "left": "<base>",
+        "right": "<draft_head>",
+        "base_policy": "direct",
+        "route": "/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>",
+        "image_route": "/api/plugin/github/pull-image?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
+        "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
+        "branch": null
+      },
+      "summary": false,
+      "group": "type:docs",
+      "unfold": true,
+      "layout": "unified",
+      "show": "current",
+      "showPreference": "github.docs.show",
+      "emptyText": "No documents changed in this stack.",
+      "onDocument": "function",
+      "markdownHoldMs": 200
+    },
+    "changes": {
+      "comparison": {
+        "left": "<base>",
+        "right": "<draft_head>",
+        "base_policy": "direct",
+        "route": "/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>",
+        "image_route": "/api/plugin/github/pull-image?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
+        "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
+        "branch": null
+      },
+      "summary": false,
+      "types": null,
+      "onTypes": "function",
+      "markdownHoldMs": 200
+    }
   },
   "said": {
     "lacking": "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them.",
@@ -560,14 +673,17 @@ $ node tests/dom/github-stack-page-session.js
       "do": "keep",
       "drawn": "current",
       "notices": [
-        "This stack has changed since its comparison was drawn. [take]"
+        "This stack has changed since its comparison was drawn. [take]",
+        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
       ]
     },
     {
       "step": "the reader takes it",
       "do": "mount changes",
       "drawn": "other",
-      "notices": []
+      "notices": [
+        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
+      ]
     },
     {
       "step": "the stack can no longer be shown as one",
