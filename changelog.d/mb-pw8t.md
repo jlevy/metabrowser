@@ -10,3 +10,7 @@
 - A pull request’s stack menu shows each member’s place before its number, “1/6 · #455”,
   both at the end of its line, the order a Pulls row has them
   ([Stacks](docs/design-system.md#stacks)).
+
+- Returning to the Pulls tab keeps the pull request you opened in view when its stack
+  was read while you were on another tab, wherever its rows are taller or shorter than
+  the list first placed them.

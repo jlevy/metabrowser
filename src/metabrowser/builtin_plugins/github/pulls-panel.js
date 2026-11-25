@@ -5785,6 +5785,16 @@ export function mountPullsPanel(container, ctx, mb) {
     /** @param {boolean} visible */
     setShown(visible) {
       panelShown = visible;
+      if (visible && revealedPlace !== null && tab.scrollRoot !== null) {
+        // The scroll the tab is shown at is the shell's, its saved scroll put back
+        // (main-tabs.js, `activateNavPanel`), not the reader's: the row a reveal placed is
+        // kept from it. Rows regrouped or placed at other heights since it was saved, as
+        // stacks read while the reader was away regroup them, no longer stand where they
+        // did at that scroll, and a list not yet painted at its height clamps it, so taken
+        // for the reader's scroll it let the row go, out of view (headless Chrome 152,
+        // 2026-11-25, rows placed at `ROW_ESTIMATE_PX` and drawn shorter).
+        revealedPlace.scrollTop = tab.scrollRoot.scrollTop;
+      }
       stacks.setShown(visible);
       controller.setShown(visible);
       if (visible) {
