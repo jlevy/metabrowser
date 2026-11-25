@@ -3,9 +3,9 @@ type: is
 id: is-01m883v3q9d1nc4xypdrb2gbg1
 title: "Address PR #801 review A: reader-message enforcement gaps"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 12
+version: 13
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -24,7 +24,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T01:06:39.449Z
-updated_at: 2026-11-25T01:08:12.780Z
+updated_at: 2026-11-25T02:43:31.418Z
 started_at: 2026-11-25T01:08:12.773Z
+closed_at: 2026-11-25T02:43:31.339Z
+close_reason: "Review A of PR #801 addressed: all ten findings dispositioned in https://github.com/jlevy/metabrowser/pull/801#issuecomment-7151064403 at ea97d252d; follow-ups mb-dhiw and mb-q9ar stay open under mb-wsly."
+resolution: null
+duplicate_of: null
 ---
 Review A (senior, round 1) of PR #801: https://github.com/jlevy/metabrowser/pull/801#pullrequestreview-6049962996. 0 Blocker, 0 High, 6 Medium, 4 Low.

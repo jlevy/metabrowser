@@ -5,14 +5,17 @@ title: "Security hardening: close the threat model's open findings"
 kind: epic
 status: open
 priority: 1
-version: 3
+version: 5
 spec_path: docs/project/architecture/arch-threat-model.md
 labels:
   - linear
   - Bug
 dependencies: []
+child_order_hints:
+  - is-01m87spgvmvtrb289csdx46dke
+  - is-01m87sphqfhj9qh7qq389m7r46
 created_at: 2026-11-25T02:41:24.188Z
-updated_at: 2026-11-25T02:43:21.613Z
+updated_at: 2026-11-25T02:44:17.634Z
 extensions:
   linear:
     id: dbe32518-a918-4662-8481-6c14d83fce00
