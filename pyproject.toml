@@ -266,3 +266,11 @@ timeout = 60
 timeout_method = "thread"
 # Under pytest-xdist this ends a worker, not the run, and its stack dump is lost with
 # the worker's output; tests/suite_workers.py dumps every stack to the log first.
+
+# pytest keeps every test's tmp_path, and tests/conftest.py removes what is not needed
+# (tests/transient_output.py has why, what stays, and the measurements): it empties a
+# test's tmp_path unless the test failed or errored in setup, call or teardown, and
+# removes a passing session's whole base directory. pytest's "failed" policy would remove
+# a test's directory by its call's outcome alone, so one whose setup errored or whose
+# teardown failed would lose it.
+tmp_path_retention_policy = "all"
