@@ -12,6 +12,27 @@ Quit any other copy of Metabrowser first, a release included: another developmen
 has the same bundle identifier, and every copy writes the same logs folder and saved
 session.
 
+**Keep the checks out of your own recent targets.** The app records every folder and
+repository it opens, and the Recents check clears the list.
+So run every check against a scratch configuration directory: export it in the shell, so
+that a `metab` run there reads and writes its list, and launch the app with it, which
+passes it on to every `metab` the app runs (`ChildEnvironment`):
+
+```shell
+export METABROWSER_CONFIG_DIR="$(mktemp -d)/config"
+dev_open() { open --env METABROWSER_CONFIG_DIR="$METABROWSER_CONFIG_DIR" "$@"; }
+```
+
+`dev_open` is `open` that gives a launched app that directory; `open` gives one the
+environment LaunchServices has, not the shell’s. The checks below open the app with it,
+and wherever one quits the app and launches it again, launch the development build with
+`dev_open -a`, never from the Dock or Finder: a copy launched any other way reads and
+writes your own list and `config.yml`. `make macos-run` starts the app with
+`METABROWSER_RECORD_RECENT=0`, which records nothing, so the Recents and Switching
+Folders checks cannot pass under it.
+Note what `env -u METABROWSER_CONFIG_DIR metab --recent` lists, your own list, which the
+checks leave as it was.
+
 ## Servers and the Runtime
 
 ```shell
@@ -20,9 +41,9 @@ logs="$HOME/Library/Logs/Metabrowser"
 folder="$(mktemp -d)"
 ```
 
-1. **Which build.** `open -a "$app" "$folder"`, then Metabrowser > About Metabrowser.
-   Below the version is “Development build · VERSION (BUILD) · COMMIT”, the commit with
-   `-dirty` for uncommitted changes.
+1. **Which build.** `dev_open -a "$app" "$folder"`, then Metabrowser > About
+   Metabrowser. Below the version is “Development build · VERSION (BUILD) · COMMIT”, the
+   commit with `-dirty` for uncommitted changes.
    The Dock shows the canary icon, and Help > Reveal Logs Folder opens `$logs`.
 2. **Health check.** With the folder open, find its server (`pgrep -f -- "--no-open"`)
    and stop it without ending it: `kill -STOP PID`. Bring the folder back (Command-click
@@ -34,7 +55,7 @@ folder="$(mktemp -d)"
    folder’s first page.
    With the server answering,
    `printf 'a\n' > "$folder/a.md"; printf 'b\n' > "$folder/b.md"` and
-   `open -a "$app" "$folder/a.md" "$folder/b.md"` end on `b.md`.
+   `dev_open -a "$app" "$folder/a.md" "$folder/b.md"` end on `b.md`.
 3. **stdout and stderr in the log.** `tail "$logs"/*.log` shows the server’s `Serving`
    and `Plugins:` lines, which came through stdout.
    A server serving without trouble writes nothing to stderr.
@@ -48,7 +69,7 @@ folder="$(mktemp -d)"
 6. **A `metab` the app does not run.** Quit, forget the saved runtime
    (`defaults delete io.github.jlevy.metabrowser.dev`),
    `printf '#!/bin/sh\necho metab 9.9.9\n' > /tmp/metab; chmod +x /tmp/metab`, and
-   `open --env METABROWSER_METAB=/tmp/metab -a "$app"`. Settings > Runtime > Places
+   `dev_open --env METABROWSER_METAB=/tmp/metab -a "$app"`. Settings > Runtime > Places
    looked lists `/tmp/metab` as not run because `/private/tmp` can be changed by every
    account, the log says “not running /tmp/metab”, and the runtime is not 9.9.9. Choose
    metab… and `/tmp/metab` then uses it, saying it runs because you chose it.
@@ -66,29 +87,33 @@ echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/d
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
 ```
 
-1. **A file.** `open -a "$APP" /tmp/mb-check/a/notes.md` opens a window for `a` showing
-   `notes.md`. `open -a "$APP" /tmp/mb-check/a/sub/deep.md` shows `deep.md` in that same
-   window, and `pgrep -fl 'metab /private/tmp/mb-check'` still lists one server.
-   `open -a "$APP" /dev/null` shows an alert.
+1. **A file.** `dev_open -a "$APP" /tmp/mb-check/a/notes.md` opens a window for `a`
+   showing `notes.md`. `dev_open -a "$APP" /tmp/mb-check/a/sub/deep.md` shows `deep.md`
+   in that same window, and `pgrep -fl 'metab /private/tmp/mb-check'` still lists one
+   server. `dev_open -a "$APP" /dev/null` shows an alert.
    File > Open Folder… chooses a file too.
 2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
-   above `a`, and `metab --recent`, run with the `metab` the app uses, lists the same
-   two. After `metab /tmp/mb-check/c --no-open` in Terminal, stopped with Control-C, and
-   a switch back to the app, File > Open Recent lists `c` first.
+   above `a`, and `metab --recent`, run in this shell with the `metab` the app uses,
+   lists the same two. After `metab /tmp/mb-check/c --no-open` in this shell, stopped
+   with Control-C, and a switch back to the app, File > Open Recent lists `c` first.
    Opening `a` again, while its window is open, moves it to the top.
    **One list in the Dock:** drop `f` on the Dock icon, run
-   `open -a "$APP" /tmp/mb-check/g`, which opens it as Finder’s Open With does, and
+   `dev_open -a "$APP" /tmp/mb-check/g`, which opens it as Finder’s Open With does, and
    choose `b` with File > Open Folder…. The Dock icon’s menu then lists each folder
    exactly once, in the order File > Open Recent shows, with nothing but separators
    between that list and the app’s own items, and choosing `g` in it brings `g`’s window
    forward. A folder listed twice, or a second group of folders, is macOS’s own
    recent-documents list beside the app’s, and fails the check: the app clears macOS’s
    list only once, at launch, and would have to clear it after each open.
-   Close the windows of `f` and `g`, and look at the Dock menu again after the quit and
-   relaunch below. After `rm -r /tmp/mb-check/c`, choosing `c` shows the alert and
-   removes it. Clear Menu empties both menus and `metab --recent`. After a quit and a
-   relaunch that restores `a` and `b`, both menus and `metab --recent` list them in the
-   order they had before the quit.
+   Close the windows of `f` and `g`. After `rm -r /tmp/mb-check/c`, choosing `c` shows
+   the alert and removes it.
+   **Not opens:** quit, and relaunch with `dev_open -a "$APP"`, which restores `a` and
+   `b`: both menus and `metab --recent` list what they did before the quit, in the same
+   order, and the Dock menu lists no folder twice.
+   Click `a`’s window, minimize every window, and click the Dock icon: `a`’s window
+   comes forward, and the order is still the same, `b` above `a`. Clear Menu then
+   empties both menus and `metab --recent`, and your own list,
+   `env -u METABROWSER_CONFIG_DIR metab --recent`, is as it was before the checks.
    `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
 3. **A window per folder.** Opening `c` and `d` gives each a window of its own.
    With System Settings > Desktop & Dock > “Prefer tabs when opening documents” at
@@ -133,8 +158,8 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    `mv /tmp/mb-check/d /tmp/mb-check/d-old; ln -s /tmp/mb-check/e /tmp/mb-check/d`, and
    launch: `d`’s window says “Metabrowser opens d when you bring it forward.”
    Bring it forward: the app log says it “now leads to /private/tmp/mb-check/e”, the
-   window shows `e`, and `open -a "$APP" /tmp/mb-check/e` and
-   `open -a "$APP" /tmp/mb-check/d` bring that window forward, while
+   window shows `e`, and `dev_open -a "$APP" /tmp/mb-check/e` and
+   `dev_open -a "$APP" /tmp/mb-check/d` bring that window forward, while
    `pgrep -fl 'metab /private/tmp/mb-check/[de]'` lists one server, for `e`. Put `d`
    back with `rm /tmp/mb-check/d; mv /tmp/mb-check/d-old /tmp/mb-check/d`.
 8. **Off, and empty.** With Settings > General > “Reopen the last session’s folders when
@@ -217,14 +242,14 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
 7. **A first clone.** A link to a public repository that is not cached and takes longer
    than `SupervisorPolicy.startupTimeout` to clone keeps its window starting while the
    log grows, then opens.
-   While it clones, `open -a "$APP" "$(mktemp -d)"` opens a folder at once, and a link
-   to a second repository opens a window that says it waits for another repository’s
-   start.
+   While it clones, `dev_open -a "$APP" "$(mktemp -d)"` opens a folder at once, and a
+   link to a second repository opens a window that says it waits for another
+   repository’s start.
 8. **Retry after a quiet start.** Start a clone of the same uncached repository with
    `metab URL --no-serve` in Terminal, then send its link: after
    `SupervisorPolicy.startupTimeout` the window says the server wrote nothing; once the
    Terminal clone ends, Retry opens it from the cache.
-9. **Launched by a link.** Quit the app, then `open -b "$APP_ID" "$REPO"`: the app
+9. **Launched by a link.** Quit the app, then `dev_open -b "$APP_ID" "$REPO"`: the app
    starts and opens the repository’s window, and no Open panel appears over it.
 10. **No runtime yet.** In Settings > Runtime, choose a file that is not a `metab`, then
     send a link: Settings says no `metab` is usable and no window opens; choose this
@@ -470,8 +495,9 @@ mkdir -p "$LONG"
 
 Close every window. Open `$LONG` and close its window, then `c` and close its window,
 then `d` and close its window, so all three are recent and none is open.
-Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`, so each has a
-window of its own. Each step starts where the one before it ends.
+Then open `a`, then `b`, each with `dev_open -a "$APP" /tmp/mb-check/NAME`, so each has
+a window of its own.
+Each step starts where the one before it ends.
 
 1. **The title.** Each title reads its folder with a small chevron after it, dim at rest
    and darker under the pointer, where a rounded fill appears behind the title and
@@ -690,7 +716,9 @@ for a developer; `make macos-run` launches the app with `open -a` and runs no
 `--present`, so it needs no such setting.
 `present` also passes `--open-in app`, so a target no app takes is refused, as these
 checks expect, instead of opening in a browser on a server started for it, as the
-default `auto` does; checks 11 and 12 cover `auto`.
+default `auto` does; checks 11 and 12 cover `auto`. Launch the build with
+`dev_open -b "$APP_ID"` first: `--present` hands a target to the copy that runs, and one
+it has to launch gets no scratch directory.
 
 ```shell
 APP_ID=io.github.jlevy.metabrowser.dev
@@ -704,7 +732,10 @@ present() {
 1. **A folder.** `present "$folder"` exits 0 with `delivered_to: app` and `bundle_path`
    naming the development build, and a window opens on the folder.
    Note the `real` time with the app running and again after a quit (a cold start),
-   beside `OPEN_TIMEOUT_S` in `cli/present.py`.
+   beside `OPEN_TIMEOUT_S` in `cli/present.py`. The cold start launches the build
+   without the scratch directory, so it records `$folder` in your own list:
+   `env -u METABROWSER_CONFIG_DIR metab "$folder" --recent-forget` removes it.
+   Quit, and launch with `dev_open -b "$APP_ID"` again before check 2.
 2. **A file, its root not open.** Close the folder’s windows, then
    `present "$folder" --path docs/guide.md`: one window opens, rooted at `$folder` (its
    title is the folder’s name, not `docs`), showing `guide.md`.
@@ -746,8 +777,9 @@ present() {
     `fallback.code: app_not_installed`; a browser tab opens on the folder at the
     report’s `url`. `kill` with the report’s `pid` stops the server, and the page then
     fails to load.
-12. **Browser delivery turned off.** With `present_browser: false` in `config.yml`’s
-    `config` mapping, the command of check 11 exits 4 with `browser_off`, and so does
+12. **Browser delivery turned off.** With `present_browser: false` in the `config`
+    mapping of the scratch `$METABROWSER_CONFIG_DIR/config.yml`, the command of check 11
+    exits 4 with `browser_off`, and so does
     `metab "$folder" --present --open-in browser --format json`; nothing opens and no
     server starts (`pgrep -f metabrowser.cli.main` finds none).
     Remove the line after.
@@ -834,7 +866,7 @@ segment() { ls -t "$state"/events-*.jsonl | head -1; }
 ```
 
 1. **The log opens on its own folder.** Open the home folder, an ancestor of the state
-   directory, `open -a "$APP" "$HOME"`, and click through a few files so its server
+   directory, `dev_open -a "$APP" "$HOME"`, and click through a few files so its server
    answers requests. Help > Open Event Log opens a window whose folder is `events`, at
    the newest segment’s Timeline, and not a page inside the home folder’s window, which
    still shows the home folder.
@@ -851,17 +883,18 @@ segment() { ls -t "$state"/events-*.jsonl | head -1; }
    and `grep -c 'plugin/event-log' "$(segment)"`: the count does not change between two
    reads of the segment, while a request for another file adds a `request` record.
 5. **No log yet.** Quit, and
-   `open --env METABROWSER_STATE_DIR="$(mktemp -d)" -a "$APP"`. With no folder open,
+   `dev_open --env METABROWSER_STATE_DIR="$(mktemp -d)" -a "$APP"`. With no folder open,
    Help > Open Event Log says there is no event log yet and names the directory.
 6. **A `metab` that cannot say.** Choose a stand-in that fails for `--api`
    (`printf '#!/bin/sh\ncase "$*" in\n*--api*) echo boom; exit 3;;\nesac\nexec "%s" "$@"\n' "$PWD/.venv/bin/metab" > /tmp/metab-stand-in; chmod 755 /tmp/metab-stand-in`,
    then Settings > Runtime > Choose metab…): Help > Open Event Log says it could not
    open the log, shows `boom`, and points to Check Setup…. Choose the checkout’s `metab`
    again and `rm /tmp/metab-stand-in`.
-7. **Turned off.** Quit, then `open --env METABROWSER_EVENT_LOG=0 -a "$APP" "$HOME"`.
-   Help > Check Setup… marks Event log as a warning that names the variable, and a late
-   wait’s Details on a pull request page say the log is off and why, where with the log
-   on they name Help > Open Event Log and not the `metab --event-log` command.
+7. **Turned off.** Quit, then
+   `dev_open --env METABROWSER_EVENT_LOG=0 -a "$APP" "$HOME"`. Help > Check Setup… marks
+   Event log as a warning that names the variable, and a late wait’s Details on a pull
+   request page say the log is off and why, where with the log on they name Help > Open
+   Event Log and not the `metab --event-log` command.
 
 ## Setup Flows
 

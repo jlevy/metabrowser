@@ -43,7 +43,7 @@ from metabrowser.cache.projection import MAX_PAGE_LIMIT, sources_response
 from metabrowser.cache.records import canonical_now
 from metabrowser.cli import clone_report
 from metabrowser.cli.clone_report import LOG_INTERVAL_S, CloneReport, saying_while_waiting
-from metabrowser.cli.doctor import STORAGE_OVERRIDES
+from metabrowser.cli.doctor import LAUNCH_STORAGE_OVERRIDES, STORAGE_OVERRIDES
 from metabrowser.cli.present import (
     MINIMUM_METAB_KEY,
     OPENS_URLS_KEY,
@@ -267,12 +267,15 @@ def test_the_app_declares_its_minimum_metab_for_the_doctor() -> None:
     assert info.get(MINIMUM_METAB_KEY) == ".".join(str(part) for part in _minimum_metab())
 
 
-def test_the_apps_servers_get_no_storage_variable() -> None:
-    """``ChildEnvironment.passedThrough`` passes none of ``STORAGE_OVERRIDES``.
+def test_the_apps_servers_get_the_storage_variables_the_doctor_expects() -> None:
+    """``ChildEnvironment.passedThrough`` passes none of ``STORAGE_OVERRIDES`` and every one
+    of ``LAUNCH_STORAGE_OVERRIDES``.
 
     The doctor's configuration and cache checks warn that a storage variable set in a
     terminal names a directory the app's servers never read, because the app gives its
-    children none of them; a name added to the allowlist would make that warning false.
+    children none of the first set, and only what it was launched with of the second, which
+    no terminal's reaches; the doctor the app runs sees that launch's own. A name moved
+    between the allowlist and either set would make a warning false or miss one.
     The allowlist's one entry that is not a literal names the recent-targets variable.
     """
 
@@ -294,6 +297,7 @@ def test_the_apps_servers_get_no_storage_variable() -> None:
     }
     assert "HOME" in names, f"ChildEnvironment.passedThrough read as {sorted(names)}"
     assert not names & STORAGE_OVERRIDES
+    assert names >= LAUNCH_STORAGE_OVERRIDES
 
 
 def _elements(markup: dict[str, Any]) -> list[dict[str, Any]]:

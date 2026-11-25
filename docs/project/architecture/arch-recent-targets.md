@@ -179,13 +179,14 @@ The app writes nothing itself.
 | `metab FOLDER` or `metab FILE` run at a terminal | `folder`, the served folder, with a file or `--path` as its `target` | `serve_until_interrupted`, just before the `Serving` line, when `serve_records` says yes: its stdin is a terminal |
 | `metab URL` run at a terminal | `mirror`, the source’s address | The same, once the source is acquired and its pin resolved |
 | `metab ROOT` run by an agent, a test, a golden, a script, or a tool | Nothing | Its stdin is a pipe or `/dev/null`, not a terminal, and nothing set `METABROWSER_RECORD_RECENT=1` ([Who Records](#who-records)) |
-| The macOS app opening a folder, open already or not, or showing an open one chosen in a window’s title menu or the Switch Folder panel | `folder` | `metab FOLDER --recent-add`, as the app shows it (`AppDelegate.showOpened`, `RecentTargetsMenu.noteOpened`) |
+| The macOS app opening a folder, open already or not, or showing an open one chosen in a window’s title menu or the Switch Folder panel | `folder` | `metab FOLDER --recent-add`, as the app shows it (`AppDelegate.showOpened`, `RecentTargetsMenu.shown`) |
 | The macOS app opening a GitHub link, Open URL…, or a recent repository | `mirror` | `metab ROOT --recent-add` with the repository’s canonical address, as the app shows it, whether a server starts for it or a running one opens the link |
 | Any server the macOS app starts | Nothing | The app records the open itself, so it tells every server `METABROWSER_RECORD_RECENT=0` (`RecentTargets.serverRecords`, `FolderServer`) |
 | `metab ROOT --present` handed to the app | As the app’s open of it, above | `open -b` hands the app a path or a link, as Finder does, so the app records it whoever ran `--present`: an agent’s presented folder is listed (see below) |
 | `metab ROOT --present` served for a browser | As `--present` would record itself | `serve_detached` gives the server it starts `METABROWSER_RECORD_RECENT=1` when `serve_records` says yes for `--present`, and `0` otherwise |
-| The app restoring its last session, a Dock click with no window, a page’s link opening another window of its folder, Command-R, Retry, Restart Server, or an upgrade’s restart | Nothing | None of them is an open, so none comes through `showOpened`, and their servers record nothing |
+| The app restoring its last session, a Dock click with no window, a page’s link opening another window of its folder, Command-R, Retry, Restart Server, or an upgrade’s restart | Nothing | None of them is an open, so none comes through `showOpened`, and their servers record nothing. The restore and a Dock click report what they show as `restored` and `reopenedFromTheDock`, for which `RecentTargets.changes` makes no change |
 | Anything a development build started by `make macos-run` opens | Nothing | `make macos-run` starts the app with `METABROWSER_RECORD_RECENT=0`, which the app passes on to every `metab` it runs, its `--recent-add` included |
+| Anything an app started with `METABROWSER_CONFIG_DIR` opens | Into that directory’s list, not the user’s | The app passes the variable on to every `metab` it runs (`ChildEnvironment`), the `--recent-add` that records an open and the `--recent` that lists the menu included; the [hand checks](../qa/qa-macos-app-hand-checks.md) launch a development build this way |
 | `metab --remote HOST --path DIR` | Nothing, on either host | The near side serves nothing, and the far server is started with `METABROWSER_RECORD_RECENT=0` (`cli/remote.py`): that account did not open the folder to read it there |
 
 A root is recorded before its server’s `Serving` line, so whoever reads that line finds
@@ -295,8 +296,9 @@ File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
 `ShellCore`, `RecentTargetsMenu` in the app):
 
 - The app runs the selected `metab` when it becomes active, when the menu opens, when
-  the Dock menu is asked for, and once a server it started for an open has started, so
-  the next Dock menu lists that open.
+  the Dock menu is asked for, and after each change it makes to the list, an open’s, a
+  forget, or a clear, once every change asked for before it has run
+  (`RecentTargetsMenu`), so the next Dock menu lists that open.
   A menu shows the last answer at once, then the new one.
 - Every `metab` the app runs has the modes: setup’s check runs with `--recent`
   (`MetabRequirement.requiredFlags`), so a build from before the list is refused with
@@ -308,14 +310,18 @@ File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
   `MAX_RECENT_TARGETS`, so an entry past the sixteenth is still in `metab --recent`.
 - **Every way the user opens a folder or a repository in the app is shown by
   `AppDelegate.showOpened`, which records it once**, at the open
-  (`RecentTargetsMenu.noteOpened`, `metab ROOT --recent-add`): File > Open Folder…, a
-  drop on the Dock icon or a page, Open With, `open -a`, a folder `--present` hands
-  over, Open Recent, the Dock menu, Open URL…, a GitHub link sent to the app, and the
-  folder chooser and Switch Folder panel, an open folder chosen there included.
+  (`RecentTargetsMenu.shown`, `metab ROOT --recent-add`): File > Open Folder…, a drop on
+  the Dock icon or a page, Open With, `open -a`, a folder `--present` hands over, Open
+  Recent, the Dock menu, Open URL…, a GitHub link sent to the app, and the folder
+  chooser and Switch Folder panel, an open folder chosen there included.
   A GitHub link sent into a repository that has a window opens in that window’s server
   without `showOpened`, and records with the same call.
-  Help > Open Event Log opens its directory with `remember: false`, which records
-  nothing. No server the app starts records (`RecentTargets.serverRecords`).
+  Help > Open Event Log opens its directory as `openedForTheApp`, which records nothing.
+  No server the app starts records (`RecentTargets.serverRecords`).
+- **The restore and a Dock click record nothing.** The windows a launch restores and the
+  folder a Dock click with no window brings forward are reported as `restored` and
+  `reopenedFromTheDock`, and `RecentTargets.changes` makes one `--recent-add` for an
+  open and none for anything else, which `RecentTargetsTests` pins.
 - The legacy `recentFolders` key some builds’ defaults domains still hold is the spike’s
   list, which no build has read since the app moved to macOS’s list and then to this
   one; nothing reads it, and nothing needs to remove it.
@@ -332,8 +338,12 @@ File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
   macOS’s own list beside this one, and clears at launch what an earlier build
   registered.
 
-The app does not pass a storage override to the `metab` it runs, so the list it reads is
-the one its `--recent-add` and a person’s `metab` in Terminal write.
+The app sets no storage override for the `metab` it runs, and passes on the
+`METABROWSER_CONFIG_DIR` it was started with (`ChildEnvironment`), so the list it reads
+is the one its `--recent-add` writes.
+Started from Finder or the Dock, with none, that is the default list, which a person’s
+`metab` in Terminal writes too; a development build the hand checks start with a scratch
+directory keeps its own list there.
 The menu’s contents are `metab`’s, pinned by the golden above; drawing them is AppKit’s,
 which the [parity registry](arch-parity-registry.md) records as `app.open-recent-menu`.
 `RecentTargetsTests` covers how the app reads the answer and chooses its rows, and

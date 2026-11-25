@@ -95,7 +95,7 @@ note = "File > Open Recent and the Dock menu."
 id = "recent-add"
 argv = ["{target}", "--recent-add"]
 source = "Sources/ShellCore/Folders/RecentTargets.swift"
-note = "Records an open that starts no server. Only the exit status is read."
+note = "Records each open the app makes, once, as it shows it: no server the app starts records. Only the exit status is read."
 
 [[command]]
 id = "recent-forget"
@@ -326,10 +326,10 @@ note = "Not set by the app: passed through from the app's own environment, so 0 
 
 [[env]]
 name = "METABROWSER_CONFIG_DIR"
-source = "Tests/ShellCoreTests/LiveMetabTests.swift"
+source = "Sources/ShellCore/Runtime/ChildEnvironment.swift"
 metab = "src/metabrowser/home.py"
 golden = "cli-recent.tryscript.md"
-note = "Set only by the app's live tests, so that a test's folder stays out of the recent targets of whoever runs them."
+note = "Not set by the app: passed through from the app's own environment to every `metab` it runs, so the `--recent-add` that records an open and the `--recent` that lists the menu read one list, and a development build started with a scratch directory, as the hand checks start one, leaves the user's list alone. The app's live tests set it too, so that a test's folder stays out of the recent targets of whoever runs them."
 
 # ── Behavior ────────────────────────────────────────────────────────────────────────────
 #
@@ -513,9 +513,9 @@ values = ["metabrowser.cli.present:MINIMUM_METAB_KEY"]
 
 [[app_side]]
 id = "storage-variables"
-what = "ChildEnvironment passes the app's servers, and the doctor it runs, none of STORAGE_OVERRIDES in cli/doctor.py, so the doctor's configuration and cache checks warn when one set in a terminal names a directory the app's servers never read."
-pinned_by = "tests/test_macos_app_pins.py::test_the_apps_servers_get_no_storage_variable"
-values = ["metabrowser.cli.doctor:STORAGE_OVERRIDES"]
+what = "ChildEnvironment passes the app's servers, and the doctor it runs, none of STORAGE_OVERRIDES in cli/doctor.py, and of LAUNCH_STORAGE_OVERRIDES only what the app was launched with, so the doctor's configuration and cache checks warn when one set in a terminal names a directory the app's servers never read, and the doctor the app runs takes the app's own METABROWSER_CONFIG_DIR as its servers'."
+pinned_by = "tests/test_macos_app_pins.py::test_the_apps_servers_get_the_storage_variables_the_doctor_expects"
+values = ["metabrowser.cli.doctor:STORAGE_OVERRIDES", "metabrowser.cli.doctor:LAUNCH_STORAGE_OVERRIDES"]
 
 [[app_side]]
 id = "opens-urls-marker"

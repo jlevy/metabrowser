@@ -123,9 +123,9 @@ public nonisolated enum RecentTargets {
     public static let listArguments = [listFlag, "--json"]
     public static let clearArguments = ["--recent-clear"]
 
-    /// Records `target` as opened, for an open that starts no server. A folder's path is
-    /// absolute and a repository's address starts with its scheme, so neither can read as
-    /// an option.
+    /// Records `target` as opened: the app runs it for each open, as it shows it
+    /// (`changes(showing:because:)`). A folder's path is absolute and a repository's
+    /// address starts with its scheme, so neither can read as an option.
     public static func addArguments(_ target: String) -> [String] { [target, "--recent-add"] }
 
     /// What `metab` is given for `root`: a folder's path, or a repository's address whole.
@@ -135,6 +135,32 @@ public nonisolated enum RecentTargets {
     }
 
     public static func forgetArguments(_ root: String) -> [String] { [root, "--recent-forget"] }
+
+    /// Why the app shows a root, a folder or a repository, which decides whether the list
+    /// changes. The app reports each root it shows (`RecentTargetsMenu.shown`), and only
+    /// the user's open moves it to the front: the owner decided on 2026-11-18 that the
+    /// order changes only when the user opens something.
+    public enum Showing: CaseIterable, Equatable, Sendable {
+        /// The user opened it, whether it was open already or not: File > Open Folder…, a
+        /// drop, Open With, `open -a`, `metab --present`, a GitHub link sent to the app,
+        /// Open URL…, Open Recent, the Dock menu, or the folder chooser or Switch Folder
+        /// panel (`AppDelegate.showOpened`).
+        case opened
+        /// The app opened it for itself: Help > Open Event Log's directory, which the user
+        /// did not choose (`EventLogLocation`).
+        case openedForTheApp
+        /// Put back at launch from the last session (`FolderWindows.restore`).
+        case restored
+        /// Brought forward by a click on the Dock icon with no window on screen.
+        case reopenedFromTheDock
+    }
+
+    /// The changes to the list that showing `root` makes: one `--recent-add` for an open,
+    /// and none for anything else. No server the app starts records (`serverRecords`), so
+    /// this one change is the open's only record.
+    public static func changes(showing root: URL, because showing: Showing) -> [[String]] {
+        showing == .opened ? [addArguments(target(root))] : []
+    }
 
     /// The commands that change the list, run one at a time in the order they were asked
     /// for, so that of two opens in quick succession the later is listed first. Each

@@ -316,7 +316,7 @@ nonisolated enum ContractGolden {
     }
 
     @Test func theListIsChangedWithTheRecordedCommands() throws {
-        // An open of a folder, as `RecentTargetsMenu.noteOpened` records it.
+        // An open of a folder, as `RecentTargets.changes` records it.
         let opened = try block("recent-add/folder")
         let folder = URL(filePath: ContractGolden.served, directoryHint: .isDirectory)
         #expect(opened.words == RecentTargets.addArguments(RecentTargets.target(folder)))
@@ -503,13 +503,15 @@ nonisolated enum ContractGolden {
         }
         #expect(!found.ok && found.hasChecks)
         #expect(found.rows.map(\.id) == ids)
-        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .ok, .warning])
+        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .ok, .problem, .ok, .warning])
         let fixes = Dictionary(uniqueKeysWithValues: found.rows.map { ($0.id, $0.remedy) })
         let step = DoctorReport.Remedy(text: ContractGolden.text, command: ContractGolden.text)
         #expect(fixes["metab"] == DoctorReport.Remedy(
             text: "See the README for runtime setup.", url: ProjectLinks.installationGuide))
         #expect(fixes["github"] == step, "signing in to GitHub CLI")
-        #expect(fixes["config"] == DoctorReport.Remedy(text: ContractGolden.text))
+        // The run's METABROWSER_CONFIG_DIR is one the app was launched with and passes on to
+        // its servers too (`ChildEnvironment`), so the doctor it runs has nothing to warn of.
+        #expect(fixes["config"] == .some(nil))
     }
 
     // MARK: - Shown, not read

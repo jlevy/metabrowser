@@ -373,6 +373,29 @@ def test_an_override_the_apps_servers_do_not_get_is_a_warning(
     assert config_check(app_path=None).state == "ok", "without an app there is nothing to differ"
 
 
+def test_a_configuration_directory_the_app_was_launched_with_is_its_servers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The app passes on the ``METABROWSER_CONFIG_DIR`` it was launched with
+    (``ChildEnvironment``), as the hand checks launch a development build, but a
+    terminal's reaches no app: set here, it is a warning, and seen by the doctor the app
+    runs, it is the directory the app's servers use."""
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir(mode=0o700)
+    _storage(monkeypatch, tmp_path / "home", METABROWSER_CONFIG_DIR=str(scratch))
+    app = "/Applications/Metabrowser.app"
+
+    terminal = config_check(app_path=app)
+    assert terminal.state == "warning"
+    assert ("app's servers", str(tmp_path / "home" / ".config" / "metabrowser")) in terminal.details
+    assert terminal.summary.startswith("METABROWSER_CONFIG_DIR names this directory")
+    from_app = config_check(app_path=app, from_app=True)
+    assert from_app.state == "ok"
+    assert ("directory", str(scratch)) in from_app.details
+    assert not [name for name, _ in from_app.details if name == "app's servers"]
+
+
 _RESERVE: int = FREE_SPACE_RESERVE_MB * 1_000_000
 
 

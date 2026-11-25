@@ -79,7 +79,7 @@ import Testing
     }
 
     /// No server the app starts records a recent target (mb-1q02). The app records each
-    /// open itself, once, as it shows it (`RecentTargetsMenu.noteOpened`), so a folder's
+    /// open itself, once, as it shows it (`RecentTargetsMenu.shown`), so a folder's
     /// first start, Retry, Restart Server, and the restart an upgrade offers are each told
     /// not to, whatever the app itself was started with: its value is passed on to the
     /// `metab` commands it runs (`ChildEnvironment.passedThrough`), not to its servers.
