@@ -2027,16 +2027,30 @@
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
+/* A row outside any group is not indented: it starts on the edge a group's heading starts
+   on. The overview's row has no number, so its title starts there; a step's number does,
+   read from that edge, in a column as wide as the widest such number in the list, so
+   those steps' titles line up. The list sets `--github-pull-guide-loose-digits` to that
+   number's digits (guided-review.js), and a tabular digit is about the font's `ch`:
+   measured at 14px in Chrome on 2026-11-25, 6.969 px against a `ch` of 6.953 in Source
+   Sans 3, so "10" passes `2ch` by 0.016 px, and 8.672 against 8.813 in system-ui. */
 .github-pull-guide-steps-number {
-  min-width: 1.5em;
+  min-width: calc(var(--github-pull-guide-loose-digits, 1) * 1ch);
   color: var(--muted);
   font-variant-numeric: var(--tabular-numerals);
+}
+/* A group's steps keep a column of their own under its heading, wide enough for two
+   digits, their numbers set to its end, so its rows read as its members and their titles
+   line up across groups. */
+.github-pull-guide-steps-members .github-pull-guide-steps-number {
+  min-width: 1.5em;
   text-align: end;
 }
 /* A group of steps in the list: the shell's group heading (`.group-heading`, "Groups in a
-   Menu"), which starts on the edge a row's first column starts on, its number here, past
-   the row's 2px marker edge, and the group's steps below it, which keep their numbers.
-   Two classes, so the shell's own padding never wins by the order the sheets load in. */
+   Menu"), which starts on the edge a row's first column starts on, past the row's 2px
+   marker edge, as a row outside any group does, and the group's steps below it, which
+   keep their numbers. Two classes, so the shell's own padding never wins by the order the
+   sheets load in. */
 .github-pull-guide-steps .github-pull-guide-steps-heading {
   padding-block: 6px 2px;
   padding-inline: calc(var(--github-pull-text-inset) + 2px);

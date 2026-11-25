@@ -18,6 +18,9 @@ page’s glue between them.
 
 - `front`: the front page of 70, whose guide 10 carries, shows Guided Review and reads
   step 1 at the comparison the page draws, by its two commits and its key.
+- `list`: its step list, which has no overview row, and whose steps are in no group, so
+  each row is its number and its title from the list’s edge, the edge a group’s heading
+  starts on, in a column one digit wide.
 - `step`: the step draws a file of the stack as a patch, a Markdown file whole from the
   comparison drawn, and a file of 9 from 9’s own comparison.
   Its note is inserted against the page of the member that carries the guide, here 8’s,
@@ -40,6 +43,14 @@ $ node tests/dom/github-stack-guide-mount-session.js
   "front": {
     "tab": "Guided Review",
     "asks": "70 1 <base> <draft_head> ebfe45cd812c6d00f8d4a921576b31d7"
+  },
+  "list": {
+    "rows": [
+      "github-pull-guide-steps-number: 1, github-pull-guide-steps-title: The layers",
+      "github-pull-guide-steps-number: 2, github-pull-guide-steps-title: The draft",
+      "github-pull-guide-steps-number: 3, github-pull-guide-steps-title: The plan"
+    ],
+    "style": "--github-pull-guide-loose-digits: 1"
   },
   "step": {
     "documents": [

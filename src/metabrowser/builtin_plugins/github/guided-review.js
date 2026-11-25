@@ -1080,15 +1080,20 @@ export function mountGuidedReview(host, introduction, subject, deps) {
    */
   let built = { key: null, rows: [] };
 
-  /** @param {number} index @param {string} title A step's row: its number and its title. */
+  /**
+   * A step's row: its number and its title. The overview's has no number, so its title
+   * starts on the edge a group's heading starts on, with nothing before it.
+   *
+   * @param {number} index @param {string} title
+   */
   function stepRow(index, title) {
     const link = document.createElement("button");
     link.type = "button";
     link.className = "github-pull-guide-steps-link";
-    link.append(
-      element("span", index === 0 ? "" : String(index), "github-pull-guide-steps-number"),
-      element("span", title, "github-pull-guide-steps-title"),
-    );
+    if (index !== 0) {
+      link.append(element("span", String(index), "github-pull-guide-steps-number"));
+    }
+    link.append(element("span", title, "github-pull-guide-steps-title"));
     link.addEventListener("click", () => navigation.go(index));
     return { link, mark: changedMark() };
   }
@@ -1145,6 +1150,13 @@ export function mountGuidedReview(host, introduction, subject, deps) {
         }
       }
       built = { key, rows };
+      // A step outside any group numbers its row from the list's edge, in a column as wide
+      // as the widest such number, so those steps' titles line up (styles.css).
+      const loose = entries.flatMap((entry) => (entry.kind === "step" ? [entry.step] : []));
+      list.setAttribute(
+        "style",
+        `--github-pull-guide-loose-digits: ${String(Math.max(1, ...loose)).length}`,
+      );
       list.replaceChildren(...items);
     }
     for (const [index, { link, mark }] of built.rows.entries()) {
