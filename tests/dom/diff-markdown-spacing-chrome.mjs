@@ -1,9 +1,10 @@
 // The space between a rendered Markdown diff's blocks, laid out by headless Chrome beside
-// the Document view of the same text: the production `blockRow` and `sanitizeBlock`
-// (builtin_plugins/diff/diff-markdown.js) build the server's projection into the article a
-// pull request's Changes and Docs mount, under the shell's, the Markdown plugin's, the
-// pull request page's, the diff plugin's, and KPress's stylesheets, and KPress's render of
-// each version is set in a Document view's frame.
+// the Document view of the same text: the production `blockRow`, `sanitizeBlock`,
+// `changeRuns`, `removedParts`, and `markJoins` (builtin_plugins/diff/diff-markdown.js)
+// build the server's projection into the article a pull request's Changes and Docs
+// mount, under the shell's, the Markdown plugin's, the pull request page's, the diff
+// plugin's, and KPress's stylesheets, and KPress's render of each version is set in a
+// Document view's frame.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     KPRESS_STATIC=/dir/with/kpress/css/and/fonts SPACING_INPUT=/path/to/input.json \
@@ -21,10 +22,12 @@
 // shows two blocks a version holds one after the other. A list is read item by item,
 // because the diff gives each item of a changed list a row of its own.
 //
-// Each row is its own box, so it is margin collapsing across rows, which only a browser
+// Each row is its own box, and a changed row is in its change's run, so it is margin
+// collapsing across rows and through the runs and changes around them, which only a browser
 // computes, that has to give the document's space. Two of KPress's rules key on a
 // heading's next sibling (`h2 + h3`, and `h4 + p` to `h6 + p`), and a row's block has no
-// sibling in the row before it. The diff joins the second across rows; the first would
+// sibling in the row before it. The diff joins the second across rows, by the rows shown
+// on either side of a row (`markJoins`), hidden removed ones left out; the first would
 // restate KPress's margin, so an h3 straight after an h2 keeps the h3's own space, and this
 // session states that case.
 import fs from "node:fs";
@@ -65,8 +68,8 @@ const PAGE = `<!doctype html><html style="--doc-max-chars: ${INPUT.docMaxChars}"
 ${INPUT.sheets.map((/** @type {string} */ sheet) => `<link rel="stylesheet" href="/kpress/${sheet}">`).join("\n")}
 <script src="/static/inert-html.js"></script>
 <script type="module">
-import { blockRow, sanitizeBlock } from "/plugins/diff/diff-markdown.js";
-window.diffSpacing = { blockRow, sanitizeBlock };
+import { blockRow, changeRuns, markJoins, removedParts, sanitizeBlock } from "/plugins/diff/diff-markdown.js";
+window.diffSpacing = { blockRow, changeRuns, markJoins, removedParts, sanitizeBlock };
 </script>
 </head><body><div id="preview-pane" class="preview-pane" style="display: grid; grid-template-columns: repeat(2, ${FRAME_PX}px); align-items: start"></div></body></html>`;
 
@@ -100,10 +103,11 @@ function serve() {
 }
 
 // In the page: the new version's Document view beside the whole diff, then the diff with its
-// removed blocks hidden as Current hides them (`hidden` on the row) beside the old version's.
+// removed runs and blocks hidden as Current hides them (`removedParts`) beside the old
+// version's.
 const MOUNT = `(blocks, documents, frame) => {
   const inert = window.MetabrowserInertHtml;
-  const { blockRow, sanitizeBlock } = window.diffSpacing;
+  const { blockRow, changeRuns, markJoins, removedParts, sanitizeBlock } = window.diffSpacing;
   const base = "https://github.com/octo/demo/blob/main/docs/guide.md";
   const el = (tag, className, children = []) => {
     const node = document.createElement(tag);
@@ -129,67 +133,50 @@ const MOUNT = `(blocks, documents, frame) => {
   // drawn, as the Docs tab draws a document whole.
   const scratch = document.implementation.createHTMLDocument("");
   const template = document.createElement("template");
-  const comparison = () => {
-    const content = document.createDocumentFragment();
+  const comparison = (current) => {
     const build = (html) => sanitizeBlock(html, inert, template, scratch, () => false);
-    content.append(...blocks.map((block) => blockRow(block, build)));
-    const article = el("article", "kpress kpress-inert diff-markdown", [content]);
+    const placed = changeRuns(blocks.map((block) => blockRow(block, build)));
+    for (const part of removedParts(placed)) part.hidden = current;
+    const article = el("article", "kpress kpress-inert diff-markdown", placed);
+    markJoins(placed);
     const diff = el("div", "github-pull-diff metabrowser-diff-host", [
       el("div", "diff-root", [el("section", "diff-file", [article])]),
     ]);
     return el("div", "content-body pull-request-host github-pull", [el("div", "github-pull-body", [diff])]);
   };
-  const current = comparison();
-  for (const row of current.querySelectorAll(".diff-markdown-removed")) row.hidden = true;
   document.getElementById("preview-pane").replaceChildren(
     column("document", documentView(documents.new)),
-    column("diff", comparison()),
-    column("current", current),
+    column("diff", comparison(false)),
+    column("current", comparison(true)),
     column("old document", documentView(documents.old)),
   );
   return document.querySelectorAll(".diff-markdown .diff-markdown-block").length;
 }`;
 
 // In the page: each frame's blocks in order, a list's items one by one, with their boxes
-// unrounded and, in a diff, the row's kind and the band its ::before draws.
+// unrounded and, in a diff, the row's kind; a row in a hidden run is not drawn.
 const READ = `() => {
-  const read = (node, kind, row) => {
+  const read = (node, kind) => {
     const box = node.getBoundingClientRect();
-    let band = null;
-    if (row) {
-      const before = getComputedStyle(row, "::before");
-      if (before.content !== "none" && before.position === "absolute") {
-        // Its insets are from the row's padding box, and the row has no block border.
-        const rowBox = row.getBoundingClientRect();
-        band = {
-          top: rowBox.top + parseFloat(before.top),
-          bottom: rowBox.bottom - parseFloat(before.bottom),
-          background: before.backgroundColor,
-          gutter: before.borderInlineStartStyle === "solid" ? before.borderInlineStartColor : null,
-        };
-      }
-    }
     return {
       tag: node.tagName.toLowerCase(), kind, text: node.textContent.trim().replace(/\\s+/g, " "),
-      top: box.top, bottom: box.bottom, band,
+      top: box.top, bottom: box.bottom,
     };
   };
-  const units = (blocks, kind, row) => blocks.flatMap((node) =>
-    node.matches("ul, ol") ? [...node.children].map((item) => read(item, kind, row)) : [read(node, kind, row)]);
+  const units = (blocks, kind) => blocks.flatMap((node) =>
+    node.matches("ul, ol") ? [...node.children].map((item) => read(item, kind)) : [read(node, kind)]);
   const frames = {};
   for (const frame of document.querySelectorAll("[data-frame]")) {
     const article = frame.querySelector("article");
     frames[frame.dataset.frame] = article.classList.contains("diff-markdown")
-      ? [...article.querySelectorAll(":scope > .diff-markdown-block")]
-          .filter((row) => !row.hidden)
+      ? [...article.querySelectorAll(".diff-markdown-block")]
+          .filter((row) => row.closest("[hidden]") === null)
           .flatMap((row) => units([...row.querySelector(":scope > .kpress-prose").children],
-            ["added", "removed", "context"].find((kind) => row.classList.contains("diff-markdown-" + kind)), row))
-      : units([...article.querySelector(".kpress-prose").children], "document", null);
+            ["added", "removed", "context"].find((kind) => row.classList.contains("diff-markdown-" + kind))))
+      : units([...article.querySelector(".kpress-prose").children], "document");
   }
   return {
     frames,
-    extent: parseFloat(getComputedStyle(document.querySelector(".diff-markdown"))
-      .getPropertyValue("--diff-markdown-band-extent")),
     face: getComputedStyle(document.querySelector(".kpress-doc .kpress-prose > p")).fontFamily,
   };
 }`;
@@ -204,9 +191,7 @@ const FRAME = `new Promise((resolve) =>
   requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))`;
 
 /**
- * @typedef {{top: number, bottom: number, background: string, gutter: string | null}} Band
- * @typedef {{tag: string, kind: string, text: string, top: number, bottom: number,
- *   band: Band | null}} Unit
+ * @typedef {{tag: string, kind: string, text: string, top: number, bottom: number}} Unit
  * @typedef {Unit & {gap: number, after: Unit}} Spaced
  */
 /**
@@ -263,7 +248,7 @@ try {
   const faces = {};
   for (const font of /** @type {const} */ (["serif", "sans"])) {
     await chrome.evaluate(FONT(font));
-    /** @type {{frames: Record<string, Unit[]>, extent: number, face: string}} */
+    /** @type {{frames: Record<string, Unit[]>, face: string}} */
     const read = await chrome.evaluate(`(${READ})()`);
     faces[font] = read.face;
     if (SHOTS && font === "serif") {
@@ -385,54 +370,6 @@ try {
         ),
       );
     }
-    // A changed block's band reaches the extent past its text, and an unchanged block has
-    // none; two bands never overlap, which would draw a darker seam where they cross.
-    check(`${font}: the band's extent is a length`, read.extent > 0, `${read.extent}`);
-    for (const [label, units] of /** @type {const} */ ([
-      ["the whole diff", read.frames.diff],
-      ["Current", read.frames.current],
-    ])) {
-      units.forEach((unit, index) => {
-        const where = `${font}, ${label}: ${short(unit.text)} (${unit.kind})`;
-        if (unit.kind === "context") {
-          check(`${where} draws no band`, unit.band === null, JSON.stringify(unit.band));
-          return;
-        }
-        check(
-          `${where} draws its band the extent past its text`,
-          unit.band !== null &&
-            near(unit.band.top, unit.top - read.extent) &&
-            near(unit.band.bottom, unit.bottom + read.extent),
-          JSON.stringify({ top: unit.top, bottom: unit.bottom, band: unit.band }),
-        );
-        check(
-          `${where} draws its gutter and ground`,
-          unit.band !== null &&
-            unit.band.gutter !== null &&
-            unit.band.gutter !== "rgba(0, 0, 0, 0)" &&
-            unit.band.background !== "rgba(0, 0, 0, 0)",
-          JSON.stringify(unit.band),
-        );
-        const before = units[index - 1]?.band;
-        if (unit.band !== null && before) {
-          check(
-            `${where} does not overlap the band before it`,
-            before.bottom <= unit.band.top + TOLERANCE_PX,
-            `${px(before.bottom)} against ${px(unit.band.top)}`,
-          );
-        }
-      });
-    }
-    const gutters = new Set(
-      read.frames.diff
-        .filter((unit) => unit.band)
-        .map((unit) => `${unit.kind} ${unit.band?.gutter}`),
-    );
-    check(
-      `${font}: an added and a removed block draw two gutters`,
-      gutters.size === 2,
-      [...gutters].join(", "),
-    );
   }
   // The reading font moved the document's face, so the spacing held in both faces.
   check("the reading fonts set two faces", faces.serif !== faces.sans, JSON.stringify(faces));

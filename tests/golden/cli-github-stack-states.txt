@@ -30,6 +30,7 @@ status: 200
   "reason": null,
   "number": 71,
   "base_ref": "topic",
+  "head_ref": "wip",
   "open": true,
   "members": [
     {
@@ -37,6 +38,8 @@ status: 200
       "place": 1,
       "title": "Say more in the guide",
       "state": "merged",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<base>",
       "head": "<merged_head>",
       "in_top": true,
@@ -48,6 +51,8 @@ status: 200
       "place": 2,
       "title": "Count to two in the app",
       "state": "open",
+      "author": "forker",
+      "avatar": null,
       "base": "<base>",
       "head": "<fork_head>",
       "in_top": false,
@@ -59,6 +64,8 @@ status: 200
       "place": 3,
       "title": "WIP: draft the next page",
       "state": "draft",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<topic>",
       "head": "<draft_head>",
       "in_top": true,
@@ -121,6 +128,7 @@ status: 200
   "reason": "not_linear",
   "number": 72,
   "base_ref": "topic",
+  "head_ref": "guide-more",
   "open": true,
   "members": [
     {
@@ -128,6 +136,8 @@ status: 200
       "place": 1,
       "title": "WIP: draft the next page",
       "state": "draft",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<topic>",
       "head": "<draft_head>",
       "in_top": null,
@@ -139,6 +149,8 @@ status: 200
       "place": 2,
       "title": "Say more in the guide",
       "state": "merged",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<base>",
       "head": "<merged_head>",
       "in_top": null,
@@ -169,6 +181,7 @@ status: 200
   "reason": null,
   "number": 73,
   "base_ref": "topic",
+  "head_ref": null,
   "open": true,
   "members": [
     {
@@ -176,6 +189,8 @@ status: 200
       "place": 1,
       "title": "Say more in the guide",
       "state": "merged",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<base>",
       "head": "<merged_head>",
       "in_top": null,
@@ -187,6 +202,8 @@ status: 200
       "place": 2,
       "title": null,
       "state": null,
+      "author": null,
+      "avatar": null,
       "base": null,
       "head": null,
       "in_top": null,
@@ -434,6 +451,7 @@ status: 200
   "reason": null,
   "number": 73,
   "base_ref": "topic",
+  "head_ref": "spam",
   "open": true,
   "members": [
     {
@@ -441,6 +459,8 @@ status: 200
       "place": 1,
       "title": "Say more in the guide",
       "state": "merged",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<base>",
       "head": "<merged_head>",
       "in_top": false,
@@ -452,6 +472,8 @@ status: 200
       "place": 2,
       "title": "spam",
       "state": "closed",
+      "author": null,
+      "avatar": null,
       "base": "<base>",
       "head": "<closed_head>",
       "in_top": true,
@@ -514,6 +536,7 @@ status: 200
   "reason": "not_stacked",
   "number": 99,
   "base_ref": null,
+  "head_ref": null,
   "open": null,
   "members": [],
   "pending": [],
@@ -539,17 +562,6 @@ status: 400
 }
 --- stderr ---
 Error: /api/plugin/github/stack?number=70&left=main returned HTTP 400
---- gh ---
-## The stack's page at a file, as `--show` reports it: its kind and layers.
-# metab https://github.com/octo/demo --show /stack/70/changes/docs/draft.md
-exit: 0
---- stdout ---
-show: /stack/70/changes/docs/draft.md
-route: /stack/70/changes/docs/draft.md
-kind: pull-stack
-views: pull-stack (default)
-model: stack envelope; state=current members=8:merged,10:draft files=1 additions=1 deletions=0 in_two_or_more_layers=0 file=docs/draft.md layers=2/2:#10 guide=#10 tab=changes comparison_route=/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>
---- stderr ---
 --- gh ---
 ## The stack moves: 70 is now 10 alone. A page still draws the comparison it was given, so that comparison keeps answering and its rendered documents keep being admitted, while an address the route never gave is still refused.
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
@@ -584,12 +596,12 @@ status: 202
           10
         ],
         "titles": [
-          null,
-          null
+          "Say more in the guide",
+          "WIP: draft the next page"
         ],
         "authors": [
-          null,
-          null
+          "maintainer",
+          "maintainer"
         ],
         "avatars": [
           null,
@@ -606,14 +618,14 @@ status: 202
           10
         ],
         "titles": [
-          null,
-          null,
-          null
+          "Say more in the guide",
+          "Count to two in the app",
+          "WIP: draft the next page"
         ],
         "authors": [
-          null,
-          null,
-          null
+          "maintainer",
+          "forker",
+          "maintainer"
         ],
         "avatars": [
           null,
@@ -630,12 +642,12 @@ status: 202
           8
         ],
         "titles": [
-          null,
-          null
+          "WIP: draft the next page",
+          "Say more in the guide"
         ],
         "authors": [
-          null,
-          null
+          "maintainer",
+          "maintainer"
         ],
         "avatars": [
           null,
@@ -651,11 +663,11 @@ status: 202
           9
         ],
         "titles": [
-          null,
-          null
+          "Say more in the guide",
+          "spam"
         ],
         "authors": [
-          null,
+          "maintainer",
           null
         ],
         "avatars": [
@@ -693,10 +705,10 @@ status: 200
         10
       ],
       "titles": [
-        null
+        "WIP: draft the next page"
       ],
       "authors": [
-        null
+        "maintainer"
       ],
       "avatars": [
         null
@@ -712,14 +724,14 @@ status: 200
         10
       ],
       "titles": [
-        null,
-        null,
-        null
+        "Say more in the guide",
+        "Count to two in the app",
+        "WIP: draft the next page"
       ],
       "authors": [
-        null,
-        null,
-        null
+        "maintainer",
+        "forker",
+        "maintainer"
       ],
       "avatars": [
         null,
@@ -736,12 +748,12 @@ status: 200
         8
       ],
       "titles": [
-        null,
-        null
+        "WIP: draft the next page",
+        "Say more in the guide"
       ],
       "authors": [
-        null,
-        null
+        "maintainer",
+        "maintainer"
       ],
       "avatars": [
         null,
@@ -757,11 +769,11 @@ status: 200
         9
       ],
       "titles": [
-        null,
-        null
+        "Say more in the guide",
+        "spam"
       ],
       "authors": [
-        null,
+        "maintainer",
         null
       ],
       "avatars": [
@@ -787,6 +799,7 @@ status: 200
   "reason": null,
   "number": 70,
   "base_ref": "topic",
+  "head_ref": "wip",
   "open": true,
   "members": [
     {
@@ -794,6 +807,8 @@ status: 200
       "place": 1,
       "title": "WIP: draft the next page",
       "state": "draft",
+      "author": "maintainer",
+      "avatar": null,
       "base": "<topic>",
       "head": "<draft_head>",
       "in_top": true,

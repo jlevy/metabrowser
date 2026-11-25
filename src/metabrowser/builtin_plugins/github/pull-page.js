@@ -62,6 +62,7 @@ import {
   stackMenuOrder,
   stackPosition,
   stackPositionHint,
+  WHOLE_STACK,
   watchStacks,
 } from "./pull-stacks.js";
 import {
@@ -74,6 +75,7 @@ import {
   withListedState,
 } from "./pull-state.js";
 import { briefLine, createSummaryBrief, PULL_FILES_SUMMARY_ROUTE } from "./pull-summary-brief.js";
+import { stackMemberRow } from "./stack-member-row.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -235,7 +237,7 @@ function keepPullSize(route, size) {
  * @param {unknown} raw
  * @returns {number | null}
  */
-function manifestFiles(raw) {
+export function manifestFiles(raw) {
   const files = /** @type {{manifest?: {totals?: {files?: unknown}}} | null} */ (raw)?.manifest
     ?.totals?.files;
   return typeof files === "number" && Number.isInteger(files) && files >= 0 ? files : null;
@@ -4183,6 +4185,71 @@ export function avatarUrl(value) {
     : null;
 }
 
+/**
+ * An age on a pull request's page or a stack's, from the one primitive, `mb.formatAge`, so
+ * it draws in its freshness ink (docs/design-system.md, "File Age"), with the exact time in
+ * its tooltip and its time in `data-age-at`, from which `retellAges` tells it again as time
+ * passes where a page keeps the node. `also` is a time the row leaves out because its age
+ * reads the same as this one; its exact time joins this tooltip, so leaving the age out
+ * loses nothing.
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {string} iso
+ * @param {{label: string, iso: string} | null} [also]
+ * @returns {HTMLElement}
+ */
+export function pullAge(mb, iso, also = null) {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) {
+    return h("span", {}, [iso]);
+  }
+  /** @param {number} ms */
+  const exact = (ms) => mb.formatTimestamp(ms / 1000);
+  const alsoAt = also === null ? Number.NaN : Date.parse(also.iso);
+  const tip =
+    also !== null && Number.isFinite(alsoAt)
+      ? `${exact(at)} · ${also.label} ${exact(alsoAt)}`
+      : exact(at);
+  const age = h("span", { "data-tip-text": tip, "data-age-at": String(at) });
+  tellAge(mb, age, at);
+  return age;
+}
+
+/**
+ * Tell *element*, an age `pullAge` drew, its age at *at* (ms) as of now: its words and its
+ * freshness ink, both `mb.formatAge`'s, changing only what changed.
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {Element} element
+ * @param {number} at
+ */
+function tellAge(mb, element, at) {
+  const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
+  if (element.textContent !== label) {
+    element.textContent = label;
+  }
+  const classes = `github-pull-age ${className}`;
+  if (element.getAttribute("class") !== classes) {
+    element.setAttribute("class", classes);
+  }
+}
+
+/**
+ * Tell the ages in a kept node again, as of now (`tellAge`): a section kept across paints
+ * keeps its node, and its ages would otherwise read as of when it was built.
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {Element} node
+ */
+function retellAges(mb, node) {
+  for (const element of node.querySelectorAll(".github-pull-age")) {
+    const at = Number(element.getAttribute("data-age-at"));
+    if (Number.isFinite(at)) {
+      tellAge(mb, element, at);
+    }
+  }
+}
+
 /** An actor, as the shell draws every person (docs/design-system.md, "Actor Identity"): the
  * SDK's identity, the avatar's box and then the bold name, with GitHub's avatar in the box
  * where the record carries one that passes `avatarUrl`. The image is decorative beside the
@@ -4223,6 +4290,207 @@ export function authorLabel(
     className: "github-pull-identity",
     nameClass: `github-pull-author${className ? ` ${className}` : ""}`,
   });
+}
+
+/**
+ * A stack member's author, as the stack menu and a stack's page draw it at the end of its
+ * member row (`stackMemberRow`): as a Pulls row draws one, no box where it has no avatar,
+ * and its avatar asked for once the row is drawn (docs/design-system.md, "Actor Identity").
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @returns {(login: string, avatar: string | null) => HTMLElement}
+ */
+export function stackMemberIdentity(mb) {
+  return (login, avatar) =>
+    authorLabel(mb, login, avatar, "github-pull-stack-member-author", { placeholder: false });
+}
+
+/**
+ * Give *node* its own text as a tooltip whenever it is cut short, until *signal*, if any,
+ * aborts.
+ *
+ * @template {HTMLElement} T
+ * @param {T} node
+ * @param {AbortSignal} [signal]
+ * @returns {T}
+ */
+export function tipWhenCut(node, signal) {
+  node.addEventListener(
+    "pointerenter",
+    () => {
+      if (node.scrollWidth > node.clientWidth) {
+        node.dataset.tipText = node.textContent ?? "";
+      } else {
+        delete node.dataset.tipText;
+      }
+    },
+    { signal },
+  );
+  return node;
+}
+
+/**
+ * A page's title heading, a pull request's or a stack's: *icon* in the state icon's slot,
+ * the title's *words*, and the number. The number is outside the clamped text, so a title
+ * cut short keeps it.
+ *
+ * @param {Node} icon
+ * @param {Array<Node | string>} words
+ * @param {number} number
+ */
+export function titleHeading(icon, words, number) {
+  const titleText = h("span", { class: "github-pull-title-text" }, words);
+  const heading = h(
+    "h1",
+    { class: "page-heading github-pull-title github-pull-title-with-state" },
+    [icon, titleText, " ", h("span", { class: "github-pull-number" }, [`#${number}`])],
+  );
+  return { heading, titleText };
+}
+
+/**
+ * The header of a pull request's page or a stack's, and the lines both have, empty
+ * (docs/design-system.md, "Page Headers"): the head and base branches, the status line, the
+ * change set's size line, and its Diff summary, whose class carries the diff plugin's styles
+ * for a summary. Each page fills them and puts them in its header in its order.
+ */
+export function pageHeaderParts() {
+  return {
+    header: h("div", { class: "github-pull-header page-header page-reading-column" }),
+    branches: h("div", { class: "github-pull-branches page-header-line" }),
+    status: h("div", { class: "github-pull-status page-header-line" }),
+    size: h("div", { class: "github-pull-size page-header-line page-header-size" }),
+    summary: h("div", { class: "github-pull-summary metabrowser-diff-host page-header-line" }),
+  };
+}
+
+/**
+ * The pending placeholders of a header's Diff summary and size line, while the comparison
+ * they are drawn from is on its way (mb-onr2): the navigation tally's gray block and slow
+ * pulse (`.tally-pending`), after the quiet period (`.mb-delayed-loading`), where the
+ * summary's header and the size line will be. The reveal wrapper and the block are separate
+ * nodes, as a pending section's are; a page keeps them across paints, so a wait's quiet
+ * period and pulse run once.
+ */
+export function summaryPlaceholders() {
+  return {
+    summary: h(
+      "span",
+      {
+        class: "mb-delayed-loading github-pull-summary-pending",
+        role: "status",
+        "aria-label": "Loading the summary of changes",
+      },
+      [h("span", { class: "tally-pending", "aria-hidden": "true" })],
+    ),
+    size: h("span", { class: "mb-delayed-loading github-pull-size-pending" }, [
+      h("span", { class: "tally-pending", "aria-hidden": "true" }),
+    ]),
+  };
+}
+
+/**
+ * The parts of a header's status line (docs/design-system.md, "The Pull Request Page"),
+ * a pull request's and a stack's: a message muted, a failure in the warning's ink and cut
+ * short with its text as a tooltip, and at the line's end what it asks of the reader, its
+ * text actions and offers, so a message or failure changing its width moves nothing after
+ * it. `failed` marks a line whose failure may wrap, since it carries its remedy.
+ */
+export const statusLine = Object.freeze({
+  /** @param {string} text */
+  message: (text) => h("span", { class: "github-pull-message" }, [text]),
+  /**
+   * @param {string} text
+   * @param {AbortSignal} [signal]
+   */
+  failure: (text, signal) =>
+    tipWhenCut(h("span", { class: "github-pull-failure" }, [text]), signal),
+  /** The line's end, which holds its actions and offers. */
+  end: () => h("span", { class: "github-pull-status-end" }),
+  /**
+   * A text action, such as Retry or Fetch: a text action, as the line's offers are links,
+   * so the line is no taller than its text.
+   *
+   * @param {string} label
+   */
+  action: (label) =>
+    h("button", { type: "button", class: "github-pull-text-action github-pull-remedy" }, [label]),
+  /**
+   * An offer: its sentence is cut short before its control is, so a narrow pane still
+   * shows the control inside the header (styles.css, "The offers").
+   *
+   * @param {Array<Node | string>} sentence
+   * @param {HTMLElement} control
+   * @param {AbortSignal} [signal]
+   */
+  offer: (sentence, control, signal) =>
+    h("span", { class: "github-pull-offer" }, [
+      tipWhenCut(h("span", { class: "github-pull-offer-text" }, sentence), signal),
+      " ",
+      control,
+    ]),
+  /**
+   * @param {HTMLElement} line
+   * @param {boolean} failed
+   */
+  failed: (line, failed) => line.classList.toggle("github-pull-status-failed", failed),
+});
+
+/**
+ * Docs or Changes held as a pull request's page holds them, in *body*: the diff's host,
+ * and under it the shell's delayed loading block, so progress cannot move the diff's first
+ * row. `hold` keeps the diff out of sight (`.github-pull-diff-holding`) from its first
+ * draw; `firstScreen` waits until its first screen's Markdown waits no more, at most
+ * `CHANGES_FIRST_SCREEN_MS`, and says which came first, "met" or "bound", or null for a
+ * mount with no first screen to wait for, so the first screen the reader sees is the one
+ * that stays; `release` takes the block away and shows the diff.
+ *
+ * @param {HTMLElement} body
+ */
+export function holdDiff(body) {
+  const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
+  const loading = h(
+    "div",
+    {
+      class: "loading mb-delayed-loading github-pull-diff-loading",
+      role: "status",
+      "aria-label": "Loading changes",
+    },
+    [h("span", { class: "spinner", "aria-hidden": "true" })],
+  );
+  body.replaceChildren(host, loading);
+  return {
+    host,
+    loading,
+    hold() {
+      host.classList.add("github-pull-diff-holding");
+    },
+    /**
+     * @param {unknown} mounted
+     * @returns {Promise<"met" | "bound" | null>}
+     */
+    async firstScreen(mounted) {
+      const firstScreen = /** @type {{firstScreen?: () => Promise<void>} | null} */ (mounted)
+        ?.firstScreen;
+      if (typeof firstScreen !== "function") {
+        return null;
+      }
+      /** @type {ReturnType<typeof window.setTimeout> | undefined} */
+      let bound;
+      const outcome = await Promise.race([
+        firstScreen.call(mounted).then(() => /** @type {const} */ ("met")),
+        new Promise((resolve) => {
+          bound = window.setTimeout(() => resolve("bound"), CHANGES_FIRST_SCREEN_MS);
+        }),
+      ]);
+      window.clearTimeout(bound);
+      return /** @type {"met" | "bound"} */ (outcome);
+    },
+    release() {
+      loading.remove();
+      host.classList.remove("github-pull-diff-holding");
+    },
+  };
 }
 
 /** Whether a destination is this exact known pull request, including its subpages.
@@ -4420,10 +4688,8 @@ export function createStackMenu(initial, number, deps) {
   /** @type {HTMLElement[]} */
   const links = [];
   /**
-   * Each member's line, and what it last drew, so a repaint that changes nothing changes no
-   * node: `text`, `state`, and `author` are the title, the state, and the author shown, `state`
-   * and `author` undefined before any.
-   * @type {Map<number, {link: HTMLElement, icon: HTMLElement, position: HTMLElement, title: HTMLElement, copy: HTMLElement, by: HTMLElement, shown: {text: string | null, state: import("./pull-state.js").PullState | null | undefined, author: string | undefined}}>}
+   * Each member's row (`stackMemberRow`), which changes only what a repaint changes.
+   * @type {Map<number, import("./stack-member-row.js").StackMemberRow>}
    */
   const rows = new Map();
   // The members under the heading that names them and the menu: the host's group
@@ -4454,14 +4720,18 @@ export function createStackMenu(initial, number, deps) {
           deps.icon === null ? null : document.importNode(deps.icon, true),
         ]),
         h("span", { class: "github-pull-stack-member-copy" }, [
-          h("span", { class: "github-pull-stack-member-title" }, ["Whole stack"]),
+          h("span", { class: "github-pull-stack-member-title" }, [WHOLE_STACK]),
         ]),
       );
     }
     return whole;
   }
 
-  /** Each drawn member's state icon, place, and title, from the stack and `deps.state`. */
+  /**
+   * Each drawn member's line, from the stack, `deps.state`, and its author
+   * (`stackMemberAuthor`): its title, or the page's own for its pull request, its place,
+   * its state, and its author where the menu has an identity to draw it with.
+   */
   function updateMembers() {
     for (let at = 0; at < stack.pulls.length; at += 1) {
       const target = stack.pulls[at];
@@ -4469,51 +4739,16 @@ export function createStackMenu(initial, number, deps) {
       if (!row) {
         continue;
       }
-      const title =
-        stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
-      if (row.shown.text !== title) {
-        row.title.replaceChildren(...deps.titleNodes(title));
-        // The whole title, which the shell shows only while the line cuts it short
-        // (docs/design-system.md, "Tooltips Add Information").
-        row.link.setAttribute("data-tip-text", title);
-        row.shown.text = title;
-      }
-      const place = stackPosition(at, stack.pulls.length);
-      if (row.position.textContent !== place) {
-        row.position.textContent = place;
-      }
-      const state = deps.state?.(target) ?? null;
-      if (row.shown.state !== state) {
-        // Named, as a Pulls row's icon is, since nothing else on the line says the state; an
-        // unknown state keeps the icon's slot, empty.
-        row.icon =
-          state === null
-            ? h("span", { class: "github-pull-state-icon", "aria-hidden": "true" })
-            : pullStateIcon(state);
-        row.link.replaceChildren(row.icon, row.copy);
-        row.shown.state = state;
-      }
-      const author =
-        deps.identity === undefined
-          ? null
-          : stackMemberAuthor(stack, at, target === number ? (deps.author?.() ?? null) : null);
-      const said = author === null ? "" : `${author.login}\n${author.avatar ?? ""}`;
-      if (row.shown.author !== said) {
-        // After the number, a muted dot and the author, as a Pulls row's run has them
-        // (mb-x0z1); nothing, not even the space before them, where the author is not known.
-        row.by.replaceChildren(
-          ...(author === null || deps.identity === undefined
-            ? []
-            : [
-                " ",
-                h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-                " ",
-                deps.identity(author.login, author.avatar),
-              ]),
-        );
-        row.by.hidden = author === null;
-        row.shown.author = said;
-      }
+      row.show({
+        number: target,
+        place: stackPosition(at, stack.pulls.length),
+        title: stack.titles?.[at] || (target === number ? currentTitle : null),
+        state: deps.state?.(target) ?? null,
+        author:
+          deps.identity === undefined
+            ? null
+            : stackMemberAuthor(stack, at, target === number ? (deps.author?.() ?? null) : null),
+      });
     }
   }
 
@@ -4548,37 +4783,12 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
-        // The state icon, then the title, and at the line's end the place, a muted dot, the
-        // number, and another dot and the author, "14/15 · #N · jlevy", in a Pulls row's order,
-        // the title, the place, the number, and the author (mb-1kzu, mb-pw8t, mb-x0z1): the
-        // place, the dot, and the number never give way, the author gives way only past its
-        // share of the line, and the title is cut short before them.
-        const title = h("span", { class: "github-pull-stack-member-title" });
-        const position = h("strong", { class: "github-pull-stack-member-position" });
-        const dot = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
-        const shown = h("span", { class: "github-pull-stack-member-number" }, [`#${target}`]);
-        const by = h("span", { class: "github-pull-stack-member-by", hidden: "" });
-        const copy = h("span", { class: "github-pull-stack-member-copy" }, [
-          title,
-          " ",
-          position,
-          " ",
-          dot,
-          " ",
-          shown,
-          by,
-        ]);
-        const icon = h("span", { class: "github-pull-state-icon", "aria-hidden": "true" });
-        link.append(icon, copy);
-        row = {
-          link,
-          icon,
-          position,
-          title,
-          copy,
-          by,
-          shown: { text: null, state: undefined, author: undefined },
-        };
+        // The member row the stack's page draws too (stack-member-row.js): the state icon, the
+        // title, and at the line's end the place, the number, and the author, "14/15 · #N ·
+        // jlevy" (mb-1kzu, mb-pw8t, mb-x0z1); the place, the dot, and the number never give
+        // way, the author gives way only past its share of the line, and the title is cut
+        // short before them.
+        row = stackMemberRow(link, deps.titleNodes, deps.identity);
         rows.set(target, row);
       }
       links.push(row.link);
@@ -4765,13 +4975,16 @@ export function createStackMenu(initial, number, deps) {
  * `signal` aborts, as the page's disposal aborts it. Returns one handle per link, in
  * order, or none on a host without the surface.
  *
+ * A stack's page gives its tabs the same keys, with its own word for whose tab it is.
+ *
  * @param {MetabrowserPublicPluginShortcutsApi | undefined} shortcuts
  * @param {ReadonlyArray<{id: string, link: HTMLElement}>} tabLinks
  * @param {(tab: string) => void} setTab
  * @param {AbortSignal} signal
+ * @param {string} [owner] Whose tabs they are, in Help's words.
  * @returns {MetabrowserPublicPluginShortcutHandle[]}
  */
-export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
+export function attachTabKeys(shortcuts, tabLinks, setTab, signal, owner = "pull request") {
   if (typeof shortcuts?.attach !== "function") {
     return [];
   }
@@ -4785,7 +4998,7 @@ export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
         activate: () => setTab(id),
         copy: {
           action: tab.label,
-          description: `Show the pull request’s ${tab.label} tab.`,
+          description: `Show the ${owner}’s ${tab.label} tab.`,
           hint: tab.label,
         },
         group: "view-tabs",
@@ -4864,8 +5077,15 @@ export function mountPullPage(container, ctx, mb) {
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
   // The shared page header's lines start with state and ages beneath the title and end
-  // with the Diff summary (docs/design-system.md, "Page Headers").
-  const header = h("div", { class: "github-pull-header page-header page-reading-column" });
+  // with the Diff summary (docs/design-system.md, "Page Headers"); the lines a stack's page
+  // has too are `pageHeaderParts`'s.
+  const {
+    header,
+    branches: branchesRow,
+    status,
+    size: sizeRow,
+    summary: summaryRow,
+  } = pageHeaderParts();
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
   // line each, so nothing that arrives later, a stack, a label's color, a Refresh, the age
@@ -4926,41 +5146,23 @@ export function mountPullPage(container, ctx, mb) {
   const freshnessNote = h("span", { class: "github-pull-note" }, [freshnessSep, freshnessSlot]);
   const stateLead = h("span", { class: "github-pull-meta-lead" }, [stateDetails, freshnessNote]);
   const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [stateLead]);
-  // The head and base branches, on a line of their own under the author's sentence: a line
-  // tall, the merge's arrow's, while no record is shown too.
-  const branchesRow = h("div", { class: "github-pull-branches page-header-line" });
+  // The head and base branches (`branchesRow`) are on a line of their own under the author's
+  // sentence: a line tall, the merge's arrow's, while no record is shown too.
   // The pull request's state leads the row of its ages: its badge, then when it was
   // opened, updated, merged, or closed, then Refresh's slot and, at its end, the stack's.
   const openedRow = h("div", { class: "github-pull-opened page-header-line" });
   // The pull request's Diff summary, the header's last row, above the tabs and on every one
   // of them (mb-pb35): its header the change set's file and line totals, its tree the
   // changed files. Its row is held from first paint, so the summary arriving with the
-  // comparison moves nothing. Its class carries the diff plugin's styles for a summary.
-  const summaryRow = h("div", {
-    class: "github-pull-summary metabrowser-diff-host page-header-line",
-  });
+  // comparison moves nothing (`summaryRow`).
   // While the page waits for the comparison its summary is drawn from, the row holds the
-  // shell's pending placeholder (mb-onr2): the navigation tally's gray block and slow pulse
-  // (`.tally-pending`), after the quiet period (`.mb-delayed-loading`), where the summary's
-  // header will be. The reveal wrapper and the block are separate nodes, as a pending
-  // section's are, and kept across paints, so a wait's quiet period and pulse run once.
-  const summaryPending = h(
-    "span",
-    {
-      class: "mb-delayed-loading github-pull-summary-pending",
-      role: "status",
-      "aria-label": "Loading the summary of changes",
-    },
-    [h("span", { class: "tally-pending", "aria-hidden": "true" })],
-  );
+  // shell's pending placeholder (`summaryPlaceholders`).
+  const { summary: summaryPending, size: sizePending } = summaryPlaceholders();
   // The change set's size line, the header's line above its Diff summary
   // (docs/design-system.md, "Change Size Line"): "2 commits · 36 files changed · 1.8 MB
   // compressed (6.2 MB raw diff)". It is there whenever the summary's row is, holding the
-  // same pending placeholder while the summary waits, so neither row moves the tabs.
-  const sizeRow = h("div", { class: "github-pull-size page-header-line page-header-size" });
-  const sizePending = h("span", { class: "mb-delayed-loading github-pull-size-pending" }, [
-    h("span", { class: "tally-pending", "aria-hidden": "true" }),
-  ]);
+  // same pending placeholder while the summary waits, so neither row moves the tabs
+  // (`sizeRow`).
   // A wait for the summary still running at the event log's late threshold says so in the
   // placeholder's place, with Details (mb-9zp5): a placeholder that only pulsed left the
   // reader no way to tell slow from stuck, nor anyone a record of it. A line tall, as the
@@ -4986,8 +5188,7 @@ export function mountPullPage(container, ctx, mb) {
   // The status line: what the page has to say beyond the note, a failure and its remedy, a
   // message, and the offers, one of the header's metadata lines, a line tall as the author's
   // row is, there only while it has something to say. Its controls are text actions, a line
-  // tall (mb-2u08). The row of ages is a stack chip's height (mb-646g).
-  const status = h("div", { class: "github-pull-status page-header-line" });
+  // tall (mb-2u08). The row of ages is a stack chip's height (mb-646g). It is `status`.
   /** Commits of the conversation are being read from GitHub for the record shown. */
   let timelineBusy = false;
   let stackIndex = createStackIndex(null);
@@ -5247,54 +5448,13 @@ export function mountPullPage(container, ctx, mb) {
         )
       : null;
 
-  /** An exact time, as an age's tooltip and a rate limit's lift give it. @param {number} ms */
-  const exact = (ms) => mb.formatTimestamp(ms / 1000);
   /**
-   * An age, from the one primitive, with the exact time in its tooltip. `also` is a time
-   * the row leaves out because its age reads the same as this one; its exact time joins
-   * this tooltip, so leaving the age out loses nothing.
+   * An age, the one this page and a stack's page draw (`pullAge`).
    *
    * @param {string} iso
    * @param {{label: string, iso: string} | null} [also]
    */
-  const age = (iso, also = null) => {
-    const at = Date.parse(iso);
-    if (!Number.isFinite(at)) {
-      return h("span", {}, [iso]);
-    }
-    const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-    const alsoAt = also === null ? Number.NaN : Date.parse(also.iso);
-    const tip =
-      also !== null && Number.isFinite(alsoAt)
-        ? `${exact(at)} · ${also.label} ${exact(alsoAt)}`
-        : exact(at);
-    return h(
-      "span",
-      { class: `github-pull-age ${className}`, "data-tip-text": tip, "data-age-at": String(at) },
-      [label],
-    );
-  };
-
-  /**
-   * Tell the ages in a kept node again, as of now: a section kept across paints keeps its
-   * node, and its ages would otherwise read as of when it was built.
-   *
-   * @param {Element} node
-   */
-  const retellAges = (node) => {
-    for (const element of node.querySelectorAll(".github-pull-age")) {
-      const at = Number(element.getAttribute("data-age-at"));
-      if (Number.isFinite(at)) {
-        const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-        if (element.textContent !== label) {
-          element.textContent = label;
-        }
-        if (element.getAttribute("class") !== `github-pull-age ${className}`) {
-          element.setAttribute("class", `github-pull-age ${className}`);
-        }
-      }
-    }
-  };
+  const age = (iso, also = null) => pullAge(mb, iso, also);
 
   /**
    * A check's action. A GitHub destination is the quiet GitHub action, its mark leading;
@@ -5930,10 +6090,7 @@ export function mountPullPage(container, ctx, mb) {
         state: (target) =>
           stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
         author: () => stackPullAuthor,
-        // A member's author as a Pulls row draws it: no box where it has no avatar, and its
-        // avatar asked for once the menu draws it (docs/design-system.md, "Actor Identity").
-        identity: (login, avatar) =>
-          authorLabel(mb, login, avatar, "github-pull-stack-member-author", { placeholder: false }),
+        identity: stackMemberIdentity(mb),
         onOpen() {
           preferredStack = stack.number;
           for (const [other, view] of stackMenus) {
@@ -6008,27 +6165,16 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * A title: the state's icon, the title, and its number. A conventional-commit prefix is
-   * regular and the rest bold (docs/design-system.md, "Titles"); the number is outside the
-   * clamped text, so a title cut short keeps it.
+   * A title (`titleHeading`): the state's icon, the title, and its number. A
+   * conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+   * "Titles").
    *
    * @param {import("./pull-state.js").PullState} state
    * @param {string} title
    * @param {number} number
    */
-  function titleHeading(state, title, number) {
-    const titleText = h("span", { class: "github-pull-title-text" }, mb.titleNodes(title));
-    const heading = h(
-      "h1",
-      { class: "page-heading github-pull-title github-pull-title-with-state" },
-      [
-        pullStateIcon(state, { named: false }),
-        titleText,
-        " ",
-        h("span", { class: "github-pull-number" }, [`#${number}`]),
-      ],
-    );
-    return { heading, titleText };
+  function pullTitle(state, title, number) {
+    return titleHeading(pullStateIcon(state, { named: false }), mb.titleNodes(title), number);
   }
 
   // A sizer of every state's label, each a badge's box of no height, after the badge: the
@@ -6136,39 +6282,6 @@ export function mountPullPage(container, ctx, mb) {
     } else {
       freshnessLine.removeAttribute("aria-busy");
     }
-  }
-
-  /**
-   * Give *node* its own text as a tooltip whenever it is cut short.
-   *
-   * @template {HTMLElement} T
-   * @param {T} node
-   * @returns {T}
-   */
-  function tipWhenCut(node) {
-    node.addEventListener("pointerenter", () => {
-      if (node.scrollWidth > node.clientWidth) {
-        node.dataset.tipText = node.textContent ?? "";
-      } else {
-        delete node.dataset.tipText;
-      }
-    });
-    return node;
-  }
-
-  /**
-   * An offer at the status row's end: its sentence is cut short before its control is,
-   * so a narrow pane still shows the control inside the header (styles.css, "The offers").
-   *
-   * @param {Array<Node | string>} sentence
-   * @param {HTMLElement} control
-   */
-  function offer(sentence, control) {
-    return h("span", { class: "github-pull-offer" }, [
-      tipWhenCut(h("span", { class: "github-pull-offer-text" }, sentence)),
-      " ",
-      control,
-    ]);
   }
 
   /** Refresh what the page shows: on Changes, the comparison on screen with the record. */
@@ -6295,7 +6408,7 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
       const title = headerPart("title", [pull.state, pull.title, pull.number], () => {
-        const { heading, titleText } = titleHeading(pull.state, pull.title, pull.number);
+        const { heading, titleText } = pullTitle(pull.state, pull.title, pull.number);
         // Two lines at most: a title cut short there carries the whole of it in its
         // tooltip. Cut short is a line or more hidden; a title of two lines that fit
         // overhangs its box by a pixel or two of descender (62 against 60 px, Chrome 152).
@@ -6344,7 +6457,7 @@ export function mountPullPage(container, ctx, mb) {
           return { row, browse };
         },
       );
-      retellAges(opened.row);
+      retellAges(mb, opened.row);
       if (opened.browse !== null) {
         numbered.set("browse", {
           element: opened.browse,
@@ -6379,7 +6492,7 @@ export function mountPullPage(container, ctx, mb) {
             ? h("h1", { class: "page-heading github-pull-title" }, [
                 `Pull request #${model.number}`,
               ])
-            : titleHeading(seed.state, seed.title, model.number).heading,
+            : pullTitle(seed.state, seed.title, model.number).heading,
         ),
         counterpartCorner,
       );
@@ -6408,10 +6521,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     status.dataset.status = model.status;
     // A failure is the one text the row lets wrap: it carries its remedy.
-    status.classList.toggle(
-      "github-pull-status-failed",
-      model.failure !== null && model.failureHold !== true,
-    );
+    statusLine.failed(status, model.failure !== null && model.failureHold !== true);
     // The author's row ends in the note (mb-ne91): a record's one time, or a rate limit's hold
     // in its place, which begins and lifts by itself and asks nothing of the reader, so it
     // changes no row: on the status line it added one, moving the tab bar 27 px as it began
@@ -6461,19 +6571,14 @@ export function mountPullPage(container, ctx, mb) {
     // Refresh does the same and refreshes the list too; this one is beside the sentence that
     // names its cause, so a reader with the navigation pane hidden, where the Pulls tab's keys
     // do nothing, still has it. A failed read or a failed switch to the head has nothing for
-    // Retry to ask again. A text action, as the row's other offers are links, so the row is
-    // no taller than its text.
+    // Retry to ask again.
     const asks =
       pull === null
         ? (failure !== null && model.failureHold !== true) || message !== null
         : model.refreshFailed;
     const remedyLabel = model.status === "absent" ? "Fetch" : "Retry";
     const remedy = headerPart("remedy", remedyLabel, () => {
-      const button = h(
-        "button",
-        { type: "button", class: "github-pull-text-action github-pull-remedy" },
-        [remedyLabel],
-      );
+      const button = statusLine.action(remedyLabel);
       // Held until a paint offers it, so a refresh already running as the page mounts shows
       // no waiting Retry that nothing had offered.
       button.hidden = true;
@@ -6503,7 +6608,7 @@ export function mountPullPage(container, ctx, mb) {
       const href = mb.navigation.href({ path: "" });
       const held = headerPart("checkout offer", [checkoutAtHead, href], () => {
         const link = h("a", { href }, ["Browse the checkout"]);
-        return { offer: offer([checkoutAtHead], link), link };
+        return { offer: statusLine.offer([checkoutAtHead], link), link };
       });
       numbered.set("checkout", {
         element: held.link,
@@ -6511,27 +6616,17 @@ export function mountPullPage(container, ctx, mb) {
       });
       ending.push(held.offer);
     }
-    const end = headerPart("status end", null, () =>
-      h("span", { class: "github-pull-status-end" }),
-    );
+    const end = headerPart("status end", null, () => statusLine.end());
     const agesRow = children.includes(openedRow);
     placeChildren(end, ending);
     /** @type {Element[]} */
     const statusText = [
       ...(message === null
         ? []
-        : [
-            headerPart("message", message, () =>
-              h("span", { class: "github-pull-message" }, [message]),
-            ),
-          ]),
+        : [headerPart("message", message, () => statusLine.message(message))]),
       ...(failure === null
         ? []
-        : [
-            headerPart("failure", failure, () =>
-              tipWhenCut(h("span", { class: "github-pull-failure" }, [failure])),
-            ),
-          ]),
+        : [headerPart("failure", failure, () => statusLine.failure(failure))]),
       // What the event log holds of the failure: its cause, the address, and the timings
       // (mb-9zp5). Not for a rate limit's hold, which is not a failure.
       ...(failure === null || model.failureHold === true
@@ -6629,7 +6724,7 @@ export function mountPullPage(container, ctx, mb) {
   function commitRow(event, source, shownRows) {
     const shownRow = shownRows.get(event.oid);
     if (shownRow !== undefined) {
-      retellAges(shownRow);
+      retellAges(mb, shownRow);
       return shownRow;
     }
     const href = timelineCommitHref(source, number, event.oid);
@@ -6808,7 +6903,7 @@ export function mountPullPage(container, ctx, mb) {
         sectionTexts.set(node, collecting);
         collecting = null;
       } else {
-        retellAges(node);
+        retellAges(mb, node);
       }
       next.set(key, node);
       order.push(node);
@@ -6898,7 +6993,7 @@ export function mountPullPage(container, ctx, mb) {
     const inserts = model.corePreview ? new Map() : (before?.inserts ?? new Map());
     const rows = new Set(inserts.values());
     for (const row of rows) {
-      retellAges(row);
+      retellAges(mb, row);
     }
     const placed = new Set(order);
     const cover = firstPaint?.cover ?? null;
@@ -7924,7 +8019,10 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
-    const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
+    // The diff's host, with progress kept below it so it cannot move the diff's first row
+    // (`holdDiff`, which a stack's page holds its diff with too).
+    const held = holdDiff(body);
+    const { host, loading } = held;
     diffHost = host;
     diffFor = comparison;
     changesShown = shownComparison(comparison);
@@ -7940,17 +8038,6 @@ export function mountPullPage(container, ctx, mb) {
       summaryReading(comparison);
     }
     const owns = () => !listening.signal.aborted && diffHost === host;
-    const loading = h(
-      "div",
-      {
-        class: "loading mb-delayed-loading github-pull-diff-loading",
-        role: "status",
-        "aria-label": "Loading changes",
-      },
-      [h("span", { class: "spinner", "aria-hidden": "true" })],
-    );
-    // Keep progress below the host so it cannot move the diff’s first row.
-    body.replaceChildren(host, loading);
     // Whether the diff read its document, which the page's Diff summary is drawn from: a
     // diff that could not leaves the summary's row empty rather than pending (mb-onr2).
     let documented = false;
@@ -7978,7 +8065,7 @@ export function mountPullPage(container, ctx, mb) {
       // its first screen's Markdown waits no more, at most its bound; progress stays below.
       const holds = comparison.rendered_route !== undefined;
       if (holds) {
-        host.classList.add("github-pull-diff-holding");
+        held.hold();
       }
       const handle = /** @type {{dispose?: () => void, currentFile?: () => unknown} | null} */ (
         await mb.perf.measureAsync(
@@ -8063,19 +8150,9 @@ export function mountPullPage(container, ctx, mb) {
         place?.keeper.readerMoved();
       }
       keptThrough = false;
-      const firstScreen = /** @type {{firstScreen?: () => Promise<void>} | null} */ (handle)
-        ?.firstScreen;
-      if (holds && typeof firstScreen === "function") {
-        const since = Date.now();
-        /** @type {ReturnType<typeof window.setTimeout> | undefined} */
-        let bound;
-        const outcome = await Promise.race([
-          firstScreen().then(() => "met"),
-          new Promise((resolve) => {
-            bound = window.setTimeout(() => resolve("bound"), CHANGES_FIRST_SCREEN_MS);
-          }),
-        ]);
-        window.clearTimeout(bound);
+      const since = Date.now();
+      const outcome = holds ? await held.firstScreen(handle) : null;
+      if (outcome !== null) {
         mb.perf.measure("githubPull:changesHold", () => {}, {
           number,
           heldMs: Date.now() - since,
@@ -8083,13 +8160,13 @@ export function mountPullPage(container, ctx, mb) {
           outcome: owns() ? outcome : "cancelled",
         });
       }
-      loading.remove();
       if (!owns()) {
         // A page that went while its diff was held keeps it out of sight, as its conversation
         // does: the page replacing it shows it as it was until that one is ready.
+        loading.remove();
         return;
       }
-      host.classList.remove("github-pull-diff-holding");
+      held.release();
       // Failed diff loads resolve to a disposable notice without the public file API.
       // Do not report that surface, or a replaced mount, as useful Files readiness.
       if (owns() && typeof handle?.currentFile === "function") {
@@ -8102,7 +8179,7 @@ export function mountPullPage(container, ctx, mb) {
       if (!documented && !docs) {
         summaryUnavailable(comparison);
       }
-      host.classList.remove("github-pull-diff-holding");
+      held.release();
       const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
       retry.addEventListener("click", () => {
         if (owns()) {

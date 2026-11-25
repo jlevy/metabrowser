@@ -39,6 +39,10 @@ them: open, with each changed key removed and added, when the front matter chang
 closed, as the Document view’s is, above the body’s changes when it did not; and one
 open removed or added row, every key with it, when the file lost or gained it.
 Rendered blocks are removed, added, or unchanged, with changed words marked.
+Each run of changed blocks is one change, and each run of one kind in it one run, the
+one box that draws its band (`changeRuns`), so a band has no gap between two of its
+blocks: the session fails on a changed row outside a run of its kind, two runs of one
+kind side by side, or two changes side by side.
 Raw HTML, here a centered image, a line break, a key, and a `<details>` around Markdown,
 keeps what the server’s sanitizer and the shared allowlist keep of it, as the Document
 view does, except that the `<details>` in an added row is open.
@@ -57,8 +61,9 @@ meanwhile; Full that fails after the reader chose Source leaves Source chosen, a
 choosing Full again asks again.
 Switching back asks for nothing, and the folds the reader opened stay open.
 A document past `WHOLE_UNITS` blocks is drawn a chunk at a time: a chunk not drawn yet
-keeps the place of its estimated height, and is drawn when the reader comes near it, and
-a link to a heading in a later chunk draws every chunk through it before it goes there.
+keeps the place of its estimated height, and is drawn when the reader comes near it,
+joined to the change on either side of it when a run crosses into it, and a link to a
+heading in a later chunk draws every chunk through it before it goes there.
 An image of the head keeps its address on the image route.
 A link to a file of the head keeps its `/view/` address only while the page shows the
 head, which is where that address opens the file; the server’s answer is the same for
@@ -419,7 +424,8 @@ $ node tests/dom/diff-markdown-session.js
             "[Frontmatter, open, removed]",
             "  removed: draft = True",
             "  removed: title = Plain",
-            "context: <h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>",
+            "removed: <h1 id=\"user-content-71ee10c56ecf50774ee672b1-old-plain\">Plain</h1>",
+            "added: <h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain-page\">Plain <ins>Page</ins></h1>",
             "context: <p>Text.</p>"
           ]
         }
@@ -872,6 +878,27 @@ $ node tests/dom/diff-markdown-session.js long
             "... 197 rows ...",
             "[blocks 300-400 not drawn: 2384px]",
             "[blocks 400-500 not drawn: 2384px]",
+            "[blocks 500-600 not drawn: 2384px]",
+            "[blocks 600-623 not drawn: 564px]"
+          ]
+        }
+      }
+    },
+    {
+      "step": "coming near a later place first draws that chunk alone",
+      "requests": [],
+      "files": {
+        "f11 docs/book.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "added: <p>See <a href=\"#user-content-551f72faeefec8bfd215686a-new-the-last-part\">the last part</a>.</p>",
+            "added: <p>Page 0.</p>",
+            "added: <p>Page 1.</p>",
+            "added: <p>Page 2.</p>",
+            "... 296 rows ...",
+            "added: <p>Page 497.</p>",
+            "added: <p>Page 498.</p>",
             "[blocks 500-600 not drawn: 2384px]",
             "[blocks 600-623 not drawn: 564px]"
           ]

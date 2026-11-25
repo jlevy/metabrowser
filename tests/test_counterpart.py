@@ -23,6 +23,7 @@ from metabrowser.builtin_plugins.github.urls import (
     file_anchor,
     pulls_url,
     repository_url,
+    stack_url,
 )
 from metabrowser.cache.providers import counterpart_host_for
 from metabrowser.cache.urls import (
@@ -112,6 +113,8 @@ def test_a_request_without_a_page_is_refused(tmp_path: Path, query: dict[str, st
         "/view",
         "/pull/0",
         "/pull/7/commits",
+        # A stack's files are its header's Diff summary: it has no Files tab.
+        "/stack/7/files",
         "/commit/6df6ba6",
         "/commit/main",
         "/" + "x" * (MAX_PAGE_CHARS - 1),
@@ -196,6 +199,13 @@ def test_the_list_of_pull_requests_is_beside_the_repository() -> None:
     assert pulls_url("https://example.com/octo/demo") is None
 
 
+def test_a_stack_is_its_own_page_beside_the_repository() -> None:
+    """The whole stack, not its top member: GitHub's ``stack/<n>`` draws every member."""
+
+    assert stack_url(repository_url("octo", "demo"), 70) == f"{CANONICAL}/stack/70"
+    assert stack_url("https://example.com/octo/demo", 70) is None
+
+
 def _context(host: str, owner: str = "octo", name: str = "demo") -> RepositoryContext:
     return RepositoryContext(
         branch="main",
@@ -220,6 +230,7 @@ def test_the_route_reaches_github_through_its_provider() -> None:
     host, clone_url = hosted
     assert (host.provider, host.label, clone_url) == ("github", "View on GitHub", CANONICAL)
     assert host.pulls_url(clone_url) == f"{CANONICAL}/pulls"
+    assert host.stack_url(clone_url, 70) == f"{CANONICAL}/stack/70"
     assert host.file_anchor(b"README.md") == FileAnchor(README_DIGEST)
     selection = RepositorySelection(kind="tree", ref_and_path=(COMMIT.encode(), b"docs"))
     assert host.web_url(clone_url, selection) == f"{CANONICAL}/tree/{COMMIT}/docs"

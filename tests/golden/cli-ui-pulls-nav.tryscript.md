@@ -142,6 +142,20 @@ $ node tests/dom/pulls-nav-session.js
       "focus on": "Stack #286",
       "address": "/view/"
     },
+    "Space on a stack's Whole stack row opens the stack's page": {
+      "handled": true,
+      "did": [
+        "the shell opened /stack/286, pushing"
+      ],
+      "focus on": "Whole stack of #286",
+      "address": "/stack/286"
+    },
+    "holding Space on it opens nothing more": {
+      "handled": true,
+      "did": [],
+      "focus on": "Whole stack of #286",
+      "address": "/stack/286"
+    },
     "J on it is the list's": {
       "handled": true,
       "did": [
@@ -355,7 +369,8 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": null,
         "filter": "open",
-        "file": null
+        "file": null,
+        "stack": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -365,7 +380,8 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": null,
         "filter": "closed",
-        "file": null
+        "file": null,
+        "stack": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -375,7 +391,8 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": null,
         "filter": "open",
-        "file": null
+        "file": null,
+        "stack": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -385,7 +402,8 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": 7,
         "filter": null,
-        "file": null
+        "file": null,
+        "stack": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -395,7 +413,30 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": 7,
         "filter": null,
-        "file": null
+        "file": null,
+        "stack": null
+      },
+      "from Files": "pulls",
+      "from Pulls": null,
+      "from Git": "pulls"
+    },
+    "/stack/70": {
+      "names": {
+        "page": null,
+        "filter": null,
+        "file": null,
+        "stack": 70
+      },
+      "from Files": "pulls",
+      "from Pulls": null,
+      "from Git": "pulls"
+    },
+    "/stack/70/changes": {
+      "names": {
+        "page": null,
+        "filter": null,
+        "file": null,
+        "stack": 70
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -524,6 +565,16 @@ $ node tests/dom/pulls-nav-session.js
       {
         "another pull request: the row follows": [
           "view told: current 8"
+        ]
+      },
+      {
+        "a stack's page: its Whole stack row is the current row": [
+          "view told: current null, Stack #70's page"
+        ]
+      },
+      {
+        "the Whole stack row's open is the shell's": [
+          "opened Stack #70's page"
         ]
       },
       {

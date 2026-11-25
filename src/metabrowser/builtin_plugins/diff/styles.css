@@ -12,12 +12,12 @@
   --diff-add-gutter: var(--status-success);
   --diff-del-gutter: var(--status-error);
   --diff-change-gutter-width: 3px;
-  /* How far a changed Markdown block's band reaches past its text, above and below: the
-     4 px a row padded its block by before the band was drawn rather than laid out
-     (mb-6d1s). Half the least space KPress puts between two blocks (8 px, from an h5 or
-     h6 to its paragraph), so two changed blocks' bands meet there and never overlap,
-     which would draw a darker seam where their translucent grounds cross;
-     tests/test_diff_markdown_spacing_chrome.py holds that no two bands overlap. */
+  /* How far a Markdown change's band reaches past its text, above and below: the 4 px a
+     row padded its block by before the band was drawn rather than laid out (mb-6d1s).
+     Half the least space KPress puts between two blocks (8 px, from an h5 or h6 to its
+     paragraph), so where a removed run meets an added one their bands meet at most and
+     never overlap, which would draw a darker seam where their translucent grounds cross.
+     Within a run there is no seam to draw: one box draws its band (mb-zkmy). */
   --diff-markdown-band-extent: 4px;
   /* Held bodies and their eventual chrome use the same token-based dimensions. */
   --diff-code-row-height: calc(1.5 * var(--mono-block-font-size));
@@ -425,40 +425,6 @@
   align-self: baseline;
 }
 
-/* A host's marks on a file (diff-view.js, `fileMarkNodes`): a stack's page names
-   each layer that changes the file by its place, "2/4", a tag that opens the file in
-   that layer. They follow the stats in the file bar's name group, and the stats at a
-   Diff summary row's end, which may be drawn outside the diff's host. */
-.diff-file-marks {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
-  line-height: normal;
-  white-space: nowrap;
-}
-
-.diff-file-marks-row {
-  margin-left: 6px;
-}
-
-.diff-file-mark {
-  padding: 0 var(--compact-chip-padding-inline);
-  border: var(--chip-border) solid var(--border);
-  border-radius: var(--radius-tag);
-  color: var(--muted);
-  font-variant-numeric: var(--tabular-numerals);
-  text-decoration: none;
-}
-
-.diff-file-mark:hover,
-.diff-file-mark:focus-visible {
-  background: var(--hover-bg);
-  color: var(--link);
-}
-
 /* Inline change stats: the +N −N pair in the status palette, beside
    the filename rather than across the row. */
 .metabrowser-diff-host .diff-file-stats {
@@ -800,10 +766,11 @@
   display: none;
 }
 
-/* What Current leaves out of rendered Markdown, its removed blocks and front matter keys,
-   which the format controller hides by the attribute (`removedParts` in diff-markdown.js):
-   hidden whatever display a block's own styles give it. */
-.metabrowser-diff-host :is(.diff-markdown-block, .diff-markdown-frontmatter :is(dt, dd))[hidden] {
+/* What Current leaves out of rendered Markdown, its removed runs and blocks and front
+   matter keys, which the format controller hides by the attribute (`removedParts` in
+   diff-markdown.js): hidden whatever display a block's own styles give it. */
+.metabrowser-diff-host
+:is(.diff-markdown-run, .diff-markdown-block, .diff-markdown-frontmatter :is(dt, dd))[hidden] {
   display: none;
 }
 
@@ -847,59 +814,22 @@
   margin: 0;
 }
 
-/* One list item or quoted paragraph per row reads as one list or quote: between two rows
-   of one list or one quote, the list's or quote's own margins give way, so its items are
-   spaced as KPress spaces them inside it, and its first and last rows keep the margins
-   that set the list or quote apart in the document. */
-.metabrowser-diff-host .diff-markdown-block:has(> .kpress-prose > ul)
-  + .diff-markdown-block
-  > .kpress-prose
-  > ul,
-.metabrowser-diff-host
-  .diff-markdown-block:has(> .kpress-prose > ol)
-  + .diff-markdown-block
-  > .kpress-prose
-  > ol,
-.metabrowser-diff-host
-  .diff-markdown-block:has(> .kpress-prose > blockquote)
-  + .diff-markdown-block
-  > .kpress-prose
-  > blockquote {
+/* The changed rows are in changes and runs (`changeRuns` in diff-markdown.js), which set
+   no block padding or border and start no formatting context either, so a row's margins
+   collapse through them as they do through the row.
+
+   KPress spaces some blocks by the block before them: a list or a quote continued gives
+   way its margins, and a paragraph straight under an h4, h5, or h6 sits close under it. A
+   row's block has no block before it in its row, so `markJoins` in diff-markdown.js marks
+   each row by the rows shown before and after it, whatever changes, runs, hidden removed
+   runs, or chunk edges lie between them, and these rules give way the margins it marks
+   (docs/design-system.md, "Rendered Diff Spacing"). */
+.metabrowser-diff-host .diff-markdown-block[data-join~="start"] > .kpress-prose > :first-child {
   margin-block-start: 0;
 }
 
-.metabrowser-diff-host
-  .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > ul)
-  > .kpress-prose
-  > ul,
-.metabrowser-diff-host
-  .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > ol)
-  > .kpress-prose
-  > ol,
-.metabrowser-diff-host
-  .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > blockquote)
-  > .kpress-prose
-  > blockquote {
+.metabrowser-diff-host .diff-markdown-block[data-join~="end"] > .kpress-prose > :last-child {
   margin-block-end: 0;
-}
-
-/* KPress sets a paragraph right after an h4, h5, or h6 close under it (`h4 + p` to
-   `h6 + p`, no space above the paragraph), and a row's paragraph has no heading beside
-   it in its row, so the rule is carried across rows here, and across the one hidden row
-   an edited paragraph leaves when its removed version is not shown. KPress's `h2 + h3` is
-   not carried: its value is KPress's to set, so an h3 straight after an h2 keeps its own
-   space above it, 4.8 px more than the document's. */
-.metabrowser-diff-host .diff-markdown-block:has(> .kpress-prose > :is(h4, h5, h6))
-  + .diff-markdown-block
-  > .kpress-prose
-  > p,
-.metabrowser-diff-host
-  .diff-markdown-block:has(> .kpress-prose > :is(h4, h5, h6))
-  + .diff-markdown-block[hidden]
-  + .diff-markdown-block
-  > .kpress-prose
-  > p {
-  margin-block-start: 0;
 }
 
 .metabrowser-diff-host .diff-markdown-block img {
@@ -907,30 +837,44 @@
   block-size: auto;
 }
 
-/* A changed block's band: its change gutter at the diff box's edge and its ground across
-   the box, `--diff-markdown-band-extent` past the block's text above and below. It is
-   drawn, not laid out, so it moves no text: the space between two blocks stays the
-   document's whether or not either changed. */
-.metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed) {
+/* A change's band: its change gutter at the diff box's edge and its ground across the
+   box, from `--diff-markdown-band-extent` above its first row's text to as far below its
+   last row's. One box draws each band, a run of one kind's (`changeRuns` in
+   diff-markdown.js), so consecutive blocks of one kind are one band, across the space
+   between them, and no seam or gap can fall inside it. Where Current hides a change's
+   removed runs, the change itself draws one added band across the runs left, which draw
+   none. The band is drawn, not laid out, so it moves no text: the space between two blocks
+   stays the document's whether or not either changed. A run of one kind meets a run of the
+   other only across the space between two blocks, and the extent is half the least of
+   those, so two bands never overlap into a darker seam. */
+.metabrowser-diff-host :is(.diff-markdown-run, .diff-markdown-change) {
   position: relative;
 }
 
-.metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed)::before {
+.metabrowser-diff-host
+  :is(
+    .diff-markdown-run,
+    .diff-markdown-change:has(> [hidden]):has(> .diff-markdown-run-added)
+  )::before {
   content: "";
   position: absolute;
   z-index: -1;
   inset-block: calc(-1 * var(--diff-markdown-band-extent));
-  inset-inline: calc(-1 * var(--diff-change-gutter-width)) 0;
+  inset-inline: 0;
   border-inline-start: var(--diff-change-gutter-width) solid var(--diff-markdown-band-gutter);
   background: var(--diff-markdown-band-bg);
 }
 
-.metabrowser-diff-host .diff-markdown-added {
+.metabrowser-diff-host .diff-markdown-change:has(> [hidden]) > .diff-markdown-run::before {
+  content: none;
+}
+
+.metabrowser-diff-host :is(.diff-markdown-change, .diff-markdown-run-added) {
   --diff-markdown-band-gutter: var(--diff-add-gutter);
   --diff-markdown-band-bg: var(--diff-add-row-bg);
 }
 
-.metabrowser-diff-host .diff-markdown-removed {
+.metabrowser-diff-host .diff-markdown-run-removed {
   --diff-markdown-band-gutter: var(--diff-del-gutter);
   --diff-markdown-band-bg: var(--diff-del-row-bg);
 }
@@ -1032,7 +976,7 @@
 }
 
 @media (forced-colors: active) {
-  .metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed) {
+  .metabrowser-diff-host :is(.diff-markdown-change, .diff-markdown-run) {
     --diff-markdown-band-gutter: CanvasText;
   }
   .metabrowser-diff-host

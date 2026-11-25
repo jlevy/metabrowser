@@ -55,15 +55,16 @@ SURFACES = (
         PLUGINS / "github" / "pulls-panel.js",
         "entry.title.replaceChildren(...mb.titleNodes(row.title));",
     ),
-    # The pull request page's title, the record's or, cold, its Pulls row's; its stack menu's
-    # members; and its Conversation's commits.
+    # The pull request page's title, the record's or, cold, its Pulls row's; the member row of
+    # its stack menu and of a stack's page (stack-member-row.js); and its Conversation's
+    # commits.
     (
         PLUGINS / "github" / "pull-page.js",
-        'h("span", { class: "github-pull-title-text" }, mb.titleNodes(title))',
+        "titleHeading(pullStateIcon(state, { named: false }), mb.titleNodes(title), number)",
     ),
     (
-        PLUGINS / "github" / "pull-page.js",
-        "row.title.replaceChildren(...deps.titleNodes(title));",
+        PLUGINS / "github" / "stack-member-row.js",
+        "title.replaceChildren(...titleNodes(words));",
     ),
     (PLUGINS / "github" / "pull-page.js", "titleNodes: mb.titleNodes,"),
     (
