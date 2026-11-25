@@ -1,0 +1,16 @@
+created_at: 2026-11-25T04:05:43.464Z
+ops:
+  - bead_id: is-01m2gb3gpn7vcsw0as4xa243tg
+    block: |-
+      ⟦tbd⟧
+      `mb-1qsn` · epic · open · P2
+      Children: 49 (23 ready)
+      Bead: `tbd show mb-1qsn`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0ec06507-cca1-4389-a123-11079aee3f0d
+    kind: splice_description
+provider: linear
+run_id: 01m88e2zx4b8k6wrvgjw7p2fqv
+type: in
