@@ -190,7 +190,7 @@ def test_a_failure_to_put_a_table_together_is_a_422_that_names_the_file(
     body = response.json()
     assert body["code"] == "unreadable_event_log"
     assert "events-20261119T230000Z-p9-000.jsonl" in body["error"]
-    assert "OverflowError" in body["error"]
+    assert "OverflowError" in body["detail"]
 
 
 def test_a_failure_in_a_view_is_a_422_that_names_the_file(

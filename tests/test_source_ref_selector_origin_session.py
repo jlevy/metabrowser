@@ -355,21 +355,22 @@ def test_the_session_reads_the_origin_from_the_store_and_asks_as_a_visible_page(
     assert chosen["requests"] == [
         'POST /api/source/pin {"ref":"refs/remotes/origin/trunk","view":"/view/m"}'
     ]
-    refused = by_name["an origin that needs credentials is not fetched, and the list says why"]
-    assert refused["paint"]["origin"].startswith("Origin not fetched. The origin was not found")
+    refused = by_name["an origin that needs credentials is not fetched, and the list says so"]
+    # Why is the answer's `detail`, for an agent; the line says only that it is not fetched.
+    assert refused["paint"]["origin"].startswith("Origin not fetched.")
     assert refused["paint"]["origin"].endswith("These are the checkout's own. [warning]")
     # The mirror's session and a checkout with no store paint no such line.
     assert session["quietWithoutAStore"] == {"asked": [], "origin": None}
     # A row whose branch the reader's checkout has elsewhere, or not at all, says so.
     assert "[yours differs]" in remotes["paint"]["rows"][0]
     assert "[not in checkout]" in remotes["paint"]["rows"][1]
-    behind = recording["not_fetched_remotes"]["body"]["refs"][0]["commit"]
+    # The tip names no commit: the row says which (docs/design-system-messages.md).
     assert remotes["paint"]["own"][0].startswith(
-        f"origin/trunk: Your checkout's origin/trunk is at {behind[:7]}, where your own"
+        "origin/trunk: Your checkout's origin/trunk is at another commit."
     )
     own = session["ownDifference"]
     assert own["asRecorded"][0].startswith("yours differs: ")
     assert own["asRecorded"][1].startswith("not in checkout: Your checkout has no origin/feature")
-    assert ", an earlier commit by date," in own["yoursEarlier"]
-    assert ", a later commit by date," in own["yoursLater"]
+    assert " is at an earlier commit by date." in own["yoursEarlier"]
+    assert " is at a later commit by date." in own["yoursLater"]
     assert own["ownBranches"] == [None] * len(recording["branches"]["body"]["refs"])

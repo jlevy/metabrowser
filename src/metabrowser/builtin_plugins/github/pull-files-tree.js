@@ -24,7 +24,13 @@
 // shared model. Which folders start expanded is a file count the panel measures in a real
 // browser and passes in.
 
-import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
+import {
+  rateLimitText,
+  refreshFailureText,
+  refreshRefusedText,
+  setupHelp,
+  unavailableText,
+} from "./copy.js";
 
 /**
  * One row of the route's answer, as the shared tree takes it.
@@ -282,19 +288,16 @@ export const FILES_OPEN_HOLD_MS = 150;
 // inside it still moves the rows below, as the reader's own click.
 export const LATE_ROWS_MS = 500;
 
-/** What a failed listing says to a reader, in what they can do about it. */
-/** @type {Readonly<Record<string, string>>} */
+/**
+ * What a failed listing says to a reader where the tree words it itself, beside copy.js's
+ * shared words, and for any other outcome: one sentence each, beside the notice's Retry.
+ * @type {Readonly<Record<string, string>>}
+ */
 const FILE_FAILURES = Object.freeze({
-  gh_missing:
-    "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
-  gh_too_old:
-    "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
-  not_logged_in:
-    "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
-  network_error: "Offline, or GitHub could not be reached. The files are as they were last listed.",
   not_found_or_private:
     "The pull request was not found, or the signed-in account cannot read its files.",
 });
+const LISTING_FAILED = "Could not list the changed files.";
 
 export const LISTING_FILES = "Listing changed files…";
 
@@ -319,22 +322,11 @@ export function fileListFailure(envelope, formatTime, formatCount) {
       retry: false,
     };
   }
-  // What the job recorded is a clause; here it stands as a sentence of its own.
-  const setup = ["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome);
-  const said = setup
-    ? (last.message ?? FILE_FAILURES[last.outcome])
-    : (FILE_FAILURES[last.outcome] ?? last.message ?? OUTCOME_FALLBACK);
-  const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
-  const help =
-    last.outcome === "gh_missing"
-      ? "install"
-      : last.outcome === "gh_too_old"
-        ? "update"
-        : undefined;
-  const message = sentence.endsWith(".") ? sentence : `${sentence}.`;
+  // The job's own message stays in the envelope's `last_refresh` for agents; the tree says
+  // the outcome's fixed sentence.
+  const help = setupHelp(last.outcome);
   return {
-    text:
-      message + (setup ? " You can still browse local files and any cached pull requests." : ""),
+    text: refreshFailureText(last.outcome, FILE_FAILURES, LISTING_FAILED),
     retry: true,
     ...(help === undefined ? {} : { help }),
   };
@@ -1052,7 +1044,7 @@ export function createFileTreeController(deps, options) {
       if (mine !== generation || !live()) {
         return;
       }
-      const answer = /** @type {{files?: unknown, error?: unknown} | null} */ (response.body);
+      const answer = /** @type {{files?: unknown, code?: unknown} | null} */ (response.body);
       if (
         (response.status === 202 || response.status === 200) &&
         answer !== null &&
@@ -1069,8 +1061,8 @@ export function createFileTreeController(deps, options) {
           envelope.listed_from === null && !envelope.refreshing && envelope.state !== "pending";
         error = null;
       } else {
-        const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
-        error = refreshRefusedText("The refresh of the list of files", said);
+        const code = answer !== null && typeof answer.code === "string" ? answer.code : null;
+        error = refreshRefusedText("The refresh of the list of files", code);
       }
     } catch {
       if (mine !== generation || !live()) {

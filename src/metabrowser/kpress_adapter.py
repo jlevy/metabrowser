@@ -123,6 +123,14 @@ class KPressAssetNotFoundError(FileNotFoundError):
     """Raised when a KPress package asset path is missing or unsafe."""
 
 
+# The `error` of a `kpress_render_error` answer, on a folder and a pin alike: what the
+# Document view says (docs/design-system-messages.md). The route's `detail`, `max_size`,
+# and `diagnostics` say which bound or which part of the request it was.
+RENDER_FAILED_MESSAGE: Final = "This document could not be rendered."
+RENDER_TOO_LARGE_MESSAGE: Final = "This document is too large to render."
+RENDER_TEXT_ONLY_MESSAGE: Final = "Only a text file can be rendered as a document."
+
+
 __all__ = [
     "KPressAssetNotFoundError",
     "KPressInvalidRequestError",

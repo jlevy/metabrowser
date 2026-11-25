@@ -363,7 +363,7 @@ def test_sdk_exports_perf_measure() -> None:
 def test_sdk_fetch_plugin_data_throws_on_degraded_plugin_error() -> None:
     src = _sdk_source()
     assert 'data.type === "plugin_error"' in src
-    assert "Plugin data hook failed" in src
+    assert "new Error(data.error || PLUGIN_DATA_FAILED)" in src
 
 
 def test_sdk_exports_kpress_render_helper() -> None:

@@ -29,7 +29,10 @@ from metabrowser.plugin_api import (
 
 def _too_large() -> JSONResponse:
     return JSONResponse(
-        {"error": f"JSONL content exceeds {jsonl_parse_max_bytes()} decompressed bytes"},
+        {
+            "error": "This log is too large to chart.",
+            "detail": f"JSONL content exceeds {jsonl_parse_max_bytes()} decompressed bytes",
+        },
         status_code=413,
     )
 
@@ -58,7 +61,11 @@ async def charts_handler(request: Request) -> JSONResponse:
     except ContentReadError as exc:
         if exc.http_status == 413:
             return _too_large()
-        return JSONResponse({"error": str(exc), "code": exc.code}, status_code=exc.http_status)
+        # The reader's sentence, and the failure's own text as the agent's detail.
+        return JSONResponse(
+            {"error": exc.reader_message, "detail": str(exc), "code": exc.code},
+            status_code=exc.http_status,
+        )
     if window.has_more:
         # The cap is on bytes and the read is what enforces it. A compressed
         # log declares its length in a trailer nothing verifies, so asking for
@@ -68,8 +75,12 @@ async def charts_handler(request: Request) -> JSONResponse:
     try:
         payload = await asyncio.to_thread(extract_agent_charts_bytes, window.data)
     except JsonlParseLimitError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=413)
+        return JSONResponse(
+            {"error": "This log is too large to chart.", "detail": str(exc)}, status_code=413
+        )
     except (TypeError, ValueError) as exc:
-        return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse(
+            {"error": "This log could not be charted.", "detail": str(exc)}, status_code=500
+        )
     remember_agent_charts(ref.identity, ref.fingerprint, payload)
     return JSONResponse(payload)

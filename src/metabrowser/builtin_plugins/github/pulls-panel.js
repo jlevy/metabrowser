@@ -41,7 +41,13 @@
 // chip group and icons.
 
 import { createComparisonWarmer, diffComparisonLoader } from "./comparison-prefetch.js";
-import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
+import {
+  rateLimitText,
+  refreshFailureText,
+  refreshRefusedText,
+  setupHelp,
+  unavailableText,
+} from "./copy.js";
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
@@ -191,17 +197,14 @@ export const AUTO_EXPAND_FILES = 3000;
 // folders a reader opened. Each holds its list, at most 3,000 rows of text.
 export const MAX_HELD_TREES = 8;
 
-// What the panel says for each way a refresh can end, in what a reader can do about it. Each
-// is the plan's table ("The lazy gh check"), and a cached list shows under any of them.
+// What the panel says of a way a refresh can end that it words itself, and of any outcome
+// neither it nor copy.js's shared words name, in one sentence each: a cached list shows
+// under any of them, and the connection row says so after it.
 /** @type {Readonly<Record<string, string>>} */
 const FAILURES = Object.freeze({
-  gh_missing: "Install GitHub CLI, then run gh auth login --hostname github.com.",
-  gh_too_old: "Update GitHub CLI, then run gh auth status --hostname github.com.",
-  not_logged_in: "Run gh auth login --hostname github.com to connect.",
-  network_error: "GitHub could not be reached.",
-  github_unavailable: "GitHub is temporarily unavailable.",
   not_found_or_private: "GitHub could not find this repository or grant access to it.",
 });
+const REFRESH_FAILED = "Could not refresh the list.";
 const WATCH_PAUSED = new Set(["gh_missing", "gh_too_old", "not_logged_in", "not_found_or_private"]);
 const WATCH_SETUP_RETRY_MS = 120_000;
 
@@ -371,15 +374,8 @@ export function refreshFailure(envelope, formatTime, { includeWhileRefreshing = 
       text: rateLimitText(last.reset_at === null ? null : formatTime(last.reset_at)),
     };
   }
-  const said = FAILURES[last.outcome] ?? last.message ?? OUTCOME_FALLBACK;
-  const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
-  const help =
-    last.outcome === "gh_missing"
-      ? "install"
-      : last.outcome === "gh_too_old"
-        ? "update"
-        : undefined;
-  const text = sentence.endsWith(".") ? sentence : `${sentence}.`;
+  const text = refreshFailureText(last.outcome, FAILURES, REFRESH_FAILED);
+  const help = setupHelp(last.outcome);
   return { text, ...(help === undefined ? {} : { help }) };
 }
 
@@ -496,7 +492,7 @@ export function describePulls(envelope, page) {
   if (known && (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete))) {
     model.empty = page.filter === "all" ? "No pull requests." : `No ${page.filter} pull requests.`;
   }
-  const cached = holding ? " Showing cached pull requests." : "";
+  const cached = holding ? " Showing the pull requests last loaded." : "";
   const heldByRate = rateHoldMs(envelope, page.nowMs) > 0;
   const asking = page.requesting === true || envelope.refreshing;
   const working = asking || envelope.state === "pending" || envelope.state === "absent";
@@ -521,7 +517,7 @@ export function describePulls(envelope, page) {
   } else {
     // Rows are shown: their age stays, and a refresh running breathes it.
     const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
-    const note = envelope.truncated ? " · some pull requests could not be cached" : "";
+    const note = envelope.truncated ? " · some pull requests are not listed" : "";
     model.connection = {
       state: "connected",
       text: `Updated ${age}${note}`,
@@ -2432,7 +2428,7 @@ export function createPullsController(deps, options = {}) {
         body,
         signal: controller.signal,
       });
-      const answer = /** @type {{pulls?: unknown, error?: unknown} | null} */ (response.body);
+      const answer = /** @type {{pulls?: unknown, code?: unknown} | null} */ (response.body);
       if (disposed || epoch !== requestEpoch || controller.signal.aborted) {
         return;
       }
@@ -2451,9 +2447,9 @@ export function createPullsController(deps, options = {}) {
           list.more = false;
         }
       } else if (reader) {
-        const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
+        const code = answer !== null && typeof answer.code === "string" ? answer.code : null;
         if (!pinChanged(response)) {
-          list.error = refreshRefusedText("The refresh", said);
+          list.error = refreshRefusedText("The refresh", code);
         }
         list.more = false;
       }

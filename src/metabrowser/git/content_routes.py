@@ -116,6 +116,7 @@ from metabrowser.file_type_legend import build_file_type_legend
 from metabrowser.file_type_match import name_matches_types, semantic_extension_tokens, type_tally
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.folder_discovery import choose_readme_name
+from metabrowser.frontmatter_yaml import frontmatter_error_fields
 from metabrowser.fs_paths import derive_ext
 from metabrowser.git.file_ages import (
     UNDATED,
@@ -425,9 +426,7 @@ def _git_frontmatter_envelope(
     fields: dict[str, Any] = {}
     if mapping is not None:
         fields["frontmatter"] = mapping
-    if error is not None:
-        fields["frontmatter_error"] = error
-    return fields
+    return fields | frontmatter_error_fields(error)
 
 
 # A pinned revision is never trusted, whatever the process's block: every route here was
@@ -436,11 +435,26 @@ def _git_frontmatter_envelope(
 _PIN_CAPABILITIES = UNTRUSTED_CAPABILITIES
 
 
-def _views_for_kind(kind: str) -> list[dict[str, Any]]:
+def _views_for_kind(kind: str, *, prefix: tuple[bytes, str] | None = None) -> list[dict[str, Any]]:
     # Plugin kinds such as diff live in manifests, not VIEW_REGISTRY.
     from metabrowser.server import _views_for_kind as merged_views_for_kind
 
-    return merged_views_for_kind(kind, active_content=_PIN_CAPABILITIES.active_content)
+    return merged_views_for_kind(
+        kind, prefix=prefix, active_content=_PIN_CAPABILITIES.active_content
+    )
+
+
+async def _text_views_off_loop(kind: str, ext: str, body: bytes) -> list[dict[str, Any]]:
+    """A text blob's views, its kind's offered views decided from its leading bytes on a
+    worker thread, since an offer may parse a bounded prefix; a kind with none is listed
+    on the loop."""
+
+    from metabrowser.server import _FILE_OFFER_KINDS
+
+    prefix = (body[:_PREDICATE_PREFIX_BYTES], ext)
+    if kind not in _FILE_OFFER_KINDS:
+        return _views_for_kind(kind, prefix=prefix)
+    return await asyncio.to_thread(_views_for_kind, kind, prefix=prefix)
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
@@ -1090,7 +1104,8 @@ def _git_text_fields(offset: int, limit: int, window: bytes, size: int) -> dict[
 
 def _blob_too_large_payload(exc: GitBlobTooLargeError) -> dict[str, Any]:
     return {
-        "error": str(exc),
+        "error": exc.reader_message,
+        "detail": str(exc),
         "code": exc.code,
         "oid": exc.oid,
         "size": exc.size,
@@ -1101,7 +1116,7 @@ def _blob_too_large_payload(exc: GitBlobTooLargeError) -> dict[str, Any]:
 def _object_unavailable_payload(
     exc: GitObjectUnavailableError | GitObjectCorruptError,
 ) -> dict[str, Any]:
-    return {"error": str(exc), "code": exc.code, "oid": exc.oid}
+    return {"error": exc.reader_message, "detail": str(exc), "code": exc.code, "oid": exc.oid}
 
 
 def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
@@ -1121,8 +1136,14 @@ def git_content_failure_response(exc: GitError) -> JSONResponse:
     if isinstance(exc, GitBlobTooLargeError):
         return _json(_blob_too_large_payload(exc), status_code=413)
     if isinstance(exc, GitTimeoutError):
-        return _json({"error": "git command timed out", "code": "git_timeout"}, status_code=504)
-    return _json({"error": "git command failed", "code": "git_failed"}, status_code=500)
+        return _json(
+            {"error": exc.reader_message, "detail": "git command timed out", "code": "git_timeout"},
+            status_code=504,
+        )
+    return _json(
+        {"error": exc.reader_message, "detail": "git command failed", "code": "git_failed"},
+        status_code=500,
+    )
 
 
 def _typed_git_failures[**P, R: Response](
@@ -2066,7 +2087,7 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
         {
             "type": "text",
             "kind": kind,
-            "views": _views_for_kind(kind),
+            "views": await _text_views_off_loop(kind, ext, body),
             **_git_text_preview_fields(request, entry, ext, body),
             **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }
@@ -2130,7 +2151,8 @@ async def _windowed_blob_file_response(
             {
                 "type": "error",
                 "path": wire,
-                "error": "Requested preview window exceeds the stream budget for this blob",
+                "error": "This part of the file is past what can be shown here.",
+                "detail": "Requested preview window exceeds the stream budget for this blob",
                 "max_offset": source.max_blob_bytes,
             },
             status_code=416,
@@ -2149,7 +2171,7 @@ async def _windowed_blob_file_response(
         {
             "type": "text",
             "kind": kind,
-            "views": _views_for_kind(kind),
+            "views": await _text_views_off_loop(kind, ext, head),
             **_git_text_fields(offset, limit, head[offset : offset + limit], size),
             **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }
@@ -2178,7 +2200,8 @@ async def _windowed_jsonl_response(
                 "kind": "error",
                 "views": [],
                 "path": wire,
-                "error": f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes",
+                "error": "This log is too large to show here.",
+                "detail": f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes",
             }
         )
     body, _size = await source.read_blob_window(entry.oid, offset=0, max_bytes=size)
@@ -2331,7 +2354,8 @@ async def git_revision_kpress_render(
             return JSONResponse(
                 {
                     "type": "kpress_render_error",
-                    "error": "File is too large for full document rendering",
+                    "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                    "detail": "File is too large for full document rendering",
                     "path": path.to_wire(),
                     "size": len(body),
                     "max_size": max_bytes,
@@ -2343,7 +2367,8 @@ async def git_revision_kpress_render(
             return JSONResponse(
                 {
                     "type": "kpress_render_error",
-                    "error": "KPress render supports text-like files only",
+                    "error": kpress_adapter.RENDER_TEXT_ONLY_MESSAGE,
+                    "detail": "KPress render supports text-like files only",
                     "path": path.to_wire(),
                     "ext": ext,
                     "size": len(body),
@@ -2404,7 +2429,7 @@ async def git_revision_kpress_render(
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Invalid KPress render request",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": str(exc),
                 "diagnostics": [str(exc)],
             },
@@ -2414,13 +2439,17 @@ async def git_revision_kpress_render(
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "KPress render failed",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": str(exc),
                 "diagnostics": [str(exc)],
             },
             status_code=502,
         )
-    return JSONResponse(rendered, headers={"cache-control": "no-cache"})
+    detail = envelope.get("frontmatter_error_detail")
+    return JSONResponse(
+        {**rendered, **({"frontmatter_error_detail": detail} if detail is not None else {})},
+        headers={"cache-control": "no-cache"},
+    )
 
 
 @_typed_git_failures

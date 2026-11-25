@@ -27,7 +27,7 @@ from typing import Any, Final
 from metabrowser.builtin_plugins.sqlite import reader
 from metabrowser.capabilities import capabilities_for
 from metabrowser.source import ContentRef, get_source_session
-from metabrowser.sqlite_access import SqliteAccessError, sqlite_generation
+from metabrowser.sqlite_access import TOO_LARGE_MESSAGE, SqliteAccessError, sqlite_generation
 from metabrowser.sqlite_readers import (
     BLOB_MAX_BYTES,
     reader_pool,
@@ -141,7 +141,8 @@ def blob_too_large(limit: int = BLOB_MAX_BYTES) -> SqliteAccessError:
     """The refusal of a revision's database past *limit* bytes."""
     return SqliteAccessError(
         "unreadable",
-        f"This database is larger than the {limit:,} bytes read from a revision.",
+        TOO_LARGE_MESSAGE,
+        detail=f"This database is larger than the {limit:,} bytes read from a revision.",
     )
 
 

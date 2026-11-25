@@ -1143,7 +1143,8 @@ exit: 1
 api: /api/plugin/github/cache-clear
 status: 409
 {
-  "error": "the GitHub cache of octo/demo could not be cleared: Permission denied",
+  "error": "the GitHub cache of octo/demo could not be cleared",
+  "detail": "Permission denied",
   "code": "cache_unwritable"
 }
 --- stderr ---

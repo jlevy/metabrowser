@@ -1303,7 +1303,7 @@ async function run() {
       exact: true,
     },
   );
-  assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
+  assertNotContains("detail: no truncation note", previewHtml, "only some of them are shown");
   await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [], "outside commit"),
@@ -1335,7 +1335,7 @@ async function run() {
   });
   // A silently bounded diff reads as a complete one, which is the worse
   // failure — so the bound has to be stated, with the real total.
-  assertContains("detail: truncation is stated", previewHtml, "the diff below is bounded");
+  assertContains("detail: truncation is stated", previewHtml, "only some of them are shown");
   assertContains("detail: truncation names the total", previewHtml, "900");
   // A commit past the diff's bound on files: its summary is handed the whole commit's
   // totals, which the server counts before it caps the list, not the list's own (A3 of
@@ -5586,7 +5586,11 @@ async function run() {
     responses.set(`/api/git/commit/${SHA_MISSING}`, notFound);
     await internals.selectCommit(SHA_MISSING);
     await tick();
-    assertContains("missing commit: a folder names the miss", previewHtml, "Commit not found");
+    assertContains(
+      "missing commit: a folder names the miss",
+      previewHtml,
+      "This commit was not found",
+    );
     assertContains(
       "missing commit: a folder says where it looked",
       previewHtml,
@@ -5724,7 +5728,11 @@ async function run() {
     endFetch(fetched("origin_unavailable"));
     await tick();
     await tick();
-    assertContains("unfetched commit: names the failed fetch", previewHtml, "Commit not fetched");
+    assertContains(
+      "unfetched commit: names the failed fetch",
+      previewHtml,
+      "Could not fetch this commit",
+    );
     assertContains("unfetched commit: says why", previewHtml, "The origin could not be read.");
     assertEqual(
       "unfetched commit: the failure is an alert",
@@ -5786,7 +5794,11 @@ async function run() {
       previewHtml,
       "Could not load this commit.",
     );
-    assertNotContains("refused commit: not called not found", previewHtml, "Commit not found");
+    assertNotContains(
+      "refused commit: not called not found",
+      previewHtml,
+      "This commit was not found",
+    );
     assertEqual("refused commit: state on the element", previewNode.dataset.state, "failed");
 
     // Inside the freshness window the controller asks for nothing: the view says the
@@ -5798,8 +5810,8 @@ async function run() {
     await internals.selectCommit(SHA_INSIDE);
     await tick();
     await tick();
-    assertContains("inside the window: names the miss", previewHtml, "Commit not found");
-    assertContains("inside the window: says what it knows", previewHtml, "as fetched");
+    assertContains("inside the window: names the miss", previewHtml, "This commit was not found");
+    assertContains("inside the window: says what it knows", previewHtml, "as last fetched");
     assertNotContains("inside the window: no fetch is claimed", previewHtml, "did not bring it");
     assertNotContains("inside the window: never said fetching", previewHtml, "Fetching");
     assertEqual("inside the window: the route is asked once", commitRequests(SHA_INSIDE), 1);

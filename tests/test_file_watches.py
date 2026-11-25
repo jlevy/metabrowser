@@ -438,7 +438,8 @@ def test_a_pinned_revision_answers_as_the_event_stream_does(tmp_path: Path) -> N
     status, body = asyncio.run(run())
     assert status == 409
     assert body == {
-        "error": "source does not support watcher",
+        "error": "This is not available here.",
+        "detail": "source does not support watcher",
         "code": "unsupported_for_subject",
         "capability": "watcher",
     }

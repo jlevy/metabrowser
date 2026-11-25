@@ -137,8 +137,17 @@ async def shared_comparison_manifest(
     return await _COMPARISONS.manifest(key, load)
 
 
-def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
-    return JSONResponse({"error": kind, "message": message, "path": path}, status_code=status)
+def _error(
+    kind: str, message: str, status: int, *, path: str, detail: str = "", code: str = ""
+) -> JSONResponse:
+    """A refusal: *message* is the sentence the page shows (diff/index.js), *detail* and
+    *code* what an agent reads beside it (docs/design-system-messages.md)."""
+    body = {"error": kind, "message": message, "path": path}
+    if detail:
+        body["detail"] = detail
+    if code:
+        body["code"] = code
+    return JSONResponse(body, status_code=status)
 
 
 def _parse_bytes(data: bytes) -> ChangeSetDocument:
@@ -312,8 +321,20 @@ def _git_failure(exc: GitError, path: str) -> JSONResponse:
     for, hostile names included. The detail goes to the log."""
     log.warning("diff/comparison git failure: %s", failure_detail(exc))
     if isinstance(exc, GitTimeoutError):
-        return _error("diff_comparison", "git diff timed out", 504, path=path)
-    return _error("diff_comparison", "git diff failed", 502, path=path)
+        return _error(
+            "diff_comparison",
+            "Comparing these commits took too long. Try again.",
+            504,
+            path=path,
+            detail="git diff timed out",
+        )
+    return _error(
+        "diff_comparison",
+        "These changes could not be read from Git.",
+        502,
+        path=path,
+        detail="git diff failed",
+    )
 
 
 async def comparison_handler(request: Request) -> Response:
@@ -533,9 +554,16 @@ async def comparison_at(
             else PatchHydration({})
         )
     except DiffSourceError as exc:
-        # The source's own refusals carry user-facing messages: unknown
-        # revision, no such file in the comparison.
-        return _error("diff_comparison", str(exc), 404, path=revision)
+        # The source's own refusals: an unknown revision, no such file in the comparison.
+        # The page shows the reader's sentence; the one naming the revision is detail.
+        return _error(
+            "diff_comparison",
+            exc.reader_message,
+            404,
+            path=revision,
+            detail=str(exc),
+            code=exc.code,
+        )
     except GitError as exc:
         if isinstance(location.target, RepositoryStoreTarget):
             from metabrowser.git.object_failures import observed_object_failures
@@ -546,20 +574,23 @@ async def comparison_at(
                 if observed.state == "object_corrupt" and kept_key is not None:
                     _COMPARISONS.invalidate(kept_key)
                 if observed.state == "object_corrupt":
-                    message = "An object in this comparison does not match its ID."
+                    message = "Part of this comparison is damaged."
+                    detail = "An object in this comparison does not match its ID."
                 elif _reads_a_checkout():
                     # A revision of the served checkout, read in place: a partial clone
                     # names objects it does not hold, and nothing is fetched into it.
-                    message = (
+                    message = "Part of this comparison is not in this checkout."
+                    detail = (
                         "An object in this comparison is not in the checkout, "
                         "and nothing is fetched into it."
                     )
                 else:
-                    message = (
+                    message = "Part of this comparison is missing."
+                    detail = (
                         "An object in this comparison is missing. "
                         "Repair the repository cache, then retry."
                     )
-                return _error(observed.state, message, 409, path=revision)
+                return _error(observed.state, message, 409, path=revision, detail=detail)
         return _git_failure(exc, revision)
 
     if wanted_file:

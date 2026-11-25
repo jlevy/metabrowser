@@ -319,7 +319,7 @@ comparison patch:[..] (direct)
 left  patch
 right patch
 files 0  +0 -0  (exact)
-warning: no diff sections recognized in this input
+warning: No changes could be read from this patch.
 ? 0
 ```
 
