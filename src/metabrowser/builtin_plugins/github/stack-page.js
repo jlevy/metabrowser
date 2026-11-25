@@ -41,7 +41,14 @@
 // the command line.
 
 import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
-import { FAST_POLL_MS, h, isPlainClick, SLOW_POLL_MS, textRefusalNote } from "./pull-page.js";
+import {
+  authorLabel,
+  FAST_POLL_MS,
+  h,
+  isPlainClick,
+  SLOW_POLL_MS,
+  textRefusalNote,
+} from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition } from "./pull-stacks.js";
 import { pullStateIcon } from "./pull-state.js";
 
@@ -1162,6 +1169,9 @@ export function mountStackPage(container, ctx, mb) {
           );
         },
         shortCommit: (sha) => mb.shortCommit(sha),
+        // A cited pull request's author, as a stack menu's member draws it.
+        identity: (login, avatar) =>
+          authorLabel(mb, login, avatar, "github-pull-guide-row-author", { placeholder: false }),
         loadStyles: (assets) =>
           Promise.all([
             mb.loadKpressAssets(

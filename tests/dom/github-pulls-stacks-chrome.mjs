@@ -41,6 +41,10 @@ const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - start
 // chrome-session.mjs.
 const STEP_MS = 30000;
 const TOLERANCE_PX = 0.5;
+// #8's author in the stand-in's catalog, GitHub's longest login
+// (test_github_pulls_stacks_chrome.py, `LONG_LOGIN`).
+const LONG_AUTHOR_PULL = 8;
+const LONG_LOGIN = "contributor-with-the-longest-login-name";
 
 const failures = [];
 let checks = 0;
@@ -193,9 +197,10 @@ const LIST = `(() => {
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
   // A pull request's row (mb-pw8t, mb-rb3n): its run, one flow of the state icon, the title, a
-  // member's place, the number, the author, and the age, every line of it in the text column,
-  // from the row's inset to its end; and under it its last line, the toggle, the lines and the
-  // chevron, in the text column. Each row's parts, from its link's content box.
+  // member's place, the number, and the author, every line of it in the text column, from the
+  // row's inset to its end; and under it its last line, the toggle, the lines and the chevron,
+  // in the text column, and the age at the row's end. Each row's parts, from its link's content
+  // box.
   const lines = Object.fromEntries(
     [10, 9, 106].map((number) => {
       const row = list.querySelector('a.github-pulls-row[data-number="' + number + '"]');
@@ -213,7 +218,9 @@ const LIST = `(() => {
       const icon = of(".github-pull-state-icon");
       const tail = of(":scope > .github-pulls-tail");
       const change = of(".github-pulls-change");
-      const age = of(".github-pulls-age");
+      const age = of(":scope > .github-pulls-tail > .github-pulls-age");
+      const tailBox = row.querySelector(":scope > .github-pulls-tail");
+      const tailEnd = tail.right - parseFloat(getComputedStyle(tailBox).paddingInlineEnd);
       const toggle = row.querySelector(".github-pulls-toggle")?.getBoundingClientRect() ?? null;
       const round = (value) => Math.round(value * 100) / 100;
       return [number, {
@@ -223,9 +230,15 @@ const LIST = `(() => {
         runLines: Math.round(heading.height / lh),
         runFits: Math.abs(heading.height - Math.round(heading.height / lh) * lh) < 0.5,
         // The last line's toggle starts in the text column, under the title's first text; the
-        // age is on the run's last line (mb-rb3n).
+        // age ends that line at the row's end, past the chevron (docs/design-system.md, "Ages
+        // End the Row").
         lastFromText: round(change.left - textStart(row)),
-        ageOnLast: age.top >= heading.bottom - lh - 0.5 && age.bottom <= heading.bottom + 0.5,
+        ageOnLast:
+          age.top >= tail.top - 0.5 &&
+          age.bottom <= tail.bottom + 0.5 &&
+          Math.abs(age.right - tailEnd) < 0.5 &&
+          Math.abs(end - tailEnd) < 0.5 &&
+          (toggle === null || toggle.right <= age.left + 0.5),
         // The run runs from the row's inset to its end, its text in the text column, after the
         // state icon's slot.
         runToEnd: round(end - heading.right),
@@ -718,10 +731,10 @@ try {
     // The title took two lines, and the number's line joined the change line (mb-85op,
     // mb-lqkb): before, the title was alone on the first line and the number's line, with the
     // age, the second. Then the number and the lines joined the title's run, and the author
-    // and the age were the last line (mb-pw8t). Now the author and the age end the run, and the
-    // lines and the chevron are the last line (mb-rb3n).
+    // and the age were the last line (mb-pw8t). Now the author ends the run, and the lines, the
+    // chevron, and the age at the row's end are the last line (mb-rb3n).
     check(
-      "a pull request's run is its first lines, the icon on the row's inset and the text from the text column to the row's end, ending with the author and the age, and its last line the toggle under the title's first text",
+      "a pull request's run is its first lines, the icon on the row's inset and the text from the text column to the row's end, ending with the author, and its last line the toggle under the title's first text and the age at the row's end",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
@@ -1577,6 +1590,29 @@ try {
                 const name = by.querySelector(".github-pull-stack-member-author");
                 return name !== null && name.scrollWidth <= name.clientWidth;
               })(),
+              // The author's share of the line, which its own rule caps at a third, and whether
+              // its name is cut short.
+              share: Math.round((box(by).width / box(copy).width) * 1000) / 1000,
+              cut: (() => {
+                const name = by.querySelector(".github-pull-stack-member-author");
+                return name !== null && name.scrollWidth > name.clientWidth + 0.5;
+              })(),
+              // The name's baseline less the number's: an empty inline block's foot is its
+              // line's baseline.
+              baseline: (() => {
+                const at = (el) => {
+                  if (el === null) return null;
+                  const probe = document.createElement("span");
+                  probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+                  el.append(probe);
+                  const foot = probe.getBoundingClientRect().bottom;
+                  probe.remove();
+                  return foot;
+                };
+                const name = at(by.querySelector(".github-pull-stack-member-author"));
+                const number = at(shown);
+                return name === null || number === null ? null : Math.round((name - number) * 100) / 100;
+              })(),
             },
             current: link.getAttribute("aria-current") === "page",
           };
@@ -1672,10 +1708,13 @@ try {
         ),
       JSON.stringify(lines),
     );
-    // Each member's author is its Pulls row's, whole, after a muted dot after the number, and
-    // ends the line, as a Pulls row's run has it after the number (mb-x0z1).
+    // Each member's author is its Pulls row's, after a muted dot after the number, on the
+    // number's baseline, and ends the line, as a Pulls row's run has it after the number
+    // (mb-x0z1). It is whole, but for #8's, GitHub's longest login, which the line's cap on an
+    // author's share cuts short at a third of the line (test_github_pulls_stacks_chrome.py,
+    // `LONG_LOGIN`).
     check(
-      "each member's author is its Pulls row's, after the number and a muted dot, whole at the line's end",
+      "each member's author is its Pulls row's, after the number and a muted dot, on its baseline at the line's end, whole unless past a third of the line",
       lines.every(
         (line) =>
           line.by !== null &&
@@ -1687,7 +1726,11 @@ try {
           line.by.afterNumber &&
           Math.abs(line.by.endGap) <= 0.5 &&
           line.by.dot === line.muted &&
-          line.by.whole,
+          line.by.baseline !== null &&
+          Math.abs(line.by.baseline) <= 0.5 &&
+          (line.number === LONG_AUTHOR_PULL
+            ? line.by.name === LONG_LOGIN && line.by.cut && line.by.share <= 0.335
+            : line.by.whole),
       ),
       JSON.stringify(lines.map(({ number, by }) => ({ number, by }))),
     );

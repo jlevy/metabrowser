@@ -784,6 +784,10 @@ async function run() {
             title: "Say <b>more</b>",
             state: "merged",
             stack: { number: 71, place: 1, count: 3 },
+            // Its author follows its title (docs/design-system.md, "Authors Follow Pull
+            // Requests"), drawn by the page's `identity`.
+            author: "maintainer",
+            avatar: null,
           },
         }),
         cited({ kind: "pull", pull: 2000, state: "not_cached", href: "/pull/2000" }),
@@ -1334,6 +1338,7 @@ async function run() {
         openPull() {},
         age: () => new Element("span"),
         shortCommit: (sha) => sha.slice(0, 7),
+        identity: (login) => Object.assign(new Element("span"), { textContent: login }),
         loadStyles: async () => {},
         loadDrawPatch: async () => () => ({ dispose() {} }),
         loadDrawDocument: async () => null,
@@ -1416,6 +1421,7 @@ async function run() {
         openPull() {},
         age: () => new Element("span"),
         shortCommit: (sha) => sha.slice(0, 7),
+        identity: (login) => Object.assign(new Element("span"), { textContent: login }),
         loadStyles: async () => {},
         loadDrawPatch: async () => () => ({ dispose() {} }),
         loadDrawDocument: async () => null,

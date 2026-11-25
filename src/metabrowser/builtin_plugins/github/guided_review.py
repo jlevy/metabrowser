@@ -1148,8 +1148,8 @@ def _stack_place(
 
 
 def _pull_targets(carrier: _Carrier, cited: Sequence[tuple[int, int]]) -> dict[int, _Target]:
-    """Each `{pull}` of *cited*, by its place in the step and its number: its title and
-    state, from its cached record or else its catalog row, and its place in its stack, from
+    """Each `{pull}` of *cited*, by its place in the step and its number: its title, state,
+    and author, from its cached record or else its catalog row, and its place in its stack, from
     the stack snapshot, or `not_cached` when this copy knows neither. Blocking and bounded:
     the snapshot once, and a record and a catalog row for each, through their parse caches.
     """
@@ -1169,6 +1169,16 @@ def _pull_targets(carrier: _Carrier, cited: Sequence[tuple[int, int]]) -> dict[i
             found[at] = ("not_cached", href, None)
             continue
         title = held.pull.title if held is not None else row.title if row is not None else None
+        # Its author follows its number wherever it is named (docs/design-system.md, "Authors
+        # Follow Pull Requests").
+        author = held.pull.author if held is not None else row.author if row is not None else None
+        avatar = (
+            held.pull.author_avatar_url
+            if held is not None
+            else row.author_avatar_url
+            if row is not None
+            else None
+        )
         state = member_state(
             held,
             row.state if row is not None else None,
@@ -1176,7 +1186,11 @@ def _pull_targets(carrier: _Carrier, cited: Sequence[tuple[int, int]]) -> dict[i
             row.merged if row is not None else False,
         )
         place = _stack_place(stacks, number, within)
-        found[at] = ("ready", href, {"title": title, "state": state, "stack": place})
+        found[at] = (
+            "ready",
+            href,
+            {"title": title, "state": state, "stack": place, "author": author, "avatar": avatar},
+        )
     return found
 
 

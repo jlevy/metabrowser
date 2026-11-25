@@ -20,11 +20,14 @@
 // 180 px minimum, in the light theme and the dark, it holds that:
 //
 // - each pull request's row is its link: its run, one flow of the state icon, the title, the
-//   number, the author, and the age, a muted dot before each part after the title, every line
-//   of it starting in the text column, past the icon, which is centered on its first line, as
-//   tall as its lines and never cut short, so it ends with the age, the author's name on the
-//   run's baseline (mb-rb3n); then its last line, the toggle alone, the lines and the chevron
-//   after them, starting in the text column, one line tall;
+//   number, and the author, a muted dot before each part after the title, every line of it
+//   starting in the text column, past the icon, which is centered on its first line, as tall
+//   as its lines and never cut short, so it ends with the author, whose name is on the run's
+//   baseline (mb-rb3n); then its last line, one line tall: the toggle, the lines and the
+//   chevron after them, starting in the text column, and the age at the row's end, past the
+//   chevron (docs/design-system.md, "Ages End the Row");
+// - GitHub's longest login is cut short only where it is wider than a line, and the longest
+//   age is whole at the row's end;
 // - a closed row is `ROW_ESTIMATE_PX` tall with a run of `ESTIMATE_LINES`, a typical row's at
 //   the default pane, and a line shorter or taller for each line fewer or more;
 // - nothing moves when the lines arrive: the item, the link, the run, the title, the state
@@ -446,9 +449,9 @@ const READ = `(() => {
     const shown = row.querySelector(".github-pulls-number");
     const by = heading?.querySelector(":scope > .github-pulls-by") ?? null;
     const name = by?.querySelector(".github-pulls-author") ?? null;
-    const when = by?.querySelector(":scope > .github-pulls-when") ?? null;
-    const age = when?.querySelector(".github-pulls-age") ?? null;
     const tail = row.querySelector(":scope > .github-pulls-tail");
+    // The age, at the end of the last line (docs/design-system.md, "Ages End the Row").
+    const age = tail?.querySelector(":scope > .github-pulls-age") ?? null;
     const change = tail?.querySelector(".github-pulls-change") ?? null;
     const line = change?.querySelector(".github-pulls-change-line") ?? null;
     const pending = line?.querySelector(".github-pulls-change-pending") ?? null;
@@ -467,7 +470,7 @@ const READ = `(() => {
     // outermost. The dots are left out: a line never starts with one, and a dot's trailing
     // space hangs past the end of a line it ends.
     const lines = [];
-    for (const piece of [title, place, shown, by, age]) {
+    for (const piece of [title, place, shown, by]) {
       for (const rect of piece?.getClientRects() ?? []) {
         if (rect.width === 0) continue;
         const at = lineOf(rect);
@@ -502,8 +505,10 @@ const READ = `(() => {
       number: box(shown), numberLine: on(shown), numberText: glyphs(shown),
       by: box(by), byLine: on(by), nameText: glyphs(name),
       avatar: box(by?.querySelector(".actor-avatar") ?? null),
-      age: box(age), ageLine: on(age), ageShown: when !== null && !when.hidden,
+      age: box(age), ageText: glyphs(age),
       tail: box(tail), tailHeight: tail ? parseFloat(getComputedStyle(tail).height) : null,
+      // The end of the last line's content, which the age ends at.
+      tailEnd: tail ? tail.getBoundingClientRect().right - parseFloat(getComputedStyle(tail).paddingInlineEnd) : null,
       lastStart: tail ? tail.getBoundingClientRect().left + parseFloat(getComputedStyle(tail).paddingInlineStart) : null,
       change: box(change), toggle: box(toggle), chevron: box(chevron),
       changeLine: box(line), pending: box(pending), block: box(pending?.querySelector(".tally-pending")),
@@ -599,22 +604,22 @@ const REAL_ROWS = `((titles, author) => {
   };
 })`;
 
-// In the page: a copy of #104's row whose author has GitHub's longest login, 39 characters, and
-// whose age is the longest compact age, "12mo", drawn and gone at once: where its author, its
-// age, and the dot between them are, whether its name is cut short and had to be, and how wide
-// the dot and the age are, in the run's em.
+// In the page: a copy of #104's row whose author has GitHub's longest login, 39 characters with
+// hyphens in it, and whose age is the longest compact age, "12mo", drawn and gone at once: where
+// its author and its age are, whether its name is one line, whether it is cut short and had to
+// be, and whether the age is whole at the end of the last line.
 const LONG_AUTHOR = `(() => {
   const item = document.querySelector('li.github-pulls-item[data-number="104"]');
   const copy = item.cloneNode(true);
   copy.removeAttribute("data-number");
-  copy.querySelector(".github-pulls-author").textContent = "a".repeat(39);
+  copy.querySelector(".github-pulls-author").textContent = "contributor-with-the-longest-login-name";
   copy.querySelector(".github-pulls-age").textContent = "12mo";
   item.parentElement.append(copy);
   const box = (el) => el.getBoundingClientRect().toJSON();
   const heading = copy.querySelector(".github-pulls-heading");
   const name = copy.querySelector(".github-pulls-author");
-  const when = copy.querySelector(".github-pulls-when");
-  const em = parseFloat(getComputedStyle(heading).fontSize);
+  const age = copy.querySelector(".github-pulls-age");
+  const tail = copy.querySelector(".github-pulls-tail");
   const run = box(heading);
   const by = box(copy.querySelector(".github-pulls-by"));
   const column = run.left + parseFloat(getComputedStyle(heading).paddingInlineStart);
@@ -622,11 +627,14 @@ const LONG_AUTHOR = `(() => {
   const read = {
     run: { ...run, right },
     by,
-    age: box(copy.querySelector(".github-pulls-age")),
+    age: box(age),
+    tailEnd: box(tail).right - parseFloat(getComputedStyle(tail).paddingInlineEnd),
+    ageWhole: age.scrollWidth <= age.clientWidth + 0.5,
+    // One line: a login's hyphens are no place to break it.
+    oneLine: name.getBoundingClientRect().height < 1.5 * parseFloat(getComputedStyle(heading).lineHeight),
     cut: name.scrollWidth > name.clientWidth + 0.5,
-    // Whether the author and the age, the name whole, are wider than a line of the run.
+    // Whether the author, the name whole, is wider than a line of the run.
     wider: by.width + (name.scrollWidth - name.clientWidth) > right - column + 0.5,
-    room: Math.round((when.getBoundingClientRect().width / em) * 100) / 100,
   };
   copy.remove();
   return read;
@@ -664,9 +672,6 @@ const REAL = `((lines) => {
   };
 })`;
 
-// The room, in em, a row leaves the age and the dot before it after the author: the stylesheet's
-// `--github-pulls-age-room` (github/styles.css).
-const AGE_ROOM_EM = 3.1;
 // The author of this repository's pull requests 440 to 488 (`REAL_TITLES`).
 const REAL_AUTHOR = "jlevy";
 const WIDTHS = [420, 380, 340, 299, 260, 220, 200, 180];
@@ -674,13 +679,15 @@ const WIDTHS = [420, 380, 340, 299, 260, 220, 200, 180];
 const DEFAULT_PANE = 299;
 const THEMES = ["light", "dark"];
 // The parts that do not move when the lines arrive, whatever their width, since the lines are
-// alone on the row's last line, under the run (mb-rb3n).
+// on the row's last line, under the run, with the age in its own column at the line's end
+// (mb-rb3n).
 const PARTS = ["item", "row", "heading", "title", "icon", "number", "by", "age", "tail"];
 // How many lines a typical row's run takes at the default pane, which a closed row placed at
 // `ROW_ESTIMATE_PX` has.
 const ESTIMATE_LINES = 3;
 
-/** Whether *r* is its run, which ends with the age, and its last line, the toggle (mb-rb3n). */
+/** Whether *r* is its run, which ends with the author, and its last line, the toggle and the
+ * age (mb-rb3n). */
 function rowShape(r) {
   if (
     !r?.heading ||
@@ -717,20 +724,12 @@ function rowShape(r) {
       near(r.icon.left, r.inset) &&
       near(r.icon.width, r.slot) &&
       near(r.column, r.icon.right + r.gap),
-    // No stack in this list: no place, and so three dots, before the number, the author, and
-    // the age.
-    noPlace: r.place !== null && r.place.width === 0 && r.dots === 3,
-    // The number, then the author and the age, one part, the age at its end on its line, which
-    // ends the run, on its last line.
-    inOrder:
-      before(r.number, r.numberLine, r.by, r.byLine) &&
-      r.ageLine === r.byLine &&
-      near(r.age.right, r.by.right),
-    endsWithAge:
-      r.last === "github-pulls-by" &&
-      r.ageShown &&
-      r.ageLine === n - 1 &&
-      near(lines[n - 1].right, r.age.right),
+    // No stack in this list: no place, and so two dots, before the number and the author.
+    noPlace: r.place !== null && r.place.width === 0 && r.dots === 2,
+    // The number, then the author, which ends the run, on its last line.
+    inOrder: before(r.number, r.numberLine, r.by, r.byLine),
+    endsWithAuthor:
+      r.last === "github-pulls-by" && r.byLine === n - 1 && near(lines[n - 1].right, r.by.right),
     // The author's name is on the run's baseline: on the number's line, its glyphs' box is the
     // number's, top and bottom, and wherever it is, its box is its line's.
     authorOnBaseline:
@@ -741,8 +740,9 @@ function rowShape(r) {
       }) &&
       (r.byLine !== r.numberLine ||
         (near(r.nameText.top, r.numberText.top) && near(r.nameText.bottom, r.numberText.bottom))),
-    // The last line is under the run, one line tall, to the row's foot, and the toggle alone:
-    // the lines, then the chevron, starting in the text column, on the line.
+    // The last line is under the run, one line tall, to the row's foot: the toggle, the lines
+    // then the chevron, starting in the text column, and the age at the row's end, past the
+    // chevron (docs/design-system.md, "Ages End the Row").
     lastLine:
       near(r.tail.top, r.heading.bottom) &&
       near(r.tail.bottom, r.row.bottom) &&
@@ -751,8 +751,13 @@ function rowShape(r) {
       near(r.lastStart, r.column) &&
       near(r.change.left, r.column) &&
       within(r.chevron, r.tail) &&
-      r.chevron.right <= r.tail.right + TOLERANCE_PX &&
       (r.changeLine === null || r.chevron.left >= r.changeLine.right - TOLERANCE_PX),
+    ageEndsTheRow:
+      within(r.age, r.tail) &&
+      near(r.age.right, r.tailEnd) &&
+      r.chevron.right <= r.age.left + TOLERANCE_PX &&
+      r.ageText !== null &&
+      near(r.ageText.right, r.age.right),
     // A closed row's item is its link.
     itemIsRow: near(r.item.height, r.row.height),
   };
@@ -942,25 +947,19 @@ async function main() {
           ),
           JSON.stringify({ estimate, lh: after.rows[SHOWN[0]]?.lh, heights: measured[at].heights }),
         );
-        // GitHub's longest login ends in an ellipsis where, and only where, the author and the
-        // age are wider than the line, and leaves the dot and the whole age in the row, on the
-        // author's line.
+        // GitHub's longest login, hyphenated, stays one line and ends in an ellipsis where, and
+        // only where, it is wider than a line of the run, and stays in the row; the longest age
+        // stays whole at the end of the last line, in its column.
         const long = await browser.evaluate(LONG_AUTHOR);
         check(
-          `${at}: the longest login gives way to the age, whole, on its line and in the row`,
+          `${at}: the longest login is one line, cut short only where it is wider than a line, and the longest age is whole at the row's end`,
           long.by.right <= long.run.right + TOLERANCE_PX &&
-            long.age.right <= long.by.right + TOLERANCE_PX &&
-            near(long.age.top + long.age.height / 2, long.by.top + long.by.height / 2) &&
-            long.cut === long.wider,
+            long.oneLine &&
+            long.cut === long.wider &&
+            long.ageWhole &&
+            near(long.age.right, long.tailEnd),
           JSON.stringify(long),
         );
-        // The age's room holds the dot and the longest age (`--github-pulls-age-room`).
-        check(
-          `${at}: the age's room holds the dot and the longest age`,
-          long.room <= AGE_ROOM_EM,
-          JSON.stringify({ room: long.room, AGE_ROOM_EM }),
-        );
-        measured[at].ageRoom = long.room;
         if (theme === THEMES[0]) {
           measured[at].realTitles = await browser.evaluate(
             `(${REAL_ROWS})(${JSON.stringify(REAL_TITLES)}, ${JSON.stringify(REAL_AUTHOR)})`,
@@ -979,7 +978,7 @@ async function main() {
           ]) {
             const shape = rowShape(r);
             check(
-              `${at}: #${number}'s row is its run, ending with the age, and its last line, the toggle (${phase})`,
+              `${at}: #${number}'s row is its run, ending with the author, and its last line, the toggle and the age (${phase})`,
               shape.ok,
               JSON.stringify({
                 ...(shape.parts ?? { why: shape.why }),
@@ -1200,7 +1199,7 @@ async function main() {
         );
         const shape = rowShape(none);
         check(
-          `${at} zero totals: #106's row is its run, ending with the age, and its last line, the toggle`,
+          `${at} zero totals: #106's row is its run, ending with the author, and its last line, the toggle and the age`,
           shape.ok,
           JSON.stringify(shape.parts ?? shape.why),
         );

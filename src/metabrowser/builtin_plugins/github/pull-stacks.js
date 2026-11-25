@@ -10,7 +10,7 @@
 // first. `groupByStack` is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
-/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[]}} NativeStack */
+/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[]}} NativeStack */
 /** @typedef {{
  * state: "absent" | "current" | "stale", reason: string | null,
  * source: string | null, reader: string | null, fetched_at: string | null,
@@ -71,7 +71,7 @@ export function stackPlaceHint(number, at, length) {
 }
 
 /** The order every surface lists a stack's members in: the top of the stack first.
- * @param {NativeStack} stack @returns {number[]}
+ * @param {Pick<NativeStack, "pulls">} stack @returns {number[]}
  */
 export function stackMenuOrder(stack) {
   return stack.pulls.slice().reverse();
@@ -367,6 +367,16 @@ function isEnvelope(value) {
         stack.titles.length !== stack.pulls.length ||
         stack.titles.some(
           (title) => title !== null && (typeof title !== "string" || title.length > 2048),
+        ) ||
+        // Each member's author and the author's avatar, from the same cached row as its
+        // title (pull_stacks_route.py), which the page's stack menu draws.
+        ![stack.authors, stack.avatars].every(
+          (values) =>
+            Array.isArray(values) &&
+            values.length === stack.pulls.length &&
+            values.every(
+              (value) => value === null || (typeof value === "string" && value.length <= 2048),
+            ),
         )
       ) {
         return false;

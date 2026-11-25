@@ -4315,22 +4315,22 @@ export function stackMemberState(source, target, number, current) {
 }
 
 /**
- * A stack member's author for the stack menu's line (mb-x0z1): the page's own for the pull
- * request it shows, and what the repository's list of pull requests last said of any other
- * (`listedState`), or null where the list has not said, as for a member it has not reached.
+ * A stack member's author for the stack menu's line (mb-x0z1): *own*, the page's author, for
+ * the pull request the page shows, and for any other the author the stacks route read with
+ * its title from the repository's cached list (pull_stacks_route.py), or null where the
+ * list does not hold the member.
  *
- * @param {string | null} source
- * @param {number} target
- * @param {number} number The page's pull request.
- * @param {{login: string, avatar: string | null} | null} current The page's author for it.
+ * @param {import("./pull-stacks.js").NativeStack} stack
+ * @param {number} at The member's index in `stack.pulls`.
+ * @param {{login: string, avatar: string | null} | null} own
  * @returns {{login: string, avatar: string | null} | null}
  */
-export function stackMemberAuthor(source, target, number, current) {
-  if (target === number) {
-    return current;
+export function stackMemberAuthor(stack, at, own) {
+  if (own !== null) {
+    return own;
   }
-  const listed = listedState(source, target);
-  return listed?.author ? { login: listed.author, avatar: listed.avatar } : null;
+  const login = stack.authors[at];
+  return login ? { login, avatar: stack.avatars[at] ?? null } : null;
 }
 
 /**
@@ -4343,10 +4343,11 @@ export function stackMemberAuthor(source, target, number, current) {
  * the SDK's `titleNodes` (docs/design-system.md, "Titles"), cut short with the whole title in
  * its tip, and at the line's end its place in the stack in bold, "14/15", a muted dot, its
  * number, and another dot and its author, in a Pulls row's order (mb-pw8t, mb-x0z1). The state
- * and the author are `deps.state`'s and `deps.author`'s, read again each time the menu opens or
- * the page repaints; a member whose state is not known yet keeps the icon's slot empty, so
- * every member's place starts at one edge, and one whose author is not known yet has no dot
- * and no author. The current member is marked by the Pulls list's current-row mark and
+ * is `deps.state`'s, read again each time the menu opens or the page repaints, and the author
+ * the stack's (`stackMemberAuthor`), the page's own, `deps.author`'s, for its pull request; a
+ * member whose state is not known yet keeps the icon's slot empty, so every member's place
+ * starts at one edge, and one whose author is not known has no dot and no author. The current
+ * member is marked by the Pulls list's current-row mark and
  * `aria-current`, not by a check before its icon.
  *
  * A pull request in more than one stack has a trigger for each, and each then names its
@@ -4362,7 +4363,7 @@ export function stackMemberAuthor(source, target, number, current) {
  * Layers glyph in the icon's slot, and its words where every member's title starts (mb-7cn4).
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, author?(number: number): {login: string, avatar: string | null} | null, identity?(login: string, avatar: string | null): HTMLElement, menus?: MetabrowserMenus}} deps
+ * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, author?(): {login: string, avatar: string | null} | null, identity?(login: string, avatar: string | null): HTMLElement, menus?: MetabrowserMenus}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -4492,7 +4493,10 @@ export function createStackMenu(initial, number, deps) {
         row.link.replaceChildren(row.icon, row.copy);
         row.shown.state = state;
       }
-      const author = deps.identity === undefined ? null : (deps.author?.(target) ?? null);
+      const author =
+        deps.identity === undefined
+          ? null
+          : stackMemberAuthor(stack, at, target === number ? (deps.author?.() ?? null) : null);
       const said = author === null ? "" : `${author.login}\n${author.avatar ?? ""}`;
       if (row.shown.author !== said) {
         // After the number, a muted dot and the author, as a Pulls row's run has them
@@ -5925,8 +5929,7 @@ export function mountPullPage(container, ctx, mb) {
         menus: mb.menus,
         state: (target) =>
           stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
-        author: (target) =>
-          stackMemberAuthor(stackIdentity?.source ?? null, target, number, stackPullAuthor),
+        author: () => stackPullAuthor,
         // A member's author as a Pulls row draws it: no box where it has no avatar, and its
         // avatar asked for once the menu draws it (docs/design-system.md, "Actor Identity").
         identity: (login, avatar) =>
@@ -8424,6 +8427,9 @@ export function mountPullPage(container, ctx, mb) {
             ),
           age: (iso) => age(iso),
           shortCommit: (sha) => mb.shortCommit(sha),
+          // A cited pull request's author, as a stack menu's member draws it.
+          identity: (login, avatar) =>
+            authorLabel(mb, login, avatar, "github-pull-guide-row-author", { placeholder: false }),
           loadStyles: (assets) =>
             Promise.all([
               textStyles(
