@@ -54,8 +54,11 @@ $ grep -E '^  "(type|kind|frontmatter|frontmatter_error|frontmatter_error_detail
 
 ## Test: under the untrusted profile the document renders with the reason
 
-The inert render shows the body, and names the refusal in its diagnostics and in the
-document, where the Frontmatter disclosure would be; the answer carries the reason.
+The inert render shows the body and names the refusal in its diagnostics; the answer
+carries the reason. KPress’s Frontmatter error notice leaves the inert HTML, whose
+allowlist would keep only its words, and the page draws the notice from the diagnostic
+where the Frontmatter disclosure would be
+(`cli-ui-markdown-frontmatter-error.tryscript.md`).
 
 ```console
 $ metab docs --untrusted --api '/api/kpress/render?path=bomb.md&view=document' > render.txt
@@ -74,7 +77,7 @@ $ grep -E '^  "(type|inert|frontmatter_error_detail)":|^      "(type|message)":'
 
 ```console
 $ grep '^  "html":' render.txt
-  "html": "\n<strong>Frontmatter error</strong><span>The frontmatter could not be read.</span><div><div><h1 id=\"user-content-seven-alias-levels\">Seven Alias Levels</h1>\n<p>The body still renders.</p></div></div>",
+  "html": "\n<div><div><h1 id=\"user-content-seven-alias-levels\">Seven Alias Levels</h1>\n<p>The body still renders.</p></div></div>",
 ? 0
 ```
 
