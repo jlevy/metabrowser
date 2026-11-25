@@ -29,7 +29,7 @@ public final class WebContainerView: NSView, NSTextFinderBarContainer {
         }
     }
 
-    /// Swaps in the view of a tab that gave up its page, hidden like the old one would be.
+    /// Swaps in the web view of a page that gave up its last one, hidden like the old one would be.
     public func replaceWebView(_ replacement: WKWebView) {
         webView.removeFromSuperview()
         webView = replacement
@@ -75,7 +75,7 @@ public final class WebContainerView: NSView, NSTextFinderBarContainer {
 }
 
 /// Hands files and folders dropped on the page to the app (`FileDrop`), which opens a
-/// folder in its own window or tab and a file at its page. Anything else falls through
+/// folder in its own window and a file at its page. Anything else falls through
 /// to WebKit's ordinary drag and drop.
 public final class DropAwareWebView: WKWebView {
     public var onFileDrop: (([URL]) -> Bool)?

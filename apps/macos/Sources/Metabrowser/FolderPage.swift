@@ -39,13 +39,13 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// The navigation `load` submitted, whose commit reveals the page in place of the
     /// status view, until server state supersedes it (`PageReveal`).
     private var reveal = PageReveal<WKNavigation>()
-    /// The page to load next: one asked for (a file opened here, a restored tab's page),
+    /// The page to load next: one asked for (a file opened here, a restored window's page),
     /// else the one shown before the server restarted or the page gave up its web view;
     /// and the loads waiting to load it, of which only the newest may (`PageLoads`).
     private var loads: PageLoads
     /// The folder's server while it is ready.
     private var endpoint: ServerEndpoint?
-    /// Whether the page gave up its web view (`TabDiscardPolicy`). It loads again when it
+    /// Whether the page gave up its web view (`PageDiscardPolicy`). It loads again when it
     /// is shown.
     private(set) var isDiscarded = false
     /// Reloads after the web content process dies, then the status view.
@@ -314,9 +314,9 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
 
     // MARK: - Shown and closed
 
-    /// The window showing the page became key, which is how a tab is selected, or the window
-    /// began to show it (`FolderWindows.switchWindow`): a discarded page loads again, and
-    /// the folder counts it as shown.
+    /// The window showing the page became key, as when the user brings it forward, or the
+    /// window began to show it (`FolderWindows.switchWindow`): a discarded page loads again,
+    /// and the folder counts it as shown.
     func shown() {
         revivePage()
         session?.pageShown(self)
@@ -724,7 +724,7 @@ extension FolderPage: WKNavigationDelegate, WKUIDelegate {
             NSWorkspace.shared.open(url)
             decisionHandler(.cancel)
         case .openInNewWindow(let url):
-            session?.openWindow(at: url, besides: self)
+            session?.openWindow(at: url)
             decisionHandler(.cancel)
         case .cancel: decisionHandler(.cancel)
         }
@@ -779,7 +779,7 @@ extension FolderPage: WKNavigationDelegate, WKUIDelegate {
         switch policy.decideNewWindow(action.request.url) {
         case .openInNewWindow:
             WebConfiguration.restrict(configuration)
-            return session?.openChildWindow(configuration: configuration, besides: self)
+            return session?.openChildWindow(configuration: configuration)
         case .openExternally(let url):
             NSWorkspace.shared.open(url)
             return nil

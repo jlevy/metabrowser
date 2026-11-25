@@ -155,8 +155,6 @@ nonisolated private func json(_ text: String) -> Data { Data(text.utf8) }
     @Test func namesTheWindowForEachPlaceThatShowsIt() {
         // The folder's name alone: the mark at the title bar's end carries the app's.
         #expect(fdu.text == "fdu")
-        #expect(fdu.tabTitle == "fdu")
-        #expect(fdu.tabToolTip == "~/wrk/github/fdu")
         #expect(fdu.subtitle == "~/wrk/github/fdu · Local folder")
         #expect(fdu.hasPathMenu)
         #expect(WindowTitle.windowTitles([fdu]) == ["fdu"])

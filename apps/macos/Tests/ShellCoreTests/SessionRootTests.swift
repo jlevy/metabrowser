@@ -40,7 +40,7 @@ private let repository = URL(string: "https://github.com/jlevy/tbd")!
         let identity = SessionRoot.repository(repository).identity()
         #expect(identity == FolderIdentity(
             shortName: "tbd", fullName: "github.com/jlevy/tbd", kind: .mirror, kindLabel: "Cloud mirror",
-            title: "tbd • Metabrowser", repository: repository))
+            title: "tbd • Metabrowser"))
         // A mirror's title opens no path menu.
         #expect(!WindowTitle(identity).hasPathMenu)
         #expect(SessionRoot.folder(URL(filePath: "/tmp/notes")).identity(home: "/tmp/account").kind == .folder)

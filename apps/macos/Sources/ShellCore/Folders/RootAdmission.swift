@@ -11,8 +11,9 @@ import Foundation
 /// folder must be on the home folder's volume, and the kernel's name for it
 /// (`F_GETPATH`, which undoes case variants and the Data volume's firmlinks) must hold
 /// no protected location. Anything less certain (a link anywhere on the path, another
-/// volume, a protected spelling) waits for its tab to be selected, under the spelling
-/// it was saved with, untouched, so selecting it serves what the path names then.
+/// volume, a protected spelling) waits until a window showing it is brought forward,
+/// under the spelling it was saved with, untouched, so bringing it forward serves what
+/// the path names then.
 /// A volume mounted under an ordinary folder is not entered: the mount table, read
 /// without touching any volume, marks every mount point but the system's and the Data
 /// volume's as a place the walk stops before.
@@ -27,7 +28,8 @@ import Foundation
 public nonisolated enum RootAdmission: Equatable, Sendable {
     /// May start in the background, under this canonical path.
     case open(String)
-    /// Waits until one of its tabs is selected, under the saved spelling, unchanged.
+    /// Waits until a window showing it is brought forward, under the saved spelling,
+    /// unchanged.
     case deferred(String)
     /// Gone, or not a folder.
     case gone
@@ -96,7 +98,7 @@ public nonisolated enum RootAdmission: Equatable, Sendable {
     }
 
     /// After `openat` refused a component as not a folder or a link: only proof that it is
-    /// missing, or that it is neither a folder nor a link, drops the tab. A link, a folder
+    /// missing, or that it is neither a folder nor a link, drops the page. A link, a folder
     /// (the component changed between the two lookups), or a lookup that failed otherwise
     /// defers it.
     static func refusedComponent(_ lookup: SecondLookup, _ saved: String) -> RootAdmission {

@@ -68,7 +68,9 @@ webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAut
 # average near 400, back to back: the unit process without it passed once and once missed
 # StartupDeadlineTests' 10 s bound, in 12 and 14 s; with it, it failed two and four
 # wall-clock bounds, HealthCheckTests' 2 s one by 6 to 8 s both times, in 37 and 35 s.
-window_suites := SettingsWindowTests
+# FolderWindowTests puts folder windows on screen in the same event loop, and each of its
+# pages builds a web view, so it runs in that process too.
+window_suites := SettingsWindowTests FolderWindowTests
 #
 # Each test process runs through scripts/swift-test.sh, which fails one that exits 0 without
 # swift-testing's summary of a passed run of at least one test: a window-server event once

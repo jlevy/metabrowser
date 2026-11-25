@@ -49,8 +49,8 @@ public enum WebConfiguration {
     ///
     /// - `javaScriptCanOpenWindowsAutomatically` off: `window.open` needs a user gesture.
     ///   macOS defaults it to on (`WKPreferences.h`), and the navigation policy allows the
-    ///   server's own origin, so a previewed HTML file could otherwise open tab after tab
-    ///   of the folder's window without a click.
+    ///   server's own origin, so a previewed HTML file could otherwise open window after
+    ///   window of the folder without a click.
     public static func restrict(_ configuration: WKWebViewConfiguration) {
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
     }
@@ -60,7 +60,7 @@ public enum WebConfiguration {
 /// and cache, as one browser profile does.
 ///
 /// One persistent `WKWebsiteDataStore`, named by `identifier`, serves the pane in every
-/// window and tab, for every site (`WebSite.known`), so signing in to a site once holds in
+/// window, for every site (`WebSite.known`), so signing in to a site once holds in
 /// all of them, and WebKit keeps it on disk, under
 /// `~/Library/WebKit/<bundle identifier>/WebsiteDataStore/`, so it holds after a relaunch.
 /// Each build variant has its own bundle identifier and so its own store. WebKit keeps each
