@@ -249,10 +249,11 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     refreshing.querySelector(".github-pull-freshness").textContent,
     /^Fetched .+ via GitHub CLI$/,
   );
-  // Refresh keeps its slot at the row of ages' end, held hidden while a refresh runs.
-  const refresh = warm.querySelector(".github-pull-opened").children.at(-1);
-  assert.ok(refresh.classes.has("github-pull-refresh"));
-  assert.equal(refresh.hidden, true);
+  // The stack's slot ends the row of ages: the page has no Refresh of its own (mb-ablv).
+  assert.ok(
+    warm.querySelector(".github-pull-opened").children.at(-1).classes.has("github-pull-stacks"),
+  );
+  assert.equal(warm.querySelector(".github-pull-refresh"), null);
   assert.equal(refreshing.querySelector(".spinner"), null, "nothing spins over the cached page");
   const age = refreshing.querySelector(".github-pull-freshness");
   assert(
@@ -262,8 +263,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "the cached page's age breathes, and is the one thing busy, while it refreshes",
   );
   // The header's rows and the row of ages' parts before the stack arrives: its chip lands in
-  // the slot that row holds before Refresh's (mb-646g), so it adds, takes, and reorders no
-  // row or part. tests/dom/github-pull-header-chrome.mjs measures that nothing moves.
+  // the slot that ends that row (mb-646g), so it adds, takes, and reorders no row or part. tests/dom/github-pull-header-chrome.mjs measures that nothing moves.
   const agesRow = warm.querySelector(".github-pull-opened");
   const rowsBefore = [...warm.querySelector(".github-pull-header").children];
   const partsBefore = [...agesRow.children];
@@ -280,8 +280,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert(
-    agesRow.children.at(-2).contains(trigger) && agesRow.children.at(-1) === refresh,
-    "stack control ends the row of ages, just before Refresh's slot (mb-646g)",
+    agesRow.children.at(-1).contains(trigger),
+    "stack control ends the row of ages (mb-646g, mb-ablv)",
   );
   // The same nodes, by identity, in the same order.
   const same = (now, before) =>
@@ -290,10 +290,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     same([...warm.querySelector(".github-pull-header").children], rowsBefore),
     "the chip arriving adds, takes, and reorders no header row",
   );
-  assert(
-    same([...agesRow.children], partsBefore),
-    "the chip lands in the row of ages' own slot, Refresh still last",
-  );
+  assert(same([...agesRow.children], partsBefore), "the chip lands in the row of ages' own slot");
   assert.deepEqual(
     warm.querySelector(".github-pull-meta").children.map((node) => node.getAttribute("class")),
     ["github-pull-meta-lead"],

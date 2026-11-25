@@ -99,14 +99,14 @@ pull request in no stack shows its title alone.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
-On the page, a stack button at the end of the line of state and dates, just before
-Refresh, shows the same position, and a pull request in two stacks has a button for
-each, which names its stack, such as **⧉300 2/2**. The button opens a menu of the
-stack’s members, from top to base, each on one line: its state, its position, and its
-title. On macOS, Control-N goes to the next member toward the top and Control-P to the
-previous one toward the base; on Windows and Linux, where those keys are the browser’s,
-use the menu. Without the extension, or when GitHub cannot answer, pull requests read as
-usual and the list stays flat, unless stacks are cached.
+On the page, a stack button at the end of the line of state and dates shows the same
+position, and a pull request in two stacks has a button for each, which names its stack,
+such as **⧉300 2/2**. The button opens a menu of the stack’s members, from top to base,
+each on one line: its state, its position, and its title.
+On macOS, Control-N goes to the next member toward the top and Control-P to the previous
+one toward the base; on Windows and Linux, where those keys are the browser’s, use the
+menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
+and the list stays flat, unless stacks are cached.
 Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
@@ -450,8 +450,9 @@ entries.
 ## Staying Current
 
 The page says when GitHub CLI fetched what it shows, as in
-`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line; Refresh ends the
-line of state and dates above it.
+`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line.
+The page has no Refresh of its own: the Pulls tab’s **Refresh** refreshes the pull
+request page beside the list, then the list.
 While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
 repository’s list of pull requests, so new pull requests, state changes, and edits
 arrive by themselves.
@@ -466,10 +467,11 @@ A visible page refreshes a record that has gone stale, and the Pulls tab also fe
 behind you, the pull requests you are likely to open next, within hourly limits and
 while enough of your GitHub rate limit remains.
 The page names a problem only when it cannot refresh: `Offline`, a rate limit with the
-time of its next check, or the last failure with **Refresh**. The page tries a failure
-again once a window while it stays open, except one you must fix, such as GitHub CLI
-missing or signed out, which waits for **Refresh**. The Pulls tab’s **Refresh** asks for
-a new check of the list.
+time of its next check, or the last failure with **Retry**, which asks again even while
+the navigation pane is hidden.
+The page tries a failure again once a window while it stays open, except one you must
+fix, such as GitHub CLI missing or signed out, which waits for **Retry**. The Pulls
+tab’s **Refresh** asks for a new check of the page and the list.
 
 The page follows the pull request.
 When new commits are pushed, the conversation and checks update, and **Changes** and
@@ -561,7 +563,8 @@ pull request not yet cached while `gh` is missing, too old, or not signed in, wi
 step that fixes it, without cloning anything.
 Any other pull request that cannot be read does not stop it: `metab` serves the default
 branch, exits 0 in the one-shot modes, and says why on its `pull_request` line.
-The page says why too, and offers **Fetch** to try again once the cause is fixed.
+The page says why too, and offers **Fetch** to try again once the cause is fixed, or
+**Retry** where it already shows the pull request.
 `metab --doctor` shows what `gh` reports: its path and version, the account, and the
 account’s scopes.
 
@@ -572,11 +575,11 @@ account’s scopes.
 | `not_logged_in` | `gh` is not signed in to github.com | Run `gh auth login --hostname github.com` |
 | `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `metab --doctor` names an account with access and the `repo` scope |
 | `rate_limited` | GitHub’s rate limit, with its reset time when GitHub gives one | Wait; the page tries again after the reset |
-| `network_error`, `network_unreachable`, `connection_interrupted`, `timed_out` | GitHub could not be reached, by `gh` or by Git | Restore the network, then **Refresh** |
+| `network_error`, `network_unreachable`, `connection_interrupted`, `timed_out` | GitHub could not be reached, by `gh` or by Git | Restore the network, then **Retry** |
 | `too_large` | The first clone does not fit on the cache’s volume | See [large repositories](#large-repositories) |
 | `lender_missing` | The checkout this clone borrows from has moved, gone, or can no longer lend | Run the command again with `--checkout <new path>` |
-| `account_changed`, `head_mismatch` | The `gh` account changed, or the pull request kept moving, during the read | **Refresh** |
-| `fetch_failed`, `git_failed` | Git failed | **Refresh**; for a clone, `--log-level debug` shows Git’s own message |
+| `account_changed`, `head_mismatch` | The `gh` account changed, or the pull request kept moving, during the read | **Retry** |
+| `fetch_failed`, `git_failed` | Git failed | **Retry**; for a clone, `--log-level debug` shows Git’s own message |
 | `cache_unwritable` | The cache refused the write | Fix what the message names, or clear the repository’s cache |
 | `newer_cache`, `unknown_cache` | A newer Metabrowser wrote the repository’s list, or its version cannot be read | Upgrade, or clear the repository’s cache |
 
@@ -586,11 +589,11 @@ The record names why in `unavailable.comparison`:
 | Name | What it means | What to do |
 | --- | --- | --- |
 | `no_store` | A checkout has the record but no comparison yet | Open **Changes**, which prepares it |
-| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | **Refresh** with the network, which fetches more history into the cache |
-| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | **Refresh** tries to recover them from the origin |
-| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then **Refresh**; Metabrowser never writes to your checkout |
+| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | The Pulls tab’s **Refresh** with the network, which fetches more history into the cache |
+| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | The Pulls tab’s **Refresh** tries to recover them from the origin |
+| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then the Pulls tab’s **Refresh**; Metabrowser never writes to your checkout |
 | `no_merge_base` | The base and head share no history | Read the diff on GitHub |
-| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | **Refresh**, or read the diff on GitHub |
+| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | The Pulls tab’s **Refresh**, or read the diff on GitHub |
 
 The page says each of these in one short sentence of its own.
 Every reason also comes with a message that says more, in the route’s JSON that

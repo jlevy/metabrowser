@@ -53,8 +53,9 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 # review B on #506). The View on GitHub button's corner is an empty span here:
                 # the SDK draws the button (mb-4wqh), and this page has none to draw it with.
                 # The size line's row, its placeholder, and the placeholder's block are three
-                # (docs/design-system.md, "Change Size Line").
-                "built": 55,
+                # (docs/design-system.md, "Change Size Line"). The page has no Refresh of its
+                # own (mb-ablv), which a hidden button in the row of ages was.
+                "built": 54,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,
@@ -79,7 +80,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "created": {"header": 0, "conversation": 0},
                 "shown": 7,
             },
-            # Refresh hides while the refresh runs; it is the same button.
+            # A refresh running builds and moves nothing.
             {
                 "step": "a poll finds a refresh running",
                 **UNCHANGED,
@@ -123,7 +124,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
             },
             # A merge changes the state and the actor: the title's icon, the badge, the
             # sentence, and the row of ages, which gains the merge's. The branches, the
-            # badge's sizers, the labels, and Refresh are kept.
+            # badge's sizers, and the labels are kept.
             {
                 "step": "another actor merges it",
                 "header": "new",

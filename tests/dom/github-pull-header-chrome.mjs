@@ -322,15 +322,9 @@ const MEASURE = `async (name, change, tab, width) => {
       )
     : null;
   // Where the rows' parts and the labels are, and every row's height: the row of ages' badge,
-  // ages, Browse code, and Refresh, the author's sentence, and the branches.
+  // ages, and Browse code, the author's sentence, and the branches.
   const places = () => ({
-    refreshAfterQuiet: (() => {
-      const row = header.querySelector(".github-pull-opened");
-      const slot = row?.querySelector(":scope > .github-pull-refresh");
-      const quiet = row?.querySelector(":scope > .github-pull-quiet");
-      return slot && quiet ? box(slot).left - box(quiet).right : null;
-    })(),
-    parts: [".github-pull-badge", ".github-pull-ages", ".github-pull-ages-links", ".github-pull-refresh", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
+    parts: [".github-pull-badge", ".github-pull-ages", ".github-pull-ages-links", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
       [...header.querySelectorAll(selector)].map((node) => [selector, Math.round(box(node).left * 100) / 100, Math.round(box(node).width * 100) / 100]),
     ),
     rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
@@ -406,8 +400,8 @@ const MEASURE = `async (name, change, tab, width) => {
     }
   }
   // A stack's chip arrives late, from its own answer, through the page's own builder, at
-  // the right end of the row of ages, after Refresh's slot, its end under the end of the
-  // title's number (mb-646g, mb-dwha): one stack, "⧉2/3", or two, "⧉286 4/4" and "⧉300 2/2", each named by its
+  // the right end of the row of ages, ending it at the content edge, under the end of the
+  // title's number where the title leaves the corner no room (mb-646g, mb-dwha, mb-ablv): one stack, "⧉2/3", or two, "⧉286 4/4" and "⧉300 2/2", each named by its
   // stack, as the page names a chip in more than one stack. Its Layers glyph is a bare svg at
   // the glyph's size, so the chip is as wide as the page's. The strut that holds the row of
   // ages at a chip's height, read before a chip replaces it.
@@ -439,12 +433,11 @@ const MEASURE = `async (name, change, tab, width) => {
     column.replaceChildren(...menus.map((menu) => menu.element));
     await frames();
     const after = places();
-    // Nothing moves: every part keeps its start, every row its height, the tab bar its place,
-    // and Refresh its width. The ages alone may give up width at their end where the row has
-    // none left, and Browse code after them, kept whole while any age shows (B4 of review B on
-    // #506), and Refresh after it follow their end, as the action followed a shorter author on
-    // the author's row (mb-cf0l).
-    const follows = new Set([".github-pull-ages-links", ".github-pull-refresh"]);
+    // Nothing moves: every part keeps its start, every row its height, the tab bar its place.
+    // The ages alone may give up width at their end where the row has none left, and Browse
+    // code after them, kept whole while any age shows (B4 of review B on #506), follows their
+    // end, as the action followed a shorter author on the author's row (mb-cf0l).
+    const follows = new Set([".github-pull-ages-links"]);
     const kept = (shape) => ({
       parts: shape.parts.map(([selector, left, width]) => [
         selector,
@@ -458,58 +451,35 @@ const MEASURE = `async (name, change, tab, width) => {
       shape.parts.find(([selector]) => selector === ".github-pull-ages")?.[2] ?? 0;
     const row = header.querySelector(".github-pull-opened");
     const quiet = row.querySelector(":scope > .github-pull-quiet");
-    const refreshSlot = row.querySelector(":scope > .github-pull-refresh");
     const ages = quiet.querySelector(".github-pull-ages");
     const links = quiet.querySelector(".github-pull-ages-links");
     const r = (value) => Math.round(value * 100) / 100;
-    // Where the chip's end is against the title's number's and the header's content edge,
-    // less the room the title leaves the corner's button: Refresh shown, waiting, held hidden,
-    // and gone from the row, each in turn, then put back (mb-dwha).
+    // Where the chip's end is against the title's number's and the header's content edge
+    // (mb-dwha): nothing follows it on the row, since the page has no Refresh (mb-ablv).
     const numberRange = document.createRange();
     numberRange.selectNodeContents(header.querySelector(".github-pull-title-with-state .github-pull-number"));
     const numberEnd = numberRange.getBoundingClientRect().right;
     const contentEnd = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
     const titleRoom = parseFloat(getComputedStyle(header.querySelector(".github-pull-title")).paddingInlineEnd);
     const chipEnd = () => Math.max(...menus.map((menu) => box(menu.element).right));
-    const refreshWas = { hidden: refreshSlot.hidden, waiting: refreshSlot.getAttribute("aria-disabled") };
-    const ends = {};
-    for (const [state, apply] of [
-      ["shown", () => { refreshSlot.hidden = false; refreshSlot.removeAttribute("aria-disabled"); }],
-      ["waiting", () => { refreshSlot.hidden = false; refreshSlot.setAttribute("aria-disabled", "true"); }],
-      ["hidden", () => { refreshSlot.hidden = true; refreshSlot.removeAttribute("aria-disabled"); }],
-      ["absent", () => { refreshSlot.remove(); }],
-    ]) {
-      apply();
-      await frames();
-      ends[state] = { chip: r(chipEnd() - numberEnd), content: r(chipEnd() - (contentEnd - titleRoom)) };
-    }
-    column.before(refreshSlot);
-    refreshSlot.hidden = refreshWas.hidden;
-    if (refreshWas.waiting === null) refreshSlot.removeAttribute("aria-disabled");
-    else refreshSlot.setAttribute("aria-disabled", refreshWas.waiting);
-    await frames();
+    const ends = { number: r(chipEnd() - numberEnd), content: r(chipEnd() - contentEnd) };
     chipMoves = {
       chips: stacks.length,
       moved: JSON.stringify(kept(before)) === JSON.stringify(kept(after)) ? null : { before, after },
       // How much of the ages' width the chip took.
       cut: r(agesWidth(before) - agesWidth(after)),
       chipShown: Math.min(...menus.map((menu) => shown(menu.element))),
-      // The slot is the row of ages' own, after Refresh's slot, ending the row, and the chip
-      // sits on that row's line.
+      // The slot is the row of ages' own, ending the row, and the chip sits on that row's
+      // line.
       onAgesRow:
         column.parentElement === row &&
-        refreshSlot.nextElementSibling === column &&
         column === row.lastElementChild &&
         menus.every((menu) => {
           const chip = box(menu.element);
           return chip.top >= box(row).top - 0.5 && chip.bottom <= box(row).bottom + 0.5;
         }),
       overlap: r(box(quiet).right - box(column).left),
-      // From Refresh's end to the chip's start, at least the row's gap.
-      afterRefresh: r(box(column).left - box(refreshSlot).right),
       rowGap: parseFloat(getComputedStyle(row).columnGap),
-      // Refresh follows the ages' end: its start from the ages' box's end, before and after.
-      refreshFollows: [r(before.refreshAfterQuiet), r(after.refreshAfterQuiet)],
       titleRoom: r(titleRoom),
       contentEnd: r(contentEnd),
       ends,
@@ -576,8 +546,8 @@ const MEASURE = `async (name, change, tab, width) => {
   const badge = opened?.querySelector(".github-pull-badge");
   const centre = (r) => r.top + r.height / 2;
   // The title's icon and text start at the header's left edge and its number ends on the
-  // right one, over Refresh's slot, which ends the row of ages with the stack's chip just
-  // before it (mb-z416, mb-646g).
+  // right one, over the end of the row of ages, which the stack's chip ends (mb-z416,
+  // mb-646g, mb-ablv).
   const heading = header.querySelector(".github-pull-title-with-state");
   const edges = (() => {
     if (!heading) return null;
@@ -590,7 +560,6 @@ const MEASURE = `async (name, change, tab, width) => {
     const numberRange = document.createRange();
     numberRange.selectNodeContents(heading.querySelector(".github-pull-number"));
     const number = numberRange.getBoundingClientRect();
-    const slot = header.querySelector(".github-pull-opened > .github-pull-refresh");
     const r = (v) => Math.round(v * 100) / 100;
     // The room the title leaves the corner's button where the reading column reaches it
     // (github/styles.css), which its number ends short of.
@@ -601,7 +570,7 @@ const MEASURE = `async (name, change, tab, width) => {
       gap: r(parseFloat(getComputedStyle(heading).columnGap)),
       room: r(room),
       numberRight: r(number.right + room - right),
-      numberOverRefresh: slot ? r(number.right + room - box(slot).right) : null,
+      numberOverRow: opened ? r(number.right + room - box(opened).right) : null,
       numberBelowText: r(number.bottom - text.bottom),
     };
   })();
@@ -619,9 +588,8 @@ const MEASURE = `async (name, change, tab, width) => {
     .filter((each) => each.shown)
     .map(({ shown, ...each }) => each);
   const r2 = (value) => Math.round(value * 100) / 100;
-  // Refresh's slot ends the row of ages, after Browse code, so it is numbered after it (A1
-  // of review A on #506).
-  const refresh = header.querySelector(".github-pull-opened > .github-pull-refresh");
+  // The status line's remedy, Retry or Fetch, first among its offers, a line tall (mb-ablv).
+  const remedy = header.querySelector(".github-pull-status-end > .github-pull-remedy");
   const contentEdge = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
   // The freshness note ends the author's row's lead (mb-ne91). Its slot is as wide as its
   // widest age, so the age ticking from "just now" to "59 min ago" changes its width not at
@@ -716,19 +684,17 @@ const MEASURE = `async (name, change, tab, width) => {
     titleGap: parseFloat(getComputedStyle(header).getPropertyValue("--page-title-gap")),
     // How many labels the record names, or null while there is no record.
     recordLabels: body.record ? body.record.pull.labels.length : null,
-    refresh: refresh
+    // No Refresh of the page's own on the row of ages or anywhere in the header (mb-ablv).
+    pageRefresh: header.querySelector(".github-pull-refresh") !== null,
+    remedy: remedy
       ? {
-          shown: !refresh.hidden,
-          height: r2(box(refresh).height),
-          rightEdge: r2(box(refresh).right - contentEdge),
-          onAgesRow: refresh.parentElement === opened,
-          // Refresh's start from the end of Browse code's, or of the ages where none.
-          afterLinks: (() => {
-            const quiet = opened?.querySelector(":scope > .github-pull-quiet");
-            const last = quiet?.querySelector(".github-pull-ages-links") ?? quiet;
-            return last ? r2(box(refresh).left - box(last).right) : null;
-          })(),
-          rowGap: opened ? parseFloat(getComputedStyle(opened).columnGap) : null,
+          label: remedy.textContent,
+          height: r2(box(remedy).height),
+          first: remedy === remedy.parentElement.firstElementChild,
+          // Whole, and inside the content edge.
+          whole: remedy.scrollWidth <= remedy.clientWidth + 0.5,
+          rightEdge: r2(box(remedy).right - contentEdge),
+          statusHeight: r2(box(remedy.closest(".github-pull-status")).height),
         }
       : null,
     ageWidens,
@@ -1497,8 +1463,10 @@ const CORNER_DONE = `(() => {
 // member, a level in under its stack's row.
 // The chevron, the icon, the number, the number's line, and the age are read, from the row's
 // top, before and after each row's place arrives: the place is in the title's flow, so the
-// title moves after it, but the title's box is two lines whatever it holds, so nothing else
-// moves, the link keeps its two lines (`grew`), and the row its three (`itemGrew`).
+// title moves after it. The title's box is as tall as its lines, one or two (mb-zuy0), so
+// nothing else moves unless the place takes a one-line title to a second line, which moves
+// the change line down by the link's growth (`grew`), and the row grows by that alone
+// (`itemGrew`).
 const PULLS_ROWS = `async (rows, width) => {
   const mb = window.metabrowser;
   const page = window.__page ??= await import("/github/pull-page.js");
@@ -1580,6 +1548,7 @@ const PULLS_ROWS = `async (rows, width) => {
   const before = read();
   const heights = built.map(({ anchor }) => anchor.getBoundingClientRect().height);
   const itemHeights = built.map(({ item }) => item.getBoundingClientRect().height);
+  const headingHeights = built.map(({ heading }) => heading.getBoundingClientRect().height);
   for (const { place, row } of built) {
     place.hidden = false;
     // As pulls-panel.js#paintPlace draws it: another stack is the Layers glyph before its
@@ -1685,11 +1654,14 @@ const PULLS_ROWS = `async (rows, width) => {
       itemGrew: round(item.getBoundingClientRect().height - itemHeights[at]),
       height: round(box.height),
       itemHeight: round(item.getBoundingClientRect().height),
-      // The title's box is two lines of its type, and what it draws is on those two.
+      // The title's box is as tall as the lines it draws, one or two of its type, before
+      // the place arrives and after.
       headingHeight: round(hd.height),
+      headingBefore: round(headingHeights[at]),
       lineHeight: round(lh),
       titleLines: lines.length,
-      // The row is three lines: the link's two, and the change line under them.
+      drawnLines: lines.length > 0 ? lineOf(lines[lines.length - 1]) + 1 : 1,
+      // The row is the link's lines, and the change line under them.
       threeLines: Math.abs(item.getBoundingClientRect().height - box.height - third.height) < 0.5 && third.top >= box.bottom - 0.5 && third.top >= hd.bottom - 0.5,
       // The number's line is one line of the change line's height, its line height.
       oneLine: Math.abs(m.height - parseFloat(getComputedStyle(change).lineHeight)) < 0.5,
@@ -2031,10 +2003,9 @@ async function main() {
         for (const [name, change] of RECORDS) {
           const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
           for (const tab of TABS) {
-            // The row of ages is the same on every tab but for Refresh, held hidden on
-            // Conversation and shown on Changes, and its stack chip arrives on each, where it
-            // is measured with Refresh shown, waiting, hidden, and gone: one stack, and two
-            // for the records with an avatar, the longest rows (mb-646g, mb-dwha). The Diff
+            // The row of ages is the same on every tab, and its stack chip arrives on each:
+            // one stack, and two for the records with an avatar, the longest rows (mb-646g,
+            // mb-dwha). The Diff
             // summary is the header's last row on every tab, so it is measured on each.
             const measured = {
               ...change,
@@ -2102,21 +2073,13 @@ async function main() {
                 chip.moved === null,
                 JSON.stringify(chip.moved),
               );
+              // The chip ends on the content column's edge, which is the end of the title's
+              // number less the room the title leaves the corner's button: under the number
+              // where the title leaves it none (mb-dwha, mb-ablv).
               check(
-                `${where}: Refresh follows the ages' end as the chip arrives`,
-                chip.refreshFollows.every(
-                  (gap) => gap !== null && Math.abs(gap - chip.refreshFollows[0]) <= 0.5,
-                ),
-                JSON.stringify(chip.refreshFollows),
-              );
-              // The chip ends under the end of the title's number, which is the content
-              // column's edge less the room the title leaves the corner's button, with Refresh
-              // shown, waiting, held hidden, and gone (mb-dwha).
-              check(
-                `${where}: the stack chip ends under the title's number, on the content column's edge less the title's room, whatever Refresh shows`,
-                Object.values(chip.ends).every(
-                  (end) => Math.abs(end.chip) <= 0.5 && Math.abs(end.content) <= 0.5,
-                ),
+                `${where}: the stack chip ends on the content column's edge, the title's room past the title's number`,
+                Math.abs(chip.ends.content) <= 0.5 &&
+                  Math.abs(chip.ends.number - chip.titleRoom) <= 0.5,
                 JSON.stringify({ ends: chip.ends, titleRoom: chip.titleRoom }),
               );
               check(
@@ -2124,11 +2087,10 @@ async function main() {
                 chip.chipShown >= 0.99,
                 String(chip.chipShown),
               );
-              // On the row of ages, at its end, at least a gap after Refresh's slot (mb-646g,
-              // mb-dwha).
+              // On the row of ages, at its end (mb-646g, mb-dwha).
               check(
-                `${where}: the stack chip ends the row of ages, at least a gap after Refresh's slot`,
-                chip.onAgesRow && chip.afterRefresh >= chip.rowGap - 0.5,
+                `${where}: the stack chip ends the row of ages`,
+                chip.onAgesRow,
                 JSON.stringify(chip),
               );
               check(
@@ -2244,17 +2206,17 @@ async function main() {
               );
             }
             if (shape.edges !== null) {
-              const { iconLeft, textAfterIcon, gap, numberRight, numberOverRefresh } = shape.edges;
+              const { iconLeft, textAfterIcon, gap, numberRight, numberOverRow } = shape.edges;
               check(
                 `${where}: the title's icon starts on the header's left edge, its text just after it`,
                 Math.abs(iconLeft) <= 0.5 && Math.abs(textAfterIcon - gap) <= 1,
                 JSON.stringify(shape.edges),
               );
               check(
-                `${where}: the title's number ends on the header's right edge, over the end of Refresh's slot that ends the row of ages, less the room it leaves the corner's button`,
+                `${where}: the title's number ends on the header's right edge, over the end of the row of ages, less the room it leaves the corner's button`,
                 Math.abs(numberRight) <= 0.5 &&
-                  numberOverRefresh !== null &&
-                  Math.abs(numberOverRefresh) <= 0.5,
+                  numberOverRow !== null &&
+                  Math.abs(numberOverRow) <= 0.5,
                 JSON.stringify(shape.edges),
               );
             }
@@ -2284,13 +2246,11 @@ async function main() {
             );
             // The status line is one of the header's metadata lines (mb-2u08), there only
             // while it has something to say: a line tall, as the author's row above it is, and
-            // every row one gap under the row before it. Refresh, shown or held, ends the row
-            // of ages (A1 of review A on #506), no taller than that row. As a bordered .btn,
+            // every row one gap under the row before it. As a bordered .btn, the page's
             // Refresh made its line 26 px against the row of ages' 18, and an empty labels row
             // stood between them. The row of ages is a chip's height since the stack's slot
             // came to it (mb-646g), so the line the status line matches is the author's.
             const line = (row) => shape.lines.find((each) => each.row === row);
-            const opened = line("opened");
             const author = line("meta");
             const statusLine = line("status");
             const tall = (each) => Math.round((each.bottom - each.top) * 100) / 100;
@@ -2305,19 +2265,24 @@ async function main() {
               shape.ageWidens === null || shape.ageWidens <= 0.5,
               JSON.stringify({ ageWidens: shape.ageWidens }),
             );
-            // Refresh's slot follows Browse code, a gap after it, before the stack's slot that
-            // ends the row (mb-dwha); with no row of ages it ends the status line, on the
-            // header's content edge.
+            // The page has no Refresh of its own (mb-ablv). Where the status line offers Retry
+            // or Fetch, the remedy is its first offer, whole, inside the content edge, and no
+            // taller than the line.
             check(
-              `${where}: Refresh's slot follows Browse code on the row of ages, or ends the status line, no taller than its row`,
-              shape.refresh !== null &&
-                opened !== undefined &&
-                shape.refresh.height <= tall(opened) + 0.5 &&
-                (shape.refresh.onAgesRow
-                  ? shape.refresh.afterLinks !== null &&
-                    Math.abs(shape.refresh.afterLinks - shape.refresh.rowGap) <= 0.5
-                  : Math.abs(shape.refresh.rightEdge) <= 0.5),
-              JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
+              `${where}: the page has no Refresh of its own`,
+              shape.pageRefresh === false,
+              String(shape.pageRefresh),
+            );
+            check(
+              `${where}: the status line's remedy, where offered, is its first offer, whole, and a line tall`,
+              shape.remedy === null ||
+                (shape.remedy.first &&
+                  shape.remedy.whole &&
+                  shape.remedy.rightEdge <= 0.5 &&
+                  statusLine !== undefined &&
+                  Math.abs(shape.remedy.statusHeight - tall(statusLine)) <= 0.5 &&
+                  shape.remedy.height <= tall(statusLine) + 0.5),
+              JSON.stringify({ remedy: shape.remedy, lines: shape.lines }),
             );
             // The title has the shared gap; both sides of the size line get an extra
             // half-gap. The bottom padding gives that space back.
@@ -2999,10 +2964,22 @@ async function main() {
         const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
         for (const row of rows) {
           const where = `${width} px, Pulls row #${row.number}`;
+          // A place that takes a one-line title to a second line moves the change line down
+          // by the link's growth, and the icon on the first line by the 24 px link's centring
+          // of one line, under 2 px; otherwise nothing but the title moves (mb-zuy0).
           check(
-            `${where}: a late stack place moves nothing but the title: not the chevron, the icon, the number, its line, or the age`,
-            row.moved.length === 0,
-            JSON.stringify(row.moved),
+            `${where}: a late stack place moves nothing but the title, or the change line down by the line it adds to the title`,
+            row.moved.every(
+              ([name, was, now]) =>
+                row.grew > 0 &&
+                now[0] === was[0] &&
+                now[2] === was[2] &&
+                now[3] === was[3] &&
+                (name === "github-pull-state-icon"
+                  ? Math.abs(now[1] - was[1]) < 2
+                  : Math.abs(now[1] - was[1] - row.grew) < 0.5),
+            ),
+            JSON.stringify({ moved: row.moved, grew: row.grew }),
           );
           // The place leads the title's flow (mb-vkhd): it was before the number, on the
           // number's line (mb-dzsi).
@@ -3023,17 +3000,21 @@ async function main() {
             !row.cut || !oneStack,
             JSON.stringify(row),
           );
-          // The title's box is two lines at every width, whatever it holds, so the link is
-          // always two and the row three (mb-85op). The row's third line is its change line
-          // (mb-d0a3), which holds the number's line (mb-lqkb).
+          // The title's box is as tall as its lines, one or two (mb-zuy0; it was two at every
+          // width, mb-85op), and grows only where the place takes a title of one line to two.
+          // The row's last line is its change line (mb-d0a3), which holds the number's line
+          // (mb-lqkb).
           check(
-            `${where}: the title is two lines tall and draws on no more, the number's line stays one line, the link two, and the row three`,
-            Math.abs(row.headingHeight - 2 * row.lineHeight) < 0.5 &&
+            `${where}: the title is as tall as its lines, one or two, the number's line stays one line, and the change line follows the link`,
+            Math.abs(row.headingHeight - row.drawnLines * row.lineHeight) < 0.5 &&
+              row.drawnLines >= 1 &&
+              row.drawnLines <= 2 &&
               row.titleLines >= 1 &&
               row.titleLines <= 2 &&
               row.oneLine &&
-              row.grew === 0 &&
-              row.itemGrew === 0 &&
+              (row.grew === 0 ||
+                (Math.abs(row.headingBefore - row.lineHeight) < 0.5 && row.drawnLines === 2)) &&
+              row.itemGrew === row.grew &&
               row.threeLines,
             JSON.stringify(row),
           );

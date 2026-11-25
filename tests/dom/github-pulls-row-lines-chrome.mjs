@@ -124,7 +124,7 @@ const REAL_TITLES = [
   ],
   [
     442,
-    "perf(transitions): recorder revision 6, the readings Phase 2–3 needs and the three open recorder bugs",
+    "perf(transitions): recorder revision 6, the readings the next stage needs and the three open recorder bugs",
   ],
   [
     444,
@@ -446,7 +446,9 @@ const READ = `(() => {
     rows[number] = {
       item: box(item), row: box(row), heading: box(heading), title: box(title),
       lh: heading ? parseFloat(getComputedStyle(heading).lineHeight) : null,
-      padTop: parseFloat(style.paddingTop),
+      padTop: parseFloat(style.paddingTop), padBottom: parseFloat(style.paddingBottom),
+      // The link's floor, the shell's row height, which a title of one line sits inside.
+      minHeight: parseFloat(style.minHeight) || 0,
       titleLines: lines, clamped: heading !== null && heading.scrollHeight > heading.clientHeight + 1,
       icon: box(row.querySelector(".github-pull-state-icon")),
       place: box(row.querySelector(".github-pulls-place")),
@@ -609,11 +611,12 @@ function threeLines(r) {
   // longer, cut short at the second (mb-zuy0).
   const shown = Math.min(2, r.titleLines.length);
   const parts = {
-    // The link is the title's lines, as tall as they are (mb-85op, mb-zuy0).
+    // The link is the title's lines, as tall as they are (mb-85op, mb-zuy0), and no shorter
+    // than the shell's row, which a title of one line sits inside.
     titleLines:
       shown > 0 &&
       near(r.heading.height, shown * r.lh) &&
-      near(r.row.height, r.padTop + shown * r.lh),
+      near(r.row.height, Math.max(r.minHeight, r.padTop + shown * r.lh + r.padBottom)),
     // The state icon leads the first line, on the row's inset in the one icon slot (mb-3vil),
     // centered on the first line's box; the title starts one column gap after it.
     iconOnFirst: near(r.icon.top, r.heading.top) && near(r.icon.height, r.lh),
@@ -831,19 +834,32 @@ async function main() {
         };
         // A closed row is its title's lines and its change line, waiting or shown: a title of
         // two lines makes the height the panel places an unmeasured row at
-        // (`ROW_ESTIMATE_PX`), and one of a line a row one line shorter (mb-zuy0).
+        // (`ROW_ESTIMATE_PX`), and one of a line a row shorter by what its link gives up, down
+        // to the shell's row height its link keeps (mb-zuy0).
         const estimate = await browser.evaluate(`window.__module.ROW_ESTIMATE_PX`);
         const titleLines = (number) => Math.min(2, after.rows[number]?.titleLines.length ?? 0);
-        const lineHeight = after.rows[SHOWN[0]]?.lh ?? 0;
-        const expected = (number) => estimate - (2 - titleLines(number)) * lineHeight;
+        const sample = after.rows[SHOWN[0]];
+        const lineHeight = sample?.lh ?? 0;
+        const link = (lines) =>
+          Math.max(
+            sample?.minHeight ?? 0,
+            (sample?.padTop ?? 0) + lines * lineHeight + (sample?.padBottom ?? 0),
+          );
+        const expected = (number) => estimate - link(2) + link(titleLines(number));
         check(
-          `${at}: a closed row is ROW_ESTIMATE_PX tall with a title of two lines, a line less with one, waiting and shown`,
+          `${at}: a closed row is ROW_ESTIMATE_PX tall with a title of two lines, and shorter by what its link gives up with one, waiting and shown`,
           Object.entries(measured[at].heights).every(
             ([number, height]) =>
               near(height.waiting, expected(Number(number))) &&
               near(height.shown, expected(Number(number))),
           ),
-          JSON.stringify({ estimate, lineHeight, heights: measured[at].heights }),
+          JSON.stringify({
+            estimate,
+            lineHeight,
+            oneLine: link(1),
+            twoLines: link(2),
+            heights: measured[at].heights,
+          }),
         );
         if (theme === THEMES[0]) {
           measured[at].realTitles = await browser.evaluate(

@@ -68,21 +68,12 @@
    title leaves the button its room, less the space beside the column: the page's width,
    `100cqi` of the main view, which is the query container, less the header's, the title's
    `100%` and the header's pads. */
-.github-pull-header:has(> .view-header-end[data-counterpart]) {
-  --github-pull-title-room: max(
+.github-pull-header:has(> .view-header-end[data-counterpart]) > .github-pull-title {
+  padding-inline-end: max(
     0px,
     var(--view-header-corner-room) -
     (100cqi - 100% - 2 * var(--content-padding-x))
   );
-}
-.github-pull-header:has(> .view-header-end[data-counterpart]) > .github-pull-title {
-  padding-inline-end: var(--github-pull-title-room);
-}
-/* The row of ages ends where the title's number does, the room the title leaves the corner's
-   button short of the content edge, so the stack chip at its end ends under the number's end
-   (mb-dwha). The room is the title's, resolved against the header as the title's is. */
-.github-pull-header:has(> .view-header-end[data-counterpart]) > .github-pull-opened {
-  margin-inline-end: var(--github-pull-title-room);
 }
 /* A page mounted with no record in hand holds its cold header and tab column out of sight
    for the shell's quiet period, and pull-page.js lifts the hold with the first header that
@@ -111,8 +102,8 @@
    with the title's last line: the number is outside the clamp, so a title cut short keeps
    it. The text's track takes the spare width, so the icon and the text start at the
    header's left edge and the number ends on its right edge, over the end of the row of
-   ages, where Refresh's slot ends it and the stack chip comes just before (mb-z416,
-   mb-646g), whatever the title's length. With the spare width shared by
+   ages, which the stack chip ends (mb-z416, mb-646g, mb-ablv), whatever the title's
+   length. With the spare width shared by
    the icon's and the number's tracks, a short title sat centred with its icon alone at the
    left: at 980 px in Chrome 152, "Count to two in the app" spanned 361 to 608 px and "#7"
    started at 616. */
@@ -335,8 +326,12 @@
 }
 /* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
    widest state's (`.github-pull-state-slot`), then when it was opened, updated, merged, or
-   closed and Browse code, then Refresh's slot, and at its right end the stack chip's
-   (mb-646g, mb-dwha), which ends under the end of the title's number. One line in
+   closed and Browse code, and at its right end the stack chip's (mb-646g, mb-dwha), which
+   ends the row at the content edge, under the end of the title's number where the title
+   leaves the corner's button no room: nothing comes after it, since the page has no Refresh
+   of its own (mb-ablv). The row keeps the room the title leaves the button: the title's
+   150 px taken from the row too cut the ages to nothing and clipped Browse code at 420 and
+   560 px (Chrome, CI run 45571746432). One line in
    every state: the badge's box and the ages' line are both 18 px in Chrome 152, the stack's
    strut holds the row at a chip's height, and a page with no record yet holds the line with
    no badge. The row positions the stack's menu, which hangs from its end. */
@@ -422,8 +417,8 @@
   text-align: start;
   cursor: pointer;
 }
-/* A Refresh that waits for a refresh running, or for a rate limit to lift, stays in its place
-   and keeps its number, muted, and does nothing, as the Pulls tab's waiting Refresh does
+/* A Retry that waits for the refresh it asked for stays in its place and keeps its number,
+   muted, and does nothing, as the Pulls tab's waiting Refresh does
    (`.github-pulls-refresh[aria-disabled="true"]`). */
 .github-pull-text-action[aria-disabled="true"] {
   color: var(--muted);
@@ -591,11 +586,11 @@
    while it has something to say beyond the note: a failure and its remedy, a message, an
    offer. So those, and only those, move the tab bar as the line comes and goes; a rate
    limit's hold, which begins and lifts by itself, is said in the note's place and moves
-   nothing (mb-ne91). With no row of ages, a pull request that cannot be shown, the line also
-   ends in Refresh's slot. One line at the body size, as every line under the title is
+   nothing (mb-ne91). One line at the body size, as every line under the title is
    (`.page-header-line`); it was the small type, a step under the lines above it (mb-kisi).
-   Refresh and Fetch are text actions (`.github-pull-text-action`), a
-   line tall, as Browse code on the row of ages is (mb-2u08). As bordered `.btn`s they made
+   Retry and Fetch, the remedies it offers for its sentence (mb-ablv), are text actions
+   (`.github-pull-text-action`), a line tall, as Browse code on the row of ages is (mb-2u08):
+   as Refresh and Fetch on that row, bordered `.btn`s, they made
    this row 26 px where the row of ages was 18, and with the empty labels row it stood 32 px
    under that row against the 6 px between the others (Chrome 152). Its text is cut short
    before it wraps; its controls never are.
@@ -660,20 +655,10 @@
 .github-pull-offer > :is(button, a) {
   flex: none;
 }
-/* Refresh, or Fetch, follows Browse code on the row of ages, so it takes the number after
-   Browse code's and renumbers it neither as it comes nor as it is held (mb-ne91). The stack
-   chip's slot after it takes the row's spare width (`.github-pull-stacks`), which puts the
-   chip on the row's end, under the end of the title's number, and Refresh held hidden keeps
-   its box, so neither it nor a chip that arrives moves the other (mb-646g, mb-dwha): at the
-   row's end, Refresh's held slot kept the chip a Refresh's width short of the number. The
-   ages are cut short before it and the chip; it never is, and where they are cut it follows
-   their end, as Browse code does. */
-.github-pull-refresh {
+/* The status row's remedy, Retry or Fetch, is the first of its offers and is never cut short,
+   as an offer's control is not (mb-ablv). */
+.github-pull-status-end > .github-pull-remedy {
   flex: none;
-}
-.github-pull-refresh[hidden] {
-  display: inline-block;
-  visibility: hidden;
 }
 /* The author's row's lead ends in the note (mb-ne91): a muted dot, then how fresh what is
    shown is, one time, "Fetched just now via GitHub CLI", in muted ink at the sentence's size,
@@ -1652,12 +1637,12 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-/* Optional membership has its slot at the right end of the row of ages (mb-646g), after
-   Refresh's slot, its end under the end of the title's number (mb-dwha): its chip, which
-   arrives from its own /stacks answer, lands in the row's empty end and moves nothing,
-   Refresh included, and Refresh, which holds its slot whether it shows or not, moves it not
-   at all. The ages keep their start; where the row has no room left for the chip, they are
-   cut short at their end, as at a narrow pane, Browse code and Refresh following it, and the
+/* Optional membership has its slot at the right end of the row of ages (mb-646g), its end
+   under the end of the title's number (mb-dwha): its chip, which arrives from its own
+   /stacks answer, lands in the row's empty end and moves nothing. Nothing follows it: the
+   page's Refresh once held a slot there and kept the chip a Refresh's width short of the
+   number (mb-ablv). The ages keep their start; where the row has no room left for the chip,
+   they are cut short at their end, as at a narrow pane, Browse code following it, and the
    row never takes a second line. The menu hangs
    from the end of that row, so it fits a narrow pane as well as a wide one. On the author's
    row a line below (mb-cf0l), the chip stood apart from the state and ages it belongs
@@ -1735,10 +1720,10 @@
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
-/* Where the row of ages has no width left for the chips, the state's badge and Refresh whole
-   and the ages and Browse code gone, a chip's position is cut short at its end, its tip
+/* Where the row of ages has no width left for the chips, the state's badge whole and the
+   ages and Browse code gone, a chip's position is cut short at its end, its tip
    saying the whole of it, and the chip never ends past the row: two stacks' named chips,
-   156.31 px, ran 20.61 px past a 320 px pane's header, and Refresh with them (Chrome 152). */
+   156.31 px, ran 20.61 px past a 320 px pane's header (Chrome 152). */
 .github-pull-stacks > .github-pull-stack-disclosure {
   flex: 0 1 auto;
   min-width: 0;

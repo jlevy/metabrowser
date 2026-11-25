@@ -3069,11 +3069,12 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "github-pull-browse" not in page and '"Browse code"' in page
     assert page.count('class: "github-pull-text-action"') == 1
     assert '"github-pull-file github-pull-text-action"' in page
-    # The status line's Refresh or Fetch is a text action too: the line is one of the
-    # header's metadata lines, and a bordered .btn made it 26 px where the row of ages above
-    # it is 18 (mb-2u08). A switch to the head was one, until the server followed the head
-    # itself (mb-6a6w).
-    assert '"github-pull-text-action github-pull-refresh"' in page
+    # The status line's remedy, Retry or Fetch, is a text action too (mb-ablv): the line is
+    # one of the header's metadata lines, and a bordered .btn made it 26 px where the row of
+    # ages above it is 18 (mb-2u08). A switch to the head was one, until the server followed
+    # the head itself (mb-6a6w). The page has no Refresh of its own.
+    assert '"github-pull-text-action github-pull-remedy"' in page
+    assert "github-pull-refresh" not in page
     assert "github-pull-switch" not in page
     # A <button> is an atomic inline box whatever its display, so the link and the plain
     # path are one too: a wrapped path then puts the badge after it on the next line in every

@@ -312,8 +312,8 @@ def test_a_title_holds_two_lines_and_never_more() -> None:
 def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     """The author and the sentence share one line; the branches, the next (mb-646g).
 
-    The row of ages above them ends in the stack's slot and Refresh's, and the slot's strut
-    holds that row at a chip's height until a chip arrives.
+    The row of ages above them ends in the stack's slot, whose strut holds that row at a
+    chip's height until a chip arrives.
     """
 
     css = _github_css()
@@ -366,10 +366,11 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "text-overflow" not in ages
     assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-quiet > .github-pull-ages")
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
-    # Refresh follows Browse code (A1 of review A on #506), and the stack's slot ends the row
-    # after it (mb-646g, mb-dwha), on a record's row and on the one held before a record.
-    assert "placeChildren(openedRow, [stateBadge, opened.row, refresh, stackColumn]);" in page
-    assert "          refresh,\n          stackColumn,\n        ]);" in page
+    # The stack's slot ends the row (mb-646g, mb-dwha), on a record's row and on the one held
+    # before a record, with nothing after it: the page has no Refresh of its own (mb-ablv).
+    assert "placeChildren(openedRow, [stateBadge, opened.row, stackColumn]);" in page
+    assert "          ),\n          stackColumn,\n        ]);" in page
+    assert "github-pull-refresh" not in page and "github-pull-refresh" not in css
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page
 
 
@@ -420,11 +421,13 @@ def test_labels_have_a_row_while_unknown_or_present() -> None:
 
 
 def test_the_stack_chip_ends_the_row_of_ages_under_the_number() -> None:
-    """A late chip lands in the row's empty end, after Refresh's slot (mb-646g, mb-dwha).
+    """A late chip lands in the row's empty end, under the number (mb-646g, mb-dwha, mb-ablv).
 
-    The slot takes the row's spare width, so the chip ends the row, which ends where the
-    title's number does, and Refresh, which keeps its box held hidden, follows Browse code,
-    so neither moves the other. The ages take only the width the chips leave, so they give
+    The slot takes the row's spare width, so the chip ends the row at the content edge,
+    under the end of the title's number where the title leaves the corner's button no room;
+    nothing follows it, since the page has no Refresh of its own, whose held slot there kept
+    the chip a Refresh's width short of the number. The ages take only the width the chips
+    leave, so they give
     way before a chip does, and a chip's position is cut short only once they have none
     left. tests/dom/github-pull-header-chrome.mjs measures it.
     """
@@ -434,20 +437,14 @@ def test_the_stack_chip_ends_the_row_of_ages_under_the_number() -> None:
     assert "margin-inline-start: auto;" in stacks and "flex: 0 1 auto;" in stacks
     assert "min-width: 0;" in stacks
     assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
-    # One auto margin on the row: a second, on Refresh, would split the spare width with the
-    # slot's and leave the chip in the middle of the row.
-    assert ".github-pull-opened > .github-pull-refresh" not in css
-    assert "visibility: hidden;" in _rule(css, ".github-pull-refresh[hidden]")
-    # The row ends where the title's number does: the room the title leaves the corner's
-    # button, one value for both.
+    # One auto margin on the row, the slot's, so the chip ends the row.
+    assert "margin-inline-start" not in _rule(css, ".github-pull-opened > .github-pull-quiet")
+    # The row ends at the content edge: the room the title leaves the corner's button is the
+    # title's alone, since taking it from the row too cut the ages and Browse code short in a
+    # narrow pane.
     room = ".github-pull-header:has(> .view-header-end[data-counterpart])"
-    assert "--github-pull-title-room: max(" in _rule(css, room)
-    assert _rule(css, f"{room} > .github-pull-title").strip() == (
-        "padding-inline-end: var(--github-pull-title-room);"
-    )
-    assert _rule(css, f"{room} > .github-pull-opened").strip() == (
-        "margin-inline-end: var(--github-pull-title-room);"
-    )
+    assert "padding-inline-end: max(" in _rule(css, f"{room} > .github-pull-title")
+    assert f"{room} > .github-pull-opened" not in css
     # The ages' basis is nothing, and they grow to their own width at most.
     ages = _rule(css, ".github-pull-opened > .github-pull-quiet")
     assert "flex: 1 1 0;" in ages and "max-width: max-content;" in ages
@@ -506,9 +503,6 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     # pane width, is checked in Chrome (tests/test_github_pull_header_chrome.py).
     assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-offer-text")
     assert "flex: none;" in _rule(css, ".github-pull-offer > :is(button, a)")
-    assert "margin-inline-start" not in _rule(css, ".github-pull-refresh")
-    held = _rule(css, ".github-pull-refresh[hidden]")
-    assert "visibility: hidden;" in held and "display: inline-block;" in held
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     # The row is a metadata line, a line of the page header's body size tall (mb-2u08,
     # mb-kisi), which its class sets (`.page-header-line`): its controls are text actions, a
@@ -518,18 +512,20 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     # Whether it shows is read from what the paint put on it, not from the DOM (A4 of review A
     # on #506); the browserless sessions hold it (github-pull-page-mount-behavior.js).
     assert "status.hidden = agesRow && statusText.length === 0 && ending.length === 0;" in page
-    assert 'class: "github-pull-text-action github-pull-refresh"' in page
-    assert "btn github-pull-refresh" not in page
-    # Shown while offered, and while a refresh it offered waits, disabled, keeping its number
-    # (B2 of review B on #506).
-    assert "refresh.hidden = !(model.canRefresh || waiting);" in page
-    assert 'refresh.setAttribute("aria-disabled", "true");' in page
+    # The page has no Refresh of its own (mb-ablv): the status row's remedy, Retry or Fetch,
+    # is a text action first among the offers at its end, never cut short.
+    assert 'class: "github-pull-text-action github-pull-remedy"' in page
+    assert "btn github-pull-remedy" not in page
+    assert "flex: none;" in _rule(css, ".github-pull-status-end > .github-pull-remedy")
+    # Shown while the row says what it is for, and while a refresh it asked for has not yet
+    # started, disabled, keeping its number (B2 of review B on #506).
+    assert "const remedyShown = asks && (model.canRefresh || waiting);" in page
+    assert 'remedy.setAttribute("aria-disabled", "true");' in page
     waits = _rule(css, '.github-pull-text-action[aria-disabled="true"]')
     assert "color: var(--muted);" in waits and "cursor: default;" in waits
     assert "if (model.canRefresh) {" not in page
-    # With no row of ages, Refresh is the end's last child, after any offers.
     assert 'h("span", { class: "github-pull-status-end" })' in page
-    assert "placeChildren(end, agesRow ? ending : [...ending, refresh]);" in page
+    assert "placeChildren(end, ending);" in page
     assert 'status.append(h("span", { class: "github-pull-offer" }' not in page
     # A failure carries its remedy, so it is the one text the row lets wrap.
     failed = _rule(css, ".github-pull-status.github-pull-status-failed")

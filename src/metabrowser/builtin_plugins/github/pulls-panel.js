@@ -161,9 +161,11 @@ export const PULL_ROWS_OVERSCAN = 40;
 // The height a row not yet measured is placed at: a pull request's closed row, its link's two
 // lines of title and its change line. Measured in headless Chrome 152 with KPress's faces at
 // the nav's 13 px type, from 180 to 420 px in both themes, 61 px whether the lines wait or are
-// shown, and whether the title is one line, two, or more cut short at two (41 px of link, the
-// 2 px pad and two 19.5 px lines, and 20 of change line), as it was when the number's line was
-// the link's second (mb-85op, mb-lqkb; tests/dom/github-pulls-row-lines-chrome.mjs).
+// shown, for a title of two lines or more cut short at two (41 px of link, the 2 px pad and two
+// 19.5 px lines, and 20 of change line), as it was when the number's line was the link's second
+// (mb-85op, mb-lqkb; tests/dom/github-pulls-row-lines-chrome.mjs). A title of one line makes a
+// row of 44 px, its link held at the shell's 24 px row height (mb-zuy0), and the list places
+// each row drawn by its measured height.
 export const ROW_ESTIMATE_PX = 61;
 // How long a walk waits for a next key before it opens the row it reached, once a key is
 // repeating. A key's release opens it at once, so this is only for a release the page does
@@ -3738,7 +3740,7 @@ export function mountPullsPanel(container, ctx, mb) {
     { type: "button", class: "btn github-pulls-refresh", "aria-disabled": "true" },
     ["Refresh"],
   );
-  refreshButton.addEventListener("click", () => void controller.refresh());
+  refreshButton.addEventListener("click", () => void refreshAll());
   filters.append(refreshButton);
   const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
@@ -3971,12 +3973,58 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {(() => void) | null} */
   let unwatchFile = null;
   let fileFollowEpoch = 0;
+  // The one Refresh (mb-ablv): the tab's Refresh refreshes the pull request page beside it,
+  // as the page's own Refresh did, and then the list, so a reader asks once for both. It
+  // waits, `aria-disabled`, only while neither can refresh, and its number runs what its
+  // click runs.
+  /** Whether the list can refresh, as the last paint said. */
+  let listCanRefresh = false;
+  /** @type {{canRefresh: () => boolean, refresh: () => void, onRefreshChange: (listener: () => void) => () => void} | null} */
+  let refreshPage = null;
+  /** @type {(() => void) | null} */
+  let unwatchRefreshPage = null;
+  function paintRefresh() {
+    const can = listCanRefresh || refreshPage?.canRefresh() === true;
+    refreshButton.setAttribute("aria-disabled", String(!can));
+  }
+  /** A press of Refresh: the page beside the tab first, then the list. */
+  function refreshAll() {
+    if (refreshPage?.canRefresh() === true) {
+      refreshPage.refresh();
+    }
+    return controller.refresh();
+  }
+  /**
+   * Follow the refresh of the page beside the tab, the shown pull request's, as it comes,
+   * is replaced, or goes.
+   *
+   * @param {unknown} page
+   */
+  function followPageRefresh(page) {
+    const next =
+      /** @type {{canRefresh?: unknown, refresh?: unknown, onRefreshChange?: unknown} | null} */ (
+        page
+      );
+    const refreshing =
+      typeof next?.canRefresh === "function" &&
+      typeof next.refresh === "function" &&
+      typeof next.onRefreshChange === "function"
+        ? /** @type {NonNullable<typeof refreshPage>} */ (next)
+        : null;
+    if (refreshing !== refreshPage) {
+      unwatchRefreshPage?.();
+      refreshPage = refreshing;
+      unwatchRefreshPage = refreshing?.onRefreshChange(paintRefresh) ?? null;
+    }
+    paintRefresh();
+  }
   /** A null-file route replays the same page's current observation after address sync.
    * @param {boolean} [replay]
    */
   function followCurrentFile(replay = false) {
     const number = currentRow;
     const page = number === null ? null : tab.pageFor(number);
+    followPageRefresh(page);
     if (!replay && page === followedPage) {
       return;
     }
@@ -5157,7 +5205,8 @@ export function mountPullsPanel(container, ctx, mb) {
         alignRefreshing(list);
       }
     }
-    refreshButton.setAttribute("aria-disabled", String(connected?.canRefresh !== true));
+    listCanRefresh = connected?.canRefresh === true;
+    paintRefresh();
     const help = connected?.help ?? "";
     if (connectionHelp.dataset.help !== help) {
       connectionHelp.dataset.help = help;
@@ -5449,7 +5498,7 @@ export function mountPullsPanel(container, ctx, mb) {
       });
     }
     mb.shortcuts.attach(refreshButton, {
-      activate: () => void controller.refresh(),
+      activate: () => void refreshAll(),
       id: "github.pulls.refresh",
       numbered: true,
       signal,
@@ -5843,6 +5892,9 @@ export function mountPullsPanel(container, ctx, mb) {
       moved?.disconnect();
       unwatchPage();
       unwatchFile?.();
+      unwatchRefreshPage?.();
+      unwatchRefreshPage = null;
+      refreshPage = null;
       window.clearTimeout(peekTimer);
       unbindFilters();
       stacks.dispose();

@@ -225,10 +225,11 @@ const LIST = `(() => {
       const round = (value) => Math.round(value * 100) / 100;
       return [number, {
         text: metaBox.textContent,
-        // The title's two lines are above the change line, whose number's line is one line
-        // of its height.
+        // The title's lines, one or two, as tall as it draws (mb-zuy0), are above the change
+        // line, whose number's line is one line of its height.
         titleAbove: heading.bottom <= meta.top + 0.5 && heading.bottom <= age.top + 0.5 && title.bottom <= heading.bottom + 0.5,
-        titleTwoLines: Math.abs(heading.height - 2 * lh) < 0.5,
+        titleLines: Math.round(heading.height / lh),
+        titleFits: [1, 2].some((lines) => Math.abs(heading.height - lines * lh) < 0.5),
         oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(change).lineHeight)) < 0.5,
         // The number's line starts in the text column, under the title's first text; the age
         // ends at the row's end.
@@ -728,12 +729,12 @@ try {
     // mb-lqkb): before, the title was alone on the first line and the number's line, with the
     // age, the second.
     check(
-      "a pull request's first two lines are its title's, the icon on the row's inset and the text from the text column to the row's end, and its third its change line, the chevron under the icon, the number under the title's first text, and the age at the row's end",
+      "a pull request's first lines, one or two, are its title's, the icon on the row's inset and the text from the text column to the row's end, and its last its change line, the chevron under the icon, the number under the title's first text, and the age at the row's end",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
           row?.titleAbove &&
-          row.titleTwoLines &&
+          row.titleFits &&
           row.oneLine &&
           Math.abs(row.metaFromText) < 0.5 &&
           Math.abs(row.ageToEnd) < 0.5 &&
@@ -748,8 +749,14 @@ try {
           row.toggleOnChange &&
           Math.abs(row.toggleFromInset) < 0.5 &&
           row.numberLeft === 0 &&
-          row.height === list.titleRoom.flatRow &&
-          row.itemHeight === list.lines[106].itemHeight
+          // Rows whose titles take as many lines are as tall as each other.
+          [10, 9, 106].every((other) => {
+            const that = list.lines[other];
+            return (
+              that?.titleLines !== row.titleLines ||
+              (that.height === row.height && that.itemHeight === row.itemHeight)
+            );
+          })
         );
       }) &&
         list.lines[9].text.startsWith("#9 · ") &&

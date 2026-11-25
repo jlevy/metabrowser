@@ -1177,6 +1177,24 @@ async function paintStory(panel, selection = false) {
               listener(path === null ? null : { path });
             }
           },
+          // What the Pulls tab's Refresh reads and runs of the page beside it (mb-ablv).
+          refreshes: 0,
+          offered: false,
+          refreshListeners: new Set(),
+          canRefresh: () => handle.offered,
+          refresh() {
+            handle.refreshes += 1;
+          },
+          onRefreshChange(listener) {
+            handle.refreshListeners.add(listener);
+            return () => handle.refreshListeners.delete(listener);
+          },
+          offer(offered) {
+            handle.offered = offered;
+            for (const listener of handle.refreshListeners) {
+              listener();
+            }
+          },
           fileForPath: (path) => ({ kind: "file", path }),
           scrollToFile: (path) => ({ kind: "file", path }),
           // A jump may report later; its explicit address must win while unavailable.
@@ -1300,6 +1318,46 @@ async function paintStory(panel, selection = false) {
       observations.history = selected(current);
       handles.get(other).emit("src/app.txt");
       observations.lateAfterHistory = selected(other);
+      // The one Refresh (mb-ablv): the tab's Refresh refreshes the page beside it, when the
+      // page has something to refresh, and then the list; it follows what the page offers,
+      // and waits only while neither can refresh.
+      const beside = handles.get(current);
+      const listRefreshes = () =>
+        answers.filter((request) => request.route === "/api/plugin/github/pulls-refresh").length;
+      const listBefore = listRefreshes();
+      beside.offer(true);
+      assert(
+        refresh.getAttribute("aria-disabled") === "false",
+        "Refresh is offered while the page beside it can refresh",
+      );
+      refresh.listeners.get("click")();
+      await settle();
+      assert(
+        beside.refreshes === 1 && listRefreshes() === listBefore + 1,
+        "one press refreshes the page beside the tab and then the list",
+      );
+      beside.offer(false);
+      assert(
+        refresh.getAttribute("aria-disabled") === "true",
+        "Refresh waits while neither the page nor the list, its refresh asked, can refresh",
+      );
+      refresh.listeners.get("click")();
+      await settle();
+      assert(
+        beside.refreshes === 1 && listRefreshes() === listBefore + 1,
+        "a waiting Refresh asks nothing of the page or the list",
+      );
+      beside.offer(true);
+      assert(
+        refresh.getAttribute("aria-disabled") === "false",
+        "the page offering a refresh again offers Refresh again",
+      );
+      refresh.listeners.get("click")();
+      await settle();
+      assert(
+        beside.refreshes === 2 && listRefreshes() === listBefore + 1,
+        "a press while the list's refresh is on its way refreshes the page alone",
+      );
       mounted.dispose();
       handles.get(current).emit("docs/new.md");
       pageHost.dispose();
