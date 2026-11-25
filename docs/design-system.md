@@ -1018,9 +1018,11 @@ has the before and after).
   under it, is joined across rows, and past the removed run that Current hides, which
   leaves the heading the block before the paragraph.
   `h2 + h3` is not: joining it would restate KPress’s margin, so an h3 straight after an
-  h2 keeps the space it has after a paragraph, a little more than the document’s. These
-  rules read the row before a row across the edges of runs and changes: the last row of
-  the run before, the row before a change, or a change’s last row.
+  h2 keeps the space it has after a paragraph, a little more than the document’s.
+  `markJoins` in `diff-markdown.js` marks each row from the rows shown before and after
+  it, so no selector has to name the changes, runs, hidden removed runs, or chunk edges
+  that may lie between two rows; a list or quote continued past a hidden removed item
+  joins the same way.
 - **The fold of unchanged blocks** is the diff’s [fold bar](#fold-expanders) and the
   group it opens, whose rows are its content.
   The group clips its content with `overflow: clip` where a code file’s fold uses
@@ -1041,6 +1043,8 @@ run by construction, and `tests/dom/diff-markdown-session.js` fails on any rende
 placed otherwise, a changed row outside a run of its kind, two runs of one kind side by
 side, or two changes side by side, through every step it plays, a long document’s chunks
 drawn out of order among them.
+It and `tests/dom/diff-current-session.js` also fail on a row shown without its joins,
+or with joins the rows shown around it no longer make.
 `tests/test_diff_markdown_fold_chrome.py` measures the fold closed and open.
 
 ### Embedded Document Themes

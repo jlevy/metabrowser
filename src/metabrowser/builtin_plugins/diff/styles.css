@@ -816,136 +816,20 @@
 
 /* The changed rows are in changes and runs (`changeRuns` in diff-markdown.js), which set
    no block padding or border and start no formatting context either, so a row's margins
-   collapse through them as they do through the row. The rules below that join one row to
-   the row before it read that row across their edges too: before a run's first row is the
-   last row of the run before it; before a change's first row, the row before the change;
-   and before the row after a change, the change's last row. */
+   collapse through them as they do through the row.
 
-/* One list item or quoted paragraph per row reads as one list or quote: between two rows
-   of one list or one quote, the list's or quote's own margins give way, so its items are
-   spaced as KPress spaces them inside it, and its first and last rows keep the margins
-   that set the list or quote apart in the document. */
-.metabrowser-diff-host :is(
-    .diff-markdown-block:has(> .kpress-prose > ul) + .diff-markdown-block,
-    .diff-markdown-run:has(> :last-child > .kpress-prose > ul) + .diff-markdown-run > :first-child,
-    .diff-markdown-block:has(> .kpress-prose > ul)
-      + .diff-markdown-change
-      > :first-child
-      > :first-child,
-    .diff-markdown-change:has(> :last-child > :last-child > .kpress-prose > ul)
-      + .diff-markdown-block
-  )
-  > .kpress-prose
-  > ul,
-.metabrowser-diff-host
-  :is(
-    .diff-markdown-block:has(> .kpress-prose > ol) + .diff-markdown-block,
-    .diff-markdown-run:has(> :last-child > .kpress-prose > ol) + .diff-markdown-run > :first-child,
-    .diff-markdown-block:has(> .kpress-prose > ol)
-      + .diff-markdown-change
-      > :first-child
-      > :first-child,
-    .diff-markdown-change:has(> :last-child > :last-child > .kpress-prose > ol)
-      + .diff-markdown-block
-  )
-  > .kpress-prose
-  > ol,
-.metabrowser-diff-host
-  :is(
-    .diff-markdown-block:has(> .kpress-prose > blockquote) + .diff-markdown-block,
-    .diff-markdown-run:has(> :last-child > .kpress-prose > blockquote)
-      + .diff-markdown-run
-      > :first-child,
-    .diff-markdown-block:has(> .kpress-prose > blockquote)
-      + .diff-markdown-change
-      > :first-child
-      > :first-child,
-    .diff-markdown-change:has(> :last-child > :last-child > .kpress-prose > blockquote)
-      + .diff-markdown-block
-  )
-  > .kpress-prose
-  > blockquote {
+   KPress spaces some blocks by the block before them: a list or a quote continued gives
+   way its margins, and a paragraph straight under an h4, h5, or h6 sits close under it. A
+   row's block has no block before it in its row, so `markJoins` in diff-markdown.js marks
+   each row by the rows shown before and after it, whatever changes, runs, hidden removed
+   runs, or chunk edges lie between them, and these rules give way the margins it marks
+   (docs/design-system.md, "Rendered Diff Spacing"). */
+.metabrowser-diff-host .diff-markdown-block[data-join~="start"] > .kpress-prose > :first-child {
   margin-block-start: 0;
 }
 
-.metabrowser-diff-host
-  :is(
-    .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > ul),
-    .diff-markdown-run:has(+ .diff-markdown-run > :first-child > .kpress-prose > ul) > :last-child,
-    .diff-markdown-block:has(
-      + .diff-markdown-change > :first-child > :first-child > .kpress-prose > ul
-    ),
-    .diff-markdown-change:has(+ .diff-markdown-block > .kpress-prose > ul)
-      > :last-child
-      > :last-child
-  )
-  > .kpress-prose
-  > ul,
-.metabrowser-diff-host
-  :is(
-    .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > ol),
-    .diff-markdown-run:has(+ .diff-markdown-run > :first-child > .kpress-prose > ol) > :last-child,
-    .diff-markdown-block:has(
-      + .diff-markdown-change > :first-child > :first-child > .kpress-prose > ol
-    ),
-    .diff-markdown-change:has(+ .diff-markdown-block > .kpress-prose > ol)
-      > :last-child
-      > :last-child
-  )
-  > .kpress-prose
-  > ol,
-.metabrowser-diff-host
-  :is(
-    .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > blockquote),
-    .diff-markdown-run:has(+ .diff-markdown-run > :first-child > .kpress-prose > blockquote)
-      > :last-child,
-    .diff-markdown-block:has(
-      + .diff-markdown-change > :first-child > :first-child > .kpress-prose > blockquote
-    ),
-    .diff-markdown-change:has(+ .diff-markdown-block > .kpress-prose > blockquote)
-      > :last-child
-      > :last-child
-  )
-  > .kpress-prose
-  > blockquote {
+.metabrowser-diff-host .diff-markdown-block[data-join~="end"] > .kpress-prose > :last-child {
   margin-block-end: 0;
-}
-
-/* KPress sets a paragraph right after an h4, h5, or h6 close under it (`h4 + p` to
-   `h6 + p`, no space above the paragraph), and a row's paragraph has no heading beside
-   it in its row, so the rule is carried across rows here, and past the removed run
-   Current hides, which leaves the heading the row before the paragraph: before a change
-   that starts with it, within a change, and at a change's end. KPress's `h2 + h3` is not
-   carried: its value is KPress's to set, so an h3 straight after an h2 keeps its own space
-   above it, 4.8 px more than the document's. */
-.metabrowser-diff-host :is(
-    .diff-markdown-block:has(> .kpress-prose > :is(h4, h5, h6)) + .diff-markdown-block,
-    .diff-markdown-run:has(> :last-child > .kpress-prose > :is(h4, h5, h6))
-      + .diff-markdown-run
-      > :first-child,
-    .diff-markdown-block:has(> .kpress-prose > :is(h4, h5, h6))
-      + .diff-markdown-change
-      > :first-child
-      > :first-child,
-    .diff-markdown-change:has(> :last-child > :last-child > .kpress-prose > :is(h4, h5, h6))
-      + .diff-markdown-block,
-    .diff-markdown-block:has(> .kpress-prose > :is(h4, h5, h6))
-      + .diff-markdown-change
-      > [hidden]:first-child
-      + .diff-markdown-run
-      > :first-child,
-    .diff-markdown-run:has(> :last-child > .kpress-prose > :is(h4, h5, h6))
-      + [hidden]
-      + .diff-markdown-run
-      > :first-child,
-    .diff-markdown-change:has(
-        > :nth-last-child(2) > :last-child > .kpress-prose > :is(h4, h5, h6)
-      ):has(> [hidden]:last-child)
-      + .diff-markdown-block
-  )
-  > .kpress-prose
-  > p {
-  margin-block-start: 0;
 }
 
 .metabrowser-diff-host .diff-markdown-block img {
