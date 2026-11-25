@@ -438,9 +438,8 @@ Start signed out: choose Metabrowser > Clear Website Data…, All Websites, and 
    signed in. The default browser’s own sign-in did not change.
    Note whether a passkey or a security key is offered and works, and what an
    organization’s single sign-on does; neither is checked yet.
-7. **Switching and closing folders.** With Settings > General > Open folders in set to
-   Windows, open a second checkout of a repository on github.com, so two such folders
-   are open, and show the first in a window.
+7. **Switching and closing folders.** Open a second checkout of a repository on
+   github.com, so two such folders are open, and show the first in a window.
    With the popover open, press Shift-Command-O and choose the second folder: the window
    shows it, and no popover is left over it.
    Click View on GitHub there, go to a pull request in the popover, and type a comment
@@ -469,9 +468,8 @@ LONG=/tmp/mb-check/projects/2026/clients/northwind/archive/quarterly-reports
 mkdir -p "$LONG"
 ```
 
-Set Settings > General > Open folders in to Windows and close every window.
-Open `$LONG` and close its window, then `c` and close its window, then `d` and close its
-window, so all three are recent and none is open.
+Close every window. Open `$LONG` and close its window, then `c` and close its window,
+then `d` and close its window, so all three are recent and none is open.
 Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`, so each has a
 window of its own. Each step starts where the one before it ends.
 
