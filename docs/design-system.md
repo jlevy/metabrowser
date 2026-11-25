@@ -1032,9 +1032,11 @@ has the before and after).
   under it, is joined across rows, and past the removed run that Current hides, which
   leaves the heading the block before the paragraph.
   `h2 + h3` is not: joining it would restate KPress’s margin, so an h3 straight after an
-  h2 keeps the space it has after a paragraph, a little more than the document’s. These
-  rules read the row before a row across the edges of runs and changes: the last row of
-  the run before, the row before a change, or a change’s last row.
+  h2 keeps the space it has after a paragraph, a little more than the document’s.
+  `markJoins` in `diff-markdown.js` marks each row from the rows shown before and after
+  it, so no selector has to name the changes, runs, hidden removed runs, or chunk edges
+  that may lie between two rows; a list or quote continued past a hidden removed item
+  joins the same way.
 - **The fold of unchanged blocks** is the diff’s [fold bar](#fold-expanders) and the
   group it opens, whose rows are its content.
   The group clips its content with `overflow: clip` where a code file’s fold uses
@@ -1055,6 +1057,8 @@ run by construction, and `tests/dom/diff-markdown-session.js` fails on any rende
 placed otherwise, a changed row outside a run of its kind, two runs of one kind side by
 side, or two changes side by side, through every step it plays, a long document’s chunks
 drawn out of order among them.
+It and `tests/dom/diff-current-session.js` also fail on a row shown without its joins,
+or with joins the rows shown around it no longer make.
 `tests/test_diff_markdown_fold_chrome.py` measures the fold closed and open.
 
 ### Embedded Document Themes
@@ -1313,8 +1317,7 @@ root’s view header, each of a pull request’s tabs and the changed file Chang
 commit’s page, and each of a native stack’s tabs.
 A stack’s page, each of its tabs, and each file its Changes is at open GitHub’s page of
 the whole stack, `stack/<n>`: the stack is the page’s subject, and its top member’s pull
-request, which the page’s link opened before, is one member of it
-([The Stack Page](#the-stack-page)).
+request is one member of it ([The Stack Page](#the-stack-page)).
 
 ## Control Families
 
@@ -3470,7 +3473,7 @@ column, past the icon, as a tree’s title wraps past its icon.
 The last line is the lines the pull request changes, its
 [brief change line](#brief-change-line) of its line totals alone, a total of zero left
 out, “+1,234” for a pull request that only adds lines, with the registry’s chevron after
-them, from the text column, and the age at the row’s end, muted
+them, from the text column, and the age at the row’s end, in its freshness ink
 ([Ages End the Row](#ages-end-the-row)): “+1,234 −567 ›” and “3d”. The item holds the
 pull request’s changed-files tree, which hangs under it, is owned by the row’s link
 through `aria-owns`, whose `aria-expanded` alone says whether it is open, and starts
@@ -3892,10 +3895,11 @@ never pushes the columns after it out of reach.
 **A native GitHub stack is named, placed, and listed one way wherever it appears:** the
 pull request page’s stack button and menu, a Pulls row’s place, the Pulls tab’s stack
 groups, and the stack’s own page ([The Stack Page](#the-stack-page)). The words come
-from one place, `builtin_plugins/github/pull-stacks.js` (`stackLabel`, `stackPosition`,
-`stackPositionHint`, `stackCaption` for a Pulls row’s place, `stackGroupHint` for a
-stack group’s row, and `stackMenuOrder`), and the look from one set of classes in the
-GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy of either.
+from one place, `builtin_plugins/github/pull-stacks.js` (`stackLabel`, `WHOLE_STACK`,
+`stackPosition`, `stackPositionHint`, `stackCaption` for a Pulls row’s place,
+`stackGroupHint` for a stack group’s row, and `stackMenuOrder`), and the look from one
+set of classes in the GitHub plugin’s stylesheet on the shell’s tokens, so no surface
+keeps a copy of either.
 
 | Part | Primitive | Where |
 | --- | --- | --- |
@@ -4011,9 +4015,11 @@ the same header, tab bar, and body, made of the same parts, with what a stack do
 have left out and nothing added but its members.
 It shows the stack’s combined comparison, from the bottom member’s merge base to the top
 member’s head (`GET stack`, `pull_stack.py`), and is reached from the stack menu’s Whole
-stack row. `builtin_plugins/github/stack-page.js` draws it, and
-`builtin_plugins/github/stack-member-row.js` draws its members with the stack menu’s
-classes.
+stack row. `builtin_plugins/github/stack-page.js` draws it with the pull request page’s
+own builders, exported from `pull-page.js`: `pageHeaderParts`, `titleHeading`,
+`statusLine`, `summaryPlaceholders`, and `holdDiff`; and
+`builtin_plugins/github/stack-member-row.js`, the stack menu’s builder, draws its
+members.
 
 ```text
  [Layers] Stack  #70                              ( [GitHub] View on GitHub | v )
@@ -4062,25 +4068,27 @@ Each part of a pull request’s page, and what the stack’s page does with it:
 - **Status line:** kept.
   The pull request’s status line and text actions: a failed read, a new comparison
   offered, members the top does not contain, and members being fetched or that could not
-  be, with Retry. A new comparison is offered only when it would change what the reader
-  sees, the two commits or the files the comparison keeps, and only once the reader has
-  done something on the page: before then, the page is catching up as members’ records
-  arrive, and draws the new one with no notice ([A New Comparison](#a-new-comparison)).
+  be, with Retry. Retry and Show the new comparison are numbered, as a pull request’s
+  status line’s controls are (`numberHeaderControls`). A new comparison is offered only
+  when it would change what the reader sees, the two commits or the files the comparison
+  keeps, and only once the reader has done something on the page: before then, the page
+  is catching up as members’ records arrive, and draws the new one with no notice
+  ([A New Comparison](#a-new-comparison)).
 - **Size line:** adapted.
   The [change size line](#change-size-line) of the files alone, “1 file changed”, since
   the stack’s answer counts no commits or bytes yet.
 - **Diff summary:** kept.
   The header’s last line, drawn from the stack’s comparison, closed at first paint as
   every Diff summary is.
-  Its rows carry the tree’s marks alone: the layer chips the page’s Files tab drew
-  beside every file, the gray places of the members that change it, “2/4”, each opening
-  the file in that member, were no part of this system and crowded a combined diff, and
-  the diff view no longer draws them.
+  Its rows carry the tree’s marks alone, as every Diff summary’s do; which members
+  change a file is each member’s page’s to say.
+  A read of it that fails leaves its row empty, and Changes’s read or Retry draws it
+  again, as a pull request’s Changes does.
 - **Tab bar:** adapted.
   The pull request’s tabs and keys, Guided Review (only when a member’s description
   carries the stack’s guide), Docs, and Changes; Conversation and Checks are each
-  member’s, and the Files tab the page had is gone, since the Diff summary lists the
-  files, as on a pull request’s page.
+  member’s, and there is no Files tab, since the Diff summary lists the files, as on a
+  pull request’s page.
 - **Guided Review, Docs, and Changes:** kept.
   A pull request’s tab bodies and drawings, in its columns, held out of sight until the
   first screen is ready, with the loading block under the hidden diff, and Docs’ Show
@@ -4102,13 +4110,15 @@ answer lands moving nothing under the title.
 settled, and the drawings the page asks for against the stack route’s recorded answers;
 `tests/dom/github-stack-guide-mount-session.js` mounts the page and holds that the rows
 of its first paint are its settled rows and that the Diff summary is closed.
-`tests/test_github_stack_page_chrome.py` measures in headless Chrome that nothing on the
-page moves from its first paint, opening the page or its tabs; that every member names
-its author; and that View on GitHub opens the whole stack.
-A member row is not measured there: the page draws it with the stack menu’s builder,
-`stackMemberRow` in `stack-member-row.js`, so it is the menu’s row by construction, and
-its ages are a pull request’s page’s, `pullAge` in `pull-page.js`, in their freshness
-ink.
+`tests/test_github_stack_page_chrome.py` measures in headless Chrome that, on a stack
+whose members’ records are read, nothing on the page moves from its first paint, opening
+the page or its tabs; that every member names its author; and that View on GitHub opens
+the whole stack. On a stack still being fetched, the status line says what is being
+fetched and then goes, moving the lines under it; that is not measured.
+A member row is not measured either: the page draws it with the stack menu’s builder,
+`stackMemberRow` in `stack-member-row.js`, so it is the menu’s row by construction.
+The guide’s ages are a pull request’s page’s, `pullAge` in `pull-page.js`, in their
+freshness ink.
 
 #### A New Comparison
 
@@ -6877,7 +6887,7 @@ revisions
   draw the rows they bring into view, that a focused row keeps focus, and that the
   filter narrows the list; `tests/test_ref_selector_pulls_chrome.py` does the same over
   branches that are pull requests’ heads, with the two heights, each row where the rows
-  before it put it, the pull request’s icon, number, and title, and the filter’s finds.
+  before it put it, the pull request’s icon, title, and number, and the filter’s finds.
 
 A checkout also has the live working tree and can switch between it and pinned
 revisions.

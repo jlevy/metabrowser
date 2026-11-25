@@ -88,11 +88,11 @@ them.
   A stack the Pulls tab does not know is held cold for the quiet period until its answer
   names the members, and one that cannot be shown as one comparison, with none drawn,
   has no size line or summary.
-- `drawing` is what the page passes the diff view, as a pull request’s page passes it:
-  for the Diff summary only the comparison read and where a file opens, so it starts
-  collapsed, as every Diff summary does; and for Docs and Changes the pull request’s
-  drawings, with no summary of their own and the first screen’s Markdown held at most
-  `CHANGES_FIRST_SCREEN_MS`.
+- `drawing` is the stack’s own part of what the page passes the diff view for Docs and
+  Changes: the stack’s comparison and Docs’ word for no documents.
+  The session holds that the rest is a pull request’s drawings, each value the shared
+  drawing’s, with no summary of their own and the first screen’s Markdown held as a pull
+  request’s page holds it.
 - `said` is the line about members the top lacks, and what the page says for a stack it
   cannot show as one comparison.
 - `delays` is the poll’s cadence: soon while a member is being asked for or fetched,
@@ -546,44 +546,16 @@ $ node tests/dom/github-stack-page-session.js
     }
   },
   "drawing": {
-    "summary": {
-      "openFile": "function"
+    "comparison": {
+      "left": "<base>",
+      "right": "<draft_head>",
+      "base_policy": "direct",
+      "route": "/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>",
+      "image_route": "/api/plugin/github/pull-image?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
+      "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
+      "branch": null
     },
-    "docs": {
-      "comparison": {
-        "left": "<base>",
-        "right": "<draft_head>",
-        "base_policy": "direct",
-        "route": "/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>",
-        "image_route": "/api/plugin/github/pull-image?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
-        "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
-        "branch": null
-      },
-      "summary": false,
-      "group": "type:docs",
-      "unfold": true,
-      "layout": "unified",
-      "show": "current",
-      "showPreference": "github.docs.show",
-      "emptyText": "No documents changed in this stack.",
-      "onDocument": "function",
-      "markdownHoldMs": 200
-    },
-    "changes": {
-      "comparison": {
-        "left": "<base>",
-        "right": "<draft_head>",
-        "base_policy": "direct",
-        "route": "/api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=ebfe45cd812c6d00f8d4a921576b31d7&build=<BUILD>&store=<STORE>",
-        "image_route": "/api/plugin/github/pull-image?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
-        "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=70&left=<base>&right=<draft_head>&store=<STORE>",
-        "branch": null
-      },
-      "summary": false,
-      "types": null,
-      "onTypes": "function",
-      "markdownHoldMs": 200
-    }
+    "docs_empty": "No documents changed in this stack."
   },
   "said": {
     "lacking": "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them.",

@@ -21,9 +21,11 @@ height, borders, cut titles, and parts' order along the line are paint, so
 ``tests/dom/github-guided-review-kinds-chrome.mjs`` measures them, at a desktop width and a
 phone's, and that another pull request's document draws from that pull request's own routes on
 the real server, on a stand-in whose pull request 7's guide cites every kind of reference
-(``--describe 7 kinds``), with the stack page's native stacks, so one cited pull request has a
-place in a stack and the others have none; and again from a reader's clone of the repository,
-which lacks 7's head, so the commit's row says it is not in this checkout before its age.
+(``--describe 7 kinds``), with the stack page's native stacks and 300 (``KINDS_STACKS``), so one
+cited pull request has a place in its guide's own stack, one a place in another stack, which
+its row names, and one none, each place named for assistive technology by its tip; and again
+from a reader's clone of the repository, which lacks 7's head, so the commit's row says it is
+not in this checkout and still ends in its age.
 
 Where each row of the step list starts is paint too, so
 ``tests/dom/github-guided-review-outline-chrome.mjs`` measures it, in the light and the dark
@@ -57,7 +59,7 @@ import pytest
 
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
-from tests.test_github_stack_page_chrome import with_stacks
+from tests.test_github_stack_page_chrome import STACKS, with_stacks
 from tests.test_nav_metadata_chrome import (
     _SERVER_STOP_S,
     _SERVING_BUDGET_S,
@@ -73,6 +75,9 @@ SESSION = Path(__file__).resolve().parent / "dom" / "github-guided-review-chrome
 DOCUMENTS = Path(__file__).resolve().parent / "dom" / "github-guided-review-documents-chrome.mjs"
 KINDS = Path(__file__).resolve().parent / "dom" / "github-guided-review-kinds-chrome.mjs"
 OUTLINE = Path(__file__).resolve().parent / "dom" / "github-guided-review-outline-chrome.mjs"
+# The stack page's native stacks, and 300, which holds 9 and then 50, so a pull request the
+# kinds guide cites has a place in a stack other than 7's, which its row names.
+KINDS_STACKS = (*STACKS, (300, (9, 50)))
 # Building the stand-in's home runs the production CLI four times through a fake gh; it took
 # about 5 s at a load average near 20 (2026-11-20).
 _BUILD_BUDGET_S = 60.0
@@ -96,13 +101,13 @@ def _session(
     mode: str,
     session: Path,
     describe: Sequence[tuple[str, str]] = (("8", "grouped"),),
-    stacks: bool = False,
+    stacks: Sequence[tuple[int, Sequence[int]]] = (),
     checkout: bool = False,
 ) -> str:
     """Build the stand-in in fixture *mode*, write each guide *describe* names into its pull
-    request's description, with *stacks* give it the stack page's native stacks, serve pull
-    request 7, from a reader's clone of the repository with *checkout*, and run *session* on
-    it, told `checkout` then too."""
+    request's description, give it the native *stacks*, serve pull request 7, from a
+    reader's clone of the repository with *checkout*, and run *session* on it, told
+    `checkout` then too."""
     chrome = require_chrome()
     node = require_node()
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
@@ -124,7 +129,7 @@ def _session(
     if stacks:
         answers = stand_in / "fake-gh-scenario.json"
         answers.write_text(
-            json.dumps(with_stacks(json.loads(answers.read_text(encoding="utf-8")))),
+            json.dumps(with_stacks(json.loads(answers.read_text(encoding="utf-8")), stacks)),
             encoding="utf-8",
         )
     port = _free_port()
@@ -178,7 +183,7 @@ def test_guided_review_documents_in_chrome(tmp_path: Path, chrome_profile: Path)
 
 def test_guided_review_reference_rows_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     stdout = _session(
-        tmp_path, chrome_profile, "--guided", KINDS, describe=(("7", "kinds"),), stacks=True
+        tmp_path, chrome_profile, "--guided", KINDS, describe=(("7", "kinds"),), stacks=KINDS_STACKS
     )
     passed = re.fullmatch(r"guided review references in Chrome: (\d+) checks passed\n", stdout)
     assert passed is not None and int(passed.group(1)) > 0, stdout
@@ -188,14 +193,14 @@ def test_guided_review_reference_rows_from_a_checkout_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     """The same rows served from a reader's clone, which lacks 7's head, so its commit row
-    says so before when it was committed, and still ends in its age (A5 of review A on #853)."""
+    says so and still ends in its age (A5 of review A on #853)."""
     stdout = _session(
         tmp_path,
         chrome_profile,
         "--guided",
         KINDS,
         describe=(("7", "kinds"),),
-        stacks=True,
+        stacks=KINDS_STACKS,
         checkout=True,
     )
     passed = re.fullmatch(

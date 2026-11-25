@@ -4,11 +4,12 @@
 // merged pull request; 10's draft document and 9's change to src/app.txt; 50, which the
 // list of pull requests alone knows, and 2000, which nothing here knows; 7's own head as a
 // commit; and a commit the store lacks. Its native stacks are the stack page's, 70 (8, then
-// 10) and 71 (8, 7, then 10), so 8's place is 1/3, in 71, 7's own stack, and 50 and 2000
-// are in none. With `checkout` the server serves a reader's clone of the repository, which
-// lacks 7's head (`--serve 7 <port> --checkout` in tests/github_pull_fixture.py), so the
-// commit's row says it is not in this checkout, before when it was committed, and only the
-// rows are measured.
+// 10) and 71 (8, 7, then 10), and 300 (9, then 50; `KINDS_STACKS` in
+// tests/test_github_guided_review_chrome.py), so 8's place is in 71, 7's own stack, 50's in
+// 300, another, and 2000 is in none. With `checkout` the server serves a reader's clone of
+// the repository, which lacks 7's head (`--serve 7 <port> --checkout` in
+// tests/github_pull_fixture.py), so the commit's row says it is not in this checkout, and
+// only the rows are measured.
 //
 //   CHROME_BIN=... CHROME_PROFILES=<dir> node tests/dom/github-guided-review-kinds-chrome.mjs <base URL> [checkout]
 //
@@ -20,12 +21,14 @@
 //
 // 1. A row is one line, the stack menu's member row's height, inside its bordered card. A
 //    pull request's is a stack's member row (stack-member-row.js), its title at the row's
-//    start and its last part at the row's end, a place in a stack named by its tip and its
-//    accessible name, and a row with no place has no dot before its number; a commit's ends
-//    in when it was committed, after its note when the checkout lacks it. The title, and a
-//    commit's subject and note, are cut short with their ellipsis when they
-//    do not fit, at a desktop width and at a phone's with the navigation pane hidden, as
-//    the reading column is on a phone, and nothing runs past the page.
+//    start and its last part at the row's end. A place in its guide's own stack is drawn
+//    bare and one in another stack after the Layers glyph, and each is an image that Chrome
+//    names by its tip, which the row's link says in the place's letters' stead; a row with
+//    no place has no dot before its number. A commit's row ends in its age, also when the
+//    checkout lacks it and a note says so. The title, and a commit's subject and note, are
+//    cut short with their ellipsis when they do not fit, at a desktop width and at a phone's
+//    with the navigation pane hidden, as the reading column is on a phone, and nothing runs
+//    past the page.
 // 2. Another pull request's document is drawn by the diff view from that pull request's own
 //    routes, which the real server admits: its bar is the diff's own, and the guide's bar
 //    for the file names the pull request only when the view could not draw it.
@@ -69,11 +72,13 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-row")].map((card
   const title = row.querySelector(".github-pull-guide-row-title, .github-pull-stack-member-title");
   const parts = [...row.children].map((part) => part.getBoundingClientRect());
   const style = title ? getComputedStyle(title) : null;
-  // A pull request's run, each part shown, in the order drawn, and the row's last part shown.
+  // A pull request's run, each part shown, in the order drawn, and the part that ends the
+  // row: the run's last shown, and a commit's age, its own element.
   const run = row.querySelector(".github-pull-stack-member-copy");
   const shown = (part) => part.getClientRects().length > 0;
   const runParts = run ? [...run.children].filter(shown) : [];
-  const last = run ? runParts.at(-1) : row.lastElementChild;
+  const age = row.querySelector(".github-pull-age");
+  const last = run ? runParts.at(-1) : age;
   const edge = box.right - parseFloat(getComputedStyle(row).paddingRight);
   const position = row.querySelector(".github-pull-stack-member-position");
   const placed = (position?.textContent.trim() ?? "") !== "";
@@ -97,7 +102,14 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-row")].map((card
     ends: last ? Math.abs(last.getBoundingClientRect().right - edge) <= 1 : null,
     place: placed ? position.textContent.trim() : null,
     tip: position?.getAttribute("data-tip-text") ?? null,
-    label: position?.getAttribute("aria-label") ?? null,
+    // The Layers glyph before a place, which names another stack, drawn.
+    glyph: [...(position?.querySelectorAll(".github-pull-stack-other svg") ?? [])].some(
+      (glyph) => glyph.getBoundingClientRect().width > 0,
+    ),
+    // A commit's row: whether it goes anywhere, a quiet note shown, and its age shown.
+    linked: row.tagName === "A",
+    note: [...row.querySelectorAll(".github-pull-quiet")].some(shown),
+    age: age !== null && shown(age),
     // A dot shown before the number of a row with no place, which has no field there for it
     // to follow.
     strayDot:
@@ -154,43 +166,87 @@ try {
   // `\` hides it, and the reading column takes the window.
   const rows = await evaluate(ROWS);
   // The rows' words and order, and a place's hint, are the member row's builder's
-  // (stack-member-row.js), which the browserless session pins; here, where each sits. 8 is
-  // in 71, its guide's own stack, and 50 and 2000 in none.
-  check(
-    "8's place has a tip, which is not its own words",
-    rows[0]?.tip !== null && rows[0]?.tip !== rows[0]?.place,
-    JSON.stringify(rows[0]),
-  );
-  check("and its accessible name says its tip", rows[0]?.label === rows[0]?.tip);
-  same(
-    "50 and 2000, in no stack, have no place and no tip",
-    rows.slice(1, 3).map((row) => [row.place, row.tip, row.label]),
-    [
-      [null, null, null],
-      [null, null, null],
-    ],
-  );
-  for (const at of [1, 2]) {
+  // (stack-member-row.js), which the browserless session pins; here, what is drawn where,
+  // and what assistive technology is told. 8 is in 71, its guide's own stack, 50 in 300,
+  // another, and 2000 in none.
+  for (const [at, who] of [
+    [0, "8"],
+    [1, "50"],
+  ]) {
     check(
-      `row ${at + 1}, in no stack, has no dot before its number`,
-      rows[at]?.strayDot === false,
-      rows[at]?.text,
+      `${who}'s place has a tip, which is not its own words`,
+      rows[at]?.place != null && rows[at]?.tip != null && rows[at]?.tip !== rows[at]?.place,
+      JSON.stringify(rows[at]),
+    );
+  }
+  check("8's place, in its guide's own stack, is drawn bare", rows[0]?.glyph === false);
+  check("50's place, in another stack, is drawn after the Layers glyph", rows[1]?.glyph === true);
+  check("and its tip is not 8's", rows[1]?.tip !== rows[0]?.tip);
+  same("2000, in no stack, has no place and no tip", [rows[2]?.place, rows[2]?.tip], [null, null]);
+  check("and no dot before its number", rows[2]?.strayDot === false, rows[2]?.text);
+  // Each pull request row's place and link as Chrome computes them for assistive technology,
+  // as the Pulls tab's stacks session reads a member line's (github-pulls-stacks-chrome.mjs):
+  // a place is an image named by its tip, which the link's name says in place of the
+  // place's letters.
+  const named = async (expression) => {
+    const { result } = await chrome.send("Runtime.evaluate", { expression });
+    if (result.objectId === undefined) {
+      return null;
+    }
+    const { nodes } = await chrome.send("Accessibility.getPartialAXTree", {
+      objectId: result.objectId,
+      fetchRelatives: false,
+    });
+    const node = nodes?.[0];
+    return node === undefined || node.ignored
+      ? null
+      : { role: node.role?.value ?? null, name: node.name?.value ?? null };
+  };
+  await chrome.send("Accessibility.enable");
+  const names = [];
+  for (let at = 0; at < 3; at += 1) {
+    const link = `document.querySelectorAll(".github-pull-guide-row")[${at}].querySelector(".github-pull-guide-row-link")`;
+    names.push({
+      place: await named(`${link}.querySelector(".github-pull-stack-member-position")`),
+      link: await named(link),
+    });
+  }
+  await chrome.send("Accessibility.disable");
+  for (const [at, who] of [
+    [0, "8"],
+    [1, "50"],
+  ]) {
+    same(`${who}'s place is an image Chrome names by its tip`, names[at]?.place, {
+      role: "image",
+      name: rows[at]?.tip,
+    });
+    const link = names[at]?.link?.name ?? "";
+    check(
+      `${who}'s row's name says its place's tip, not the place's letters`,
+      rows[at]?.tip != null &&
+        link.includes(rows[at].tip) &&
+        !link.includes(rows[at]?.place ?? "\u0000"),
+      link,
     );
   }
   check(
-    checkout
-      ? "the commit the checkout lacks: its short ID, its subject, that it is not in this checkout, and when it was committed"
-      : "the commit's row: its short ID, its subject, and when it was committed",
-    (checkout
-      ? /^[0-9a-f]{7,} count to two Not in this checkout\. committed \S/
-      : /^[0-9a-f]{7,} count to two committed \S/
-    ).test(rows[3]?.text ?? ""),
-    rows[3]?.text,
+    "2000's row has no place to name",
+    names[2]?.place?.role !== "image" && !names[2]?.place?.name,
+    JSON.stringify(names[2]),
   );
-  check(
-    "a commit the store lacks: its short ID, and that it is unavailable",
-    /^e{7,} This commit is unavailable\.$/.test(rows[4]?.text ?? ""),
-    rows[4]?.text,
+  // A commit's row: whether it goes anywhere, its note, and its age; their words and order
+  // are the browserless session's, and the age ending the row is measured below.
+  same(
+    checkout
+      ? "the commit the checkout lacks: a row that goes nowhere, with a note and its age"
+      : "the commit's row: a link with its age and no note",
+    [rows[3]?.linked, rows[3]?.note, rows[3]?.age],
+    [!checkout, checkout, true],
+  );
+  same(
+    "a commit the store lacks: a row that goes nowhere, with a note and no age",
+    [rows[4]?.linked, rows[4]?.note, rows[4]?.age],
+    [false, true, false],
   );
   const measure = (label, measured) => {
     for (const [at, row] of measured.entries()) {

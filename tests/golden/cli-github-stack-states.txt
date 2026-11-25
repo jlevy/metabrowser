@@ -601,12 +601,12 @@ status: 202
           10
         ],
         "titles": [
-          null,
-          null
+          "Say more in the guide",
+          "WIP: draft the next page"
         ],
         "authors": [
-          null,
-          null
+          "maintainer",
+          "maintainer"
         ],
         "avatars": [
           null,
@@ -623,14 +623,14 @@ status: 202
           10
         ],
         "titles": [
-          null,
-          null,
-          null
+          "Say more in the guide",
+          "Count to two in the app",
+          "WIP: draft the next page"
         ],
         "authors": [
-          null,
-          null,
-          null
+          "maintainer",
+          "forker",
+          "maintainer"
         ],
         "avatars": [
           null,
@@ -647,12 +647,12 @@ status: 202
           8
         ],
         "titles": [
-          null,
-          null
+          "WIP: draft the next page",
+          "Say more in the guide"
         ],
         "authors": [
-          null,
-          null
+          "maintainer",
+          "maintainer"
         ],
         "avatars": [
           null,
@@ -668,11 +668,11 @@ status: 202
           9
         ],
         "titles": [
-          null,
-          null
+          "Say more in the guide",
+          "spam"
         ],
         "authors": [
-          null,
+          "maintainer",
           null
         ],
         "avatars": [
@@ -710,10 +710,10 @@ status: 200
         10
       ],
       "titles": [
-        null
+        "WIP: draft the next page"
       ],
       "authors": [
-        null
+        "maintainer"
       ],
       "avatars": [
         null
@@ -729,14 +729,14 @@ status: 200
         10
       ],
       "titles": [
-        null,
-        null,
-        null
+        "Say more in the guide",
+        "Count to two in the app",
+        "WIP: draft the next page"
       ],
       "authors": [
-        null,
-        null,
-        null
+        "maintainer",
+        "forker",
+        "maintainer"
       ],
       "avatars": [
         null,
@@ -753,12 +753,12 @@ status: 200
         8
       ],
       "titles": [
-        null,
-        null
+        "WIP: draft the next page",
+        "Say more in the guide"
       ],
       "authors": [
-        null,
-        null
+        "maintainer",
+        "maintainer"
       ],
       "avatars": [
         null,
@@ -774,11 +774,11 @@ status: 200
         9
       ],
       "titles": [
-        null,
-        null
+        "Say more in the guide",
+        "spam"
       ],
       "authors": [
-        null,
+        "maintainer",
         null
       ],
       "avatars": [

@@ -424,7 +424,8 @@ $ node tests/dom/diff-markdown-session.js
             "[Frontmatter, open, removed]",
             "  removed: draft = True",
             "  removed: title = Plain",
-            "context: <h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>",
+            "removed: <h1 id=\"user-content-71ee10c56ecf50774ee672b1-old-plain\">Plain</h1>",
+            "added: <h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain-page\">Plain <ins>Page</ins></h1>",
             "context: <p>Text.</p>"
           ]
         }

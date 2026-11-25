@@ -134,7 +134,7 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
     element.setAttribute("aria-hidden", "true");
     const mark = make("span", "github-pull-stack-dot");
     mark.textContent = "·";
-    element.append(" ", mark, " ");
+    element.append("\u00a0", mark, " ");
     return [element];
   };
   const emptyIcon = () => {
@@ -206,7 +206,7 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
             place.removeAttribute("aria-label");
           } else {
             position.replaceChildren(...(member.placeNodes ?? [member.place]));
-            place.replaceChildren(" ", dot(), " ", position);
+            place.replaceChildren("\u00a0", dot(), " ", position);
             place.setAttribute("aria-label", member.placeHint ?? member.place);
           }
         } else {

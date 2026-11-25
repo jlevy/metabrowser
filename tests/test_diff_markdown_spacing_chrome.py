@@ -53,8 +53,9 @@ pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 # Every heading level after a paragraph and before one, paragraphs, a list, a numbered
 # list, a quote, and a code block, unchanged; a removed paragraph; an added paragraph,
-# h2, and h3 between unchanged blocks; a list's first and last items edited; and an
-# edited paragraph after an h6 and after an h1.
+# h2, and h3 between unchanged blocks; a list's first and last items edited; an edited
+# paragraph after an h6 and after an h1; a paragraph removed from under an h5, so that the
+# new version sets the next paragraph under the h5; and a list's middle item removed.
 _OLD = b"""# Spacing Guide
 
 The opening paragraph sets the scene. It runs long enough to wrap onto a second line in a
@@ -120,6 +121,16 @@ A paragraph before the last h1.
 # A Last Top-Level Heading
 
 The closing paragraph.
+
+##### A Heading Over a Paragraph the New Version Removes
+
+A paragraph the new version removes from under its heading.
+
+A kept paragraph that rises to the heading.
+
+- A kept item.
+- An item the new version removes.
+- Another kept item.
 """
 _NEW = (
     _OLD.replace(
@@ -132,6 +143,8 @@ _NEW = (
     .replace(b"A third list item.", b"A third list item, edited.")
     .replace(b"A paragraph after the h6.", b"A paragraph after the h6, edited.")
     .replace(b"which the new version edits", b"which this version has edited")
+    .replace(b"A paragraph the new version removes from under its heading.\n\n", b"")
+    .replace(b"- An item the new version removes.\n", b"")
 )
 
 
