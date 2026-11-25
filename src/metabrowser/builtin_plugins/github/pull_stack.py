@@ -116,10 +116,10 @@ MAX_KEPT_STACK_COMPARISONS: Final = 8
 MAX_KEPT_ANCESTRIES: Final = 4096
 # Counts of the commits a member's new head adds, kept for the process the same way: one per
 # member whose head moved since the comparison a page drew, which every poll of that page
-# asks again, and they never change, since all three ends are commit IDs. Measured
-# 2026-11-25 with tracemalloc on Python 3.14.7 (arm64, macOS, load average 135): 4,096
-# entries keyed by a 66-character store path and three 40-character IDs, each holding its
-# count, held 1.80 MB sharing one path string, 2.08 MB with a copy each.
+# asks again, and they never change, since all four ends are commit IDs. Measured
+# 2026-11-25 with tracemalloc on Python 3.14.7 (arm64, macOS, load average 89): 4,096
+# entries keyed by a 66-character store path and four 40-character IDs, each holding its
+# count, held 2.16 MB sharing one path string, 2.43 MB with a copy each.
 MAX_KEPT_COUNTS: Final = 4096
 # Stack snapshots kept parsed, by file stamp: one per served repository, and a page's
 # images and rendered documents each ask for admission, which reads it.
@@ -210,10 +210,12 @@ class MemberMoveWire(TypedDict):
     """A member whose head moved since the comparison a page drew."""
 
     number: int
-    # The commits the new head adds to the earlier one that its merge base does not hold,
-    # so a base branch merged in counts as its one merge commit; None when the earlier head
-    # is not in the new head's history (the branch was rewritten), or the store cannot say,
-    # so no count says what is new.
+    # The commits the new head adds that the comparison drawn did not hold, in neither the
+    # earlier head's history nor its top's, and that its merge base does not hold, so a base
+    # branch merged in counts as its one merge commit, and commits the drawn comparison
+    # showed while its record lagged count as none; None when the earlier head is not in the
+    # new head's history (the branch was rewritten), or the store cannot say, so no count
+    # says what is new.
     commits: int | None
 
 
@@ -464,25 +466,27 @@ async def _contains(target: RepositoryStoreTarget, ancestor: str, commit: str) -
     return answer
 
 
-_COUNTS: OrderedDict[tuple[str, str, str, str], int] = OrderedDict()
+_COUNTS: OrderedDict[tuple[str, str, str, str, str], int] = OrderedDict()
 
 
-async def _added(target: RepositoryStoreTarget, earlier: str, head: str, base: str) -> int | None:
-    """The commits *head* adds to *earlier* that *base* does not hold, when *earlier* is in
-    *head*'s history; ``None`` when it is not, or when the store cannot say. A count is kept:
-    all three ends are commit IDs."""
+async def _added(
+    target: RepositoryStoreTarget, earlier: str, head: str, base: str, drawn: str
+) -> int | None:
+    """The commits *head* adds to *earlier* that neither *drawn*, the top of the comparison
+    drawn, nor *base* holds, when *earlier* is in *head*'s history; ``None`` when it is not,
+    or when the store cannot say. A count is kept: all four ends are commit IDs."""
 
     held = await _contains(target, earlier, head)
     if held is not True:
         return None
-    key = (str(target.git_dir), earlier, head, base)
+    key = (str(target.git_dir), earlier, head, base, drawn)
     known = _COUNTS.get(key)
     if known is not None:
         _COUNTS.move_to_end(key)
         return known
     try:
         raw = await run_git_at(
-            ["rev-list", "--count", head, f"^{earlier}", f"^{base}"],
+            ["rev-list", "--count", head, f"^{earlier}", f"^{drawn}", f"^{base}"],
             GitLocation.revision(target, head),
         )
         count = int(raw.strip())
@@ -498,8 +502,8 @@ async def stack_moves(
     target: RepositoryStoreTarget, since: StackPair, pair: StackPair
 ) -> list[MemberMoveWire]:
     """Each member of *pair* that *since* holds too whose head moved, bottom first, with the
-    commits its new head adds (:func:`_added`). Runs one ancestry check and one count a
-    member that moved, each kept."""
+    commits its new head adds that *since* did not show (:func:`_added`). Runs one ancestry
+    check and one count a member that moved, each kept."""
 
     earlier = {number: head for number, _base, head in since.members}
     moves: list[MemberMoveWire] = []
@@ -508,7 +512,9 @@ async def stack_moves(
         if before is None or before == head:
             continue
         moves.append(
-            MemberMoveWire(number=number, commits=await _added(target, before, head, base))
+            MemberMoveWire(
+                number=number, commits=await _added(target, before, head, base, since.head)
+            )
         )
     return moves
 
@@ -845,7 +851,8 @@ async def stack_envelope(
     reads the records, and each pending member's ``fetching`` reports it. A current pair is
     kept admitted for later (:func:`.pull_stack_retained.retain_stack_pair`), so the page can
     keep drawing it after the stack moves. *since*, the digest of a pair answered before and
-    still kept, asks how each member's head moved from it (``moved``).
+    still kept, the one the asking page draws, is kept with it, and asks how each member's
+    head moved from it (``moved``).
     """
 
     from metabrowser.builtin_plugins.github.pull_stack_retained import (
@@ -869,7 +876,7 @@ async def stack_envelope(
         moved: StackMovedWire | None = None
         if top_record is not None:
             await run_lock_section(
-                partial(retain_stack_pair, published, read.pair, top_record.reader)
+                partial(retain_stack_pair, published, read.pair, top_record.reader, since)
             )
             if since is not None and since != read.pair.digest:
                 kept = await asyncio.to_thread(

@@ -35,11 +35,13 @@ page’s glue between them.
   Its note is inserted against the page of the member that carries the guide, here 8’s,
   and its outside link is marked.
   Each file’s Open full diff opens it where it is a change: the stack’s Changes, or 9’s.
-- `edited`: a new revision of the carrier’s record, while the comparison drawn is
-  current, reads the step on screen again at that comparison.
-- `moved`: another member moves the stack.
-  The new comparison is offered, not swapped in: nothing is read again, and the next
-  step is read at the comparison still drawn.
+- `edited`: a member’s record catches up, so the stack’s key changes while its two
+  commits and its files stay, and the carrier’s record has a new revision.
+  Nothing the reader sees changes, so the comparison drawn stays, with no notice and the
+  guide’s view kept, and the step on screen is read again at that comparison.
+- `moved`: after the reader has pressed on the page, another member moves the stack.
+  The new comparison is offered, not swapped in, saying what changed: nothing is read
+  again, and the next step is read at the comparison still drawn.
   An answer read at another comparison draws no document whole.
 - `taken`: the reader takes the new comparison, and the guide is mounted again, its
   earlier views disposed, and read at the comparison now drawn.
@@ -135,7 +137,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
     "asks": "70 1 <base> <draft_head> ebfe45cd812c6d00f8d4a921576b31d7"
   },
   "below_moved": {
-    "offer": "This stack has changed since its comparison was drawn. Show the new comparison",
+    "offer": "#8 has 2 new commits. Show the new comparison",
     "reads_before_next": 2,
     "asks": "70 2 <base> <draft_head> ebfe45cd812c6d00f8d4a921576b31d7",
     "document_at": "<draft_head>"

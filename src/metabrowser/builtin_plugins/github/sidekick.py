@@ -993,9 +993,9 @@ async def stack_handler(request: Request) -> Response:
     Its members, its combined comparison and that comparison's routes, the members the top
     lacks, the members still pending and which of them a refresh is fetching now, the
     totals, and each file's layers (:mod:`.pull_stack`). ``since``, the key of a comparison
-    this route answered before, adds how each member's head moved from it (``moved``). No
-    GitHub call and no fetch; the first read after a member moves lists the comparison in
-    the store.
+    this route answered before, the one the asking page draws, keeps it admitted and adds
+    how each member's head moved from it (``moved``). No GitHub call and no fetch; the
+    first read after a member moves lists the comparison in the store.
     """
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,

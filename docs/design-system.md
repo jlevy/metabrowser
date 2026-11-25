@@ -3951,7 +3951,7 @@ classes.
  | [state] Say more in the guide           1/2 · #8 · maintainer |
  +--------------------------------------------------------------+
  wip -> main
- This stack has changed since its comparison was drawn.  Show the new comparison
+ #8 joined the stack.  Show the new comparison
  1 file changed
  1 A · +1 >
  DOCS   CHANGES
@@ -3989,10 +3989,12 @@ Each part of a pull request’s page, and what the stack’s page does with it:
 - **Labels:** dropped.
   Labels are each member’s.
 - **Status line:** kept.
-  The pull request’s status line and text actions: a failed read, “This stack has
-  changed since its comparison was drawn.”
-  with Show the new comparison, members the top does not contain, and members being
-  fetched or that could not be, with Retry.
+  The pull request’s status line and text actions: a failed read, a new comparison
+  offered, members the top does not contain, and members being fetched or that could not
+  be, with Retry. A new comparison is offered only when it would change what the reader
+  sees, the two commits or the files the comparison keeps, and only once the reader has
+  done something on the page: before then, the page is catching up as members’ records
+  arrive, and draws the new one with no notice ([A New Comparison](#a-new-comparison)).
 - **Size line:** adapted.
   The [change size line](#change-size-line) of the files alone, “1 file changed”, since
   the stack’s answer counts no commits or bytes yet.
@@ -4036,6 +4038,39 @@ A member row is not measured there: the page draws it with the stack menu’s bu
 `stackMemberRow` in `stack-member-row.js`, so it is the menu’s row by construction, and
 its ages are a pull request’s page’s, `pullAge` in `pull-page.js`, in their freshness
 ink.
+
+#### A New Comparison
+
+**A new comparison is drawn without a word until the reader has done something on the
+page, and offered with what changed after.** A stack’s members’ records arrive one at a
+time when its page opens on a stale cache, each one a new comparison, so a notice then
+would describe the page catching up, and a reader who has not moved has nothing to lose
+to a redraw. One rule decides each answer (`answerAction` in `stack-page.js`):
+
+- **Before the reader’s first move**, a wheel, a touch, a press, or a key on the page,
+  or opening another tab or a file, a new comparison is drawn in place of the old.
+- **One that looks the same**, the same two commits and the same files with the same
+  totals (`comparisonLook`), is no change, before or after that move: Docs, Changes, and
+  the Diff summary are drawn from those alone, so the page goes on drawing the one it
+  has, and the reader keeps their place.
+  The server keeps that one admitted while the page’s poll names it (`since`), however
+  many times the stack moves.
+- **While a member it waits on is fetched**, it is held, and the status line says
+  “Fetching #10 before its new comparison can be shown.”
+- **Otherwise it is offered** on the status line, with Show the new comparison, which
+  draws it and clears the notice.
+
+The notice says what became of each member since the comparison drawn, top first, in one
+sentence (`changeText`): “#845 has 2 new commits, #843 was merged, and #848 joined the
+stack.”, naming at most three changes, or two and a count of the rest, “and 2 more pull
+requests changed”. A member whose branch no longer holds the head drawn “was rewritten”;
+one that moved where no count is known “was updated”; and when only the order changed,
+the notice says so.
+The new commits, those the comparison drawn did not show, are counted
+by the stack route, which the page asks `since` the comparison it draws (`moved` on
+`GET stack`); the rest it reads from the two answers’ members.
+The notice names no commit and no branch; a title or an author in it would take the
+shared order of a pull request’s fields, and it has neither.
 
 #### The Stack Page’s Spacing
 

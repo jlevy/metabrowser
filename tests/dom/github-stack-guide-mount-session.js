@@ -151,10 +151,16 @@ globalThis.fetch = async (route, init = {}) => {
   return response({}, 404);
 };
 
-/** The comparison a stack answer names; the one it moves to when its bottom member moves,
- * whose base and key change while the top's head and record stay; and the one it moves to
- * when the top member, which carries the guide, moves too. */
+/** The comparison a stack answer names; the one it moves to when its bottom member's record
+ * catches up, whose key changes while its two commits and its files stay; the one it moves to
+ * when its bottom member moves, whose base and key change while the top's head and record
+ * stay; and the one it moves to when the top member, which carries the guide, moves too. */
 const drawnFirst = recorded.current.comparison;
+const caughtUp = {
+  ...drawnFirst,
+  key: "d".repeat(32),
+  route: drawnFirst.route.replace(drawnFirst.key, "d".repeat(32)),
+};
 const belowMoved = {
   ...drawnFirst,
   left: "<moved_base>",
@@ -168,14 +174,27 @@ const movedTo = {
   route: drawnFirst.route.replace(drawnFirst.key, "f".repeat(32)),
 };
 
-/** The stack's answer: 70 current, its guide carried by 10 at *carried*, drawing *comparison*. */
+/** The stack's answer: 70 current, its guide carried by 10 at *carried*, drawing *comparison*.
+ * Its bottom member, 8, has two new commits in the moved comparisons, and 10, the top, one
+ * more in `movedTo`, as the route's `moved` says asked `since` the first. */
 function stack(carried, comparison = drawnFirst) {
+  const answer = structuredClone(recorded.current);
+  const moved = [];
+  if (comparison !== drawnFirst) {
+    answer.members[0].head = "<moved_8_head>";
+    moved.push({ number: 8, commits: 2 });
+  }
+  if (comparison === movedTo) {
+    answer.members[1].head = "<moved_head>";
+    moved.push({ number: 10, commits: 1 });
+  }
   return {
-    ...structuredClone(recorded.current),
+    ...answer,
     guide: { number: 10, revision: carried },
     comparison,
     // No probe: this session moves the stack itself.
     probe: null,
+    moved: moved.length === 0 ? null : { since: drawnFirst.key, members: moved },
   };
 }
 
@@ -515,24 +534,32 @@ async function run() {
     opened: opened.map((route) => JSON.stringify(route)),
   };
 
-  // A new revision of 10's record while the drawn comparison is current: the step on screen
+  // 8's record catches up, so the stack's key changes while its two commits and its files
+  // stay, and 10's record has a new revision. Nothing the reader sees changes: the
+  // comparison drawn stays, with no notice and the guide's view kept, and the step on screen
   // is read again, at that comparison.
-  stackAnswer = stack(revision(2));
+  const view = container.querySelector(".github-pull-guided-review");
+  stackAnswer = stack(revision(2), caughtUp);
   await poll();
+  assert.equal(container.querySelector(".github-pull-stack-take"), null, "nothing is offered");
+  assert.equal(container.querySelector(".github-pull-guided-review"), view, "nor drawn again");
   assert.equal(reads.length, 2);
   assert.equal(reads[1].asked.get("step"), "1");
   reads[1].answer(step(revision(2), 1, pinsOf(drawnFirst)));
   await settle();
   report.edited = { reads: reads.length, asks: asks(reads[1]) };
 
+  // The reader has pressed on the page, as they did to open each file above, so from here a
+  // comparison that looks different is offered, not drawn under them.
+  container.events.get("pointerdown")();
   // The bottom member moves the stack: its base and key change, while 10, the top member that
   // carries the guide, keeps its head and its record. The new comparison is offered, not
-  // swapped in. The guide keeps the comparison drawn: nothing is read again, and the next
-  // step is read there and draws its document there.
+  // swapped in, saying what changed. The guide keeps the comparison drawn: nothing is read
+  // again, and the next step is read there and draws its document there.
   stackAnswer = stack(revision(2), belowMoved);
   await poll();
   const offer = container.querySelector(".github-pull-status")?.textContent ?? "";
-  assert.match(offer, /Show the new comparison$/);
+  assert.equal(offer, "#8 has 2 new commits. Show the new comparison");
   assert.equal(reads.length, 2, "an offered comparison reads nothing");
   press(container, "Next step");
   await settle();

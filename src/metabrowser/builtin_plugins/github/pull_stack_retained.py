@@ -19,7 +19,9 @@ closed: a file they cannot read now admits nothing and says so, and a malformed 
 nothing. The ``stack``
 route writes it when it answers a pair the file does not end with, by atomic replacement
 under the source's alias lock, as every writer of the ``pulls`` directory does, so two
-writers lose no pair and a cache clear removes the file whole.
+writers lose no pair and a cache clear removes the file whole. A write keeps the pair the
+asking page draws, its ``since``, just before the new one, so the pair a page polls on is
+never the oldest when one goes.
 """
 
 from __future__ import annotations
@@ -48,8 +50,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # How many earlier comparisons of one stack stay admitted: one per move, a member's push or
-# a change to the member list. A page holds the one it drew, so this outlives seven moves
-# while a page stays open on it.
+# a change to the member list. A page holds the one it drew, and names it in each poll
+# (`since`), so a write keeps that one past any number of moves while the page asks, and
+# another page's past seven. A stack whose members' records arrive one by one moves once
+# for each that lagged: on 2026-11-25 a 22-member stack's file held eight pairs, all with
+# the same two commits.
 MAX_RETAINED_STACK_PAIRS: Final = 8
 # The file's read bound. Eight pairs of a 64-member stack with the longest fields the model
 # accepts (64-hex IDs, a 103-character reader, a `sha256:` store ID, five-digit numbers)
@@ -99,8 +104,11 @@ def _identity(home: Path, slug: str, number: int) -> _Identity | None:
     return (status.st_dev, status.st_ino, status.st_mtime_ns, status.st_size)
 
 
-def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) -> None:
-    """Keep *pair*, which the ``stack`` route answers now, as stack's most recent. Blocking:
+def retain_stack_pair(
+    published: PublishedSource, pair: StackPair, reader: str, held: str | None = None
+) -> None:
+    """Keep *pair*, which the ``stack`` route answers now, as stack's most recent, and the
+    pair whose digest is *held*, the one the asking page draws, just before it. Blocking:
     run it with :func:`~metabrowser.cache.locks.run_lock_section`.
 
     It writes under the source's alias lock, which every writer of the ``pulls`` directory
@@ -137,7 +145,7 @@ def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) 
         return
     try:
         with source_alias_lock(home, slug):
-            _write(home, slug, number, entry)
+            _write(home, slug, number, entry, held)
             identity = _identity(home, slug, number)
     except (OSError, PrivateStorageError) as exc:
         log.debug("not retaining stack %s's comparison: %s", number, exc)
@@ -151,12 +159,14 @@ def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) 
             _LAST.popitem(last=False)
 
 
-def _write(home: Path, slug: str, number: int, entry: RetainedStackPair) -> None:
+def _write(home: Path, slug: str, number: int, entry: RetainedStackPair, held: str | None) -> None:
     """End stack *number*'s file with *entry*, keeping its reader's earlier pairs within the
-    bounds. Under the source's alias lock."""
+    bounds, the pair *held* names last among them, so the oldest of the others goes first.
+    Under the source's alias lock."""
 
     previous = _history_for_write(home, slug, number)
     kept = [old for old in previous if old.reader == entry.reader and old.digest != entry.digest]
+    kept.sort(key=lambda old: old.digest == held)
     kept.append(entry)
     kept = kept[-MAX_RETAINED_STACK_PAIRS:]
     body = b""

@@ -964,7 +964,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `stacks` | `GET` | The native stack snapshot |
 | `stacks-refresh` | `POST` | The stack job |
 | `stack-change` | `GET` | A native stack’s change line: its members’ lists accumulated |
-| `stack` | `GET` | A native stack’s page: its members, its combined comparison’s address, the members its top lacks, and each file’s layers ([The Stack Page](#the-stack-page)) |
+| `stack` | `GET` | A native stack’s page: its members, its combined comparison’s address, the members its top lacks, and each file’s layers; with `since`, how each member’s head moved from a comparison it answered before ([The Stack Page](#the-stack-page)) |
 | `stack-comparison` | `GET` | That combined comparison as a diff document |
 | `labels` | `GET` | The repository’s cached label set |
 | `labels-refresh` | `POST` | The label-set job |
@@ -1026,10 +1026,20 @@ measurements that set them:
   A member with no record whose fetch ended without one is named as failed, with a
   Retry, once a second read finds it so.
   A hidden page does not poll.
-  A comparison the page drew stays while the stack is pending, refused, or moved, with a
-  notice above it, and a new comparison is offered rather than swapped in.
-  A file the reader opens is scrolled to when its diff is drawn, never on a later answer
-  (`bodyPlan`).
+  A comparison the page drew stays while the stack is pending or refused, and when a new
+  one looks the same, the same two commits, files, and totals.
+  One that looks different is drawn in its place until the reader first moves on the
+  page; after the reader’s move, it is held while a member it waits on is fetched and
+  then offered, the notice saying what changed in each member (`answerAction` and
+  `changeText`). The poll asks `stack` with `since`, the key of the comparison drawn.
+  The write of a new pair keeps that one just before it (`retain_stack_pair`), so the
+  pair a page draws stays admitted however often the stack moves while the page asks.
+  The answer’s `moved` gives, for each member in both whose head moved, the commits its
+  new head adds that the comparison drawn did not show, in neither the earlier head’s
+  history nor its top’s, nor its merge base, or `null` when the earlier head is not in
+  its history (`stack_moves`, read against the pair `pull_stack_retained.py` keeps for
+  that key and counted once each, `MAX_KEPT_COUNTS`). A file the reader opens is
+  scrolled to when its diff is drawn, never on a later answer (`bodyPlan`).
 - **The guide.** When a member’s description carries the stack’s guide, the answer’s
   `guide` names that member and its record revision, Guided Review leads the tabs, and
   `/stack/<n>` opens on it; without one the front page is Changes

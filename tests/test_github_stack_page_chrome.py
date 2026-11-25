@@ -30,6 +30,13 @@ reader switches tabs in place; and the members' card a page card whose rows are 
 card's head is. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its
 screenshots too.
 
+The third serves the stand-in and moves #70 under its page, to 10 alone and back, as
+``tests/dom/github-stack-page-notice-chrome.mjs`` describes: before the reader does anything
+the new comparison is drawn with no notice, after a wheel on the page it is offered with what
+changed, "#8 joined the stack.", and its button draws it and clears the notice. Which answer
+does what is the browserless session's (``answerAction``); this holds the page's glue to it.
+``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its screenshots too.
+
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node
 process leads a process group of its own, which Chrome joins, so a run stopped at its
@@ -64,6 +71,7 @@ from tests.test_nav_metadata_chrome import (
 FIXTURE = Path(__file__).resolve().parent / "github_pull_fixture.py"
 SESSION = Path(__file__).resolve().parent / "dom" / "github-stack-page-chrome.mjs"
 LAYOUT = Path(__file__).resolve().parent / "dom" / "github-stack-page-layout-chrome.mjs"
+NOTICE = Path(__file__).resolve().parent / "dom" / "github-stack-page-notice-chrome.mjs"
 # The stand-in's home, its mirror and the records of 7 to 10 fetched through the production
 # CLI path, as tests/test_github_guided_review_chrome.py builds it.
 _BUILD_BUDGET_S = 60.0
@@ -84,10 +92,14 @@ STACKS_PATH = "repos/octo/demo/stacks?per_page=100&page=1"
 # Native stacks list their members from the base: 70's top contains 8, and 71's lacks 7,
 # a fork, as tests/test_cli_github_stack_golden.py describes them.
 STACKS = ((70, (8, 10)), (71, (8, 7, 10)))
+# The same stacks once 8 has left #70.
+MOVED_STACKS = ((70, (10,)), (71, (8, 7, 10)))
 
 
-def with_stacks(answers: dict[str, Any]) -> dict[str, Any]:
-    """The stand-in's answers, and its native stacks for ``gh stack``."""
+def with_stacks(
+    answers: dict[str, Any], native: tuple[tuple[int, tuple[int, ...]], ...] = STACKS
+) -> dict[str, Any]:
+    """The stand-in's answers, and its native stacks *native* for ``gh stack``."""
 
     stacks = [
         {
@@ -97,7 +109,7 @@ def with_stacks(answers: dict[str, Any]) -> dict[str, Any]:
             "open": True,
             "pull_requests": [{"number": pull} for pull in pulls],
         }
-        for number, pulls in STACKS
+        for number, pulls in native
     ]
     return {
         **answers,
@@ -113,10 +125,14 @@ def run_measurement(
     mode: list[str],
     session: Path = SESSION,
     build: tuple[str, ...] = (),
+    moves: bool = False,
 ) -> GroupRun:
     """Build the stand-in's home with stacks, serve it, and run *session* against it.
 
-    *build* are the fixture's build flags, ``--guided-stack`` for the guides."""
+    *build* are the fixture's build flags, ``--guided-stack`` for the guides. With *moves*,
+    the session is told the answers file the server's fake gh reads (``STACK_ANSWERS``) and
+    the same answers with 8 gone from #70 (``STACK_MOVED``), which it writes over the first
+    to move the stack."""
 
     chrome = require_chrome()
     node = require_node()
@@ -135,9 +151,10 @@ def run_measurement(
     )
     assert built.returncode == 0, built.stderr[-4000:]
     answers = stand_in / "fake-gh-scenario.json"
-    answers.write_text(
-        json.dumps(with_stacks(json.loads(answers.read_text(encoding="utf-8")))), encoding="utf-8"
-    )
+    built_answers = json.loads(answers.read_text(encoding="utf-8"))
+    answers.write_text(json.dumps(with_stacks(built_answers)), encoding="utf-8")
+    moved = tmp_path / "fake-gh-scenario-moved.json"
+    moved.write_text(json.dumps(with_stacks(built_answers, MOVED_STACKS)), encoding="utf-8")
     port = _free_port()
     log = tmp_path / "server.log"
     with log.open("w", encoding="utf-8") as output:
@@ -170,6 +187,7 @@ def run_measurement(
                 "CHROME_BIN": chrome,
                 "CHROME_PROFILES": str(chrome_profile),
                 **({"SHOTS_DIR": shots, "MEASURE_OUT": f"{shots}/measured.json"} if shots else {}),
+                **({"STACK_ANSWERS": str(answers), "STACK_MOVED": str(moved)} if moves else {}),
             },
         )
     finally:
@@ -200,4 +218,12 @@ def test_the_stack_page_lays_out_as_a_pull_request_page_in_chrome(
         tmp_path, chrome_profile, mode=[], session=LAYOUT, build=("--guided-stack",)
     )
     passed = re.fullmatch(r"stack page layout in Chrome: (\d+) checks passed\n", run.stdout)
+    assert passed is not None and int(passed.group(1)) > 0, run.stdout
+
+
+def test_the_stack_page_says_what_changed_and_its_button_draws_it_in_chrome(
+    tmp_path: Path, chrome_profile: Path
+) -> None:
+    run = run_measurement(tmp_path, chrome_profile, mode=[], session=NOTICE, moves=True)
+    passed = re.fullmatch(r"stack page notice in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout

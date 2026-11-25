@@ -3,12 +3,15 @@
 // The answers are the stack route's for the GitHub stand-in's stacks, recorded in
 // tests/fixtures/github-stack-responses.json by tests/test_cli_github_stack_golden.py, which
 // fails when the recording drifts: stack 70 pending before its members' records, then
-// current; 71, whose top lacks 7, which has another comparison; and 72, not linear.
+// current; 71, whose top lacks 7, which has another comparison; 72, not linear; 70 once 8
+// left it, asked `since` its earlier comparison; and 74, whose one member, 7, is rewritten
+// and then gains a commit, each asked `since` the comparison before.
 //
 // It runs the production builtin_plugins/github/stack-page.js: the tab a route shows, the
 // header's rows from its first paint to the answer (`stackHeader`), what the page passes the
 // diff view for its Diff summary and its Docs and Changes, what a new answer does to the
-// comparison drawn (`comparisonAction`), the line about members the top lacks, and the
+// comparison drawn (`answerAction`) and what its notice says (`changeText`), the line about
+// members the top lacks, and the
 // controller (`createStackController`) over a
 // scripted poll, over a read that fails and then finds its answer current, over a cold
 // stack of more members than the server fetches at once, one of whose fetches fails, over
@@ -16,7 +19,8 @@
 // longer linear, and over an answer read as a fetch ended before its record. Then the
 // body's state machine (`bodyPlan` and its events), the column it is set in
 // (`bodyInColumn`), and the notices above it (`statusNotices`) over a reader who opens a
-// file while the stack moves. What is left to
+// file while the stack moves, and over a reader who has not yet done anything on the page
+// and then does. What is left to
 // the glue (`mountStackPage`) is the drawing, which github-stack-guide-mount-session.js
 // mounts.
 
@@ -65,7 +69,7 @@ async function scriptedPoll(page, pending, current, lacking) {
   /** @type {Array<() => void>} */
   const timers = [];
   let now = START;
-  let shownKey = null;
+  let body = page.NO_BODY;
   const controller = page.createStackController(
     {
       async request(method, route, options) {
@@ -90,11 +94,11 @@ async function scriptedPoll(page, pending, current, lacking) {
       cancel() {},
       now: () => now,
       isVisible: () => true,
+      // The comparison drawn, which each read after it is asked `since`.
+      since: () => body.drawn?.key ?? null,
       render(model) {
-        const action = page.comparisonAction(shownKey, model.envelope);
-        if (action === "show") {
-          shownKey = model.envelope.comparison.key;
-        }
+        const action = page.answerAction(body, model.envelope, false, model.failed);
+        body = page.bodyAnswered(body, model.envelope, false, model.failed);
         rendered.push({
           state: model.envelope?.state ?? null,
           pending: model.envelope?.pending ?? null,
@@ -141,6 +145,7 @@ async function recovering(page, current) {
       cancel() {},
       now: () => START,
       isVisible: () => true,
+      since: () => null,
       render(model) {
         recovery.push({ state: model.envelope?.state ?? null, error: model.error });
       },
@@ -236,6 +241,7 @@ async function coldStack(page, pending) {
       cancel() {},
       now: () => now,
       isVisible: () => true,
+      since: () => null,
       render(model) {
         rendered.push({
           at: `${(now - START) / 1000}s`,
@@ -316,6 +322,7 @@ async function absentAsk(page, notLinear) {
       cancel() {},
       now: () => now,
       isVisible: () => true,
+      since: () => null,
       render() {},
     },
     { number: 72 },
@@ -388,6 +395,7 @@ async function endedRace(page, pending) {
       cancel() {},
       now: () => now,
       isVisible: () => true,
+      since: () => null,
       render(model) {
         rendered.push({
           at: `${(now - START) / 1000}s`,
@@ -439,6 +447,7 @@ async function oneLoop(page, current) {
       },
       now: () => START,
       isVisible: () => true,
+      since: () => null,
       render() {},
     },
     { number: 70 },
@@ -464,9 +473,10 @@ async function oneLoop(page, current) {
 /**
  * The body and its notices over a reader who follows a link to one file in Changes while
  * the stack moves under them: each step's answer, what the body does, and what the
- * notices above it say.
+ * notices above it say. The reader opened a file, so a comparison that looks different is
+ * offered, never drawn under them.
  */
-function bodySession(page, pending, current, lacking, notLinear) {
+function bodySession(page, pending, current, notLinear, left) {
   const steps = [];
   let body = page.NO_BODY;
   let tab = "changes";
@@ -484,7 +494,7 @@ function bodySession(page, pending, current, lacking, notLinear) {
       // drawn Docs or Changes.
       column: page.bodyInColumn(body, tab) ? "reading" : "full pane",
       notices: page
-        .statusNotices(envelope, body.drawn?.key ?? null, null, failed)
+        .statusNotices(envelope, body, null, failed, true)
         .map((notice) => `${notice.text}${notice.action ? ` [${notice.action}]` : ""}`),
     });
   };
@@ -502,7 +512,7 @@ function bodySession(page, pending, current, lacking, notLinear) {
   };
   const answer = (step, next) => {
     envelope = next;
-    body = page.bodyAnswered(body, envelope);
+    body = page.bodyAnswered(body, envelope, true, failed);
     plan(step);
   };
 
@@ -529,7 +539,7 @@ function bodySession(page, pending, current, lacking, notLinear) {
   failed = [11];
   answer("its fetch failed", grown);
   failed = [];
-  answer("it arrived: another comparison", lacking);
+  answer("8 leaves instead: another comparison, offered", left);
   body = page.bodyTaken(body, envelope);
   plan("the reader takes it");
   answer("the stack can no longer be shown as one", notLinear);
@@ -548,13 +558,74 @@ function bodySession(page, pending, current, lacking, notLinear) {
 }
 
 /**
- * The front page of a stack with a guide while the stack moves: the guide shown after each
- * answer (`guideShown`), the tab, and what the body does. A member's push keeps Guided
- * Review and its guide while the member is fetched, and the guide mounts again only when
- * the reader takes the comparison offered; a description that no longer carries the guide
- * takes the tab away.
+ * A reader on Changes of 70 while the stack moves. One that looks the same (71's answer,
+ * standing in for 70 gaining 7) is no change, before the reader does anything on the page
+ * or after: the comparison drawn stays, and the next read is asked `since` it. One that
+ * looks different (70 once 8 left it) is drawn without a word before the reader's move;
+ * after it, it is held while a member it waits on is fetched, then offered with what
+ * changed, and drawn when the reader takes it. Each step records what the body does, the
+ * answer it draws, the notices above it, and the key the next read is asked `since`.
  */
-function guidedSession(page, pending, current, lacking, notLinear) {
+function noticeSession(page, current, lacking, left) {
+  const named = new Map([
+    [current, "70"],
+    [lacking, "71"],
+    [left, "70 without 8"],
+  ]);
+  const steps = [];
+  let body = page.NO_BODY;
+  let interacted = false;
+  let envelope = null;
+  const plan = (step) => {
+    const planned = page.bodyPlan(body, envelope, "changes", []);
+    body = planned.body;
+    if (planned.action.do === "mount") {
+      body = page.bodyMounted(body, planned.action.key).body;
+    }
+    steps.push({
+      step,
+      do: planned.action.do === "mount" ? `mount ${planned.action.tab}` : planned.action.do,
+      drawn: body.answer === null ? null : (named.get(body.answer) ?? "another"),
+      notices: page
+        .statusNotices(envelope, body, null, [], interacted)
+        .map((notice) => `${notice.text}${notice.action ? ` [${notice.action}]` : ""}`),
+      since:
+        body.drawn === null
+          ? null
+          : named.get(body.answer) === undefined
+            ? "another"
+            : body.drawn.key,
+    });
+  };
+  const answer = (step, next) => {
+    envelope = next;
+    body = page.bodyAnswered(body, envelope, interacted, []);
+    plan(step);
+  };
+  answer("70, drawn", current);
+  answer("looks the same, before the reader's move: 70's stays", lacking);
+  answer("looks different, before the reader's move: drawn at once", left);
+
+  body = page.NO_BODY;
+  answer("70 again, drawn", current);
+  interacted = true;
+  answer("looks the same, after the reader scrolls: 70's stays", lacking);
+  answer("70's again", current);
+  answer("looks different while 10 is fetched: held", { ...left, pending: [10] });
+  answer("looks different, 10 fetched: offered", left);
+  body = page.bodyTaken(body, envelope);
+  plan("the reader takes it");
+  return steps;
+}
+
+/**
+ * The front page of a stack with a guide while the stack moves, after the reader has moved
+ * on the page: the guide shown after each answer (`guideShown`), the tab, and what the body
+ * does. A member's push keeps Guided Review and its guide while the member is fetched, and
+ * the guide mounts again only when the reader takes the comparison offered; a description
+ * that no longer carries the guide takes the tab away.
+ */
+function guidedSession(page, pending, current, notLinear, left) {
   const steps = [];
   let body = page.NO_BODY;
   let guide = null;
@@ -563,7 +634,7 @@ function guidedSession(page, pending, current, lacking, notLinear) {
     envelope = next;
     guide = page.guideShown(guide, envelope);
     const tab = page.shownTab("", envelope, guide);
-    body = take ? page.bodyTaken(body, envelope) : page.bodyAnswered(body, envelope);
+    body = take ? page.bodyTaken(body, envelope) : page.bodyAnswered(body, envelope, true, []);
     const planned = page.bodyPlan(body, envelope, tab, []);
     body = planned.body;
     if (planned.action.do === "mount") {
@@ -581,10 +652,10 @@ function guidedSession(page, pending, current, lacking, notLinear) {
   step("before any answer", null);
   step("current", current);
   step("a member's push, fetched", pending);
-  step("current again, another comparison", lacking);
-  step("the reader takes it", lacking, true);
+  step("current again, another comparison", left);
+  step("the reader takes it", left, true);
   step("the stack cannot be shown", notLinear);
-  step("the guide's block removed", { ...lacking, guide: null });
+  step("the guide's block removed", { ...left, guide: null });
   return steps;
 }
 
@@ -612,15 +683,65 @@ async function main() {
       ),
     ]),
   );
-  const guided = guidedSession(page, pending, current, lacking, notLinear);
+  const guided = guidedSession(page, pending, current, notLinear, recorded.left);
 
+  // What a new answer does to the comparison drawn, before the reader does anything on the
+  // page and after: 71's answer looks as 70's does, and 70's once 8 left it does not.
+  const { left, rewritten, grown } = recorded;
+  const at = (envelope) => ({ ...page.NO_BODY, drawn: envelope.comparison, answer: envelope });
+  const waiting = { ...left, pending: [10] };
   const comparison = [
-    ["nothing drawn, pending", page.comparisonAction(null, pending)],
-    ["nothing drawn, current", page.comparisonAction(null, current)],
-    ["drawn, the same answer", page.comparisonAction(current.comparison.key, current)],
-    ["drawn, another comparison", page.comparisonAction(current.comparison.key, lacking)],
-    ["drawn, the stack now absent", page.comparisonAction(current.comparison.key, notLinear)],
+    ["nothing drawn, pending", page.answerAction(page.NO_BODY, pending, false, [])],
+    ["nothing drawn, current", page.answerAction(page.NO_BODY, current, false, [])],
+    ["drawn, the same answer", page.answerAction(at(current), current, true, [])],
+    ["drawn, the stack now absent", page.answerAction(at(current), notLinear, true, [])],
+    ["drawn, another that looks the same", page.answerAction(at(current), lacking, true, [])],
+    ["drawn, another, before the reader's move", page.answerAction(at(current), left, false, [])],
+    ["drawn, another, after the reader's move", page.answerAction(at(current), left, true, [])],
+    ["drawn, another, while 10 is fetched", page.answerAction(at(current), waiting, true, [])],
+    ["drawn, another, once 10's fetch failed", page.answerAction(at(current), waiting, true, [10])],
   ];
+  // Whether Guided Review reads an edit of its guide at the comparison drawn: the stack's
+  // own, or one that looks the same, is current; another is not; none to say, null.
+  const guide_current = [
+    ["nothing drawn", page.drawnCurrent(page.NO_BODY, current)],
+    ["the same answer", page.drawnCurrent(at(current), current)],
+    ["another that looks the same", page.drawnCurrent(at(current), lacking)],
+    ["another", page.drawnCurrent(at(current), left)],
+    ["the stack now absent", page.drawnCurrent(at(current), notLinear)],
+  ];
+
+  // What the notice of a new comparison says. 71's top member moves, two members join, and
+  // 7 is closed, as one answer: the notice names three changes, or two and counts the rest.
+  const moved = {
+    ...lacking,
+    members: [
+      { ...lacking.members[0], place: 1 },
+      { ...lacking.members[1], state: "closed" },
+      { ...lacking.members[2], head: "f".repeat(40) },
+      { ...lacking.members[2], number: 11, place: 4 },
+      { ...lacking.members[2], number: 12, place: 5 },
+    ],
+    moved: { since: lacking.comparison.key, members: [{ number: 10, commits: 2 }] },
+  };
+  const changes = {
+    left: page.changeText(current, left),
+    joined: page.changeText(left, current),
+    one_new_commit: page.changeText(rewritten, grown),
+    rewritten: page.changeText(grown, rewritten),
+    not_asked_since: page.changeText(rewritten, { ...grown, moved: null }),
+    three: page.changeText(lacking, { ...moved, members: moved.members.slice(0, 4) }),
+    four: page.changeText(lacking, moved),
+    reordered: page.changeText(lacking, {
+      ...lacking,
+      members: [...lacking.members].reverse(),
+    }),
+    nothing_named: page.changeText(current, {
+      ...current,
+      comparison: { ...current.comparison, key: "0".repeat(32) },
+    }),
+  };
+  const notices = noticeSession(page, current, lacking, left);
 
   // The header from the page's first paint, when the Pulls tab knows the stack and its lists
   // titled and stated its members, through each answer, and for a stack the Pulls tab does
@@ -648,9 +769,10 @@ async function main() {
       from === null ? unlisted : listed,
       page.statusNotices(
         envelope,
-        drawn ? (envelope?.comparison?.key ?? null) : null,
+        drawn ? { ...page.NO_BODY, drawn: envelope.comparison, answer: envelope } : page.NO_BODY,
         null,
         failedNow,
+        true,
       ),
       drawn,
     );
@@ -721,7 +843,7 @@ async function main() {
   const one_loop = await oneLoop(page, current);
   const absent_ask = await absentAsk(page, notLinear);
   const ended_race = await endedRace(page, pending);
-  const body = bodySession(page, pending, current, lacking, notLinear);
+  const body = bodySession(page, pending, current, notLinear, left);
 
   // The header lists the members top first, as every stack menu does.
   const order = page.topFirst(lacking).map((member) => member.number);
@@ -732,6 +854,9 @@ async function main() {
         tabs,
         guided,
         comparison,
+        guide_current,
+        changes,
+        notices,
         header,
         drawing,
         said,
