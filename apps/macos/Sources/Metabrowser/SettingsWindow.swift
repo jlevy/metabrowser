@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The panes of Metabrowser > Settings…, in the order of their toolbar tabs.
 enum SettingsTab: Int, CaseIterable {
-    /// How folders open.
+    /// Whether the last session reopens.
     case general
     /// The `metab` in use, how it was found, and the search for another.
     case runtime

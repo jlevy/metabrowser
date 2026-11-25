@@ -242,7 +242,7 @@ import Testing
         var queue = RestoreQueue(
             SavedSession(windows: [
                 SavedWindow(
-                    tabs: [SavedTab(root: notes, page: nil), SavedTab(root: documents, page: nil)], selected: 0,
+                    pages: [SavedPage(root: notes, page: nil), SavedPage(root: documents, page: nil)], selected: 0,
                     frame: nil),
             ]),
             isProtected: { $0.hasPrefix("/Volumes/Home/Documents") })
@@ -366,7 +366,7 @@ import Testing
         #expect(await subject.start(holding: false) == .refusedByRoot)
         #expect(asked.count == 1)
         #expect(children.launched.all == [])
-        subject.rootCheck = nil  // a selected tab starts it as the user's choice
+        subject.rootCheck = nil  // a window brought forward starts it as the user's choice
         #expect(await subject.start(holding: false) == .launched)
         #expect(children.launched.count == 1)
     }
@@ -374,11 +374,11 @@ import Testing
 
 /// A restore that paused for want of a runtime (mb-nwr5): the root goes back to the
 /// front of the queue, so it is admitted again before it starts, keeps its place, can
-/// still be selected first, and is dropped if its tabs close.
+/// still be selected first, and is dropped if its windows close.
 @Suite struct RestorePauseTests {
     private func queue(_ roots: [String], selectedFront: Bool = true) -> RestoreQueue {
         RestoreQueue(
-            SavedSession(windows: roots.map { SavedWindow(tabs: [SavedTab(root: $0, page: nil)], selected: 0, frame: nil) }),
+            SavedSession(windows: roots.map { SavedWindow(pages: [SavedPage(root: $0, page: nil)], selected: 0, frame: nil) }),
             isProtected: { _ in false })
     }
 
@@ -388,11 +388,11 @@ import Testing
         #expect(subject.next() == "/r/b")
         subject.putBack("/r/b")
         #expect(subject.pending == ["/r/b", "/r/c"])
-        // Selecting another tab while the restore waits puts it first.
+        // Bringing another window forward while the restore waits puts it first.
         let selectedC = subject.select("/r/c")
         #expect(selectedC)
         #expect(subject.pending == ["/r/c", "/r/b"])
-        // Closing a waiting root's tabs drops it.
+        // Closing a waiting root's windows drops it.
         subject.remove("/r/b")
         #expect(subject.pending == ["/r/c"])
         #expect(subject.next() == "/r/c")
@@ -400,7 +400,7 @@ import Testing
     }
 
     /// A background root that waited for a runtime and was replaced meanwhile by a link
-    /// into Documents waits for its tab instead, as at any other turn.
+    /// into Documents waits for its window to come forward instead, as at any other turn.
     @Test func aRootPutBackIsAdmittedAgainWhenItsTurnComes() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -434,7 +434,7 @@ import Testing
 
     // MARK: - Selections while a root's start is outstanding (mb-ql6f)
 
-    /// Another tab selected while a root waited at the gate stays ahead of it when the
+    /// Another root selected while a root waited at the gate stays ahead of it when the
     /// root is put back, and the root is admitted again in its turn.
     @Test func aRootSelectedWhileAnotherWaitedStaysAheadOfIt() {
         var subject = queue(["/r/a", "/r/b", "/r/c"])
@@ -454,7 +454,7 @@ import Testing
         #expect(asked.all == ["/r/b"])  // only the background root is admitted again
     }
 
-    /// The root's own tab selected while it waited is the user's choice once it is put
+    /// The root's own window brought forward while it waited is the user's choice once it is put
     /// back: it is not admitted again, so it starts even if it became protected.
     @Test func theRootSelectedWhileItWaitedIsSelectedWhenPutBack() {
         var subject = queue(["/r/a", "/r/b", "/r/c"])
@@ -468,7 +468,7 @@ import Testing
         #expect(subject.next(stillOpen: { _ in false }) == "/r/b")
     }
 
-    /// Both: the root selected first, then another tab; the later selection leads.
+    /// Both: the root selected first, then another; the later selection leads.
     @Test func theLaterOfTwoSelectionsDuringTheWaitLeads() {
         var subject = queue(["/r/a", "/r/b", "/r/c", "/r/d"])
         _ = subject.next()
@@ -482,7 +482,7 @@ import Testing
     // MARK: - A root-refused restart (mb-g77m)
 
     /// A started restored folder whose root became protected before an upgrade restart:
-    /// the restart spawns nothing, the root waits for its tab, and selecting it starts
+    /// the restart spawns nothing, the root waits for its window to come forward, and selecting it starts
     /// exactly one new server.
     @Test func aRootRefusedRestartWaitsForItsTabAndStartsOnceSelected() async throws {
         let directory = try temporaryDirectory()
@@ -526,10 +526,10 @@ import Testing
         let recheck = runtime.startRecheck()
         _ = runtime.finishRecheck(recheck, fingerprint: nil, result: .valid(version: "0.13.0"))
         #expect(await subject.restart() == .refusedByRoot)
-        #expect(spawned.count == 1)  // no replacement before the tab is selected
+        #expect(spawned.count == 1)  // no replacement before the window comes forward
         restore.hold(background)  // as FolderWindows does with a root-refused restart
         #expect(restore.deferred == [background])
-        // Selecting its tab: the user's choice, so the root check is cleared.
+        // Bringing its window forward: the user's choice, so the root check is cleared.
         let selected = restore.select(background)
         #expect(selected)
         subject.rootCheck = nil

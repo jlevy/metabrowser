@@ -6,7 +6,7 @@ import Foundation
 /// which folder it is; the app icon's mark at the title bar's trailing end carries the
 /// app's name, so the title does not repeat it. The Window menu, Mission Control, and the
 /// window switcher read `window.title`, which is the short name too, unless another open
-/// folder shares it (`windowTitles`). A tab shows the short name.
+/// folder shares it (`windowTitles`).
 ///
 /// The served page's own title, "fdu • Metabrowser", names it in a browser's tab, where
 /// nothing else says Metabrowser; the app does not use it.
@@ -19,10 +19,6 @@ public nonisolated struct WindowTitle: Equatable, Sendable {
 
     /// The title bar's text.
     public var text: String { identity.shortName }
-    /// The tab's title, compact so that several tabs fit.
-    public var tabTitle: String { identity.shortName }
-    /// The tab's tooltip.
-    public var tabToolTip: String { identity.fullName }
     /// "~/wrk/github/fdu · Local Git checkout": the title's tooltip and `window.subtitle`.
     public var subtitle: String { "\(identity.fullName) · \(identity.kindLabel)" }
     /// Only a local folder, a plain one or a checkout, has a file URL, and so a path menu.

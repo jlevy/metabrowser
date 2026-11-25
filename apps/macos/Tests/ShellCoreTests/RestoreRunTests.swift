@@ -44,9 +44,9 @@ private final class TestFolder: RestoredFolder, ManagedServer {
     var childPIDs: [pid_t] { server.supervisor.childPIDs }
 }
 
-/// What a launch does with a saved session, without windows: each tab's root admitted
+/// What a launch does with a saved session, without windows: each page's root admitted
 /// (`SavedSession.admitted`), one session per root in a `ServerFleet`, and the restore's
-/// starts (`RestoreRun`). `tabs` stands in for the windows, holding each tab's root.
+/// starts (`RestoreRun`). `pages` stands in for the windows, holding each one's root.
 private final class RestoreHarness {
     static let setup = RuntimeSetup(
         runtime: Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin), tools: ToolPaths())
@@ -60,7 +60,7 @@ private final class RestoreHarness {
     let served = Recorder<String>()
     /// The runtime the app has: what a server starts from, and what a session needs.
     var runtime: RuntimeSetup? = RestoreHarness.setup
-    private(set) var tabs: [String] = []
+    private(set) var pages: [String] = []
     private(set) var events: [RestoreRun.Event] = []
     private(set) var deferredAtLaunch: Set<String> = []
     private(set) var run: RestoreRun!
@@ -70,28 +70,28 @@ private final class RestoreHarness {
         self.home = home
         let admitted = saved.admitted { RootAdmission.admit($0, home: home) }
         deferredAtLaunch = admitted.deferred
-        for root in admitted.session.windows.flatMap({ $0.tabs.map(\.root) }) {
-            tabs.append(root)
+        for root in admitted.session.windows.flatMap({ $0.pages.map(\.root) }) {
+            pages.append(root)
             if folder(root) == nil { make(root) }
         }
         run = RestoreRun(
             RestoreQueue(admitted.session, isProtected: admitted.deferred.contains),
             folder: { [unowned self] in self.folder($0) },
             admit: { RootAdmission.admit($0, home: home) },
-            moveTabs: { [unowned self] in self.moveTabs($0, to: $1) })
+            movePages: { [unowned self] in self.movePages($0, to: $1) })
         run.onEvent = { [unowned self] in self.events.append($0) }
     }
 
     func folder(_ path: String) -> TestFolder? { fleet[path] as? TestFolder }
 
     /// What `FolderWindows` does when a selected root now leads to another folder: each
-    /// tab of `saved` becomes a tab of `canonical`'s session, the open one or a new one,
-    /// and `saved`'s session, left with no tab, closes. No session can be made without a
+    /// page of `saved` becomes a page of `canonical`'s session, the open one or a new one,
+    /// and `saved`'s session, left with no page, closes. No session can be made without a
     /// runtime, as `AppDelegate.session(for:)` needs one.
-    func moveTabs(_ saved: String, to canonical: String) -> Bool {
+    func movePages(_ saved: String, to canonical: String) -> Bool {
         guard folder(canonical) != nil || runtime != nil else { return false }
         if folder(canonical) == nil { make(canonical) }
-        tabs = tabs.map { $0 == saved ? canonical : $0 }
+        pages = pages.map { $0 == saved ? canonical : $0 }
         if let old = folder(saved) {
             fleet.retire(old)
             run.folderClosed(saved)
@@ -123,7 +123,7 @@ private final class RestoreHarness {
     /// The roots with an open session.
     var roots: [String] { fleet.openServers.compactMap { ($0 as? TestFolder)?.root }.sorted() }
 
-    /// Selects a tab of `path`, as `FolderWindows.windowShown` does, and waits for the run
+    /// Selects a window of `path`, as `FolderWindows.windowShown` does, and waits for the run
     /// that starts.
     func select(_ path: String) async {
         if run.select(path) { await run.start() }
@@ -138,10 +138,10 @@ private final class RestoreHarness {
         return outcome
     }
 
-    /// Closes every tab of `path`, as its session's last window closing does: the fleet
+    /// Closes every window of `path`, as its session's last window closing does: the fleet
     /// retires its server and the restore forgets the root (`FolderWindows.folderClosed`).
     func close(_ path: String) {
-        tabs.removeAll { $0 == path }
+        pages.removeAll { $0 == path }
         if let closed = folder(path) { fleet.retire(closed) }
         run.folderClosed(path)
     }
@@ -178,7 +178,7 @@ private struct Folders {
 }
 
 private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
-    SavedSession(windows: [SavedWindow(tabs: roots.map { SavedTab(root: $0, page: nil) }, selected: selected, frame: nil)])
+    SavedSession(windows: [SavedWindow(pages: roots.map { SavedPage(root: $0, page: nil) }, selected: selected, frame: nil)])
 }
 
 /// The restore's starts, as the app runs them (`RestoreRun`).
@@ -226,9 +226,9 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
 }
 
 /// A restored root that waited under the path it was saved with, and now leads to another
-/// folder (mb-kdku). Selecting its tab only cleared its check, so its server served the
+/// folder (mb-kdku). Selecting its window only cleared its check, so its server served the
 /// other folder under the saved spelling: opening that folder, or a file in it, started
-/// a second server, and so did selecting the tab when that folder was restored too.
+/// a second server, and so did selecting the window when that folder was restored too.
 @Suite struct RestoredAliasTests {
     /// The review's trace: save A, quit, replace A with a link to B, restore, select A,
     /// then open B and files in it, directly and through the link.
@@ -242,7 +242,7 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         #expect(restore.served.all == [folders.notes])
         await restore.select(folders.a)
         #expect(restore.served.all == [folders.notes, folders.b])
-        #expect(restore.tabs == [folders.notes, folders.b])
+        #expect(restore.pages == [folders.notes, folders.b])
         #expect(restore.roots == [folders.notes, folders.b].sorted())
         let joined = try #require(restore.folder(folders.b))
         for path in [folders.b, folders.b + "/plan.md", folders.a, folders.a + "/plan.md"] {
@@ -264,13 +264,13 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         let running = try #require(restore.folder(folders.b))
         await restore.select(folders.a)
         #expect(restore.served.all == [folders.notes, folders.b])
-        #expect(restore.tabs == [folders.notes, folders.b, folders.b])
+        #expect(restore.pages == [folders.notes, folders.b, folders.b])
         #expect(restore.folder(folders.b) === running)
         #expect(restore.roots == [folders.notes, folders.b].sorted())
         await restore.stopAll()
     }
 
-    /// The folder it leads to waits for its own tab, in a protected location: it starts
+    /// The folder it leads to waits for its own window, in a protected location: it starts
     /// once, now, as the user's choice.
     @Test func aDeferredRootLeadingToAFolderWaitingForItsTabStartsThatFolderOnce() async throws {
         let folders = try Folders()
@@ -283,13 +283,13 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         await restore.select(folders.a)
         #expect(restore.served.all == [folders.notes, folders.documentsB])
         #expect(restore.run.queue.deferred.isEmpty)
-        #expect(restore.tabs == [folders.notes, folders.documentsB, folders.documentsB])
-        await restore.select(folders.documentsB)  // its own tab, now: nothing more starts
+        #expect(restore.pages == [folders.notes, folders.documentsB, folders.documentsB])
+        await restore.select(folders.documentsB)  // its own window, now: nothing more starts
         #expect(restore.served.all == [folders.notes, folders.documentsB])
         await restore.stopAll()
     }
 
-    /// The front tab is selected, so it starts at launch, also when it waited for want of a
+    /// The front window is selected, so it starts at launch, also when it waited for want of a
     /// certain identity: under the folder its path leads to.
     @Test func theFrontTabLeadingToAnotherFolderStartsThatFolder() async throws {
         let folders = try Folders()
@@ -298,7 +298,7 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         let restore = RestoreHarness(window([folders.a, folders.notes]), home: folders.home)
         await restore.run.start()
         #expect(restore.served.all == [folders.b, folders.notes])
-        #expect(restore.tabs == [folders.b, folders.notes])
+        #expect(restore.pages == [folders.b, folders.notes])
         #expect(restore.roots == [folders.notes, folders.b].sorted())
         await restore.stopAll()
     }
@@ -319,7 +319,7 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         #expect(restore.run.runtimeAccepted())
         await restore.run.start()
         #expect(restore.served.all == [folders.notes, folders.b])
-        #expect(restore.tabs == [folders.notes, folders.b])
+        #expect(restore.pages == [folders.notes, folders.b])
         await restore.stopAll()
     }
 }
@@ -357,11 +357,11 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
 }
 
 @Suite struct RestoreRedirectTests {
-    /// Pending `/f`, `/a`, `/b`, and `/c` waiting for its tab; `/f` started.
+    /// Pending `/f`, `/a`, `/b`, and `/c` waiting for its window; `/f` started.
     private func queue() -> RestoreQueue {
         var queue = RestoreQueue(
             SavedSession(windows: [
-                SavedWindow(tabs: ["/f", "/a", "/b", "/c"].map { SavedTab(root: $0, page: nil) }, selected: 0, frame: nil),
+                SavedWindow(pages: ["/f", "/a", "/b", "/c"].map { SavedPage(root: $0, page: nil) }, selected: 0, frame: nil),
             ]),
             isProtected: { $0 == "/c" })
         let front = queue.next()
@@ -376,7 +376,7 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         subject.redirect("/a", to: "/b", isOpen: true)
         #expect(subject.pending == ["/b"])
         #expect(subject.selected.contains("/b") && !subject.selected.contains("/a"))
-        // One waiting for its tab starts too, unchecked.
+        // One waiting for its window starts too, unchecked.
         #expect(subject.next() == "/b")
         subject.redirect("/b", to: "/c", isOpen: true)
         #expect(subject.pending == ["/c"])
@@ -413,14 +413,14 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
     }
 }
 
-/// A tab selected while its root's start waited at the launch gate (review A2 on #377,
+/// A window selected while its root's start waited at the launch gate (review A2 on #377,
 /// mb-x5yz). The selection cleared the root's check, but the queue does not hand out a
 /// root whose start is outstanding again, so its saved path was never resolved: when the
 /// gate opened, the saved spelling spawned, serving the folder it now leads to under the
 /// saved key, and opening that folder or a file in it started a second server.
 @Suite struct SelectedWhileWaitingTests {
     /// The review's sequence: background A waits behind another server at the gate, A is
-    /// replaced by a link to B, A's tab is selected, then the gate opens.
+    /// replaced by a link to B, A's window is selected, then the gate opens.
     @Test func aRootThatNowLeadsElsewhereJoinsThatFolderBeforeAnyChildSpawns() async throws {
         let folders = try Folders()
         defer { folders.remove() }
@@ -434,7 +434,7 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         restore.gate.release()
         await running.value
         #expect(restore.served.all == [folders.notes, folders.b])
-        #expect(restore.tabs == [folders.notes, folders.b], "the saved session names the folder")
+        #expect(restore.pages == [folders.notes, folders.b], "the saved session names the folder")
         #expect(restore.roots == [folders.notes, folders.b].sorted())
         let joined = try #require(restore.folder(folders.b))
         for path in [folders.b, folders.b + "/plan.md", folders.a + "/plan.md"] {
@@ -458,7 +458,7 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         restore.gate.release()
         await running.value
         #expect(restore.served.all == [folders.notes, folders.a])
-        #expect(restore.tabs == [folders.notes, folders.a])
+        #expect(restore.pages == [folders.notes, folders.a])
         #expect(restore.events.isEmpty)
         await restore.stopAll()
     }
@@ -467,13 +467,13 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
 /// A restart of a restored folder whose path was relinked after it started (review B1 on
 /// #377, mb-652n). The check a selection at the gate installed outlived that start, so a
 /// later Restart Server was refused by it, and a selected root's refusal was held as if
-/// it waited for its tab: it was in neither the pending nor the waiting roots, and
+/// it waited for its window: it was in neither the pending nor the waiting roots, and
 /// selecting it again started nothing, so the server stayed stopped.
 @Suite struct RestartAfterRelinkTests {
-    /// Ends at one session and one server for B, which the tabs and the saved session name,
+    /// Ends at one session and one server for B, which the windows and the saved session name,
     /// and which opening B or a file in it, directly or through A, reuses.
-    private func expectOneServerForB(_ restore: RestoreHarness, _ folders: Folders, tabs: [String]) async throws {
-        #expect(restore.tabs == tabs)
+    private func expectOneServerForB(_ restore: RestoreHarness, _ folders: Folders, pages: [String]) async throws {
+        #expect(restore.pages == pages)
         #expect(restore.roots == [folders.notes, folders.b].sorted())
         #expect(restore.fleet.childPIDs.count == 2, "one server for notes and one for B")
         let joined = try #require(restore.folder(folders.b))
@@ -500,12 +500,12 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         try folders.relink(folders.a, to: folders.b)
         #expect(await restore.restart(folders.a) == .refusedByRoot)
         #expect(restore.served.all == [folders.notes, folders.a, folders.b])
-        try await expectOneServerForB(restore, folders, tabs: [folders.notes, folders.b])
+        try await expectOneServerForB(restore, folders, pages: [folders.notes, folders.b])
         await restore.stopAll()
     }
 
-    /// The front tab, selected from the start, the same way.
-    @Test func theFrontTabIsResolvedWhenARestartFindsItRelinked() async throws {
+    /// The front window, selected from the start, the same way.
+    @Test func theFrontWindowIsResolvedWhenARestartFindsItRelinked() async throws {
         let folders = try Folders()
         defer { folders.remove() }
         let restore = RestoreHarness(window([folders.a, folders.notes]), home: folders.home)
@@ -514,11 +514,11 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         try folders.relink(folders.a, to: folders.b)
         #expect(await restore.restart(folders.a) == .refusedByRoot)
         #expect(restore.served.all == [folders.a, folders.notes, folders.b])
-        try await expectOneServerForB(restore, folders, tabs: [folders.b, folders.notes])
+        try await expectOneServerForB(restore, folders, pages: [folders.b, folders.notes])
         await restore.stopAll()
     }
 
-    /// A background root that started, then had its tab selected, the same way.
+    /// A background root that started, then had its window selected, the same way.
     @Test func aRootSelectedAfterItStartedIsResolvedWhenARestartFindsItRelinked() async throws {
         let folders = try Folders()
         defer { folders.remove() }
@@ -529,11 +529,11 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         try folders.relink(folders.a, to: folders.b)
         #expect(await restore.restart(folders.a) == .refusedByRoot)
         #expect(restore.served.all == [folders.notes, folders.a, folders.b])
-        try await expectOneServerForB(restore, folders, tabs: [folders.notes, folders.b])
+        try await expectOneServerForB(restore, folders, pages: [folders.notes, folders.b])
         await restore.stopAll()
     }
 
-    /// A background root nobody selected waits for its tab, as before, and is resolved
+    /// A background root nobody selected waits for its window, as before, and is resolved
     /// when it is selected.
     @Test func aRootNeverSelectedWaitsForItsTabThenJoinsB() async throws {
         let folders = try Folders()
@@ -546,16 +546,16 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         #expect(restore.run.queue.deferred == [folders.a])
         await restore.select(folders.a)
         #expect(restore.served.all == [folders.notes, folders.a, folders.b])
-        try await expectOneServerForB(restore, folders, tabs: [folders.notes, folders.b])
+        try await expectOneServerForB(restore, folders, pages: [folders.notes, folders.b])
         await restore.stopAll()
     }
 }
 
-/// A restored start that completes after its last tab closed (review C1 on #377,
+/// A restored start that completes after its last window closed (review C1 on #377,
 /// mb-zki1). The close forgot the root and shut its server down while its start waited at
 /// the launch gate, so nothing spawned, but the cancelled start still reported that it
 /// launched, and the restore recorded the root as started: a session opened for that
-/// folder later was taken for a restored one when its tab was selected.
+/// folder later was taken for a restored one when its window was selected.
 @Suite struct ClosedWhileWaitingTests {
     @Test func aRootClosedAtTheGateIsForgottenAndAReopenedFolderIsNotARestoredOne() async throws {
         let folders = try Folders()
@@ -571,7 +571,7 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         #expect(restore.served.all == [folders.notes], "the closed folder spawned nothing")
         #expect(!restore.run.queue.started.contains(folders.a))
         #expect(!restore.run.queue.selected.contains(folders.a))
-        // Opened again, as File > Open does, and its tab selected.
+        // Opened again, as File > Open does, and its window selected.
         let reopened = try #require(await restore.open(folders.a))
         #expect(reopened !== a)
         await restore.select(folders.a)
