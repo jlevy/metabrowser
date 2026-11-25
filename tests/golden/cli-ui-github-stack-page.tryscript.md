@@ -28,9 +28,10 @@ them.
   probe interval in sight, and slowly out of sight.
 - `sent` and `rendered` are the controller over a scripted poll: pending, current, an
   unchanged answer, then another comparison (71’s answer standing in for 70 moved).
-  Each pending member is asked for once at its head, and the top member’s automatic ask
-  is sent at its interval with the record revision the stack route names, so its answer
-  leaves the record out.
+  Each pending member is asked for once at its head, a member with no record as the
+  reader’s own open of it (`retry`), and the top member’s automatic ask is sent at its
+  interval with the record revision the stack route names, so its answer leaves the
+  record out.
 - `recovery` is a read that fails while an answer is drawn, which says so in the page’s
   own words and not the route’s, and then one that finds the drawn answer current again
   (a 304), which ends the failure.
@@ -102,14 +103,16 @@ $ node tests/dom/github-stack-page-session.js
       "method": "POST",
       "route": "/api/plugin/github/pull-refresh",
       "body": {
-        "number": 8
+        "number": 8,
+        "retry": true
       }
     },
     {
       "method": "POST",
       "route": "/api/plugin/github/pull-refresh",
       "body": {
-        "number": 10
+        "number": 10,
+        "retry": true
       }
     },
     {

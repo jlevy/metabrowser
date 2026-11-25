@@ -10,7 +10,7 @@ stand-in's pull requests (``tests/github_pull_fixture.py``):
 | 70 | 8 (merged), 10 (draft) | The whole stack. 10's base is ``topic`` after 8 merged, and ``topic`` had moved ``README.md`` before: the plain diff from 8's merge base to 10's head holds it, and the stack's comparison leaves it out, since no layer changes it |
 | 71 | 8, 7, 10 | 7 is a fork whose head the top lacks, so it contributes no files and is named in ``lacking`` |
 | 72 | 10, 8 | Not linear: 10's merge base is not in 8's history |
-| 73 | 8, 9 | Pending while 9 has no record |
+| 73 | 8, 9 | Pending while 9 has no record, until the page asks for 9 as the reader's own open of it |
 
 The stand-in's merge of 8 keeps ``topic``'s tree, as ``git fast-import`` writes a merge
 with no file of its own, so 8's edit of ``docs/guide.md`` is not in 10's head: the
@@ -65,6 +65,7 @@ pytestmark = [
 ]
 
 ROUTE = "/api/plugin/github/stack"
+REFRESH = "/api/plugin/github/pull-refresh"
 STACKS = "repos/octo/demo/stacks?per_page=100&page=1"
 # An image the stack's head does not have, as the image route spells a path.
 SHOT = GitPath.from_display("docs/shot.png").to_wire()
@@ -256,6 +257,23 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     waiting = stack(73)
     assert waiting["state"] == "pending"
     assert waiting["pending"] == [9]
+
+    blocks.append(
+        "## The page's ask for that member. An automatic ask refreshes only a record the"
+        " server holds, so the page asks as the reader's own open of it, which fetches 9,"
+        " and the stack is current.\n"
+    )
+    ask = tmp_path / "ask.json"
+    ask.write_text('{"number": 9}\n')
+    automatic = run(CANONICAL, "--api", REFRESH, "--data", str(ask))
+    assert automatic.payload()["refresh"] == "not_cached"
+    ask.write_text('{"number": 9, "retry": true}\n')
+    opened = run(CANONICAL, "--api", REFRESH, "--data", str(ask), gh_free=False)
+    assert opened.exit_code == 0, opened.stderr
+    assert '"refresh": "started"' in opened.stdout
+    fetched = stack(73)
+    assert fetched["state"] == "current"
+    assert fetched["pending"] == []
 
     blocks.append("## A number no stack has, and a request that names more than it.\n")
     assert stack(99)["reason"] == "not_stacked"

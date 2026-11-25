@@ -272,8 +272,10 @@ A stack is also no single pull request, so its address should not be one’s.
 The page reads `stack` again on its poll, as a pull request’s page reads `pull`. Members
 move through the catalog: a member whose row names a head its record lacks is `pending`,
 and the page asks `pull-refresh` for it once for that head.
-While a stack’s page is all that is open, it sends a visible pull request page’s
-automatic ask for its top member, which keeps the repository’s list probed
+It asks for a member with no record as the reader’s own open of it (`retry`), as a pull
+request’s page opened by a link does, since an automatic ask refreshes only a record the
+server holds. While a stack’s page is all that is open, it sends a visible pull request
+page’s automatic ask for its top member, which keeps the repository’s list probed
 (`attend_list` in `pull_list_route.py`), so the catalog keeps reporting every member’s
 head. The page adds no probe and no clock of its own;
 [Pull Request Update Cadence](plan-2026-11-22-pull-request-update-cadence.md#cadence-by-what-is-visible)

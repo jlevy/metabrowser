@@ -1004,8 +1004,10 @@ measurements that set them:
   Docs with `DOCS_DRAWING` and Changes with `CHANGES_DRAWING` (`diff-drawing.js`, which
   `pull-page.js` shares), and puts each file’s layers on its row and bar through the
   diff view’s `fileMarks`. It polls `stack`, asks `pull-refresh` once for each pending
-  member at its head, sends the top member’s automatic ask the answer’s `probe` names,
-  and offers a new comparison rather than swapping it in.
+  member at its head, a member with no record as the reader’s own open of it (`retry`),
+  since an automatic ask refreshes only a record the server holds, sends the top
+  member’s automatic ask the answer’s `probe` names, and offers a new comparison rather
+  than swapping it in.
 
 ### Guided Review
 

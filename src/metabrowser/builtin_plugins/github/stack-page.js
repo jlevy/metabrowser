@@ -16,9 +16,10 @@
 // opens the file in that layer's own Changes (`/pull/<n>/files/<path>`).
 //
 // The page reads the stack route on a poll, as a pull request's page reads its own, and
-// asks `pull-refresh` once for each member it names as pending at that member's head. While
-// it is open it sends the top member's automatic ask, which keeps the repository's list
-// probed so that the catalog keeps reporting every member's head
+// asks `pull-refresh` once for each member it names as pending at that member's head, a
+// member with no record as the reader's own open of it (`refreshAsks`). While it is open
+// it sends the top member's automatic ask, which keeps the repository's list probed so
+// that the catalog keeps reporting every member's head
 // (docs/project/specs/active/plan-2026-11-24-stack-review.md, "Staying Current"). A
 // comparison that changes while the reader reads is offered, not swapped in.
 //
@@ -107,9 +108,15 @@ export function comparisonAction(shownKey, envelope) {
  * the head its record has (none, for a member with no record). *asked* holds what was
  * asked; the answer is what to ask now, each with its key to add.
  *
+ * A member with no record is asked as the reader's own open of it (`retry`), as a pull
+ * request's page asks for one opened by a direct link: an automatic ask refreshes only a
+ * record the server holds, and answers `not_cached` for one it does not, so a stack opened
+ * cold stayed pending. A member whose record a newer head has passed is asked
+ * automatically, which the catalog's newer row makes due at once.
+ *
  * @param {StackEnvelope | null} envelope
  * @param {ReadonlySet<string>} asked
- * @returns {Array<{number: number, key: string}>}
+ * @returns {Array<{number: number, key: string, retry: boolean}>}
  */
 export function refreshAsks(envelope, asked) {
   if (envelope === null || envelope.state === "absent") {
@@ -117,7 +124,11 @@ export function refreshAsks(envelope, asked) {
   }
   return envelope.members
     .filter((member) => member.pending)
-    .map((member) => ({ number: member.number, key: `${member.number}:${member.head ?? ""}` }))
+    .map((member) => ({
+      number: member.number,
+      key: `${member.number}:${member.head ?? ""}`,
+      retry: member.head === null,
+    }))
     .filter((ask) => !asked.has(ask.key));
 }
 
@@ -240,11 +251,11 @@ export function createStackController(deps, options) {
   let timer = null;
   let disposed = false;
 
-  /** @param {number} number @param {string | null} held */
-  async function ask(number, held) {
+  /** @param {number} number @param {string | null} held @param {boolean} retry */
+  async function ask(number, held, retry) {
     try {
       await deps.request("POST", REFRESH_ROUTE, {
-        body: { number, ...(held === null ? {} : { held }) },
+        body: { number, ...(retry ? { retry: true } : {}), ...(held === null ? {} : { held }) },
       });
     } catch {
       // The next poll says what came of it; an ask that did not reach the server is asked
@@ -255,7 +266,7 @@ export function createStackController(deps, options) {
   function askWhatIsDue() {
     for (const due of refreshAsks(envelope, asked)) {
       asked.add(due.key);
-      void ask(due.number, null);
+      void ask(due.number, null, due.retry);
     }
     const probe = envelope?.probe ?? null;
     if (
@@ -264,7 +275,7 @@ export function createStackController(deps, options) {
       (probedAt === null || deps.now() - probedAt >= probe.every_s * 1000)
     ) {
       probedAt = deps.now();
-      void ask(probe.number, probe.held);
+      void ask(probe.number, probe.held, false);
     }
   }
 
