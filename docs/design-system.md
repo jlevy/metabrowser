@@ -2409,10 +2409,13 @@ size: `.diff-stat-add` in `--status-success-text`, `.diff-stat-del` in
 the text it rides in, and always `--weight-bold`: the pair is data, and it must read at
 a glance. A total of zero is left out, and a file of no lines changed reads “0 lines”.
 The pair is the [brief change line](#brief-change-line) of its line totals alone, built
-and painted by the one component wherever it is drawn, a file’s row and a folder’s in a
-tree of changed files, a diff’s file bar, and a commit page’s file list (`changeStats`
-in `static/changed-files-tree.js`), so a change set, its folders, and its files read
-identically and leave out a zero total by one rule.
+and painted by the one component wherever it is drawn: `changeLine` and its painters,
+`changeLineNodes` and `changeLineHtml`, in `static/formatters.js`. A tree of changed
+files reaches it for a file’s row and a folder’s through `changeStats` in
+`static/changed-files-tree.js`; a diff’s file bar (`renderFileBar` in
+`builtin_plugins/diff/diff-view.js`, through the SDK) and a commit page’s file list
+(`static/git-panel.js`) call it directly, so a change set, its folders, and its files
+read identically and leave out a zero total by one rule.
 Kind letters reuse the same mapping (added is `--status-success-text`, deleted is
 `--status-error-text`), and no diff surface introduces a local green or red.
 

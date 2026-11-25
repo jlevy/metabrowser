@@ -1426,24 +1426,34 @@ async function paintStory(panel, selection = false) {
         JSON.stringify(["github-pulls-heading", "github-pulls-byline", "sr-only"]),
       `the row's link is its run, its last line, and its number, author, and age in words: ${classesOf(row(hostile))}`,
     );
-    const order = classesOf(heading).filter((name) => name !== "github-pulls-sep");
-    const toggleIn = classesOf(numberLabel).includes("github-pulls-tail")
-      ? [
-          "github-pull-state-icon",
-          "github-pulls-title",
-          "github-pulls-place",
-          "github-pulls-number",
-        ]
-      : [
-          "github-pull-state-icon",
-          "github-pulls-title",
-          "github-pulls-place",
-          "github-pulls-number",
-          "github-pulls-tail",
-        ];
+    const order = classesOf(heading);
     assert(
-      JSON.stringify(order) === JSON.stringify(toggleIn),
-      `the run is the state icon, the title, the place, the number, and the toggle: ${order}`,
+      JSON.stringify(order) ===
+        JSON.stringify([
+          "github-pull-state-icon",
+          "github-pulls-title",
+          "github-pulls-place",
+          "github-pulls-sep",
+          "github-pulls-number",
+          "github-pulls-sep",
+          "github-pulls-tail",
+        ]),
+      `the run is the state icon, the title, the place, a dot and the number, and a dot and the toggle: ${order}`,
+    );
+    // The number holds its text alone, and the toggle is the tail's one part: the lines, then
+    // the chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t).
+    const toggle = child(child(heading, "github-pulls-tail"), "github-pulls-change");
+    assert(
+      classesOf(numberLabel).length === 0 &&
+        JSON.stringify(classesOf(child(heading, "github-pulls-tail"))) ===
+          JSON.stringify(["github-pulls-change"]) &&
+        JSON.stringify(classesOf(toggle)) ===
+          JSON.stringify([
+            "github-pulls-change-line",
+            "github-pulls-toggle",
+            "github-pulls-change-words",
+          ]),
+      `the number is its text, and the toggle is the lines, the chevron, and their words: ${classesOf(toggle)}`,
     );
     assert(
       JSON.stringify(classesOf(hostile).slice(0, 1)) === JSON.stringify(["github-pulls-entry"]) &&
