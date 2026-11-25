@@ -48,8 +48,8 @@ folders, and adds a keyboard switcher over the same list.
 
 - A switcher drawn by the page, in the app or in a browser tab.
   That needs a route that tells a page about the user’s other roots, which waits for the
-  security model (`mb-a5ru`) and the live-server registry (`mb-5xi4`); `mb-9lf4` keeps
-  it.
+  security model (`mb-a5ru`) and the live-server registry (`mb-baee`, split from
+  `mb-5xi4`); `mb-9lf4` keeps it.
 - A sidebar rail of folders beside the page, as Slack or Safari’s tab groups have.
   It costs the width a file tree needs, and adds a third level beside windows and tabs.
 - Warm folders after their last window closes (`mb-e7im`). This plan keeps folders open
@@ -343,7 +343,7 @@ The chooser’s recent rows are `metab --recent --json`’s, in its order, alrea
 its golden. The open rows are not `metab`’s. Which folders they hold, in what order (the
 order opened in the chooser, recency in the panel), how the panel matches what the user
 types, and what each choice does are state of the app’s own windows and server
-processes, which no `metab` command can report until the registry exists (`mb-5xi4`).
+processes, which no `metab` command can report until the registry exists (`mb-baee`).
 Like the Window menu, they are platform state, decided in `ShellCore` and pinned by its
 tests: `OpenFoldersTests`, `FolderChooserTests`, and `FolderSwitcherTests`. A new row in
 the [parity registry](../../architecture/arch-parity-registry.md), `app.folder-chooser`,
@@ -465,7 +465,8 @@ recommended answer:
   [Recent targets](../../architecture/arch-recent-targets.md),
   [Parity registry](../../architecture/arch-parity-registry.md)
 - Beads: `mb-e7im` (warm folders), `mb-z46o` (the activity tracker’s idle cost),
-  `mb-9lf4` (the page’s switcher), `mb-a5ru` (the roots route), `mb-5xi4` (the registry)
+  `mb-9lf4` (the page’s switcher), `mb-a5ru` (the roots route), `mb-baee` (the registry,
+  split from `mb-5xi4`)
 - Code: `apps/macos/Sources/Metabrowser/BrowserWindowController.swift`,
   `FolderSession.swift`, `FolderWindows.swift`, `TitleAccessory.swift`,
   `RecentTargetsMenu.swift`;

@@ -19,7 +19,7 @@ directories inside one served root, as the Recent tab and `/api/recent` list the
 The list of recently opened folders and repositories, which File > Open Recent in the
 macOS app and `metab --recent` show, is a different thing with its own store:
 [Recent Targets](../../architecture/arch-recent-targets.md), planned in the
-[native macOS app plan](plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-the-switcher-and-the-mcp-adapter).
+[native macOS app plan](plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-and-the-switcher).
 Nothing in this plan decided or built it.
 
 ## Overview

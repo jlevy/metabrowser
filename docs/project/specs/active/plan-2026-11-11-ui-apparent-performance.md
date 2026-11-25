@@ -41,8 +41,8 @@ measurements, and ranking this plan implements are in
   view, one host spelling, and a persistent data store belong to `apps/macos`, on `main`
   since #341. This plan does the server and browser half those depend on and records the
   shell half as beads.
-  The sticky port is not shell code: it is `metab` host mode (`mb-qzny`), core work that
-  lands on `main` under the
+  The sticky port is not shell code: it is `metab` host mode (`mb-e74k`, split from
+  `mb-qzny`), core work that lands on `main` under the
   [native app plan](plan-2026-11-10-native-macos-app.md#milestone-v1-a-usable-app).
   This plan depends on it for H87’s relaunch metric rather than doing it.
 - A persisted index or first-rows snapshot across restarts (`mb-54k9`); that is the
@@ -254,8 +254,8 @@ chunked, or retained surface.
 ### Deferred to the Native Shell
 
 - [ ] Each root’s window on the sticky port of `metab` host mode, so a relaunch keeps
-  its origin (`mb-w4kd`, blocked by `mb-qzny`). The app already serves on one host
-  spelling, `127.0.0.1`, with a persistent data store.
+  its origin (`mb-w4kd`, blocked by `mb-e74k`, split from `mb-qzny`). The app already
+  serves on one host spelling, `127.0.0.1`, with a persistent data store.
 - [ ] Prewarm at launch, hidden load, reveal on ready, one spare web view (`mb-25nv`,
   after `mb-touu` and `mb-w4kd`)
 
