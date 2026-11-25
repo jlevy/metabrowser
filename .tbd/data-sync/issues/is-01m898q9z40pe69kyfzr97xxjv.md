@@ -3,9 +3,10 @@ type: is
 id: is-01m898q9z40pe69kyfzr97xxjv
 title: "Address PR #838 review A: the stack guide's page, pairs, and coverage"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 11
+version: 12
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m880799zt82atszgajj4979x
@@ -20,7 +21,10 @@ child_order_hints:
   - is-01m898qtgzbzdtnbhzqf0hbmey
   - is-01m898qv71p35n92y1003f2as3
   - is-01m898qvtzx0vyj72ycgz4kkhy
+hold: null
+hold_until: null
 created_at: 2026-11-25T11:51:12.098Z
-updated_at: 2026-11-25T11:51:30.397Z
+updated_at: 2026-11-25T12:28:25.671Z
+started_at: 2026-11-25T12:28:25.670Z
 ---
 Review A on PR #838 (https://github.com/jlevy/metabrowser/pull/838#pullrequestreview-6057040965), pinned to 1274e12a7 (base b8420a70e): 3 Medium, 7 Low.
