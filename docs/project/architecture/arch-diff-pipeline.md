@@ -158,6 +158,9 @@ and draws rows only near the viewport:
 - **The mount** draws rows for the ready files within the pane and one screen more
   (`firstScreenBudget`). Later ready files are bars that reserve their height from
   `patchRows` until they are drawn.
+  A file with a rendered view is held wherever it is, and its Source rows are drawn only
+  while its rendered view shows Source and once the file is reached (`bodyWanted`), so a
+  long document behind its rendered view costs nothing to load.
 - **`createHydrationScheduler`** asks for one deferred file at a time, from the top of
   the viewport through `HYDRATION_AHEAD_PX` below it, and draws at most one file per
   frame. A file jump goes first and cancels other requests, and a burst of jumps waits
@@ -343,6 +346,8 @@ Changed words are marked by a bounded word diff.
 - **Paint:** a file on screen waits for its projection for the app’s loading-state delay
   with Source hidden; past it, Source paints first and the rendered view replaces it
   when it arrives. Conversation prefetches the projections of the first screen’s files.
+  The diff draws a file’s Source rows only while they show (`onSource`), so Source
+  hidden behind the rendered view is never drawn.
 
 ### Markdown Views
 

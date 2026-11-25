@@ -76,6 +76,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {ReturnType<typeof createHydrationScheduler>} hydration
  * @property {{controller: ReturnType<import("./diff-markdown.js").createMarkdownViews>, format: typeof import("./diff-markdown.js").renderedFormat} | null} markdown
  * @property {IntersectionObserver | null} hydrationObserver
+ * @property {Set<string>} reached Held files whose section is within the hydration
+ *   lookahead, whether or not their body is to be drawn (`bodyWanted`).
  * @property {boolean} awaitingWidth Nothing is drawn until the first report of a width.
  * @property {"unified" | "split"} chosenLayout What the reader chose, whatever fits.
  * @property {boolean} insistedOnSplit The reader chose Split where it does not fit.
@@ -3026,6 +3028,7 @@ function settleDeferred(file, view) {
   view.hydrationObserver?.unobserve(file.section);
   view.deferred.delete(String(file.change.id));
   view.deferredBySection.delete(file.section);
+  view.reached.delete(String(file.change.id));
   if (view.deferred.size === 0) {
     view.hydrationObserver?.disconnect();
     view.hydrationObserver = null;
@@ -3173,7 +3176,12 @@ function observeHydration(view) {
       for (const entry of entries) {
         const id = view.deferredBySection.get(/** @type {HTMLElement} */ (entry.target));
         if (id !== undefined) {
-          changes.push([id, entry.isIntersecting]);
+          if (entry.isIntersecting) {
+            view.reached.add(id);
+          } else {
+            view.reached.delete(id);
+          }
+          changes.push([id, entry.isIntersecting && bodyWanted(view, id)]);
         }
       }
       view.hydration.setNearby(changes);
@@ -3182,6 +3190,32 @@ function observeHydration(view) {
   );
   for (const section of view.deferredBySection.keys()) {
     view.hydrationObserver.observe(section);
+  }
+}
+
+/**
+ * Whether a held file's body is to be drawn once it is reached: not while the file's
+ * rendered view hides it (`createMarkdownViews`), since rows nobody sees would cost what
+ * the reader sees: a 17,177-line document's Source on a pull request's Docs, drawn at load
+ * behind its rendered view, was 72,000 nodes and 4 s of main-thread work.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} id
+ */
+function bodyWanted(view, id) {
+  return view.deferred.get(id)?.body.hidden !== true;
+}
+
+/**
+ * A held file's rendered view showed or hid its body: drawn now if it is reached, and not
+ * drawn while it is hidden.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} id
+ */
+function bodyShownChanged(view, id) {
+  if (view.deferred.has(id)) {
+    view.hydration.setNearby([[id, view.reached.has(id) && bodyWanted(view, id)]]);
   }
 }
 
@@ -3818,7 +3852,8 @@ function jumpToEntry(view, entry, path) {
     releasePinOnInput(view, pane);
   }
   const fileId = String(entry.change.id);
-  const lines = view.hydration.jump(fileId);
+  // A file whose rendered view hides its body has no rows to draw for the jump.
+  const lines = bodyWanted(view, fileId) ? view.hydration.jump(fileId) : null;
   const availability = String(entry.change.availability);
   return {
     kind: "jumped",
@@ -3859,7 +3894,8 @@ function rememberFile(view, change, section, expand) {
  * @param {{revision?: string}} context
  * @param {MountedDiffState} view
  * @param {boolean} draw Whether a ready file's rows are drawn now. One past the first screen
- *   is held, with its answer, until it is reached.
+ *   is held, with its answer, until it is reached, and so is one with a rendered view,
+ *   wherever it is, until its Source is shown and reached (`bodyWanted`).
  * @returns {HTMLElement}
  */
 function renderFileSection(change, patch, context, view, draw) {
@@ -3895,6 +3931,7 @@ function renderFileSection(change, patch, context, view, draw) {
           id: String(change.id),
           format,
           gone: String(change.kind) === "deleted",
+          onSource: () => bodyShownChanged(view, String(change.id)),
           // A file whose changes did not load has no Rendered either, for the reason its
           // body gives below.
           ...(availability === "ready" || availability === "deferred"
@@ -3950,7 +3987,7 @@ function renderFileSection(change, patch, context, view, draw) {
     body.append(el("div", "diff-availability", "No content changes."));
     return section;
   }
-  if (!draw) {
+  if (!draw || markdown !== null) {
     const id = String(change.id);
     const held = { manifest: { files: [change] }, patches: { [id]: patch } };
     queueDeferredHydration(section, body, change, context.revision ?? "", view, held);
@@ -4179,6 +4216,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     generation: 1,
     hydration: /** @type {MountedDiffState["hydration"]} */ (/** @type {unknown} */ (null)),
     hydrationObserver: null,
+    reached: new Set(),
     markdown: null,
     insistedOnSplit: false,
     layout: drawnLayout(chosenLayout, narrow, false),
@@ -4302,7 +4340,8 @@ export function mountDiffView(container, document_, api, options = {}) {
   view.hydrationFailure.hidden = true;
   root.append(view.hydrationFailure);
   // Rows are drawn for the files whose estimated top is within the first screen and one more;
-  // every later ready file is held, with its answer, and drawn when it is reached. The bars
+  // every later ready file is held, with its answer, and drawn when it is reached, as is
+  // every file with a rendered view, whose Source waits until it shows (`bodyWanted`). The bars
   // are all here, and each held file reserves its code rows and chrome before drawing.
   // Soft wraps and arriving scrollbars can add height. Drawing every hydrated file at
   // once was one task of style, layout and commit

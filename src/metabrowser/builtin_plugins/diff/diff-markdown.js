@@ -136,7 +136,8 @@ const UNREADABLE = {
  *   foldViews: Map<number, FoldView>, openFolds: Set<number>,
  *   folding: Map<string, Promise<void>>, asking: Set<AbortController>, upgrading: boolean,
  *   removed: HTMLElement[], gone: boolean, emptied: boolean,
- *   state: "idle" | "ready" | "unavailable", reason: string
+ *   state: "idle" | "ready" | "unavailable", reason: string,
+ *   onSource: ((shown: boolean) => void) | null
  * }} FileView
  *   *chosen* is whether the reader chose *mode*, which the page chose until then. *drawn*
  *   is the view the article draws, and *top* its own run of rows. *openFolds* are the
@@ -921,9 +922,14 @@ export function createMarkdownViews(deps) {
   function draw(file) {
     const wanted = wantsRendered(file);
     const rich = wanted && file.state === "ready";
-    file.source.hidden = rich || (file.holding && wanted && file.expanded);
+    const hidden = rich || (file.holding && wanted && file.expanded);
+    const changed = file.source.hidden !== hidden;
+    file.source.hidden = hidden;
     file.rendered.hidden = !file.expanded || !rich;
     drawProgress(file);
+    if (changed) {
+      file.onSource?.(!hidden);
+    }
   }
 
   // What Rendered draws of Current: a Markdown file's removed blocks and keys hidden, by
@@ -1660,16 +1666,19 @@ export function createMarkdownViews(deps) {
     /**
      * @param {{
      *   section: HTMLElement, bar: HTMLElement, end: HTMLElement, source: HTMLElement,
-     *   id: string, format: RenderedFormat, unavailable?: string, gone?: boolean
+     *   id: string, format: RenderedFormat, unavailable?: string, gone?: boolean,
+     *   onSource?: (shown: boolean) => void
      * }} input The file's section; its bar; the group at the bar's end, which the
      *   chooser ends, so it is at the bar's far end; its Source body; and the format it
      *   renders as (`renderedFormat`).
+     *   *onSource* hears each change of whether the Source body shows, so the diff can
+     *   leave its rows undrawn while the rendered view hides it.
      *   *unavailable* is why no projection is asked for the file, a sentence, for one
      *   whose changes the page has no patch of (`supportsRenderedChange`): it shows
      *   Source, which says the same, from the start. *gone* is a deleted file, which shows
      *   its Source body in Current.
      */
-    add({ section, bar, end, source, id, format, unavailable, gone }) {
+    add({ section, bar, end, source, id, format, unavailable, gone, onSource }) {
       const control = document.createElement("div");
       control.className = "diff-markdown-control";
       // Markdown is a KPress fragment; a tree is the structured plugin's own surface.
@@ -1724,6 +1733,7 @@ export function createMarkdownViews(deps) {
         emptied: false,
         state: unavailable === undefined ? "idle" : "unavailable",
         reason: unavailable ?? "",
+        onSource: onSource ?? null,
       };
       // A fragment link to a block not drawn yet draws it, and opens the fold that holds
       // it, before the browser looks; where that waits for the fold's blocks, the link

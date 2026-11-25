@@ -13,6 +13,10 @@
   are fetched when it opens, or when a link goes to a heading inside it, so a long
   document with a few edits loads in the size of its edits.
 
+- **Docs and Changes open without drawing hidden Source.** A changed file with a
+  rendered view draws its Source lines only when Source shows and you reach it, so a
+  long document behind its rendered view no longer slows the page as it opens.
+
 - **A very long Markdown diff draws as you scroll.** A rendered Markdown file longer
   than Docs opens in Full draws its blocks a part at a time near the viewport, keeping
   its place in the scroll bar; a link into a part not drawn yet draws it first, and
