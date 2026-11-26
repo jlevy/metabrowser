@@ -80,6 +80,7 @@
    *   container(): HTMLElement | null,
    *   toolbar?(): HTMLElement | null,
    *   metadata?(): HTMLElement | null,
+   *   refreshParts?(): MetabrowserRefreshParts | null,
    *   scrollRoot(): HTMLElement | null,
    *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
@@ -152,6 +153,9 @@
                 toolbar: deps.toolbar?.() ?? null,
                 // The band under it, which the list's count and connection lines fill.
                 metadata: deps.metadata?.() ?? null,
+                // The navigation's one Refresh, to which the list lends its own refresh and
+                // the shown pull request page's (static/refresh-plan.js).
+                refreshParts: deps.refreshParts?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
                   /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}} */ route,
@@ -761,6 +765,7 @@
       container: () => document.getElementById("tab-pulls"),
       toolbar: () => document.getElementById("nav-toolbar-pulls"),
       metadata: () => document.getElementById("nav-metadata-pulls"),
+      refreshParts: () => window.MetabrowserRefreshPlan?.plan() ?? null,
       scrollRoot: () => document.getElementById("tree-content"),
       openPull: (route) =>
         shell.openPullRequest(route).catch((error) => {

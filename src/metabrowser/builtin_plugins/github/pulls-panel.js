@@ -3752,9 +3752,18 @@ export function createPullsController(deps, options = {}) {
       anchorAt(stackRowKey(stack));
       return true;
     },
-    /** A press of Refresh asks the repository's existing catalog job. */
+    /**
+     * A press of Refresh asks the repository's existing catalog job, behind another tab too:
+     * the navigation's Refresh refreshes the tabs not in front after those that are
+     * (static/refresh-plan.js), and the list reads what the job brought when it shows.
+     */
     refresh() {
-      if (!live() || model().connection?.canRefresh !== true || refreshReads.size > 0) {
+      if (
+        disposed ||
+        !visible() ||
+        model().connection?.canRefresh !== true ||
+        refreshReads.size > 0
+      ) {
         return Promise.resolve();
       }
       held().error = null;
@@ -3952,13 +3961,6 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionMessage,
   ]);
   const connectionHelp = h("span", { hidden: "" });
-  const refreshButton = h(
-    "button",
-    { type: "button", class: "btn github-pulls-refresh", "aria-disabled": "true" },
-    ["Refresh"],
-  );
-  refreshButton.addEventListener("click", () => void refreshAll());
-  filters.append(refreshButton);
   const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
     connectionHelp,
@@ -3982,11 +3984,11 @@ export function mountPullsPanel(container, ctx, mb) {
   container.classList.add("github-pulls");
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
   // at the slot's height, so the list starts where the Files tree does. There they are a
-  // toolbar row, which wraps between its controls in a narrow pane, Refresh last and at the
-  // line's end (`.nav-toolbar-row` in the shell's styles.css). The count and connection lines
-  // go in the band under the slot when the host has one (`.nav-metadata-band`), outside the
-  // scroller that holds the list, so their rule runs the pane's width and they stay in view
-  // while the list scrolls, as the Files totals do.
+  // toolbar row, which wraps between its controls in a narrow pane (`.nav-toolbar-row` in
+  // the shell's styles.css). The count and connection lines go in the band under the slot
+  // when the host has one (`.nav-metadata-band`), outside the scroller that holds the list,
+  // so their rule runs the pane's width and they stay in view while the list scrolls, as
+  // the Files totals do.
   const toolbar = nav.toolbar ?? null;
   const band = nav.metadata ?? null;
   const lines = band ? [] : [status, connection];
@@ -4210,58 +4212,12 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {(() => void) | null} */
   let unwatchFile = null;
   let fileFollowEpoch = 0;
-  // The one Refresh (mb-ablv): the tab's Refresh refreshes the pull request page beside it,
-  // as the page's own Refresh did, and then the list, so a reader asks once for both. It
-  // waits, `aria-disabled`, only while neither can refresh, and its number runs what its
-  // click runs.
-  /** Whether the list can refresh, as the last paint said. */
-  let listCanRefresh = false;
-  /** @type {{canRefresh: () => boolean, refresh: () => void, onRefreshChange: (listener: () => void) => () => void} | null} */
-  let refreshPage = null;
-  /** @type {(() => void) | null} */
-  let unwatchRefreshPage = null;
-  function paintRefresh() {
-    const can = listCanRefresh || refreshPage?.canRefresh() === true;
-    refreshButton.setAttribute("aria-disabled", String(!can));
-  }
-  /** A press of Refresh: the page beside the tab first, then the list. */
-  function refreshAll() {
-    if (refreshPage?.canRefresh() === true) {
-      refreshPage.refresh();
-    }
-    return controller.refresh();
-  }
-  /**
-   * Follow the refresh of the page beside the tab, the shown pull request's, as it comes,
-   * is replaced, or goes.
-   *
-   * @param {unknown} page
-   */
-  function followPageRefresh(page) {
-    const next =
-      /** @type {{canRefresh?: unknown, refresh?: unknown, onRefreshChange?: unknown} | null} */ (
-        page
-      );
-    const refreshing =
-      typeof next?.canRefresh === "function" &&
-      typeof next.refresh === "function" &&
-      typeof next.onRefreshChange === "function"
-        ? /** @type {NonNullable<typeof refreshPage>} */ (next)
-        : null;
-    if (refreshing !== refreshPage) {
-      unwatchRefreshPage?.();
-      refreshPage = refreshing;
-      unwatchRefreshPage = refreshing?.onRefreshChange(paintRefresh) ?? null;
-    }
-    paintRefresh();
-  }
   /** A null-file route replays the same page's current observation after address sync.
    * @param {boolean} [replay]
    */
   function followCurrentFile(replay = false) {
     const number = currentRow;
     const page = number === null ? null : tab.pageFor(number);
-    followPageRefresh(page);
     if (!replay && page === followedPage) {
       return;
     }
@@ -5488,7 +5444,7 @@ export function mountPullsPanel(container, ctx, mb) {
     spinner.hidden = !working && !retrying;
     // Rows are shown: the age (or the outage being retried) breathes, and nothing spins.
     connectionMessage.classList.toggle("mb-refreshing", refreshing);
-    // Busy is said of the status text, never of the row's Refresh or help link.
+    // Busy is said of the status text, never of Refresh or the line's help link.
     if (working || retrying || refreshing) {
       connectionText.setAttribute("aria-busy", "true");
     } else {
@@ -5512,8 +5468,6 @@ export function mountPullsPanel(container, ctx, mb) {
         alignRefreshing(list);
       }
     }
-    listCanRefresh = connected?.canRefresh === true;
-    paintRefresh();
     const help = connected?.help ?? "";
     if (connectionHelp.dataset.help !== help) {
       connectionHelp.dataset.help = help;
@@ -5788,13 +5742,32 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
   });
-  // The state chips and Refresh are situational: through the SDK's shortcut surface each takes
-  // a number, 1 to 9, from its place among the screen's numbered controls, so the panel picks
-  // no digit, and a hidden panel's controls hold none (docs/design-system.md, "Keyboard
-  // Shortcuts"). A number runs what a click runs. A chip's number then focuses the chip, as
-  // the group's arrow keys do, since the list it replaces may have held focus; a waiting
-  // Refresh keeps its place and does nothing, as its click does. Each lasts until disposal
-  // aborts `signal`.
+  // The navigation's one Refresh (static/refresh-plan.js) refreshes the pull request page
+  // beside the tab and this list, each as a part of its own, for as long as the list is
+  // mounted: the page `currentRow` names through its own `refresh` while it has something to
+  // refresh, and the list through the repository's catalog job. The plan runs the page
+  // among what is on screen, and the list there too while the tab is in front; the button,
+  // its waiting state, and its number are the shell's.
+  const refreshParts = nav.refreshParts ?? null;
+  const releaseRefreshParts = [
+    refreshParts?.provide("page", () => {
+      const page = /** @type {{canRefresh?: unknown, refresh?: unknown} | null} */ (
+        currentRow === null ? null : tab.pageFor(currentRow)
+      );
+      return typeof page?.canRefresh === "function" &&
+        page.canRefresh() === true &&
+        typeof page.refresh === "function"
+        ? page.refresh()
+        : undefined;
+    }),
+    refreshParts?.provide("pulls", () => controller.refresh()),
+  ];
+  // The state chips are situational: through the SDK's shortcut surface each takes a number,
+  // 1 to 9, from its place among the screen's numbered controls, so the panel picks no digit,
+  // and a hidden panel's chips hold none (docs/design-system.md, "Keyboard Shortcuts"). A
+  // number runs what a click runs, then focuses the chip, as the group's arrow keys do, since
+  // the list it replaces may have held focus. The navigation's Refresh, at the top of the
+  // navigation, comes first in reading order. Each lasts until disposal aborts `signal`.
   if (typeof mb.shortcuts?.attach === "function") {
     for (const { chip, value } of tallies) {
       mb.shortcuts.attach(chip, {
@@ -5807,12 +5780,6 @@ export function mountPullsPanel(container, ctx, mb) {
         signal,
       });
     }
-    mb.shortcuts.attach(refreshButton, {
-      activate: () => void refreshAll(),
-      id: "github.pulls.refresh",
-      numbered: true,
-      signal,
-    });
   }
 
   /**
@@ -6260,9 +6227,9 @@ export function mountPullsPanel(container, ctx, mb) {
       moved?.disconnect();
       unwatchPage();
       unwatchFile?.();
-      unwatchRefreshPage?.();
-      unwatchRefreshPage = null;
-      refreshPage = null;
+      for (const release of releaseRefreshParts) {
+        release?.();
+      }
       window.clearTimeout(peekTimer);
       unbindFilters();
       stacks.dispose();
