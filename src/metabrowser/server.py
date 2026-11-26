@@ -223,6 +223,7 @@ from metabrowser.repository_context import (
 )
 from metabrowser.root_identity import (
     IDENTITY_ROUTES,
+    abbreviate_origin,
     canonical_repository_url,
     identity_kind_tip,
     root_identity,
@@ -1939,8 +1940,28 @@ async def index(
     # on; anything else by its ref (docs/design-system.md, "The Ref Selector").
     source_ref_selector = ""
     if checkout is not None or (git_pin and mirror is not None):
-        working_head: CheckedOutHead | None = None
+        from metabrowser.invisible_chars import display_segment
+
+        origin = checkout.origin if checkout is not None else None
+        read_mirror = (
+            origin if pin is not None and origin is not None and origin.owns(pin) else mirror
+        )
         view_attrs = ""
+        if read_mirror is not None:
+            origin_address = read_mirror.mirror.display.origin
+            local_origin = origin_address.lower().startswith(("file://", "/", "~"))
+            mode = "local-mirror" if local_origin else "cloud-mirror"
+            view_attrs = f' data-source-mode="{mode}"'
+            if not local_origin:
+                location = html_escape(abbreviate_origin(origin_address, home=None), quote=True)
+                view_attrs += f' data-source-origin="{location}"'
+            if (synced_at := read_mirror.last_fetch_at()) is not None:
+                view_attrs += f' data-source-synced-at="{html_escape(synced_at, quote=True)}"'
+        elif checkout is not None:
+            mode = "working-tree" if pin is None else "checkout-revision"
+            path = html_escape(display_segment(os.fsencode(checkout.root)), quote=True)
+            view_attrs = f' data-source-mode="{mode}" data-source-path="{path}"'
+        working_head: CheckedOutHead | None = None
         if checkout is not None and pin is None:
             working_head = (
                 CheckedOutHead(tip_context["branch"], tip_context["revision"])
@@ -1951,7 +1972,7 @@ async def index(
                 view_attrs += (
                     f' data-working-branch="{html_escape(working_head.branch, quote=True)}"'
                 )
-            elif working_head is not None:
+            if working_head is not None:
                 view_attrs += f' data-working-commit="{working_head.revision}"'
         label = _source_ref_label_html(
             pin, checkout=checkout is not None, working_head=working_head

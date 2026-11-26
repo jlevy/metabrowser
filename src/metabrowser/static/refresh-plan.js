@@ -296,7 +296,7 @@
     // The chooser mounts after the first tree, so its parts ask for it at each press.
     const chooser = () => window.MetabrowserSourceRefSelector?.mounted() ?? null;
     if (document.getElementById("source-ref-selector") !== null) {
-      plan.provide("refs", () => chooser()?.reread());
+      plan.provide("refs", () => chooser()?.reread({ filesCovered: Boolean(shell) }));
       if (window.METABROWSER_SOURCE_CHECKOUT?.working_tree === true) {
         plan.provide("origin", () => chooser()?.fetchOrigin());
       }

@@ -7286,8 +7286,6 @@ revisions.
     then the branch `HEAD` is on as its chip, which opens its actions.
     A detached `HEAD` names its commit, in the commit-ID face; a `HEAD` the server
     cannot read leaves the words alone.
-    The words’ tooltip says the files are live on disk and which branch or commit they
-    are on.
   - **`feature`**: one commit chosen from the list, read-only, whichever ref it came
     from, the checked-out branch included.
     The row names it alone, as a mirror’s row does, so there is one form for a ref
@@ -7299,14 +7297,23 @@ revisions.
     heading’s note still says “committed revision of” the folder, and the Info button’s
     menu describes the pinned source beside its local path.
 
+- **The source label’s tooltip gives the location and freshness.** A working tree shows
+  the resolved absolute checkout path and how long ago Metabrowser read its `HEAD` from
+  disk. A revision read from the checkout shows the same path and says it is read-only.
+  A cloud-backed revision identifies the remote repository and shows how long ago
+  Metabrowser last synced it successfully, when that time is known.
+  Paths use the app’s path typography and wrap within the
+  [shared tooltip](#one-tooltip-and-it-is-ours).
+
 - **The working tree’s branch is kept current.** The server names `HEAD` when it draws
   the page. After that the page watches the checkout’s `HEAD` on the event stream it
   already holds, as a
   [file watch](project/architecture/arch-live-delivery.md#file-watches) on
   `HEAD_WATCH_PATH`, and when a terminal or an agent checks out another branch, detaches
   `HEAD`, or commits, it asks where `HEAD` is now and names it in the row, its tooltip,
-  and the open tab’s entry, in place (`headChanged`). Nothing reloads, and an open list
-  keeps its scroll and focus; an open Branches list moves its “checked out” mark too.
+  and the open tab’s entry, in place (`headChanged`). The Files view follows the files
+  on disk, and an open list keeps its scroll and focus.
+  An open Branches list moves its “checked out” mark too.
   The ask is the refs route’s `kind=working_tree`, which runs no Git.
   The server’s poll of its watches sets how soon the row follows, and its measurement is
   beside `HEAD_WATCH_PATH` in `file_watches.py`. A page that shows a ref has no event

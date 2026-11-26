@@ -4127,6 +4127,7 @@ declare global {
     now(): number;
     isVisible(): boolean;
     render(model: MetabrowserSourceFreshnessModel): void;
+    observeStatus?(status: MetabrowserSourceStatus): void;
     reload(): void;
     navigate(href: string): void;
     /** The page's own `/view/` address, or null on any other page. */
@@ -4392,6 +4393,8 @@ declare global {
     schedule(callback: () => void, delayMs: number): unknown;
     cancel(handle: unknown): void;
     render(model: MetabrowserSourceRefSelectorModel): void;
+    /** A successful read of the current working tree’s HEAD. */
+    workingTreeObserved?(moved: boolean, filesCovered: boolean): void;
     /** Go to *href*, or, with *state*, reload there as that history entry: the Commits tab's
      * landing, which has no address of its own. */
     navigate(href: string, state?: Readonly<{ gitLanding: true }>): void;
@@ -4469,9 +4472,9 @@ declare global {
     /** Show a checkout's working tree; does nothing on a mirror. */
     chooseWorkingTree(): Promise<void>;
     /** The checkout's `HEAD` moved: ask where it is and name it in place. */
-    headChanged(): Promise<void>;
+    headChanged(filesCovered?: boolean): Promise<void>;
     /** Read an open list again, in place; a closed one reads when it next opens. */
-    reread(): Promise<void>;
+    reread(options?: { filesCovered?: boolean }): Promise<void>;
     /** Fetch the store of a checkout's origin, as the reader's Refresh asks; an open list
      * follows the fetch to its end. Does nothing on a mirror. */
     fetchOrigin(): Promise<void>;
