@@ -433,6 +433,7 @@ def _serve_on(
     actual_port = int(listener.getsockname()[1])
 
     attach()
+    server.app.state.prepare_initial_history = True
 
     # A concrete --host is a trusted name the operator chose; permit it at
     # the Host-validation boundary. Wildcard binds accept every interface,

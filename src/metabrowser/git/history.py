@@ -988,29 +988,9 @@ class HistorySessionRegistry:
         self._ensure_reaper()
         location = as_location(root)
         if cursor is None:
-            state = await ref_state(location)
-            scope = await current_history_scope(location, wants_all=bool(wants_all), state=state)
-            session, reused = await self._first_page_session(
-                location, scope=scope, page_size=limit, state=state
+            return await self._read_first_page(
+                location, wants_all=bool(wants_all), limit=limit, state=await ref_state(location)
             )
-            if reused:
-                # Another request's walk: a cancellation here is this request's alone, and
-                # leaves the session to the reader paging it.
-                try:
-                    return await session.page(_first_cursor(session))
-                except ExpiredHistorySessionError:
-                    # Closed between being found and being read: start the walk afresh.
-                    session = await self._create_session(
-                        location, scope=scope, page_size=limit, state=state
-                    )
-                except (GitError, HistoryStorageError):
-                    await self._discard(session.id)
-                    raise
-            try:
-                return await session.page(_first_cursor(session))
-            except BaseException:
-                await self._discard(session.id)
-                raise
 
         decoded = decode_history_cursor(cursor)
         if decoded is None:
@@ -1044,6 +1024,43 @@ class HistorySessionRegistry:
         try:
             return await session.page(decoded)
         except (GitError, HistoryStorageError):
+            await self._discard(session.id)
+            raise
+
+    async def prepare_default_page(self, location: GitLocation) -> bool:
+        """Prepare only a first page whose ref state lets the reader reuse its walk."""
+        state = await ref_state(location)
+        if state is None:
+            return False
+        self._ensure_reaper()
+        await self._read_first_page(
+            location, wants_all=False, limit=GIT_LOG_DEFAULT_LIMIT, state=state
+        )
+        return True
+
+    async def _read_first_page(
+        self, location: GitLocation, *, wants_all: bool, limit: int, state: str | None
+    ) -> GitLogPage:
+        scope = await current_history_scope(location, wants_all=wants_all, state=state)
+        session, reused = await self._first_page_session(
+            location, scope=scope, page_size=limit, state=state
+        )
+        if reused:
+            # Another request's walk: a cancellation here is this request's alone, and
+            # leaves the session to the reader paging it.
+            try:
+                return await session.page(_first_cursor(session))
+            except ExpiredHistorySessionError:
+                # Closed between being found and being read: start the walk afresh.
+                session = await self._create_session(
+                    location, scope=scope, page_size=limit, state=state
+                )
+            except (GitError, HistoryStorageError):
+                await self._discard(session.id)
+                raise
+        try:
+            return await session.page(_first_cursor(session))
+        except BaseException:
             await self._discard(session.id)
             raise
 

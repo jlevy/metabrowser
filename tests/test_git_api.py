@@ -30,6 +30,7 @@ from metabrowser.git.detail import _summarize_changes, read_commit_detail, trans
 from metabrowser.git.history import (
     HISTORY_SESSIONS,
     ExpiredHistorySessionError,
+    HistorySession,
     HistorySessionRegistry,
     HistoryStorageError,
     InvalidHistoryCursorError,
@@ -55,6 +56,7 @@ from metabrowser.git.routes import (
     api_git_refs,
     api_git_repo,
     api_git_summary,
+    prepare_initial_history,
 )
 from metabrowser.git.wire import (
     GitFileChange,
@@ -865,6 +867,44 @@ def test_routes_return_the_negative_envelope_outside_a_repository(plain_dir: Pat
         # world, and a 4xx would put it in the browser's error path.
         assert response.status_code == 200, handler.__name__
         assert payload["is_repo"] is False, handler.__name__
+
+
+def test_first_history_request_reuses_startup_walk(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def check() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        monkeypatch.setattr("metabrowser.git.routes.HISTORY_SESSIONS", registry)
+        with mock.patch.object(HistorySession, "start", wraps=HistorySession.start) as start:
+            try:
+                await asyncio.gather(
+                    prepare_initial_history(),
+                    api_git_log(_FakeRequest()),  # pyright: ignore[reportArgumentType]
+                )
+                page = await api_git_log(_FakeRequest())  # pyright: ignore[reportArgumentType]
+                validate_git_log_page(_json(page))
+                assert len(_json(page)["commits"]) > 0
+                assert start.await_count == 1
+            finally:
+                await registry.close_all()
+
+    asyncio.run(check())
+
+
+def test_startup_skips_a_history_walk_with_no_reuse_key(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def check() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        monkeypatch.setattr("metabrowser.git.routes.HISTORY_SESSIONS", registry)
+        monkeypatch.setattr("metabrowser.git.history.ref_state", mock.AsyncMock(return_value=None))
+        try:
+            await prepare_initial_history()
+            assert registry.session_count == 0
+        finally:
+            await registry.close_all()
+
+    asyncio.run(check())
 
 
 def test_route_log_clamps_an_out_of_range_limit(repo: Path) -> None:

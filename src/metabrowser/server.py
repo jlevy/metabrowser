@@ -134,7 +134,7 @@ from metabrowser.folder_discovery import discover_folder
 from metabrowser.frontmatter_yaml import frontmatter_error_fields, shown_frontmatter_error
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.git.history import close_history_sessions
-from metabrowser.git.routes import GIT_ROUTES
+from metabrowser.git.routes import GIT_ROUTES, prepare_initial_history
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -6098,6 +6098,11 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
         lifespan_checkout_store(app),
         lifespan_checkout(),
     ):
+        history_preparation = (
+            asyncio.create_task(prepare_initial_history(), name="metabrowser-history-prepare")
+            if getattr(app.state, "prepare_initial_history", False)
+            else None
+        )
         try:
             if not get_capabilities().active_content:
                 # Every document an untrusted session serves renders in the Markdown child,
@@ -6108,10 +6113,16 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
             yield
         finally:
             try:
-                # The Markdown child belongs to this loop; a later one starts its own.
-                await shared_worker().aclose()
+                if history_preparation is not None:
+                    history_preparation.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await history_preparation
             finally:
-                await close_history_sessions()
+                try:
+                    # The Markdown child belongs to this loop; a later one starts its own.
+                    await shared_worker().aclose()
+                finally:
+                    await close_history_sessions()
 
 
 async def _query_work_limit_response(

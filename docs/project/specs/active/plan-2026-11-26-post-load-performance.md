@@ -128,6 +128,22 @@ findings, and limits.
 Keep diagnostic observations separate from paired results so the chart export can show
 both without assigning a verdict to an unjudged run.
 
+### Next Experiments
+
+| Hypothesis | Intervention | Deciding result |
+| --- | --- | --- |
+| H125 | Prepare the default first history page once on server startup through the same history registry as Commits. | A concurrent read shares the walk. A prepared first read improves without delaying inventory readiness or the Files landing. |
+| H126 | Let the selected Conversation fetch its validated metadata while the checkout store is still acquiring Git objects. | On a held acquisition, the selected header and description arrive before the store is released, with the correct viewer, one core query, and normal Changes afterwards. |
+| H127 | Reuse the exact first Changes payload at the slowest observed stage. | Split acquisition, comparison, and browser hydration first. Advance the one stage that dominates time to the first visible hunk. |
+| H128 | Give the selected pull priority over optional GitHub reads. | With equal responses and request budgets, measure whether withholding optional reads still helps after H126. Record refusal and retry behavior. |
+
+Run one hypothesis per round and record results on its owning branch.
+Measure a small, exact read first.
+Request browser and native acceptance after the same change improves the relevant API or
+rendering metric and its guards.
+A busy host can still prove ordering and response equivalence.
+Record its timings as diagnostics.
+
 ## Testing Strategy
 
 Use the existing browserless and golden tests for navigation, prefetch ownership,
