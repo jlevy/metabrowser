@@ -448,6 +448,16 @@ function outsideLink(value) {
 }
 
 /**
+ * The links `sanitizeBlock` kept at a `/view/` address (`markdownTargets`): the server's
+ * spelling of a link to a file of the head, which `closeHeadLinks` points elsewhere when
+ * the pin changes. A `/view/` link the repository's resolver made of a github.com address
+ * (`enhanceLinks`) is not one of them: the resolver keeps that link as it was written, and
+ * reads it again itself.
+ * @type {WeakSet<Element>}
+ */
+const headLinks = new WeakSet();
+
+/**
  * The shared sanitizer discards reserved application URLs. Preserve only
  * the addresses *isTarget* keeps (`markdownTargets`) through it, as it keeps them, and
  * discard other local targets before the detached nodes can load any resource. A link kept
@@ -493,6 +503,9 @@ export function sanitizeBlock(html, inert, template, scratch, isTarget) {
       leaveFor(element, scoped);
     } else if (scoped !== undefined) {
       element.setAttribute(attribute, scoped);
+      if (!image) {
+        headLinks.add(element);
+      }
     }
   }
   return prose;
@@ -1155,7 +1168,9 @@ export function kpressStylesheets(assets, base) {
  *   waitMs?: number,
  *   show?: "diff" | "current" | "full"
  * }} deps
- *   *show* is the comparison's initial presentation.
+ *   *show* is the comparison's initial presentation. *enhanceLinks* reads a drawn block's
+ *   links into the repository as the page's link resolver does, and reads a file's whole
+ *   body again when the pin changes (`closeHeadLinks`).
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
@@ -2438,14 +2453,19 @@ export function createMarkdownViews(deps) {
       pump();
     },
     /**
-     * Point every link to a file of the head, in what is drawn, where *isTarget* now keeps
-     * it: the page learned that the server serves another pin, at which those addresses
-     * open other files, so each opens that file at the head on github.com, or is plain text
-     * where it cannot. What is drawn later asks *isTarget*, which says so itself.
+     * Point every `/view/` link in what is drawn elsewhere: the page learned that the
+     * server serves another pin, at which those addresses open other files. Each link to a
+     * file of the head the server spelled goes where *isTarget* now keeps it, that file at
+     * the head on github.com, or is plain text where it cannot; each one the resolver made
+     * of a github.com address is read again by *enhanceLinks*, which keeps it as written
+     * now. What is drawn later asks both, which say so themselves.
      */
     closeHeadLinks() {
       for (const file of files.values()) {
         for (const link of file.rendered.querySelectorAll('a[href^="/view/"]')) {
+          if (!headLinks.has(link)) {
+            continue;
+          }
           const kept = isTarget(link.getAttribute("href") ?? "", false);
           if (kept !== null && outsideLink(kept)) {
             leaveFor(link, kept);
@@ -2453,7 +2473,8 @@ export function createMarkdownViews(deps) {
             link.removeAttribute("href");
           }
         }
-        // Marked as the outside links it now holds, as one drawn after the change is.
+        // The resolver's own links, and the outside links the file now holds marked, as
+        // in one drawn after the change.
         deps.enhanceLinks?.(file.rendered);
       }
     },

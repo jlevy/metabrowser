@@ -77,27 +77,41 @@ head, which is where that address opens the file; the server’s answer is the s
 every page. Away from that head, the link opens the file at the head on GitHub once the
 resolver is available.
 Every other local address is dropped before the shared sanitizer.
+A GitHub link to a file or folder on the served branch or commit opens it in place on
+the same condition, as a README’s does: a plain click opens it through the navigation
+API, and a click with a modifier is the browser’s, which opens the same address.
+Anywhere else it stays the link the text wrote, here on a page pinned on the pull
+request’s branch at an earlier commit, where that address would open the earlier files.
+When the page learns that another tab changed the pin, every link it opened in place is
+the link it would be in a file drawn after the change, and no link opens a `/view/`
+address; the session fails otherwise.
 
 This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`,
-`builtin_plugins/diff/index.js`, and `static/inert-html.js` whole, and plays the
-server’s side from `tests/fixtures/diff-markdown-responses.json`: what the production
-projection answers for these documents, bound to a pull request’s head, with Python’s
-HTML parse of every block, from which the session builds the template a page parses a
-block into. `tests/test_diff_markdown_session.py` fails when the recording drifts.
+`builtin_plugins/diff/index.js`, `static/repository-links.js`, and
+`static/inert-html.js` whole, and plays the server’s side from
+`tests/fixtures/diff-markdown-responses.json`: what the production projection answers
+for these documents, bound to a pull request’s head, with Python’s HTML parse of every
+block, from which the session builds the template a page parses a block into.
+`tests/test_diff_markdown_session.py` fails when the recording drifts.
 The route itself is pinned by `tests/golden/cli-github-pull-rendered.txt`, and its views
 by `tests/golden/cli-github-pull-rendered-views.txt`. The shared chip family, the
-stylesheet loader, and the diff’s layout are stand-ins, the page is an element tree that
-records what the production code builds, and time is a clock the session advances by
-hand. The plugin mounts the pull request’s comparison on each page the shell renders and
-hands the diff its rule for which addresses open there, which this session draws with.
+stylesheet loader, the navigation API, and the diff’s layout are stand-ins, the page is
+an element tree that records what the production code builds, and time is a clock the
+session advances by hand.
+The plugin mounts the pull request’s comparison on each page the shell renders and hands
+the diff its rules for which addresses open there, which this session draws with,
+reading a drawn block’s links with the resolver as the diff does.
 
 `links.pages` says whether a link to a file of the head opens on each page: pinned at
-the comparison’s head, pinned at its merge base, beside a checkout at the head, which
-has no pin, and pinned at the head once another tab changed the pin.
+the comparison’s head, pinned at its merge base, pinned on the pull request’s branch at
+an earlier commit, beside a checkout at the head, which has no pin, and pinned at the
+head once another tab changed the pin.
 `links.opens` says which addresses in a rendered block open something on the page pinned
-at the head. Each step lists the requests the page made and each file whose state it
-changed: its chooser (`*` chosen, and `unavailable` with the reason for a view that
-cannot be chosen), what its body shows (`nothing` while it waits for its rendered view),
+at the head. `links.repository` draws a block of GitHub links to the branch on each of
+those pages, and what a plain click on each does.
+Each step lists the requests the page made and each file whose state it changed: its
+chooser (`*` chosen, and `unavailable` with the reason for a view that cannot be
+chosen), what its body shows (`nothing` while it waits for its rendered view),
 `progress` while its mark counts down, and its rendered rows, a fold as its bar and a
 chunk not drawn yet as the place it keeps, a long file’s rows shortened to their first
 and last four.
@@ -115,6 +129,7 @@ $ node tests/dom/diff-markdown-session.js
       "pinned at the comparison's head": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
       "pinned at the merge base before the resolver arrives": null,
       "pinned at the merge base after the resolver arrives": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
+      "pinned on the pull request's branch before its last push": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
       "beside a checkout at the head, which has no pin": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
       "pinned at the comparison's head, after another tab changed the pin": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md"
     },
@@ -126,6 +141,43 @@ $ node tests/dom/diff-markdown-session.js
       "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
       "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": null,
       "link /api/tree?path=docs": null
+    },
+    "repository": {
+      "pinned at the comparison's head": {
+        "drawn": "<p>See <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\" data-metabrowser-github-localization=\"working-tree\" data-tip-text=\"Open the corresponding path in the currently served working tree.\">the setup notes</a> in <a href=\"/view/g1-ZG9jcw/\" data-metabrowser-github-localization=\"working-tree\" data-tip-text=\"Open the corresponding path in the currently served working tree.\">the docs folder</a>.</p>",
+        "plain clicks": [
+          "in place: /view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+          "in place: /view/g1-ZG9jcw/"
+        ]
+      },
+      "pinned at the merge base": {
+        "drawn": "<p>See <a href=\"https://github.com/octo/demo/blob/feature/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">the setup notes</a> in <a href=\"https://github.com/octo/demo/tree/feature/docs\" target=\"_blank\" rel=\"noopener noreferrer\">the docs folder</a>.</p>",
+        "plain clicks": [
+          "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the browser's: https://github.com/octo/demo/tree/feature/docs"
+        ]
+      },
+      "pinned on the pull request's branch before its last push": {
+        "drawn": "<p>See <a href=\"https://github.com/octo/demo/blob/feature/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">the setup notes</a> in <a href=\"https://github.com/octo/demo/tree/feature/docs\" target=\"_blank\" rel=\"noopener noreferrer\">the docs folder</a>.</p>",
+        "plain clicks": [
+          "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the browser's: https://github.com/octo/demo/tree/feature/docs"
+        ]
+      },
+      "beside a checkout at the head, which has no pin": {
+        "drawn": "<p>See <a href=\"https://github.com/octo/demo/blob/feature/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">the setup notes</a> in <a href=\"https://github.com/octo/demo/tree/feature/docs\" target=\"_blank\" rel=\"noopener noreferrer\">the docs folder</a>.</p>",
+        "plain clicks": [
+          "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the browser's: https://github.com/octo/demo/tree/feature/docs"
+        ]
+      },
+      "pinned at the comparison's head, after another tab changed the pin": {
+        "drawn": "<p>See <a href=\"https://github.com/octo/demo/blob/feature/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">the setup notes</a> in <a href=\"https://github.com/octo/demo/tree/feature/docs\" target=\"_blank\" rel=\"noopener noreferrer\">the docs folder</a>.</p>",
+        "plain clicks": [
+          "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the browser's: https://github.com/octo/demo/tree/feature/docs"
+        ]
+      }
     }
   },
   "steps": [
@@ -183,6 +235,10 @@ $ node tests/dom/diff-markdown-session.js
         "f11 docs/book.md": {
           "chooser": "*Rendered | Source",
           "shows": "nothing"
+        },
+        "f12 docs/links.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "nothing"
         }
       }
     },
@@ -222,6 +278,10 @@ $ node tests/dom/diff-markdown-session.js
           "shows": "source"
         },
         "f11 docs/book.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "source"
+        },
+        "f12 docs/links.md": {
           "chooser": "*Rendered | Source",
           "shows": "source"
         }
@@ -444,6 +504,35 @@ $ node tests/dom/diff-markdown-session.js
         "f8 docs/huge.md": {
           "chooser": "Rendered (unavailable: This file is too large to show rendered.) | *Source",
           "shows": "source"
+        }
+      }
+    },
+    {
+      "step": "at the head, a link to a file or folder on the served branch opens it in place",
+      "requests": [
+        "f12 view=concise"
+      ],
+      "files": {
+        "f12 docs/links.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "added: <h1 id=\"user-content-eaea5626d13a00d99ed68705-new-links\">Links</h1>",
+            "added: <p>See <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\" data-metabrowser-github-localization=\"working-tree\" data-tip-text=\"Open the corresponding path in the currently served working tree.\">the setup notes</a> in <a href=\"/view/g1-ZG9jcw/\" data-metabrowser-github-localization=\"working-tree\" data-tip-text=\"Open the corresponding path in the currently served working tree.\">the docs folder</a>.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "a plain click opens it through the navigation API, and a modified one is the browser's",
+      "clicks": {
+        "the setup notes": {
+          "plain": "in place: /view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+          "with a modifier": "the browser's: /view/g1-ZG9jcw/g1-c2V0dXAubWQ"
+        },
+        "the docs folder": {
+          "plain": "in place: /view/g1-ZG9jcw/",
+          "with a modifier": "the browser's: /view/g1-ZG9jcw/"
         }
       }
     }
@@ -935,7 +1024,7 @@ $ node tests/dom/diff-markdown-session.js long
       }
     },
     {
-      "step": "a page that learns another pin is served links a file to the head on github.com",
+      "step": "a page that learns another pin is served links a file of the head on github.com, and a branch link as written",
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
@@ -961,6 +1050,27 @@ $ node tests/dom/diff-markdown-session.js long
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
+        },
+        "f12 docs/links.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "added: <h1 id=\"user-content-eaea5626d13a00d99ed68705-new-links\">Links</h1>",
+            "added: <p>See <a href=\"https://github.com/octo/demo/blob/feature/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">the setup notes</a> in <a href=\"https://github.com/octo/demo/tree/feature/docs\" target=\"_blank\" rel=\"noopener noreferrer\">the docs folder</a>.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "every click on a link the page opened in place is the browser's",
+      "clicks": {
+        "the setup notes": {
+          "plain": "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "with a modifier": "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md"
+        },
+        "the docs folder": {
+          "plain": "the browser's: https://github.com/octo/demo/tree/feature/docs",
+          "with a modifier": "the browser's: https://github.com/octo/demo/tree/feature/docs"
         }
       }
     },
@@ -973,6 +1083,22 @@ $ node tests/dom/diff-markdown-session.js long
       "step": "after disposal",
       "bound": 0,
       "timers": 0
+    },
+    {
+      "step": "a file drawn after the pin change links as the one the change closed",
+      "requests": [
+        "f12 view=concise"
+      ],
+      "files": {
+        "f12 docs/links.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "added: <h1 id=\"user-content-eaea5626d13a00d99ed68705-new-links\">Links</h1>",
+            "added: <p>See <a href=\"https://github.com/octo/demo/blob/feature/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">the setup notes</a> in <a href=\"https://github.com/octo/demo/tree/feature/docs\" target=\"_blank\" rel=\"noopener noreferrer\">the docs folder</a>.</p>"
+          ]
+        }
+      }
     },
     {
       "step": "a busy server, asked again and again to just short of the wait's ceiling: it waits",

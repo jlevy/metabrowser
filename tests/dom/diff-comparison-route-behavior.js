@@ -195,6 +195,11 @@ async function main() {
   assert.equal(mounted.options.markdownTargets(target, false), null);
   assert.equal(mounted.options.markdownTargets("/view/g1-UkVBRE1FLm1k", false), null);
   assert.equal(mounted.options.markdownTargets("/api/tree", false), null);
+  assert.equal(
+    mounted.options.headLinksOpen(),
+    false,
+    "nor does a github.com link to the served branch open in place",
+  );
   const plain = await registered.render({}, { comparison });
   assert.equal(plain.options.renderMarkdown, undefined, "no rendered route, no Rendered view");
   const errors = [];

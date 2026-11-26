@@ -14,9 +14,12 @@
 // Which addresses a block keeps is the plugin's rule, not this session's:
 // builtin_plugins/diff/index.js loads whole, as the shell loads it, and mounts a pull
 // request's comparison on pages the shell rendered (pinned at the head, pinned at the
-// merge base, and beside a checkout, which has no pin), handing the diff, here the stand-in
-// for diff-view.js, the `markdownTargets` this session draws with. The pin guard's
-// `metabrowser:pin-changed` is played on the window as static/source-pin-guard.js sends it.
+// merge base, pinned on the pull request's branch at an earlier commit, and beside a
+// checkout, which has no pin), handing the diff, here the stand-in for diff-view.js, the
+// `markdownTargets` this session draws with and the `headLinksOpen` it reads a block's
+// github.com links with, through the production static/repository-links.js, as the diff
+// does. The pin guard's `metabrowser:pin-changed` is played on the window as
+// static/source-pin-guard.js sends it.
 // The comparison mounted is the conformance corpus's added Markdown file, which the plugin
 // validates; only the routes the session's own recording names decide anything here.
 //
@@ -298,20 +301,16 @@ class PageElement {
   }
 
   querySelectorAll(selector) {
+    const wanted = SELECTORS[selector];
+    assert(
+      wanted !== undefined || /^[a-z][a-z0-9]*$/.test(selector),
+      `no stand-in for ${selector}`,
+    );
+    const matches = wanted ?? ((node) => node.tagName === selector.toUpperCase());
     const found = [];
     const walk = (parent) => {
       for (const child of parent.children) {
-        const tag = child.tagName;
-        const wanted =
-          selector === "button[data-chip-value]"
-            ? tag === "BUTTON" && child.dataset.chipValue !== undefined
-            : selector === "a[href], img[src]"
-              ? (tag === "A" && child.getAttribute("href") !== null) ||
-                (tag === "IMG" && child.getAttribute("src") !== null)
-              : selector === 'a[href^="/view/"]'
-                ? tag === "A" && (child.getAttribute("href") ?? "").startsWith("/view/")
-                : tag === selector.toUpperCase();
-        if (wanted) {
+        if (matches(child)) {
           found.push(child);
         }
         walk(child);
@@ -321,6 +320,18 @@ class PageElement {
     return found;
   }
 }
+
+// The selectors the production code asks the page for, besides a bare tag name.
+const SELECTORS = {
+  "button[data-chip-value]": (node) =>
+    node.tagName === "BUTTON" && node.dataset.chipValue !== undefined,
+  "a[href], img[src]": (node) =>
+    (node.tagName === "A" && node.getAttribute("href") !== null) ||
+    (node.tagName === "IMG" && node.getAttribute("src") !== null),
+  "a[href]": (node) => node.tagName === "A" && node.getAttribute("href") !== null,
+  'a[href^="/view/"]': (node) =>
+    node.tagName === "A" && (node.getAttribute("href") ?? "").startsWith("/view/"),
+};
 
 const element = (tag) => new PageElement(tag);
 const text = (value) => {
@@ -378,10 +389,13 @@ globalThis.document = page;
 const windowListeners = new Map();
 /** The plugin's registered view, once index.js has loaded. */
 let plugin = null;
-/** The served repository's identity, as a page of the fixture's mirror or checkout has it. */
-function repositoryAt(revision) {
+/**
+ * The served repository's identity, as a page of the fixture's mirror or checkout has it:
+ * on *branch*, or on none, as a pin made by commit is.
+ */
+function repositoryAt(revision, branch = null) {
   return {
-    branch: null,
+    branch,
     host: "github.com",
     name: "demo",
     owner: "octo",
@@ -389,6 +403,17 @@ function repositoryAt(revision) {
     served_prefix: "",
   };
 }
+// The page's navigation API, through which a link the resolver opens in place goes: the
+// address it spells for a `/view/` target, and what each plain click opened.
+const opened = [];
+const navigation = {
+  href: (target) =>
+    `/view/${target.path}${target.query ? `?${target.query}` : ""}${target.fragment ? `#${target.fragment}` : ""}`,
+  open(target) {
+    opened.push(target);
+    return Promise.resolve();
+  },
+};
 /** What the page knows of its source: a pin's page is a Git revision, a checkout's a folder. */
 const pageSource = { kind: "git_revision", repository: null };
 globalThis.window = {
@@ -408,6 +433,7 @@ globalThis.window = {
       plugin = spec;
     },
     loadChangedFilesTree: async () => null,
+    navigation,
     sourceKind: () => pageSource.kind,
     get repository() {
       return pageSource.repository;
@@ -700,6 +726,59 @@ function serialize(nodes) {
     .join("");
 }
 
+/** The links in *container*, in order. */
+function anchorsIn(container) {
+  return container.children.flatMap((node) => [
+    ...(node.tagName === "A" ? [node] : []),
+    ...anchorsIn(node),
+  ]);
+}
+
+/**
+ * What a primary click on *link* does, with *modifiers*: open its target in place, through
+ * the navigation API, or leave the link to the browser, which follows its `href`.
+ */
+function press(link, modifiers) {
+  const before = opened.length;
+  const event = {
+    target: link,
+    button: 0,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    ...modifiers,
+    defaultPrevented: false,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
+  };
+  link.listeners.get("click")?.(event);
+  const went = opened.slice(before);
+  assert(
+    went.length === (event.defaultPrevented ? 1 : 0),
+    "a click opens a target in place exactly when it keeps the browser from following",
+  );
+  if (went.length === 0) {
+    return `the browser's: ${link.getAttribute("href")}`;
+  }
+  // An in-app link's `href` is what its plain click opens, so a new tab, a copied address,
+  // and the browser's history open the same.
+  const address = navigation.href(went[0]);
+  assert(address === link.getAttribute("href"), `a link opens ${address}, not its href`);
+  return `in place: ${address}`;
+}
+
+/** What a plain click, and one with a modifier, does on each link in *container*. */
+function clicksOn(container) {
+  return Object.fromEntries(
+    anchorsIn(container).map((link) => [
+      link.textContent,
+      { plain: press(link, {}), "with a modifier": press(link, { metaKey: true }) },
+    ]),
+  );
+}
+
 function describe(file) {
   const views = ["Rendered"];
   const chips = file.control.children.map((chip) => {
@@ -797,6 +876,8 @@ async function main() {
   const routes = new URL(recorded.rendered_route, ORIGIN).searchParams;
   const base = routes.get("left");
   const head = routes.get("right");
+  // A commit of the pull request's branch before its head.
+  const EARLIER = "c".repeat(40);
   const corpus = JSON.parse(
     fs.readFileSync(
       path.join(repoRoot, "src/metabrowser/data/file-diff-format/file-diff-conformance.json"),
@@ -812,24 +893,47 @@ async function main() {
     image_route: recorded.image_route,
     branch: { ref: "refs/pull/7/head" },
   };
-  /** The rule the plugin mounts the diff with on a page pinned at *pin*, or with no pin. */
-  async function targetsOn(pin) {
+  /**
+   * The rules the plugin mounts the diff with on a page pinned at *pin*, on *branch* when
+   * the pin was made from one, or beside a checkout on *branch* with no pin: which
+   * addresses a block keeps, and how a drawn block's links into the repository are read.
+   */
+  async function pageAt(pin, branch = null) {
     if (pin === null) {
       delete globalThis.window.METABROWSER_SOURCE_PIN;
-      Object.assign(pageSource, { kind: "filesystem", repository: repositoryAt(head) });
+      Object.assign(pageSource, { kind: "filesystem", repository: repositoryAt(head, branch) });
     } else {
-      globalThis.window.METABROWSER_SOURCE_PIN = { pin, ref: null };
-      Object.assign(pageSource, { kind: "git_revision", repository: repositoryAt(pin) });
+      const ref = branch === null ? null : `refs/remotes/origin/${branch}`;
+      globalThis.window.METABROWSER_SOURCE_PIN = { pin, ref };
+      Object.assign(pageSource, { kind: "git_revision", repository: repositoryAt(pin, branch) });
     }
     const mounted = await plugin.render({}, { comparison, raw: structuredClone(added) });
     assert(typeof mounted?.options?.markdownTargets === "function", "the diff has a rule");
-    const target = mounted.options.markdownTargets;
-    return (href, image, links = globalThis.window.MetabrowserRepositoryLinks) =>
-      target(href, image, links);
+    const { markdownTargets: target, headLinksOpen } = mounted.options;
+    assert(typeof headLinksOpen === "function", "the diff has a rule for `/view/` targets");
+    // What this page's SDK says of its source, which another page's mount does not change.
+    const { kind, repository } = pageSource;
+    const sdk = { navigation, repository, sourceKind: () => kind };
+    return {
+      isTarget: (href, image, links = globalThis.window.MetabrowserRepositoryLinks) =>
+        target(href, image, links),
+      // As diff-view.js reads a drawn block's links (`enhanceLinks`), its own call held by
+      // tests/dom/diff-view-behavior.js: the page's resolver, with the plugin's rule for
+      // when a `/view/` target opens.
+      enhanceLinks(prose) {
+        globalThis.window.MetabrowserRepositoryLinks.enhance(prose, sdk, {
+          views: headLinksOpen() === true,
+        });
+      },
+    };
   }
-  const isTarget = await targetsOn(head);
-  const atBase = await targetsOn(base);
-  const beside = await targetsOn(null);
+  // The head is pinned from the pull request's branch, and so is an earlier commit of it,
+  // before the author's last push; the merge base by commit.
+  const atHead = await pageAt(head, "feature");
+  const isTarget = atHead.isTarget;
+  const atBase = await pageAt(base);
+  const earlier = await pageAt(EARLIER, "feature");
+  const beside = await pageAt(null, "feature");
   const headLink = "/view/g1-ZG9jcw/g1-c2V0dXAubWQ";
   const route = recorded.image_route;
   const links = {
@@ -839,9 +943,14 @@ async function main() {
     // github.com.
     pages: {
       "pinned at the comparison's head": isTarget(headLink, false),
-      "pinned at the merge base before the resolver arrives": atBase(headLink, false, null),
-      "pinned at the merge base after the resolver arrives": atBase(headLink, false),
-      "beside a checkout at the head, which has no pin": beside(headLink, false),
+      "pinned at the merge base before the resolver arrives": atBase.isTarget(
+        headLink,
+        false,
+        null,
+      ),
+      "pinned at the merge base after the resolver arrives": atBase.isTarget(headLink, false),
+      "pinned on the pull request's branch before its last push": earlier.isTarget(headLink, false),
+      "beside a checkout at the head, which has no pin": beside.isTarget(headLink, false),
     },
     // On the page that shows the head.
     opens: Object.fromEntries(
@@ -855,6 +964,34 @@ async function main() {
         ["/api/tree?path=docs", false],
       ].map(([href, image]) => [`${image ? "image" : "link"} ${href}`, isTarget(href, image)]),
     ),
+  };
+  // A block whose links name a file and a folder on the pull request's branch on github.com,
+  // drawn on each page as a file's body draws one (`build` in diff-markdown.js): through the
+  // production sanitizer and then the page's resolver. Only the page that shows the head
+  // opens them in place; a page pinned on the same branch at an earlier commit would open
+  // that commit's files, and a checkout its working tree.
+  const linking = recorded.answers.f12["view=concise"].blocks.find((block) =>
+    block.html.includes("<a "),
+  );
+  const drawnOn = (on) => {
+    const prose = markdown.sanitizeBlock(
+      linking.html,
+      inert,
+      page.createElement("template"),
+      page.implementation.createHTMLDocument(""),
+      on.isTarget,
+    );
+    on.enhanceLinks(prose);
+    return {
+      drawn: serialize(prose.childNodes),
+      "plain clicks": anchorsIn(prose).map((link) => press(link, {})),
+    };
+  };
+  links.repository = {
+    "pinned at the comparison's head": drawnOn(atHead),
+    "pinned at the merge base": drawnOn(atBase),
+    "pinned on the pull request's branch before its last push": drawnOn(earlier),
+    "beside a checkout at the head, which has no pin": drawnOn(beside),
   };
 
   const root = element("div");
@@ -887,6 +1024,7 @@ async function main() {
       loadStyles: async () => {},
       mutate: (change) => change(),
       isTarget,
+      enhanceLinks: atHead.enhanceLinks,
       now: clock.now,
       later: clock.later,
       cancel: clock.cancel,
@@ -1153,6 +1291,21 @@ async function main() {
     [byId.f8, byId.f9],
   );
 
+  // This page shows the head, pinned from the pull request's branch: a link to a file or a
+  // folder on that branch on github.com opens it in place, as a README's does, and a click
+  // with a modifier is the browser's, which opens the same address.
+  near("f12");
+  await settle();
+  answer("f12 view=concise");
+  await settle();
+  step("at the head, a link to a file or folder on the served branch opens it in place", [
+    byId.f12,
+  ]);
+  steps.push({
+    step: "a plain click opens it through the navigation API, and a modified one is the browser's",
+    clicks: clicksOn(byId.f12.rendered),
+  });
+
   near("f10");
   await settle();
   answer("f10 view=concise");
@@ -1240,27 +1393,42 @@ async function main() {
 
   // Another tab switched the server's pin: a link to a file of the head would open that
   // path at the other pin, so every one drawn opens that file at the head on github.com
-  // instead, and so does any drawn later; images stay on the comparison's own route. The pin
-  // guard says so once, and the page that showed the head keeps no `/view/` link from then on. The diff's own call when it
-  // hears this is diff-view.js's (tests/dom/diff-view-behavior.js); here the session makes
-  // it, as the diff's stand-in.
+  // instead, and so does any drawn later; images stay on the comparison's own route. A link
+  // to the served branch would open the other pin's files too, so it is the link the text
+  // wrote again. The pin guard says so once, and the page that showed the head keeps no
+  // `/view/` link from then on. The diff's own call when it hears this is diff-view.js's
+  // (tests/dom/diff-view-behavior.js); here the session makes it, as the diff's stand-in.
   pinChanged(base);
   links.pages["pinned at the comparison's head, after another tab changed the pin"] = isTarget(
     headLink,
     false,
   );
+  links.repository["pinned at the comparison's head, after another tab changed the pin"] =
+    drawnOn(atHead);
   views.closeHeadLinks();
-  step("a page that learns another pin is served links a file to the head on github.com", [
-    byId.f1,
-  ]);
+  step(
+    "a page that learns another pin is served links a file of the head on github.com, and a branch link as written",
+    [byId.f1, byId.f12],
+  );
+  steps.push({
+    step: "every click on a link the page opened in place is the browser's",
+    clicks: clicksOn(byId.f12.rendered),
+  });
+  for (const file of files) {
+    for (const link of anchorsIn(file.rendered)) {
+      assert(
+        !(link.getAttribute("href") ?? "").startsWith("/view/") &&
+          !press(link, {}).startsWith("in place"),
+        `${file.name}: a link opens another pin's ${link.getAttribute("href")}`,
+      );
+    }
+  }
+  const closed = rows(byId.f12.rendered);
 
   views.dispose();
   step("disposal unbinds every chooser and stops every timer", files);
   steps.push({ step: "after disposal", bound: bound.size, timers: clock.timers.size });
 
-  // The ceiling on a file's wait (`RENDERED_WAIT_MS`), each in a comparison of its own with
-  // one first-screen file: a server that is busy, asked again and again, and one that is
-  // slow, whose answer comes after the ceiling.
   /** Mount *id* alone on the first screen; the views, the file, and when it was mounted. */
   const mountAlone = async (id) => {
     shown.clear();
@@ -1272,6 +1440,22 @@ async function main() {
     await settle();
     return { alone, file, at };
   };
+
+  // Drawn after the pin change, in a comparison of its own, a file's links are the ones the
+  // change closed in a file drawn before it.
+  const relinked = await mountAlone("f12");
+  answer("f12 view=concise");
+  await settle();
+  step("a file drawn after the pin change links as the one the change closed", [relinked.file]);
+  assert(
+    JSON.stringify(rows(relinked.file.rendered)) === JSON.stringify(closed),
+    "a link drawn after the pin change reads as one the change closed",
+  );
+  relinked.alone.dispose();
+
+  // The ceiling on a file's wait (`RENDERED_WAIT_MS`), each in a comparison of its own with
+  // one first-screen file: a server that is busy, asked again and again, and one that is
+  // slow, whose answer comes after the ceiling.
   const ceiling = markdown.RENDERED_WAIT_MS;
   const busy = await mountAlone("f1");
   let refusals = 0;

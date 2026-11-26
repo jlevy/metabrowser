@@ -893,6 +893,10 @@ async function headLinkChecks(mountDiffView, byName) {
             (node.tagName === "IMG" && node.getAttribute("src") !== null),
           'a[href^="/view/"]': (node) =>
             node.tagName === "A" && (node.getAttribute("href") ?? "").startsWith("/view/"),
+          // The repository's resolver, and the diff's marking of outside links.
+          "a[href]": (node) => node.tagName === "A" && node.getAttribute("href") !== null,
+          'a[target="_blank"]': (node) =>
+            node.tagName === "A" && node.getAttribute("target") === "_blank",
         }[selector] ?? ((node) => node.tagName === selector.toUpperCase());
       return [...this.walk()].filter((node) => node !== this && wanted(node));
     }
@@ -1228,6 +1232,133 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     handle.dispose();
     check("disposal lets the page's pin-change news go", pinChanged === null);
+
+    // The diff reads a rendered file's github.com links with the production resolver
+    // (static/repository-links.js), as the page loads it, under the host's rule for when a
+    // `/view/` target opens (`headLinksOpen`): while the page shows the head, a link to a
+    // file or folder on the served branch opens there in place, and once the pin changes,
+    // each is the link the text wrote, leaving the page. The plugin's rule itself, and what
+    // each page draws, is the Markdown session's (tests/dom/diff-markdown-session.js).
+    const resolverRealm = { Object, URL, TextEncoder, TextDecoder, btoa, atob, console };
+    resolverRealm.window = resolverRealm;
+    vm.createContext(resolverRealm);
+    for (const name of ["git-path.js", "repository-links.js"]) {
+      const file = path.join(repoRoot, "src/metabrowser/static", name);
+      vm.runInContext(fs.readFileSync(file, "utf8"), resolverRealm, { filename: file });
+    }
+    const branchAnswer = recording.answers.f12["view=concise"];
+    const written = [
+      ...branchAnswer.blocks
+        .map((block) => block.html)
+        .join("")
+        .matchAll(/href="([^"]+)"/g),
+    ].map((match) => match[1]);
+    let branchOpen = true;
+    let branchPinChanged = null;
+    const navigated = [];
+    const decorated = new Set();
+    const branchContainer = new MarkupElement("div");
+    const branchHandle = mountDiffView(
+      branchContainer,
+      byName.get("added-text-file"),
+      {
+        filterControls: { groupHtml: () => "", bind: () => () => {} },
+        ensureAsset: async () => {},
+        loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
+        repository: {
+          branch: "feature",
+          host: "github.com",
+          name: "demo",
+          owner: "octo",
+          revision: "b".repeat(40),
+          served_prefix: "",
+        },
+        sourceKind: () => "git_revision",
+        navigation: {
+          href: (target) => `/view/${target.path}`,
+          open: async (target) => {
+            navigated.push(`/view/${target.path}`);
+          },
+        },
+        decorateExternalLink: (link) => decorated.add(link),
+      },
+      {
+        onPinChanged(listener) {
+          branchPinChanged = listener;
+          return () => {
+            branchPinChanged = null;
+          };
+        },
+        markdownViews,
+        renderMarkdown: async () => structuredClone(branchAnswer),
+        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => branchOpen),
+        headLinksOpen: () => branchOpen,
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const branchLinks = () =>
+      branchContainer
+        .querySelectorAll("a")
+        .filter((link) => link.closest(".diff-markdown") !== null);
+    /** A plain primary click on *link*, as the browser sends it: whether the page kept it. */
+    const plainClick = (link) => {
+      const event = {
+        button: 0,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        defaultPrevented: false,
+        preventDefault() {
+          this.defaultPrevented = true;
+        },
+      };
+      for (const handler of link.listeners.get("click") ?? []) {
+        handler(event);
+      }
+      return event.defaultPrevented;
+    };
+    const atHead = branchLinks().map((link) => ({
+      href: link.getAttribute("href"),
+      target: link.getAttribute("target"),
+      kept: plainClick(link),
+    }));
+    check(
+      "at the head, a rendered file's links to the served branch open in place what they hold",
+      atHead.length === written.length &&
+        atHead.every(
+          (link) => link.href.startsWith("/view/") && link.target === null && link.kept,
+        ) &&
+        JSON.stringify(navigated) === JSON.stringify(atHead.map((link) => link.href)) &&
+        decorated.size === 0,
+      JSON.stringify({ atHead, navigated }),
+    );
+    branchOpen = false;
+    branchPinChanged?.();
+    navigated.length = 0;
+    const closed = branchLinks().map((link) => ({
+      href: link.getAttribute("href"),
+      target: link.getAttribute("target"),
+      kept: plainClick(link),
+      marked: decorated.has(link),
+    }));
+    check(
+      "once the pin changes, each is the link the text wrote, leaving the page, and marked so",
+      JSON.stringify(closed.map((link) => link.href)) === JSON.stringify(written) &&
+        closed.every((link) => link.target === "_blank" && !link.kept && link.marked) &&
+        navigated.length === 0,
+      JSON.stringify({ closed, navigated }),
+    );
+    branchHandle.dispose();
 
     // A Markdown file whose changes did not load has the chooser too: Source is chosen,
     // Full and Concise are unavailable for the reason the file's body gives, and no

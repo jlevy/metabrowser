@@ -639,7 +639,9 @@
    *   in place, as a pull request's page opens another's, answering whether it did;
    *   otherwise the browser follows the link. `views: false` leaves every `/view/` target
    *   as written, for a text whose page keeps it while the served pin can change under it,
-   *   as a rendered diff does: a route names no revision, a `/view/` address the served one.
+   *   as a rendered diff does away from its head: a route names no revision, a `/view/`
+   *   address the served one. A later pass with `views: false` restores each `/view/`
+   *   target an earlier one made to the link the text wrote, whose click is the browser's.
    * @returns {number}
    */
   function enhance(root, mb, options = {}) {

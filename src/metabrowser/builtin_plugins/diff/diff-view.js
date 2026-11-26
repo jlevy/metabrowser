@@ -5407,6 +5407,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "renderedFormat">,
  *   onPinChanged?: (changed: () => void) => () => void,
  *   markdownTargets?: (value: string, image: boolean, links?: MetabrowserRepositoryLinksRuntime | null) => string | null,
+ *   headLinksOpen?: () => boolean,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
  *   openFile?: (path: string) => void,
@@ -5425,6 +5426,10 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   page alone, so this module names it only in types.
  *   *markdownHoldMs* is how long the first screen's Markdown files wait for Rendered
  *   (`createMarkdownViews`'s *holdMs*); `firstScreen` settles when none of them waits.
+ *   *headLinksOpen* says whether the page shows the comparison's head, the one commit at
+ *   which a `/view/` address names the head's file (builtin_plugins/diff/index.js); while
+ *   it does, a rendered file's link to a file or folder on the served branch or commit
+ *   opens in place, and without it every such link stays as written.
  *   *changedFiles* is the shell's changed-files tree the Diff summary is drawn on; without
  *   it a multi-file diff has no summary. *openFile* is the host's way to a changed file's own
  *   address, which the summary's file rows take where the host has one. *summaryHost* is
@@ -5552,9 +5557,10 @@ export function mountDiffView(container, document_, api, options = {}) {
           repositoryLinks = (await api?.loadRepositoryLinks?.()) ?? null;
         },
         // A rendered file's link into the repository opens its page here, a pull request or
-        // a commit, which names no revision (static/repository-links.js); a `/view/` target
-        // would open whatever the server serves once the pin moves, so it stays a link to
-        // github.com, marked as an outside link is everywhere else.
+        // a commit, which names no revision (static/repository-links.js). A `/view/` target
+        // opens whatever the server serves, so only while the page shows the head; once the
+        // pin moves, `closeHeadLinks` reads every link again, and each such target is the
+        // github.com link the text wrote, marked as an outside link is everywhere else.
         enhanceLinks(prose) {
           const navigation = api?.navigation;
           const sourceKind = api?.sourceKind;
@@ -5563,7 +5569,7 @@ export function mountDiffView(container, document_, api, options = {}) {
             links.enhance(
               prose,
               { navigation, repository: api.repository, sourceKind },
-              { views: false },
+              { views: options.headLinksOpen?.() === true },
             );
           }
           for (const link of prose.querySelectorAll('a[target="_blank"]')) {
