@@ -60,7 +60,12 @@ from metabrowser.git.wire import GitRepoInfo, is_full_revision
 from metabrowser.http_caching import etag_headers, matches_if_none_match
 from metabrowser.repository_context import is_checkout_root
 from metabrowser.settings import GIT_LOG_DEFAULT_LIMIT, GIT_LOG_MAX_LIMIT
-from metabrowser.source import as_git_revision_subject, get_source_session, session_filesystem_root
+from metabrowser.source import (
+    UnsupportedSourceCapabilityError,
+    as_git_revision_subject,
+    get_source_session,
+    session_filesystem_root,
+)
 
 log = logging.getLogger(__name__)
 
@@ -215,7 +220,10 @@ async def api_git_summary(request: Request) -> Response:
 async def prepare_initial_history() -> None:
     """Start the default Commits page on a serving process's opening subject."""
 
-    location = session_git_location()
+    try:
+        location = session_git_location()
+    except UnsupportedSourceCapabilityError:
+        return
     if location.cwd is not None and not await asyncio.to_thread(is_checkout_root, location.cwd):
         return
     with event_log.span("job", "git.history_prepare", announce=True) as span:
