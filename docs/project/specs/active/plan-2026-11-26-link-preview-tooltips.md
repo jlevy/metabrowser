@@ -211,7 +211,7 @@ fit (Follow-ups).
 - [x] Every surface registers its links: the resolver’s `enhance`, the Markdown
   enhancer, and the rendered diff; authored titles move into the card; the working-tree
   tooltip goes
-- [ ] A Chrome check of the card’s placement, delay, and content on a real page
+- [x] A Chrome check of the card’s placement, delay, and content on a real page
 
 ## Testing Strategy
 
@@ -220,6 +220,47 @@ parity row for each new surface (AGENTS.md, CLI and Functional UI Parity); a Chr
 check confirms the tooltip’s placement and timing.
 The renderer’s session holds one invariant per rule above: a card never repeats its
 link’s text, never claims a state its data does not give, and never appears on focus.
+
+The Chrome check is `tests/test_link_card_chrome.py`, which drives
+`tests/dom/link-card-chrome.mjs`. It serves the GitHub stand-in’s checkout, whose
+catalog holds pull request 8, with a document that links a file with its author’s title,
+a folder, #8 by its number and again by its title, the head commit, the list of pull
+requests, and an outside page, then, past a screenful of words, the file again and the
+README. Once the catalog holds #8, Chrome’s own pointer (`Input.dispatchMouseEvent`)
+rests twice on each in-app link, on empty space between until the tooltip’s fade has
+ended, and the check holds:
+
+- **Delay.** The time from the pointer’s arrival to the card’s appearance, in the page’s
+  clock, printed for each rest, falls in a window of `INTENT_MS` and
+  `TOOLTIP_APPEAR_DELAY`, both read from the page: from their sum to the intent delay
+  plus twice the appear delay on a first rest whose provider answers at once (a file, a
+  folder, the list), from the appear delay to that bound on one that reads the server
+  (#8, the commit), and from the appear delay to their sum on a rest whose card the page
+  already knows.
+- **Content.** The card’s `.tip-name` names what the link opens (the path its address
+  opens, “Pull request #8”, or the commit’s short ID), its last line is “Opens here in
+  Metabrowser”, and no line is the link’s words; by the second rest it says #8’s title
+  from the catalog with its merged mark, the commit’s subject, and the author’s title,
+  and the link whose words are #8’s title leaves it out.
+- **Placement.** The card is centered below its link, or above it at the pane’s foot,
+  and its box and markup are the same after the pointer moves within the link.
+- **Input.** Moving away puts the card away as the pointer leaves; an outside link shows
+  none; Shift-Tab with a card up puts it away; focus brought by Tab and Shift-Tab onto
+  each link shows none.
+- **The page.** No link with a card carries a native `title`, before or after the rests,
+  and nothing was thrown, logged as an error, or failed to load, but Chrome’s own
+  `/favicon.ico`, as the page names no icon
+  ([Known Departures](../../../design-system-icons.md#known-departures)).
+
+A last step records, and does not check, a known bug in the shell’s tooltip: the pointer
+moves in one step from the file’s link, with its card up, onto the README beside it,
+within the fade, and the file’s card comes up again, on the file’s link, when the
+README’s card is asked for at the intent delay, and stays while the pointer rests on the
+README. `KNOWN_BUG_H1` in the session turns the step into a check of the README’s card
+once the fix in `static/app.js` lands.
+
+With the renderer’s “Opens here in Metabrowser” line dropped, or `register` made a
+no-op, it fails on every rest.
 
 ## Open Questions
 
