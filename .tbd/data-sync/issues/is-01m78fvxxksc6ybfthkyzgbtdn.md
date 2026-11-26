@@ -3,10 +3,11 @@ type: is
 id: is-01m78fvxxksc6ybfthkyzgbtdn
 title: One registry in the state home, with scopes
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
+delegate: claude-code@vm
 labels: []
 dependencies:
   - type: blocks
@@ -20,8 +21,11 @@ dependencies:
   - type: blocks
     target: is-01m78fw36avwntyj23v52vqqdm
 parent_id: is-01m78ftefp9ks9100ebsm7sm29
+hold: null
+hold_until: null
 created_at: 2026-11-12T18:21:07.379Z
-updated_at: 2026-11-12T21:18:05.873Z
+updated_at: 2026-11-26T08:35:34.383Z
+started_at: 2026-11-26T08:35:34.383Z
 ---
 Phase 3 (plan: Sources and Scopes, The Registry, Trust and Consent; Key Decision 7). plugins.yml in a new state home (METABROWSER_STATE_DIR, XDG_STATE_HOME/metabrowser, ~/.local/state/metabrowser), contract metabrowser:PluginSources/0.1, permissive like config.yml (unknown fields kept and written back), written by metab-plugins by atomic replace under the home's lock, read with sharing refused, never created by serving. Serving does not import the home module today (tests/test_plugin_public_api.py): add a small reader, measure its import, and move the boundary deliberately. Sources with scopes (everywhere, named folders, a clone): metab-plugins --add PATH for directories and environments with --dry-run (metadata only, imports nothing) and --expect SHA256, --remove ID, --scope-add ID FOLDER; the ownership rule on add. Directory sources' Python on an isolated interpreter. GET /api/plugins with locations relative to the root or ~, never absolute; the sources model in metab --plugins --json and --doctor.
 
