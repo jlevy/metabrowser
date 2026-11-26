@@ -489,18 +489,28 @@ async function headingStory() {
       );
     const textOf = (node) =>
       node.data !== undefined ? node.data : node.childNodes.map(textOf).join("");
-    /** A stack's Whole stack row, the one row under its open stack. */
+    /** A stack's Whole stack row, the first row under its open stack. */
     const wholeRow = (stack) =>
       listNode()
         .childNodes.filter((item) => item.classList.contains("github-pulls-whole-item"))
         .map((item) => item.childNodes[0])
         .find((row) => row.dataset.stack === String(stack));
-    /** A stack's change slot, on its Whole stack row's line. */
-    const changeOf = (row) =>
+    /** A stack's toggle of its changed files, on its Whole stack row's line (mb-odt4). */
+    const toggleOf = (row) =>
       childByClass(
         childByClass(wholeRow(row.dataset.stack), "github-pulls-whole-line"),
-        "github-pulls-stack-change",
+        "github-pulls-whole-change",
       );
+    /** A stack's change slot, in that toggle, before its chevron. */
+    const changeOf = (row) => {
+      const toggle = toggleOf(row);
+      assert.deepEqual(
+        toggle.childNodes.map((node) => node.className),
+        ["github-pulls-stack-change", "github-pulls-toggle"],
+        "the toggle is the change line's slot, then the chevron, whatever the slot holds",
+      );
+      return childByClass(toggle, "github-pulls-stack-change");
+    };
     /**
      * Each stack as drawn. `heading` is its row: its text, its age, and its name, none of
      * which a read of the stack's change moves. The rest is its Whole stack row: its change

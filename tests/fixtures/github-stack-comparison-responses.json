@@ -1,0 +1,79 @@
+{
+  "current": {
+    "schema": "file-diff-v1",
+    "schema_version": 1,
+    "resolved": {
+      "comparison_id": "git:59019b185288c4ad",
+      "source": {
+        "name": "git"
+      },
+      "kind": "content",
+      "base_policy": "direct",
+      "left": {
+        "kind": "commit",
+        "id": "<base>",
+        "symbolic": "<base>"
+      },
+      "right": {
+        "kind": "commit",
+        "id": "<draft_head>",
+        "symbolic": "<draft_head>"
+      },
+      "options": {
+        "context": 3,
+        "rename_detection": true,
+        "rename_similarity": 50
+      },
+      "warnings": []
+    },
+    "manifest": {
+      "files": [
+        {
+          "id": "f2",
+          "kind": "added",
+          "new": {
+            "path": "docs/draft.md",
+            "entry_type": "file",
+            "mode": "100644",
+            "content": {
+              "kind": "git_object",
+              "oid": "da5fc9b8d4dda2a91060b97e5e3467b4d39849bd"
+            }
+          },
+          "binary": false,
+          "availability": "ready",
+          "additions": 1,
+          "deletions": 0
+        }
+      ],
+      "totals": {
+        "files": 1,
+        "additions": 1,
+        "deletions": 0,
+        "exact": true
+      },
+      "truncated": false
+    },
+    "patches": {
+      "f2": {
+        "file_id": "f2",
+        "hunks": [
+          {
+            "old_start": 0,
+            "old_count": 0,
+            "new_start": 1,
+            "new_count": 1,
+            "lines": [
+              {
+                "op": "add",
+                "text": "# Draft",
+                "no_newline": false
+              }
+            ]
+          }
+        ],
+        "truncated": false
+      }
+    }
+  }
+}

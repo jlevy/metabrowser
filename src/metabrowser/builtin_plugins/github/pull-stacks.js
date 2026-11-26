@@ -112,9 +112,8 @@ export function stackMenuOrder(stack) {
 /** A stack's rows in the one order every surface that lists them draws: its Whole stack row,
  * null here, which opens the stack's own page, then *members*. The stack menu and an open
  * stack's rows in the Pulls tab both take their order from it, so the Whole stack row has one
- * place in both: first, above the members. In the menu it is one of the stack's set; in the
- * Pulls tab the members are its children, a level further in (docs/design-system.md,
- * "Stacks").
+ * place in both, first, above the members, and the stack's set counts it
+ * (docs/design-system.md, "Stacks").
  * @param {number[]} members The members to list, in `stackMenuOrder`.
  * @returns {Array<number | null>}
  */
@@ -250,14 +249,14 @@ export function wholeStackOfKey(key) {
  * }} StackGroupRow A stack's row. `updatedAt` is the time its heading's age tells
  *   (`stackUpdatedAt`), or null where the list has none for its pull requests.
  * @typedef {{
- *   kind: "pull", key: number, number: number, level: 1 | 3, stack: number | null,
+ *   kind: "pull", key: number, number: number, level: 1 | 2, stack: number | null,
  *   posinset: number, setsize: number,
  * }} PullGroupRow
  * @typedef {{
- *   kind: "whole", key: number, stack: number, level: 2, posinset: 1, setsize: 1,
- *   expanded: boolean,
- * }} WholeStackRow A stack's Whole stack row, the one row under its open stack, which opens
- *   the stack's own page and holds its pull requests, open unless the reader closed it.
+ *   kind: "whole", key: number, stack: number, level: 2, posinset: number, setsize: number,
+ * }} WholeStackRow A stack's Whole stack row, the first under its open stack, which opens the
+ *   stack's own page; its children are the stack's changed files, as a pull request's row's
+ *   are its own.
  * @typedef {StackGroupRow | PullGroupRow | WholeStackRow} GroupedRow
  */
 
@@ -273,11 +272,11 @@ export function wholeStackOfKey(key) {
  * a stack whose listed pull requests all sit under earlier stacks has no row; their
  * places name it. Pull requests in no stack follow the stacks, in the list's order.
  *
- * An open stack's one row, a level in, is its Whole stack row, which opens the stack's own
- * page (`/stack/<n>`, stack-page.js); its pull requests are that row's, a level further in,
- * shown unless *closedWholes* names the stack. The rows come in `stackEntries`' order, the
- * stack menu's: the Whole stack row, then the members (docs/design-system.md, "Stack Groups
- * in the Pulls Tab").
+ * An open stack's rows under it, at one level, are its Whole stack row and its pull requests,
+ * in `stackEntries`' order, the stack menu's: the Whole stack row, which opens the stack's own
+ * page (`/stack/<n>`, stack-page.js), is one of the stack's rows, so they count it in their
+ * set, "1/4" under a stack of three (docs/design-system.md, "Stack Groups in the Pulls
+ * Tab"). No pull request is ever under the Whole stack row.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that
@@ -289,14 +288,13 @@ export function wholeStackOfKey(key) {
  * @param {StackIndex} index
  * @param {StackIdentity | null} identity
  * @param {{
- *   collapsed?: ReadonlySet<number>, closedWholes?: ReadonlySet<number>, setSize?: number,
+ *   collapsed?: ReadonlySet<number>, setSize?: number,
  *   updatedAt?: (number: number) => string | null,
  * }} [options]
  * @returns {{stacks: number, placed: number, rows: GroupedRow[]}}
  */
 export function groupByStack(numbers, index, identity, options = {}) {
   const collapsed = options.collapsed ?? new Set();
-  const closedWholes = options.closedWholes ?? new Set();
   const listed = new Set(numbers);
   /** @type {Map<number, NativeStack>} */
   const order = new Map();
@@ -359,30 +357,28 @@ export function groupByStack(numbers, index, identity, options = {}) {
       updatedAt: stackUpdatedAt(listedOf.get(stack.number) ?? [], options.updatedAt),
     });
     if (expanded) {
-      const membersShown = !closedWholes.has(stack.number);
-      for (const [place, number] of stackEntries(members).entries()) {
-        if (number === null) {
-          rows.push({
-            kind: "whole",
-            key: wholeStackRowKey(stack.number),
-            stack: stack.number,
-            level: 2,
-            posinset: 1,
-            setsize: 1,
-            expanded: membersShown,
-          });
-        } else if (membersShown) {
-          rows.push({
-            kind: "pull",
-            key: number,
-            number,
-            level: 3,
-            stack: stack.number,
-            // The Whole stack row is first in `stackEntries`, and not one of the members' set.
-            posinset: place,
-            setsize: members.length,
-          });
-        }
+      const entries = stackEntries(members);
+      for (const [place, number] of entries.entries()) {
+        rows.push(
+          number === null
+            ? {
+                kind: "whole",
+                key: wholeStackRowKey(stack.number),
+                stack: stack.number,
+                level: 2,
+                posinset: place + 1,
+                setsize: entries.length,
+              }
+            : {
+                kind: "pull",
+                key: number,
+                number,
+                level: 2,
+                stack: stack.number,
+                posinset: place + 1,
+                setsize: entries.length,
+              },
+        );
       }
     }
   }
