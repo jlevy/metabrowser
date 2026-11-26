@@ -94,8 +94,10 @@ every link in the app follows it:
 The card is the app’s one tooltip, so it obeys every rule already there: shown on
 pointer rest and never on focus, placed on its link and holding still, and put away by
 the surface that drew the link (`hide(within)`). A link in a text the author titled
-keeps that title, quoted as the author’s, in its card, and loses its native `title`, so
-the reader never sees two tooltips.
+keeps that title, quoted as the author’s, in its card, and loses its native `title`, as
+does an image inside it, whose title the card says where the link has none of its own;
+an image fallback inside the link loses its own tooltip, whose address the card says
+instead. So the reader never sees two tooltips.
 
 An outside link has a card too, decided with the owner on 2026-11-26 after review: the
 macOS app’s web view has no status bar, and `decorateExternalLink` marks only a GitHub

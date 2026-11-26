@@ -3,9 +3,11 @@
   `[setup](setup.md "How to set it up")` does, now shows that title in its link card, in
   quotation marks as the author’s, rather than as the browser’s own tooltip beside the
   card, so the reader sees one tooltip; so does a link to another site.
-  The tooltip a link to the branch being browsed was given, “Open the corresponding path
-  in the currently served working tree”, which never showed in rendered text, is gone:
-  the link’s card says it opens in the served working tree.
+  An image’s title inside such a link moves into the card the same way, and an image the
+  page does not load, inside it, has its address in the card in place of a tooltip of
+  its own. The tooltip a link to the branch being browsed was given, “Open the
+  corresponding path in the currently served working tree”, which never showed in
+  rendered text, is gone: the link’s card says it opens in the served working tree.
 
 - **Plugin SDK:** the runtime `metabrowser.loadRepositoryLinks()` answers gives each
   link its link card through `previewLink(root, anchor, target, mb, options)`,

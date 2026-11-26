@@ -7050,7 +7050,8 @@ tooltip does:
    stack’s top member’s title, drawn as every title is ([Titles](#titles)).
 3. **The author’s title**, when the author gave the link one, in quotation marks, as the
    author’s words and never the app’s.
-4. **A detail**, in `.tip-detail`, when its data has one.
+4. **A detail**, in `.tip-detail`, when its data has one, and for each image inside the
+   link that the page did not load, “Image from” the address it would have loaded.
 5. **Where it opens**, in `.tip-detail`, always: “Opens here in Metabrowser”, or, for a
    link to a branch, which opens whatever the page serves rather than what it named,
    what that is: “Opens in the served working tree” on a folder’s page and “Opens at the
@@ -7077,10 +7078,17 @@ establishes a state; a stack’s `layers`; a file’s type, from `fileTypeIcon`.
 ends in `/` and a commit is its ID, as the catalog draws neither.
 
 **An author’s title is folded in.** A trusted Markdown link can carry its author’s
-`title`, an in-app link’s or an outside link’s. The surface that registers the link
-takes it off the link and hands it to the card, which quotes it on its own line after
-the identity and the object’s title, and never twice, so the reader never sees two
-tooltips.
+`title`, an in-app link’s or an outside link’s, and so can an image inside it, as
+`[![d](d.png "Its title")](x.md)` writes one.
+The surface that registers the link takes every title off the link and what it holds,
+and hands the link’s own, or else the image’s, to the card, which quotes it on its own
+line after the identity and the object’s title, and never twice.
+An image the page does not load is a chip whose own tooltip says its address
+([Images the Page Does Not Load](#images-the-page-does-not-load)); inside a link with a
+card, the card takes that tooltip off the chip as the link is registered, gives it back
+if the link loses its card, and says the address itself.
+So the reader never sees two tooltips, and moving from a link’s words onto its image
+changes nothing.
 
 **Its timing.** The card is asked for as soon as the pointer arrives and appears on the
 tooltip’s own appear delay, `TOOLTIP_APPEAR_DELAY` in `static/app.js`. Once the pointer

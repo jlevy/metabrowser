@@ -86,6 +86,9 @@
   /** Bounds URL parsing work for one link, as the resolver's `MAX_URL_LENGTH` does. */
   const MAX_OUTSIDE_URL_LENGTH = 16 * 1024;
   const VIEW_PREFIX = "/view/";
+  // What an image the page does not load becomes, its address in its tooltip
+  // (`IMAGE_FALLBACK_CLASS` in inert_html.py and static/inert-html.js).
+  const IMAGE_TIP = ".mb-image-fallback[data-tip-text]";
   // The plugin that owns a pull request's state glyphs (builtin_plugins/github/pull-state.js).
   const STATE_GLYPH_PLUGIN = "github";
 
@@ -96,12 +99,32 @@
   /** @typedef {MetabrowserLinkPreview} Preview */
   /** @typedef {MetabrowserLinkPreviewProvider} Provider */
   /** @typedef {MetabrowserPublicSdk} Sdk */
+  /**
+   * What `card` reads beside its subject and data: the link's own text, its author's
+   * title, whether it opens a new tab, and the addresses of the images inside it that the
+   * page did not load.
+   *
+   * @typedef {{
+   *   linkText?: string | null,
+   *   authorTitle?: string | null,
+   *   newTab?: boolean,
+   *   images?: ReadonlyArray<string>,
+   * }} CardOptions
+   */
 
   /**
-   * A registered link: its root, what it names, the SDK of the surface that drew it, and
-   * its author's title, which the surface took off the link.
+   * A registered link: its root, what it names, the SDK of the surface that drew it, its
+   * author's title, which the surface took off the link, and the images it holds that the
+   * page did not load, each chip with the address its tooltip said (`takeImageTips`).
    *
-   * @typedef {{root: Element, subject: Subject, mb: Sdk, authorTitle: string | null}} Entry
+   * @typedef {{
+   *   root: Element,
+   *   subject: Subject,
+   *   mb: Sdk,
+   *   authorTitle: string | null,
+   *   images: ReadonlyArray<ImageTip>,
+   * }} Entry
+   * @typedef {{chip: Element, address: string}} ImageTip
    */
 
   /**
@@ -350,7 +373,8 @@
    * 2. the object's title, as every title is drawn (`titleHtml`, static/formatters.js);
    * 3. the author's title, which the surface took off the link, in quotation marks, since
    *    it is the author's words and never the app's;
-   * 4. `.tip-detail`: the provider's detail;
+   * 4. `.tip-detail`: the provider's detail, then, for each image inside the link the page
+   *    did not load, the address it would have loaded, which its chip's tooltip said;
    * 5. `.tip-detail`: where it opens, or the provider's `missing`, always.
    *
    * The first line the card keeps leads with the object's mark (`.link-card-name`), so a
@@ -373,7 +397,7 @@
    *
    * @param {Subject} target
    * @param {Preview | null | undefined} preview
-   * @param {{linkText?: string | null, authorTitle?: string | null, newTab?: boolean}} [options]
+   * @param {CardOptions} [options]
    * @returns {string}
    */
   function card(target, preview, options = {}) {
@@ -416,6 +440,11 @@
     if (answer?.detail && adds(answer.detail)) {
       lines.push(["tip-detail", escapeHtml(answer.detail)]);
     }
+    for (const line of imageLines(options.images)) {
+      if (adds(line)) {
+        lines.push(["tip-detail", escapeHtml(line)]);
+      }
+    }
     lines.push(["tip-detail", escapeHtml(answer?.missing ?? opensHere(target))]);
     const glyph = mark(target, answer);
     return lines
@@ -432,7 +461,7 @@
    * says the link's own text or where the link goes.
    *
    * @param {Extract<Subject, {kind: "external"}>} target
-   * @param {{linkText?: string | null, authorTitle?: string | null, newTab?: boolean}} options
+   * @param {CardOptions} options
    * @returns {string}
    */
   function outsideCard(target, options) {
@@ -445,7 +474,23 @@
         `<div class="link-card-title">${OPEN_QUOTE}${escapeHtml(words)}${CLOSE_QUOTE}</div>`,
       );
     }
+    for (const line of new Set(imageLines(options.images))) {
+      lines.push(`<div class="tip-detail">${escapeHtml(line)}</div>`);
+    }
     return lines.join("");
+  }
+
+  /**
+   * A line for each image inside the link that the page did not load: the address it
+   * would have loaded.
+   *
+   * @param {ReadonlyArray<string> | undefined} images
+   * @returns {string[]}
+   */
+  function imageLines(images) {
+    return (images ?? [])
+      .filter((address) => typeof address === "string" && address.trim() !== "")
+      .map((address) => `Image from ${address.trim()}`);
   }
 
   /**
@@ -698,7 +743,8 @@
       roots.get(previous.root)?.anchors.delete(anchor);
     }
     const authorTitle = typeof options.authorTitle === "string" ? options.authorTitle : null;
-    const entry = { root, subject: named, mb, authorTitle };
+    const images = takeImageTips(anchor, previous?.images ?? []);
+    const entry = { root, subject: named, mb, authorTitle, images };
     entries.set(anchor, entry);
     listen(root, mb).anchors.add(anchor);
     if (current?.anchor === anchor) {
@@ -724,9 +770,47 @@
     }
     entries.delete(anchor);
     roots.get(entry.root)?.anchors.delete(anchor);
+    giveImageTips(entry.images);
     if (current?.anchor === anchor) {
       leave();
       entry.mb.tooltip.hide(anchor);
+    }
+  }
+
+  /**
+   * Take the tooltip off each image fallback inside *anchor* that still has one, keeping
+   * the address it said, with those *kept* from an earlier registration of the same link.
+   * The chip's tooltip is the shell's (`tipTextAnchor` in static/app.js), so inside a link
+   * with a card it would be a second tooltip, and moving onto it from the link's words would
+   * put the card away; the card says the address instead (docs/design-system.md, "Tooltips
+   * on Links").
+   *
+   * @param {Element} anchor
+   * @param {ReadonlyArray<ImageTip>} kept
+   * @returns {ReadonlyArray<ImageTip>}
+   */
+  function takeImageTips(anchor, kept) {
+    const images = kept.filter((image) => anchor.contains(image.chip));
+    for (const chip of Array.from(anchor.querySelectorAll(IMAGE_TIP))) {
+      const address = chip.getAttribute("data-tip-text") ?? "";
+      chip.removeAttribute("data-tip-text");
+      if (address.trim() !== "") {
+        images.push({ chip, address: address.trim() });
+      }
+    }
+    return Object.freeze(images);
+  }
+
+  /**
+   * Give each image fallback its tooltip back, for a link that has no card any more.
+   *
+   * @param {ReadonlyArray<ImageTip>} images
+   */
+  function giveImageTips(images) {
+    for (const { chip, address } of images) {
+      if (!chip.hasAttribute("data-tip-text")) {
+        chip.setAttribute("data-tip-text", address);
+      }
     }
   }
 
@@ -745,6 +829,7 @@
     root.removeEventListener("pointerover", state.over);
     root.removeEventListener("pointerout", state.out);
     for (const anchor of state.anchors) {
+      giveImageTips(entries.get(anchor)?.images ?? []);
       entries.delete(anchor);
     }
     if (current !== null && current.entry.root === root) {
@@ -909,6 +994,7 @@
       linkText: anchor.textContent,
       authorTitle: entry.authorTitle,
       newTab: anchor.getAttribute("target") === "_blank",
+      images: entry.images.map((image) => image.address),
     });
     if (html === rest.html) {
       return;

@@ -91,6 +91,29 @@ class FakeElement {
   getAttribute(name) {
     return this.attributes.get(name) ?? null;
   }
+  hasAttribute(name) {
+    return this.attributes.has(name);
+  }
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+  /** Descendants by one class and one attribute, `.name[attribute]`, the module's one query. */
+  querySelectorAll(selector) {
+    const match = /^\.([\w-]+)\[([\w-]+)\]$/.exec(selector);
+    assert(match, `the stand-in does not read ${selector}`);
+    const found = [];
+    const walk = (node) => {
+      for (const child of node.childNodes ?? []) {
+        const classes = String(child.attributes?.get("class") ?? "").split(/\s+/);
+        if (classes.includes(match[1]) && child.attributes.has(match[2])) {
+          found.push(child);
+        }
+        walk(child);
+      }
+    };
+    walk(this);
+    return found;
+  }
   contains(other) {
     for (let at = other; at; at = at.parentNode) {
       if (at === this) {
@@ -816,6 +839,55 @@ async function requests() {
   return { log: page.log, counts };
 }
 
+/**
+ * An image the page did not load, inside a link with a card: its chip's own tooltip comes
+ * off as the link is registered, so one tooltip shows, and the card says its address; a link
+ * that loses its card gives the chip its tooltip back.
+ */
+function images() {
+  const page = createPage();
+  const { previews } = page;
+  const root = new FakeElement("div", "description");
+  page.document.append(root);
+  const rows = {};
+  for (const [name, target] of [
+    ["in a link that opens here", pullRoute(12)],
+    ["in a link to another site", { kind: "external", url: "https://example.com/build" }],
+  ]) {
+    const anchor = new FakeElement("a", name);
+    const chip = new FakeElement("span", "chip");
+    chip.setAttribute("class", "mb-image-fallback");
+    chip.setAttribute("data-tip-text", "https://img.example/badge.svg");
+    chip.append("build passing");
+    anchor.append("the badge: ", chip);
+    root.append(anchor);
+    previews.register(root, anchor, target, page.mb);
+    const taken = chip.getAttribute("data-tip-text");
+    // A later pass over the same link, as the resolver makes, keeps what the first took.
+    previews.register(root, anchor, target, page.mb);
+    const html = previews.card(previews.subject(target), null, {
+      linkText: anchor.textContent,
+      images: ["https://img.example/badge.svg"],
+    });
+    previews.forget(anchor);
+    rows[name] = {
+      "the chip's tooltip once registered": taken,
+      card: lines(html),
+      "the chip's tooltip once forgotten": chip.getAttribute("data-tip-text"),
+    };
+    assert(taken === null, "a chip inside a link with a card kept its own tooltip");
+    assert(
+      lines(html).includes("Image from https://img.example/badge.svg"),
+      `the card did not say the image's address: ${html}`,
+    );
+    assert(
+      chip.getAttribute("data-tip-text") === "https://img.example/badge.svg",
+      "a forgotten link's chip did not get its tooltip back",
+    );
+  }
+  return rows;
+}
+
 /** A link to another site: its card on the tooltip's own delay, and nothing read. */
 async function outside() {
   const page = createPage();
@@ -987,6 +1059,7 @@ async function main() {
     timing: await timing(),
     requests: await requests(),
     outside: await outside(),
+    images: images(),
     modality: await modality(),
     failures: await failures(),
     disposal: await disposal(),

@@ -68,6 +68,24 @@ class FakeElement extends ElementShim {
     this.scrolled = true;
   }
 
+  /** The descendants that carry a title: the one selector the enhancer asks a link. */
+  querySelectorAll(selector) {
+    if (selector !== "[title]") {
+      throw new Error(`the stand-in does not read ${selector}`);
+    }
+    const found = [];
+    const walk = (node) => {
+      for (const child of node.children) {
+        if (child.hasAttribute("title")) {
+          found.push(child);
+        }
+        walk(child);
+      }
+    };
+    walk(this);
+    return found;
+  }
+
   matches(selector) {
     if (selector === "[id]") {
       return Boolean(this.id);
@@ -368,6 +386,15 @@ async function loadModule() {
   const unsafe = new FakeElement("a", { href: "javascript:alert(1)" });
   const download = new FakeElement("a", { download: "", href: "files/archive.zip" });
   const newTab = new FakeElement("a", { href: "other.md", target: "_blank" });
+  // `[![d](img/d.png "The image title")](setup.md)`: the image's title is the link's only
+  // title, and a second tooltip inside the card's link; it moves into the card.
+  const imageLink = new FakeElement("a", { href: "setup.md" });
+  const titledImage = new FakeElement("img", { src: "img/d.png", title: "The image title" });
+  imageLink.append(titledImage);
+  // A link with its own title around an image with another: the link's is the card's.
+  const bothTitled = new FakeElement("a", { href: "setup.md", title: "The link's title" });
+  const innerTitled = new FakeElement("img", { src: "img/e.png", title: "An inner title" });
+  bothTitled.append(innerTitled);
   const image = new FakeElement("img", { src: "../images/map 1.svg#layer" });
   const remoteImage = new FakeElement("img", { src: "https://example.com/map.svg" });
   const unsafeImage = new FakeElement("img", { src: "data:image/png;base64,AA" });
@@ -392,6 +419,8 @@ async function loadModule() {
     unsafe,
     download,
     newTab,
+    imageLink,
+    bothTitled,
     image,
     remoteImage,
     unsafeImage,
@@ -575,6 +604,8 @@ async function loadModule() {
     [githubCommit, `route /commit/${"b".repeat(40)}`],
     [githubPulls, "route /pulls"],
     [newTab, "view revision docs/other.md"],
+    [imageLink, "view revision docs/setup.md"],
+    [bothTitled, "view revision docs/setup.md"],
     [externalTitled, "external https://example.com/elsewhere"],
     [external, "external https://example.com/docs"],
     [externalIssue, "external //github.com/another/repo/issues/23"],
@@ -600,6 +631,20 @@ async function loadModule() {
       cards.registered.get(githubTitled)?.authorTitle === "The guide on main" &&
       cards.registered.get(internal)?.authorTitle === null,
     JSON.stringify([...cards.registered.values()].map((entry) => entry.authorTitle)),
+  );
+  check(
+    "an image's title inside a link moves into the link's card, so one tooltip shows",
+    !titledImage.hasAttribute("title") &&
+      cards.registered.get(imageLink)?.authorTitle === "The image title" &&
+      !bothTitled.hasAttribute("title") &&
+      !innerTitled.hasAttribute("title") &&
+      cards.registered.get(bothTitled)?.authorTitle === "The link's title",
+    JSON.stringify([
+      titledImage.getAttribute("title"),
+      innerTitled.getAttribute("title"),
+      cards.registered.get(imageLink)?.authorTitle,
+      cards.registered.get(bothTitled)?.authorTitle,
+    ]),
   );
   check(
     "an outside link's title moves into its card, and a disabled one keeps its explanation",

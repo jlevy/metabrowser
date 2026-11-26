@@ -4106,7 +4106,13 @@ declare global {
     card(
       subject: MetabrowserLinkPreviewSubject,
       preview: MetabrowserLinkPreview | null | undefined,
-      options?: { linkText?: string | null; authorTitle?: string | null; newTab?: boolean },
+      options?: {
+        linkText?: string | null;
+        authorTitle?: string | null;
+        newTab?: boolean;
+        /** The addresses of images inside the link the page did not load. */
+        images?: ReadonlyArray<string>;
+      },
     ): string;
   }>;
 

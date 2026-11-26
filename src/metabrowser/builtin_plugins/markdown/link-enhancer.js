@@ -128,9 +128,11 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
 
   /**
    * Give *anchor*, a link this document opens in Metabrowser or one to another site, its
-   * link card, saying the title its author gave it, which then leaves the link. A link whose
-   * card cannot be drawn, as on a page with no resolver, keeps its title, and a download,
-   * which saves the file rather than opening its page, has none.
+   * link card, saying the title its author gave it, which then leaves the link: its own, or
+   * else an image's inside it, as `[![d](d.png "Its title")](x.md)` writes one. Every title
+   * inside the link leaves it too, since each would be a second tooltip over the card. A
+   * link whose card cannot be drawn, as on a page with no resolver, keeps its titles, and a
+   * download, which saves the file rather than opening its page, has none.
    *
    * @param {Element} anchor
    * @param {MetabrowserLinkPreviewTarget} target
@@ -139,12 +141,20 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     if (anchor.hasAttribute("download")) {
       return;
     }
-    const authorTitle = anchor.getAttribute("title") ?? authorTitles.get(anchor) ?? null;
+    const inner = Array.from(anchor.querySelectorAll("[title]"));
+    const authorTitle =
+      anchor.getAttribute("title") ??
+      authorTitles.get(anchor) ??
+      inner.map((element) => element.getAttribute("title")).find(Boolean) ??
+      null;
     if (repositoryLinks?.previewLink(container, anchor, target, mb, { authorTitle }) === true) {
       if (authorTitle !== null) {
         authorTitles.set(anchor, authorTitle);
       }
       anchor.removeAttribute("title");
+      for (const element of inner) {
+        element.removeAttribute("title");
+      }
     }
   }
 

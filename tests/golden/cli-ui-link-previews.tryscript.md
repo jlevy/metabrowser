@@ -60,6 +60,9 @@ the session read the `tooltip` the reader would see.
 - `requests`: one read and one prefetch are in flight; a newer rest waits for them
   rather than aborting them, and a link the pointer leaves before its intent delay is
   never read.
+- `images`: an image the page did not load, inside a link with a card, loses its chip’s
+  own tooltip as the link is registered, and the card says its address; a link that
+  loses its card gives the chip its tooltip back.
 - `outside`: a rest on a link to another site shows its card on the tooltip’s own delay
   and asks nothing of a provider.
 - `modality`: focus, keys, and a touch show no card; a pen’s rest does.
@@ -842,6 +845,18 @@ $ node tests/dom/link-previews-session.js
    "hide": "elsewhere"
   }
  ],
+ "images": {
+  "in a link that opens here": {
+   "the chip's tooltip once registered": null,
+   "card": "[pull] Pull request #12 | Image from https://img.example/badge.svg | Opens here in Metabrowser",
+   "the chip's tooltip once forgotten": "https://img.example/badge.svg"
+  },
+  "in a link to another site": {
+   "the chip's tooltip once registered": null,
+   "card": "Opens example.com | Image from https://img.example/badge.svg",
+   "the chip's tooltip once forgotten": "https://img.example/badge.svg"
+  }
+ },
  "modality": {
   "focus, keys, and a touch": [
    {

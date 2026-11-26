@@ -157,6 +157,16 @@ def test_an_outside_link_says_where_it_goes() -> None:
     assert not any("summary" in entry or "prefetch" in entry for entry in rest)
 
 
+def test_an_image_the_page_did_not_load_has_its_address_in_the_card() -> None:
+    """An image fallback inside a link with a card loses its own tooltip, so one tooltip
+    shows, and the card says the address; a link that loses its card gives it back."""
+
+    for name, row in _session()["images"].items():
+        assert row["the chip's tooltip once registered"] is None, name
+        assert "Image from https://img.example/badge.svg" in row["card"].split(" | "), name
+        assert row["the chip's tooltip once forgotten"] == "https://img.example/badge.svg", name
+
+
 def test_a_providers_text_is_never_markup() -> None:
     row = next(row for row in _session()["cards"] if row["label"] == "a title with markup")
     assert "<img" not in row["html"]
