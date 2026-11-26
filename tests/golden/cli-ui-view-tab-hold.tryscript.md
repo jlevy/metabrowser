@@ -32,6 +32,8 @@ where they differ, each is listed.
   more’s render is, and the reader picks the other tab on the bar they see.
 - `choiceWhileAnotherFileIsStaged`: a tab picked on the file shown while another file is
   staged is the shown file’s alone, and the other arrives whole in its own first view.
+- `rereadMountedTreemap`: the shown Treemap stays mounted while Refresh reads new data
+  and paints the answer in the same view.
 
 ```console
 $ node tests/dom/view-tab-hold-session.js
@@ -128,6 +130,20 @@ $ node tests/dom/view-tab-hold-session.js
       "staged": null,
       "pane": "docs in overview",
       "mounts": "overview 2, treemap 1"
+    }
+  },
+  "rereadMountedTreemap": {
+    "held": {
+      "staged": null,
+      "pane": "src in treemap",
+      "mounts": "treemap 1"
+    },
+    "oldContent": "treemap of src",
+    "newContent": "updated map",
+    "after": {
+      "staged": null,
+      "pane": "src in treemap",
+      "mounts": "treemap 1"
     }
   }
 }

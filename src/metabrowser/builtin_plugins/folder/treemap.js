@@ -35,6 +35,7 @@ import {
 import {
   createTreemapMap,
   isCompleteSnapshot,
+  retainTreemap,
   TREEMAP_LOADING_HTML,
   TREEMAP_VIEW_ID,
   treemapAvailability,
@@ -290,7 +291,9 @@ export function registerTreemap(mb, palette, rollupControls) {
         statusHtml(envelope) ||
         (refreshFailed && state.includeIgnored && !envelopeHasIgnored
           ? "Could not load the ignored files; the treemap shows the others."
-          : "");
+          : refreshFailed && treemapAvailability(envelope, false) === "map"
+            ? "Could not refresh the treemap; showing the previous data."
+            : "");
       status.hidden = status.textContent === "";
       const failed = envelope?.index_status === "failed";
       status.dataset.severity = failed ? "error" : "warning";
@@ -391,6 +394,9 @@ export function registerTreemap(mb, palette, rollupControls) {
         onRollupError(error);
         return;
       }
+      if (retainTreemap(envelope, env)) {
+        return;
+      }
       envelope = env;
       envelopeHasIgnored = includeIgnored;
       rollupFailed = false;
@@ -423,6 +429,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     /** Whether the watch asks for the tree with its gitignored nodes. */
     let watchedIgnored = state.includeIgnored;
     let watch = watchTree();
+    let rereadOnReveal = false;
     /**
      * The tree is asked for with or without its gitignored nodes, so a Show ignored that
      * no longer matches the watch asks again; the totals and the legend above hold both
@@ -439,9 +446,11 @@ export function registerTreemap(mb, palette, rollupControls) {
       if (!active) {
         return;
       }
+      const reread = rereadOnReveal;
+      rereadOnReveal = false;
       if (state.includeIgnored !== watchedIgnored) {
         syncTreeWatch();
-      } else if (watch.stale()) {
+      } else if (reread || watch.stale()) {
         void watch.refresh();
       }
     });
@@ -505,7 +514,21 @@ export function registerTreemap(mb, palette, rollupControls) {
       // The map's tooltip, and no other surface's (mb-alff).
       mb.tooltip.hide(container);
     };
-    return Object.freeze({ dispose });
+    return Object.freeze({
+      dispose,
+      /** @param {MetabrowserPublicRenderContext} next */
+      async refresh(next) {
+        if (notIndexedStatement(next.raw)) {
+          return false;
+        }
+        if (isVisible()) {
+          await watch.refresh();
+        } else {
+          rereadOnReveal = true;
+        }
+        return true;
+      },
+    });
   }
 
   mb.registerView("folder", TREEMAP_VIEW_ID, { render: renderTreemap });

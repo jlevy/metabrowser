@@ -95,6 +95,10 @@ class _Session:
 
         monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
         monkeypatch.setattr(pull_list, "utc_now", lambda: self.now)
+        elapsed = count(step=300_000_000)
+        monkeypatch.setattr(
+            "metabrowser.builtin_plugins.github.pull_list_refresh.monotonic_ns", elapsed.__next__
+        )
         monkeypatch.setattr(pulls, "utc_now", lambda: self.now)
         generations = count(1)
         monkeypatch.setattr(pull_files_refresh, "uuid4", lambda: UUID(int=next(generations)))

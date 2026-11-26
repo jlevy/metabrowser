@@ -22,8 +22,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
+from time import monotonic_ns
 from typing import Any, Final, Literal
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github import gh_budget, pull_list
 from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
@@ -43,6 +45,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
 from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
     PAGE_SIZE,
+    CatalogRefreshTiming,
     CatalogState,
     CatalogUnusableError,
     NewerCatalogError,
@@ -51,6 +54,7 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     failure_line,
     publish_page,
     read_catalog,
+    write_catalog_refresh_timing,
 )
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_ROW_LABEL_BYTES,
@@ -415,6 +419,9 @@ async def refresh_pull_list(
     The backfill past the prefix stops, returning the checkpoint, while the GraphQL budget
     holds background work.
     """
+    started_ns = monotonic_ns()
+    published_epoch: str | None = None
+    published_pages = 0
     reader: str | None = None
     last_refresh: PullRefreshStamp | None = None
     source_claimed = False
@@ -457,8 +464,7 @@ async def refresh_pull_list(
             )
             retry = False
             if scan is None:
-                assert state is not None
-                return state
+                break
             updated = scan == "updated"
             cursor = (
                 state.delta_cursor if state and updated else state.cursors[scan] if state else None
@@ -477,8 +483,7 @@ async def refresh_pull_list(
                         )
                     if backfill and not backfill_admitted():
                         # Paused, not failed: the next ask resumes from the saved cursor.
-                        assert state is not None
-                        return state
+                        break
                     # A delta scan vouches for what GitHub had when it asked for its first page.
                     asked_at = utc_stamp(pull_list.utc_now())
                     # A backfill page is one no reader asked for: speculative work, counted
@@ -564,6 +569,8 @@ async def refresh_pull_list(
             proposed = state.model_copy(update=changes)
             accepted = await _publish(repository, previous, proposed, page.rows)
             if accepted:
+                published_epoch = proposed.epoch
+                published_pages += 1
                 await run_lock_section(
                     partial(
                         write_list_refresh,
@@ -604,6 +611,22 @@ async def refresh_pull_list(
         if outcome != exc.state:
             raise PullDataError(outcome, message) from exc
         raise
+    finally:
+        finished_at = pull_list.utc_now()
+        duration_ms = round((monotonic_ns() - started_ns) / 1_000_000)
+        event_log.current().set(
+            refresh_finished_at=finished_at.isoformat().replace("+00:00", "Z"),
+            refresh_duration_ms=duration_ms,
+            refresh_pages=published_pages,
+        )
+
+    assert state is not None
+    if state.epoch == published_epoch:
+        timing = CatalogRefreshTiming(
+            epoch=state.epoch, finished_at=finished_at, duration_ms=duration_ms
+        )
+        await run_lock_section(partial(write_catalog_refresh_timing, repository, timing))
+    return state
 
 
 __all__ = ["backfill_admitted", "prefix_wanted", "refresh_pull_list"]

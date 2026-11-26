@@ -538,7 +538,7 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     assert "? (hold ?? model.freshness)" in page
 
 
-def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
+def test_the_pulls_metadata_uses_the_shared_line_boxes() -> None:
     """Each is a metadata line, which reserves its own line box (`.nav-metadata`)."""
 
     line = _rule(_css(), ".nav-metadata")

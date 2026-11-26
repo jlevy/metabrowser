@@ -13,13 +13,14 @@ import stat
 import subprocess
 import threading
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github import (
     gh,
     gh_budget,
@@ -148,6 +149,76 @@ def _provider(
     monkeypatch.setattr(pull_list_refresh, "active_account", active)
     monkeypatch.setattr(pull_list_refresh, "gh_graphql", graphql)
     return calls
+
+
+def test_catalog_refresh_timing_measures_the_job_and_survives_a_failed_retry(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    view = ListView(repository, None, False)
+    window = ListWindow("open", limit=1)
+    items = [generated_item(number) for number in range(1, 102)]
+    calls = _provider(monkeypatch, items)
+    graphql = pull_list_refresh.gh_graphql
+    elapsed_ms = 0
+
+    def now() -> datetime:
+        return FETCHED_AT + timedelta(milliseconds=elapsed_ms)
+
+    monkeypatch.setattr(pull_list, "utc_now", now)
+    monkeypatch.setattr(pull_list_refresh, "monotonic_ns", lambda: elapsed_ms * 1_000_000)
+
+    async def measured_page(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal elapsed_ms
+        assert "refresh_timing" not in pull_list_envelope(view, window)
+        elapsed_ms += 150
+        return await graphql(*args, **kwargs)
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", measured_page)
+    assert "refresh_timing" not in pull_list_envelope(view, window)
+    home = repository.home
+    ensure_private_directory(home, event_log.EVENTS_DIRECTORY)
+    sink = event_log.EventLog(home / event_log.EVENTS_DIRECTORY, home)
+    with contextlib.closing(sink), event_log.installed(sink):
+        with event_log.span("job", "successful catalog refresh"):
+            asyncio.run(refresh_pull_list(repository, "open"))
+        assert len(calls) > 1
+        expected = {
+            "finished_at": now().isoformat().replace("+00:00", "Z"),
+            "duration_ms": 150 * len(calls),
+        }
+        assert pull_list_envelope(view, window)["refresh_timing"] == expected
+
+        calls.clear()
+        asyncio.run(refresh_pull_list(repository, "open"))
+        assert calls == []
+        assert pull_list_envelope(view, window)["refresh_timing"] == expected
+
+        async def refused(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            nonlocal elapsed_ms
+            elapsed_ms += 180
+            raise PullDataError("gh_failed", "GitHub could not serve the list")
+
+        monkeypatch.setattr(pull_list_refresh, "gh_graphql", refused)
+        with pytest.raises(PullDataError), event_log.span("job", "failed catalog refresh"):
+            asyncio.run(refresh_pull_list(repository, "open", retry=True))
+        assert pull_list_envelope(view, window)["refresh_timing"] == expected
+
+    assert sink.path is not None
+    records = [json.loads(line) for line in sink.path.read_text(encoding="utf-8").splitlines()]
+    ended = {record["name"]: record for record in records if record["event"] == "end"}
+    success = ended["successful catalog refresh"]
+    assert success["outcome"] == "ok"
+    assert success["attrs"]["refresh_duration_ms"] == expected["duration_ms"]
+    assert success["attrs"]["refresh_finished_at"] == expected["finished_at"]
+    failure = ended["failed catalog refresh"]
+    assert failure["outcome"] == "failed"
+    assert failure["attrs"]["refresh_duration_ms"] == 180
+
+    state = read_catalog(repository.home, repository.slug)
+    assert state is not None
+    replacement = state.model_copy(update={"epoch": "replacement"})
+    assert publish_page(repository, state, replacement, ())
+    assert "refresh_timing" not in pull_list_envelope(view, window)
 
 
 def test_backfill_all_beyond_old_cap_with_small_indexed_windows(

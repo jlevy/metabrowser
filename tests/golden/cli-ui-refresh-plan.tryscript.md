@@ -25,14 +25,16 @@ A working tree’s fetch of its origin never is, since nothing its page shows wa
 it: the page has no freshness row, so its press reads the disk and the history again and
 only then, with the button offered again, asks for that fetch.
 
-The button waits, `aria-disabled` and dimmed in its place, while the parts on screen
-refresh, and only then; a press while it waits does nothing.
+The button waits with `aria-disabled` while the parts on screen refresh.
+A quick press shows its spinner briefly, and a press while it waits does nothing.
 A part that fails says so where it is drawn, and the rest still run.
 A later press supersedes what an earlier one had not reached behind the other tabs.
 The last steps run the module’s browser glue on a stand-in page, with the shell’s parts
 as app.js, the freshness row, and the Commits panel lend them, and the Pulls list’s two
-as pulls-panel.js does; the last four on a page with the chooser, a revision’s and a
-working tree’s, with its list open and closed.
+as pulls-panel.js does.
+The chooser cases use a revision and a working tree, with the list open and closed.
+The last case follows the tooltip across tabs and checks the spinner after a quick
+refresh.
 
 `tests/test_refresh_plan_session.py` holds the record to these invariants;
 `cli-ui-key-reveal.tryscript.md` shows the button numbered 1 on every screen.
@@ -472,6 +474,17 @@ $ node tests/dom/refresh-plan-session.js
         "origin: the chooser's fetchOrigin starts",
         "origin: the chooser's fetchOrigin settles"
       ]
+    },
+    {
+      "step": "the Refresh tooltip follows the tab and a quick press shows a spinner",
+      "pullsHint": "Click to refresh. Refreshed 2 min ago in 300ms",
+      "spokenHint": "Refreshed 2 min ago in 300ms",
+      "filesHint": "Click to refresh.",
+      "spinner": {
+        "immediate": true,
+        "briefly": true,
+        "ended": true
+      }
     }
   ]
 }

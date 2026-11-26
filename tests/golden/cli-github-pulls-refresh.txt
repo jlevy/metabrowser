@@ -102,7 +102,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -194,7 +198,11 @@ status: 200
       "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -272,7 +280,11 @@ status: 200
       "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -334,7 +346,11 @@ status: 200
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -377,7 +393,11 @@ status: 200
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -423,7 +443,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -503,7 +527,11 @@ status: 200
       "head_oid": "8ae27617c9c475851b67ee69433d008836d112ba",
       "merged": true
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -544,7 +572,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -719,7 +751,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -757,7 +793,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -839,7 +879,11 @@ status: 200
       "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -899,7 +943,11 @@ status: 200
       "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -942,7 +990,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:01:01Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -980,7 +1032,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with network_error
@@ -1027,7 +1083,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -1070,7 +1130,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:01:01Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -1108,7 +1172,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -1455,7 +1523,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 5,
+  "cleared": 6,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1562,7 +1630,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:02:02Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---

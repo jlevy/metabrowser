@@ -195,6 +195,13 @@ type MetabrowserPullsPanelHandle = Readonly<{
   dispose(): void;
 }>;
 
+type MetabrowserViewRenderHandle = {
+  dispose?: () => void;
+  ready?: Promise<void>;
+  /** Reread a mounted view in place. Return false when a new mount is needed. */
+  refresh?: (context: MetabrowserRenderContext) => boolean | Promise<boolean>;
+};
+
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   dispose?: (container: HTMLElement) => void;
@@ -333,6 +340,7 @@ type MetabrowserViewCompositionRuntime = Readonly<{
     getRegisteredView(kind: string, viewId: string): MetabrowserViewSpec | null | undefined;
     isCurrent?: () => boolean;
   }): Promise<MetabrowserPreparedViewComposition>;
+  refresh(container: HTMLElement, context: MetabrowserRenderContext): Promise<boolean>;
 }>;
 
 type MetabrowserNavigationOpenOptions = {
@@ -4634,6 +4642,8 @@ declare global {
   /** What a module that owns a part lends the plan: its refresh, until released. */
   type MetabrowserRefreshParts = Readonly<{
     provide(id: MetabrowserRefreshPart, refresh: () => unknown): () => void;
+    /** The refresh detail shown while this tab is in front, until released. */
+    provideTooltip?(tab: string, detail: () => string | null): () => void;
   }>;
 
   type MetabrowserRefreshPlan = MetabrowserRefreshParts &
@@ -5082,6 +5092,7 @@ declare global {
   type MetabrowserStructuredExports = StructuredExports;
   type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
+  type MetabrowserPublicViewRenderHandle = MetabrowserViewRenderHandle;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;
 
   var hljs: {

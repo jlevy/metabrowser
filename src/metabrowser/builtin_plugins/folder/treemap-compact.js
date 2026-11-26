@@ -24,6 +24,7 @@
 import {
   createTreemapMap,
   isCompleteSnapshot,
+  retainTreemap,
   TREEMAP_LOADING_HTML,
   TREEMAP_VIEW_ID,
   treemapAvailability,
@@ -58,10 +59,10 @@ function treemapFolderOf(cell) {
  * @param {TreemapPalette} palette
  * @param {FolderRollupControls} rollupControls
  * @param {{signal?: AbortSignal, hover?: import("./distribution-hover.js").DistributionHover}} options
- * @returns {{dispose: () => void, follow: (snapshot: Record<string, any> | null) => void, refresh: () => void}}
+ * @returns {{dispose: () => void, follow: (snapshot: Record<string, any> | null) => void, refresh: () => Promise<void>}}
  *   `follow` takes each answer the section's breakdown gets (null when its
- *   request failed with nothing to show), and `refresh` retries the map's own
- *   request along with the breakdown's Retry.
+ *   request failed with nothing to show), and `refresh` reads the map again
+ *   once its watch has started.
  */
 export function mountCompactTreemap(container, context, mb, palette, rollupControls, options) {
   const path = context.path || "";
@@ -123,6 +124,9 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
       },
       /** @param {Record<string, any>} next */
       (next) => {
+        if (retainTreemap(envelope, next)) {
+          return;
+        }
         envelope = next;
         failed = false;
         relayout();
@@ -208,13 +212,17 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
     dispose,
     /** @param {Record<string, any> | null} snapshot */
     follow(snapshot) {
+      if (
+        treemapAvailability(envelope, false) === "map" &&
+        retainTreemap(section ?? null, snapshot)
+      ) {
+        return;
+      }
       section = snapshot;
       relayout();
     },
-    refresh() {
-      if (watch && failed) {
-        void watch.refresh();
-      }
+    async refresh() {
+      await watch?.refresh();
     },
   });
 }

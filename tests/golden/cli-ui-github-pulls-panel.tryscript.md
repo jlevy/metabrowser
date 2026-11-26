@@ -123,7 +123,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "102 PRs on octo/demo",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 102 pull requests",
@@ -135,7 +135,8 @@ $ node tests/dom/github-pulls-panel-session.js
           "[Merged] Say more in the guide | #8 · maintainer | /pull/8",
           "[Open] Count to two in the app | #7 · forker | /pull/7"
         ]
-      }
+      },
+      "refreshDetail": "Refreshed 2 min ago in 300ms"
     },
     {
       "step": "cached windows fill only the display budget",
@@ -151,7 +152,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "102 PRs on octo/demo",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 102 pull requests",
@@ -199,7 +200,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "102 PRs on octo/demo",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 100 pull requests",
@@ -253,7 +254,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "1,000 PRs on octo/demo",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -282,7 +283,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,000 PRs on octo/demo",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -311,7 +312,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,000 PRs on octo/demo",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -344,7 +345,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,000 PRs on octo/demo",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -382,7 +383,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,001 PRs on octo/demo",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -1042,7 +1043,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     ],
     "rows held": 102,
     "an age, before": "2h",
-    "an age, two hours on": "4h",
+    "an age, two hours on": "2h",
     "rows built to tell it": 0,
     "a passive retry over cached rows breathes the announced outage, with no spinner": "Could not reach GitHub. Showing the pull requests last loaded.",
     "closing twelve expanded trees enforces retention immediately": {

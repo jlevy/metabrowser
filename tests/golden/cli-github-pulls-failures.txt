@@ -66,7 +66,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -117,7 +121,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -161,7 +169,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -199,7 +211,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with not_logged_in
@@ -247,7 +263,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -285,7 +305,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with gh_too_old
@@ -333,7 +357,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -371,7 +399,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with not_found_or_private
@@ -419,7 +451,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -457,7 +493,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with network_error
@@ -506,7 +546,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -544,7 +588,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with gh_failed
@@ -592,7 +640,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -630,7 +682,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with account_changed
@@ -678,7 +734,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -716,7 +776,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with gh_missing
@@ -779,7 +843,11 @@ status: 200
       "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -822,7 +890,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -860,7 +932,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with rate_limited
@@ -908,7 +984,11 @@ status: 200
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -955,7 +1035,11 @@ status: 200
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -1003,7 +1087,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -1041,7 +1129,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:03:02Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -1089,7 +1181,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:03:02Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -1127,7 +1223,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:03:02Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with cache_unwritable
@@ -1191,7 +1291,11 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:03:02Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -1229,7 +1333,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:03:02Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -1320,7 +1428,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 2,
+  "cleared": 3,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1395,7 +1503,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:03:02Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -1488,7 +1600,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 2,
+  "cleared": 3,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1563,7 +1675,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:03:02Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---

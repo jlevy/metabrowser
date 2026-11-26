@@ -129,6 +129,13 @@ $ node tests/dom/treemap-compact-session.js
       ]
     },
     {
+      "step": "refresh keeps the old map until the completed rollup arrives",
+      "refreshes": 1,
+      "previousTreeKeptWhileScanning": true,
+      "sameCanvasPaintsTheChangedTree": true,
+      "focusedCellKept": "src/lib"
+    },
+    {
       "step": "pointing at the Python legend entry",
       "marked": [
         "src/lib/app.py",

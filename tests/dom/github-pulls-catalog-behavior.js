@@ -312,7 +312,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   assert(
     endless.requests.every(({ method, route }) => method === "GET" && /limit=100&/u.test(route)),
   );
-  assert.deepEqual([...notices], [JSON.stringify([null, "Updated just now"])]);
+  assert.deepEqual([...notices], [JSON.stringify([null, ""])]);
   endless.dispose();
 
   // A reader parked at the tail while GitHub's pages arrive: progress in the crawl's words
@@ -570,7 +570,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   const refreshRace = rig(panel);
   refreshRace.state.refreshing = false;
   await refreshRace.controller.start({ shown: true });
-  assert.match(refreshRace.model().connection.text, /Fetching pull requests|Updated /u);
+  assert.equal(refreshRace.model().connection.text, "");
   const oldVersion = refreshRace.model().rowsVersion;
   refreshRace.state.automatic = false;
   refreshRace.state.generation = "two";
@@ -586,10 +586,10 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   assert.equal(refreshRace.waiting.length, 0);
   assert.equal(refreshRace.model().rowsVersion, oldVersion);
   assert.equal(refreshRace.model().rows[0].number, 8000);
-  // Rows are held, so the refresh runs under their plain age, breathing, with no spinner.
+  // Held rows stay usable while the refresh runs, with no redundant freshness line.
   assert.equal(refreshRace.model().connection.state, "connected");
   assert.equal(refreshRace.model().connection.refreshing, true);
-  assert.match(refreshRace.model().connection.text, /^Updated /u);
+  assert.equal(refreshRace.model().connection.text, "");
   assert.equal(refreshRace.model().connection.canRefresh, false);
   assert.equal(refreshRace.controller.snapshot().timer, "fast");
   refreshRace.controller.onVisibilityChange();

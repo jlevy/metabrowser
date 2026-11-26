@@ -33,6 +33,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import timedelta
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -153,6 +154,8 @@ def _record(
     )
     clock = [FETCHED_AT]
     monkeypatch.setattr(pull_list, "utc_now", lambda: clock[0])
+    elapsed = count(step=300_000_000)
+    monkeypatch.setattr(pull_list_refresh, "monotonic_ns", elapsed.__next__)
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
     online = scenario(origin)
 

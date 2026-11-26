@@ -142,6 +142,14 @@
     return Object.freeze({ initialView, status: "ready", views: Object.freeze(views) });
   }
 
+  /** @type {WeakMap<HTMLElement, NonNullable<MetabrowserPublicViewRenderHandle["refresh"]>>} */
+  const refreshers = new WeakMap();
+
+  /** @param {HTMLElement} container @param {MetabrowserPublicRenderContext} context */
+  async function refresh(container, context) {
+    return (await refreshers.get(container)?.(context)) === true;
+  }
+
   /**
    * Mount one registered renderer and bind its handle to a staged or active
    * lifecycle. A cancellation owns a late async handle, while a render failure
@@ -159,13 +167,14 @@
    * @returns {Promise<"mounted" | "cancelled" | "error">}
    */
   async function mount(container, renderer, context, disposers, options = {}) {
-    /** @type {{disposed: boolean, handle: {dispose?: () => void, ready?: Promise<void>} | null}} */
+    /** @type {{disposed: boolean, handle: MetabrowserPublicViewRenderHandle | null}} */
     const record = { disposed: false, handle: null };
     disposers.push(() => {
       if (record.disposed) {
         return;
       }
       record.disposed = true;
+      refreshers.delete(container);
       // The net runs before the view's own dispose, which may take its DOM, and the keys
       // attached inside it, out of the container. Detaching twice is harmless.
       releaseShortcutsWithin(container);
@@ -180,7 +189,7 @@
       const rendered = await Promise.resolve(renderer.render(container, context));
       const handle =
         rendered && typeof rendered === "object"
-          ? /** @type {{dispose?: () => void, ready?: Promise<void>}} */ (rendered)
+          ? /** @type {MetabrowserPublicViewRenderHandle} */ (rendered)
           : null;
       if (record.disposed) {
         // Rendered after the net ran: it is cast again over what this render attached.
@@ -196,6 +205,9 @@
         return "cancelled";
       }
       options.afterMount?.(container);
+      if (typeof handle?.refresh === "function") {
+        refreshers.set(container, handle.refresh.bind(handle));
+      }
       return "mounted";
     } catch (error) {
       // A render that failed may have attached keys first, and the error state below
@@ -499,6 +511,7 @@
     createLifecycle,
     mount,
     prepare,
+    refresh,
     selectTab,
     setActiveView,
     settleFaces,

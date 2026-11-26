@@ -119,7 +119,7 @@ export function mountFileOverviewPanel(
       // The map's box is decided by the breakdown's answer, the one the first paint
       // waits for below, so it is there or not from that paint on.
       onSnapshot: (snapshot) => treemap.follow(snapshot),
-      onRetry: () => treemap.refresh(),
+      onRetry: () => void treemap.refresh(),
     },
   );
 
@@ -148,7 +148,13 @@ export function mountFileOverviewPanel(
     totals.dispose();
     unmountControls();
   }
-  return Object.freeze({ dispose, ready });
+  return Object.freeze({
+    dispose,
+    ready,
+    async refresh() {
+      await Promise.all([breakdown.refresh(), treemap.refresh()]);
+    },
+  });
 }
 
 /**

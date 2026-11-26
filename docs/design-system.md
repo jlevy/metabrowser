@@ -307,8 +307,8 @@ accompanies.** An age, an update or fetch time, a count, a size, a row’s secon
 note, or a caption is never set a step smaller than the text beside it: it steps back by
 its ink, muted, not by its size.
 So “Fetched just now via GitHub CLI” at the end of a pull request’s author’s row reads
-at the body size of the sentence before it, and “Updated just now” in the Pulls tab at
-the list size of the rows under it, by one rule.
+at the body size of the sentence before it, and the repository count in the Pulls tab
+reads at the list size of the rows under it.
 
 The chrome has two text sizes, and the one region set apart is the navigation column,
 which takes the smaller one throughout, its metadata and its header path included: it is
@@ -1410,8 +1410,9 @@ the control does, not from where the answer comes from:
   on every page, as a circular arrow named Refresh.
   The server writes it into the page, glyph and all, so nothing in the header appears or
   moves after the first paint.
-  A control that waits for a refresh already running stays in its place,
-  `aria-disabled`, and a press does nothing; an icon button’s glyph dims while it waits.
+  While a refresh is running, the button stays in place with `aria-disabled` and a
+  spinner in the glyph’s slot.
+  A quick press shows the spinner briefly, including when the data was already fresh.
 - **One Refresh for the page.** The Refresh at the top of the navigation refreshes
   everything the page holds that can be read again, each part through the path it
   already had: the mirror’s or origin’s fetch, the pull request page in the main pane,
@@ -1424,8 +1425,10 @@ the control does, not from where the answer comes from:
   in front and what holds the main pane, then what is behind the other tabs, so a tab
   turned to next is already fresh.
   Within each half the fetch comes first, since every other part reads what it brings.
-  The glyph waits while the parts on screen refresh, and only then; each part shows its
-  own busy state while it runs.
+  The button waits while the parts on screen refresh.
+  Each part keeps its own busy state while it runs.
+  With Pulls in front, the tooltip gives the time and duration of the last completed
+  list refresh when both are available.
   `static/refresh-plan.js` holds the one order, and `cli-ui-refresh-plan.tryscript.md`
   shows it for each screen.
   A pull request’s page has no Refresh of its own, and a mirror’s freshness row says
@@ -3897,10 +3900,10 @@ holds the one helper and the one rule in source.
 | Stack group | A row of the tree: the chevron, then “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no icon, the stack’s size as a count summary, “· 4 pulls” ([Heading Tallies](#heading-tallies)), and its age at the row’s end; its Whole stack row and its pull requests one icon slot and gap in, that row’s Layers glyph and each state icon under the label’s start, and each title under “Whole stack” | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total bold ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)), the words in the line’s regular weight, and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
-| Refresh | The navigation’s Refresh, at the top of the navigation pane, just before the Metabrowser menu’s gear, on every page and under every tab, from the first paint, so the header never moves | With Pulls in front it refreshes the list and the pull request page beside it first, then the rest of the page. The update age stays below the repository summary. |
-| Connection | The second, muted line of the navigation metadata line, one live status: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures, which wraps only when it is longer than the pane | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
+| Refresh | The navigation’s Refresh, at the top of the navigation pane, just before the Metabrowser menu’s gear, on every page and under every tab, from the first paint, so the header never moves | With Pulls in front it refreshes the list and the pull request page beside it first, then the rest of the page. The tooltip gives the time and duration of the last completed list refresh. |
+| Connection | The second, muted line of the navigation metadata line, one live status: the shared small gray spinner and “Fetching pull requests…” while no rows are shown, and actionable copy when a load is incomplete or fails, which wraps only when it is longer than the pane | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
-| Refresh | `.icon-btn`, the gear’s primitive, drawn by the server with its glyph, a circular arrow, and dimmed while the parts on screen refresh ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)) | For the list and the pull request page, Refresh checks GitHub for changes. See [Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page). |
+| Refresh | `.icon-btn`, the gear’s primitive, drawn by the server with its glyph, a circular arrow, with a spinner in its place after a press ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)) | For the list and the pull request page, Refresh checks GitHub for changes. See [Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page). |
 
 A pull request is a run and a last line, one item, and two targets, because a pane is
 narrower than its parts.
@@ -6572,8 +6575,8 @@ without a browser.
 Under each main tab’s toolbar, a line or two says what the list below holds and how
 current it is: the Files totals, “12,797 files (413.8 MB)” over “+ 248,189 ignored (10.1
 GB)”, and the filter’s remarks under them; the Commits tally, “10,044 commits begun 1y
-ago”; and the Pulls count, “381 PRs on owner/repo”, over its connection line, “Updated
-just now” or what keeps the list from refreshing.
+ago”; and the Pulls count, “381 PRs on owner/repo”, with a connection line for first
+load, incomplete results, and failures.
 All of them are one component, `.nav-metadata` in `static/styles.css`. They were three
 recipes, and the reader saw it: 13px text 6px under the Files filters, 13px text centred
 in the Commits slot, and 12px muted text with no space above it under the Pulls filters.
@@ -8046,8 +8049,9 @@ that is not loading, and it drew the eye to a wait the reader was not making.
 Instead, the text a refresh is checking **breathes**: its opacity eases down and back
 once every `--refreshing-text-period`, starting only after `--loading-state-delay`, so a
 refresh that lands within the quiet period shows nothing.
-A status text that breathes, such as a page’s age line or the Pulls connection row’s
-text, carries `aria-busy="true"` while it does.
+A status text that breathes, such as a page’s age line or a retry notice, carries
+`aria-busy="true"` while it does.
+The navigation’s Refresh shows its own spinner after a press.
 Names and titles that breathe sit in rows that stay usable links and tree items, so
 their breathing is paint alone and nothing marks them busy.
 

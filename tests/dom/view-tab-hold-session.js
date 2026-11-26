@@ -16,6 +16,7 @@
 // probe and the shell services renderFile only notifies are doubles. Nothing here
 // restates the order the production code runs in.
 
+const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -99,11 +100,23 @@ function createShell() {
   /** The Overview's readiness, one per held mount. @type {Array<() => void>} */
   const holds = [];
   let hold = true;
+  let releaseRefresh;
   const renderer = (viewId) => ({
     render(container) {
       mounts[viewId] = (mounts[viewId] ?? 0) + 1;
       container.textContent = `${viewId} of ${container.closest("[data-rendered-path]")?.dataset.renderedPath}`;
-      if (viewId !== "overview" || !hold) {
+      if (viewId === "treemap") {
+        return {
+          async refresh(context) {
+            await new Promise((resolve) => {
+              releaseRefresh = resolve;
+            });
+            container.textContent = context.raw.content;
+            return true;
+          },
+        };
+      }
+      if (!hold) {
         return undefined;
       }
       return { ready: new Promise((resolve) => holds.push(() => resolve(undefined))) };
@@ -217,9 +230,11 @@ function createShell() {
       return claim;
     },
     /** Begin the render of a claimed file; resolves as renderFile does. */
-    render(data, claim, preferredViewId) {
-      return sandbox.renderFile(data, preferredViewId, claim, { viewComposition });
+    render(data, claim, preferredViewId, refreshMounted = false) {
+      return sandbox.renderFile(data, preferredViewId, claim, { viewComposition, refreshMounted });
     },
+    releaseRefresh: () => releaseRefresh(),
+    mountedView: () => preview.querySelector(':scope > [data-active-view="true"]'),
     /** The selection settled with content, as openedFileOutcome records it. */
     opened(claim) {
       sandbox.previewPane.settle(claim, "content");
@@ -361,6 +376,30 @@ async function choiceWhileAnotherFileIsStaged() {
   return { held, after: await commit(shell, opening) };
 }
 
+async function rereadMountedTreemap() {
+  const shell = createShell();
+  const first = shell.claim("src");
+  await shell.render(folder("src"), first, "treemap");
+  shell.opened(first);
+  const before = shell.mountedView();
+  const reread = shell.claim("src");
+  const pending = shell.render(
+    { ...folder("src"), content: "updated map" },
+    reread,
+    "treemap",
+    true,
+  );
+  await settle();
+  const held = shell.state();
+  assert.equal(held.staged, null, "a reread does not stage an already mounted live view");
+  assert.equal(shell.mountedView(), before, "the old map stays mounted while the request runs");
+  const oldContent = before.textContent;
+  shell.releaseRefresh();
+  assert.equal(await pending, true);
+  assert.equal(shell.mountedView(), before, "the same map receives the changed data");
+  return { held, oldContent, newContent: before.textContent, after: shell.state() };
+}
+
 async function main() {
   const result = {
     noChoice: await noChoice(),
@@ -370,6 +409,7 @@ async function main() {
     namedForAnotherFile: await namedForAnotherFile(),
     choiceWhileStagedAgain: await choiceWhileStagedAgain(),
     choiceWhileAnotherFileIsStaged: await choiceWhileAnotherFileIsStaged(),
+    rereadMountedTreemap: await rereadMountedTreemap(),
   };
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

@@ -6571,7 +6571,7 @@ function beginViewCompositionLoad() {
 }
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function selectFile(path, preferredViewId) {
+async function selectFile(path, preferredViewId, refreshMounted = false) {
   // Folder routes carry a trailing slash and the served root is the empty
   // path, so the route says whether this selection is a folder before its
   // envelope arrives. The placeholder names what is loading.
@@ -6624,6 +6624,7 @@ async function selectFile(path, preferredViewId) {
         // settled-result wrapper now because an HTTP failure may mean this
         // selection never reaches renderFile.
         const viewComposition = beginViewCompositionLoad();
+        const renderOptions = { viewComposition, refreshMounted };
 
         // Three-way cache state:
         //   - hot: in fileCache and not flagged → serve from cache.
@@ -6636,7 +6637,7 @@ async function selectFile(path, preferredViewId) {
         if (cached && !needsRevalidate && !activeFiles.has(path)) {
           try {
             navigationController.canonicalizePath(path, cached.kind === "folder");
-            if (!(await renderFile(cached, preferredViewId, previewClaim, { viewComposition }))) {
+            if (!(await renderFile(cached, preferredViewId, previewClaim, renderOptions))) {
               return { status: "cancelled" };
             }
             maybeOpenLiveStream(path, cached);
@@ -6699,7 +6700,7 @@ async function selectFile(path, preferredViewId) {
                 loadingIndicatorTimer = null;
               }
               navigationController.canonicalizePath(path, cached.kind === "folder");
-              if (!(await renderFile(cached, preferredViewId, previewClaim, { viewComposition }))) {
+              if (!(await renderFile(cached, preferredViewId, previewClaim, renderOptions))) {
                 return { status: "cancelled" };
               }
               maybeOpenLiveStream(path, cached);
@@ -6753,7 +6754,7 @@ async function selectFile(path, preferredViewId) {
             loadingIndicatorTimer = null;
           }
           navigationController.canonicalizePath(path, data.kind === "folder");
-          if (!(await renderFile(data, preferredViewId, previewClaim, { viewComposition }))) {
+          if (!(await renderFile(data, preferredViewId, previewClaim, renderOptions))) {
             return { status: "cancelled" };
           }
           maybeOpenLiveStream(path, data);
@@ -6968,6 +6969,7 @@ function createFilePreviewStage(preview) {
  * @param {{
  *   isCurrent?: () => boolean,
  *   onCommit?: () => void,
+ *   refreshMounted?: boolean,
  *   viewComposition?: ReturnType<typeof beginViewCompositionLoad>,
  * }} [options]
  * @returns {Promise<boolean>}
@@ -7002,6 +7004,52 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         return false;
       }
       const compositionKind = data.kind || data.type || "unknown";
+      const preview = document.getElementById("preview-pane");
+      if (!preview) {
+        return false;
+      }
+      const ctx = {
+        path: data.path,
+        kind: compositionKind,
+        ext: data.ext,
+        size: data.size,
+        frontmatter: data.frontmatter || {},
+        body: typeof data.content === "string" ? data.content : data.body || "",
+        raw: data,
+        fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
+      };
+      if (
+        options.refreshMounted &&
+        compositionKind === "folder" &&
+        preview.dataset.renderedPath === data.path
+      ) {
+        const active = preview.querySelector(':scope > [data-active-view="true"]');
+        if (
+          active instanceof HTMLElement &&
+          (await viewComposition.composition.refresh(active, ctx))
+        ) {
+          if (!renderIsCurrent()) {
+            return false;
+          }
+          for (const hidden of preview.querySelectorAll(":scope > [data-plugin-view]")) {
+            if (hidden !== active && hidden instanceof HTMLElement) {
+              await viewComposition.composition.refresh(hidden, ctx);
+              if (!renderIsCurrent()) {
+                return false;
+              }
+            }
+          }
+          window.metabrowser.folderContext.seed(
+            data.path,
+            /** @type {Parameters<Window["metabrowser"]["folderContext"]["seed"]>[1]} */ (data),
+          );
+          options.onCommit?.();
+          return true;
+        }
+        if (!renderIsCurrent()) {
+          return false;
+        }
+      }
       var composition = await viewComposition.composition.prepare({
         kind: compositionKind,
         views: Array.isArray(data.views) ? data.views : [],
@@ -7021,10 +7069,6 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         },
       });
       if (composition.status === "cancelled") {
-        return false;
-      }
-      const preview = document.getElementById("preview-pane");
-      if (!preview) {
         return false;
       }
       const stage = createFilePreviewStage(preview);
@@ -7173,16 +7217,6 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         /** @type {(() => Promise<unknown>) | null} */
         let mountInitialView = null;
         if (pluginRenders?.length) {
-          var ctx = {
-            path: data.path,
-            kind: compositionKind,
-            ext: data.ext,
-            size: data.size,
-            frontmatter: data.frontmatter || {},
-            body: typeof data.content === "string" ? data.content : data.body || "",
-            raw: data,
-            fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
-          };
           for (var pi = 0; pi < pluginRenders.length; pi++) {
             var pr = pluginRenders[pi];
             var container = stage.querySelector(`[data-plugin-view="${pr.tabId}"]`);
@@ -7628,7 +7662,7 @@ function rereadFiles() {
   var shownView = document.getElementById("preview-pane")?.dataset.activeView || undefined;
   return Promise.all([
     tree,
-    held.owner === "file" && held.path !== null && selectFile(held.path, shownView),
+    held.owner === "file" && held.path !== null && selectFile(held.path, shownView, true),
   ]);
 }
 window.addEventListener("metabrowser:file-ages-landed", rereadFiles);

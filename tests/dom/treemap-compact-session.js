@@ -728,6 +728,37 @@ async function main() {
     ...summary(page),
   });
 
+  const refreshing = mount();
+  refreshing.handle.follow(breakdownAnswer("done", TREE));
+  refreshing.watch.apply({ index_status: "done", node: TREE });
+  const canvas = refreshing.viewport.children[0];
+  refreshing.key("ArrowRight");
+  const focusedPath = (map) => map.cells[map.focused].path;
+  const selected = focusedPath(refreshing.inspect());
+  const oldPaths = refreshing.inspect().cells.map((cell) => cell.path);
+  await refreshing.handle.refresh();
+  refreshing.handle.follow(breakdownAnswer("scanning", TREE, "pending"));
+  refreshing.watch.apply({ index_status: "scanning", node: null });
+  assert.equal(refreshing.viewport.children[0], canvas, "a pending rollup keeps the old canvas");
+  assert.deepEqual(
+    refreshing.inspect().cells.map((cell) => cell.path),
+    oldPaths,
+  );
+  const changed = dir("src", "src", [...TREE.children, file("new.py", "src/new.py", 4000, ".py")]);
+  refreshing.watch.apply({ index_status: "done", node: changed });
+  refreshing.handle.follow(breakdownAnswer("done", changed));
+  assert.equal(refreshing.viewport.children[0], canvas, "the completed rollup reuses the canvas");
+  assert.ok(refreshing.inspect().cells.some((cell) => cell.path === "src/new.py"));
+  assert.equal(focusedPath(refreshing.inspect()), selected, "refresh keeps the chosen cell");
+  steps.push({
+    step: "refresh keeps the old map until the completed rollup arrives",
+    refreshes: refreshing.watch.refreshes,
+    previousTreeKeptWhileScanning: true,
+    sameCanvasPaintsTheChangedTree: true,
+    focusedCellKept: selected,
+  });
+  refreshing.handle.dispose();
+
   const entry = { tag: "legend-entry" };
   page.hover.enter({ population: "all", key: "python", anchor: entry, marks: "family" });
   const onEntry = page.inspect();

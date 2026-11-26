@@ -2044,7 +2044,7 @@ async def index(
     # tab. It is here, glyph and all, from the first paint (shell_glyphs.py), so nothing in
     # the header appears or moves after it. A press refreshes what the page shows, the parts
     # on screen first (static/refresh-plan.js, which wires it once `shell-tools` loads).
-    # Its cost is page bytes, not a request: the button is 334 bytes as written. With it and
+    # Its cost is page bytes, not a request. With the original button and
     # refresh-plan.js's entry in the `shell-tools` bundle, a folder's page grew from 67,950
     # to 68,402 bytes, and from 17,772 to 17,881 as sent compressed, against main at
     # a96ac3304, measured 2026-11-25 with `render_shells` and `sent_body_bytes` in
@@ -2052,7 +2052,9 @@ async def index(
     # size by a few bytes from run to run).
     nav_refresh = (
         '\n        <button class="icon-btn nav-refresh" id="nav-refresh" type="button"'
-        f' aria-label="Refresh" data-tip-text="Refresh">{REFRESH_SVG}</button>'
+        f' aria-label="Refresh" data-tip-text="Click to refresh.">{REFRESH_SVG}'
+        '<span class="spinner spinner-sm nav-refresh-spinner" aria-hidden="true"></span>'
+        "</button>"
     )
     pulls_container = ""
     if pulls_tab:

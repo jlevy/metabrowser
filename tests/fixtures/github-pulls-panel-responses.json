@@ -284,7 +284,11 @@
     "{\"number\": 9, \"title\": \"spam\", \"state\": \"closed\", \"draft\": false, \"merged_at\": null, \"author\": null, \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T19:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"spam\", \"head_repository\": null, \"labels\": [\"invalid\"], \"head_oid\": \"0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd\", \"merged\": false}",
     "{\"number\": 8, \"title\": \"Say more in the guide\", \"state\": \"closed\", \"draft\": false, \"merged_at\": \"2026-09-16T18:00:00Z\", \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T18:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"guide-more\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"8ae27617c9c475851b67ee69433d008836d112ba\", \"merged\": true}",
     "{\"number\": 7, \"title\": \"Count to two in the app\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"forker\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"count-to-two\", \"head_repository\": \"forker/demo\", \"labels\": [\"enhancement\"], \"head_oid\": \"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\", \"merged\": false}"
-   ]
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "more_done": {
@@ -324,6 +328,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
    }
   }
  },
@@ -365,7 +373,11 @@
    "rows": [
     "{\"number\": 6, \"title\": \"Work item 6\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:06:00Z\", \"updated_at\": \"2026-09-17T08:06:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-6\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 5, \"title\": \"Work item 5\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:05:00Z\", \"updated_at\": \"2026-09-17T08:05:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-5\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}"
-   ]
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "open_current": {
@@ -504,7 +516,11 @@
     "{\"number\": 7, \"title\": \"Count to two in the app\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"forker\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"count-to-two\", \"head_repository\": \"forker/demo\", \"labels\": [\"enhancement\"], \"head_oid\": \"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\", \"merged\": false}",
     "{\"number\": 6, \"title\": \"Work item 6\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:06:00Z\", \"updated_at\": \"2026-09-17T08:06:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-6\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 5, \"title\": \"Work item 5\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:05:00Z\", \"updated_at\": \"2026-09-17T08:05:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-5\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}"
-   ]
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "closed_current": {
@@ -545,7 +561,11 @@
    "rows": [
     "{\"number\": 9, \"title\": \"spam\", \"state\": \"closed\", \"draft\": false, \"merged_at\": null, \"author\": null, \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T19:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"spam\", \"head_repository\": null, \"labels\": [\"invalid\"], \"head_oid\": \"0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd\", \"merged\": false}",
     "{\"number\": 8, \"title\": \"Say more in the guide\", \"state\": \"closed\", \"draft\": false, \"merged_at\": \"2026-09-16T18:00:00Z\", \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T18:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"guide-more\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"8ae27617c9c475851b67ee69433d008836d112ba\", \"merged\": true}"
-   ]
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "not_due": {
@@ -585,7 +605,11 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:00:00Z",
+     "duration_ms": 300
+    }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0"
   }
@@ -636,6 +660,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
    }
   }
  },
@@ -676,7 +704,11 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:00:00Z",
+     "duration_ms": 300
+    }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0"
   }
@@ -718,6 +750,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
    }
   }
  },
@@ -758,6 +794,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
    }
   }
  },
@@ -798,7 +838,11 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:01:01Z",
+     "duration_ms": 300
+    }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0"
   }
@@ -840,7 +884,11 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:01:01Z",
+     "duration_ms": 300
+    }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0"
   }
@@ -981,7 +1029,11 @@
     "{\"number\": 9, \"title\": \"spam\", \"state\": \"closed\", \"draft\": false, \"merged_at\": null, \"author\": null, \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T19:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"spam\", \"head_repository\": null, \"labels\": [\"invalid\"], \"head_oid\": \"0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd\", \"merged\": false}",
     "{\"number\": 8, \"title\": \"Say more in the guide\", \"state\": \"closed\", \"draft\": false, \"merged_at\": \"2026-09-16T18:00:00Z\", \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T18:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"guide-more\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"8ae27617c9c475851b67ee69433d008836d112ba\", \"merged\": true}",
     "{\"number\": 7, \"title\": \"Count to two in the app\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"forker\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"count-to-two\", \"head_repository\": \"forker/demo\", \"labels\": [\"enhancement\"], \"head_oid\": \"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\", \"merged\": false}"
-   ]
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
+   }
   }
  },
  "probe_scanned_more": {
@@ -1021,6 +1073,10 @@
    "next_after": null,
    "rows": {
     "same_as": "more_window"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1129,6 +1185,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1169,6 +1229,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1209,6 +1273,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1249,6 +1317,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1289,6 +1361,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1329,6 +1405,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1369,6 +1449,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1409,6 +1493,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1449,6 +1537,10 @@
    "next_after": 7,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1489,7 +1581,11 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:01:21Z",
+     "duration_ms": 300
+    }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0"
   }
@@ -1725,7 +1821,11 @@
    "truncated": false,
    "limit": 0,
    "next_after": null,
-   "rows": []
+   "rows": [],
+   "refresh_timing": {
+    "finished_at": "2026-10-01T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "not_github": {

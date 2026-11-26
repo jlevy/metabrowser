@@ -115,6 +115,12 @@ def source_pull_list_refresh(slug: str, name: PullListName) -> str:
     return f"{source_pulls_directory(slug)}/list-{name}.refresh.json"
 
 
+def source_pull_list_timing(slug: str) -> str:
+    """Return the last completed GitHub catalog refresh’s timing record."""
+
+    return f"{source_pulls_directory(slug)}/catalog.refresh-timing.json"
+
+
 def source_pull_timeline(slug: str, number: int) -> str:
     """Return the bounded Conversation projection beside the pull request record."""
 
