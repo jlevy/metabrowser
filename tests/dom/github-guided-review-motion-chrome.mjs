@@ -123,6 +123,7 @@ const RECORDER = `(() => {
       }
     },
     count: () => state.frames.length,
+    t0: () => state.t0,
     stop() {
       state.on = false;
       return state.frames;
@@ -246,8 +247,14 @@ try {
       frames: frames.length,
       shows: settled?.key ?? null,
       first_shown_ms: frames.find((frame) => frame.key === settled?.key)?.t ?? null,
+      settled_ms: settled?.t ?? null,
       loading_shown: frames.some((frame) => frame.loading || frame.waiting),
       moved,
+      // The requests behind it, by when each started and ended since the recording began.
+      requests: await evaluate(`performance.getEntriesByType("resource")
+        .filter((entry) => /guided-review|pull-markdown|pull-rendered|kpress|diff/.test(entry.name))
+        .map((entry) => [Math.round(entry.startTime - window.__guideMotion.t0()), Math.round(entry.responseEnd - window.__guideMotion.t0()), new URL(entry.name).pathname.split("/").slice(-1)[0] + new URL(entry.name).search.slice(0, 40), entry.serverTiming.map((timing) => timing.name + "=" + Math.round(timing.duration)).join(",")])
+        .filter(([, end]) => end >= -50)`),
     };
     phase(`recorded ${name}: ${frames.length} frames`);
     check(
@@ -292,26 +299,21 @@ try {
     check("the page opens on the overview", /^Overview/.test(opened?.key ?? ""), opened?.key);
     // Warm: step 1 is the overview's own answer.
     await record("pull: Next to step 1, warm", true, arrow("Next step"));
+    // Cold: the last step, from the list, two moves from step 1, which only the step after
+    // step 1 is read ahead of. It cites the guide's documents.
     const second = await ahead("step 2 is read ahead", read("number=7&step=2"));
-    await record("pull: Next to step 2, read ahead", second, arrow("Next step"));
-    // Cold, unless it is next to a step shown: the last step, from the list.
     const last = await count();
-    const cold = !(await evaluate(read(`number=7&step=${last}`)));
-    const lastShown = await record(
-      `pull: the last step from the list, ${cold ? "cold" : "read ahead"}`,
-      !cold,
-      listed(last),
-    );
+    check("the guide has a step two moves past step 1", last >= 3, String(last));
+    check("the last step is not read ahead", !(await evaluate(read(`number=7&step=${last}`))));
+    const lastShown = await record("pull: the last step from the list, cold", false, listed(last));
     check(
       "the last step cites its documents",
       (lastShown?.pieces ?? []).some(([name]) => name.includes("diff-file")),
       JSON.stringify(lastShown?.pieces),
     );
-    const previous = await ahead(
-      "the step before the last is read ahead",
-      read(`number=7&step=${last - 1}`),
-    );
-    await record("pull: Previous from the last step, read ahead", previous, arrow("Previous step"));
+    // Warm: the step before it, read ahead of step 1, and the last step again, kept.
+    await record("pull: Previous to step 2, read ahead", second, arrow("Previous step"));
+    await record("pull: Next to the last step again, kept", true, arrow("Next step"));
     // Another tab and back: the guide is mounted again over what the document kept.
     await evaluate(tab("Conversation"));
     await waitFor(`document.querySelector(".github-pull-guided-review") === null`);
