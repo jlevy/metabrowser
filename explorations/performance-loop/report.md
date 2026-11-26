@@ -133,6 +133,8 @@ against one that did.
 | exp-110 | [An Acquired Store Still Needs Comparison Admission](experiments/exp-110-existing-store-admission.md) | H127 | `exact idle comparison request admission` | diagnostic |
 | exp-111 | [Separate the First Visible Changes Hunk From File-Card Readiness](experiments/exp-111-visible-changes-hunk.md) | H127, H128 | `first visible hunk on the selected pull request` | diagnostic |
 | exp-112 | [Give Selected Conversation Metadata the Next Free Provider Slot](experiments/exp-112-selected-provider-handoff.md) | H128 | `optional admissions before exact selected Conversation` | diagnostic |
+| exp-113 | [Fetch Exact Changes Commits Before the Full Origin](experiments/exp-113-origin-fetch-order.md) | H127, H132 | `first readable exact Changes comparison` | diagnostic |
+| exp-114 | [Negotiate the Broad Fetch With the Exact Commits Already Obtained](experiments/exp-114-origin-negotiation-hints.md) | H133 | `overlay bytes after exact and wildcard fetches` | diagnostic |
 
 ## Absolute numbers, per condition
 
