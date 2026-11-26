@@ -1,0 +1,24 @@
+created_at: 2026-11-26T09:04:40.736Z
+ops:
+  - bead_id: is-01m8be438xa5kc27fpbd5rkbcy
+    external_id: cdbe63d3-7e97-4a12-b62d-a72c900972ef
+    kind: update_issue
+    patch:
+      hold: null
+      resolution: null
+      slot: in_progress
+      status: in_progress
+  - bead_id: is-01m8be438xa5kc27fpbd5rkbcy
+    block: |-
+      ⟦tbd⟧
+      `mb-u16j` · epic · in_progress · P2
+      Children: 2 (0 ready)
+      Bead: `tbd show mb-u16j`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: cdbe63d3-7e97-4a12-b62d-a72c900972ef
+    kind: splice_description
+provider: linear
+run_id: 01m8bhk3s083hpwmsqacbksj24
+type: in
