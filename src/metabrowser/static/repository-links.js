@@ -33,8 +33,8 @@
 // rule).
 //
 // A pull request's text has its page as its base on the server (pull_text_render.py), so
-// a path-relative reference such as `docs/plan.md` arrives as github.com resolves it,
-// `github.com/<owner>/<repo>/pull/docs/plan.md`, where github.com shows a missing page.
+// a path-relative reference such as `docs/development.md` arrives as github.com resolves it,
+// `github.com/<owner>/<repo>/pull/docs/development.md`, where github.com shows a missing page.
 // Read with a text context, such an address names the repository's file at the text's
 // commit, the head, and opens where Metabrowser can show that file (`textPath`).
 //

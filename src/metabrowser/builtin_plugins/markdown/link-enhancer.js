@@ -159,8 +159,10 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
           if (localized?.kind === "view") {
             const target = navigationTarget(localized.target);
             anchor.setAttribute("href", mb.navigation.href(target));
+            // The app's own tooltip (devtools/check_tooltips.py), unless the author gave the
+            // link a title of their own.
             if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
-              anchor.setAttribute("title", repositoryLinks?.WORKING_TREE_TITLE ?? "");
+              anchor.setAttribute("data-tip-text", repositoryLinks?.WORKING_TREE_TITLE ?? "");
             }
             internalTargets.set(anchor, target);
           } else if (localized?.kind === "route") {
