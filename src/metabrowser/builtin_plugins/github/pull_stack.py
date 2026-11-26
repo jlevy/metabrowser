@@ -51,6 +51,15 @@ which a layer changes, is measured, so the size and the file count describe one 
 restricted to its layers' files has no size, since no pair of commits pushes just those
 files, and neither has one of more than :data:`MAX_SIZED_STACK_FILES` files.
 
+The size is asked to an answer once a kept comparison, and the kept manifest is marked
+when it has one (:func:`_settle_size`): a size, a reason Git has none, or that the
+comparison is not one that is measured. A read that finds the manifest kept and marked,
+in this process or a later one, as every ``metab --api`` read is, runs no Git for the
+size. One found kept and not marked, as a build before the mark left it, is asked by the
+read that loads it, which lists the plain diff once more, so that read waits as a moved
+stack's first read does. A measurement that ran out of time is an answer, and is not run
+again until a member moves; one Git failed, or whose read was cancelled, is asked again.
+
 A member with no usable record (none cached, another account's, or one with no
 comparison) leaves the stack ``pending``, with no comparison: the page asks ``pull-refresh``
 for it. A member whose catalog row names a newer head than its record is named in
@@ -836,10 +845,11 @@ def _sized(plain: ChangeSetManifest, restricted: ChangeSetManifest) -> bool:
     )
 
 
-async def _measure(location: GitLocation, pair: StackPair) -> None:
-    """Measure and keep the size of *pair*'s two commits; a size Git cannot measure leaves
-    the stack without one, as a pull request's row is left (``_measure_size`` in
-    :mod:`.pull_files_refresh`)."""
+async def _measure(location: GitLocation, pair: StackPair) -> bool:
+    """Measure and keep the size of *pair*'s two commits, and say whether Git answered: a
+    size, or a reason it has none, which leaves the stack without one, as a pull request's
+    row is left (``_measure_size`` in :mod:`.pull_files_refresh`). False where Git failed,
+    which a later read may ask again."""
 
     from metabrowser.git.change_size import change_size
     from metabrowser.git.process import GitError
@@ -848,6 +858,64 @@ async def _measure(location: GitLocation, pair: StackPair) -> None:
         await change_size(location, pair.base, pair.head)
     except GitError as exc:
         log.debug("a stack's size could not be measured: %r", exc)
+        return False
+    return True
+
+
+async def _settle_size(
+    published: PublishedSource,
+    source: GitDiffSource,
+    location: GitLocation,
+    pair: StackPair,
+    key: tuple[str, ...],
+    kept: ResolvedManifest,
+    plain: ChangeSetManifest | None,
+) -> None:
+    """Ask the comparison's size to an answer, once a kept manifest, and mark the manifest
+    so that no later read or process asks again (``size_settled``).
+
+    An answer is a size, a reason Git has none (``too_costly`` among them), or that the
+    comparison is not one that is measured (:func:`_sized`). The mark is kept beside the
+    store with the manifest, so a process that finds the manifest kept and marked runs no
+    Git here: a ``metab --api`` read is a process of its own, and an answer held in memory
+    alone would be asked again by every one.
+
+    *plain* is the plain listing where this read built the comparison. A manifest found
+    kept and not marked, as one a build before the mark kept, or one whose read ended
+    before its answer, has none, so the plain diff is listed again, within the listing's
+    own bounds (``MAX_MANIFEST_FILES`` and Git's timeout) and only for a comparison small
+    enough to be measured. Nothing cheaper says whether a restricted comparison is its
+    plain diff whole, and with the mark it runs once a comparison, not once a process.
+
+    Not marked, and so asked again by the next load: a listing or a measurement that Git
+    failed, and a read cancelled before its answer.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_manifest import (
+        settle_stack_size,
+        stack_size_settled,
+    )
+    from metabrowser.diff.adapters.base import DiffSourceError
+    from metabrowser.git.change_size import kept_change_size
+    from metabrowser.git.process import GitError
+
+    if await asyncio.to_thread(stack_size_settled, published, pair.number, key):
+        return
+    restricted = kept.manifest
+    measurable = not restricted.truncated and len(restricted.files) <= MAX_SIZED_STACK_FILES
+    if (
+        measurable
+        and await asyncio.to_thread(kept_change_size, location, pair.base, pair.head) is None
+    ):
+        if plain is None:
+            try:
+                plain = await source.manifest(kept.resolved)
+            except (DiffSourceError, GitError) as exc:
+                log.debug("a kept stack comparison could not be listed for its size: %r", exc)
+                return
+        if _sized(plain, restricted) and not await _measure(location, pair):
+            return
+    await asyncio.to_thread(settle_stack_size, published, pair.number, key)
 
 
 def _layers(
@@ -896,17 +964,17 @@ async def combined(published: PublishedSource, pair: StackPair) -> Combined:
             RepositoryStoreTarget(published.git_dir, published.object_format), pair.head
         )
         source = GitDiffSource(location)
+        plain: ChangeSetManifest | None = None
 
         async def compute(resolved: ResolvedComparison) -> ChangeSetManifest:
+            nonlocal plain
             plain = await source.manifest(resolved)
-            restricted = _restricted(plain, members)
-            if _sized(plain, restricted):
-                await _measure(location, pair)
-            return restricted
+            return _restricted(plain, members)
 
         manifest = await load_stack_manifest(
             published, pair.number, source, _intent(pair), key, compute
         )
+        await _settle_size(published, source, location, pair, key, manifest, plain)
         return Combined(manifest, _layers(manifest.manifest, members))
 
     return await _kept().get(key, load)

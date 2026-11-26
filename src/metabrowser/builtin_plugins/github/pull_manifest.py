@@ -14,7 +14,9 @@ A native stack keeps one too, beside its members', by the same rules
 (:func:`load_stack_manifest`): its combined comparison restricted to the files its layers
 change (:mod:`.pull_stack`), named ``stack-<n>.json`` so it never shares a file with a
 pull request of the same number, and with the stack's digest of its members in its key, so
-it never answers for the unrestricted comparison of the same two commits.
+it never answers for the unrestricted comparison of the same two commits. A stack's also
+says whether its size has been asked to an answer (``size_settled``), so that a process
+that finds it kept runs no Git to ask again.
 
 Measured 2026-11-17 on a reader's cache: 90 manifests in 9 stores, a median of 10.7 KB,
 90th percentile 44 KB, and largest 68 KB, about 500 bytes a changed file; beside them,
@@ -102,6 +104,11 @@ class _ManifestRecord(BaseModel):
     identity: tuple[str, ...] = Field(min_length=8, max_length=9)
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     document: ChangeSetDocument
+    # A stack's alone: whether its comparison's size has been asked to an answer, a size,
+    # a reason there is none, or that it is not one that is measured, so that no later
+    # process asks again (`settle_stack_size`; :mod:`.pull_stack` says what asks). False on
+    # a manifest kept before the mark existed, which is asked once.
+    size_settled: bool = False
 
 
 # What of a store read's process shapes a listing's output: Git's common options, and the
@@ -189,6 +196,20 @@ def _read(
     epoch: str | None = None,
     kind: KeptKind = "pull",
 ) -> ResolvedManifest | None:
+    record = _read_record(published, number, key, epoch=epoch, kind=kind)
+    if record is None:
+        return None
+    return ResolvedManifest(record.document.resolved, record.document.manifest)
+
+
+def _read_record(
+    published: PublishedSource,
+    number: int,
+    key: tuple[str, ...],
+    *,
+    epoch: str | None = None,
+    kind: KeptKind = "pull",
+) -> _ManifestRecord | None:
     try:
         if not private_directory_is_writable(published.home, _directory(published)):
             return None
@@ -214,7 +235,7 @@ def _read(
         or manifest.totals.files != len(manifest.files)
     ):
         return None
-    return ResolvedManifest(document.resolved, manifest)
+    return record
 
 
 def _write(
@@ -224,6 +245,8 @@ def _write(
     answer: ResolvedManifest,
     epoch: str,
     kind: KeptKind = "pull",
+    *,
+    size_settled: bool = False,
 ) -> None:
     document = ChangeSetDocument(
         schema=FILE_DIFF_SCHEMA,
@@ -233,13 +256,45 @@ def _write(
         patches={},
     )
     record = _ManifestRecord(
-        epoch=epoch, identity=_identity(key), digest=_digest(document), document=document
+        epoch=epoch,
+        identity=_identity(key),
+        digest=_digest(document),
+        document=document,
+        size_settled=size_settled,
     )
     data = record.model_dump_json(by_alias=True).encode()
     if len(data) > MAX_MANIFEST_RECORD_BYTES:
         return
     ensure_private_directory(published.home, _directory(published))
     write_private_file_atomic(published.home, _path(published, number, kind), data)
+
+
+def stack_size_settled(published: PublishedSource, number: int, key: tuple[str, ...]) -> bool:
+    """Whether stack *number*'s kept manifest of the comparison *key* names says its size has
+    been asked to an answer (:func:`settle_stack_size`). Blocking and bounded; False where
+    no such manifest is kept."""
+
+    record = _read_record(published, number, key, kind="stack")
+    return record is not None and record.size_settled
+
+
+def settle_stack_size(published: PublishedSource, number: int, key: tuple[str, ...]) -> None:
+    """Mark stack *number*'s kept manifest of the comparison *key* names as one whose size
+    has been asked to an answer, so a later process runs no Git for it. Blocking.
+
+    The manifest kept is written again as it is, under the epoch it was read at, so one
+    invalidated meanwhile stays a miss. Disposable: where none is kept, or the bank cannot
+    be written, nothing is marked and the size is asked again.
+    """
+
+    record = _read_record(published, number, key, kind="stack")
+    if record is None or record.size_settled:
+        return
+    answer = ResolvedManifest(record.document.resolved, record.document.manifest)
+    try:
+        _write(published, number, key, answer, record.epoch, "stack", size_settled=True)
+    except (OSError, PrivateStorageError):
+        log.debug("could not mark a stack manifest's size as settled")
 
 
 def invalidate_pull_manifest(

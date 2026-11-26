@@ -3486,13 +3486,9 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
                 assert set(body) <= owned, (sheet, selector, body)
     # The Diff summary's header hovers and rings as its rows do: square, the ring inside. It
     # is the shell's summary toggle, which the stack page's members toggle is too, and no
-    # plugin restates its box, hover, ring, or chevron slot (A5 of review A on #861).
-    toggle = ".summary-toggle"
-    assert shell[toggle]["border-radius"] == "0"
-    assert shell[toggle]["padding"] == "0 6px 0 var(--summary-toggle-pull)"
-    assert shell[toggle + ":hover"] == {"background": "var(--hover-bg)"}
-    assert shell[toggle + ":focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
-    assert shell[".summary-toggle-chevron"]["width"] == "var(--tree-icon-slot)"
+    # plugin restates its box, hover, ring, or chevron slot (A5 of review A on #861). The
+    # shell's own values are not repeated here: one rule holds them (B4 of review B).
+    assert {".summary-toggle", ".summary-toggle:hover", ".summary-toggle-chevron"} <= set(shell)
     for sheet, source, classes in (
         ("diff/styles.css", "diff/diff-view.js", ("diff-summary-toggle", "diff-summary-chevron")),
         (

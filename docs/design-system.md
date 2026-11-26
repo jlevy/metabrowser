@@ -4129,11 +4129,16 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   that state’s ink, and none for a state no member is in.
   In a narrow pane the ages give way first, and then the tally, its badges together,
   each cut short at its end down to a floor that keeps its count
-  (`--github-pull-tally-badge-floor`). After them and a dot, when a member was last
-  opened and when one was last updated, the latest of each, “Last opened 3d ago · Last
-  update 1h ago”, in a pull request’s ages’ freshness ink and told again as time passes
-  (`pullAge`, `retellAges`). The answer’s `states`, `opened_at`, and `updated_at` say
-  them, each member counted from its record or else its cached list row.
+  (`--github-pull-tally-badge-floor`). A tally of all four states in a row too narrow
+  for it leaves out each badge’s noun first, “12 Merged”, so the badges differ by their
+  words and not by ink alone (`tallyBadge`). That is set for four badges in a phone’s
+  375 px pane, the case measured; a narrower pane, or a longer count, still cuts a badge
+  short, and a badge cut short says its whole label in its tooltip.
+  After them and a dot, when a member was last opened and when one was last updated, the
+  latest of each, “Last opened 3d ago · Last update 1h ago”, in a pull request’s ages’
+  freshness ink and told again as time passes (`pullAge`, `retellAges`). The answer’s
+  `states`, `opened_at`, and `updated_at` say them, each member counted from its record
+  or else its cached list row.
 - **Browse code, Refresh, and the stack chip:** dropped.
   No one branch holds a stack, the page reads the stack on its own poll, and the page is
   the stack the chip would open; the row ends in the chip’s hidden strut (`rowStrut`),
@@ -4149,13 +4154,13 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   author known the row has the note alone, and with any member’s commits uncounted the
   sentence names no commits (`actionWords`). In a narrow pane a sentence of several
   names gives way in its names and its action together, each name down to a pull
-  request’s author’s floor, so neither is cut to nothing while the other is whole.
-  The freshness note says the oldest of the members’ records’ fetches, “Fetched 3d ago
-  via GitHub CLI” (`fetched_at`), so the stack is said to be no fresher than its stalest
-  record, its slot as wide as its widest age’s words, as a pull request’s is
-  (`showNote`). Offline, while a member’s record is behind and no refresh can run, it
-  says so, “Offline · fetched 3d ago via GitHub CLI”, as a pull request’s does
-  (`fetchedNote`).
+  request’s author’s floor, so neither is cut to nothing while the other is whole, and a
+  name cut short says itself in its tooltip (`sentenceActor`). The freshness note says
+  the oldest of the members’ records’ fetches, “Fetched 3d ago via GitHub CLI”
+  (`fetched_at`), so the stack is said to be no fresher than its stalest record, its
+  slot as wide as its widest age’s words, as a pull request’s is (`showNote`). Offline,
+  while a member’s record is behind and no refresh can run, it says so, “Offline ·
+  fetched 3d ago via GitHub CLI”, as a pull request’s does (`fetchedNote`).
 - **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
   base, in the shell’s merge refs, held a line tall until the stack’s answer names the
   head.
