@@ -223,17 +223,17 @@ $ node tests/dom/refresh-plan-session.js
       ],
       "asked": [
         "the button: aria-disabled=true",
-        "source: the mirror, fetched, waited for starts",
-        "source: the mirror, fetched, waited for settles",
-        "page: the pull request's page, its own refresh starts",
-        "page: the pull request's page, its own refresh settles",
-        "pulls: the list, its catalog job starts",
-        "pulls: the list, its catalog job settles",
+        "source: the freshness row's refreshNow starts",
+        "source: the freshness row's refreshNow settles",
+        "page: the part the Pulls list lends for the page beside it starts",
+        "page: the part the Pulls list lends for the page beside it settles",
+        "pulls: the part the Pulls list lends for itself starts",
+        "pulls: the part the Pulls list lends for itself settles",
         "the button: no aria-disabled",
-        "files: the tree and the pane's file or folder, read again starts",
-        "files: the tree and the pane's file or folder, read again settles",
-        "git: the history, read again starts",
-        "git: the history, read again settles"
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles"
       ]
     },
     {
@@ -247,17 +247,17 @@ $ node tests/dom/refresh-plan-session.js
       ],
       "asked": [
         "the button: aria-disabled=true",
-        "source: the mirror, fetched, waited for starts",
-        "source: the mirror, fetched, waited for settles",
-        "files: the tree and the pane's file or folder, read again starts",
-        "files: the tree and the pane's file or folder, read again settles",
+        "source: the freshness row's refreshNow starts",
+        "source: the freshness row's refreshNow settles",
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
         "the button: no aria-disabled",
-        "page: the pull request's page, its own refresh starts",
-        "page: the pull request's page, its own refresh settles",
-        "pulls: the list, its catalog job starts",
-        "pulls: the list, its catalog job settles",
-        "git: the history, read again starts",
-        "git: the history, read again settles"
+        "page: the part the Pulls list lends for the page beside it starts",
+        "page: the part the Pulls list lends for the page beside it settles",
+        "pulls: the part the Pulls list lends for itself starts",
+        "pulls: the part the Pulls list lends for itself settles",
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles"
       ]
     },
     {
@@ -271,17 +271,17 @@ $ node tests/dom/refresh-plan-session.js
       ],
       "asked": [
         "the button: aria-disabled=true",
-        "source: the mirror, fetched, waited for starts",
-        "source: the mirror, fetched, waited for settles",
-        "git: the history, read again starts",
-        "git: the history, read again settles",
+        "source: the freshness row's refreshNow starts",
+        "source: the freshness row's refreshNow settles",
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles",
         "the button: no aria-disabled",
-        "page: the pull request's page, its own refresh starts",
-        "page: the pull request's page, its own refresh settles",
-        "files: the tree and the pane's file or folder, read again starts",
-        "files: the tree and the pane's file or folder, read again settles",
-        "pulls: the list, its catalog job starts",
-        "pulls: the list, its catalog job settles"
+        "page: the part the Pulls list lends for the page beside it starts",
+        "page: the part the Pulls list lends for the page beside it settles",
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
+        "pulls: the part the Pulls list lends for itself starts",
+        "pulls: the part the Pulls list lends for itself settles"
       ]
     },
     {
@@ -292,11 +292,37 @@ $ node tests/dom/refresh-plan-session.js
       ],
       "asked": [
         "the button: aria-disabled=true",
-        "files: the tree and the pane's file or folder, read again starts",
-        "files: the tree and the pane's file or folder, read again settles",
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
         "the button: no aria-disabled",
-        "git: the history, read again starts",
-        "git: the history, read again settles"
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles"
+      ]
+    },
+    {
+      "step": "a click with files in front and the pane's owner \"file\", after the freshness row's script failed to load once",
+      "parts": [
+        "source",
+        "page",
+        "files",
+        "pulls",
+        "git"
+      ],
+      "asked": [
+        "the freshness row's script fails to load",
+        "the console: Refresh could not start the freshness row",
+        "the button: aria-disabled=true",
+        "source: the freshness row's refreshNow starts",
+        "source: the freshness row's refreshNow settles",
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
+        "the button: no aria-disabled",
+        "page: the part the Pulls list lends for the page beside it starts",
+        "page: the part the Pulls list lends for the page beside it settles",
+        "pulls: the part the Pulls list lends for itself starts",
+        "pulls: the part the Pulls list lends for itself settles",
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles"
       ]
     }
   ]

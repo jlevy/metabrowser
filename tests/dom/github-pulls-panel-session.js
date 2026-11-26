@@ -1959,8 +1959,10 @@ async function numberStory(panel) {
     vm.createContext(planRealm);
     vm.runInContext(fs.readFileSync(planFile, "utf8"), planRealm, { filename: planFile });
     const runtime = planRealm.MetabrowserRefreshPlan;
+    // The tab in front, as `show` below puts it; no pull request holds the pane.
+    let front = "pulls";
     const plan = runtime.createPlan({
-      shown: (id) => runtime.isShown(id, { front: "pulls", owner: "none" }),
+      shown: (id) => runtime.isShown(id, { front, owner: "none" }),
       waiting(on) {
         if (on) {
           refresh.setAttribute("aria-disabled", "true");
@@ -1979,6 +1981,7 @@ async function numberStory(panel) {
     main.append(browseCode);
     body.append(navigation, main);
     const show = (tab) => {
+      front = tab;
       filterBar.style.display = tab === "files" ? "" : "none";
       filesTab.style.display = tab === "files" ? "" : "none";
       pullsTab.style.display = tab === "pulls" ? "" : "none";
@@ -2216,6 +2219,28 @@ async function numberStory(panel) {
       "the hidden panel's controls hold no number",
     );
     story["on the Files tab"] = [await press("2"), await press("4"), await press("5")];
+    // Behind the Files tab the list is a part not on screen: a press runs it after what is,
+    // and it asks the catalog job as it does in front, so Pulls is fresh when it shows.
+    mounted.setShown(false);
+    const listAsks = () =>
+      answers.filter(
+        (waiting) => waiting.route.split("?")[0] === "/api/plugin/github/pulls-refresh",
+      ).length;
+    // The click's refresh, still on its way, is answered first: a part already on its way
+    // asks again for nothing.
+    while (listAsks() > 0) {
+      await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
+    }
+    const asksBefore = listAsks();
+    const behind = await press("1");
+    // The parts not on screen run after the press is handled, the page's first.
+    await settle();
+    const listAsked = listAsks() === asksBefore + 1;
+    assert(listAsked, "a press behind another tab refreshes the list");
+    story["Refresh behind the Files tab"] = {
+      ...behind,
+      "then the list's catalog job": listAsked ? "asked" : "not asked",
+    };
     show("pulls");
     assert(numbers().length === 5, "the Pulls tab shows its numbers again");
     // Disposal ends the chips' numbers and takes the list's parts back from the plan, and the

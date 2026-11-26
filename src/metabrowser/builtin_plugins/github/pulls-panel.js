@@ -3752,9 +3752,18 @@ export function createPullsController(deps, options = {}) {
       anchorAt(stackRowKey(stack));
       return true;
     },
-    /** A press of Refresh asks the repository's existing catalog job. */
+    /**
+     * A press of Refresh asks the repository's existing catalog job, behind another tab too:
+     * the navigation's Refresh refreshes the tabs not in front after those that are
+     * (static/refresh-plan.js), and the list reads what the job brought when it shows.
+     */
     refresh() {
-      if (!live() || model().connection?.canRefresh !== true || refreshReads.size > 0) {
+      if (
+        disposed ||
+        !visible() ||
+        model().connection?.canRefresh !== true ||
+        refreshReads.size > 0
+      ) {
         return Promise.resolve();
       }
       held().error = null;

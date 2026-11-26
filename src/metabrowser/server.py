@@ -2632,7 +2632,7 @@ async def index(
             {root_repository_links}
             <div class="root-details-status" role="status"></div>
           </div>
-        </div>
+        </div>{nav_refresh}
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,
@@ -2652,7 +2652,7 @@ async def index(
              looking for the project. It carries its own accessible name saying
              where it goes — the bare wordmark would announce as the menu's
              name repeated — and it is not aria-hidden, because a control that
-             cannot be reached is not a control. -->{nav_refresh}
+             cannot be reached is not a control. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
                   aria-haspopup="true" aria-label="Metabrowser menu"></button>

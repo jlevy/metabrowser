@@ -135,8 +135,13 @@ function liftLine(text) {
 /**
  * A page that has app.js's file-ages functions and an asset loader that runs the module when
  * asked for the `revision-ages` bundle. `events` is everything the page was asked to do.
+ * *held* is what the main pane holds, as app.js's preview pane says it, and *activeView* the
+ * view tab it shows.
  */
-function appPage() {
+function appPage({
+  held = { owner: "file", path: "docs/guide.md" },
+  activeView = "rendered",
+} = {}) {
   const events = [];
   const listeners = {};
   const timers = new Map();
@@ -160,7 +165,9 @@ function appPage() {
       { value: "7d", label: "Past week" },
     ],
     filterState: { get: () => ({ showIgnored: true }) },
+    __held: held,
     document: {
+      getElementById: (id) => (id === "preview-pane" ? { dataset: { activeView } } : null),
       querySelector: (selector) =>
         selector === ".tree-summary-filtered" && line.present ? line : null,
       createElement: () => ({
@@ -224,8 +231,8 @@ function loadTree(options) { __events.push("loadTree " + JSON.stringify(options)
 function loadRecent() { __events.push("loadRecent"); }
 function filesPanelUsesRecentSource() { return true; }
 function currentRecentFilterCursor() { return {}; }
-function selectFile(path) { __events.push("selectFile " + path); return Promise.resolve(); }
-var previewPane = { snapshot() { return { owner: "file", path: currentPath }; } };
+function selectFile(path, viewId) { __events.push("selectFile " + path + " in " + viewId); return Promise.resolve(); }
+var previewPane = { snapshot() { return __held; } };
 ${liftVar("fileAgesState")}
 ${[
   "refreshFilterTallies",
@@ -517,6 +524,32 @@ ${liftLine('window.addEventListener("metabrowser:file-ages-landed", rereadFiles)
     open.context.observeFileAges({ state: "dating" });
     await open.drain();
     steps.anOpenMenuOnlyHasItsCountsPatched = { events: open.take() };
+
+    // The landing, or the navigation's Refresh (static/refresh-plan.js), reads again what the
+    // pane holds, in the view it shows, so a file in Source stays in Source; a pane that
+    // holds no file or folder, a pull request's page say, or nothing yet, is left as it is.
+    const reread = async (held, activeView) => {
+      const app = appPage({ held, activeView });
+      await app.context.rereadFiles();
+      return app.take();
+    };
+    steps.aRereadKeepsWhatThePaneShows = {
+      aFileInSource: await reread({ owner: "file", path: "docs/guide.md" }, "source"),
+      aFolderInTreemap: await reread({ owner: "file", path: "docs" }, "treemap"),
+      aPullRequestPage: await reread({ owner: "pull-request", path: "7" }, "conversation"),
+      nothingChosen: await reread({ owner: "file", path: null }, undefined),
+    };
+    const rereads = steps.aRereadKeepsWhatThePaneShows;
+    assert(
+      rereads.aFileInSource.includes("selectFile docs/guide.md in source"),
+      "a reread keeps the view the pane shows",
+    );
+    assert(
+      !rereads.aPullRequestPage
+        .concat(rereads.nothingChosen)
+        .some((e) => e.startsWith("selectFile")),
+      "a reread opens no file in a pane that holds none",
+    );
     transcript["the page's own functions meet the module"] = steps;
   }
 

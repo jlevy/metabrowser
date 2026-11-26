@@ -139,3 +139,23 @@ def test_a_click_on_the_page_runs_the_shells_parts_in_order(
     assert sorted(_starts(asked)) == sorted(click["parts"])
     if not store:
         assert click["parts"] == ["files", "git"]
+
+
+def test_a_freshness_row_that_failed_to_load_is_asked_for_again(
+    steps: dict[str, dict[str, Any]],
+) -> None:
+    """The row's script failed as the page mounted; the press asks for it again and waits,
+    so the fetch still comes first."""
+
+    click = steps[
+        'a click with files in front and the pane\'s owner "file", after the freshness'
+        " row's script failed to load once"
+    ]
+    asked = click["asked"]
+    assert asked[:2] == [
+        "the freshness row's script fails to load",
+        "the console: Refresh could not start the freshness row",
+    ], asked
+    assert _visible_first(
+        asked[2:], "the button: aria-disabled=true", "the button: no aria-disabled"
+    ) == ["source", "files"]

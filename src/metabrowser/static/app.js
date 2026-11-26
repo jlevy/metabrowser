@@ -7615,7 +7615,8 @@ function observeFileAges(ages, undated) {
   }
 }
 // The ages landed, or the header's Refresh asked (static/refresh-plan.js): the tree and the
-// file or folder the pane holds are read and drawn again. Settles when both are drawn.
+// file or folder the pane holds are read and drawn again, in the view the reader is on, a
+// Markdown file's Source say, as Load more keeps it. Settles when both are drawn.
 function rereadFiles() {
   subtreeCache.clear();
   fileCache.clear();
@@ -7624,7 +7625,11 @@ function rereadFiles() {
     loadRecent(currentRecentFilterCursor());
   }
   var held = previewPane.snapshot();
-  return Promise.all([tree, held.owner === "file" && held.path !== null && selectFile(held.path)]);
+  var shownView = document.getElementById("preview-pane")?.dataset.activeView || undefined;
+  return Promise.all([
+    tree,
+    held.owner === "file" && held.path !== null && selectFile(held.path, shownView),
+  ]);
 }
 window.addEventListener("metabrowser:file-ages-landed", rereadFiles);
 // The startup crawl establishes the navigation baseline. Its snapshot and

@@ -1219,11 +1219,20 @@
         ? focused.className.split(" ").find((name) => name.startsWith("source-freshness-"))
         : undefined;
     // The label is text: the navigation's Refresh is the one way to fetch again
-    // (static/refresh-plan.js), so the age is not a second one.
+    // (static/refresh-plan.js), so the age is not a second one. Its detail, a failure's
+    // reason among them, is the pointer's tooltip and also visually hidden text after the
+    // label, since a tooltip cannot be the only source of a state (docs/design-system.md,
+    // "Tooltip Input Modality").
     const label = document.createElement("span");
     label.className = "source-freshness-label";
     label.textContent = model.label;
     label.dataset.tipText = model.detail;
+    if (model.detail) {
+      const detail = document.createElement("span");
+      detail.className = "sr-only";
+      detail.textContent = `${/[.…!?]$/.test(model.label) ? " " : ". "}${model.detail}`;
+      label.append(detail);
+    }
     /** @type {HTMLElement[]} */
     const children = [label];
     if (model.pull !== null) {

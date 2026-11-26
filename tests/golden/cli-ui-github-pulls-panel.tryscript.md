@@ -1196,6 +1196,14 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "handled": false
       }
     ],
+    "Refresh behind the Files tab": {
+      "what": "press 1",
+      "handled": true,
+      "asked": [
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
+      ],
+      "then the list's catalog job": "asked"
+    },
     "the Pulls tab, disposed": [
       "1 Refresh",
       "2 Browse code"

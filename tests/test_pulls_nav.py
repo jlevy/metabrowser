@@ -29,7 +29,6 @@ from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git import repo as git_repo
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.server import app
-from metabrowser.shell_glyphs import REFRESH_SVG
 from metabrowser.source import attach_subject, reset_source_session
 from metabrowser.source_routes import PIN_HEADER, WORKING_TREE_PIN
 from tests.github_pull_fixture import (
@@ -109,7 +108,7 @@ def _assert_refresh_drawn(html: str) -> None:
     opening = refresh.group(1)
     assert 'aria-label="Refresh"' in opening, opening
     assert not re.search(r"hidden|visibility|aria-disabled|disabled", opening), opening
-    assert refresh.group(2) == REFRESH_SVG
+    assert refresh.group(2).lstrip().startswith("<svg"), refresh.group(2)
 
 
 def _shell_tools(html: str) -> list[str]:

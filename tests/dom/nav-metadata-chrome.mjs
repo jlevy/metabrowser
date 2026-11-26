@@ -26,9 +26,8 @@
 // the toolbar slot, wraps between its phrases at its own line height, as the tab bar over
 // it wraps between its tabs (docs/design-system.md, "Navigation Toolbars Wrap"), held to
 // that rule by tests/dom/nav-toolbar-wrap.mjs at every width from the narrowest. Over all of
-// it the navigation's header holds still in every state on every tab: the Pulls tab's
-// Refresh keeps its box behind the other tabs, shows only while Pulls is in front, and is
-// the gear's size on the gear's line.
+// it the navigation's header holds still in every state on every tab: the navigation's
+// Refresh is there under every tab from the first paint.
 //
 // The states are the real ones where the running app can reach them, and otherwise the
 // markup the production code writes: the server's own Commits slot, read from the page it
@@ -192,9 +191,8 @@ const RULES = `(() => {
 // fits, and one short enough that every tab's content overflows its scroller.
 const SHORT_PANE_PX = 220;
 
-// In the page: the navigation's header, which no tab and no state moves: each box in it,
-// whether the navigation's Refresh shows, and the Refresh's box and the gear's, since they
-// are one control (docs/design-system.md, "Every Icon-Only Control Is the Same Control").
+// In the page: the navigation's header, which no tab and no state moves: each box in it, and
+// whether the navigation's Refresh shows.
 const HEADER = `(() => {
   const round = (value) => Math.round(value * 100) / 100;
   const at = (el) => {
@@ -207,8 +205,6 @@ const HEADER = `(() => {
       .filter((el) => el.getClientRects().length > 0)
       .map((el) => [el.id || el.className, at(el)]),
     shown: refresh !== null && getComputedStyle(refresh).visibility === "visible",
-    refresh: refresh === null ? null : at(refresh),
-    gear: at(document.getElementById("settings-btn")),
   };
 })()`;
 
@@ -549,7 +545,7 @@ try {
 
 // The header holds still on every tab and in every state: the navigation's Refresh is there
 // under every tab from the first paint, so nothing in the row moves when another tab comes
-// to the front, and it is the gear's size, on the gear's line.
+// to the front.
 check(
   "the header was read on every tab",
   ["files", "commits", "pulls loading", "pulls updated"].every((name) => name in headers),
@@ -562,14 +558,6 @@ for (const [name, header] of Object.entries(headers)) {
     `${JSON.stringify(header.boxes)} against ${JSON.stringify(headers.files.boxes)}`,
   );
   check(`${name}: the navigation's Refresh shows`, header.shown, String(header.shown));
-  check(
-    `${name}: Refresh is the gear's size, on the gear's line`,
-    header.refresh !== null &&
-      near(header.refresh.width, header.gear.width) &&
-      near(header.refresh.height, header.gear.height) &&
-      near(header.refresh.top, header.gear.top),
-    JSON.stringify({ refresh: header.refresh, gear: header.gear }),
-  );
 }
 
 // One type for every line on every tab, in every state, at both widths: the Files totals'

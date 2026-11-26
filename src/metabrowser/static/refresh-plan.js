@@ -197,18 +197,39 @@
       failed: (id, error) => console.error(`Refresh of ${id} failed`, error),
     });
     const shell = window.MetabrowserShell;
+    /** @type {Promise<void> | null} */
+    let sourceAsked = null;
+    // The freshness row lends its part once its script has run. A row whose script failed
+    // to load is asked for again on the next press, as app.js `sourceFreshness` then
+    // starts it afresh, and a press waits for the answer, so its fetch still comes first.
+    const askSource = () => {
+      if (shell) {
+        sourceAsked ??= shell.sourceFreshness().then(
+          (controller) => {
+            if (controller) {
+              plan.provide("source", () => controller.refreshNow());
+            }
+          },
+          (error) => {
+            sourceAsked = null;
+            console.error("Refresh could not start the freshness row", error);
+          },
+        );
+      }
+      return sourceAsked;
+    };
     if (shell) {
       plan.provide("files", () => shell.rereadFiles());
-      void shell.sourceFreshness().then((controller) => {
-        if (controller) {
-          plan.provide("source", () => controller.refreshNow());
-        }
-      });
     }
+    void askSource();
     plan.provide("git", () => window.MetabrowserGitPanel?.refresh());
-    button.addEventListener("click", () => void plan.press());
-    mounted = plan;
-    return plan;
+    const press = async () => {
+      await askSource();
+      return plan.press();
+    };
+    button.addEventListener("click", () => void press());
+    mounted = Object.freeze({ ...plan, press });
+    return mounted;
   }
 
   window.MetabrowserRefreshPlan = Object.freeze({

@@ -172,10 +172,12 @@ function stub(attributes = {}) {
 /**
  * The glue on a stand-in page with *front* in front and *owner* holding the pane: a
  * mirror's, with its freshness row and the Pulls tab, or, without *store*, a local
- * repository's, with neither.
+ * repository's, with neither. With *sourceFails*, the freshness row's script fails to load
+ * that many times first, as a dropped connection fails it.
  */
-async function pageSteps(front, owner, { store = true } = {}) {
+async function pageSteps(front, owner, { store = true, sourceFails = 0 } = {}) {
   const asked = [];
+  let failures = sourceFails;
   const record = (what) => async () => {
     asked.push(`${what} starts`);
     await turn();
@@ -202,30 +204,40 @@ async function pageSteps(front, owner, { store = true } = {}) {
     querySelector: (selector) => (selector === ".nav-tab-bar .tab-btn.active" ? tab : null),
   };
   const context = load({
+    console: { error: (what) => asked.push(`the console: ${what}`) },
     HTMLElement,
     document,
     MetabrowserShell: {
-      rereadFiles: record("files: the tree and the pane's file or folder, read again"),
-      sourceFreshness: () =>
-        Promise.resolve(
-          store ? { refreshNow: record("source: the mirror, fetched, waited for") } : null,
-        ),
+      rereadFiles: record("files: the shell's rereadFiles"),
+      sourceFreshness: () => {
+        if (failures > 0) {
+          failures -= 1;
+          asked.push("the freshness row's script fails to load");
+          return Promise.reject(new Error("Failed to load asset"));
+        }
+        return Promise.resolve(
+          store ? { refreshNow: record("source: the freshness row's refreshNow") } : null,
+        );
+      },
     },
-    MetabrowserGitPanel: { refresh: record("git: the history, read again") },
+    MetabrowserGitPanel: { refresh: record("git: the Commits panel's refresh") },
   });
   await turn();
   const plan = context.MetabrowserRefreshPlan.plan();
-  // The Pulls tab's list, mounted, lends its two parts through its host (pulls-nav.js).
+  // The Pulls tab's list, mounted, lends its two parts through its host (pulls-nav.js). What
+  // each part then asks, and when it asks nothing, is the list's own: the Pulls panel's
+  // session runs the production list's parts, behind another tab too
+  // (github-pulls-panel-session.js, "Refresh behind the Files tab").
   if (store) {
-    plan.provide("page", record("page: the pull request's page, its own refresh"));
-    plan.provide("pulls", record("pulls: the list, its catalog job"));
+    plan.provide("page", record("page: the part the Pulls list lends for the page beside it"));
+    plan.provide("pulls", record("pulls: the part the Pulls list lends for itself"));
   }
   button.click();
   for (let settled = 0; settled < 30; settled += 1) {
     await turn();
   }
   return {
-    step: `a click with ${front} in front and the pane's owner "${owner}"${store ? "" : ", a local repository with no store and no Pulls tab"}`,
+    step: `a click with ${front} in front and the pane's owner "${owner}"${store ? "" : ", a local repository with no store and no Pulls tab"}${sourceFails ? `, after the freshness row's script failed to load ${sourceFails === 1 ? "once" : `${sourceFails} times`}` : ""}`,
     parts: plan.parts(),
     asked,
   };
@@ -237,6 +249,7 @@ async function main() {
   steps.push(await pageSteps("files", "file"));
   steps.push(await pageSteps("git", "git"));
   steps.push(await pageSteps("files", "file", { store: false }));
+  steps.push(await pageSteps("files", "file", { sourceFails: 1 }));
   process.stdout.write(`${JSON.stringify({ steps }, null, 2)}\n`);
 }
 

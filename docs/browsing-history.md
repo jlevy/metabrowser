@@ -144,9 +144,11 @@ Click the chevron in that row or press `W` to browse the other branches and tags
   at another commit, which is a branch you have not fetched since it moved, or have
   pushed since Metabrowser last fetched, and “not in checkout” when you have never
   fetched it; hover over the row for your commit and which of the two was committed
-  later. The row at the foot of the navigation pane says when the origin was last
-  fetched, and **Refresh** at the top of the navigation pane fetches it again, on your
-  working tree’s page too; it fetches Metabrowser’s store, never your checkout.
+  later. On a branch’s or tag’s page, the row at the foot of the navigation pane says
+  when the origin was last fetched, and **Refresh** at the top of the navigation pane
+  fetches it again; it fetches Metabrowser’s store, never your checkout.
+  The working tree’s page has no such row, and **Refresh** there reads your files and
+  history again without fetching from the origin.
   A line under the list says when it was fetched, or why it was not: an origin that
   needs a password Metabrowser does not have is listed from your checkout instead, and
   nothing asks for one.
