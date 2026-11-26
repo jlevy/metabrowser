@@ -1429,7 +1429,8 @@
     "rows": []
    },
    "status_route": "/api/plugin/github/pulls?state=closed&limit=0",
-   "status_scan": "started"
+   "status_scan": "started",
+   "status_scan_at": "2026-09-17T12:01:01Z"
   }
  },
  "large_progress": {

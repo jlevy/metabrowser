@@ -4,21 +4,28 @@
 //
 // builtin_plugins/github/row-readiness.js decides which rows are read and when, and what each
 // draws: the verdict, the tone, and the label the server's answer gives (`GET pull-statuses`),
-// for an open or draft pull request whose head the answer judged, and nothing for any other.
+// for an open or draft pull request whose head and state the answer judged, and nothing for any
+// other.
 // builtin_plugins/github/stack-member-row.js draws it, its words after the state icon, out of
 // view, and its glyph, hidden, where the row's layout puts it. The answers are the server's:
 // tests/fixtures/github-pulls-readiness-responses.json, which
 // tests/test_github_pulls_readiness_session.py records from the real routes, before the scan of
-// every open pull request's status, while it runs, once it has ended, and after a push it has
-// not read, with what the list's ask said of the scan each time.
+// every open pull request's status, while it runs, once it has ended, after a push it has not
+// read, after a scan another tab's Refresh started, and after a pull request is marked a draft,
+// with what the list's ask said of the scan each time.
 //
 // `lane` drives the lane alone over those answers, with the browser's idle time and its clock in
-// the session's hands, and prints what each row draws at each step and what was asked. `panel`
+// the session's hands, and prints what each row draws at each step and what was asked; each
+// surface draws a row before it asks for it, as a paint does. `panel`
 // mounts the production Pulls panel over a stand-in for the DOM with the SDK's own painters
 // (tests/dom/sdk-ref-fixture.js), and prints each row's verdict, glyph, label, last line, and
 // the name its link is read by, as the list's ask starts the scan, ends it, and a push moves a
-// row's head. `menu` mounts the production stack menu (`createStackMenu` in pull-page.js) on a
-// lane of its own and prints each member's readiness and name as it opens. `invariants` are the
+// row's head, and as it is mounted again. `menu` mounts the production stack menu
+// (`createStackMenu` in pull-page.js) on a lane of its own, and then over an index another lane
+// has read, and prints each member's readiness and name as it opens. `reads` draws one pull
+// request on every kind of surface at once, each by the head it knows, in shuffled orders, and
+// prints how often it is read for each thing that says it changed, at most once, and what each
+// surface draws. `invariants` are the
 // relations every step holds, and `invariants.panel` what each row drew once the scan ended,
 // which tests/test_github_pulls_readiness_session.py holds to the recorded verdicts. Where the
 // column and its label are laid out, and in what ink, is Chrome's
@@ -151,8 +158,9 @@ async function laneStory(readiness) {
       await settle();
     }
   };
+  // What each row draws, as a surface's paint asks it, naming the rows' repository itself.
   const draws = (drawing = rows, of = lane) =>
-    Object.fromEntries(drawing.map((row) => [`#${row.number}`, said(of.readiness(row))]));
+    Object.fromEntries(drawing.map((row) => [`#${row.number}`, said(of.readiness(row, SOURCE))]));
   const step = async (what, act, drawing = rows, of = () => lane) => {
     asked.length = 0;
     repaints.length = 0;
@@ -166,6 +174,9 @@ async function laneStory(readiness) {
       lane: { wanted: state.wanted, running: state.running, scanning: state.scanning },
     });
   };
+  /** What the list's recorded ask *name* said of the scan, as the Pulls tab passes it on. */
+  const ask = (of, name) =>
+    of.scanned(recorded[name].body.status_scan, recorded[name].body.status_scan_at);
 
   await step("the list draws six rows: nothing is read until the browser is idle", () =>
     lane.want(rows, SOURCE),
@@ -186,40 +197,43 @@ async function laneStory(readiness) {
     "the list's ask starts the scan: every row is read again, and the scan runs",
     async () => {
       phase = "scanning";
-      lane.scanned(recorded.scan_started.body.status_scan);
+      ask(lane, "scan_started");
       await runIdle();
     },
   );
   assert.equal(asked.length, 1, "a scan's start reads the rows drawn once");
   await step("the next ask finds the scan running: nothing more is read", async () => {
-    lane.scanned(recorded.scan_joined.body.status_scan);
+    ask(lane, "scan_joined");
     await runIdle();
   });
   assert.deepEqual(asked, [], "a scan the lane heard running reads nothing more");
   await step(
-    "the next finds it over: every row is read again, and each open row draws its verdict",
+    "the next says the scan ended: every row is read again, and each open row draws its verdict",
     async () => {
       phase = "scanned";
-      lane.scanned(recorded.scan_not_due.body.status_scan);
+      ask(lane, "scan_not_due");
       await runIdle();
     },
   );
   const judged = draws();
   assert.equal(judged["#9"], "none", "a closed pull request draws none");
   assert.equal(judged["#8"], "none", "a merged pull request draws none");
-  await step("an ask with the scan still over reads nothing", async () => {
-    lane.scanned(recorded.scan_not_due.body.status_scan);
+  await step("an ask that says the same scan ended reads nothing", async () => {
+    ask(lane, "scan_not_due");
     await runIdle();
   });
   assert.deepEqual(asked, []);
-  // A Pulls tab mounted again in the document: its lane shares the document's index.
+  // A Pulls tab mounted again in the document: its lane shares the document's index, and its
+  // first paint draws each row before it asks for any, as the panel's paint does.
   lane.dispose();
   lane = createRowReadiness(deps());
-  await step("a Pulls tab mounted again: each glyph at once, from the document's index", () =>
-    lane.want(rows, SOURCE),
+  const firstPaint = draws();
+  await step(
+    "a Pulls tab mounted again: its first paint, before it asks for a row, draws each glyph from the document's index, and its ask reads nothing",
+    () => lane.want(rows, SOURCE),
   );
+  assert.deepEqual(firstPaint, judged, "a remount's first paint draws what was read");
   assert.equal(idle.length, 0, "a remount reads nothing");
-  assert.deepEqual(draws(), judged, "a remount draws what was read");
   // #105 is pushed: the list's row names the new head.
   const pushedHead = recorded.pushed.body.rows[0].head;
   rows = rows.map((row) => (row.number === PUSHED ? { ...row, head: pushedHead } : row));
@@ -232,23 +246,23 @@ async function laneStory(readiness) {
     },
   );
   assert.deepEqual(asked, [`GET ${ROUTE}?numbers=${PUSHED}`]);
-  // The ask starts the scan again, and a read finds it over: the read's rows hold, and the
-  // rest of the document's answers are older than the scan's end.
+  // The ask starts the scan again, and a read finds none running: the read's rows hold, and
+  // nothing more is read.
   phase = "scanned";
   await step(
-    "a scan starts and a read finds it over: the read's rows hold, and nothing more is read",
+    "a scan starts and a read finds none running: the read's rows hold, and nothing more is read",
     async () => {
-      lane.scanned(recorded.scan_started.body.status_scan);
+      ask(lane, "scan_started");
       await runIdle();
       lane.want(rows, SOURCE);
       await runIdle();
     },
   );
   assert.equal(asked.length, 1, "one read for the rows drawn");
-  assert.equal(lane.snapshot().scanning, false, "the read said the scan is over");
+  assert.equal(lane.snapshot().scanning, false, "the read said no scan runs");
   phase = new Error("the connection broke");
   await step("a read fails: each row keeps the glyph it had", async () => {
-    lane.scanned(recorded.scan_started.body.status_scan);
+    ask(lane, "scan_started");
     await runIdle();
   });
   assert.equal(draws()["#106"], judged["#106"], "a failure takes no glyph away");
@@ -275,6 +289,7 @@ async function laneStory(readiness) {
   ];
   phase = "scanned";
   const menuLane = createRowReadiness(deps());
+  const menuFirstPaint = draws(members, menuLane);
   await step(
     "a stack's members, whose heads the menu does not know: #7, which the Pulls tab read, draws at once, #6 is read, and merged #8 is not asked",
     async () => {
@@ -284,6 +299,7 @@ async function laneStory(readiness) {
     members,
     () => menuLane,
   );
+  assert.equal(menuFirstPaint["#7"], draws(members, menuLane)["#7"], "drawn before it asks");
   assert.deepEqual(asked, [`GET ${ROUTE}?numbers=6`]);
   await step(
     "opened again within the minute: nothing is read",
@@ -296,7 +312,7 @@ async function laneStory(readiness) {
   );
   assert.deepEqual(asked, []);
   await step(
-    "a minute on, opened again: each member is read again",
+    "a minute on, opened again: each member is read again, once: #7 by the Pulls tab's lane, which draws it too and is told it is due, and #6 by the menu's",
     async () => {
       now += ROW_READINESS_RETRY_MS;
       menuLane.refresh(members, SOURCE);
@@ -305,8 +321,71 @@ async function laneStory(readiness) {
     members,
     () => menuLane,
   );
-  assert.deepEqual(asked, [`GET ${ROUTE}?numbers=7,6`]);
+  assert.deepEqual(asked, [`GET ${ROUTE}?numbers=7`, `GET ${ROUTE}?numbers=6`]);
   menuLane.dispose();
+
+  // A scan this lane did not hear start, another tab's Refresh's, as a look at the mirror's
+  // base branches starts one after an ask has answered, ends before the next ask: the ask
+  // starts nothing and says when the latest scan ended, later than the lane had heard.
+  phase = "rescanned";
+  await step(
+    "a scan the lane did not hear start ends before the next ask, which says when: every row is read again",
+    async () => {
+      ask(lane, "scan_ended_elsewhere");
+      await runIdle();
+    },
+  );
+  assert.equal(asked.length, 1, "a scan's end it did not hear start reads the rows once");
+  await step("the next ask says the same: nothing is read", async () => {
+    ask(lane, "scan_ended_elsewhere");
+    await runIdle();
+  });
+  assert.deepEqual(asked, []);
+
+  // A pull request page reads #7's status itself, a minute after the scan observed it: every
+  // row in the document that draws #7 reads it again, once, so the Pulls row says what the
+  // page's header says without waiting for the next scan.
+  const scannedAt = recorded.rescanned.body.rows.find((row) => row.number === 7).status.observed_at;
+  const pageRead = new Date(Date.parse(scannedAt) + 60_000).toISOString().replace(".000Z", "Z");
+  await step(
+    "a pull request page reads #7's status itself, newer than the scan's: #7 alone is read again",
+    async () => {
+      index.heard(SOURCE, 7, pageRead);
+      await runIdle();
+    },
+  );
+  assert.deepEqual(asked, [`GET ${ROUTE}?numbers=7`]);
+  await step("the page reads the same status again as it polls: nothing is read", async () => {
+    index.heard(SOURCE, 7, pageRead);
+    index.heard(SOURCE, 7, scannedAt);
+    await runIdle();
+  });
+  assert.deepEqual(asked, []);
+
+  // The author marks #106 a draft, which the list says: the verdict judged it open, so it is
+  // drawn no more, even while a read fails, until the server judges the draft.
+  const DRAFTED = recorded.drafted.body.rows[0].number;
+  rows = rows.map((row) => (row.number === DRAFTED ? { ...row, state: "draft" } : row));
+  phase = new Error("the connection broke");
+  await step(
+    "#106 is marked a draft: its verdict judged it open, so it draws none; its read again fails, and it still draws none",
+    async () => {
+      lane.want(rows, SOURCE);
+      await runIdle();
+    },
+  );
+  assert.deepEqual(asked, [`GET ${ROUTE}?numbers=${DRAFTED}`]);
+  assert.equal(draws()[`#${DRAFTED}`], "none", "no verdict on a state it did not judge");
+  phase = "drafted";
+  await step(
+    "a minute on, the draft is read again, and draws the server's verdict on it",
+    async () => {
+      now += ROW_READINESS_RETRY_MS;
+      lane.want(rows, SOURCE);
+      await runIdle();
+    },
+  );
+  assert.deepEqual(asked, [`GET ${ROUTE}?numbers=${DRAFTED}`]);
 
   // A server that serves no GitHub repository answers once, for every row.
   phase = "not_github";
@@ -446,57 +525,66 @@ async function panelStory() {
   /** @type {Record<string, () => unknown>} */
   const parts = {};
   try {
-    const container = new PanelElement("div");
     const sdk = require("./sdk-ref-fixture.js").refHelpers(document);
-    const handle = panel.mountPullsPanel(
-      container,
-      {
-        kind: "pull-request-list",
-        pullsNav: {
-          filter: "all",
-          current: null,
-          shown: true,
-          refreshAhead: false,
-          scrollRoot: null,
-          open() {},
-          file: null,
-          fileHref: (number, file) => `/pull/${number}/files/${file}`,
-          pageFor: () => null,
-          onPageChange: () => () => {},
-          filterChanged() {},
-          // The navigation's one Refresh, which the reader presses (static/refresh-plan.js).
-          refreshParts: {
-            provide(name, part) {
-              parts[name] = part;
-              return () => {};
+    /** The production Pulls panel, mounted in this document. */
+    const mount = () => {
+      const into = new PanelElement("div");
+      return {
+        container: into,
+        handle: panel.mountPullsPanel(
+          into,
+          {
+            kind: "pull-request-list",
+            pullsNav: {
+              filter: "all",
+              current: null,
+              shown: true,
+              refreshAhead: false,
+              scrollRoot: null,
+              open() {},
+              file: null,
+              fileHref: (number, file) => `/pull/${number}/files/${file}`,
+              pageFor: () => null,
+              onPageChange: () => () => {},
+              filterChanged() {},
+              // The navigation's one Refresh, which the reader presses (static/refresh-plan.js).
+              refreshParts: {
+                provide(name, part) {
+                  parts[name] = part;
+                  return () => {};
+                },
+              },
             },
           },
-        },
-      },
-      {
-        ...sdk,
-        perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
-        filterControls: {
-          groupHtml({ options }) {
-            filterOptions = options;
-            return "<div></div>";
+          {
+            ...sdk,
+            perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+            filterControls: {
+              groupHtml({ options }) {
+                filterOptions = options;
+                return "<div></div>";
+              },
+              bind: () => () => {},
+            },
+            ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+              label: "1m",
+              className: "age-min",
+            })),
+            formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+            whenIdle(callback) {
+              idle.push(callback);
+              return () => {
+                idle = idle.filter((queued) => queued !== callback);
+              };
+            },
           },
-          bind: () => () => {},
-        },
-        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
-          label: "1m",
-          className: "age-min",
-        })),
-        formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
-        whenIdle(callback) {
-          idle.push(callback);
-          return () => {
-            idle = idle.filter((queued) => queued !== callback);
-          };
-        },
-      },
-    );
-    const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
+        ),
+      };
+    };
+    let { container, handle } = mount();
+    const listOf = () =>
+      container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
+    let list = listOf();
     const item = (number) =>
       list.childNodes.find(
         (node) =>
@@ -644,6 +732,34 @@ async function panelStory() {
       step: "the ask starts a scan again, and the panel is disposed before the browser is idle: its queued read is cancelled, and nothing is read",
       requests: [...requests],
     });
+    // The Pulls tab mounted again in the document: its lane shares the document's index, and
+    // its first paint, before the browser is idle and before any read, draws each glyph the
+    // index holds; #105's verdict judged a head the list no longer names, so it draws none.
+    phase = "scanned";
+    refreshAnswer = recorded.scan_not_due;
+    requests.length = 0;
+    ({ container, handle } = mount());
+    list = listOf();
+    await paint();
+    const remounted = rowsDrawn();
+    assert.deepEqual(
+      requests.filter((line) => line.startsWith(`GET ${ROUTE}`)),
+      [],
+      "the first paint reads nothing",
+    );
+    for (const number of SHOWN) {
+      assert.equal(
+        remounted[`#${number}`].glyph,
+        number === PUSHED ? null : settled[`#${number}`].glyph,
+        `#${number} is drawn in the remounted tab's first paint`,
+      );
+    }
+    steps.push({
+      step: "the Pulls tab mounted again in the document: its first paint, before the browser is idle and before any read, draws each glyph the document's index holds",
+      rows: remounted,
+      requests: [...requests],
+    });
+    handle.dispose();
     return { steps, invariants };
   } finally {
     for (const [name, descriptor] of Object.entries(saved)) {
@@ -691,24 +807,31 @@ async function menuStory(readiness) {
     /** @type {(() => void)[]} */
     let idle = [];
     const asked = [];
-    let menu = null;
-    const lane = readiness.createRowReadiness({
-      index: readiness.createReadinessIndex(),
-      async read(numbers) {
-        asked.push(`GET ${ROUTE}?numbers=${numbers.join(",")}`);
-        return answerFor("scanned", numbers);
-      },
-      schedule(callback) {
-        idle.push(callback);
-        return callback;
-      },
-      cancel(handle) {
-        idle = idle.filter((callback) => callback !== handle);
-      },
-      isVisible: () => true,
-      now: () => 1_000_000,
-      changed: () => menu?.repaint(),
-    });
+    const runIdle = async () => {
+      while (idle.length > 0) {
+        idle.shift()();
+        await settle();
+      }
+    };
+    /** A lane over *index*, each read logged with *who* asked it. */
+    const laneOf = (index, who, changed) =>
+      readiness.createRowReadiness({
+        index,
+        async read(numbers) {
+          asked.push(`${who}: GET ${ROUTE}?numbers=${numbers.join(",")}`);
+          return answerFor("scanned", numbers);
+        },
+        schedule(callback) {
+          idle.push(callback);
+          return callback;
+        },
+        cancel(handle) {
+          idle = idle.filter((callback) => callback !== handle);
+        },
+        isVisible: () => true,
+        now: () => 1_000_000,
+        changed,
+      });
     const scanned = rowsOf("scanned", "scanned_more");
     const own = readiness.shownReadiness(scanned.get(7));
     // Each member's state as the Pulls list said it, and none for #6, which it has not drawn.
@@ -724,32 +847,39 @@ async function menuStory(readiness) {
       labels: [null, null, null],
     };
     const memberRow = (target) => ({ number: target, head: null, state: states[target] });
-    menu = page.createStackMenu(stack, 7, {
-      state: (target) => states[target],
-      link(number) {
-        const link = new FakeElement("a");
-        link.dataset.number = String(number);
-        return link;
-      },
-      icon: null,
-      currentTitle: "Follow up",
-      titleNodes: require("./sdk-ref-fixture.js").refHelpers(document).titleNodes,
-      menus: require("./sdk-ref-fixture.js").refHelpers(document).menus,
-      readiness: (target) => (target === 7 ? own : lane.readiness(memberRow(target))),
-      onOpen() {
-        lane.refresh(stack.pulls.filter((target) => target !== 7).map(memberRow), SOURCE);
-      },
-    });
+    /** #7's page's stack menu, its other members' readiness on a lane over *index*, wired as
+     * the page wires it (pull-page.js): each paint names the repository itself. */
+    const menuOver = (index) => {
+      let menu = null;
+      const lane = laneOf(index, "menu", () => menu?.repaint());
+      menu = page.createStackMenu(stack, 7, {
+        state: (target) => states[target],
+        link(number) {
+          const link = new FakeElement("a");
+          link.dataset.number = String(number);
+          return link;
+        },
+        icon: null,
+        currentTitle: "Follow up",
+        titleNodes: require("./sdk-ref-fixture.js").refHelpers(document).titleNodes,
+        menus: require("./sdk-ref-fixture.js").refHelpers(document).menus,
+        readiness: (target) => (target === 7 ? own : lane.readiness(memberRow(target), SOURCE)),
+        onOpen() {
+          lane.refresh(stack.pulls.filter((target) => target !== 7).map(memberRow), SOURCE);
+        },
+      });
+      return { menu, lane };
+    };
     const elements = (node) => node.childNodes.filter((child) => child instanceof FakeElement);
-    const links = () =>
+    const links = (menu) =>
       menu.element.childNodes
         .find((node) => node.classList.contains("github-pull-stack-menu"))
         .childNodes.find((node) => node.classList.contains("menu-group"))
         .childNodes.filter((node) => node.dataset?.number !== undefined);
     /** Each member: its parts, its readiness's words and glyph, and the name it is read by. */
-    const members = () =>
+    const members = (menu) =>
       Object.fromEntries(
-        links().map((link) => {
+        links(menu).map((link) => {
           const parts = elements(link);
           const cell = parts.at(-1);
           const glyph = elements(cell)[0] ?? null;
@@ -764,27 +894,58 @@ async function menuStory(readiness) {
           ];
         }),
       );
+    const open = (menu) => {
+      menu.element.open = true;
+      menu.element.listeners.get("toggle")();
+    };
     const steps = [];
-    menu.element.open = true;
-    menu.element.listeners.get("toggle")();
+    const first = menuOver(readiness.createReadinessIndex());
+    open(first.menu);
     steps.push({
       step: "the menu opens: #7, the page's own, says its page's verdict; #6 waits for its read, and merged #8 has none",
-      members: members(),
+      members: members(first.menu),
       asked: [...asked],
     });
-    while (idle.length > 0) {
-      idle.shift()();
-      await settle();
-    }
+    await runIdle();
     steps.push({
       step: "idle: #6's read, and its verdict drawn in the open menu",
-      members: members(),
+      members: members(first.menu),
       asked: [...asked],
     });
-    const layouts = new Set(Object.values(members()).map((member) => member.parts.join(" ")));
+    assert.equal(members(first.menu)["#6"].glyph, "ready (success)", "a read lands in the menu");
+    const layouts = new Set(
+      Object.values(members(first.menu)).map((member) => member.parts.join(" ")),
+    );
     assert.equal(layouts.size, 1, "every member has one layout, a member with no readiness too");
-    menu.dispose();
-    lane.dispose();
+    first.menu.dispose();
+    first.lane.dispose();
+
+    // Another page's menu, opened over the document's index once the Pulls tab has read #6: its
+    // first open, which draws its members before it asks for any, draws #6's glyph, and nothing
+    // is read.
+    asked.length = 0;
+    const shared = readiness.createReadinessIndex();
+    const pulls = laneOf(shared, "pulls", () => {});
+    const six =
+      recorded.list.body.rows.find((row) => row.number === 6) ??
+      recorded.more.body.rows.find((row) => row.number === 6);
+    pulls.want([{ number: 6, head: six.head_oid, state: "open" }], SOURCE);
+    await runIdle();
+    const read = [...asked];
+    const later = menuOver(shared);
+    open(later.menu);
+    await runIdle();
+    steps.push({
+      step: "the Pulls tab has read #6 into the document's index; another page's menu opens: its first open draws #6's glyph, and reads nothing",
+      read_before: read,
+      members: members(later.menu),
+      asked: asked.slice(read.length),
+    });
+    assert.equal(members(later.menu)["#6"].glyph, "ready (success)", "drawn on its first open");
+    assert.deepEqual(asked.slice(read.length), [], "a settled member is not read again");
+    later.menu.dispose();
+    later.lane.dispose();
+    pulls.dispose();
     return steps;
   } finally {
     for (const [name, descriptor] of Object.entries(saved)) {
@@ -797,14 +958,189 @@ async function menuStory(readiness) {
   }
 }
 
+/**
+ * One pull request drawn by every kind of surface at once, over one index, each knowing it by
+ * the head and the state it has (row-readiness.js): two Pulls tabs by the catalog's head, the
+ * one the server judges; a stack's page and a stack menu by none; and a surface whose record
+ * lags, by an older head. Each asks for it, the browser runs their idle callbacks, and their
+ * reads land, in a shuffled order each turn, many turns between two things that say it
+ * changed. Whatever the order, the row is read at most once for each, never in turn; and each
+ * surface draws the verdict where the head it knows is the one the server judged, or it knows
+ * none. The server's answers are #105's, before and after its push.
+ */
+async function readsStory(readiness) {
+  const { createRowReadiness, createReadinessIndex, ROW_READINESS_RETRY_MS } = readiness;
+  const NUMBER = PUSHED;
+  const before = rowsOf("scanned").get(NUMBER);
+  const after = rowsOf("pushed").get(NUMBER);
+  const index = createReadinessIndex();
+  let now = 1_000_000;
+  let phase = "scanned";
+  let reads = 0;
+  /** @type {(() => void)[]} */
+  let idle = [];
+  /** @type {(() => void)[]} */
+  const landing = [];
+  // A fixed shuffle, so the transcript is the same each run.
+  let seed = 20261126;
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31;
+    return seed / 2 ** 31;
+  };
+  const shuffled = (items) =>
+    items
+      .map((item) => ({ item, at: random() }))
+      .sort((left, right) => left.at - right.at)
+      .map(({ item }) => item);
+  const surface = (name, row, ask) => ({
+    name,
+    row,
+    ask,
+    lane: createRowReadiness({
+      index,
+      keep: { quiet: async () => {} },
+      read(numbers) {
+        reads += 1;
+        const answer = answerFor(phase, numbers);
+        return new Promise((resolve) => landing.push(() => resolve(answer)));
+      },
+      schedule(callback) {
+        idle.push(callback);
+        return callback;
+      },
+      cancel(handle) {
+        idle = idle.filter((callback) => callback !== handle);
+      },
+      isVisible: () => true,
+      now: () => now,
+      changed() {},
+    }),
+  });
+  const lagging = "1".repeat(40);
+  const surfaces = [
+    surface(
+      "a Pulls tab, by the catalog's head",
+      { number: NUMBER, head: before.head, state: "open" },
+      "want",
+    ),
+    surface("another Pulls tab", { number: NUMBER, head: before.head, state: "open" }, "want"),
+    surface("a stack's page, by no head", { number: NUMBER, head: null, state: "open" }, "refresh"),
+    surface(
+      "a surface whose record lags, by its record's head",
+      { number: NUMBER, head: lagging, state: "open" },
+      "refresh",
+    ),
+    surface(
+      "a stack menu, by no head and no state",
+      { number: NUMBER, head: null, state: null },
+      "refresh",
+    ),
+  ];
+  const [pullsTab, otherTab, , behind] = surfaces;
+  /** Many turns: every surface asks, then the browser runs idle callbacks and lands reads in
+   * a shuffled order, until nothing waits. */
+  const turns = async () => {
+    for (let turn = 0; turn < 6; turn += 1) {
+      for (const each of shuffled(surfaces)) {
+        each.lane[each.ask]([each.row], SOURCE);
+      }
+      while (idle.length > 0 || landing.length > 0) {
+        const queue = landing.length === 0 || (idle.length > 0 && random() < 0.5) ? idle : landing;
+        const [next] = queue.splice(Math.floor(random() * queue.length), 1);
+        next();
+        await settle();
+      }
+    }
+  };
+  const changes = [];
+  const change = async (what, act, expected) => {
+    reads = 0;
+    await act();
+    await turns();
+    assert.ok(reads <= 1, `${what}: read ${reads} times`);
+    assert.equal(reads, expected, what);
+    changes.push({
+      change: what,
+      reads,
+      draws: Object.fromEntries(
+        surfaces.map((each) => [each.name, said(each.lane.readiness(each.row, SOURCE))]),
+      ),
+    });
+  };
+  const scanAt = recorded.scanned.body.scan.at;
+  const laterScan = recorded.scan_ended_elsewhere.body.status_scan_at;
+  await change("drawn first, and again and again", () => {}, 1);
+  await change("drawn again and again, nothing changed", () => {}, 0);
+  await change(
+    "the list's ask says the scan started",
+    () => pullsTab.lane.scanned("started", scanAt),
+    1,
+  );
+  await change("an ask says a scan ended", () => pullsTab.lane.scanned("not_due", laterScan), 1);
+  await change(
+    "another tab's ask says that same scan ended",
+    () => otherTab.lane.scanned("not_due", laterScan),
+    0,
+  );
+  await change(
+    "a pull request page reads its status, newer than the answer's, and again as it polls",
+    () => {
+      const read = new Date(Date.parse(laterScan) + 60_000).toISOString().replace(".000Z", "Z");
+      index.heard(SOURCE, NUMBER, read);
+      index.heard(SOURCE, NUMBER, read);
+    },
+    1,
+  );
+  await change(
+    "a minute passes",
+    () => {
+      now += ROW_READINESS_RETRY_MS;
+    },
+    1,
+  );
+  await change(
+    "the list names a new head, which both Pulls tabs draw",
+    () => {
+      phase = "pushed";
+      pullsTab.row = { ...pullsTab.row, head: after.head };
+      otherTab.row = { ...otherTab.row, head: after.head };
+    },
+    1,
+  );
+  await change(
+    "the lagging record catches up with that head",
+    () => {
+      behind.row = { ...behind.row, head: after.head };
+    },
+    0,
+  );
+  for (const each of surfaces) {
+    each.lane.dispose();
+  }
+  return changes;
+}
+
 (async () => {
   const readiness = await import(pathToFileURL(path.join(GITHUB, "row-readiness.js")).href);
   const lane = await laneStory(readiness);
   const { steps: panel, invariants } = await panelStory();
   const menu = await menuStory(readiness);
-  process.stdout.write(
-    `${JSON.stringify({ lane, panel, menu, invariants: { panel: invariants } }, null, 2)}\n`,
-  );
+  const reads = await readsStory(readiness);
+  // This script prints the lane's story, and github-pulls-readiness-surfaces-session.js,
+  // which runs this same session with `--part surfaces`, the rest, each a transcript's
+  // command of its own (cli-ui-github-pulls-readiness.tryscript.md), since the whole in one
+  // command is larger than the regular expression tryscript's matcher compiles. `--part all`
+  // prints everything, as tests/test_github_pulls_readiness_session.py reads it.
+  const all = { lane, panel, menu, reads, invariants: { panel: invariants } };
+  const part = process.argv.indexOf("--part");
+  const wanted = part === -1 ? "lane" : process.argv[part + 1];
+  const chosen =
+    wanted === "all"
+      ? all
+      : wanted === "surfaces"
+        ? { panel, menu, reads, invariants: all.invariants }
+        : { lane };
+  process.stdout.write(`${JSON.stringify(chosen, null, 2)}\n`);
 })().catch((error) => {
   process.stderr.write(`${error.stack || error}\n`);
   process.exit(1);

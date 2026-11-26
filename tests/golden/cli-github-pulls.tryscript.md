@@ -917,7 +917,8 @@ status: 202
     "rows": []
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0",
-  "status_scan": "started"
+  "status_scan": "started",
+  "status_scan_at": null
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1005,7 +1006,8 @@ status: 200
     "rows": []
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0",
-  "status_scan": "not_due"
+  "status_scan": "not_due",
+  "status_scan_at": "[TIMESTAMP]"
 }
 ? 0
 ```

@@ -62,7 +62,8 @@ status: 200
     }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0",
-  "status_scan": "started"
+  "status_scan": "started",
+  "status_scan_at": null
 }
 --- stderr ---
 --- body ---

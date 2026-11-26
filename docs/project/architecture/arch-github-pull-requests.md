@@ -311,7 +311,11 @@ has the rules.
   catalog’s scans do; the module docstring has the rules, and the page size, the bound
   on pages, and their cost and latency on three repositories are beside `SCAN_ROWS` and
   `MAX_SCAN_PAGES`. How the last scan ended, and what the next needs of it, is
-  `statuses.scan.json` (`ScanStamp`).
+  `statuses.scan.json` (`ScanStamp`). The ask answers `status_scan`, whether it
+  `started` the scan, `joined` it, or found it `not_due`, and `status_scan_at`, when the
+  last scan ended (`scan_ended_at`), so a page learns of a scan that ended since its
+  last ask whoever started it, a look at the mirror after an ask had answered among
+  them.
 - **Failing alone.** A read that fails fails the status alone, as a refused part fails
   only that part of a record: the record is published and its refresh succeeds, how the
   read ended is kept in `<n>.status.refresh.json`, and what an earlier read kept stays.
@@ -384,7 +388,12 @@ has the rules.
   The Pulls tab reads it for the rows it draws, and the stack menu and the stack’s page
   for their members, each a glyph in the verdict’s tone (`row-readiness.js`, drawn by
   `stack-member-row.js`;
-  [Design System](../../design-system.md#in-the-pulls-tab-and-on-stacks)).
+  [Design System](../../design-system.md#in-the-pulls-tab-and-on-stacks)). The document
+  keeps one answer a row, the server’s, with the catalog’s head and lifecycle it judged
+  and nothing of the surface that asked, so every surface draws it and one read settles
+  it for all; a row is read again when a scan starts or ends later than the document had
+  heard, when the head or state a surface asks it with moves, and when a pull request
+  page reads a newer status of its own (`heard`).
 
 ## Serving Pull Requests
 

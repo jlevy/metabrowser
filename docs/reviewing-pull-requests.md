@@ -76,13 +76,16 @@ its own, so the icons down the list read as a checks column.
 In a wider tab the verdict’s words follow the icon, such as **✓ Ready to merge**; a
 screen reader hears them after the row’s state in either width.
 A closed or merged pull request shows none, and neither does one Metabrowser has not yet
-asked GitHub about, or one pushed since: GitHub is asked about every open pull request
-while the Pulls tab is visible, behind you, and the icon fills in when it answers.
-The lines may give way to an ellipsis in the narrowest tab; the icon and the age stay.
-The lines sum the same list of changed files the row’s tree shows, as a stack’s heading
-sums its pull requests’, and ask GitHub for nothing: the lists come from what the Pulls
-tab already reads behind you for the rows in view and from trees you open, and a gray
-placeholder holds their place until one arrives.
+asked GitHub about, or one pushed, or marked a draft or ready, since: GitHub is asked
+about every open pull request while the Pulls tab is visible, behind you, and the icon
+fills in when it answers.
+A pull request whose page you have open shows what its page shows, the row following the
+page’s own read.
+The lines may give way to an ellipsis in the narrowest tab; the icon and
+the age stay. The lines sum the same list of changed files the row’s tree shows, as a
+stack’s heading sums its pull requests’, and ask GitHub for nothing: the lists come from
+what the Pulls tab already reads behind you for the rows in view and from trees you
+open, and a gray placeholder holds their place until one arrives.
 
 Click a row anywhere to open its pull request; its files stay as they were.
 The lines and the chevron after them show and hide the files, which start collapsed:

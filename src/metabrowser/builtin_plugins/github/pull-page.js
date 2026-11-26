@@ -91,7 +91,7 @@ import {
   withListedState,
 } from "./pull-state.js";
 import { briefLine, createSummaryBrief, PULL_FILES_SUMMARY_ROUTE } from "./pull-summary-brief.js";
-import { createRowReadiness, PULL_STATUSES_ROUTE } from "./row-readiness.js";
+import { createRowReadiness, documentReadiness, PULL_STATUSES_ROUTE } from "./row-readiness.js";
 import { stackMemberRow } from "./stack-member-row.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
@@ -2472,6 +2472,7 @@ export function renderedTextsHeld() {
  *   textUnavailable?(part: string, text: string, note?: string | null): void,
  *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
  *   noteRecord?(source: string, pull: Record<string, any>): void,
+ *   heardStatus?(source: string, number: number, observedAt: string): void,
  *   timelineStateChanged?(): void,
  *   switchPin(selection: {oid: string, under: string, view?: string}, wanted: () => boolean): Promise<{kind: "switched", href: string | null} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}>,
  *   navigate(href: string): void,
@@ -2893,6 +2894,13 @@ export function createPullController(deps, options) {
     const recorded = envelope?.record?.pull;
     if (recorded && typeof envelope?.source === "string") {
       deps.noteRecord?.(envelope.source, recorded);
+    }
+    // The status this page read of its own pull request, for every row in the document that
+    // draws its readiness (row-readiness.js, `heard`): one newer than the document's answer
+    // has it read again, so a Pulls row says what this header says without waiting for a scan.
+    const observed = envelope?.status?.observed_at;
+    if (typeof envelope?.source === "string" && typeof observed === "string") {
+      deps.heardStatus?.(envelope.source, options.number, observed);
     }
     const next = model();
     const owner = envelope?.record ?? envelope?.core_preview;
@@ -6823,7 +6831,10 @@ export function mountPullPage(container, ctx, mb) {
               readiness: (target) =>
                 target === number
                   ? stackPullReadiness
-                  : stackReadiness.readiness(memberReadinessRow(target)),
+                  : stackReadiness.readiness(
+                      memberReadinessRow(target),
+                      stackIdentity?.source ?? null,
+                    ),
             }),
         onOpen() {
           // The other members' readiness as it is now, each a minute old read again.
@@ -10276,6 +10287,7 @@ export function mountPullPage(container, ctx, mb) {
       renderMarkdown,
       listed: listedState,
       noteRecord,
+      heardStatus: documentReadiness.heard,
       textUnavailable(part, text, note) {
         if (note) {
           refusedText(part, text, note);

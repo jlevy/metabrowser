@@ -9,8 +9,10 @@ its transcript (mb-3n21). So that what it draws is the server's verdict and not 
 wrote, its answers are recorded here, in ``tests/fixtures/github-pulls-readiness-responses.json``:
 what the in-process application answered while it served ``tests/github_pull_fixture.py``'s
 stand-in, the list of pull requests and ``GET pull-statuses`` for its rows, before the scan of
-every open pull request's status, while the scan runs, once it has ended, and after a push the
-scan has not read; and what ``POST pulls-refresh`` said of the scan each time. The scan is held
+every open pull request's status, while the scan runs, once it has ended, after a push the
+scan has not read, after a scan another tab's Refresh started, which the story's lane does not
+hear start, and after an open pull request is marked a draft; and what ``POST pulls-refresh``
+said of the scan each time, and when the last one ended (``status_scan_at``). The scan is held
 on the loop while the story reads it running, as the panel session's list job is. The first
 test records it and fails when the recording no longer matches. A row is one line of JSON in a
 string, so a hundred rows are a hundred lines to review, as the panel's recording keeps them.
@@ -73,6 +75,10 @@ _STATUSES = "/api/plugin/github/pull-statuses"
 # The pull request the story pushes after the scan.
 PUSHED = 105
 PUSHED_HEAD = "f" * 40
+# The pull request the story marks a draft, ready to merge while open.
+DRAFTED = 106
+# The open rows the lane story draws, which a scan this story's lane does not hear read again.
+REREAD = [106, 105, 10, 7]
 pytestmark = [
     needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
@@ -238,6 +244,36 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             scanned()
             recorded["pushed_list"] = read()
             recorded["pushed"] = statuses([PUSHED])
+
+            # Another tab's Refresh starts a scan this story's lane does not hear, as a look at
+            # the mirror's base branches starts one after an ask has answered: the next ask,
+            # with nothing due, says when it ended (`status_scan_at`).
+            clock[0] += timedelta(seconds=20)
+            recorded["scan_elsewhere"] = ask(state="all", target=500, retry=True)
+            listed()
+            scanned()
+            recorded["scan_ended_elsewhere"] = ask(state="all", target=500, background=True)
+            recorded["rescanned"] = statuses(REREAD)
+
+            # The author marks an open pull request a draft, which the list's probe finds: the
+            # verdict judges the catalog's lifecycle, so the same status is judged anew.
+            clock[0] += timedelta(seconds=20)
+            drafted = [
+                {**item, "draft": True, "updated_at": f"{clock[0]:%Y-%m-%dT%H:%M:%SZ}"}
+                if item["number"] == DRAFTED
+                else item
+                for item in pushed
+            ]
+            catalog = {
+                key: entry
+                for key, entry in catalog_entries(drafted).items()
+                if not key.startswith("graphql:statuses:")
+            }
+            answering({**online, "api": {**online["api"], **catalog}})
+            ask(state="all", target=500, background=True)
+            listed()
+            scanned()
+            recorded["drafted"] = statuses([DRAFTED])
     finally:
         gate.set()
         serve_mirror(None)
@@ -284,6 +320,17 @@ def test_recording_is_what_a_served_mirror_answers(
         "other_head",
         PUSHED_HEAD,
     )
+    # A scan the story's lane did not hear start ends before the next ask, which says so.
+    assert recorded["scan_elsewhere"]["body"]["status_scan"] == "started"
+    ended = recorded["scan_ended_elsewhere"]["body"]
+    assert ended["status_scan"] == "not_due"
+    assert ended["status_scan_at"] > recorded["scan_not_due"]["body"]["status_scan_at"]
+    assert recorded["rescanned"]["body"]["scan"]["at"] == ended["status_scan_at"]
+    # A draft judged anew: the same status, another lifecycle, another verdict.
+    (draft,) = recorded["drafted"]["body"]["rows"]
+    assert (draft["lifecycle"], by_number[DRAFTED]["lifecycle"]) == ("draft", "open")
+    assert draft["head"] == by_number[DRAFTED]["head"]
+    assert draft["readiness"]["verdict"] != by_number[DRAFTED]["readiness"]["verdict"]
     moved = {row["number"]: row for row in recorded["pushed_list"]["body"]["rows"]}
     assert moved[PUSHED]["head_oid"] == PUSHED_HEAD != list_rows[PUSHED]["head_oid"]
     assert recorded["pushed_list"]["body"]["generation"] != recorded["list"]["body"]["generation"]
@@ -304,7 +351,7 @@ def test_every_row_draws_the_verdict_its_answer_gives() -> None:
     rows = {
         json.loads(row)["number"]: json.loads(row) for row in recording["scanned"]["body"]["rows"]
     }
-    drawn = run_session(SESSION)["invariants"]
+    drawn = run_session(SESSION, "--part", "all")["invariants"]
     for number, shown in drawn["panel"].items():
         readiness = rows[int(number)]["readiness"]
         expected = (

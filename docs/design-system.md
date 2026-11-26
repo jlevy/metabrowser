@@ -3937,8 +3937,10 @@ a Pulls row and a stack’s member draw one thing one way.
 - **A stack’s member**, in the stack menu and on the stack’s page, ends its line with
   the glyph, after the author, in a cell as wide as the glyph, empty for a member with
   no readiness, so the members’ places, numbers, and authors end at one edge.
-  The page’s own member draws the readiness its header shows; every other member the
-  server’s. A guide’s pull request row shows none, and has no cell.
+  The page’s own member draws the readiness its header shows, by the header’s rule;
+  every other member the server’s, on the head the server judged, the catalog’s,
+  whatever head the member’s record has.
+  A guide’s pull request row shows none, and has no cell.
 
 The glyph and the label are hidden from assistive technology on both: the row says the
 label out of view after the state icon, so its name reads “Open Checks pending Fix the
@@ -3947,13 +3949,22 @@ The Pulls column has no tooltips, and nor does the glyph.
 
 A row is read in one request for the rows a surface draws, when the browser is idle and
 behind any comparison a page is reading, from the cache alone, as a row’s change line
-is, and its answer is kept for the document, so a remounted Pulls tab and a stack menu
-draw what the list read.
+is. Its answer is kept for the document, the server’s alone, with the head and the state
+it judged and nothing of the surface that asked, so a remounted Pulls tab and a stack
+menu draw what the list read in their first paint, every surface that draws a pull
+request holds one answer of it, and one read settles it for all.
+A verdict is drawn only beside the head and the state it judged (`readinessForState` in
+`pull-readiness.js`, the page’s rule too), so a pushed row, or one marked a draft or
+ready, draws none until the server judges it anew.
 It is read again when the list’s ask says the scan of every open pull request’s status
-started or ended, when its head or its state moves, and, on a stack’s member rows, which
-no ask reaches, once a minute at most as the menu opens or the stack’s page polls
-(`ROW_READINESS_RETRY_MS`). `tests/golden/cli-ui-github-pulls-readiness.tryscript.md`
-pins what each row and member draws and says, from the server’s recorded answers, and
+started, when the ask or a read says a scan ended later than the document had heard of,
+however it started (`status_scan_at`), when a pull request page reads a newer status of
+its own, when the head or the state a surface draws it with moves, and, on a stack’s
+member rows, which no ask reaches, once a minute at most as the menu opens or the
+stack’s page polls (`ROW_READINESS_RETRY_MS`), and on the stack’s page as a member’s
+record moves to a new head; at most once for each, whichever surface reads it.
+`tests/golden/cli-ui-github-pulls-readiness.tryscript.md` pins what each row and member
+draws and says, from the server’s recorded answers, and
 `tests/dom/github-pulls-readiness-chrome.mjs` holds the column, its label’s bound, and
 the inks in Chrome.
 

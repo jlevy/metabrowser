@@ -88,7 +88,8 @@
     "rows": []
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
-   "status_scan": "not_due"
+   "status_scan": "not_due",
+   "status_scan_at": null
   }
  },
  "pending": {
@@ -613,7 +614,8 @@
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
-   "status_scan": "started"
+   "status_scan": "started",
+   "status_scan_at": null
   }
  },
  "pin_changed": {
@@ -713,7 +715,8 @@
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
-   "status_scan": "not_due"
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "stale_refreshing": {
@@ -848,7 +851,8 @@
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
-   "status_scan": "not_due"
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "probe_changed": {
@@ -895,7 +899,8 @@
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
-   "status_scan": "not_due"
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "probe_scanned": {
@@ -1593,7 +1598,8 @@
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
-   "status_scan": "started"
+   "status_scan": "started",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "another_reader": {
@@ -1752,7 +1758,8 @@
     "rows": []
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
-   "status_scan": "started"
+   "status_scan": "started",
+   "status_scan_at": "2026-10-01T12:00:00Z"
   }
  },
  "landing_empty_refreshing": {

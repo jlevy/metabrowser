@@ -449,6 +449,33 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "a member the Open list no longer holds is not drawn open",
   );
   assert.equal(page.stackMemberState(source, 8, 7, "open"), null);
+  // The page's own member draws the readiness the page shows, by the page's one rule
+  // (`readinessForState`): once the list says #7 is a draft, later than its record, the page
+  // shows a draft and draws no verdict, which judged it open, in its header or on its own
+  // member; once the list says it is open again, both draw the verdict again.
+  const ownMember = () => {
+    const link = memberLinks()[1];
+    return { state: link.children[0].dataset.state ?? null, ...readinessOf(link) };
+  };
+  for (const [state, at, expected] of [
+    ["draft", "2026-11-24T03:00:00Z", { state: "draft", said: "", glyph: null, hidden: "true" }],
+    [
+      "open",
+      "2026-11-24T04:00:00Z",
+      { state: "open", said: "Checks pending", glyph: "checks_pending attention", hidden: "true" },
+    ],
+  ]) {
+    pullState.noteListed(source, "open", [{ number: 7, state, updatedAt: at }]);
+    next.setTab("files");
+    await settle();
+    reopen();
+    assert.deepEqual(ownMember(), expected, `the list says #7 is ${state}`);
+    assert.equal(
+      warm.querySelector(".github-pull-readiness-slot") !== null,
+      state === "open",
+      `the header's readiness, the list saying ${state}`,
+    );
+  }
   // Each list takes back only the states it holds, never a merge, and an answer older than
   // what is noted of a row replaces nothing. A record fresher than the list is noted back;
   // one no list has noted is noted only when merged, as no list could take another back.

@@ -718,7 +718,7 @@ function pinChanged(response) {
  *   filesListed?(number: number): void,
  *   listingFiles?(numbers: number[]): void,
  *   listedFiles?(numbers: number[], idle: boolean): void,
- *   statusScan?(scan: unknown): void,
+ *   statusScan?(scan: unknown, endedAt: unknown): void,
  * }} PullsDependencies
  */
 
@@ -2626,8 +2626,10 @@ export function createPullsController(deps, options = {}) {
           holdEnvelope(list, answer.pulls, request);
         }
         // Whether the ask started the scan of every open pull request's status, or found one
-        // running, for the rows' readiness (row-readiness.js, `scanned`).
-        deps.statusScan?.(/** @type {{status_scan?: unknown}} */ (answer).status_scan);
+        // running, and when the latest one ended, for the rows' readiness (row-readiness.js,
+        // `scanned`).
+        const scan = /** @type {{status_scan?: unknown, status_scan_at?: unknown}} */ (answer);
+        deps.statusScan?.(scan.status_scan, scan.status_scan_at);
         if (response.status === 202) {
           // The answer changed; the next poll must not be answered by a 304.
           list.etag = null;
@@ -4807,11 +4809,10 @@ export function mountPullsPanel(container, ctx, mb) {
    */
   function paintReadiness(entry) {
     const readiness =
-      rowReadiness?.readiness({
-        number: entry.info.number,
-        head: entry.info.head,
-        state: entry.info.state,
-      }) ?? null;
+      rowReadiness?.readiness(
+        { number: entry.info.number, head: entry.info.head, state: entry.info.state },
+        stackIdentity?.source ?? null,
+      ) ?? null;
     const key =
       readiness === null ? "none" : `${readiness.verdict}:${readiness.tone}:${readiness.label}`;
     if (entry.readinessKey === key) {
@@ -5982,7 +5983,7 @@ export function mountPullsPanel(container, ctx, mb) {
       listedFiles: (numbers, idle) => rowLines?.listed(numbers, { idle }),
       // What the list's ask said of the scan of every open pull request's status, for the
       // rows' readiness (row-readiness.js).
-      statusScan: (scan) => rowReadiness?.scanned(scan),
+      statusScan: (scan, endedAt) => rowReadiness?.scanned(scan, endedAt),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );

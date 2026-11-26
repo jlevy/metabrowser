@@ -878,7 +878,8 @@ status: 202
     "rows": []
   },
   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
-  "status_scan": "not_due"
+  "status_scan": "not_due",
+  "status_scan_at": null
 }
 after: /api/plugin/github/pulls?state=all&limit=0
 status: 200

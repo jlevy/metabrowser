@@ -2408,6 +2408,77 @@ async function mergeStatusSection(page) {
   merged.handle.dispose();
   await checkLinkByPlace(page);
   await listedStateReadiness(page);
+  await pageReadReachesRows(page);
+}
+
+// The page's own read of its pull request's status reaches every row in the document that
+// draws its readiness (row-readiness.js, `heard`; mb-3n21): a Pulls row that read #7 before
+// the page's read observed it reads it again, once, when the page shows a newer status, so it
+// says what the header says without waiting for the next scan; and the page's polls of the
+// same status read nothing more.
+async function pageReadReachesRows(page) {
+  const rows = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/row-readiness.js")).href
+  );
+  const body = structuredClone(recorded.current.body);
+  const older = new Date(Date.parse(body.status.observed_at) - 60_000)
+    .toISOString()
+    .replace(".000Z", "Z");
+  const idle = [];
+  const reads = [];
+  const lane = rows.createRowReadiness({
+    keep: { quiet: async () => {} },
+    async read(numbers) {
+      reads.push(numbers.join(","));
+      return {
+        status: 200,
+        body: {
+          source: body.source,
+          scanning: false,
+          scan: null,
+          rows: numbers.map((number) => ({
+            number,
+            state: "status",
+            reason: null,
+            lifecycle: "open",
+            head: body.record.pull.head.sha,
+            status: { ...body.status, observed_at: older },
+            readiness: { verdict: "checks_pending", tone: "attention", label: "Checks pending" },
+          })),
+        },
+      };
+    },
+    schedule(callback) {
+      idle.push(callback);
+      return callback;
+    },
+    cancel() {},
+    isVisible: () => true,
+    now: () => Date.now(),
+    changed() {},
+  });
+  const runIdle = async () => {
+    while (idle.length > 0) {
+      idle.shift()();
+      await settle();
+    }
+  };
+  const row = { number: 7, head: body.record.pull.head.sha, state: "open" };
+  lane.want([row], body.source);
+  await runIdle();
+  assert.deepEqual(reads, ["7"], "the Pulls row reads #7 once");
+  const { handle } = await mountOn(page, body, "", () => "now");
+  lane.want([row], body.source);
+  await runIdle();
+  assert.deepEqual(reads, ["7", "7"], "the page's newer status reads #7 again, once");
+  handle.land({ tab: "checks" });
+  await settle();
+  lane.want([row], body.source);
+  await runIdle();
+  assert.deepEqual(reads, ["7", "7"], "the page's same status again reads nothing");
+  handle.dispose();
+  lane.dispose();
+  rows.documentReadiness.clear();
 }
 
 // A requirement's link to a check focuses the row of the check it names, whatever the others

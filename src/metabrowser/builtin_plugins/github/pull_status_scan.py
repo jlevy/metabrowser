@@ -822,6 +822,24 @@ def scanning(coordinator: RefreshCoordinator | None, source: str) -> bool:
     return coordinator.running(_scan_key(source))
 
 
+async def scan_ended_at(
+    repository: ListedRepository | None, coordinator: RefreshCoordinator | None
+) -> str | None:
+    """When *repository*'s last scan ended, the ``at`` of the later of its stamp on disk and
+    the one this process's last scan left (:meth:`StatusScan.latest`); ``None`` before any.
+
+    The list's ask answers it (``status_scan_at``), so a page learns that a scan ended since
+    it last asked whoever started it: the ask, another page's, or a look at the mirror after
+    an ask had answered (:func:`_look_job`). One small bounded file read, off the loop.
+    """
+
+    if repository is None or coordinator is None:
+        return None
+    scan = status_scan(coordinator, repository.source)
+    latest = scan.latest(await asyncio.to_thread(_scan_inputs, repository))
+    return None if latest is None else latest.at
+
+
 def _scan_inputs(repository: ListedRepository) -> ScanStamp | None:
     """The last scan's stamp. Blocking and bounded."""
 
@@ -969,6 +987,7 @@ __all__ = [
     "read_scan_stamp",
     "run_scan",
     "scan_due",
+    "scan_ended_at",
     "scan_page",
     "scan_statuses",
     "scanning",

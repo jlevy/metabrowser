@@ -764,6 +764,9 @@ one, and records them beside their constants.
   The Pulls tab and the stack page ask it for the rows they draw.
 - **`POST /api/plugin/github/pulls-refresh`**, the list’s existing ask, also starts the
   status scan when it is due, so no new refresh route is needed.
+  Its answer says whether it did (`status_scan`) and when the last scan ended
+  (`status_scan_at`), so a page learns of a scan that ended since its last ask whoever
+  started it.
 - **`metab --show /pull/<n>/checks`** prints the verdict and each requirement on the
   model line, beside today’s `check_runs=N statuses=N`.
 - **`metab <repo> --api '/api/plugin/github/pull-statuses?numbers=...'`** reaches the

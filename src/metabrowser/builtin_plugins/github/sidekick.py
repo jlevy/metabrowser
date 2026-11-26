@@ -824,9 +824,11 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
 
     Once the list's answer is read, the ask starts the scan of every open pull request's
     status when it is due (:func:`.pull_status_scan.ask_status_scan`), and ``status_scan``
-    says whether it ``started``, ``joined``, or was ``not_due``. The scan is a job of its
-    own, so it never holds the list's refresh, and ``GET pull-statuses`` answers it. The
-    ask reads only the scan's stamp for it, never Git: a look at the mirror's base
+    says whether it ``started``, ``joined``, or was ``not_due``; ``status_scan_at`` is when
+    the last scan ended, ``None`` before any (:func:`.pull_status_scan.scan_ended_at`), so a
+    page learns of a scan that ended since its last ask whoever started it. The scan is a
+    job of its own, so it never holds the list's refresh, and ``GET pull-statuses`` answers
+    it. The ask reads only the scan's stamp for it, never Git: a look at the mirror's base
     branches, when only a moved one could start a scan, runs as a job of its own after the
     answer, and starts the scan itself.
     """
@@ -878,7 +880,7 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
         found = await asyncio.to_thread(read_catalog_window, after, window)
     envelope = list_envelope(after, found, window)
     from metabrowser.builtin_plugins.github.pull_route import pull_host
-    from metabrowser.builtin_plugins.github.pull_status_scan import ask_status_scan
+    from metabrowser.builtin_plugins.github.pull_status_scan import ask_status_scan, scan_ended_at
 
     host = pull_host(request.app)
     # The catalog as this ask read it before the list's start: a first read the job just
@@ -897,6 +899,7 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
         "pulls": dict(envelope),
         "status_route": status_route(ask.name),
         "status_scan": scan,
+        "status_scan_at": await scan_ended_at(view.repository, view.coordinator),
     }
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 

@@ -1755,9 +1755,9 @@ export function mountStackPage(container, ctx, mb) {
 
   // Each member's readiness (row-readiness.js), at its line's end as in the stack menu: read
   // for the members the card lists, from the cache alone, when the browser is idle, again as
-  // a member's head moves in the stack's answer, and otherwise at most once a minute as the
-  // page polls, and kept for the document with what the Pulls tab and the stack menus read.
-  // An SDK without `whenIdle` reads none, and the members draw no readiness.
+  // a member's record moves to a new head in the stack's answer, and otherwise at most once a
+  // minute as the page polls, and kept for the document with what the Pulls tab and the stack
+  // menus read. An SDK without `whenIdle` reads none, and the members draw no readiness.
   const memberReadiness =
     typeof mb.whenIdle !== "function"
       ? null
@@ -1776,27 +1776,51 @@ export function mountStackPage(container, ctx, mb) {
         });
   /** The members' lines last drawn, without their readiness. @type {StackMemberLine[] | null} */
   let drawnLines = null;
+  /** Each member's record's head in the stack's answer last drawn. @type {Map<number, string | null>} */
+  let memberHeads = new Map();
 
   /**
-   * Each member as its readiness is read: its number, the head the stack's answer names for
-   * it, and the state its line shows.
+   * Each member as its readiness is read: its number and the state its line shows, with no
+   * head. The head the stack's answer names is its record's, which can lag the head the list
+   * of pull requests names and the server judges, so it gates nothing here: the member draws
+   * the verdict on the head the server judged, as the Pulls row of it does.
    * @param {StackMemberLine} line
    * @returns {import("./row-readiness.js").ReadinessRow}
    */
   function readinessRow(line) {
-    const member = envelope?.members.find((each) => each.number === line.number);
-    return { number: line.number, head: member?.head ?? null, state: line.state };
+    return { number: line.number, head: null, state: line.state };
   }
 
   /** @param {StackMemberLine[] | null} given */
   function paintMembers(given) {
     drawnLines = given;
     const rows = (given ?? []).map(readinessRow);
+    // A member whose record moved to a new head since the answer last drawn may have a new
+    // status with it: its readiness is read again.
+    /** @type {Map<number, string | null>} */
+    const heads = new Map();
+    for (const line of given ?? []) {
+      heads.set(
+        line.number,
+        envelope?.members.find((each) => each.number === line.number)?.head ?? null,
+      );
+    }
+    const moved = [...heads].filter(
+      ([number, head]) => memberHeads.has(number) && memberHeads.get(number) !== head,
+    );
+    memberHeads = heads;
+    memberReadiness?.reread(
+      moved.map(([number]) => number),
+      knownSource,
+    );
     memberReadiness?.refresh(rows, knownSource);
     const lines =
       given === null || memberReadiness === null
         ? given
-        : given.map((line, at) => ({ ...line, readiness: memberReadiness.readiness(rows[at]) }));
+        : given.map((line, at) => ({
+            ...line,
+            readiness: memberReadiness.readiness(rows[at], knownSource),
+          }));
     const key = JSON.stringify(lines);
     if (key === membersKey) {
       return;
