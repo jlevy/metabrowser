@@ -205,22 +205,17 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
     '<span class="sr-only">Loading document…</span></div>';
   async function render() {
-    // What a link into the served repository opens (static/repository-links.js), fetched
-    // beside the render on a page that has a repository's identity, and waited for at most
-    // `REPOSITORY_LINKS_WAIT_MS`. Without it, such a link stays the github.com link it is.
-    const repositoryLinks = mb.repository
-      ? new Promise((resolve) => {
-          const timer = setTimeout(resolve, REPOSITORY_LINKS_WAIT_MS);
-          mb.ensureAsset("repository-links")
-            .catch((error) => {
-              console.warn("metabrowser markdown: repository links are unavailable", error);
-            })
-            .finally(() => {
-              clearTimeout(timer);
-              resolve(undefined);
-            });
-        })
-      : null;
+    // What a link into the served repository opens (metabrowser.loadRepositoryLinks),
+    // fetched beside the render and waited for at most `REPOSITORY_LINKS_WAIT_MS`. Without
+    // it, such a link stays the github.com link it is.
+    /** @type {Promise<MetabrowserRepositoryLinksRuntime | null>} */
+    const repositoryLinks = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), REPOSITORY_LINKS_WAIT_MS);
+      void Promise.resolve(mb.loadRepositoryLinks?.() ?? null).then((links) => {
+        clearTimeout(timer);
+        resolve(links);
+      });
+    });
     try {
       const raw =
         ctx.raw && typeof ctx.raw === "object"
@@ -269,7 +264,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       if (disposed || controller.signal.aborted) {
         return;
       }
-      await repositoryLinks;
+      const linkRuntime = await repositoryLinks;
       if (disposed || controller.signal.aborted) {
         return;
       }
@@ -283,6 +278,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
           ? (root) =>
               enhanceRenderedLinks(root, path, mb, {
                 pagePath,
+                repositoryLinks: linkRuntime,
                 rawVersions: rendered.raw_versions,
                 signal: controller.signal,
                 workerClient,

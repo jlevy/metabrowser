@@ -2823,6 +2823,35 @@
     );
   }
 
+  /** The one load of the repository links, shared by every view that asks. @type {Promise<MetabrowserRepositoryLinksRuntime | null> | null} */
+  let repositoryLinks = null;
+
+  /**
+   * What a link in authored text opens (static/repository-links.js), for a view that shows
+   * such a text: the runtime on a page with a GitHub repository's identity
+   * (`metabrowser.repository`), loaded once with the GitPath codec it reads a pin's
+   * addresses with, and null on any other page or when it does not load, when every link
+   * stays as written. It never rejects, and a view uses the runtime it resolves to, so no
+   * view can read the links without having loaded them.
+   *
+   * @returns {Promise<MetabrowserRepositoryLinksRuntime | null>}
+   */
+  function loadRepositoryLinks() {
+    if (!mb.repository) {
+      return Promise.resolve(null);
+    }
+    repositoryLinks ??= mb.ensureAsset("repository-links").then(
+      () => global.MetabrowserRepositoryLinks ?? null,
+      (error) => {
+        // Asked again by the next view, since a later load may succeed.
+        repositoryLinks = null;
+        console.warn("metabrowser: repository links are unavailable", error);
+        return null;
+      },
+    );
+    return repositoryLinks;
+  }
+
   function loadChangedFilesTree() {
     return mb.ensureAsset("changed-files-tree").then(() => {
       const tree = global.MetabrowserChangedFilesTree;
@@ -2863,6 +2892,7 @@
     decorateExternalLink,
     externalLinkMenuItems,
     loadChangedFilesTree,
+    loadRepositoryLinks,
     mountCounterpart,
     prefetchCounterpart,
     refChipHtml,

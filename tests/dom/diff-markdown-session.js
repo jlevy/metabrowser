@@ -412,6 +412,9 @@ globalThis.window = {
     get repository() {
       return pageSource.repository;
     },
+    // As static/plugin-sdk-views.js answers it: the links on a repository's page.
+    loadRepositoryLinks: async () =>
+      pageSource.repository ? globalThis.window.MetabrowserRepositoryLinks : null,
   },
 };
 

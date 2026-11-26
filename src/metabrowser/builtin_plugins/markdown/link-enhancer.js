@@ -39,8 +39,7 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  *    opens the ordinary not-found state; nothing guesses by basename. Media goes through
  *    `/raw`, except an embedded PDF, which is the pdf plugin's card with a link to the
  *    PDF's view (`mountPdfEmbed`); a link to a PDF opens its view, as any file's does.
- * 3. Repository links (`static/repository-links.js`, which `rendered.js` loads beside the
- *    render): a `github.com` link into the served repository opens in Metabrowser when
+ * 3. Repository links (`static/repository-links.js`, *repositoryLinks* below): a `github.com` link into the served repository opens in Metabrowser when
  *    its page exists here and shows the same thing, as the served repository's identity
  *    (`repository_context.py`, read from Git metadata with bounded reads and no Git
  *    process) proves: a file or folder on the served branch or commit, the repository's
@@ -58,7 +57,10 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
- * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, rawVersions?: unknown, pagePath?: string, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, rawVersions?: unknown, pagePath?: string, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner, repositoryLinks?: MetabrowserRepositoryLinksRuntime | null}=} options
+ *   `repositoryLinks` is what a link into the served repository opens
+ *   (`metabrowser.loadRepositoryLinks`), which `rendered.js` loads beside the render; without
+ *   it, such a link stays as written.
  *   `rawVersions` is the render's `raw_versions`: the version of each served file it
  *   embeds, by identity, which that file's address carries.
  *   `pagePath` is the path of the page that shows this document as its own, when that is
@@ -81,6 +83,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     sourceKind,
   );
   const pagePath = options.pagePath ?? sourcePath;
+  const repositoryLinks = options.repositoryLinks ?? null;
   const preserveFragmentOnlyHrefs = isCurrentDocument(pagePath, mb.navigation.current());
   /** @type {WeakMap<Element, NavigationTarget>} */
   const internalTargets = new WeakMap();
@@ -145,7 +148,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
           }
         } else if (resolved.status === "external") {
           const localized =
-            window.MetabrowserRepositoryLinks?.localize(authoredTarget, mb.repository, {
+            repositoryLinks?.localize(authoredTarget, mb.repository, {
               sourceKind,
             }) ?? null;
           // A document has no text context, so the answer is in-app or nothing. An in-app
@@ -157,10 +160,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             const target = navigationTarget(localized.target);
             anchor.setAttribute("href", mb.navigation.href(target));
             if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
-              anchor.setAttribute(
-                "title",
-                window.MetabrowserRepositoryLinks?.WORKING_TREE_TITLE ?? "",
-              );
+              anchor.setAttribute("title", repositoryLinks?.WORKING_TREE_TITLE ?? "");
             }
             internalTargets.set(anchor, target);
           } else if (localized?.kind === "route") {
@@ -307,6 +307,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         transclusionBudget: nestedOptions.budget,
         transclusionChain: nestedOptions.chain,
         rawVersions: nestedOptions.rawVersions,
+        repositoryLinks,
         workerClient,
       }),
   });

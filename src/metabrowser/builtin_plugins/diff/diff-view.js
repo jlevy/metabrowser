@@ -46,6 +46,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   into the repository open is read against (static/repository-links.js).
  * @property {MetabrowserPublicSdk["sourceKind"]} [sourceKind]
  * @property {MetabrowserPublicSdk["decorateExternalLink"]} [decorateExternalLink]
+ * @property {MetabrowserPublicSdk["loadRepositoryLinks"]} [loadRepositoryLinks]
  */
 
 /**
@@ -5527,6 +5528,8 @@ export function mountDiffView(container, document_, api, options = {}) {
     api?.filterControls &&
     typeof IntersectionObserver === "function"
   ) {
+    /** What a rendered file's links open, once loaded with its allowlist. @type {MetabrowserRepositoryLinksRuntime | null} */
+    let repositoryLinks = null;
     view.markdown = {
       format: options.markdownViews.renderedFormat,
       controller: options.markdownViews.createMarkdownViews({
@@ -5537,20 +5540,13 @@ export function mountDiffView(container, document_, api, options = {}) {
         opens: options.unfold === true ? "prefer-full" : "concise",
         show: view.show,
         async ensureInert() {
-          await Promise.all([
+          // The allowlist, and what a rendered file's links open, without which a link keeps
+          // its address (metabrowser.loadRepositoryLinks).
+          const [, links] = await Promise.all([
             api?.ensureAsset?.("inert-html"),
-            // What a rendered file's links open, and the codec that reads back the path of
-            // a link to a file of the head, which only a pinned revision's shell loads; a
-            // link keeps its address without them.
-            api?.repository && api.ensureAsset
-              ? Promise.all([
-                  api.ensureAsset("repository-links"),
-                  window.MetabrowserGitPath ? null : api.ensureAsset("git-path"),
-                ]).catch((error) => {
-                  console.warn("metabrowser diff: repository links are unavailable", error);
-                })
-              : null,
+            api?.loadRepositoryLinks?.() ?? null,
           ]);
+          repositoryLinks = links ?? null;
           return window.MetabrowserInertHtml;
         },
         // A rendered file's link into the repository opens its page here, a pull request or
@@ -5560,8 +5556,8 @@ export function mountDiffView(container, document_, api, options = {}) {
         enhanceLinks(prose) {
           const navigation = api?.navigation;
           const sourceKind = api?.sourceKind;
-          if (navigation && sourceKind && api?.repository) {
-            window.MetabrowserRepositoryLinks?.enhance(
+          if (repositoryLinks && navigation && sourceKind && api?.repository) {
+            repositoryLinks.enhance(
               prose,
               { navigation, repository: api.repository, sourceKind },
               { views: false },

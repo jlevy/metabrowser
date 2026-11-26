@@ -192,9 +192,9 @@ async function loadModule() {
     "utf8",
   );
   const projectAdaptersUrl = `data:text/javascript;base64,${Buffer.from(projectAdaptersSource).toString("base64")}`;
-  // The page loads the repository links (static/repository-links.js) before it enhances
-  // a document, as rendered.js does, and the enhancer reads them from the window; a pin's
-  // shell has loaded the GitPath codec (static/git-path.js) they spell its paths with.
+  // The page loads the repository links (static/repository-links.js, with the GitPath codec
+  // they spell a pin's paths with) before it enhances a document, as rendered.js does
+  // through metabrowser.loadRepositoryLinks, and hands them to the enhancer.
   global.window ??= global;
   for (const name of ["git-path.js", "repository-links.js"]) {
     const file = path.join(repoRoot, "src/metabrowser/static", name);
@@ -376,6 +376,7 @@ async function loadModule() {
     },
   };
   const handle = module.enhanceRenderedLinks(container, "docs/readme.md", mb, {
+    repositoryLinks: global.MetabrowserRepositoryLinks,
     cancel: (id) => frames.delete(id),
     eventTarget,
     schedule: (callback) => {
@@ -910,7 +911,12 @@ async function loadModule() {
     githubPinContainer,
     "g1-UkVBRE1FLm1k",
     { ...mb, sourceKind: () => "git_revision" },
-    { cancel: () => {}, eventTarget: new FakeEventTarget(), schedule: () => 0 },
+    {
+      repositoryLinks: global.MetabrowserRepositoryLinks,
+      cancel: () => {},
+      eventTarget: new FakeEventTarget(),
+      schedule: () => 0,
+    },
   );
   check(
     "pinned GitHub blob link localized to a GitPath wire",

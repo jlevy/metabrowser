@@ -2032,6 +2032,11 @@ type MetabrowserSdk = {
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   /** The shared changed-files tree model, loaded once on demand (static/changed-files-tree.js). */
   loadChangedFilesTree(): Promise<MetabrowserChangedFilesTree>;
+  /**
+   * What a link in authored text opens (static/repository-links.js), loaded once on a page
+   * with a GitHub repository's identity, or null; never rejects (static/plugin-sdk-views.js).
+   */
+  loadRepositoryLinks(): Promise<MetabrowserRepositoryLinksRuntime | null>;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
   /**
