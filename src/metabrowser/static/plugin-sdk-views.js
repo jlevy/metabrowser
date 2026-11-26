@@ -315,7 +315,7 @@
     if (plain || parse(target.fragment)) {
       return "source";
     }
-    return new URLSearchParams(target.query).has("table") ? "table" : null;
+    return new URLSearchParams(target.query).get("table") ? "table" : null;
   }
 
   /**
