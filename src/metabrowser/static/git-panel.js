@@ -1267,31 +1267,52 @@
    * `GET /api/git/commit/<id>`, which the panel then keeps for the commit's row and page. A
    * kept detail from an earlier history session serves too: only its refs can have moved,
    * and the summary names none. A commit the server answered `commit_not_found` for answers
-   * missing with no request. Only a full commit ID is read, as it names the same commit
-   * later; any other revision, a read that fails, and a root that is not a repository answer
-   * null. Nothing here fetches from origin: offering that is a commit page's
-   * (`openMissingCommit`), never a card's.
-   *
-   * *signal* stops this caller waiting, never the read: another caller may share it, and the
-   * cache keeps its answer when it lands.
+   * missing with no request, until the panel's Refresh or a fetch clears that answer. Only a
+   * full commit ID is read, as it names the same commit later; any other revision, a read
+   * that fails, and a root that is not a repository answer null, and a read that fails is
+   * read again the next time. Nothing here fetches from origin: offering that is a commit
+   * page's (`openMissingCommit`), never a card's.
    *
    * @param {string} revision
-   * @param {{signal?: AbortSignal}} [options]
    * @returns {Promise<MetabrowserGitCommitSummary | null>}
    */
-  async function commitSummary(revision, options = {}) {
+  async function commitSummary(revision) {
+    const kept = keptCommitSummary(revision);
+    if (kept !== null || !FULL_COMMIT_ID.test(revision)) {
+      return kept;
+    }
+    const detail = await fetchCommitDetail(revision);
+    if (detail === null) {
+      return missingRevisions.has(revision) ? MISSING_COMMIT : null;
+    }
+    return summaryOf(detail);
+  }
+
+  /**
+   * What `commitSummary` answers for *revision* from what the panel holds now, with no read:
+   * its kept detail, or that the server said the repository lacks it, and null otherwise.
+   * A card shows it as the pointer arrives (static/link-preview-providers.js), so what the
+   * panel keeps, and clears, is what the card says.
+   *
+   * @param {string} revision
+   * @returns {MetabrowserGitCommitSummary | null}
+   */
+  function keptCommitSummary(revision) {
     if (!FULL_COMMIT_ID.test(revision)) {
       return null;
     }
     if (missingRevisions.has(revision)) {
       return MISSING_COMMIT;
     }
-    const detail =
-      detailCache.get(revision) ??
-      (await untilAborted(fetchCommitDetail(revision), options.signal));
-    if (detail === null) {
-      return missingRevisions.has(revision) ? MISSING_COMMIT : null;
-    }
+    const detail = detailCache.get(revision);
+    return detail === undefined ? null : summaryOf(detail);
+  }
+
+  /**
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {MetabrowserGitCommitSummary}
+   */
+  function summaryOf(detail) {
     const { subject, author, committed_at: committedAt } = detail.commit;
     return {
       subject,
@@ -1299,28 +1320,6 @@
       committedAt: Number.isFinite(committedAt) && committedAt > 0 ? committedAt : null,
       missing: false,
     };
-  }
-
-  /**
-   * *work*'s answer, or *signal*'s reason once it aborts first. The work goes on either way.
-   *
-   * @template T
-   * @param {Promise<T>} work
-   * @param {AbortSignal | undefined} signal
-   * @returns {Promise<T>}
-   */
-  function untilAborted(work, signal) {
-    if (signal === undefined) {
-      return work;
-    }
-    if (signal.aborted) {
-      return Promise.reject(signal.reason);
-    }
-    return new Promise((resolve, reject) => {
-      const stop = () => reject(signal.reason);
-      signal.addEventListener("abort", stop, { once: true });
-      work.then(resolve, reject).finally(() => signal.removeEventListener("abort", stop));
-    });
   }
 
   // ── Commit bodies as Markdown ──────────────────────────────
@@ -4395,6 +4394,7 @@
     refresh,
     restoreCommitLanding,
     commitSummary,
+    keptCommitSummary,
     prefetchCommit,
     // Exposed for tests, which drive the panel without a network.
     _internals: {

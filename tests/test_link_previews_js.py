@@ -150,13 +150,16 @@ def test_the_card_appears_only_on_the_tooltips_own_timer() -> None:
     assert all(entry.get("tooltip") is None for entry in passed if "tooltip" in entry)
 
 
-def test_a_late_answer_is_kept_for_the_next_rest() -> None:
+def test_a_late_answer_is_the_next_rests_at_once() -> None:
+    """A provider keeps what it read; the next rest's card says it from the pointer's arrival."""
+
     log = _session()["timing"]["a late answer: kept for the next rest"]
-    assert sum("summary" in entry for entry in log) == 1
-    shows = [entry for entry in log if "show" in entry]
+    assert sum("summary" in entry and not entry.get("kept") for entry in log) == 1
     seen = [entry["tooltip"] for entry in log if entry.get("tooltip")]
     assert "Keep the tail" not in seen[0], "the card already up took the late answer"
-    assert "Keep the tail" in shows[-1]["card"] and "Keep the tail" in seen[-1]
+    left = next(index for index, entry in enumerate(log) if entry.get("hide"))
+    arrival = next(entry for entry in log[left:] if "show" in entry)
+    assert "Keep the tail" in arrival["card"] and "Keep the tail" in seen[-1]
 
 
 def test_one_read_and_one_prefetch_in_flight_and_none_aborted() -> None:
@@ -166,7 +169,7 @@ def test_one_read_and_one_prefetch_in_flight_and_none_aborted() -> None:
         "prefetches": 0,
         "maxReads": 1,
         "maxPrefetches": 1,
-        "aborted": 0,
+        "signals": 0,
     }
     asked = [(entry["at"], entry.get("summary")) for entry in requests["log"] if "summary" in entry]
     # The second link's rest began during the first's read and waited for it to settle.
@@ -192,11 +195,15 @@ def test_focus_or_a_press_during_a_rest_brings_no_card_back() -> None:
 
 
 def test_a_failing_provider_leaves_the_card_with_where_it_opens() -> None:
-    for name, session in _session()["failures"].items():
-        assert session["cards"] == ["Commit 0123456 | Opens here in Metabrowser"] * 2, name
-    # A failure is asked about again at the next rest; an answer of nothing is kept.
-    assert _session()["failures"]["a provider that throws"]["asked"] == 2
-    assert _session()["failures"]["a provider that answers null"]["asked"] == 1
+    failures = _session()["failures"]
+    for name, session in failures.items():
+        assert all(card.endswith("Opens here in Metabrowser") for card in session["cards"]), name
+        # The registry keeps no answer: every provider is asked again at the next rest.
+        assert session["asked"] == 2, name
+    for name in ("a provider that throws", "a provider that rejects", "a provider that answers null"):
+        assert failures[name]["cards"] == ["Commit 0123456 | Opens here in Metabrowser"] * 2, name
+    later = failures["a provider that answers null, then a subject"]["cards"]
+    assert "Found at the second rest" not in later[0] and "Found at the second rest" in later[1]
 
 
 def test_a_surface_puts_away_only_its_own_card() -> None:

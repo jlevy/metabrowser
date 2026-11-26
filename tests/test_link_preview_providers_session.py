@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import functools
 import os
+import re
 import subprocess
 import tomllib
 from collections.abc import Iterator
@@ -40,9 +41,8 @@ RECORDING = "link-preview-providers-responses.json"
 STACKS_RECORDING = "github-stacks-responses.json"
 TRANSCRIPT = "cli-ui-link-preview-providers.tryscript.md"
 SESSION = "link-preview-providers-session.js"
-GITHUB_MANIFEST = (
-    Path(__file__).resolve().parents[1] / "src/metabrowser/builtin_plugins/github/manifest.toml"
-)
+ROOT = Path(__file__).resolve().parents[1]
+GITHUB_MANIFEST = ROOT / "src/metabrowser/builtin_plugins/github/manifest.toml"
 # The pull requests the recording's catalog holds, one in each state a row can have.
 PULLS = {
     12: ("open", "feat(links): preview what a link opens"),
@@ -281,22 +281,61 @@ def test_every_read_is_one_the_app_makes_from_the_cache() -> None:
     assert session["aborted"] == []
 
 
-def test_a_rest_on_a_link_again_asks_nothing_it_has_asked() -> None:
-    """A pull request, a commit, a missing commit, and a record warmed are each asked for
-    once a page, and a caller that stopped waiting leaves its read to land and be kept."""
+def test_what_a_provider_holds_it_says_at_once_and_reads_nothing() -> None:
+    """A provider that holds a fresh answer says it as the pointer arrives (`known`), and its
+    summary is that answer, with no read; one that holds nothing reads."""
 
-    session = _session()
-    once = [
-        line
-        for line in session["requests"]
-        if "/api/git/commit/" in line or "pulls?q=" in line or "warm=1" in line
-    ]
-    assert once and len(once) == len(set(once)), once
-    rests = _rests()
-    for at, rest in enumerate(rests):
-        if rest["summary"] is not None and "rejected" in rest["summary"]:
-            again = next(later for later in rests[at + 1 :] if later["subject"] == rest["subject"])
-            assert again["asked"] == [] and "title" in again["summary"], again
+    for rest in _rests():
+        if rest["known"] is not None:
+            assert rest["summary"] == rest["known"] and rest["asked"] == [], rest
+    assert any(rest["known"] is not None for rest in _rests())
+
+
+def test_what_failed_or_was_not_yet_known_is_read_again() -> None:
+    """The registry keeps no answer, so a provider's own rules decide each rest's reads: a
+    read that failed is read again, a catalog not yet whole is asked again, a kept answer
+    goes stale after the Pulls tab's interval, and a commit follows the Commits panel."""
+
+    summaries = _session()["summaries"]
+    failed = summaries["a closed one, whose read fails"]
+    again = summaries["the closed one, rested on again"]
+    assert failed["summary"] is None and failed["asked"], failed
+    assert again["asked"] == failed["asked"] and again["summary"]["title"], again
+    filling = summaries["the same, at the next rest"]
+    assert filling["asked"] == summaries["one a catalog still filling does not hold"]["asked"]
+    assert summaries["one the catalog does not hold"]["asked"]
+    stale = summaries["the open one, once its summary is too old to reuse"]
+    assert stale["known"] is None and stale["asked"] == summaries["a pull request, open"]["asked"]
+    refreshing = summaries["the same stack, a second later"]
+    assert refreshing["known"] is None and refreshing["asked"], refreshing
+    let_go = summaries["the missing commit, once the panel let go of what it knew"]
+    assert let_go["known"] is None and let_go["asked"] == summaries["a commit it lacks"]["asked"]
+    gained = summaries["the same, once the served tree has it"]
+    assert "missing" not in (gained["summary"] or {}), gained
+    assert summaries["a file a whole catalog lacks"]["summary"]["missing"]
+
+
+def _constant(path: Path, name: str) -> int:
+    """The number *path* gives `const NAME`, with or without `export` and `_` separators."""
+
+    match = re.search(rf"\bconst {name} = ([0-9_]+);", path.read_text(encoding="utf-8"))
+    assert match is not None, f"{path.name} no longer declares {name}"
+    return int(match[1].replace("_", ""))
+
+
+def test_a_kept_answer_is_reused_as_long_as_the_pulls_tab_waits() -> None:
+    """The providers reuse a pull request's summary and the stacks snapshot for as long as
+    the Pulls tab's pollers wait between their reads, and a second while it is refreshing:
+    the github plugin's own intervals, which a classic script cannot import."""
+
+    providers = ROOT / "src/metabrowser/static/link-preview-providers.js"
+    github = ROOT / "src/metabrowser/builtin_plugins/github"
+    reuse = _constant(providers, "REUSE_MS")
+    refreshing = _constant(providers, "REFRESHING_REUSE_MS")
+    assert reuse == _constant(github / "pull-stacks.js", "STACKS_POLL_MS")
+    assert reuse == _constant(github / "pull-page.js", "SLOW_POLL_MS")
+    assert refreshing == _constant(github / "pull-stacks.js", "STACKS_REFRESHING_POLL_MS")
+    assert refreshing == _constant(github / "pull-page.js", "FAST_POLL_MS")
 
 
 def test_a_prefetch_loads_what_the_link_opens_and_nothing_for_a_missing_commit() -> None:

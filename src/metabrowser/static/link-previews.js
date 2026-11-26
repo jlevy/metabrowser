@@ -12,14 +12,14 @@
 // What a rest does, on the page's one tooltip (`mb.tooltip`, static/app.js):
 //
 // 1. The pointer arrives on a registered link: the card is asked for at once, with what the
-//    page already knows, and the tooltip waits out its own appear delay.
-// 2. The pointer has rested `INTENT_MS`: the kind's provider is asked for a summary and a
-//    prefetch of what the click opens. At most one of each is in flight; a newer rest waits
-//    for them and none is aborted, since an aborted request counts against the page's
-//    `fetch_aborts` budget (explorations/performance-loop/performance-budgets.toml).
-// 3. A summary that arrives while the pointer still rests is cached and asked for again: a
-//    tooltip still waiting out its delay takes the newer markup (and waits its delay again
-//    from then), and a card already up stays as it is. Either way the next rest has it.
+//    kind's provider holds now (`known`), and the tooltip waits out its own appear delay.
+// 2. The pointer has rested `INTENT_MS`: the provider is asked for a summary and a prefetch
+//    of what the click opens. At most one of each is in flight; a newer rest waits for them
+//    and none is aborted, since an aborted request counts against the page's `fetch_aborts`
+//    budget (explorations/performance-loop/performance-budgets.toml).
+// 3. A summary that arrives while the pointer still rests, and changes the card, is asked for
+//    again: a tooltip still waiting out its delay takes the newer markup (and waits its delay
+//    again from then), and a card already up stays as it is.
 // 4. The pointer leaves: the card is put away by its anchor, and `dispose(root)` puts away
 //    a root's card, and no other surface's (docs/design-system.md, "A Surface Puts Away
 //    Only Its Own Tooltip").
@@ -29,7 +29,10 @@
 // ends the rest the pointer is on: the shell puts the tooltip away on focus, and nothing a
 // rest asked for brings its card back, though the pointer stays on the link.
 //
-// Providers (`provide`) return data, never markup, and `card` escapes every value. Loaded
+// Providers (`provide`) return data, never markup, and `card` escapes every value. This
+// module keeps no answer: each provider keeps what it reads, for as long as that stays true,
+// retries what failed, and answers what it keeps at once, so the next rest says what the
+// page knows then. Loaded
 // on demand in the `repository-links` bundle, after the resolver (server.py has the
 // measurement). The exact module runs browserlessly in tests/dom/link-previews-session.js.
 
@@ -94,7 +97,8 @@
 
   /**
    * The pointer's rest on one link: its timer, whether the intent delay has passed, whether
-   * this rest has asked for its summary, and whether the reader's press or a focus has ended
+   * this rest has asked for its summary and its prefetch, the summary it was answered, the
+   * markup it last asked the tooltip for, and whether the reader's press or a focus has ended
    * it while the pointer stays on the link (`endOnInput`).
    *
    * @typedef {{
@@ -103,6 +107,9 @@
    *   timer: ReturnType<typeof setTimeout> | null,
    *   intent: boolean,
    *   asked: boolean,
+   *   prefetched: boolean,
+   *   answer: Preview | null | undefined,
+   *   html: string | null,
    *   ended: boolean,
    * }} Rest
    */
@@ -116,25 +123,13 @@
   const roots = new WeakMap();
   /** @type {Map<string, Provider>} */
   const providers = new Map();
-  /**
-   * Each subject's summary, by its key, once a provider answered: null where it knows
-   * nothing. A failed read is not kept, so the next rest asks again. Entries come only from
-   * rests, each at least `INTENT_MS` of the reader's pointer, so it grows with reading.
-   *
-   * @type {Map<string, Preview | null>}
-   */
-  const answers = new Map();
-  /** The subjects whose prefetch has started, by key; each is asked for once a page. */
-  /** @type {Set<string>} */
-  const prefetched = new Set();
+  /** The key of the subject whose summary, and whose prefetch, is in flight. */
   /** @type {string | null} */
   let reading = null;
   /** @type {string | null} */
   let prefetching = null;
   /** @type {Rest | null} */
   let current = null;
-  // A provider may pass this on; nothing here aborts a read (see the head of this file).
-  const NEVER_ABORTED = new AbortController().signal;
 
   /**
    * The github plugin's `pullStateIcon`, once its exports have loaded, which the first
@@ -545,8 +540,10 @@
   // ── Providers ──────────────────────────────────────────────────
 
   /**
-   * Answer *kind*'s summaries, and optionally prefetch what its links open. A later call
-   * replaces the kind's provider.
+   * Answer *kind*'s summaries, and optionally prefetch what its links open. A provider keeps
+   * what it reads, and for how long, since only it knows when its data goes stale; `known`
+   * answers what it keeps now, with no read, for the card the pointer's arrival asks for. A
+   * later call replaces the kind's provider.
    *
    * @param {Subject["kind"]} kind
    * @param {Provider} provider
@@ -594,6 +591,8 @@
     if (current?.anchor === anchor) {
       current.entry = entry;
       current.asked = false;
+      current.prefetched = false;
+      current.answer = undefined;
       show(current);
       work();
     }
@@ -707,7 +706,17 @@
       left.entry.mb.tooltip.hide(left.anchor);
     }
     /** @type {Rest} */
-    const rest = { anchor, entry, timer: null, intent: false, asked: false, ended: false };
+    const rest = {
+      anchor,
+      entry,
+      timer: null,
+      intent: false,
+      asked: false,
+      prefetched: false,
+      answer: undefined,
+      html: null,
+      ended: false,
+    };
     current = rest;
     show(rest);
     rest.timer = setTimeout(() => {
@@ -770,8 +779,10 @@
   }
 
   /**
-   * Ask the tooltip for *rest*'s card, with what the page knows of its subject now, unless
-   * the reader's press or a focus has ended the rest.
+   * Ask the tooltip for *rest*'s card, with the summary the rest was answered, or else what
+   * its provider holds now, unless the reader's press or a focus has ended the rest. Markup
+   * the rest already asked for is not asked for again, since a tooltip still waiting would
+   * wait its whole delay again.
    *
    * @param {Rest} rest
    */
@@ -780,11 +791,35 @@
       return;
     }
     const { anchor, entry } = rest;
-    const html = card(entry.subject, answers.get(keyOf(entry.subject)) ?? null, {
+    const preview = rest.answer === undefined ? known(entry) : rest.answer;
+    const html = card(entry.subject, preview, {
       linkText: anchor.textContent,
       authorTitle: entry.authorTitle,
     });
+    if (html === rest.html) {
+      return;
+    }
+    rest.html = html;
     entry.mb.tooltip.show(html, anchor);
+  }
+
+  /**
+   * What *entry*'s provider holds of its subject now, with no read, or null.
+   *
+   * @param {Entry} entry
+   * @returns {Preview | null}
+   */
+  function known(entry) {
+    const provider = providers.get(entry.subject.kind);
+    if (typeof provider?.known !== "function") {
+      return null;
+    }
+    try {
+      return normalizePreview(provider.known(entry.subject, { mb: entry.mb }));
+    } catch (error) {
+      console.warn("metabrowser: a link's kept summary was not read", error);
+      return null;
+    }
   }
 
   // ── Reads and prefetches ───────────────────────────────────────
@@ -796,9 +831,9 @@
 
   /**
    * Start what the current rest wants, once its intent delay has passed, where nothing of
-   * the same sort is in flight: its summary, unless known or already asked for on this rest,
-   * and its prefetch, once a page. Run again whenever either settles, so a rest that waited
-   * starts then, if the pointer is still on it.
+   * the same sort is in flight: its summary and its prefetch, each once a rest. The provider
+   * answers what it keeps at once and decides what it reads again. Run again whenever either
+   * settles, so a rest that waited starts then, if the pointer is still on it.
    */
   function work() {
     const rest = current;
@@ -811,12 +846,12 @@
       return;
     }
     const key = keyOf(target);
-    if (reading === null && !rest.asked && !answers.has(key)) {
+    if (reading === null && !rest.asked) {
       rest.asked = true;
       read(provider, target, key, mb);
     }
-    if (prefetching === null && typeof provider.prefetch === "function" && !prefetched.has(key)) {
-      prefetched.add(key);
+    if (prefetching === null && typeof provider.prefetch === "function" && !rest.prefetched) {
+      rest.prefetched = true;
       prefetch(provider, target, key, mb);
     }
   }
@@ -830,25 +865,25 @@
   function read(provider, target, key, mb) {
     reading = key;
     void Promise.resolve()
-      .then(() => provider.summary(target, { mb, signal: NEVER_ABORTED }))
+      .then(() => provider.summary(target, { mb }))
       .then(
         (value) => {
           const answer = normalizePreview(value);
-          answers.set(key, answer);
           if (answer?.state !== undefined) {
             loadStateGlyphs(mb);
           }
-          return true;
+          return answer;
         },
         (error) => {
+          // Nothing is kept here, so the next rest asks again.
           console.warn("metabrowser: a link's summary was not read", error);
-          return false;
+          return undefined;
         },
       )
-      .then((known) => {
+      .then((answer) => {
         reading = null;
-        if (known) {
-          refresh(key);
+        if (answer !== undefined) {
+          answered(key, answer);
         }
         work();
       });
@@ -874,16 +909,25 @@
   }
 
   /**
-   * Ask again for the card of a rest on *key*, or on any pull request when *key* is null,
-   * now that more is known: a tooltip still waiting takes it, one already up stays.
+   * A summary of the subject *key* names has arrived: the rest on it, which may be a later
+   * rest on another link to the same object, says it from now on.
    *
-   * @param {string | null} key
+   * @param {string} key
+   * @param {Preview | null} answer
    */
-  function refresh(key) {
-    if (
-      current !== null &&
-      (key === null ? current.entry.subject.kind === "pull" : keyOf(current.entry.subject) === key)
-    ) {
+  function answered(key, answer) {
+    if (current !== null && keyOf(current.entry.subject) === key) {
+      current.answer = answer;
+      show(current);
+    }
+  }
+
+  /**
+   * Ask again for the card of a rest on a pull request, now that its state's glyph can be
+   * drawn: a tooltip still waiting takes it, one already up stays.
+   */
+  function refreshPulls() {
+    if (current !== null && current.entry.subject.kind === "pull") {
       show(current);
     }
   }
@@ -904,7 +948,7 @@
         stateGlyphs = typeof draw === "function" ? "loaded" : "failed";
         if (typeof draw === "function") {
           drawPullState = /** @type {MetabrowserGithubPullStateIcon} */ (draw);
-          refresh(null);
+          refreshPulls();
         }
       },
       () => {

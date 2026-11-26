@@ -3,22 +3,29 @@
 // "Data and Prefetch").
 //
 // One provider for each kind of in-app link registers with the card's registry,
-// `window.MetabrowserLinkPreviews.provide(kind, {summary, prefetch})` (static/
-// link-previews.js), which calls them once the pointer has rested on a link. A summary is
-// plain text, never markup, and says only what its data gives: a pull request's title and
-// state from the catalog's exact-number search, a stack's top member and size from the
-// stacks snapshot, a commit's subject, author, and age from the Commits panel's own detail
-// cache, a file's type and a folder's totals from what the page already holds, and nothing
-// for the list. A prefetch starts what the click opens: the page's plugin assets, a pull
-// request's record, a commit prepared as a hover on its row prepares it, and a file's or
-// folder's View on GitHub answer.
+// `window.MetabrowserLinkPreviews.provide(kind, {summary, known, prefetch})` (static/
+// link-previews.js), which asks `known` as the pointer arrives on a link and `summary` and
+// `prefetch` once it has rested there. A summary is plain text, never markup, and says only
+// what its data gives: a pull request's title and state from the catalog's exact-number
+// search, a stack's top member and size from the stacks snapshot, a commit's subject,
+// author, and age from the Commits panel's own detail cache, a file's type and whether the
+// served files hold it and a folder's totals from what the page already holds, and nothing
+// for the list. A
+// prefetch starts what the click opens: the page's plugin assets, a pull request's record, a
+// commit prepared as a hover on its row prepares it, and a file's or folder's View on GitHub
+// answer.
+//
+// The registry keeps no answer, so each provider keeps what it reads only for as long as it
+// stays true, and reads again what failed or was not yet known: a pull request's summary and
+// the stacks snapshot for as long as the Pulls tab's pollers wait between their reads, a
+// commit's for as long as the Commits panel keeps it, and a file's or folder's never, since
+// the page's own state answers at once. What is kept is bounded.
 //
 // Every read is one the app already makes for that object, from the cache alone: none asks
 // GitHub, fetches from origin, or counts a view, and none is aborted, since an aborted
-// request counts against the page's `fetch_aborts` budget. A caller's signal stops that
-// caller waiting, never the read, whose answer is kept for the next rest. A file's body is
-// not prefetched: the tree's hover prefetch has no seam a link can call within the startup
-// scripts' budget (the plan's Follow-ups).
+// request counts against the page's `fetch_aborts` budget. A file's body is not prefetched:
+// the tree's hover prefetch has no seam a link can call within the startup scripts' budget
+// (the plan's Follow-ups).
 
 (() => {
   /** @typedef {"open" | "closed" | "merged" | "draft"} PullState */
@@ -44,13 +51,14 @@
    * @typedef {Pick<MetabrowserPublicSdk,
    *   | "directoryTotals" | "ensureKindAssets" | "fetchPluginData" | "fileCatalog"
    *   | "fileTypes" | "formatAge" | "formatFileCount" | "formatSize" | "navigation"
-   *   | "prefetchCounterpart" | "repository" | "sourceKind">} Sdk
+   *   | "prefetchCounterpart" | "repository">} Sdk
    * @typedef {Awaited<ReturnType<Sdk["fetchPluginData"]>>} PluginData
    */
   /**
    * @template S
    * @typedef {{
-   *   summary(subject: S, how: {mb: Sdk, signal?: AbortSignal}): Promise<Summary | null>,
+   *   summary(subject: S, how: {mb: Sdk}): Promise<Summary | null>,
+   *   known(subject: S, how: {mb: Sdk}): Summary | null,
    *   prefetch(subject: S, how: {mb: Sdk}): Promise<void>,
    * }} Provider
    */
@@ -63,6 +71,21 @@
    *   provide(kind: "pulls", provider: Provider<PullsSubject>): void,
    * }} Registry
    */
+
+  // ── How long an answer is kept ─────────────────────────────
+
+  /**
+   * How long a pull request's summary and the stacks snapshot are reused before a rest reads
+   * them again: as long as the Pulls tab's pollers wait between their reads while it is shown
+   * (`SLOW_POLL_MS` in builtin_plugins/github/pull-page.js, `STACKS_POLL_MS` in
+   * builtin_plugins/github/pull-stacks.js), so a card is never staler than that tab, and a
+   * second while the snapshot says it is being refreshed, as the pollers then wait
+   * (`FAST_POLL_MS`, `STACKS_REFRESHING_POLL_MS`). Those pollers are the github plugin's own
+   * and ask GitHub to refresh what is due, so a card reads the routes itself.
+   * tests/test_link_preview_providers_session.py holds these equal to the plugin's.
+   */
+  const REUSE_MS = 30_000;
+  const REFRESHING_REUSE_MS = 1_000;
 
   // ── Pull requests ──────────────────────────────────────────
 
@@ -77,7 +100,8 @@
    * flat and distinct (median of five).
    */
   const PULLS_KEPT_MAX = 256;
-  /** @type {Map<number, Summary | null>} */
+  /** Each summary, by number, and when it was read: `Date.now()`. */
+  /** @type {Map<number, {at: number, summary: Summary | null}>} */
   const pullSummaries = new Map();
   /** @type {Map<number, Promise<Summary | null>>} */
   const pullReads = new Map();
@@ -89,18 +113,18 @@
    * A pull request's title and state, from the catalog's exact-number search
    * (`GET /api/plugin/github/pulls?q=<n>`), the read Quick Search makes for a number: the
    * cache alone, in about a millisecond. A number the catalog does not hold has no summary,
-   * and the card names the link's identity alone; that answer is kept, unless the catalog
-   * was still being filled, when the next rest asks again.
+   * and the card names the link's identity alone. A kept answer is reused for `REUSE_MS`;
+   * one that says nothing is kept only from a whole catalog no refresh is filling, and a
+   * read that failed is not kept, so the next rest asks again.
    *
    * @param {PullSubject} subject
-   * @param {{mb: Sdk, signal?: AbortSignal}} how
+   * @param {{mb: Sdk}} how
    * @returns {Promise<Summary | null>}
    */
-  function summarizePull(subject, { mb, signal }) {
+  function summarizePull(subject, { mb }) {
     const { number } = subject;
-    const kept = pullSummaries.get(number);
+    const kept = keptPull(number);
     if (kept !== undefined) {
-      remember(pullSummaries, number, kept);
       return Promise.resolve(kept);
     }
     let read = pullReads.get(number);
@@ -110,7 +134,26 @@
       void reading.then(() => pullReads.delete(number));
       read = reading;
     }
-    return untilAborted(read, signal);
+    return read;
+  }
+
+  /**
+   * The summary kept for *number* while it is fresh, or undefined.
+   *
+   * @param {number} number
+   * @returns {Summary | null | undefined}
+   */
+  function keptPull(number) {
+    const kept = pullSummaries.get(number);
+    if (kept === undefined) {
+      return undefined;
+    }
+    if (Date.now() - kept.at >= REUSE_MS) {
+      pullSummaries.delete(number);
+      return undefined;
+    }
+    remember(pullSummaries, number, kept);
+    return kept.summary;
   }
 
   /**
@@ -119,6 +162,7 @@
    * @returns {Promise<Summary | null>}
    */
   async function readPull(mb, number) {
+    const at = Date.now();
     /** @type {PluginData} */
     let answer;
     try {
@@ -135,8 +179,9 @@
         /** @type {{number?: unknown}} */ (candidate).number === number,
     );
     const summary = row === undefined ? null : pullCard(row);
-    if (summary !== null || answer.refreshing !== true) {
-      remember(pullSummaries, number, summary);
+    // A catalog still being filled, or not yet whole, may hold the number at the next rest.
+    if (summary !== null || (answer.complete === true && answer.refreshing !== true)) {
+      remember(pullSummaries, number, { at, summary });
     }
     return summary;
   }
@@ -164,7 +209,7 @@
    * cache with `warm=1`, as the Pulls tab warms a pull request it may open, which counts no
    * view and asks GitHub nothing. The read starts the server's Markdown child, which a cold
    * page's first paint otherwise waits on (sidekick.py, `pull_handler`), and keeps the
-   * record parsed there. Once a page for each number.
+   * record parsed there. Once a page for each number; a warming that failed is tried again.
    *
    * @param {PullSubject} subject
    * @param {{mb: Sdk}} how
@@ -189,13 +234,13 @@
   // ── Stacks ─────────────────────────────────────────────────
 
   /**
-   * How long a page reuses its one read of the stacks snapshot before a rest reads it
-   * again: as often as the Pulls tab's own poller reads it while shown (pull-stacks.js,
-   * `schedule`), so a card is never staler than that tab. That poller is the github plugin's
-   * own and asks GitHub to refresh a snapshot that is due, so a card reads the route itself.
+   * A read of the stacks snapshot: when it was asked for, and, once it has answered, the
+   * snapshot's stacks and how long the answer is reused.
+   *
+   * @typedef {{at: number, read: Promise<Array<StackMembers> | null>,
+   *   answer?: {stacks: Array<StackMembers>, reuseMs: number}}} StacksRead
    */
-  const STACKS_REUSE_MS = 30_000;
-  /** @type {{at: number, read: Promise<Array<StackMembers> | null>} | null} */
+  /** The one read of the snapshot a page reuses. @type {StacksRead | null} */
   let stacksRead = null;
 
   /** @typedef {{number: number, pulls: number[], titles: Array<string | null>}} StackMembers */
@@ -203,15 +248,35 @@
   /**
    * A stack's top member's title and its size, from the stacks snapshot
    * (`GET /api/plugin/github/stacks`), which reads the cache alone. A stack the snapshot
-   * does not hold has no summary: an incomplete snapshot never means a stack is gone.
+   * does not hold has no summary: an incomplete snapshot never means a stack is gone, and
+   * the next read of the snapshot may hold it.
    *
    * @param {StackSubject} subject
-   * @param {{mb: Sdk, signal?: AbortSignal}} how
+   * @param {{mb: Sdk}} how
    * @returns {Promise<Summary | null>}
    */
-  async function summarizeStack(subject, { mb, signal }) {
-    const stacks = await untilAborted(readStacks(mb), signal);
-    const stack = stacks?.find((candidate) => candidate.number === subject.number);
+  async function summarizeStack(subject, { mb }) {
+    return stackCard(await readStacks(mb), subject.number);
+  }
+
+  /**
+   * The stack's summary from the snapshot read last, while it is reused, or null.
+   *
+   * @param {StackSubject} subject
+   * @param {{mb: Sdk}} _how
+   * @returns {Summary | null}
+   */
+  function knownStack(subject, _how) {
+    return stackCard(freshStacks()?.answer?.stacks ?? null, subject.number);
+  }
+
+  /**
+   * @param {Array<StackMembers> | null} stacks
+   * @param {number} number
+   * @returns {Summary | null}
+   */
+  function stackCard(stacks, number) {
+    const stack = stacks?.find((candidate) => candidate.number === number);
     if (stack === undefined) {
       return null;
     }
@@ -225,24 +290,56 @@
     };
   }
 
+  /** The snapshot's read while it is reused: still on its way, or answered and fresh. */
+  function freshStacks() {
+    const read = stacksRead;
+    if (read === null) {
+      return null;
+    }
+    const reuseMs = read.answer?.reuseMs ?? REUSE_MS;
+    return Date.now() - read.at < reuseMs ? read : null;
+  }
+
   /**
    * @param {Sdk} mb
    * @returns {Promise<Array<StackMembers> | null>}
    */
   function readStacks(mb) {
-    const now = Date.now();
-    if (stacksRead === null || now - stacksRead.at >= STACKS_REUSE_MS) {
-      const read = mb.fetchPluginData("github", "stacks", {}).then(stackMembers, () => null);
-      const reading = { at: now, read };
-      stacksRead = reading;
-      // A read that failed is not reused: the next rest asks again.
-      void read.then((stacks) => {
-        if (stacks === null && stacksRead === reading) {
-          stacksRead = null;
-        }
-      });
+    const fresh = freshStacks();
+    if (fresh !== null) {
+      return fresh.read;
     }
-    return stacksRead.read;
+    /** @type {StacksRead} */
+    const reading = { at: Date.now(), read: Promise.resolve(null) };
+    reading.read = mb.fetchPluginData("github", "stacks", {}).then(
+      (answer) => {
+        const stacks = stackMembers(answer);
+        if (stacks === null) {
+          // Not a snapshot: not reused, so the next rest asks again.
+          forgetStacks(reading);
+        } else {
+          reading.answer = {
+            stacks,
+            reuseMs: answer.refreshing === true ? REFRESHING_REUSE_MS : REUSE_MS,
+          };
+        }
+        return stacks;
+      },
+      () => {
+        // A read that failed is not reused: the next rest asks again.
+        forgetStacks(reading);
+        return null;
+      },
+    );
+    stacksRead = reading;
+    return reading.read;
+  }
+
+  /** @param {StacksRead} reading */
+  function forgetStacks(reading) {
+    if (stacksRead === reading) {
+      stacksRead = null;
+    }
   }
 
   /**
@@ -289,19 +386,38 @@
   /**
    * A commit's subject, then its author and age, from the Commits panel's own detail cache
    * and missing set (`MetabrowserGitPanel.commitSummary`), which never fetches from origin.
-   * The panel comes with the shell's tools once the first tree is in (server.py,
+   * Nothing is kept here: the panel's cache is what the card says, so the card follows it,
+   * and a commit the panel no longer calls missing after its Refresh or a fetch is read
+   * again. The panel comes with the shell's tools once the first tree is in (server.py,
    * `shell-tools`); a rest before then has no summary, and the card names the commit alone.
    *
    * @param {CommitSubject} subject
-   * @param {{mb: Sdk, signal?: AbortSignal}} how
+   * @param {{mb: Sdk}} how
    * @returns {Promise<Summary | null>}
    */
-  async function summarizeCommit(subject, { mb, signal }) {
+  async function summarizeCommit(subject, { mb }) {
     const panel = window.MetabrowserGitPanel;
-    if (panel === undefined) {
-      return null;
-    }
-    const commit = await panel.commitSummary(subject.revision, signal ? { signal } : {});
+    return panel === undefined ? null : commitCard(await panel.commitSummary(subject.revision), mb);
+  }
+
+  /**
+   * The commit's summary from what the panel holds now, with no read.
+   *
+   * @param {CommitSubject} subject
+   * @param {{mb: Sdk}} how
+   * @returns {Summary | null}
+   */
+  function knownCommit(subject, { mb }) {
+    const panel = window.MetabrowserGitPanel;
+    return panel === undefined ? null : commitCard(panel.keptCommitSummary(subject.revision), mb);
+  }
+
+  /**
+   * @param {MetabrowserGitCommitSummary | null} commit
+   * @param {Sdk} mb
+   * @returns {Summary | null}
+   */
+  function commitCard(commit, mb) {
     if (commit === null) {
       return null;
     }
@@ -343,26 +459,25 @@
 
   /**
    * A file's type, by its name, and whether the served tree has it; a folder's file count
-   * and size where the tree has totaled them. Nothing is read: the file catalog's snapshot
-   * proves a file absent only when it covers the whole root, and a folder is never called
-   * absent, since the catalog holds only files and a folder may hold none.
+   * and size where the tree has totaled them: from the page's own state at the moment it is
+   * asked, so nothing is read or kept and the card says what the tree holds now. The file
+   * catalog's snapshot proves a file absent only when it covers the whole root, and a folder
+   * is never called absent, since the catalog holds only files and a folder may hold none.
    *
    * @param {PathSubject} subject
-   * @param {{mb: Sdk, signal?: AbortSignal}} how
-   * @returns {Promise<Summary | null>}
+   * @param {{mb: Sdk}} how
+   * @returns {Summary | null}
    */
-  function summarizePath(subject, { mb }) {
+  function knownPath(subject, { mb }) {
     const shown = subject.path.replace(/\/+$/, "");
     const path = servedPath(subject);
     if (subject.kind === "folder") {
       const totals = mb.directoryTotals.get(path);
-      return Promise.resolve(
-        totals?.state === "complete"
-          ? {
-              detail: `${mb.formatFileCount(totals.totalFiles)} · ${mb.formatSize(totals.totalBytes)}`,
-            }
-          : null,
-      );
+      return totals?.state === "complete"
+        ? {
+            detail: `${mb.formatFileCount(totals.totalFiles)} · ${mb.formatSize(totals.totalBytes)}`,
+          }
+        : null;
     }
     /** @type {Summary} */
     const summary = {};
@@ -374,7 +489,16 @@
     if (catalog.complete && !catalogHolds(catalog.files, path)) {
       summary.missing = FILE_MISSING;
     }
-    return Promise.resolve(Object.keys(summary).length > 0 ? summary : null);
+    return Object.keys(summary).length > 0 ? summary : null;
+  }
+
+  /**
+   * @param {PathSubject} subject
+   * @param {{mb: Sdk}} how
+   * @returns {Promise<Summary | null>}
+   */
+  function summarizePath(subject, how) {
+    return Promise.resolve(knownPath(subject, how));
   }
 
   /**
@@ -431,7 +555,8 @@
   /**
    * A file's or folder's page: its View on GitHub answer, asked for as the page itself asks
    * when it starts loading, so the button comes with the header (plugin-sdk-views.js,
-   * `prefetchCounterpart`). Only a page on a GitHub repository draws the button.
+   * `prefetchCounterpart`), which asks again only for an answer no longer fresh. Only a page
+   * on a GitHub repository draws the button.
    *
    * @param {PathSubject} subject
    * @param {{mb: Sdk}} how
@@ -461,11 +586,20 @@
    * The list has nothing to add to its card.
    *
    * @param {PullsSubject} _subject
-   * @param {{mb: Sdk, signal?: AbortSignal}} _how
+   * @param {{mb: Sdk}} _how
+   * @returns {Summary | null}
+   */
+  function knownPulls(_subject, _how) {
+    return null;
+  }
+
+  /**
+   * @param {PullsSubject} subject
+   * @param {{mb: Sdk}} how
    * @returns {Promise<Summary | null>}
    */
-  function summarizePulls(_subject, _how) {
-    return Promise.resolve(null);
+  function summarizePulls(subject, how) {
+    return Promise.resolve(knownPulls(subject, how));
   }
 
   /**
@@ -512,28 +646,6 @@
     await Promise.allSettled(work);
   }
 
-  /**
-   * *work*'s answer, or *signal*'s reason once it aborts first. The work goes on either way.
-   *
-   * @template T
-   * @param {Promise<T>} work
-   * @param {AbortSignal | undefined} signal
-   * @returns {Promise<T>}
-   */
-  function untilAborted(work, signal) {
-    if (signal === undefined) {
-      return work;
-    }
-    if (signal.aborted) {
-      return Promise.reject(signal.reason);
-    }
-    return new Promise((resolve, reject) => {
-      const stop = () => reject(signal.reason);
-      signal.addEventListener("abort", stop, { once: true });
-      work.then(resolve, reject).finally(() => signal.removeEventListener("abort", stop));
-    });
-  }
-
   // The card's registry comes first in this bundle (server.py, `repository-links`); a page
   // where it did not load shows no card, and so asks for nothing here.
   const registry = /** @type {{MetabrowserLinkPreviews?: Registry}} */ (
@@ -542,10 +654,27 @@
   if (registry === undefined) {
     return;
   }
-  registry.provide("pull", { summary: summarizePull, prefetch: prefetchPullPage });
-  registry.provide("stack", { summary: summarizeStack, prefetch: prefetchStackPage });
-  registry.provide("commit", { summary: summarizeCommit, prefetch: prefetchCommitPage });
-  registry.provide("file", { summary: summarizePath, prefetch: prefetchPathPage });
-  registry.provide("folder", { summary: summarizePath, prefetch: prefetchPathPage });
-  registry.provide("pulls", { summary: summarizePulls, prefetch: prefetchPullsPage });
+  registry.provide("pull", {
+    summary: summarizePull,
+    known: (subject) => keptPull(subject.number) ?? null,
+    prefetch: prefetchPullPage,
+  });
+  registry.provide("stack", {
+    summary: summarizeStack,
+    known: knownStack,
+    prefetch: prefetchStackPage,
+  });
+  registry.provide("commit", {
+    summary: summarizeCommit,
+    known: knownCommit,
+    prefetch: prefetchCommitPage,
+  });
+  const path = { summary: summarizePath, known: knownPath, prefetch: prefetchPathPage };
+  registry.provide("file", path);
+  registry.provide("folder", path);
+  registry.provide("pulls", {
+    summary: summarizePulls,
+    known: knownPulls,
+    prefetch: prefetchPullsPage,
+  });
 })();

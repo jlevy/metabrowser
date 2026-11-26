@@ -132,14 +132,18 @@ the first summary that gives a state; a stack’s `layers`; a file’s type from
 A **link preview** is one kind’s answer for a resolved target:
 `{kind, identity, title?, state?, detail?, missing?}`, each field plain text.
 Providers return data, never HTML, and make only reads the app already makes for that
-object, all cache-only:
+object, all cache-only.
+The registry keeps no answer: each provider keeps what it reads for as long as that
+stays true, reads again what failed or was not yet known, and says what it keeps at once
+(`known`), so a card never says what the page knew once and no longer does.
+What a provider keeps is bounded.
 
 | Kind | Title from | Prefetch on rest |
 | --- | --- | --- |
-| Pull request, its tabs and files | `pulls?q=<n>`, cached per page by number | The github plugin’s page assets, and the record read with `warm=1`, which counts no view, once a page for each number |
-| Stack | One read of the cache-only stacks route, reused for as long as the Pulls tab’s poller waits between its reads; that poller is the plugin’s own and asks GitHub to refresh a snapshot that is due | The page’s assets |
-| Commit | `MetabrowserGitPanel.commitSummary`, which shares `fetchCommitDetail`’s cache and its missing set | `MetabrowserGitPanel.prefetchCommit`: the detail first, then `prepareRevision(…, true)`, nothing for a commit the repository lacks, and never in place of a preparation still on its way |
-| File or folder | Its type’s name, whether a complete file catalog holds a file, and the folder’s totals already known | `prefetchCounterpart` for its page; not its body (Follow-ups) |
+| Pull request, its tabs and files | `pulls?q=<n>`, kept by number for as long as the Pulls tab waits between its reads; a failed read, and a number a catalog not yet whole lacks, are read again | The github plugin’s page assets, and the record read with `warm=1`, which counts no view, once a page for each number |
+| Stack | One read of the cache-only stacks route, reused for as long as the Pulls tab’s poller waits between its reads, a second while the snapshot is being refreshed; that poller is the plugin’s own and asks GitHub to refresh a snapshot that is due | The page’s assets |
+| Commit | `MetabrowserGitPanel.commitSummary` and `keptCommitSummary`, which share `fetchCommitDetail`’s cache and its missing set, so the card follows what the panel keeps and clears | `MetabrowserGitPanel.prefetchCommit`: the detail first, then `prepareRevision(…, true)`, nothing for a commit the repository lacks, and never in place of a preparation still on its way |
+| File or folder | Its type’s name, whether a complete file catalog holds a file, and the folder’s totals already known, read from the page each time and never kept | `prefetchCounterpart` for its page; not its body (Follow-ups) |
 | The pull request list | Static | The list view’s assets, `ensureKindAssets("pull-request-list")` |
 
 A link starts its read and its prefetch once the pointer has rested on it for the tree’s
@@ -148,7 +152,8 @@ its appear delay, and a card whose title arrives in that time is shown with it (
 still waiting takes the newer HTML, and waits its delay again from then, so a card whose
 title is read at once appears the appear delay after the intent delay rather than after
 the appear delay alone, as the golden’s timing shows).
-A title that arrives later is cached for the next rest.
+A title that arrives later is its provider’s to keep, and the next rest’s card says it
+from the pointer’s arrival.
 At most one read and one prefetch are in flight; a newer rest waits for them rather than
 aborting them, since an aborted request counts against the page’s `fetch_aborts` budget.
 
@@ -157,9 +162,9 @@ aborting them, since an aborted request counts against the page’s `fetch_abort
 A new on-demand module, `static/link-previews.js`, in the `repository-links` bundle the
 resolver already loads, holds the registry, the delegated pointer listener, the intent
 timer, and the renderer; `static/link-preview-providers.js`, after it in the bundle,
-registers one provider for each kind (`provide(kind, {summary, prefetch})`). `enhance`
-and the Markdown enhancer register each in-app link they make by identity; the rendered
-diff registers its head links.
+registers one provider for each kind (`provide(kind, {summary, known, prefetch})`).
+`enhance` and the Markdown enhancer register each in-app link they make by identity; the
+rendered diff registers its head links.
 Nothing is added to the startup scripts: a seam into the tree’s file prefetch does not
 fit (Follow-ups).
 
@@ -175,10 +180,12 @@ fit (Follow-ups).
   away.
 - `window.MetabrowserLinkPreviews.dispose(root)`: forgets a root’s links, stops
   listening to it, and puts its card away (`mb.tooltip.hide(root)`).
-- `window.MetabrowserLinkPreviews.provide(kind, { summary, prefetch })`: a kind’s data,
-  `summary(subject, { mb, signal })` resolving to `{title?, state?, detail?, missing?}`
-  or null, plain text only, and an optional `prefetch(subject, { mb })`. The signal is
-  never aborted.
+- `window.MetabrowserLinkPreviews.provide(kind, { summary, known, prefetch })`: a kind’s
+  data, `summary(subject, { mb })` resolving to `{title?, state?, detail?, missing?}` or
+  null, plain text only, which may read and answers what it keeps at once; an optional
+  `known(subject, { mb })`, what it keeps now, with no read, for the card the pointer’s
+  arrival asks for; and an optional `prefetch(subject, { mb })`. Nothing aborts a read,
+  so a provider is given no signal.
 - `window.MetabrowserLinkPreviews.subject(target, sourceKind?)`: what a target names,
   pure: `pull` (`number`, `tab`, `file`), `stack` (`number`, `file`), `commit`
   (`revision`), `file` or `folder` (`path`, `opens`, `target`), or `pulls`. A `/view/`
@@ -196,8 +203,10 @@ fit (Follow-ups).
   global (AGENTS.md, Browser and Plugin Boundary): `previewLink`, `forgetPreview`, and
   `disposePreviews`, each a no-op where the cards are not loaded
   ([docs/plugins.md](../../../plugins.md)).
-- `MetabrowserGitPanel.commitSummary(revision, {signal})`: the subject, author, time,
-  and whether the repository has it, from the panel’s own cache.
+- `MetabrowserGitPanel.commitSummary(revision)`: the subject, author, time, and whether
+  the repository has it, from the panel’s own cache, and
+  `MetabrowserGitPanel.keptCommitSummary(revision)`: the same from what the panel holds
+  now, with no read.
 - `MetabrowserGitPanel.prefetchCommit(revision)`: the commit prepared as a hover on its
   row prepares it, for a rest on a link to it.
 

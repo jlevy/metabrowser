@@ -346,22 +346,38 @@ function createPage(options = {}) {
   return { clock, log, warnings, document, mb, previews, sandbox, text, point, look, act };
 }
 
-/** A provider whose reads and prefetches take *delays* ms, recording what it is asked. */
+/**
+ * A provider whose reads and prefetches take *delays* ms, recording what it is asked. It
+ * keeps what it read, as a provider does since the registry keeps nothing, and answers that
+ * at once: from `summary`, logged as `kept`, and from `known`, which the pointer's arrival
+ * asks. `signals` counts the calls given anything that could abort a read.
+ */
 function stub(page, answer, delays = { summary: 1, prefetch: 1 }) {
-  const counts = { reads: 0, prefetches: 0, maxReads: 0, maxPrefetches: 0, aborted: 0 };
+  const counts = { reads: 0, prefetches: 0, maxReads: 0, maxPrefetches: 0, signals: 0 };
+  const kept = new Map();
   const provider = {
-    summary(subject, { mb, signal }) {
-      assert(mb === page.mb, "a provider was not given the surface's SDK");
+    summary(subject, how) {
+      assert(how.mb === page.mb, "a provider was not given the surface's SDK");
+      counts.signals += "signal" in how ? 1 : 0;
+      const key = label(subject);
+      if (kept.has(key)) {
+        page.log.push({ at: page.clock.now, summary: key, kept: true });
+        return Promise.resolve(kept.get(key));
+      }
       counts.reads += 1;
       counts.maxReads = Math.max(counts.maxReads, counts.reads);
-      page.log.push({ at: page.clock.now, summary: label(subject) });
+      page.log.push({ at: page.clock.now, summary: key });
       return new Promise((resolve) =>
         page.clock.setTimeout(() => {
           counts.reads -= 1;
-          counts.aborted += signal.aborted ? 1 : 0;
-          resolve(typeof answer === "function" ? answer(subject) : answer);
+          const value = typeof answer === "function" ? answer(subject) : answer;
+          kept.set(key, value);
+          resolve(value);
         }, delays.summary),
       );
+    },
+    known(subject) {
+      return kept.get(label(subject)) ?? null;
     },
     prefetch(subject) {
       counts.prefetches += 1;
@@ -651,8 +667,8 @@ async function timing() {
     await page.point(600, anchors.twelve);
     await page.look(920);
     await page.point(1000, page.document);
-    const reads = page.log.filter((entry) => entry.summary).length;
-    assert(reads === 1, "a cached answer was read again");
+    const reads = page.log.filter((entry) => entry.summary && !entry.kept).length;
+    assert(reads === 1, "a kept answer was read again");
     sessions["a late answer: kept for the next rest"] = page.log;
   }
   {
@@ -704,7 +720,7 @@ async function requests() {
   await page.look(2000);
   const { counts } = slow;
   assert(counts.maxReads === 1 && counts.maxPrefetches === 1, "two requests were in flight");
-  assert(counts.aborted === 0, "a read was aborted");
+  assert(counts.signals === 0, "a read was given something that could abort it");
   assert(!page.log.some((entry) => entry.summary === "pull 3"), "a pass read a link");
   assert(
     page.log.find((entry) => entry.summary === "pull 2")?.at === 650,
@@ -774,13 +790,19 @@ async function failures() {
     ],
     ["a provider that rejects", () => Promise.reject(new Error("offline"))],
     ["a provider that answers null", () => null],
+    // The registry keeps no answer, so a provider that knew nothing at the first rest, as a
+    // catalog still filling does, is asked again, and the next rest says what it knows then.
+    [
+      "a provider that answers null, then a subject",
+      (_subject, _how, asked) => (asked === 1 ? null : { title: "Found at the second rest" }),
+    ],
   ]) {
     const page = createPage();
     let asked = 0;
     page.previews.provide("commit", {
-      summary: (...args) => {
+      summary: (subject, how) => {
         asked += 1;
-        return summary(...args);
+        return summary(subject, how, asked);
       },
     });
     const commit = { kind: "route", href: `/commit/${COMMIT}`, localization: "commit", pull: null };
@@ -788,14 +810,16 @@ async function failures() {
     await page.point(0, anchors.commit);
     await page.look(600);
     await page.point(700, page.document);
-    await page.point(800, anchors.commit);
-    await page.look(1400);
+    // Back once the first card's fade has ended, so the second is a card of its own.
+    await page.point(900, anchors.commit);
+    await page.look(1500);
     const cardsShown = page.log.filter((entry) => entry.tooltip).map((entry) => entry.tooltip);
     assert(
       cardsShown.length === 2 &&
         cardsShown.every((card) => card.endsWith("Opens here in Metabrowser")),
       `${name}: the card was lost`,
     );
+    assert(asked === 2, `${name}: the second rest did not ask its provider again`);
     sessions[name] = { asked, cards: cardsShown, warnings: page.warnings };
   }
   return sessions;

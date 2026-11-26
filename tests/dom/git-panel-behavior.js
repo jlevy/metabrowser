@@ -6299,32 +6299,36 @@ async function run() {
     await panel.prefetchCommit("HEAD");
     assertEqual("commit summary: neither is read", fetchRequests.length, beforeShort);
 
-    // A caller that stops waiting leaves the read to land, and the cache keeps it.
-    const late = heldDetail(LATE, "an answer after the card gave up");
-    const stopped = new AbortController();
-    const waiting = panel.commitSummary(LATE, { signal: stopped.signal });
-    await tick();
-    stopped.abort();
-    let rejected = null;
-    try {
-      await waiting;
-    } catch (error) {
-      rejected = error?.name ?? String(error);
-    }
-    assertEqual("commit summary: a caller that stops waiting is told so", rejected, "AbortError");
-    const lateRead = fetchRequests.find((request) => request.url === `/api/git/commit/${LATE}`);
-    assertTrue(
-      "commit summary: its stopping aborts no request",
-      lateRead !== undefined && lateRead.signal?.aborted !== true,
-    );
-    late.answer();
+    // What the panel holds now, with no read, which a card says as the pointer arrives: a
+    // commit's kept detail, that the repository lacks one, and nothing before a read lands.
+    const late = heldDetail(LATE, "an answer after the card's first rest");
+    const beforeKept = fetchRequests.length;
+    assertEqual("kept summary: nothing before a read", panel.keptCommitSummary(LATE), null);
+    assertEqual("kept summary: which reads nothing", fetchRequests.length, beforeKept);
+    const waiting = panel.commitSummary(LATE);
     await tick();
     assertEqual(
-      "commit summary: the late answer is kept for the next rest",
-      (await panel.commitSummary(LATE))?.subject,
-      "an answer after the card gave up",
+      "kept summary: nor while the read is on its way",
+      panel.keptCommitSummary(LATE),
+      null,
     );
-    assertEqual("commit summary: which asks nothing more", reads(LATE), 1);
+    late.answer();
+    await waiting;
+    assertEqual(
+      "kept summary: the read's answer once it has landed",
+      panel.keptCommitSummary(LATE)?.subject,
+      "an answer after the card's first rest",
+    );
+    assertEqual(
+      "kept summary: and the next summary asks nothing more",
+      [(await panel.commitSummary(LATE))?.subject, reads(LATE)],
+      ["an answer after the card's first rest", 1],
+    );
+    assertEqual(
+      "kept summary: a commit the repository lacks",
+      panel.keptCommitSummary(MISSING)?.missing,
+      true,
+    );
 
     // A rest on a link prepares the commit as a hover on its row does, sharing the detail the
     // card read, and the click that follows takes that preparation.
@@ -6381,6 +6385,23 @@ async function run() {
     comparisonResponder = async (revision) => ({ comparison_id: revision });
     await panel.prefetchCommit(BUSY);
     assertEqual("commit prefetch: a settled preparation gives way", comparisonsOf(BUSY).length, 1);
+
+    // The panel's cache is what a card says: once the panel lets go of what it knew, as its
+    // Refresh and a fetch let go of the commits it knew are missing, a summary reads again.
+    internals.teardown();
+    assertEqual(
+      "kept summary: nothing once the panel lets go of what it knew",
+      [panel.keptCommitSummary(MISSING), panel.keptCommitSummary(LATE)],
+      [null, null],
+    );
+    await panel.commitSummary(MISSING);
+    assertEqual("commit summary: then a missing commit is asked for again", reads(MISSING), 2);
+    responses.set(
+      `/api/git/commit/${LATE}`,
+      detailOf(LATE, "an answer after the card's first rest"),
+    );
+    await panel.commitSummary(LATE);
+    assertEqual("commit summary: and so is a kept one", reads(LATE), 2);
     internals.teardown();
   }
 

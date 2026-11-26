@@ -14,9 +14,10 @@
 // 1. The time from the pointer's arrival on the link to the card's appearance, in the page's
 //    own clock, within a window the two timers give it: the tooltip's appear delay
 //    (TOOLTIP_APPEAR_DELAY in static/app.js) and the card's intent delay (INTENT_MS in
-//    static/link-previews.js), both read from the page. A rest that finds what to say at
+//    static/link-previews.js), both read from the page. A rest that reads what to say at
 //    the intent delay asks the tooltip again, which waits its delay again from then; a rest
-//    on a link whose card the page already knows waits the appear delay alone.
+//    on a link whose card the page already knows, from what its provider holds as the
+//    pointer arrives, waits the appear delay alone.
 // 2. What the card says: what the link opens in `.tip-name`, its title once the page has read
 //    it, the author's title, and "Opens here in Metabrowser" last, never the link's own words.
 // 3. Where it is: centered below its link, or above it where there is no room, and nowhere
@@ -287,14 +288,14 @@ try {
   // delay, with an answer read in the first appear delay, waits that delay again.
   const CARD_BY_MS = INTENT + 2 * APPEAR;
   const WINDOWS = {
-    // A provider that answers at once (a file's, a folder's, the list's) answers at the
-    // intent delay, and the tooltip waits its appear delay again from then.
-    "at once": [INTENT + APPEAR, CARD_BY_MS],
-    // A provider that reads the server answers in time to do the same, or later, when the
-    // card comes on the appear delay with what the page knew.
+    // A provider that reads the server answers at the intent delay, in time to ask the
+    // tooltip again, which waits its appear delay again from then, or later, when the card
+    // comes on the appear delay with what the page knew. So does one whose page state can
+    // change in between, as a folder's totals arrive.
     read: [APPEAR, CARD_BY_MS],
-    // The page knows what the card says: nothing is read, and it comes on the appear delay
-    // alone, before the intent delay could add to it.
+    // The page knows what the card says as the pointer arrives (a file's provider and the
+    // list's read the page's own state, and any other its kept answer): the card comes on
+    // the appear delay alone, and the intent delay's summary changes nothing.
     known: [APPEAR, INTENT + APPEAR],
   };
   // How long a step waits for a card, or for one to go, past when it should have: long
@@ -407,13 +408,13 @@ try {
       text: "The guide",
       identity: viewPath,
       lines: [expected.authorTitle],
-      first: "at once",
+      first: "known",
     },
     {
       text: "The source folder",
       identity: (name, card) => name.endsWith("/") && viewPath(name, card),
       lines: [],
-      first: "at once",
+      first: "read",
     },
     {
       text: `Pull request ${expected.pull}`,
@@ -440,7 +441,7 @@ try {
       text: "The pull requests",
       identity: (name) => name === PULLS,
       lines: [],
-      first: "at once",
+      first: "known",
     },
     {
       text: "the guide again",
@@ -486,7 +487,7 @@ try {
       placements.add(where);
       process.stderr.write(
         `rest ${label}: up ${Math.round(delay)} ms after the pointer arrived, ` +
-          `window [${low}, ${high}) for a card ${kind === "read" ? "that reads" : kind}; ` +
+          `window [${low}, ${high}) for a card ${kind === "read" ? "that may read" : kind}; ` +
           `${where}: ${card.lines.map((line) => line.text).join(" | ")}\n`,
       );
       check(`${label}: the pointer arrived on the link`, card.arrived !== null);

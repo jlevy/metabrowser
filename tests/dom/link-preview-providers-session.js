@@ -13,14 +13,23 @@
 // snapshot the Pulls tab's session replays (github-stacks-responses.json). A read the
 // recordings hold no answer for fails the session, so it can make no other.
 //
-// It prints each kind's summary, the reads each rest made, and what each prefetch loaded,
-// then every request in order and how many were aborted.
+// It prints each kind's summary, what its provider said as the pointer arrived (`known`),
+// and the reads each rest made, and what each prefetch loaded, then every request in order
+// and how many were aborted. The registry keeps no answer, so these show each provider's own
+// keeping: what it reuses, for how long, and what it reads again because it failed, was not
+// yet known, or went stale.
 
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
 const fixture = (name) =>
   JSON.parse(fs.readFileSync(path.join(repoRoot, "tests/fixtures", name), "utf8"));
 const recorded = fixture("link-preview-providers-responses.json");
@@ -63,14 +72,13 @@ function request(method, url, signal) {
   };
 }
 
-// A read the session holds until it says so, to stand for an answer still on its way.
-let holding = false;
-const held = [];
-function answerLater(answer) {
-  if (!holding) {
-    return answer;
+// The addresses whose next read fails, as a read does when the network does: the recording
+// is not consulted, and the next read of the same address is.
+const failing = new Set();
+function failOnce(url) {
+  if (failing.delete(url)) {
+    throw new TypeError(`Failed to fetch ${url}`);
   }
-  return new Promise((resolve) => held.push(() => resolve(answer)));
 }
 
 // `GET /api/plugin/<plugin>/<route>`, as `metabrowser.fetchPluginData` asks for it.
@@ -95,6 +103,13 @@ const commitAnswers = new Map(
 const sandbox = {
   console,
   Date: SessionDate,
+  // What the Commits panel's teardown touches on a page: no history list, and the window's
+  // own listeners.
+  HTMLElement: class {},
+  Element: class {},
+  document: { getElementById: () => null, querySelector: () => null },
+  addEventListener() {},
+  removeEventListener() {},
   AbortController,
   URL,
   URLSearchParams,
@@ -107,11 +122,12 @@ const sandbox = {
   METABROWSER_SETTINGS: { FILE_TYPE_REGISTRY: fileTypeRegistry },
   async fetch(url, options = {}) {
     const answered = request(options.method ?? "GET", url, options.signal);
+    failOnce(url);
     const answer = commitAnswers.get(url);
     if (answer === undefined) {
       throw new Error(`no recorded answer for ${url}`);
     }
-    const settled = await answerLater(answer);
+    const settled = await answer;
     answered();
     return {
       ok: settled.status >= 200 && settled.status < 300,
@@ -155,11 +171,12 @@ const mb = {
     ).toString();
     const url = `/api/plugin/${plugin}/${route}${query ? `?${query}` : ""}`;
     const answered = request("GET", url, options.signal);
+    failOnce(url);
     const answer = url === "/api/plugin/github/stacks" ? stacksAnswer : pluginAnswers.get(url);
     if (answer === undefined) {
       throw new Error(`no recorded answer for ${url}`);
     }
-    const settled = await answerLater(answer);
+    const settled = await answer;
     answered();
     if (settled.status < 200 || settled.status >= 300) {
       throw Object.assign(new Error(`fetchPluginData ${plugin}/${route}: ${settled.status}`), {
@@ -248,12 +265,18 @@ const panel = sandbox.MetabrowserGitPanel;
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** A rest on a link: its summary, and the reads that rest made. */
-async function rest(subject, signal) {
+/**
+ * A rest on a link, as the registry makes one: what its provider holds as the pointer
+ * arrives, then its summary once the pointer has rested, and the reads that rest made.
+ */
+async function rest(subject) {
   asked = [];
+  const provider = providers.get(subject.kind);
+  const known = provider.known(subject, { mb });
+  assert(asked.length === 0, "a provider read something to say what it holds");
   let summary;
   try {
-    summary = await providers.get(subject.kind).summary(subject, signal ? { mb, signal } : { mb });
+    summary = await provider.summary(subject, { mb });
   } catch (error) {
     summary = { rejected: error?.name ?? String(error) };
   }
@@ -261,6 +284,7 @@ async function rest(subject, signal) {
   const held = subject.kind === "file" || subject.kind === "folder";
   return {
     subject,
+    known,
     summary,
     asked,
     ...(held ? { catalog: catalogComplete ? "whole" : "filling" } : {}),
@@ -318,23 +342,27 @@ async function run() {
 
   summaries["a pull request, open"] = await rest(pull(12));
   summaries["a draft"] = await rest(pull(13));
-  // An answer still on its way when the caller stops waiting lands, and is kept.
-  holding = true;
-  const stopped = new AbortController();
-  const waiting = rest(pull(14), stopped.signal);
-  await settle();
-  stopped.abort();
-  summaries["a closed one, whose caller stops waiting"] = await waiting;
-  holding = false;
-  for (const answer of held.splice(0)) {
-    answer();
-  }
-  await settle();
+  // A read that fails is kept by no one, so the next rest reads again.
+  failing.add("/api/plugin/github/pulls?q=14");
+  summaries["a closed one, whose read fails"] = await rest(pull(14));
   summaries["the closed one, rested on again"] = await rest(pull(14));
   summaries["a merged one"] = await rest(pull(15));
   summaries["one the catalog does not hold"] = await rest(pull(99));
   summaries["the open one again"] = await rest(pull(12));
   summaries["a changed file in its Changes"] = await rest(pull(12, "files", "docs/guide.md"));
+  // A catalog not yet whole may hold the number at the next rest: its answer of nothing is
+  // not kept. The recorded answer for 99, as a catalog still filling gives it.
+  const filling = "/api/plugin/github/pulls?q=98";
+  pluginAnswers.set(filling, {
+    ...recorded["pulls?q=99"],
+    body: { ...recorded["pulls?q=99"].body, complete: false, refreshing: true },
+  });
+  summaries["one a catalog still filling does not hold"] = await rest(pull(98));
+  summaries["the same, at the next rest"] = await rest(pull(98));
+  // A kept summary is reused for as long as the Pulls tab waits between its reads, then
+  // read again.
+  now += 30_000;
+  summaries["the open one, once its summary is too old to reuse"] = await rest(pull(12));
 
   summaries["a stack the snapshot holds"] = await rest(stack(286));
   summaries["another, from the same read"] = await rest(stack(290));
@@ -342,10 +370,28 @@ async function run() {
   now += 30_000;
   stacksAnswer = stackSnapshots.absent;
   summaries["a stack, once the read is too old to reuse"] = await rest(stack(286));
+  // A snapshot being refreshed is reused for a second, as the Pulls tab's poller then waits.
+  now += 30_000;
+  stacksAnswer = {
+    ...stackSnapshots.shared,
+    body: { ...stackSnapshots.shared.body, refreshing: true },
+  };
+  summaries["a stack, from a snapshot being refreshed"] = await rest(stack(286));
+  now += 1_000;
+  stacksAnswer = stackSnapshots.shared;
+  summaries["the same stack, a second later"] = await rest(stack(286));
 
   summaries["a commit the repository has"] = await rest({ kind: "commit", revision: commit });
+  summaries["the same commit again"] = await rest({ kind: "commit", revision: commit });
   summaries["a commit it lacks"] = await rest({ kind: "commit", revision: absent });
   summaries["the missing commit again"] = await rest({ kind: "commit", revision: absent });
+  // The card follows what the Commits panel keeps: once the panel lets it go, as its Refresh
+  // and a fetch let go of what it knew is missing, the next rest asks the panel again.
+  panel._internals.teardown();
+  summaries["the missing commit, once the panel let go of what it knew"] = await rest({
+    kind: "commit",
+    revision: absent,
+  });
   sandbox.MetabrowserGitPanel = undefined;
   summaries["a commit, before the Commits panel has loaded"] = await rest({
     kind: "commit",
@@ -361,6 +407,11 @@ async function run() {
   catalogComplete = false;
   summaries["the same, while the catalog is still filling"] = await rest(file("docs/old-guide.md"));
   catalogComplete = true;
+  // The page's own state, read as it is asked: a file the tree gains after a rest that found
+  // it missing is not missing at the next.
+  knownFiles = catalogOf([...servedFiles, "docs/old-guide.md"]);
+  summaries["the same, once the served tree has it"] = await rest(file("docs/old-guide.md"));
+  knownFiles = catalogOf(servedFiles);
   summaries["a name with a percent sign"] = await rest(file("notes/100%.md"));
   summaries["a name no file type claims"] = await rest(file("notes/draft.zzz-unclaimed"));
   summaries["a folder the tree has totaled"] = await rest(folder("docs/"));

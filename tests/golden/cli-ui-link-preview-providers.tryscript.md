@@ -26,15 +26,20 @@ stacks snapshot the Pulls tab’s session replays.
 A read with no recorded answer fails the session.
 
 - `provided` is each kind a provider registered for.
-- Each of `summaries` is one rest: the link’s object, what its card says, and the reads
-  that rest made. A pull request’s title and state come from the catalog’s exact-number
-  search, once a page for each number, and a caller that stops waiting leaves its read
-  to land and be kept.
-  A stack’s come from one read of the stacks snapshot, reused for a while.
+- Each of `summaries` is one rest: the link’s object, what its provider holds as the
+  pointer arrives (`known`, which reads nothing), what its card says once the pointer
+  has rested, and the reads that rest made.
+  The card’s registry keeps no answer, so each provider’s own keeping is what shows
+  here: what holds a fresh answer says it at once and reads nothing.
+  A pull request’s title and state come from the catalog’s exact-number search, kept for
+  as long as the Pulls tab waits between its reads; a read that fails, and a number a
+  catalog still filling does not hold, are read again at the next rest.
+  A stack’s come from one read of the stacks snapshot, reused as long, or for a second
+  while the snapshot is being refreshed.
   A commit’s come from the Commits panel’s detail cache, which asks once for a commit
-  the repository lacks.
-  A file’s and a folder’s come from what the page already holds, with no read, and
-  `catalog` says whether the file catalog covered the whole root.
+  the repository lacks, until the panel lets go of what it knew.
+  A file’s and a folder’s come from what the page holds when it is asked, with no read
+  and nothing kept, and `catalog` says whether the file catalog covered the whole root.
 - No summary says what its data does not give: a pull request the catalog does not hold,
   a stack the snapshot does not, a folder the tree has not totaled, and the list have
   none, and a file is missing only from a catalog of the whole root.
@@ -65,6 +70,7 @@ $ node tests/dom/link-preview-providers-session.js
         "tab": "",
         "file": ""
       },
+      "known": null,
       "summary": {
         "title": "feat(links): preview what a link opens",
         "state": "open"
@@ -80,6 +86,7 @@ $ node tests/dom/link-preview-providers-session.js
         "tab": "",
         "file": ""
       },
+      "known": null,
       "summary": {
         "title": "Draft: a tooltip for every in-app link",
         "state": "draft"
@@ -88,16 +95,15 @@ $ node tests/dom/link-preview-providers-session.js
         "GET /api/plugin/github/pulls?q=13"
       ]
     },
-    "a closed one, whose caller stops waiting": {
+    "a closed one, whose read fails": {
       "subject": {
         "kind": "pull",
         "number": 14,
         "tab": "",
         "file": ""
       },
-      "summary": {
-        "rejected": "AbortError"
-      },
+      "known": null,
+      "summary": null,
       "asked": [
         "GET /api/plugin/github/pulls?q=14"
       ]
@@ -109,11 +115,14 @@ $ node tests/dom/link-preview-providers-session.js
         "tab": "",
         "file": ""
       },
+      "known": null,
       "summary": {
         "title": "Retire the native link title",
         "state": "closed"
       },
-      "asked": []
+      "asked": [
+        "GET /api/plugin/github/pulls?q=14"
+      ]
     },
     "a merged one": {
       "subject": {
@@ -122,6 +131,7 @@ $ node tests/dom/link-preview-providers-session.js
         "tab": "",
         "file": ""
       },
+      "known": null,
       "summary": {
         "title": "docs: the rule for tooltips on links",
         "state": "merged"
@@ -137,6 +147,7 @@ $ node tests/dom/link-preview-providers-session.js
         "tab": "",
         "file": ""
       },
+      "known": null,
       "summary": null,
       "asked": [
         "GET /api/plugin/github/pulls?q=99"
@@ -148,6 +159,10 @@ $ node tests/dom/link-preview-providers-session.js
         "number": 12,
         "tab": "",
         "file": ""
+      },
+      "known": {
+        "title": "feat(links): preview what a link opens",
+        "state": "open"
       },
       "summary": {
         "title": "feat(links): preview what a link opens",
@@ -162,11 +177,57 @@ $ node tests/dom/link-preview-providers-session.js
         "tab": "files",
         "file": "docs/guide.md"
       },
+      "known": {
+        "title": "feat(links): preview what a link opens",
+        "state": "open"
+      },
       "summary": {
         "title": "feat(links): preview what a link opens",
         "state": "open"
       },
       "asked": []
+    },
+    "one a catalog still filling does not hold": {
+      "subject": {
+        "kind": "pull",
+        "number": 98,
+        "tab": "",
+        "file": ""
+      },
+      "known": null,
+      "summary": null,
+      "asked": [
+        "GET /api/plugin/github/pulls?q=98"
+      ]
+    },
+    "the same, at the next rest": {
+      "subject": {
+        "kind": "pull",
+        "number": 98,
+        "tab": "",
+        "file": ""
+      },
+      "known": null,
+      "summary": null,
+      "asked": [
+        "GET /api/plugin/github/pulls?q=98"
+      ]
+    },
+    "the open one, once its summary is too old to reuse": {
+      "subject": {
+        "kind": "pull",
+        "number": 12,
+        "tab": "",
+        "file": ""
+      },
+      "known": null,
+      "summary": {
+        "title": "feat(links): preview what a link opens",
+        "state": "open"
+      },
+      "asked": [
+        "GET /api/plugin/github/pulls?q=12"
+      ]
     },
     "a stack the snapshot holds": {
       "subject": {
@@ -174,6 +235,7 @@ $ node tests/dom/link-preview-providers-session.js
         "number": 286,
         "file": ""
       },
+      "known": null,
       "summary": {
         "title": "Stack change 8",
         "detail": "3 pull requests"
@@ -188,6 +250,10 @@ $ node tests/dom/link-preview-providers-session.js
         "number": 290,
         "file": ""
       },
+      "known": {
+        "title": "Stack change 10",
+        "detail": "3 pull requests"
+      },
       "summary": {
         "title": "Stack change 10",
         "detail": "3 pull requests"
@@ -200,6 +266,7 @@ $ node tests/dom/link-preview-providers-session.js
         "number": 300,
         "file": ""
       },
+      "known": null,
       "summary": null,
       "asked": []
     },
@@ -209,7 +276,38 @@ $ node tests/dom/link-preview-providers-session.js
         "number": 286,
         "file": ""
       },
+      "known": null,
       "summary": null,
+      "asked": [
+        "GET /api/plugin/github/stacks"
+      ]
+    },
+    "a stack, from a snapshot being refreshed": {
+      "subject": {
+        "kind": "stack",
+        "number": 286,
+        "file": ""
+      },
+      "known": null,
+      "summary": {
+        "title": "Stack change 8",
+        "detail": "3 pull requests"
+      },
+      "asked": [
+        "GET /api/plugin/github/stacks"
+      ]
+    },
+    "the same stack, a second later": {
+      "subject": {
+        "kind": "stack",
+        "number": 286,
+        "file": ""
+      },
+      "known": null,
+      "summary": {
+        "title": "Stack change 8",
+        "detail": "3 pull requests"
+      },
       "asked": [
         "GET /api/plugin/github/stacks"
       ]
@@ -219,6 +317,7 @@ $ node tests/dom/link-preview-providers-session.js
         "kind": "commit",
         "revision": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1"
       },
+      "known": null,
       "summary": {
         "title": "docs: write the guide",
         "detail": "Ada Author · 6d ago"
@@ -227,11 +326,27 @@ $ node tests/dom/link-preview-providers-session.js
         "GET /api/git/commit/5ed518dc01e604da80e752ddd5ee4de4b6e14bd1"
       ]
     },
+    "the same commit again": {
+      "subject": {
+        "kind": "commit",
+        "revision": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1"
+      },
+      "known": {
+        "title": "docs: write the guide",
+        "detail": "Ada Author · 6d ago"
+      },
+      "summary": {
+        "title": "docs: write the guide",
+        "detail": "Ada Author · 6d ago"
+      },
+      "asked": []
+    },
     "a commit it lacks": {
       "subject": {
         "kind": "commit",
         "revision": "0123456789abcdef0123456789abcdef01234567"
       },
+      "known": null,
       "summary": {
         "missing": "Not in this repository"
       },
@@ -244,16 +359,33 @@ $ node tests/dom/link-preview-providers-session.js
         "kind": "commit",
         "revision": "0123456789abcdef0123456789abcdef01234567"
       },
+      "known": {
+        "missing": "Not in this repository"
+      },
       "summary": {
         "missing": "Not in this repository"
       },
       "asked": []
+    },
+    "the missing commit, once the panel let go of what it knew": {
+      "subject": {
+        "kind": "commit",
+        "revision": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "known": null,
+      "summary": {
+        "missing": "Not in this repository"
+      },
+      "asked": [
+        "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
+      ]
     },
     "a commit, before the Commits panel has loaded": {
       "subject": {
         "kind": "commit",
         "revision": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1"
       },
+      "known": null,
       "summary": null,
       "asked": []
     },
@@ -265,6 +397,9 @@ $ node tests/dom/link-preview-providers-session.js
         "target": {
           "path": "docs/guide.md"
         }
+      },
+      "known": {
+        "detail": "Markdown file"
       },
       "summary": {
         "detail": "Markdown file"
@@ -281,6 +416,9 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "docs/guide.md"
         }
       },
+      "known": {
+        "detail": "Markdown file"
+      },
       "summary": {
         "detail": "Markdown file"
       },
@@ -295,6 +433,10 @@ $ node tests/dom/link-preview-providers-session.js
         "target": {
           "path": "docs/old-guide.md"
         }
+      },
+      "known": {
+        "detail": "Markdown file",
+        "missing": "Not in the served files"
       },
       "summary": {
         "detail": "Markdown file",
@@ -312,11 +454,32 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "docs/old-guide.md"
         }
       },
+      "known": {
+        "detail": "Markdown file"
+      },
       "summary": {
         "detail": "Markdown file"
       },
       "asked": [],
       "catalog": "filling"
+    },
+    "the same, once the served tree has it": {
+      "subject": {
+        "kind": "file",
+        "path": "docs/old-guide.md",
+        "opens": "here",
+        "target": {
+          "path": "docs/old-guide.md"
+        }
+      },
+      "known": {
+        "detail": "Markdown file"
+      },
+      "summary": {
+        "detail": "Markdown file"
+      },
+      "asked": [],
+      "catalog": "whole"
     },
     "a name with a percent sign": {
       "subject": {
@@ -326,6 +489,9 @@ $ node tests/dom/link-preview-providers-session.js
         "target": {
           "path": "notes/100%25.md"
         }
+      },
+      "known": {
+        "detail": "Markdown file"
       },
       "summary": {
         "detail": "Markdown file"
@@ -342,6 +508,7 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "notes/draft.zzz-unclaimed"
         }
       },
+      "known": null,
       "summary": null,
       "asked": [],
       "catalog": "whole"
@@ -354,6 +521,9 @@ $ node tests/dom/link-preview-providers-session.js
         "target": {
           "path": "docs/"
         }
+      },
+      "known": {
+        "detail": "1 file · 48 B"
       },
       "summary": {
         "detail": "1 file · 48 B"
@@ -370,6 +540,9 @@ $ node tests/dom/link-preview-providers-session.js
           "path": ""
         }
       },
+      "known": {
+        "detail": "3 files · 112 B"
+      },
       "summary": {
         "detail": "3 files · 112 B"
       },
@@ -385,6 +558,7 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "src/"
         }
       },
+      "known": null,
       "summary": null,
       "asked": [],
       "catalog": "whole"
@@ -397,6 +571,9 @@ $ node tests/dom/link-preview-providers-session.js
         "target": {
           "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ"
         }
+      },
+      "known": {
+        "detail": "Markdown file"
       },
       "summary": {
         "detail": "Markdown file"
@@ -413,6 +590,10 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "g1-ZG9jcw/g1-b2xkLWd1aWRlLm1k"
         }
       },
+      "known": {
+        "detail": "Markdown file",
+        "missing": "Not in the served files"
+      },
       "summary": {
         "detail": "Markdown file",
         "missing": "Not in the served files"
@@ -424,6 +605,7 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "pulls"
       },
+      "known": null,
       "summary": null,
       "asked": []
     }
@@ -475,6 +657,7 @@ $ node tests/dom/link-preview-providers-session.js
         "revision": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1"
       },
       "asked": [
+        "GET /api/git/commit/5ed518dc01e604da80e752ddd5ee4de4b6e14bd1",
         "GET /api/plugin/diff/comparison?revision=5ed518dc01e604da80e752ddd5ee4de4b6e14bd1"
       ],
       "assets": [
@@ -596,13 +779,21 @@ $ node tests/dom/link-preview-providers-session.js
     "GET /api/plugin/github/pulls?q=12",
     "GET /api/plugin/github/pulls?q=13",
     "GET /api/plugin/github/pulls?q=14",
+    "GET /api/plugin/github/pulls?q=14",
     "GET /api/plugin/github/pulls?q=15",
     "GET /api/plugin/github/pulls?q=99",
+    "GET /api/plugin/github/pulls?q=98",
+    "GET /api/plugin/github/pulls?q=98",
+    "GET /api/plugin/github/pulls?q=12",
+    "GET /api/plugin/github/stacks",
+    "GET /api/plugin/github/stacks",
     "GET /api/plugin/github/stacks",
     "GET /api/plugin/github/stacks",
     "GET /api/git/commit/5ed518dc01e604da80e752ddd5ee4de4b6e14bd1",
     "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567",
+    "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567",
     "GET /api/plugin/github/pull?number=12&warm=1",
+    "GET /api/git/commit/5ed518dc01e604da80e752ddd5ee4de4b6e14bd1",
     "GET /api/plugin/diff/comparison?revision=5ed518dc01e604da80e752ddd5ee4de4b6e14bd1",
     "GET /api/git/commit/837bda622f37d716397d71eac1ca8abb7263e01f",
     "GET /api/plugin/diff/comparison?revision=837bda622f37d716397d71eac1ca8abb7263e01f"

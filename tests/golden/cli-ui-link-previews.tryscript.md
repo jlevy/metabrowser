@@ -45,16 +45,19 @@ the session read the `tooltip` the reader would see.
 - `timing`: the card is asked for at once and appears on the tooltip’s own 300 ms delay;
   the summary and the prefetch start at 250 ms, the tree’s hover delay.
   An answer that arrives while the tooltip still waits is shown with it, which waits the
-  delay again from then; a later one is kept for the next rest; a pass across a link
-  reads nothing, and moving within it changes nothing.
+  delay again from then; a later one is the provider’s to keep, and the next rest’s card
+  says it from the pointer’s arrival (`known`), when the provider answers its summary at
+  once (`kept`); a pass across a link reads nothing, and moving within it changes
+  nothing.
 - `requests`: one read and one prefetch are in flight; a newer rest waits for them
   rather than aborting them, and a link the pointer leaves before its intent delay is
   never read.
 - `modality`: focus, keys, and a touch show no card; a pen’s rest does.
   A Tab or a click onto the link the pointer rests on, while its read is out, ends the
   rest: the read’s answer and the state glyphs it loads bring no card back.
-- `failures`: a provider that throws or rejects is asked again at the next rest, and one
-  that answers null is not; each card still says where the link opens.
+- `failures`: the registry keeps no answer, so a provider that throws, rejects, or
+  answers null is asked again at the next rest, and one that knew nothing at the first
+  rest says what it knows at the next; each card still says where the link opens.
 - `disposal`: `dispose` puts away its own root’s card and leaves another root’s; a
   disposed root shows no card; a later `register` of the link asks for its card again,
   which a card already up does not take, and `forget` puts the card away.
@@ -592,6 +595,15 @@ $ node tests/dom/link-previews-session.js
     "card": "[pull] Pull request #12 | Keep the tail | Opens here in Metabrowser"
    },
    {
+    "at": 850,
+    "summary": "pull 12",
+    "kept": true
+   },
+   {
+    "at": 850,
+    "prefetch": "pull 12"
+   },
+   {
     "at": 920,
     "tooltip": "[pull] Pull request #12 | Keep the tail | Opens here in Metabrowser"
    },
@@ -699,7 +711,7 @@ $ node tests/dom/link-previews-session.js
    "prefetches": 0,
    "maxReads": 1,
    "maxPrefetches": 1,
-   "aborted": 0
+   "signals": 0
   }
  },
  "modality": {
@@ -820,10 +832,18 @@ $ node tests/dom/link-previews-session.js
    ]
   },
   "a provider that answers null": {
-   "asked": 1,
+   "asked": 2,
    "cards": [
     "Commit 0123456 | Opens here in Metabrowser",
     "Commit 0123456 | Opens here in Metabrowser"
+   ],
+   "warnings": []
+  },
+  "a provider that answers null, then a subject": {
+   "asked": 2,
+   "cards": [
+    "Commit 0123456 | Opens here in Metabrowser",
+    "Commit 0123456 | Found at the second rest | Opens here in Metabrowser"
    ],
    "warnings": []
   }

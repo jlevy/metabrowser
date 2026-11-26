@@ -4055,12 +4055,21 @@ declare global {
     missing?: string;
   }>;
 
-  /** One kind's data for its link cards (`MetabrowserLinkPreviews.provide`). */
+  /**
+   * One kind's data for its link cards (`MetabrowserLinkPreviews.provide`). The provider
+   * keeps what it reads, for as long as that stays true, and retries what failed; the
+   * registry keeps nothing. `summary` may read, and answers what it keeps at once; `known`
+   * answers what it keeps now with no read, or null.
+   */
   type MetabrowserLinkPreviewProvider = Readonly<{
     summary(
       subject: MetabrowserLinkPreviewSubject,
-      context: { mb: MetabrowserPublicSdk; signal: AbortSignal },
+      context: { mb: MetabrowserPublicSdk },
     ): Promise<MetabrowserLinkPreview | null> | MetabrowserLinkPreview | null;
+    known?(
+      subject: MetabrowserLinkPreviewSubject,
+      context: { mb: MetabrowserPublicSdk },
+    ): MetabrowserLinkPreview | null;
     prefetch?(
       subject: MetabrowserLinkPreviewSubject,
       context: { mb: MetabrowserPublicSdk },
@@ -4779,12 +4788,12 @@ declare global {
     cancelPending(): (() => void) | null;
     restoreCommitLanding(): Promise<void>;
     /** A commit's summary from the panel's own detail cache and missing set, null for a
-     *  revision that is not a full commit ID or a read that failed. *signal* stops the
-     *  caller waiting, never the read. It never fetches from origin. */
-    commitSummary(
-      revision: string,
-      options?: { signal?: AbortSignal },
-    ): Promise<MetabrowserGitCommitSummary | null>;
+     *  revision that is not a full commit ID or a read that failed. It never fetches from
+     *  origin. */
+    commitSummary(revision: string): Promise<MetabrowserGitCommitSummary | null>;
+    /** What `commitSummary` would answer from what the panel holds now, with no read: null
+     *  where it holds nothing of the commit. */
+    keptCommitSummary(revision: string): MetabrowserGitCommitSummary | null;
     /** Prepare a commit as a rest on its row does, for a rest on a link to it: nothing for a
      *  commit the repository lacks, and never in place of work still on its way. */
     prefetchCommit(revision: string): Promise<void>;

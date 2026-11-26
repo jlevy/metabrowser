@@ -38,6 +38,17 @@
  * byPull: Map<number, NativeStack[]>, labels: Map<number, StackCaption>,
  * }} StackIndex */
 
+/**
+ * How long the stacks snapshot's poller waits between its reads while the Pulls tab is shown:
+ * a second while the snapshot is being refreshed, and thirty seconds otherwise, the Pulls
+ * tab's own intervals (`FAST_POLL_MS` and `SLOW_POLL_MS` in pull-page.js, measured with the
+ * freshness row's). A link card reuses one read of the snapshot as long
+ * (static/link-preview-providers.js, which tests/test_link_preview_providers_session.py holds
+ * equal).
+ */
+export const STACKS_POLL_MS = 30000;
+export const STACKS_REFRESHING_POLL_MS = 1000;
+
 /** A stack's one name, wherever a surface names it. @param {number} number */
 export function stackLabel(number) {
   return `Stack #${number}`;
@@ -619,7 +630,7 @@ export function createStackController(deps) {
           timer = null;
           void read();
         },
-        envelope?.refreshing ? 1000 : 30000,
+        envelope?.refreshing ? STACKS_REFRESHING_POLL_MS : STACKS_POLL_MS,
       );
     }
   }
