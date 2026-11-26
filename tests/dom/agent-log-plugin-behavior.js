@@ -46,7 +46,12 @@ const container = {
   },
   removeEventListener: () => {},
   contains: () => true,
-  querySelector: () => null,
+  // The filter bar stands in for itself: this double has one element, and the bar the
+  // plugin binds is the region that holds the chips.
+  querySelector: (selector) =>
+    selector === ".agent-log-filter-bar" && container.innerHTML.includes("agent-log-filter-bar")
+      ? container
+      : null,
   querySelectorAll: (selector) => {
     if (selector.includes("data-chip-key")) {
       return [dynamicChip];

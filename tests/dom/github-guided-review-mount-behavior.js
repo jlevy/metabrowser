@@ -720,7 +720,7 @@ async function run() {
     folds.push(`a card with no diff, its bar pressed: ${sentence.stands()}`);
     sentence.press();
     steps.push(`step 1's file: ${folds.join("; ")}`);
-    // Left folded, to be found open when the step is drawn again (below).
+    // Left folded, to be found folded when the step is drawn again (below).
     fileOne.press();
     assert.equal(fileOne.stands(), "folded");
 
@@ -769,10 +769,27 @@ async function run() {
     view.handle.dispose();
     // The folds are a guide's at one head: the same guide read at a new head, whose files
     // may differ, starts with none, and so does another guide.
+    const { foldKey } = await import(
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-review.js")).href
+    );
+    const appKey = foldKey(1, 0, { pull: null, path: "src/app.txt" });
+    // A fold is one card's: the same path at the same place in another pull request, as a
+    // guide rewritten at the same head can cite, or at another place or step, is another's.
+    const others = [
+      foldKey(1, 0, { pull: 8, path: "src/app.txt" }),
+      foldKey(1, 0, { pull: 9, path: "src/app.txt" }),
+      foldKey(1, 1, { pull: null, path: "src/app.txt" }),
+      foldKey(2, 0, { pull: null, path: "src/app.txt" }),
+    ];
+    assert.equal(new Set([appKey, ...others]).size, others.length + 1);
     const atHead = guideReads.folds("number=7", "b".repeat(40));
-    atHead.set("1\n0\nsrc/app.txt", true);
+    atHead.set(appKey, true);
+    // Opening the last folded file leaves the guide no entry, and folding one makes it.
+    atHead.set(appKey, false);
+    assert.equal(atHead.has(appKey), false);
+    atHead.set(appKey, true);
     steps.push(
-      `a fold kept for a guide at its head: the same head ${guideReads.folds("number=7", "b".repeat(40)).has("1\n0\nsrc/app.txt")}, another guide ${guideReads.folds("number=8", "b".repeat(40)).has("1\n0\nsrc/app.txt")}, a new head ${guideReads.folds("number=7", "c".repeat(40)).has("1\n0\nsrc/app.txt")}, the first head again ${guideReads.folds("number=7", "b".repeat(40)).has("1\n0\nsrc/app.txt")}`,
+      `a fold kept for a guide at its head: the same head ${guideReads.folds("number=7", "b".repeat(40)).has(appKey)}, another guide ${guideReads.folds("number=8", "b".repeat(40)).has(appKey)}, a new head ${guideReads.folds("number=7", "c".repeat(40)).has(appKey)}, the first head again ${guideReads.folds("number=7", "b".repeat(40)).has(appKey)}`,
     );
   }
 

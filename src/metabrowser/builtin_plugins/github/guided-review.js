@@ -82,10 +82,10 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   file in its Changes (`mountGuidedReview`'s deps); *subject* is what the guide's own
  *   files are the changes of.
  * @typedef {{patch: DrawPatch | null, document: DrawDocument | null, pins: Pins}} Drawers
- * @typedef {{folded: boolean, heard: (expanded: boolean) => void}} Fold Whether the reader
- *   left a card folded, and what hears them fold or open it (`folds` in guide-reads.js).
  *   What draws a step's references, each null when the diff plugin did not load, and the
  *   comparison the step was read at.
+ * @typedef {{folded: boolean, heard: (expanded: boolean) => void}} Fold Whether the reader
+ *   left a card folded, and what hears them fold or open it (`folds` in guide-reads.js).
  * @typedef {{drawn: GuidedDrawing[], waits: Promise<unknown>[]}} Drawing What a
  *   step drew: the views to dispose of when another step is shown or the guide ends, and what
  *   the step waits for before it shows, the documents it draws whole, each until drawn as it
@@ -557,6 +557,18 @@ function groupNote(note, state, drawProse, refusalNote) {
   );
   const refused = refusalLine(state.group_note_refusal, refusalNote);
   return refused === null ? [typed] : [typed, refused];
+}
+
+/**
+ * What a folded file's card is kept by in its guide at one head: its step, its place in
+ * the step, the pull request a file of another one is in, and its path. The pull request
+ * is in it because a guide rewritten at the same head can put the same path of another
+ * pull request at the same place (review B of #872, B1).
+ *
+ * @param {number} step @param {number} place @param {Pick<Reference, "pull" | "path">} reference
+ */
+export function foldKey(step, place, reference) {
+  return `${step}\n${place}\n${reference.pull ?? ""}\n${reference.path ?? ""}`;
 }
 
 /**
@@ -1460,12 +1472,12 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
     /** @type {Drawers} */
     const by = { patch: drawPatch, document: drawDocument, pins: answered.comparison };
-    // A file the reader folded stays folded while this guide is read at this head, by its
-    // step, its place in the step, and its path (mb-ez0x).
+    // A file the reader folded stays folded while this guide is read at this head
+    // (`foldKey`, mb-ez0x).
     const folds = guideReads.folds(asks, answered.comparison.head);
     references.append(
       ...answered.references.map((reference, index) => {
-        const key = `${answered.step}\n${index}\n${reference.path ?? ""}`;
+        const key = foldKey(answered.step, index, reference);
         return renderReference(reference, ways, changeOf(stale, reference), by, stage, {
           folded: folds.has(key),
           heard: (expanded) => folds.set(key, !expanded),
