@@ -61,6 +61,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections import defaultdict
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -152,6 +153,8 @@ if args[:1] == ["api"]:
             path = "graphql:timeline:" + fields.get("number", "missing") + ":" + fields.get("cursor", "start")
         elif fields.get("query", "").startswith("query PullStatus("):
             path = "graphql:status:" + fields.get("number", "missing") + ":" + fields.get("cursor", "start")
+        elif fields.get("query", "").startswith("query PullStatuses("):
+            path = "graphql:statuses:" + fields.get("cursor", "start")
         elif fields.get("query", "").startswith("query VisiblePullCores("):
             slots = [f"n{{i}}" for i in range(8)]
             path = "graphql:visible-cores:" + ",".join(fields[key] for key in slots if key in fields)
@@ -691,7 +694,12 @@ def page(path: str) -> str:
 
 
 def logged_gh_calls(directory: Path) -> list[str]:
-    """What the fake ``gh`` was asked since the last call, as a transcript lists it."""
+    """What the fake ``gh`` was asked since the last call, as a transcript lists it.
+
+    The scan of every open pull request's status is a job of its own, which a list's ask
+    starts beside the list's, so its pages reach the log anywhere among the list's reads:
+    they are listed last, in the order they were read, one after another.
+    """
 
     log = directory / "fake-gh-log.jsonl"
     if not log.exists():
@@ -722,6 +730,9 @@ def logged_gh_calls(directory: Path) -> list[str]:
                     f"cursor={fields.get('cursor', 'start')}"
                 )
                 continue
+            if fields.get("query", "").startswith("query PullStatuses("):
+                calls.append(f"gh api graphql statuses cursor={fields.get('cursor', 'start')}")
+                continue
             if fields.get("query", "").startswith("query VisiblePullCores("):
                 slots = [f"n{i}" for i in range(8)]
                 numbers = ",".join(fields[key] for key in slots if key in fields)
@@ -749,7 +760,8 @@ def logged_gh_calls(directory: Path) -> list[str]:
         conditional = any(arg.startswith("If-None-Match: ") for arg in args)
         calls.append(f"gh api {path}" + (" (If-None-Match)" if conditional else ""))
     log.unlink()
-    return calls
+    scanned = [call for call in calls if call.startswith(_STATUS_SCAN)]
+    return [call for call in calls if not call.startswith(_STATUS_SCAN)] + scanned
 
 
 # What a first clone of octo/demo asks gh, in order: the GitHub status check, then the
@@ -771,12 +783,15 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
     """
 
     # The list probe a page's automatic ask starts runs beside that ask's own work
-    # (`attend_list`), so it reaches the log anywhere among it: it is listed first.
+    # (`attend_list`), so it reaches the log anywhere among it: it is listed first. The scan
+    # of every open pull request's status, a job of its own a list's ask starts beside the
+    # list's, reaches it anywhere too, its pages one after another: they are listed last.
     beside = [call for call in calls if _LIST_PROBE.match(call)]
+    scanned = [call for call in calls if call.startswith(_STATUS_SCAN)]
     ordered: list[str] = list(beside)
     together: list[str] = []
     for call in calls:
-        if _LIST_PROBE.match(call):
+        if _LIST_PROBE.match(call) or call.startswith(_STATUS_SCAN):
             continue
         if _RECORD_PART.match(call):
             together.append(call)
@@ -785,9 +800,10 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
         together = []
         ordered.append(call)
     ordered.extend(sorted(together))
-    return ordered
+    return [*ordered, *scanned]
 
 
+_STATUS_SCAN: Final = "gh api graphql statuses "
 _LIST_PROBE = re.compile(r"gh api repos/[^/]+/[^/]+/(issues|pulls)\?state=all&sort=updated&")
 # The parts of a record a refresh reads together, after the pull itself, and the pages of
 # a head's checks a probe reads together.
@@ -986,6 +1002,82 @@ def graph_status_entry(
 
     path = f"graphql:status:{parts['pull']['number']}:start"
     return ok(path, {"data": graph_status_data(parts, reader=reader, shape=shape)})
+
+
+# The open pull requests one page of the status scan holds (``SCAN_ROWS``).
+STATUS_SCAN_ROWS: Final = 25
+
+
+def scan_rollup(parts: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The rollup the status scan reads for one pull request: the page's read's, as
+    :func:`graph_status_data` builds it from its checks, with its counts and no check."""
+
+    rollup = graph_status_data(parts)["repository"]["pull"]["statusCheckRollup"]
+    if rollup is None:
+        return None
+    contexts = rollup["contexts"]
+    return {
+        "state": rollup["state"],
+        "contexts": {
+            "checkRunCountsByState": contexts["checkRunCountsByState"],
+            "statusContextCountsByState": contexts["statusContextCountsByState"],
+        },
+    }
+
+
+def scan_node(
+    item: Mapping[str, Any],
+    *,
+    rollup: Mapping[str, Any] | None = None,
+    shape: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One open pull request as the status scan's page holds it; *shape* is GitHub's
+    verdict, :data:`STATUS_SHAPES`' for its number, or a clean one, by default."""
+
+    shape = STATUS_SHAPES.get(item["number"], {}) if shape is None else shape
+    return {
+        "number": item["number"],
+        "headRefOid": item["head"]["sha"],
+        "baseRefName": item["base"]["ref"],
+        "baseRefOid": item["base"].get("sha"),
+        "mergeable": shape.get("mergeable", "MERGEABLE"),
+        "mergeStateStatus": shape.get("mergeStateStatus", "CLEAN"),
+        "reviewDecision": shape.get("reviewDecision"),
+        "isInMergeQueue": shape.get("isInMergeQueue", False),
+        "mergeQueueEntry": shape.get("mergeQueueEntry"),
+        "autoMergeRequest": shape.get("autoMergeRequest"),
+        "statusCheckRollup": rollup,
+    }
+
+
+def statuses_entries(nodes: list[dict[str, Any]], *, reader: str = READER) -> dict[str, Any]:
+    """The status scan's pages of *nodes*, newest first: graphql:statuses:<cursor|start>."""
+
+    entries: dict[str, Any] = {}
+    ordered = sorted(nodes, key=lambda node: node["number"], reverse=True)
+    for offset in range(0, max(1, len(ordered)), STATUS_SCAN_ROWS):
+        cursor = f"statuses-{offset}" if offset else "start"
+        batch = ordered[offset : offset + STATUS_SCAN_ROWS]
+        key = f"graphql:statuses:{cursor}"
+        more = offset + STATUS_SCAN_ROWS < len(ordered)
+        body = {
+            "data": {
+                "viewer": {"login": reader},
+                "rateLimit": {"cost": 1},
+                "repository": {
+                    "nameWithOwner": "octo/demo",
+                    "pullRequests": {
+                        "pageInfo": {
+                            "hasNextPage": more,
+                            "endCursor": f"statuses-{offset + len(batch)}" if batch else None,
+                        },
+                        "nodes": batch,
+                    },
+                },
+            }
+        }
+        entries[key] = ok(key, body)
+    return entries
 
 
 def api_entries(origin: Origin) -> dict[str, Any]:
@@ -1364,7 +1456,31 @@ def catalog_entries(
     )
     entries[LIST_PROBE_PATH] = ok(LIST_PROBE_PATH, as_issue)
     entries[NEWEST_PULL_PATH] = ok(NEWEST_PULL_PATH, [newest] if newest is not None else [])
+    # The status scan of the same open pull requests, each rolled up as its own page's read
+    # rolls up its checks, so a scan and a read of one head agree.
+    rollups = scan_rollups()
+    nodes = [
+        scan_node(item, rollup=rollups.get(item["number"]))
+        for item in items
+        if item["state"] == "open"
+    ]
+    entries.update(statuses_entries(nodes, reader=reader))
     return entries
+
+
+def scan_rollups() -> dict[int, dict[str, Any] | None]:
+    """What the status scan reads of each of pull requests 7 to 10's checks: the rollup of
+    the checks :func:`pull_bodies` gives them, which no commit of the origin changes."""
+
+    if not _SCAN_ROLLUPS:
+        placeholder = Origin(Path("."), defaultdict(lambda: "0" * 40))
+        _SCAN_ROLLUPS.update(
+            {number: scan_rollup(parts) for number, parts in pull_bodies(placeholder).items()}
+        )
+    return dict(_SCAN_ROLLUPS)
+
+
+_SCAN_ROLLUPS: dict[int, dict[str, Any] | None] = {}
 
 
 def seed_catalog(

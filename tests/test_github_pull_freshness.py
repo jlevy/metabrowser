@@ -31,7 +31,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
 )
 from metabrowser.builtin_plugins.github.pull_route import pull_state
-from metabrowser.builtin_plugins.github.pull_status import BUCKETS, PullStatus
+from metabrowser.builtin_plugins.github.pull_status import BUCKETS, PullStatus, kept_observation
 from metabrowser.builtin_plugins.github.pull_status_store import CheckProbes
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
@@ -119,10 +119,13 @@ def _status(
     counts: dict[str, int] | None = None,
     conflicts: str = "mergeable",
     merge_state: str = "clean",
+    by: str = "read",
 ) -> PullStatus:
     """A kept status of *record*'s head, observed as the read after it kept it, by default
-    with one passing check and nothing for GitHub still to compute."""
+    with one passing check and nothing for GitHub still to compute. A read lists its
+    checks; *by* ``scan`` lists none (``listed_at``)."""
 
+    stamp = record.fetched_at if observed is None else _stamp(observed)
     tallies: dict[str, int] = dict.fromkeys(BUCKETS, 0)
     if rollup != "none":
         tallies.update({"pass": 1} if counts is None else counts)
@@ -131,11 +134,15 @@ def _status(
             "number": record.number,
             "head": head or record.pull.head.sha,
             "base_ref": record.pull.base.ref,
-            "observed_at": record.fetched_at if observed is None else _stamp(observed),
-            "observed_by": "read",
+            "observed_at": stamp,
+            "observed_by": by,
             "conflicts": conflicts,
             "merge_state": merge_state,
-            "checks": {"state": rollup, "counts": tallies},
+            "checks": {
+                "state": rollup,
+                "counts": tallies,
+                "listed_at": stamp if by == "read" else None,
+            },
         }
     )
 
@@ -671,6 +678,38 @@ def test_a_record_adopted_while_the_status_alone_is_read_counts_as_read_in_full(
     full = timedelta(seconds=FULL_REFRESH_S)
     assert not held.full_read_overdue(published + full)
     assert held.full_read_overdue(published + full + timedelta(seconds=1))
+
+
+def test_a_scans_status_the_page_has_no_list_for_is_read_at_once_and_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Pulls tab's scan keeps the newest status of every open pull request, without its
+    checks. Where it finds checks the page's read did not list, of a head the page never
+    read, as a prefetched record's, or checks that moved since, the page reads its own at
+    once, below the floor as a change a probe finds is, and only once."""
+
+    record = _record(fetched=NOW - timedelta(seconds=5))
+    held = _held(record, tmp_path)
+    read = _reading(monkeypatch, record, [NOW])
+    held._status_attempt = NOW - timedelta(seconds=3)  # pyright: ignore[reportPrivateUsage]
+    observed = NOW - timedelta(seconds=1)
+    status = _status(record, observed=observed, by="scan", rollup="pending", counts={"pending": 1})
+    freshness = _verdict(record, _catalog(), _row(), status=status)
+    assert (freshness.status_missing, freshness.unlisted_at) == (True, _stamp(observed))
+    held.saw_record(record.fetched_at, freshness=freshness)
+    _observe_core(100)
+    assert held.status_due(NOW) and held.automatic_due(NOW) == "full"
+    asyncio.run(held.refresh())
+    assert read == ["status"]
+    # The read that started after the scan's status answers it: no read again for it.
+    held.saw_record(record.fetched_at, freshness=freshness)
+    assert not held.status_due(NOW)
+    # A scan that finds the read's own checks keeps its list, and asks for nothing.
+    listed = _status(record, observed=NOW - timedelta(seconds=2))
+    same = _status(record, observed=NOW, by="scan")
+    kept = kept_observation(listed, same)
+    assert kept.observed_by == "scan" and kept.checks.listed_at == listed.checks.listed_at
+    assert not _verdict(record, _catalog(), _row(), status=kept).status_missing
 
 
 def test_a_verdict_on_another_record_is_not_adopted(tmp_path: Path) -> None:

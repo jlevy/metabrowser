@@ -104,6 +104,13 @@ def source_pull_status_refresh(slug: str, number: int) -> str:
     return source_pull_record(slug, number).removesuffix(".json") + ".status.refresh.json"
 
 
+def source_pull_status_scan(slug: str) -> str:
+    """Return ``sources/<slug>/pulls/statuses.scan.json``: how the last scan of every open
+    pull request's status ended, and what the next one needs of it."""
+
+    return f"{source_pulls_directory(slug)}/statuses.scan.json"
+
+
 def source_pull_check_probes(slug: str, number: int) -> str:
     """Return ``sources/<slug>/pulls/<n>.checks.probe.json``: what its checks' probes last saw."""
 
@@ -210,6 +217,7 @@ __all__ = [
     "source_pull_refresh",
     "source_pull_snapshots",
     "source_pull_status_refresh",
+    "source_pull_status_scan",
     "source_pull_timeline",
     "source_pulls_directory",
     "source_record",

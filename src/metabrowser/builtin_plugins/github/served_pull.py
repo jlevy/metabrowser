@@ -417,12 +417,15 @@ class ServedPull:
     without_store: bool = False
     # The catalog's newest verdict on the held record (:mod:`.pull_freshness`): when it
     # last vouched for it, the row that reported a change the record predates, whether only
-    # its status is due (``checks``), and whether no kept status describes its head.
+    # its status is due (``checks``), whether no kept status of its head counts a list of
+    # its checks, and when the one kept that counts none was observed, as the Pulls tab's
+    # scan's of a new head is (``unlisted_at``).
     # `_attempted_row` is the changed row the last attempt saw.
     verified_at: str | None = field(default=None, repr=False)
     changed_row: str | None = field(default=None, repr=False)
     checks_due: bool = field(default=False, repr=False)
     status_missing: bool = field(default=False, repr=False)
+    unlisted_at: str | None = field(default=None, repr=False)
     _attempted_row: str | None = field(default=None, repr=False)
     # Set when another writer published this job's record first: how a refresh last ended
     # is then the stamp beside the record, read each time, not anything this job kept.
@@ -604,11 +607,13 @@ class ServedPull:
 
         A change a probe found in the status alone, a check or a mergeability GitHub has
         since computed (``checks_changed``), is due until a read of the status starts after
-        it, the one after a full read among them. A status the catalog's verdict says is a
-        window old (``checks_due``, an open pull request the catalog vouches for), and a
-        record with no kept status of its head (``status_missing``), as a prefetched one
-        has, are due once a window from the last read of the status, whether or not the
-        record is current. GitHub's limit holds each, and below the GraphQL floor
+        it, the one after a full read among them; so is a status the Pulls tab's scan kept
+        of the record's head that counts no list of its checks, observed after the last
+        read of the status started (:meth:`_scan_moved_status`). A status the catalog's
+        verdict says is a window old (``checks_due``, an open pull request the catalog
+        vouches for), and a record with no kept status of its head that lists its checks
+        (``status_missing``), as a prefetched one has, are due once a window from the last
+        read of the status, whether or not the record is current. GitHub's limit holds each, and below the GraphQL floor
         (:meth:`status_below_floor`) the last two wait, as the reads the clock asks for do.
         Only a held record has a status read, and speculative work never has one due
         (:func:`.gh_budget.speculating`): a background record reads no operational status,
@@ -650,14 +655,28 @@ class ServedPull:
         return gh_budget.admission(("core", "graphql"), now=now).reason == "below_floor"
 
     def _status_change_found(self) -> bool:
-        """Whether a probe found the status alone changed after its last read started."""
+        """Whether a probe, or the Pulls tab's scan, found the status alone changed after
+        its last read started."""
 
         attempted, saw = self._status_attempt, self._probe_saw_at
         return (
             self._probe_saw == "checks"
             and saw is not None
             and (attempted is None or attempted < saw)
-        )
+        ) or self._scan_moved_status()
+
+    def _scan_moved_status(self) -> bool:
+        """Whether the scan kept a status of the record's head that lists none of its checks
+        after the last read of the status started.
+
+        That is a new head, or checks that moved, which the scan of every open pull request
+        sees without listing them (:func:`.pull_freshness.listing_missing`). The page reads
+        its own at once, once: the read that starts after it is no longer before it. The
+        scan's own spacing (:mod:`.pull_status_scan`) bounds how often that can be.
+        """
+
+        unlisted, attempted = self.unlisted_at, self._status_attempt
+        return unlisted is not None and (attempted is None or attempted < _parse_stamp(unlisted))
 
     def status_below_floor(self, now: datetime) -> bool:
         """Whether the GraphQL budget a read of the status alone spends is below the floor.
@@ -994,13 +1013,14 @@ class ServedPull:
             self.without_store = without_store
             self._forget_probes()
             self.display_core = None
-            self.verified_at = self.changed_row = None
+            self.verified_at = self.changed_row = self.unlisted_at = None
             self.checks_due = self.status_missing = False
         if freshness is not None and fetched_at is not None and fetched_at == self.fetched_at:
             self.verified_at = freshness.verified_at if freshness.verified_by == "catalog" else None
             self.changed_row = freshness.changed_row
             self.checks_due = freshness.verdict == "checks"
             self.status_missing = freshness.status_missing
+            self.unlisted_at = freshness.unlisted_at
 
     def request_core_preview(self) -> None:
         """Prepare only a selected missing record, never replace a full cached record."""

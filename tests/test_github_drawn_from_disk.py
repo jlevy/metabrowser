@@ -493,6 +493,16 @@ def _row_lines(_built: Built, result: Invocation) -> None:
     assert rows[TREE_PULL]["files"] == 249
 
 
+def _row_readiness(_built: Built, result: Invocation) -> None:
+    # A row's verdict is the status kept for its head, the page's read's here, judged on
+    # the lifecycle its catalog row names.
+    rows = {row["number"]: row for row in answer(result)["rows"]}
+    for number in (7, 10):
+        row = rows[number]
+        assert row["state"] == "status" and row["status"]["head"] == row["head"]
+        assert row["lifecycle"] in {"open", "draft"} and row["readiness"]["head"] == row["head"]
+
+
 def _file_tree(_built: Built, result: Invocation) -> None:
     listed = answer(result)
     assert (listed["state"], listed["complete"]) == ("current", True)
@@ -650,6 +660,7 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         _row_lines,
     ),
     Drawn("Row changed files", "Pulls tab", "pull-files", _fixed("number=7"), _file_tree),
+    Drawn("Row readiness", "Pulls tab", "pull-statuses", _fixed("numbers=7,10"), _row_readiness),
     Drawn("Stack rows and stack menu", "both", "stacks", _fixed(""), _stacks),
     Drawn("Stack change line", "Pulls tab", "stack-change", _fixed(f"number={STACK}"), _stack_line),
     Drawn(
@@ -744,7 +755,7 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
 JOBS: Final[dict[str, str]] = {
     "pull-refresh": "starts the record's refresh, which reads GitHub and fetches the head",
     "pull-cores-prepare": "starts a batch of cores, one GraphQL read",
-    "pulls-refresh": "starts the catalog's scan",
+    "pulls-refresh": "starts the catalog's scan, and the scan of every open pull request's status",
     "pull-files-refresh": "starts a changed-files list's refresh",
     "stacks-refresh": "starts the stack snapshot's read",
     "labels-refresh": "starts the label set's read",

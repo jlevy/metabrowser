@@ -218,7 +218,8 @@ status: 202
           "cancel": 0
         },
         "required_failing": 0,
-        "required_pending": 1
+        "required_pending": 1,
+        "listed_at": "2026-09-17T12:00:00Z"
       },
       "auto_merge": {
         "method": "squash",
@@ -488,7 +489,7 @@ status: 200
     "auto_merge": null,
     "auto_merge_summary": null
   },
-  "checks": "<CHECKS 7>",
+  "checks": null,
   "status_unavailable": null
 }
 --- stderr ---

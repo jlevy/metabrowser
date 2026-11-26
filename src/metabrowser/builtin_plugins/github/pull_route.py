@@ -80,14 +80,18 @@ from metabrowser.builtin_plugins.github.pull_labels import (
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_list_probe import checked_at
 from metabrowser.builtin_plugins.github.pull_list_route import catalog_job_key
-from metabrowser.builtin_plugins.github.pull_readiness import DisplayState, readiness
+from metabrowser.builtin_plugins.github.pull_readiness import DisplayState, lifecycle, readiness
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
     read_pull_record,
 )
 from metabrowser.builtin_plugins.github.pull_status import PullStatus
-from metabrowser.builtin_plugins.github.pull_status_store import CheckProbes, kept_status
+from metabrowser.builtin_plugins.github.pull_status_store import (
+    CheckProbes,
+    KeptStatus,
+    kept_status,
+)
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
     PullCorePreview,
@@ -168,11 +172,14 @@ class PullEnvelope(TypedDict):
     repository_labels: list[LabelEntry]
     labels_pending: bool
     # The pull request's operational status as last read (:class:`~.pull_status.PullStatus`),
-    # its head's checks (:class:`~.pull_status.PullChecks`), and the verdict on it
-    # (:func:`~.pull_readiness.readiness`), beside the record and never in it: they change
-    # with a check, and the record does not. Each names the head it describes, and
-    # ``readiness`` judges ``status`` only when that is the head of the record or core
-    # shown; it is ``None`` for a closed or merged pull request, and with nothing shown.
+    # by the page or by the Pulls tab's scan, its head's checks (:class:`~.pull_status.PullChecks`),
+    # and the verdict on it (:func:`~.pull_readiness.readiness`), beside the record and never
+    # in it: they change with a check, and the record does not. Each names the head it
+    # describes, and ``readiness`` judges ``status`` only when that is the head of the record
+    # or core shown; it is ``None`` for a closed or merged pull request, and with nothing
+    # shown. ``checks`` is the list ``status`` counts, of the head shown, and ``None`` until
+    # the page has read one (:func:`shown_checks`): a scan's status of a new head, or of
+    # checks that moved, counts no list.
     # ``status_unavailable`` is why the last read of the status failed, when it did; what
     # an earlier read kept is still answered.
     status: dict[str, Any] | None
@@ -187,11 +194,35 @@ def display_state(pull: Mapping[str, object]) -> DisplayState:
     Merged and draft come before open and closed, as GitHub's badge shows them.
     """
 
-    if pull.get("merged"):
-        return "merged"
-    if pull.get("state") == "closed":
-        return "closed"
-    return "draft" if pull.get("draft") else "open"
+    return lifecycle(
+        closed=pull.get("state") == "closed",
+        draft=bool(pull.get("draft")),
+        merged=bool(pull.get("merged")),
+    )
+
+
+def _shown_head(shown: object) -> str | None:
+    """The head commit of *shown*, the ``pull`` the envelope shows, or ``None``."""
+
+    if not isinstance(shown, dict):
+        return None
+    head = shown.get("head")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    sha = head.get("sha") if isinstance(head, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    return sha if isinstance(sha, str) else None
+
+
+def shown_checks(shown: object, kept: KeptStatus) -> dict[str, Any] | None:
+    """The checks the envelope carries beside *shown*, as the wire has them, or ``None``.
+
+    Only the list the kept status counts (:attr:`~.pull_status_store.KeptStatus.listed_checks`),
+    and only of the head shown: checks of another head, or ones a newer status no longer
+    sums to, are never served, and ``None`` says the head shown has no list yet.
+    """
+
+    checks = kept.listed_checks
+    if checks is None or checks.head != _shown_head(shown):
+        return None
+    return checks.model_dump(mode="json")
 
 
 def judged_readiness(shown: object, status: PullStatus | None) -> dict[str, Any] | None:
@@ -200,13 +231,10 @@ def judged_readiness(shown: object, status: PullStatus | None) -> dict[str, Any]
     ``None`` with no pull request shown, or a closed or merged one.
     """
 
-    if not isinstance(shown, dict):
+    sha = _shown_head(shown)
+    if not isinstance(shown, dict) or sha is None:
         return None
     pull: dict[str, object] = shown  # pyright: ignore[reportUnknownVariableType]
-    head = pull.get("head")
-    sha = head.get("sha") if isinstance(head, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-    if not isinstance(sha, str):
-        return None
     url = pull.get("html_url")
     verdict = readiness(
         state=display_state(pull),
@@ -646,7 +674,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         labels_pending=view.labels_running and bool(lookup.missing),
         status=(None if operational.status is None else operational.status.model_dump(mode="json")),
         readiness=judged_readiness(shown, operational.status),
-        checks=None if operational.checks is None else operational.checks.model_dump(mode="json"),
+        checks=shown_checks(shown, operational),
         status_unavailable=operational.unavailable,
     )
     if view.preparing_comparison:
@@ -1182,6 +1210,7 @@ __all__ = [
     "held_record",
     "image_route",
     "judged_readiness",
+    "shown_checks",
     "pull_answer",
     "pull_envelope",
     "pull_host",

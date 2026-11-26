@@ -715,8 +715,10 @@ def test_golden_pull_list_failures(
     assert refused_catalog["last_refresh"]["outcome"] == "network_error"
     assert refused_catalog["fetched"] == baseline["fetched"]
     # The account check cannot reach GitHub, and gh auth status cannot name the token's
-    # login without it.
-    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+    # login without it. The scan of the open pull requests' statuses the Refresh starts
+    # beside it reads as the catalog's reader, with no account check of its own.
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    assert [call for call in calls if not call.startswith("gh api graphql statuses")] == [
         "gh api user",
         "gh auth status",
     ]
@@ -828,7 +830,8 @@ def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_eve
     )
     resumed = session.post({"state": "closed", "target": 400, "retry": True}, summarize=True)
     assert resumed.exit_code == 0, resumed.stderr
-    calls = _graphql(session)
+    # The scan of the open pull requests' statuses the Refresh starts beside it is its own.
+    calls = [call for call in _graphql(session) if "graphql catalog" in call]
     assert calls[0] == "gh api graphql catalog state=updated cursor=start"
     assert calls[1:] == [
         f"gh api graphql catalog state=all cursor={'start' if not n else f'all-{n}'}"
@@ -876,14 +879,18 @@ def test_golden_pull_list_probe_answers_an_automatic_ask(
     session.say(
         "An automatic ask finds nothing due and probes: one conditional read of the issue or "
         "pull request updated last, with no account check. The catalog holds that row, so "
-        "nothing starts, and `checked_at` says when GitHub confirmed the list."
+        "the list starts nothing, and `checked_at` says when GitHub confirmed the list. The "
+        "first scan of the open pull requests' statuses starts beside it."
     )
     unchanged = session.post({"background": True})
     assert unchanged.exit_code == 0, unchanged.stderr
     answer = json.loads(unchanged.stdout.split("status: 200\n")[1])
     assert (answer["refresh"], answer["pulls"]["state"]) == ("not_due", "current")
     assert answer["pulls"]["checked_at"] == f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
-    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [f"gh api {PROBE}"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        f"gh api {PROBE}",
+        "gh api graphql statuses cursor=start",
+    ]
 
     session.advance(10)
     session.say(

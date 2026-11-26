@@ -27,11 +27,15 @@ GraphQL's ``updatedAt`` and ``headRefOid`` equalled REST's ``updated_at`` and ``
 character for character on five open cli/cli pull requests (2026-11-11), which is what the
 comparison relies on.
 
-Whatever the verdict, ``status_missing`` says no kept status describes the record's head,
-so a visible page reads one (:meth:`.served_pull.ServedPull.is_stale`), and
-``checks_pending`` that the status's checks or mergeability are still settling, which the
-probes watch (:func:`checks_settling`, :func:`mergeability_pending`) and the page may say.
-Neither changes the verdict.
+Whatever the verdict, ``status_missing`` says no kept status of the record's head counts a
+list of its checks (:func:`listing_missing`), so a visible page reads its own
+(:meth:`.served_pull.ServedPull.is_stale`): none is kept, or the one kept is the Pulls tab's
+scan's, of a new head or of checks that moved since the page last listed them.
+``unlisted_at`` is then that status's ``observed_at``, when it has one, and a status newer
+than the page's last read is a change the page reads at once. ``checks_pending`` says the
+status's checks or mergeability are still settling, which the probes watch
+(:func:`checks_settling`, :func:`mergeability_pending`) and the page may say. None of them
+changes the verdict.
 """
 
 from __future__ import annotations
@@ -81,7 +85,9 @@ class RecordFreshness:
     ``changed_row`` is, for a changed record, the identity of the row that reported the
     change, its ``updated_at`` and head: a refresh attempted for that row has seen it, and
     the next is due at once only when another row reports another change.
-    ``status_missing`` says no kept status describes the record's head.
+    ``status_missing`` says no kept status of the record's head counts a list of its checks,
+    and ``unlisted_at`` is the ``observed_at`` of the one kept that counts none, if any
+    (:func:`listing_missing`).
     """
 
     verdict: Verdict
@@ -91,12 +97,32 @@ class RecordFreshness:
     checks_pending: bool
     changed_row: str | None = None
     status_missing: bool = False
+    unlisted_at: str | None = None
 
 
 def described(record: PullRecord, status: PullStatus | None) -> PullStatus | None:
     """*status* when it describes *record*'s head, and ``None`` when it describes another."""
 
     return status if status is not None and status.head == record.pull.head.sha else None
+
+
+def listing_missing(record: PullRecord, status: PullStatus | None) -> tuple[bool, str | None]:
+    """Whether the page lacks a list of its head's checks, and since which status, if one.
+
+    The page's read lists its head's checks with the status; the Pulls tab's scan reads the
+    status alone. A scan's status of the record's head that finds the checks as the page's
+    read left them keeps that read's list (:func:`~.pull_status.kept_observation`); one of a
+    new head, or of checks that moved, counts none, and the page then reads its own while
+    the readiness is the scan's. ``(True, None)`` with no status of the record's head;
+    ``(True, observed_at)`` with one that counts no list.
+    """
+
+    kept = described(record, status)
+    if kept is None:
+        return True, None
+    if kept.checks.listed_at is None:
+        return True, kept.observed_at
+    return False, None
 
 
 def mergeability_pending(record: PullRecord, status: PullStatus | None) -> bool:
@@ -180,7 +206,7 @@ def record_freshness(
     """
 
     pending = checks_pending(record, status)
-    missing = described(record, status) is None
+    missing, unlisted = listing_missing(record, status)
     usable = (
         catalog is not None
         and row is not None
@@ -197,7 +223,14 @@ def record_freshness(
         ):
             identity = f"{row.updated_at} {row.head_oid or '-'}"
             return RecordFreshness(
-                "changed", record.fetched_at, "fetch", other_head, pending, identity, missing
+                "changed",
+                record.fetched_at,
+                "fetch",
+                other_head,
+                pending,
+                identity,
+                missing,
+                unlisted,
             )
         checked = max(catalog.fetched_at, checked_at or catalog.fetched_at)
         age = now - _parse(checked)
@@ -216,13 +249,31 @@ def record_freshness(
                 # are not in `updated_at`, so an open pull request's status is read again
                 # once a window, on its own.
                 return RecordFreshness(
-                    "checks", verified, "catalog", False, pending, status_missing=missing
+                    "checks",
+                    verified,
+                    "catalog",
+                    False,
+                    pending,
+                    status_missing=missing,
+                    unlisted_at=unlisted,
                 )
             return RecordFreshness(
-                "current", verified, "catalog", False, pending, status_missing=missing
+                "current",
+                verified,
+                "catalog",
+                False,
+                pending,
+                status_missing=missing,
+                unlisted_at=unlisted,
             )
     return RecordFreshness(
-        "unverified", record.fetched_at, "fetch", False, pending, status_missing=missing
+        "unverified",
+        record.fetched_at,
+        "fetch",
+        False,
+        pending,
+        status_missing=missing,
+        unlisted_at=unlisted,
     )
 
 
@@ -235,6 +286,7 @@ __all__ = [
     "checks_pending",
     "checks_settling",
     "described",
+    "listing_missing",
     "mergeability_pending",
     "record_freshness",
     "status_stale",

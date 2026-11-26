@@ -109,7 +109,8 @@
             "cancel": 0
           },
           "required_failing": 0,
-          "required_pending": 0
+          "required_pending": 0,
+          "listed_at": "2026-09-17T12:00:00Z"
         },
         "auto_merge": null,
         "queue": null
@@ -260,7 +261,8 @@
               "cancel": 0
             },
             "required_failing": 0,
-            "required_pending": 0
+            "required_pending": 0,
+            "listed_at": "2026-09-17T12:00:00Z"
           },
           "auto_merge": null,
           "queue": null
@@ -414,7 +416,8 @@
             "cancel": 0
           },
           "required_failing": 0,
-          "required_pending": 0
+          "required_pending": 0,
+          "listed_at": "2026-09-17T12:00:00Z"
         },
         "auto_merge": null,
         "queue": null

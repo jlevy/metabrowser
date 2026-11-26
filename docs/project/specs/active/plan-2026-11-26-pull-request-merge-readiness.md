@@ -677,10 +677,13 @@ while its mergeability is unknown.
 A change one finds starts a status read where it starts a `checks_only` read today.
 Only the GraphQL reads write a status, so every status has the same fields.
 
-**The Pulls tab** reads the status of every open pull request with one GraphQL query of
-100 rows a page (`PullStatuses`), with the summary fields and no contexts’ nodes.
-It runs while the tab is visible: when the list’s probe finds a change, when a fetch
-moves a base branch that open pull requests target, and otherwise every
+**The Pulls tab** reads the status of every open pull request with one GraphQL query a
+page (`PullStatuses`), with the summary fields and no contexts’ nodes.
+Layer 4 measured a page of 100 failing on a repository with many checks, at GitHub’s
+time and resource limits, so a page is `SCAN_ROWS` rows and a scan at most
+`MAX_SCAN_PAGES` pages, the newest open pull requests (`pull_status_scan.py` has the
+measurements). It runs while the tab is visible: when the list’s probe finds a change,
+when a fetch moves a base branch that open pull requests target, and otherwise every
 `FULL_REFRESH_S`. A page with `unknown` answers is read once more after
 `MERGEABLE_SETTLE_S`, since GitHub computes them after the first ask.
 It is reader work, held by the governor and the `BACKGROUND_FLOOR` as the catalog’s scan
@@ -713,8 +716,9 @@ Clearing the cache clears both.
 **Budget.** Both reads are GraphQL, the budget the update cadence plan found nearly
 unused.
 
-- The Pulls tab’s scan costs 1 point per 100 open pull requests per `FULL_REFRESH_S`
-  while visible, priced by dry run above.
+- The Pulls tab’s scan costs 1 point a page, as priced by dry run above and measured,
+  and each page spaces the next scan by `SCAN_POINT_GAP_S`, which bounds what it spends
+  an hour whatever starts it.
 - The page’s read costs 1 point for each 100 checks per full read.
 - The REST reads it replaces are among the record’s six.
 

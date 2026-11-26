@@ -151,6 +151,14 @@ route = "pull-files-summary"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_summary_handler"
 methods = ["GET"]
 
+# Each named pull request's operational status and its verdict, for the readiness its Pulls
+# row shows: what the Pulls tab's scan, which pulls-refresh starts, or the page's own read
+# last kept. From the cache alone: no gh and no Git.
+[[data_hook]]
+route = "pull-statuses"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_statuses_handler"
+methods = ["GET"]
+
 # Start or join that list's refresh in the refresh coordinator. A POST with a JSON object
 # body naming its number, behind the same-origin guard; it returns at once.
 [[data_hook]]

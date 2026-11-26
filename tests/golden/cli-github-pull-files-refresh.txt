@@ -488,7 +488,8 @@ status: 200
         "cancel": 0
       },
       "required_failing": 0,
-      "required_pending": 1
+      "required_pending": 1,
+      "listed_at": "2026-09-17T12:00:00Z"
     },
     "auto_merge": {
       "method": "squash",
@@ -875,7 +876,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=all&limit=0
 status: 200

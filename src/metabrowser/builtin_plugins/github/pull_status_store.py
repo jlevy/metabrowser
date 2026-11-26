@@ -229,6 +229,24 @@ class KeptStatus:
     checks: PullChecks | None
     unavailable: str | None
 
+    @property
+    def listed_checks(self) -> PullChecks | None:
+        """The kept checks when they are the list the kept status counts, else ``None``.
+
+        That is a list of the status's head kept by the read the status's summary names
+        (``listed_at``). A status the Pulls tab's scan read for a new head, or with checks
+        that moved since the page's read, names none, so the page's list of another head or
+        of other counts is never shown beside it, and the page reads its own
+        (:func:`.pull_freshness.record_freshness`).
+        """
+
+        status, checks = self.status, self.checks
+        if status is None or checks is None or status.checks.listed_at is None:
+            return None
+        if (checks.head, checks.observed_at) != (status.head, status.checks.listed_at):
+            return None
+        return checks
+
 
 def kept_status(home: Path, slug: str, number: int) -> KeptStatus:
     """The kept status, checks, and last outcome of pull request *number*. Blocking, bounded.

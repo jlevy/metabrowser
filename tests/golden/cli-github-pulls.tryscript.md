@@ -916,7 +916,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1003,7 +1004,8 @@ status: 200
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 ? 0
 ```

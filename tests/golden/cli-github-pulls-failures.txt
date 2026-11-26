@@ -30,7 +30,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -175,7 +176,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -224,6 +226,10 @@ Error: the refresh ended with not_logged_in
 --- gh ---
 gh api user
 gh auth status
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -269,7 +275,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -318,6 +325,10 @@ Error: the refresh ended with gh_too_old
 --- gh ---
 gh api user
 gh auth status
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -363,7 +374,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -412,6 +424,10 @@ Error: the refresh ended with not_found_or_private
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -457,7 +473,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -507,6 +524,7 @@ Error: the refresh ended with network_error
 gh api user
 gh auth status
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -552,7 +570,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -601,6 +620,10 @@ Error: the refresh ended with gh_failed
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -646,7 +669,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -695,6 +719,7 @@ Error: the refresh ended with account_changed
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -740,7 +765,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -896,7 +922,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -945,6 +972,10 @@ Error: the refresh ended with rate_limited
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -990,7 +1021,8 @@ status: 200
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 --- stderr ---
 --- body ---
@@ -1041,7 +1073,8 @@ status: 200
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 --- stderr ---
 --- body ---
@@ -1093,7 +1126,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1141,6 +1175,10 @@ status: 200
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 ## A cache that refuses a write says why, and the command that clears it.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -1187,7 +1225,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1236,6 +1275,10 @@ Error: the refresh ended with cache_unwritable
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 ## While the directory itself refuses writes, so does that command.
 # metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -
 exit: 1
@@ -1297,7 +1340,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1345,6 +1389,10 @@ status: 200
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 ## A catalog a newer Metabrowser wrote is left as it is and named, before any page is asked for; the command it names clears it, and the list is fetched again.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -1383,7 +1431,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1467,7 +1516,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1555,7 +1605,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1639,7 +1690,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1702,6 +1754,10 @@ Error: the refresh ended with network_error
 --- gh ---
 gh api user
 gh auth status
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 ## A reconnect can refresh metadata immediately once GitHub is reachable.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0

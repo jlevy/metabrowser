@@ -46,6 +46,18 @@ from metabrowser.builtin_plugins.github.pull_status import (
 type DisplayState = Literal["open", "draft", "merged", "closed"]
 """A pull request's lifecycle, as its state badge names it."""
 
+
+def lifecycle(*, closed: bool, draft: bool, merged: bool) -> DisplayState:
+    """The state badge of a pull request: merged and draft come before open and closed, as
+    GitHub's badge shows them."""
+
+    if merged:
+        return "merged"
+    if closed:
+        return "closed"
+    return "draft" if draft else "open"
+
+
 type RequirementKind = Literal["queue", "conflicts", "checks", "reviews", "up_to_date", "rules"]
 
 type RequirementStatus = Literal["met", "waiting", "unmet", "unknown"]
@@ -400,6 +412,7 @@ __all__ = [
     "auto_merge_summary",
     "checks_sentence",
     "headline",
+    "lifecycle",
     "readiness",
     "requirements",
     "worst",

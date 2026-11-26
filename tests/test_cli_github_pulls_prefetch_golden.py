@@ -275,8 +275,13 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     delta = session.run(CANONICAL, "--api", PULLS_REFRESH, body={})
     assert delta.exit_code == 0, delta.stderr
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
-    # One scan of what changed: one account check and one GraphQL page.
-    assert calls == ["gh api user", "gh api graphql catalog state=updated cursor=start"]
+    # One scan of what changed: one account check and one GraphQL page; and, its clock past,
+    # the scan of the open pull requests' statuses, the newest of them a page at a time.
+    assert calls[:2] == ["gh api user", "gh api graphql catalog state=updated cursor=start"]
+    assert calls[2:] == [
+        f"gh api graphql statuses cursor={cursor}"
+        for cursor in ("start", "statuses-25", "statuses-50", "statuses-75")
+    ]
     vouched = session.run(CANONICAL, "--api", f"{PULL}?number=8").payload()
     assert (vouched["state"], vouched["verified_by"], vouched["verified_at"]) == (
         "current",
@@ -286,8 +291,9 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     session.say(
         "The catalog vouches for open 7's conversation and head, and its record holds nothing "
         "`updated_at` does not track, so it is current. Its status does, its checks and "
-        "whether it can merge: read two hours ago, it is due on its own, and its docs check "
-        "is still pending."
+        "whether it can merge, and the list's ask just scanned every open pull request's: "
+        "7's found its checks as its read left them, so it is current too, and its docs "
+        "check is still pending."
     )
     pending = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
     assert (pending["state"], pending["checks_pending"], pending["verified_by"]) == (
@@ -295,12 +301,14 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
         True,
         "catalog",
     )
+    # The scan's status keeps the read's list of the same checks, which the page still shows.
+    assert pending["status"]["observed_by"] == "scan"
+    assert pending["status"]["checks"]["listed_at"] == pending["checks"]["observed_at"]
 
     session.say(
         "A visible page asks for 7, 8, and 10 and for 8's changed files. The store gives 8's "
         "list from its record's comparison, with no request to GitHub, so it goes first; then "
-        "the records: only 7's status is due, which its own page reads; 8 is current; 10 has "
-        "no record, so it is read."
+        "the records: 7 and 8 are current; 10 has no record, so it is read."
     )
     prefetch = session.run(
         CANONICAL, "--api", PREFETCH, body={"records": [7, 8, 10], "files": [8]}, full=True
@@ -309,7 +317,7 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     report = json.loads(prefetch.stdout[prefetch.stdout.rindex("status: 200\n{") + 12 :])
     assert [(entry["kind"], entry["number"], entry["outcome"]) for entry in report["recent"]] == [
         ("files", 8, "refreshed"),
-        ("record", 7, "skipped:checks"),
+        ("record", 7, "skipped:current"),
         ("record", 8, "skipped:current"),
         ("record", 10, "refreshed"),
     ]

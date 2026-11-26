@@ -85,6 +85,7 @@ PREFIX_RECORDING = "github-pulls-catalog-prefix-responses.json"
 TRANSCRIPT = "cli-ui-github-pulls-panel.tryscript.md"
 _PULLS = "/api/plugin/github/pulls"
 _REFRESH = "/api/plugin/github/pulls-refresh"
+_STATUSES = "/api/plugin/github/pull-statuses"
 pytestmark = [
     needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
@@ -218,10 +219,20 @@ def _record(
                     assert time.monotonic() < deadline, "the catalog job did not finish"
                     time.sleep(0.01)
 
+            def calls() -> list[str]:
+                """What gh was asked, once the scan of the open pull requests' statuses a list
+                ask starts beside the list's job has ended: its pages are this step's."""
+
+                deadline = time.monotonic() + 50
+                while client.get(_STATUSES, params={"numbers": "1"}).json()["scanning"]:
+                    assert time.monotonic() < deadline, "the status scan did not finish"
+                    time.sleep(0.01)
+                return logged_gh_calls(tmp_path)
+
             repository = ListedRepository(home, published.slug, "octo", "demo")
             recorded["absent"] = read()
             recorded["landing_absent"] = read(limit="0")
-            provider_calls["cold cache reads"] = logged_gh_calls(tmp_path)
+            provider_calls["cold cache reads"] = calls()
             gate.clear()
             recorded["refresh_started"] = ask(state="all", target=500)
             recorded["pending"] = read()
@@ -229,7 +240,7 @@ def _record(
             gate.set()
             settled()
             recorded["current"] = read()
-            provider_calls["catalog backfill"] = logged_gh_calls(tmp_path)
+            provider_calls["catalog backfill"] = calls()
             recorded["more_done"] = read()
             recorded["more_window"] = read(after=str(recorded["current"]["body"]["next_after"]))
             recorded["open_current"] = read(state="open")
@@ -242,9 +253,7 @@ def _record(
             recorded["not_due"] = ask(state="all", target=500)
             assert ask(state="all", target=1000)["body"]["refresh"] == "not_due"
             assert read() == recorded["current"]
-            provider_calls["cached windows, filters, scrolling and reopen"] = logged_gh_calls(
-                tmp_path
-            )
+            provider_calls["cached windows, filters, scrolling and reopen"] = calls()
             recorded["pin_changed"] = _answer(
                 client.get(_PULLS, params={"state": "all"}, headers={PIN_HEADER: "0" * 40})
             )
@@ -256,9 +265,9 @@ def _record(
             gate.set()
             settled()
             recorded["refreshed"] = read()
-            provider_calls["due metadata refresh"] = logged_gh_calls(tmp_path)
+            provider_calls["due metadata refresh"] = calls()
             assert read() == recorded["refreshed"]
-            provider_calls["fresh cached revisit"] = logged_gh_calls(tmp_path)
+            provider_calls["fresh cached revisit"] = calls()
 
             # The list probe, inside the window of that scan: an automatic ask that finds
             # GitHub's newest pull request in the catalog starts nothing and moves
@@ -296,7 +305,7 @@ def _record(
                 after=str(recorded["probe_scanned"]["body"]["next_after"]), limit="2"
             )
             assert recorded["probe_scanned"]["body"]["rows"][0]["title"] == "Retitled between scans"
-            provider_calls["list probes"] = logged_gh_calls(tmp_path)
+            provider_calls["list probes"] = calls()
             answering(online)
             probed_catalog.write_bytes(before_probes)
             write_list_refresh(home, published.slug, "all", stamp_before)
@@ -325,7 +334,7 @@ def _record(
                 assert refused["status"] == 202, refused
                 settled()
                 recorded[f"failed {name}"] = read()
-                provider_calls[f"refused {name}"] = logged_gh_calls(tmp_path)
+                provider_calls[f"refused {name}"] = calls()
                 catalog.write_bytes(saved)
 
             # Actual persisted failure stamps, read through the production cache-only route.

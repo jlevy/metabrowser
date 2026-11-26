@@ -34,7 +34,7 @@ import logging
 import os
 import sqlite3
 import uuid
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
@@ -47,7 +47,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_PULL_REFRESH_BYTES,
     ensure_pulls_directory,
 )
-from metabrowser.builtin_plugins.github.pull_status import PullStatus
+from metabrowser.builtin_plugins.github.pull_status import PullStatus, kept_observation
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
@@ -1164,26 +1164,42 @@ def publish_page(
 def write_pull_status(repository: ListedRepository, status: PullStatus) -> bool:
     """Keep *status* as its pull request's newest, unless a newer one is kept. Blocking.
 
+    :func:`write_pull_statuses` for one status; whether *status* is now the one kept.
+    """
+
+    return write_pull_statuses(repository, (status,)) == 1
+
+
+def write_pull_statuses(repository: ListedRepository, statuses: Sequence[PullStatus]) -> int:
+    """Keep each of *statuses* as its pull request's newest, in one transaction. Blocking.
+
     One row per pull request number, in a table of its own: a status changes with every
     check, and a catalog row's change would move its fingerprint, its core, and its
-    window's generation. The row keeps the newer ``observed_at``, whatever its head, so
-    two reads that end out of order leave the later; the same moment replaces, as the
-    later write is. The checkpoint is not touched, so no window or revision moves.
+    window's generation. Each row becomes what :func:`~.pull_status.kept_observation`
+    keeps of the row held and the one written: the newer ``observed_at``, whatever its
+    head, so two reads that end out of order leave the later, and the same moment
+    replaces, as the later write is; with the older's list of checks when it still
+    describes the newer's. The checkpoint is not touched, so no window or revision moves.
+    At most :data:`PAGE_SIZE` statuses, the most one page of GitHub's answers holds.
 
-    The caller uses ``run_lock_section``: the row commits in one short transaction under
+    The caller uses ``run_lock_section``: the rows commit in one short transaction under
     the source-alias lock, with no network work under it. A catalog this release cannot
     use is replaced with an empty one first, as :func:`publish_page` replaces it, and a
     newer release's raises :class:`NewerCatalogError` and one whose versions cannot be read
-    :class:`UnknownCatalogError`, both left as they are. Whether it was kept.
+    :class:`UnknownCatalogError`, both left as they are. How many of *statuses* are now
+    the newest kept for their number.
     """
+    if len(statuses) > PAGE_SIZE:
+        raise ValueError("a status transaction holds at most one page")
+    if len({status.number for status in statuses}) != len(statuses):
+        raise ValueError("a status transaction names each pull request once")
     source = repository.home / f"sources/{repository.slug}/source.yml"
     if not source.is_file() or source.is_symlink():
         raise FileNotFoundError("no source is published under this slug")
-    body = status.model_dump_json()
     with source_alias_lock(repository.home, repository.slug):
         _initialize(repository)
         try:
-            return _put_status(repository, status, body)
+            return _put_statuses(repository, statuses)
         except UnknownCatalogError as exc:
             if exc.wal:
                 _refuse_newer_in_copy(repository.home, _relative(repository.slug))
@@ -1196,23 +1212,53 @@ def write_pull_status(repository: ListedRepository, status: PullStatus) -> bool:
                 failure_line(exc),
             )
             _replace(repository)
-        return _put_status(repository, status, body)
+        return _put_statuses(repository, statuses)
 
 
-def _put_status(repository: ListedRepository, status: PullStatus, body: str) -> bool:
+def _held_status(db: sqlite3.Connection, number: int) -> PullStatus | None:
+    """The status a writer's transaction holds for *number*; a row it cannot read is none."""
+
+    row = db.execute(
+        "SELECT head,observed_at,body FROM pull_status WHERE number=?", (number,)
+    ).fetchone()
+    return None if row is None else _row_status(number, row)
+
+
+def _row_status(number: int, row: tuple[object, ...]) -> PullStatus | None:
+    """The status a ``(head, observed_at, body)`` row of *number* holds, if it agrees with it."""
+
+    if not isinstance(row[2], str):
+        return None
+    try:
+        status = PullStatus.model_validate_json(row[2])
+    except ValueError:
+        return None
+    if (status.number, status.head, status.observed_at) != (number, row[0], row[1]):
+        return None
+    return status
+
+
+def _put_statuses(repository: ListedRepository, statuses: Sequence[PullStatus]) -> int:
     classified = False
     try:
         with _database(repository.home, repository.slug, write=True) as db, db:
             db.execute("BEGIN IMMEDIATE")
             _state(db)
             classified = True
-            kept = db.execute(
-                "INSERT INTO pull_status VALUES(?,?,?,?) ON CONFLICT(number) DO UPDATE SET "
-                "head=excluded.head,observed_at=excluded.observed_at,body=excluded.body "
-                "WHERE excluded.observed_at >= pull_status.observed_at",
-                (status.number, status.head, status.observed_at, body),
-            )
-            return kept.rowcount == 1
+            newest = 0
+            for status in statuses:
+                held = _held_status(db, status.number)
+                kept = kept_observation(held, status)
+                # The later moment is kept, and the incoming at the same moment.
+                newest += kept.observed_at == status.observed_at
+                if kept == held:
+                    continue
+                db.execute(
+                    "INSERT INTO pull_status VALUES(?,?,?,?) ON CONFLICT(number) DO UPDATE SET "
+                    "head=excluded.head,observed_at=excluded.observed_at,body=excluded.body",
+                    (kept.number, kept.head, kept.observed_at, kept.model_dump_json()),
+                )
+            return newest
     except sqlite3.DatabaseError as exc:
         if not _damaged(exc):
             raise
@@ -1236,15 +1282,59 @@ def read_pull_status(home: Path, slug: str, number: int) -> PullStatus | None:
             ).fetchone()
     except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
         return None
-    if row is None or not isinstance(row[2], str):
-        return None
+    return None if row is None else _row_status(number, row)
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogStatuses:
+    """The checkpoint, and the rows and kept statuses of some numbers, from one snapshot."""
+
+    state: CatalogState | None
+    rows: dict[int, PullListRow]
+    statuses: dict[int, PullStatus]
+
+
+# The most pull requests one read of rows and their statuses names: a Pulls window's rows
+# (``MAX_SUMMARY_NUMBERS`` in ``pull_files_summary.py`` has the measurement). Both reads are
+# by primary key, so the read is two indexed lookups a number.
+MAX_STATUS_NUMBERS: Final = 100
+
+
+def catalog_statuses(home: Path, slug: str, numbers: tuple[int, ...]) -> CatalogStatuses:
+    """The rows of *numbers* and their kept statuses, in one transaction. Blocking, bounded.
+
+    A row another release wrote in a shape this one cannot read is no row, and a status
+    likewise no status; a catalog that cannot be read at all has neither.
+    """
+    if not numbers or len(numbers) > MAX_STATUS_NUMBERS or len(set(numbers)) != len(numbers):
+        raise ValueError("invalid catalog status request")
+    placeholders = ",".join("?" for _ in numbers)
+    rows: dict[int, PullListRow] = {}
+    statuses: dict[int, PullStatus] = {}
     try:
-        status = PullStatus.model_validate_json(row[2])
-    except ValueError:
-        return None
-    if (status.number, status.head, status.observed_at) != (number, row[0], row[1]):
-        return None
-    return status
+        with _database(home, slug) as db:
+            db.execute("BEGIN")
+            state = _state(db)
+            for number, body in db.execute(
+                f"SELECT number,body FROM pulls WHERE number IN ({placeholders})", numbers
+            ):
+                try:
+                    row = PullListRow.model_validate_json(body)
+                except ValueError:
+                    continue
+                if row.number == number:
+                    rows[number] = row
+            for number, head, observed_at, body in db.execute(
+                "SELECT number,head,observed_at,body FROM pull_status "
+                f"WHERE number IN ({placeholders})",
+                numbers,
+            ):
+                status = _row_status(number, (head, observed_at, body))
+                if status is not None:
+                    statuses[number] = status
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return CatalogStatuses(None, {}, {})
+    return CatalogStatuses(state, rows, statuses)
 
 
 def _commit(

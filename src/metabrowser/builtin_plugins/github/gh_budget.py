@@ -24,12 +24,14 @@ Four kinds of work go below the floor, and only a hold stops them (the owner's r
   request: the floor is a reserve for the reader, and this is the page the reader is
   looking at; and
 - for the same reason, the probe of a visible list, the scan a change it finds starts,
-  and the cores of the rows on screen (:func:`.pull_cores.request_preparation`), which
-  this process's own ceiling still holds.
+  the scan of the open pull requests' statuses a change or a moved base starts and its
+  re-read of answers GitHub was still computing (:mod:`.pull_status_scan`), and the
+  cores of the rows on screen (:func:`.pull_cores.request_preparation`), which this
+  process's own ceiling still holds.
 
 Everything else automatic stops below it: prefetch, backfill, the cores walk, stacks,
-labels, the timeline, and the periodic scan and files read, which ask :func:`admission`,
-and the reads a visible page's clock alone asks for, a record's
+labels, the timeline, the periodic scans of the catalog and of its statuses, and the
+files read, which ask :func:`admission`, and the reads a visible page's clock alone asks for, a record's
 :data:`~.served_pull.FULL_REFRESH_S` full read (:meth:`.served_pull.ServedPull.below_floor`)
 and an open one's status once a window, which spends GraphQL and so waits below that
 budget's floor alone (:meth:`.served_pull.ServedPull.status_below_floor`).

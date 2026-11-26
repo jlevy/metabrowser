@@ -570,7 +570,11 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "gh api graphql catalog state=all cursor=all-100"
     ],
     "cached windows, filters, scrolling and reopen": [
-      "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1"
+      "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1",
+      "gh api graphql statuses cursor=start",
+      "gh api graphql statuses cursor=statuses-25",
+      "gh api graphql statuses cursor=statuses-50",
+      "gh api graphql statuses cursor=statuses-75"
     ],
     "due metadata refresh": [
       "gh api user (If-None-Match)",

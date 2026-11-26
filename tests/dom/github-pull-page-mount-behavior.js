@@ -8,14 +8,38 @@ const root = path.resolve(__dirname, "../..");
 const recorded = JSON.parse(
   fs.readFileSync(path.join(root, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
 );
+// A status whose checks were listed when it was observed is recorded without the time they
+// were listed, which is its own `observed_at`; any other value is as recorded.
+function listedWhenObserved(field, value) {
+  if (field !== "status" || value === null || typeof value !== "object" || !value.checks) {
+    return value;
+  }
+  if ("listed_at" in value.checks || value.same_as !== undefined) {
+    return value;
+  }
+  return { ...value, checks: { ...value.checks, listed_at: value.observed_at } };
+}
 for (const answer of Object.values(recorded)) {
   for (const envelope of [answer.body, answer.body?.pull]) {
     for (const field of ["record", "status", "readiness", "checks"]) {
       const holder = envelope?.[field]?.same_as;
       if (holder !== undefined) {
-        // Anything kept beside the name, a status's own time, is this answer's.
+        // Anything kept beside the name, a status's own time, is this answer's; a dotted
+        // name is a part of a part, as the time its checks were listed. Checks the held
+        // status listed when it was observed are listed when this one was, unless it says.
         const { same_as: _held, ...own } = envelope[field];
-        envelope[field] = { ...recorded[holder].body[field], ...own };
+        const held = listedWhenObserved(field, recorded[holder].body[field]);
+        const value = { ...held };
+        if (held.checks?.listed_at !== undefined && held.checks.listed_at === held.observed_at) {
+          value.checks = { ...held.checks, listed_at: own.observed_at ?? held.observed_at };
+        }
+        for (const [name, part] of Object.entries(own)) {
+          const [outer, inner] = name.split(".");
+          value[outer] = inner === undefined ? part : { ...value[outer], [inner]: part };
+        }
+        envelope[field] = value;
+      } else if (envelope?.[field] !== undefined) {
+        envelope[field] = listedWhenObserved(field, envelope[field]);
       }
     }
   }

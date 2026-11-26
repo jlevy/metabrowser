@@ -66,7 +66,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -419,13 +420,18 @@ status: 200
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 --- stderr ---
 --- body ---
 {"target": 1000}
 --- gh ---
 gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
 exit: 0
 --- stdout ---
@@ -777,7 +783,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1101,7 +1108,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1151,6 +1159,7 @@ Error: the refresh ended with network_error
 gh api user
 gh auth status
 gh api graphql catalog state=open cursor=start
+gh api graphql statuses cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
 exit: 0
 --- stdout ---
@@ -1241,7 +1250,8 @@ status: 202
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1290,6 +1300,7 @@ status: 200
 gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
+gh api graphql statuses cursor=start
 ## A visible pull request prepares its description from one GraphQL batch.
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
 exit: 0
@@ -1723,7 +1734,8 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200

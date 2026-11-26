@@ -175,14 +175,23 @@ class ChecksSummary(_Model):
     """A head's checks as GitHub summarized them.
 
     ``state`` is GitHub's rollup, which decides whether the checks pass; ``counts`` says
-    how many checks are in each bucket. ``required_failing`` and ``required_pending`` are
-    known only when the read had each check's ``isRequired``, and ``None`` otherwise.
+    how many checks are in each bucket. Both come from the rollup alone, so the Pulls
+    tab's scan of every open pull request, which lists no check, reads them as the page's
+    read does.
+
+    ``listed_at`` is when a read last listed this head's checks and found these counts:
+    the checks it kept then (``pulls/<n>.checks.json``, whose ``observed_at`` it equals)
+    are the list this summary counts. It is ``None`` when no read listed checks that sum to
+    it, as for a status the scan read. ``required_failing`` and ``required_pending`` come
+    from that list, so they are known only with it, and only when the list was whole and
+    every check said whether it is required; ``None`` otherwise.
     """
 
     state: RollupState
     counts: dict[Bucket, Annotated[int, Field(ge=0)]]
     required_failing: Annotated[int, Field(ge=0)] | None = None
     required_pending: Annotated[int, Field(ge=0)] | None = None
+    listed_at: Timestamp | None = None
 
     @model_validator(mode="after")
     def _every_bucket_and_none_empty(self) -> ChecksSummary:
@@ -190,6 +199,10 @@ class ChecksSummary(_Model):
             raise ValueError("counts name every bucket")
         if self.state == "none" and any(self.counts.values()):
             raise ValueError("a head with no rollup has no checks")
+        if self.listed_at is None and (
+            self.required_failing is not None or self.required_pending is not None
+        ):
+            raise ValueError("only a list of the checks says which are required")
         return self
 
     @property
@@ -238,6 +251,58 @@ class PullStatus(_Model):
     checks: ChecksSummary
     auto_merge: AutoMerge | None = None
     queue: QueueEntry | None = None
+
+
+def same_checks(one: PullStatus, other: PullStatus) -> bool:
+    """Whether two observations summarize the same checks: one head, GitHub's same rollup
+    state, and the same number of checks in every bucket."""
+
+    return (
+        one.head == other.head
+        and one.checks.state == other.checks.state
+        and one.checks.counts == other.checks.counts
+    )
+
+
+def kept_observation(kept: PullStatus | None, incoming: PullStatus) -> PullStatus:
+    """The status to keep for one pull request when *incoming* is observed and *kept* is held.
+
+    The newer ``observed_at`` is kept, whatever its head, so two reads that end out of
+    order leave the later; *incoming* is the newer at the same moment, as the later write.
+
+    What only an older observation can still add is the list behind its checks. The pull
+    request page's read lists every check and says which are required; the Pulls tab's
+    scan of every open pull request reads the rollup alone (:class:`ChecksSummary`). So
+    the newer keeps the older's ``listed_at`` and required counts exactly when it has no
+    list of its own and the two summarize the same checks (:func:`same_checks`): a scan
+    that finds a read's checks as the read left them takes nothing away from it. Any other
+    newer observation, a new head or a check that moved, keeps none, since the older list
+    no longer describes it, and the page reads its own again.
+
+    Equal counts are all a scan can see. They hide a change only when one check moves out
+    of a bucket while another moves in between two observations: a check run never moves
+    back once completed, and a re-run is a context of its own, which raises the total, so
+    only a commit status posted back to pending as another check finishes can. The page's
+    own read, on every change its probes find, corrects that.
+
+    The rule depends only on the two observations, not on which was written first.
+    """
+
+    if kept is None:
+        return incoming
+    newer, older = (
+        (incoming, kept) if incoming.observed_at >= kept.observed_at else (kept, incoming)
+    )
+    if newer.checks.listed_at is not None or older.checks.listed_at is None:
+        return newer
+    if not same_checks(newer, older):
+        return newer
+    listing = {
+        "listed_at": older.checks.listed_at,
+        "required_failing": older.checks.required_failing,
+        "required_pending": older.checks.required_pending,
+    }
+    return newer.model_copy(update={"checks": newer.checks.model_copy(update=listing)})
 
 
 class CheckItem(_Model):
@@ -303,10 +368,12 @@ __all__ = [
     "RollupState",
     "bucket_counts",
     "check_run_bucket",
+    "kept_observation",
     "merge_method",
     "merge_state",
     "queue_state",
     "review_decision",
     "rollup_state",
+    "same_checks",
     "state_bucket",
 ]

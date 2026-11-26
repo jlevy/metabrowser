@@ -31,8 +31,12 @@ checks beside it, and the story reads each many times, so the recording holds ea
 distinct one once: an answer whose record, or status, verdict, or checks, an earlier
 answer carried names that answer, ``{"same_as": "current"}``, and the session reads it
 back as that answer's. A status, verdict, or checks that differs from an earlier one only
-in what it describes and when, its number, head, and time, names that answer and keeps
-those beside the name, ``{"same_as": "current", "observed_at": "..."}``.
+in what it describes and when, its number, head, and time, and the time its checks were
+listed, names that answer and keeps those beside the name,
+``{"same_as": "current", "observed_at": "...", "checks.listed_at": "..."}``, a dotted
+name for a part of a part. A read lists its checks as it observes them, so a status whose
+checks were listed when it was observed has no ``listed_at`` written, in full or beside a
+name, and reads back with its own ``observed_at`` there.
 ``make golden-update`` rewrites the recording and then the transcript.
 """
 
@@ -178,8 +182,55 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
 # its operational status, its verdict, and its checks (``pull_route.PullEnvelope``).
 STORED_ONCE: Final = ("record", "status", "readiness", "checks")
 # What says which pull request, head, and moment an operational value describes, kept
-# beside the name of the answer that holds the rest of it.
-_IDENTITY: Final = ("number", "head", "observed_at")
+# beside the name of the answer that holds the rest of it; a dotted name is a part's part.
+_IDENTITY: Final = ("number", "head", "observed_at", "checks.listed_at")
+
+
+def _part(value: dict[str, Any], name: str) -> tuple[bool, Any]:
+    """Whether *value* holds the part *name* names, dotted for a part's part, and its value."""
+
+    outer, _, inner = name.partition(".")
+    held = value.get(outer, _MISSING)
+    if not inner:
+        return held is not _MISSING, held
+    if not isinstance(held, dict) or inner not in held:
+        return False, None
+    return True, held[inner]  # pyright: ignore[reportUnknownVariableType]
+
+
+def _without_identity(value: dict[str, Any], own: tuple[str, ...]) -> dict[str, Any]:
+    """*value* without its identity parts, in the order the server wrote the rest."""
+
+    rest: dict[str, Any] = {}
+    for key, item in value.items():
+        if key in own:
+            continue
+        inner = {name.partition(".")[2] for name in own if name.startswith(f"{key}.")}
+        if inner and isinstance(item, dict):
+            item = {part: each for part, each in item.items() if part not in inner}  # pyright: ignore[reportUnknownVariableType]
+        rest[key] = item
+    return rest
+
+
+_MISSING: Final = object()
+_LISTED: Final = "checks.listed_at"
+
+
+def _listed_when_observed(parts: dict[str, Any]) -> bool:
+    """Whether a status's checks were listed when it was observed, as a read lists them.
+
+    *parts* is its identity, each part's value or a ``(present, value)`` pair.
+    """
+
+    def value(name: str) -> Any:
+        found = parts.get(name, _MISSING)
+        if isinstance(found, tuple):
+            present, held = found  # pyright: ignore[reportUnknownVariableType]
+            return held if present else _MISSING
+        return found
+
+    listed = value(_LISTED)
+    return listed is not _MISSING and listed == value("observed_at")
 
 
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
@@ -206,18 +257,37 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
                     continue
                 own = () if field == "record" else _IDENTITY
                 # As text, in the order the server wrote it: reordered keys are a change.
-                same = {key: item for key, item in value.items() if key not in own}
+                same = _without_identity(value, own)
                 key = (field, json.dumps(same))
+                parts = {part: _part(value, part) for part in own}
                 if key in holder:
                     held, identity = holder[key]
-                    envelope[field] = {"same_as": held} | {
-                        part: value[part]
-                        for part in own
-                        if part in value and value[part] != identity.get(part)
+                    kept = {
+                        part: found
+                        for part, (present, found) in parts.items()
+                        if present and identity.get(part, _MISSING) != found
                     }
+                    if _listed_when_observed(identity) and _listed_when_observed(dict(parts)):
+                        kept.pop(_LISTED, None)
+                    envelope[field] = {"same_as": held} | kept
                 elif envelope is body:
-                    holder[key] = (name, {part: value[part] for part in own if part in value})
+                    holder[key] = (
+                        name,
+                        {part: found for part, (present, found) in parts.items() if present},
+                    )
+                if field == "status" and "same_as" not in envelope[field]:
+                    envelope[field] = _unlisted_when_observed(value)
     return recorded
+
+
+def _unlisted_when_observed(status: dict[str, Any]) -> dict[str, Any]:
+    """*status* without its checks' ``listed_at`` when that is its own ``observed_at``."""
+
+    checks = status.get("checks")
+    if not isinstance(checks, dict) or checks.get("listed_at") != status.get("observed_at"):
+        return status
+    listed = {key: value for key, value in checks.items() if key != "listed_at"}  # pyright: ignore[reportUnknownVariableType]
+    return {**status, "checks": listed}
 
 
 def _until_refreshed(client: TestClient, number: int) -> None:

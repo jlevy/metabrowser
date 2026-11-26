@@ -517,7 +517,8 @@ status: 200
         "cancel": 0
       },
       "required_failing": 0,
-      "required_pending": 1
+      "required_pending": 1,
+      "listed_at": "2026-09-17T12:00:00Z"
     },
     "auto_merge": {
       "method": "squash",

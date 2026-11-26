@@ -84,7 +84,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/pull-size` | covered | `--api` | `cli-github-pull-size.txt` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-backfill.txt` |
-| `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt`, `cli-github-pulls-backfill.txt`, `cli-github-pulls-probe.txt` |
+| `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt`, `cli-github-pulls-backfill.txt`, `cli-github-pulls-probe.txt`, `cli-github-pull-statuses.txt` |
 | `/api/plugin/github/pull-cores-prepare` | covered | `--api` | `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/stacks` | covered | `--api` | `cli-github-stacks.txt` |
 | `/api/plugin/github/stacks-refresh` | covered | `--api` | `cli-github-stacks.txt` |
@@ -96,6 +96,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/pull-files` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt`, `cli-github-pull-file-anchor.txt` |
 | `/api/plugin/github/pull-files-refresh` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt`, `cli-github-pull-files-failures.txt` |
 | `/api/plugin/github/pull-files-summary` | covered | `--api` | `cli-github-pull-files-summary.txt` |
+| `/api/plugin/github/pull-statuses` | covered | `--api` | `cli-github-pull-statuses.txt` |
 | `/api/plugin/github/pulls-prefetch` | covered | `--api` | `cli-github-pulls-prefetch.txt` |
 | `/api/plugin/github/cache-clear` | covered | `--api --data` | `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
 | `/api/plugin/github/status` | covered | `--api --data` | `cli-github-status.tryscript.md` |
@@ -252,6 +253,7 @@ interaction session and fails when a named function did not execute.
 | `github.guided-review-file-fold` | interaction | `builtin_plugins/diff/diff-view.js#fileDisclosure`, `builtin_plugins/github/guided-review.js#renderReference`, `builtin_plugins/github/guided-review.js#referenceBar`, `builtin_plugins/github/guide-reads.js#createGuideReads` | `/api/plugin/github/guided-review` | `node tests/dom/github-guided-review-mount-behavior.js` | `cli-ui-github-guided-review.tryscript.md` |
 | `github.pull-timeline-data` | data | `/api/plugin/github/pull-timeline` | `owned-route` | `metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-timeline --data timeline.json` | `cli-github-pull-timeline.txt` |
 | `github.pull-readiness` | data | `/api/plugin/github/pull` | `owned-route` | `metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7'` | `cli-github-pull-refresh.txt` |
+| `github.pull-statuses` | data | `/api/plugin/github/pull-statuses` | `owned-route` | `metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=101,102,103,104,105,106,107,108,109,110,111,112,113,114,999'` | `cli-github-pull-statuses.txt` |
 | `github.pull-checks-tab` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage`, `builtin_plugins/github/pull-page.js#checksInOrder`, `builtin_plugins/github/pull-page.js#checksSummary`, `builtin_plugins/github/pull-page.js#checkLabel` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-late-waits` | interaction | `builtin_plugins/github/pull-page.js#noteSummaryWait`, `builtin_plugins/github/pull-page.js#reportedWait`, `builtin_plugins/github/pull-page.js#detailsToggle`, `builtin_plugins/github/pull-page.js#openDetails`, `builtin_plugins/github/pull-page.js#failureQuery` | `/api/event-log`, `/api/event-log/failures` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-tab-keys` | interaction | `builtin_plugins/github/pull-page.js#attachTabKeys`, `builtin_plugins/github/pull-page.js#numberHeaderControls` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |

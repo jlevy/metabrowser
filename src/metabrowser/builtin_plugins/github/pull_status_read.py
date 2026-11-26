@@ -25,7 +25,10 @@ count every context of the rollup, so a check GitHub ran twice for one head coun
 there and is listed once. ``required_failing`` and ``required_pending`` are counted from
 the listed checks, a cancelled required check among the failing, as the rollup counts a
 cancelled run; they are ``None`` when the list is truncated or a check did not say whether
-it is required.
+it is required. ``listed_at`` is when the read answered, the ``observed_at`` of the checks
+it keeps, so the summary names the list it counts. The Pulls tab's scan of every open
+pull request (:mod:`.pull_status_scan`) builds its statuses from the same fields with
+:func:`operational_status` and :func:`rollup_summary`, and lists no check.
 
 What GitHub answers is validated: a field that is not what GitHub documents makes the
 whole answer unreadable (``gh_failed``), never a status that guesses, and a check that
@@ -68,11 +71,14 @@ from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, cut
 from metabrowser.builtin_plugins.github.pull_status import (
     MAX_CHECK_ITEMS,
     AutoMerge,
+    Bucket,
     CheckItem,
     ChecksSummary,
+    ObservedBy,
     PullChecks,
     PullStatus,
     QueueEntry,
+    RollupState,
     bucket_counts,
     check_run_bucket,
     merge_method,
@@ -315,19 +321,14 @@ def _auto_merge(pull: Mapping[str, Any]) -> AutoMerge | None:
     )
 
 
-@dataclass(frozen=True, slots=True)
-class _Page:
-    """One answer: the pull request's fields, and its page of contexts."""
+def answered_repository(
+    data: Mapping[str, Any], owner: str, repo: str, reader: str
+) -> dict[str, Any]:
+    """The answer's repository, once its ``viewer`` is *reader* and its name is *owner*/*repo*.
 
-    pull: dict[str, Any]
-    head: str
-    rollup: dict[str, Any] | None
-    nodes: list[object]
-    cursor: str | None
-
-
-def _page(data: Mapping[str, Any], owner: str, repo: str, number: int, reader: str) -> _Page:
-    """The answer's pull request and contexts, once its viewer and repository are checked."""
+    Another viewer is ``account_changed``: the status was read as someone else, and is
+    discarded. No repository is ``not_found_or_private``; any other shape is unreadable.
+    """
 
     viewer = login_of(data.get("viewer"))
     if viewer is None:
@@ -344,12 +345,90 @@ def _page(data: Mapping[str, Any], owner: str, repo: str, number: int, reader: s
     name = repository["nameWithOwner"]
     if not isinstance(name, str) or name.casefold() != f"{owner}/{repo}".casefold():
         raise UnreadableItemError
+    return repository
+
+
+def rollup_summary(raw: object) -> tuple[RollupState, dict[Bucket, int]]:
+    """GitHub's rollup state of a head's checks and its counts by bucket, from
+    ``statusCheckRollup``: ``none`` and no checks for a head GitHub gave none."""
+
+    if raw is None:
+        return rollup_state(None), bucket_counts({}, {})
+    rollup = as_dict(raw)
+    state = rollup_state(rollup.get("state"))
+    if state == "none":
+        # A rollup in a state GitHub has not documented is not one this can judge.
+        raise UnreadableItemError
+    contexts = as_dict(rollup["contexts"])
+    counts = bucket_counts(
+        _counts(contexts["checkRunCountsByState"]),
+        _counts(contexts["statusContextCountsByState"]),
+    )
+    return state, counts
+
+
+def operational_status(
+    pull: Mapping[str, Any],
+    *,
+    head: str,
+    checks: ChecksSummary,
+    observed_at: str,
+    observed_by: ObservedBy,
+) -> PullStatus:
+    """The status one pull request's fields say, at *head*, with its *checks* summarized.
+
+    The page's read and the Pulls tab's scan ask GitHub for the same fields of a pull
+    request, so both build their statuses here. Raises :class:`.UnreadableItemError`, or a
+    model's ``ValueError``, for a field GitHub did not send as it documents.
+    """
+
+    mergeable = pull["mergeable"]
+    if mergeable not in _MERGEABLE:
+        raise UnreadableItemError
+    base = pull.get("baseRefOid")
+    return PullStatus(
+        number=pull["number"],
+        head=head,
+        base_ref=_required_short(pull["baseRefName"]),
+        base=base if isinstance(base, str) and _SHA.match(base) else None,
+        observed_at=observed_at,
+        observed_by=observed_by,
+        conflicts=_MERGEABLE[mergeable],  # pyright: ignore[reportArgumentType]
+        merge_state=merge_state(pull["mergeStateStatus"]),
+        review_decision=review_decision(pull.get("reviewDecision")),
+        checks=checks,
+        auto_merge=_auto_merge(pull),
+        queue=_queue(pull),
+    )
+
+
+def head_of(pull: Mapping[str, Any]) -> str:
+    """The pull request's ``headRefOid``, a full commit ID, or unreadable."""
+
+    return _sha(pull["headRefOid"])
+
+
+@dataclass(frozen=True, slots=True)
+class _Page:
+    """One answer: the pull request's fields, and its page of contexts."""
+
+    pull: dict[str, Any]
+    head: str
+    rollup: dict[str, Any] | None
+    nodes: list[object]
+    cursor: str | None
+
+
+def _page(data: Mapping[str, Any], owner: str, repo: str, number: int, reader: str) -> _Page:
+    """The answer's pull request and contexts, once its viewer and repository are checked."""
+
+    repository = answered_repository(data, owner, repo, reader)
     if repository["pull"] is None:
         raise PullDataError("not_found_or_private", "GitHub has no readable pull request here")
     pull = as_dict(repository["pull"])
     if type(pull.get("number")) is not int or pull["number"] != number:
         raise UnreadableItemError
-    head = _sha(pull["headRefOid"])
+    head = head_of(pull)
     raw_rollup = pull["statusCheckRollup"]
     if raw_rollup is None:
         return _Page(pull, head, None, [], None)
@@ -366,20 +445,27 @@ def _page(data: Mapping[str, Any], owner: str, repo: str, number: int, reader: s
     return _Page(pull, head, rollup, nodes, cursor if more else None)  # pyright: ignore[reportUnknownArgumentType]
 
 
-async def _ask(
-    owner: str, repo: str, number: int, cursor: str | None, *, now: datetime
+async def ask_github(
+    query: str, variables: Mapping[str, str | int | None], *, now: datetime
 ) -> dict[str, Any]:
+    """*query*'s answer through :func:`~.gh.gh_graphql`; a refusal is a :class:`PullDataError`."""
+
     try:
-        return await gh_graphql(
-            _STATUS_QUERY,
-            {"owner": owner, "name": repo, "number": number, "cursor": cursor},
-            now=now,
-        )
+        return await gh_graphql(query, variables, now=now)
     except GhError as exc:
         raise PullDataError(exc.state, str(exc), reset_at=exc.reset_at) from exc
 
 
-def _unreadable() -> PullDataError:
+async def _ask(
+    owner: str, repo: str, number: int, cursor: str | None, *, now: datetime
+) -> dict[str, Any]:
+    variables = {"owner": owner, "name": repo, "number": number, "cursor": cursor}
+    return await ask_github(_STATUS_QUERY, variables, now=now)
+
+
+def unreadable_status() -> PullDataError:
+    """The refusal of an answer GitHub gave in a shape it does not document."""
+
     return PullDataError(
         "gh_failed", "GitHub answered with a pull request status Metabrowser cannot read"
     )
@@ -401,40 +487,17 @@ def _status_of(
             dropped = True
     items = latest_of_each(read)
     cut = truncated or dropped
-    rollup = first.rollup
-    if rollup is None:
-        state = rollup_state(None)
-        counts = bucket_counts({}, {})
-    else:
-        state = rollup_state(rollup.get("state"))
-        if state == "none":
-            # A rollup in a state GitHub has not documented is not one this can judge.
-            raise UnreadableItemError
-        contexts = as_dict(rollup["contexts"])
-        counts = bucket_counts(
-            _counts(contexts["checkRunCountsByState"]),
-            _counts(contexts["statusContextCountsByState"]),
-        )
+    state, counts = rollup_summary(first.rollup)
     failing, pending = _required_counts(items, complete=not cut)
-    mergeable = pull["mergeable"]
-    if mergeable not in _MERGEABLE:
-        raise UnreadableItemError
-    base = pull.get("baseRefOid")
-    status = PullStatus(
-        number=pull["number"],
-        head=first.head,
-        base_ref=_required_short(pull["baseRefName"]),
-        base=base if isinstance(base, str) and _SHA.match(base) else None,
-        observed_at=observed_at,
-        observed_by="read",
-        conflicts=_MERGEABLE[mergeable],  # pyright: ignore[reportArgumentType]
-        merge_state=merge_state(pull["mergeStateStatus"]),
-        review_decision=review_decision(pull.get("reviewDecision")),
-        checks=ChecksSummary(
-            state=state, counts=counts, required_failing=failing, required_pending=pending
-        ),
-        auto_merge=_auto_merge(pull),
-        queue=_queue(pull),
+    summary = ChecksSummary(
+        state=state,
+        counts=counts,
+        required_failing=failing,
+        required_pending=pending,
+        listed_at=observed_at,
+    )
+    status = operational_status(
+        pull, head=first.head, checks=summary, observed_at=observed_at, observed_by="read"
     )
     checks = PullChecks(
         number=status.number,
@@ -479,10 +542,10 @@ async def read_pull_status(
         assert first is not None
         return _status_of(first, nodes, truncated=truncated, observed_at=observed_at)
     except READ_FAILURES as exc:
-        raise _unreadable() from exc
+        raise unreadable_status() from exc
     except ValueError as exc:
         # A model's own check: a field GitHub sent in a shape it does not document.
-        raise _unreadable() from exc
+        raise unreadable_status() from exc
 
 
 _STATUS: Final = "the status of the pull request"
@@ -601,8 +664,14 @@ async def keep_status_failure(
 __all__ = [
     "CONTEXTS_PAGE",
     "StatusRead",
+    "answered_repository",
+    "ask_github",
+    "head_of",
     "keep_pull_status",
     "keep_status_failure",
     "latest_of_each",
+    "operational_status",
     "read_pull_status",
+    "rollup_summary",
+    "unreadable_status",
 ]

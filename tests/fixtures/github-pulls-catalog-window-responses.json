@@ -1428,7 +1428,8 @@
     "next_after": null,
     "rows": []
    },
-   "status_route": "/api/plugin/github/pulls?state=closed&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=closed&limit=0",
+   "status_scan": "joined"
   }
  },
  "large_progress": {
