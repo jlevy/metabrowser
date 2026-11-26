@@ -1,0 +1,23 @@
+---
+type: is
+id: is-01m8b1bryqz5hz146jy6g684my
+title: Unify diff presentation across Metabrowser reviews
+kind: epic
+status: in_progress
+priority: 2
+version: 6
+spec_path: docs/project/specs/active/plan-2026-11-25-diff-presentation.md
+delegate: codex@spud10.local
+labels: []
+dependencies: []
+child_order_hints:
+  - is-01m8b1bvqet2m5ehafrwawhpmv
+  - is-01m8b1bxvpsm9zca9gry86ndbp
+  - is-01m8b1c0fetgmke43xsd6c1rkm
+  - is-01m8b1c1z1z7m2kf3rmc6aq31g
+hold: null
+hold_until: null
+created_at: 2026-11-26T04:21:03.039Z
+updated_at: 2026-11-26T04:21:30.646Z
+started_at: 2026-11-26T04:21:30.635Z
+---
