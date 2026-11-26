@@ -1,0 +1,46 @@
+created_at: 2026-11-26T21:15:16.861Z
+ops:
+  - bead_id: is-01m7wysdnvzch4gb5zvqwvn04e
+    block: |-
+      ⟦tbd⟧
+      `mb-3s19` · epic · in_progress · P2
+      Children: 39 (24 ready)
+      Bead: `tbd show mb-3s19`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: c23452d1-8d76-491e-86d9-3278c87bdb31
+    kind: splice_description
+  - bead_id: is-01m8cs8jdw8yh0hvdy6449jm9j
+    block: |-
+      ⟦tbd⟧
+      `mb-ih4a` · epic · in_progress · P1
+      Spec: [plan-2026-11-26-post-load-performance.md](https://github.com/jlevy/metabrowser/blob/codex/post-load-performance/docs/project/specs/active/plan-2026-11-26-post-load-performance.md)
+      Children: 3 (1 ready)
+      Bead: `tbd show mb-ih4a`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 83946ca1-f902-4d2b-8df2-2988e9b02f48
+    kind: splice_description
+  - bead_id: is-01m8ctvgrty5asxe2xh62gzn8v
+    external_id: 7acc64fa-fd5d-4b37-b24d-9f321abb3ea6
+    kind: update_issue
+    patch:
+      description: Deliver schema-free Table, Tree and exact Source for equivalent YAML and
+        JSON in the main app and its built-in consumers. Ship in phases and exercise the
+        same data across hosts.
+  - bead_id: is-01m8ctvgrty5asxe2xh62gzn8v
+    block: |-
+      ⟦tbd⟧
+      `mb-wb0x` · epic · in_progress · P2
+      Children: 5 (5 ready)
+      Bead: `tbd show mb-wb0x`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 7acc64fa-fd5d-4b37-b24d-9f321abb3ea6
+    kind: splice_description
+provider: linear
+run_id: 01m8cvcwfwq986ak479hk8y9zc
+type: in
