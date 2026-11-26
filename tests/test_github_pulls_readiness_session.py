@@ -34,6 +34,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import timedelta
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +42,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
-from metabrowser.builtin_plugins.github import pull_list, pull_status_scan, pulls
+from metabrowser.builtin_plugins.github import pull_list, pull_list_refresh, pull_status_scan, pulls
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.repository_store import open_revision
@@ -122,6 +123,9 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
     )
     clock = [FETCHED_AT]
     monkeypatch.setattr(pull_list, "utc_now", lambda: clock[0])
+    # Each list refresh's measured duration, as the panel session's recorder pins it.
+    elapsed = count(step=300_000_000)
+    monkeypatch.setattr(pull_list_refresh, "monotonic_ns", elapsed.__next__)
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
     online = scenario(origin)
 
