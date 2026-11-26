@@ -996,6 +996,20 @@ $ node tests/dom/github-pulls-stack-groups-session.js recency
         15
       ]
     }
+  ],
+  "partial Open window updates before the stack snapshot": [
+    {
+      "stack": 287,
+      "members": [
+        15
+      ]
+    },
+    {
+      "stack": 286,
+      "members": [
+        14
+      ]
+    }
   ]
 }
 ? 0

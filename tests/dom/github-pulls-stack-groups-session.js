@@ -995,6 +995,33 @@ async function mountStory() {
     ]);
     activity["overlapping stacks in a partial Open window"] = groups;
     story.controller.dispose();
+
+    // The list learns about a shared update before the stack snapshot is refreshed.
+    // Both stacks now lead Open, and #287 needs its older representative beyond
+    // the latest Open window to keep its group visible.
+    const freshRows = [pull(14, "14:00", "open"), open[0], pull(99, "12:30", "open")];
+    const fresh = mount({
+      filter: "open",
+      window: {
+        ...lists.current.body,
+        list: "open",
+        fetched: freshRows.length,
+        rows: freshRows,
+        next_after: 99,
+      },
+    });
+    fresh.controller.setStacks(createStackIndex({ ...template, stacks: [first, second] }));
+    await fresh.controller.start({ shown: true });
+    const updatedGroups = fresh
+      .model()
+      .stacks.rows.filter((row) => row.kind === "stack")
+      .map((row) => ({ stack: row.stack.number, members: row.members }));
+    assert.deepEqual(updatedGroups, [
+      { stack: 287, members: [15] },
+      { stack: 286, members: [14] },
+    ]);
+    activity["partial Open window updates before the stack snapshot"] = updatedGroups;
+    fresh.controller.dispose();
     process.stdout.write(`${JSON.stringify(activity, null, 2)}\n`);
     return;
   }

@@ -205,9 +205,10 @@ export function stackMembership(index, identity, number) {
 /** The PRs representing stacks ranked within a partial list window.
  * @param {StackIndex} index @param {StackIdentity | null} identity
  * @param {string} filter @param {string} through
+ * @param {(number: number) => string | null} updatedAt
  * @returns {StackLeader[]}
  */
-export function stackLeaders(index, identity, filter, through) {
+export function stackLeaders(index, identity, filter, through, updatedAt) {
   if (
     !sameIdentity(index, identity) ||
     (filter !== "open" && filter !== "closed" && filter !== "all")
@@ -215,7 +216,7 @@ export function stackLeaders(index, identity, filter, through) {
     return [];
   }
   return index.stacks.flatMap((stack) => {
-    if ((stack.updated_at ?? "") < through) {
+    if ((stackUpdatedAt(stack, updatedAt) ?? "") < through) {
       return [];
     }
     const lead = stack.leaders?.[filter];
@@ -291,7 +292,7 @@ export function wholeStackOfKey(key) {
  * pull requests in the list, in `stackMenuOrder`. Stacks and standalone pull requests
  * share one newest-first order. Each stack's time is the latest update across its known
  * members, including members outside the current filter. A shared pull request sits
- * under its newest stack. A stack whose listed members all sit under earlier stacks
+ * under its highest-ranked stack in the snapshot. A stack whose listed members all sit under earlier stacks
  * has no row; their places name it.
  *
  * An open stack's rows under it, at one level, are its Whole stack row and its pull requests,
@@ -322,7 +323,9 @@ export function groupByStack(numbers, index, identity, options = {}) {
   for (const number of numbers) {
     for (const stack of stackMembership(index, identity, number)) {
       if (!order.has(stack.number)) {
-        const updated_at = stackUpdatedAt(stack, options.updatedAt);
+        // Match the snapshot that assigned representatives. The list may know a
+        // newer update that can move a heading while its shared rows stay assigned.
+        const updated_at = stack.updated_at ?? null;
         order.set(stack.number, {
           stack,
           number: updated_at === null ? number : stack.number,
@@ -335,7 +338,7 @@ export function groupByStack(numbers, index, identity, options = {}) {
   const placed = new Map();
   /** @type {Array<{row: StackGroupRow | PullGroupRow, number: number, updated_at: string | null}>} */
   const top = [];
-  for (const { stack, number, updated_at } of [...order.values()].sort(newerFirst)) {
+  for (const { stack, number } of [...order.values()].sort(newerFirst)) {
     const listedMembers = stackMenuOrder(stack).filter((number) => listed.has(number));
     const members = listedMembers.filter((number) => !placed.has(number));
     if (members.length === 0) {
@@ -353,8 +356,9 @@ export function groupByStack(numbers, index, identity, options = {}) {
     for (const number of members) {
       placed.set(number, stack.number);
     }
+    const updated_at = stackUpdatedAt(stack, options.updatedAt);
     top.push({
-      number,
+      number: updated_at === null ? number : stack.number,
       updated_at,
       row: {
         kind: "stack",

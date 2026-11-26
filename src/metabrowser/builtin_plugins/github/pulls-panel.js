@@ -998,8 +998,10 @@ export function createPullsController(deps, options = {}) {
     /** @type {Map<number, PullRow>} */
     const extra = new Map();
     const through = list.rows.at(-1)?.updatedAt;
+    const listUpdatedAt = (/** @type {number} */ number) =>
+      list.rows[list.keys.get(number) ?? -1]?.updatedAt ?? null;
     if (partial && through) {
-      for (const row of stackLeaders(stackIndex, identity, filter, through)) {
+      for (const row of stackLeaders(stackIndex, identity, filter, through, listUpdatedAt)) {
         if (!list.keys.has(row.number)) {
           extra.set(row.number, describeRow(row));
         }
@@ -1009,8 +1011,7 @@ export function createPullsController(deps, options = {}) {
     const answer = groupByStack(numbers, stackIndex, identity, {
       collapsed: closedStacks,
       setSize,
-      updatedAt: (number) =>
-        (list.rows[list.keys.get(number) ?? -1] ?? extra.get(number))?.updatedAt ?? null,
+      updatedAt: (number) => listUpdatedAt(number) ?? extra.get(number)?.updatedAt ?? null,
     });
     // Stacks unknown, another reader's, or holding no listed pull request group nothing
     // (`groupByStack` places a row only by the list's own reader's membership).
