@@ -115,7 +115,7 @@ const UNREADABLE = {
 /** @typedef {{key: string, change: "context" | "removed" | "added", text: string}} FrontmatterEntry */
 /** @typedef {{change: "context" | "modified" | "removed" | "added", entries: FrontmatterEntry[]}} Frontmatter */
 /** @typedef {"full" | "concise"} View */
-/** @typedef {View | "rendered" | "source"} Mode A Markdown file's views or a tree's Rendered, or Source. */
+/** @typedef {"rendered" | "source"} Mode */
 /** @typedef {{view?: View | "prefer-full", blocks?: string}} RenderedAsk What a request asks of the route. */
 /** @typedef {{kind: "context" | "removed" | "added", html: string, source_only?: boolean}} Block */
 /** @typedef {{at: number, count: number, lines: number, withheld?: true, ids?: string[]}} Fold
@@ -133,10 +133,11 @@ const UNREADABLE = {
 /** @typedef {{
  *   section: HTMLElement, source: HTMLElement, rendered: HTMLElement,
  *   progress: HTMLElement, progressLabel: HTMLElement,
- *   control: HTMLElement,
- *   id: string, format: RenderedFormat, mode: Mode, chosen: boolean, pending: boolean,
+ *   control: HTMLElement, expand: HTMLButtonElement, fallback: HTMLElement, fallbackMessage: HTMLElement,
+ *   id: string, format: RenderedFormat, mode: Mode, pending: boolean,
+ *   expandedContext: boolean, forceFull: boolean, automaticView: View | null, fullFailed: boolean,
  *   expanded: boolean, holding: boolean,
- *   tree: {dispose: () => void, setCurrent: (next: boolean) => void} | null,
+ *   tree: ReturnType<typeof mountStructuredDiff> | null,
  *   retryAt: number, retries: number,
  *   model: Model | null, build: ((html: string) => Node) | null,
  *   drawn: View | null, top: Region | null,
@@ -147,8 +148,7 @@ const UNREADABLE = {
  *   state: "idle" | "ready" | "unavailable", reason: string,
  *   onSource: ((shown: boolean) => void) | null
  * }} FileView
- *   *chosen* is whether the reader chose *mode*, which the page chose until then. *drawn*
- *   is the view the article draws, and *top* its own run of rows. *openFolds* are the
+ *   *drawn* is the view the article draws, and *top* its own run of rows. *openFolds* are the
  *   folds open, by their first block, kept when the view is drawn again.
  *   *reason* is why rendering is unavailable, a sentence, while *state* says it is.
  *   *fetching* counts the requests for more of the projection in flight (`askMore`): a
@@ -219,7 +219,7 @@ export function refusalReason(answer, format) {
 
 // Each chip's name, as the chooser says it (docs/design-system.md, "Choosing Among Values").
 /** @type {Readonly<Record<Mode, string>>} */
-const MODE_LABELS = { full: "Full", concise: "Concise", rendered: "Rendered", source: "Source" };
+const MODE_LABELS = { rendered: "Rendered", source: "Source" };
 
 /** @param {Mode} mode */
 function isRendered(mode) {
@@ -272,6 +272,9 @@ export function frontmatterRow(frontmatter) {
   heading.className = "disclosure-toggle";
   heading.textContent = "Frontmatter";
   const list = document.createElement("dl");
+  const added = new Set(
+    frontmatter.entries.filter((entry) => entry.change === "added").map((entry) => entry.key),
+  );
   for (const entry of frontmatter.entries) {
     const term = document.createElement("dt");
     const value = document.createElement("dd");
@@ -289,6 +292,17 @@ export function frontmatterRow(frontmatter) {
       term.textContent = entry.key;
     }
     list.append(term, value);
+    if (!whole && entry.change === "removed" && !added.has(entry.key)) {
+      const removedKey = document.createElement("dt");
+      const marker = document.createElement("dd");
+      removedKey.textContent = entry.key;
+      marker.textContent = "Removed. See Diff.";
+      for (const part of [removedKey, marker]) {
+        part.className = "diff-frontmatter-removal-marker";
+        part.hidden = true;
+      }
+      list.append(removedKey, marker);
+    }
   }
   details.append(heading, list);
   if (whole) {
@@ -974,7 +988,10 @@ export function removedParts(rows) {
   /** @param {Element} node */
   const keys = (node) => {
     for (const child of node.children) {
-      if (child.classList.contains("diff-frontmatter-removed")) {
+      if (
+        child.classList.contains("diff-frontmatter-removed") ||
+        child.classList.contains("diff-frontmatter-removal-marker")
+      ) {
         parts.push(/** @type {HTMLElement} */ (child));
       }
       keys(child);
@@ -1080,16 +1097,20 @@ export function kpressStylesheets(assets, base) {
  *   cancel?: (handle: unknown) => void,
  *   opens?: "concise" | "prefer-full",
  *   holdMs?: number,
- *   current?: boolean
+ *   show?: "diff" | "current" | "full"
  * }} deps
- *   *current* is whether the diff starts in Current (`show`).
+ *   *show* is the comparison's initial presentation.
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
   const isTarget = deps.isTarget ?? (() => false);
   const opens = deps.opens ?? "concise";
-  // Whether the diff shows its current version, not its changes (`show`).
-  let current = deps.current === true;
+  let shown = deps.show ?? "diff";
+  let explicitFull = false;
+  /** @type {FileView | null} */
+  let upgradingFile = null;
+  /** @type {WeakMap<HTMLElement, HTMLElement>} */
+  const deletionNotices = new WeakMap();
   const later = deps.later ?? ((callback, ms) => setTimeout(callback, ms));
   const cancel =
     deps.cancel ??
@@ -1162,7 +1183,7 @@ export function createMarkdownViews(deps) {
   // none of.
   /** @param {FileView} file */
   function wantsRendered(file) {
-    return isRendered(file.mode) && !(current && (file.gone || file.emptied));
+    return isRendered(file.mode) && !(shown !== "diff" && (file.gone || file.emptied));
   }
 
   /** @param {FileView} file */
@@ -1173,6 +1194,23 @@ export function createMarkdownViews(deps) {
     const changed = file.source.hidden !== hidden;
     file.source.hidden = hidden;
     file.rendered.hidden = !file.expanded || !rich;
+    const markdown = wanted && file.format === "markdown" && file.model !== null;
+    const shortened = shown === "full" && file.drawn === "concise";
+    const hasContext = shown === "diff" && (file.model?.folds.length ?? 0) > 0;
+    file.fallback.hidden = !(markdown && rich && file.expanded && (shortened || hasContext));
+    file.fallbackMessage.hidden = !shortened;
+    file.fallbackMessage.textContent = file.fullFailed
+      ? "Could not show the full document. Showing an excerpt."
+      : file.upgrading
+        ? "Showing an excerpt."
+        : "This document opens as an excerpt because of its size.";
+    file.expand.disabled = file.upgrading;
+    file.expand.textContent =
+      shown === "diff"
+        ? file.expandedContext
+          ? "Collapse unchanged sections"
+          : "Expand unchanged sections"
+        : "Show full file";
     drawProgress(file);
     if (changed) {
       file.onSource?.(!hidden);
@@ -1184,14 +1222,35 @@ export function createMarkdownViews(deps) {
   // tree drawn again without its removed entries (`setCurrent` in diff-structured.js).
   /** @param {FileView} file */
   function applyShow(file) {
+    const current = shown !== "diff";
+    const excerpt = shown === "current" || (shown === "full" && file.drawn === "concise");
     for (const part of file.removed) {
+      if (part.classList.contains("diff-frontmatter-removal-marker")) {
+        part.hidden = !excerpt;
+        continue;
+      }
       part.hidden = current;
+      if (!part.classList.contains("diff-markdown-run-removed") || part.parentElement == null) {
+        continue;
+      }
+      let notice = deletionNotices.get(part);
+      const onlyRemoval = !part.nextElementSibling?.classList.contains("diff-markdown-run-added");
+      if (notice === undefined && excerpt && onlyRemoval) {
+        notice = document.createElement("div");
+        notice.className = "diff-availability";
+        notice.textContent = "Content removed here. See Diff.";
+        part.before(notice);
+        deletionNotices.set(part, notice);
+      }
+      if (notice !== undefined) {
+        notice.hidden = !excerpt || !onlyRemoval;
+      }
     }
     // Which rows are shown changed, so what each is shown beside did too.
     if (file.removed.length > 0) {
       markJoins([...file.rendered.children]);
     }
-    file.tree?.setCurrent(current);
+    file.tree?.setCurrent(current, shown === "current");
   }
 
   // The chooser stays for a file that can only show Source: its rendered chips are
@@ -1205,17 +1264,16 @@ export function createMarkdownViews(deps) {
     const unavailable = file.state === "unavailable";
     const tip = unavailable ? { tip: file.reason } : {};
     /** @param {Mode} value */
-    const option = (value) => ({ label: MODE_LABELS[value], value, ...tip });
+    const option = (value) => ({
+      label: MODE_LABELS[value],
+      value,
+      ...(value === "rendered" ? tip : {}),
+    });
     file.control.innerHTML = deps.controls.groupHtml({
       key: file.source.id,
       label: `${formatName(file.format)} diff format`,
       layout: "joined",
-      options: [
-        ...(file.format === "markdown"
-          ? [option("full"), option("concise")]
-          : [option("rendered")]),
-        { label: MODE_LABELS.source, value: "source" },
-      ],
+      options: [option("rendered"), option("source")],
       select: "one",
       value: file.mode,
     });
@@ -1271,7 +1329,7 @@ export function createMarkdownViews(deps) {
     if (disposed || !observed) {
       return;
     }
-    if (active !== null) {
+    if (active !== null || upgradingFile !== null) {
       // The request in flight finishes even when its file leaves the lookahead: the
       // server finishes the work regardless (a cancelled waiter does not stop its
       // load), and one slot busy with a load nobody waits for refused the next file.
@@ -1280,6 +1338,19 @@ export function createMarkdownViews(deps) {
     }
     const file = Array.from(nearby).find(interested);
     if (file === undefined) {
+      const upgrade = Array.from(nearby).find(
+        (candidate) =>
+          candidate.expanded &&
+          wantsRendered(candidate) &&
+          !candidate.fullFailed &&
+          coverage(candidate) === "full" &&
+          candidate.model !== null &&
+          !holds(candidate.model, 0, candidate.model.blocks.length),
+      );
+      if (upgrade !== undefined) {
+        askFull(upgrade);
+        return;
+      }
       scheduleRetry();
       return;
     }
@@ -1414,7 +1485,8 @@ export function createMarkdownViews(deps) {
           file.tree?.dispose();
           file.tree = mountStructuredDiff(file.rendered, projection.root, tree, {
             sourceOnly: projection.source_only,
-            current,
+            current: shown !== "diff",
+            excerpt: shown === "current",
           });
           file.emptied =
             projection.root.length > 0 &&
@@ -1427,8 +1499,10 @@ export function createMarkdownViews(deps) {
         checkFirstScreen();
         return;
       }
-      // The reader's choice, once made, and otherwise the page's.
-      const view = file.chosen && file.mode === "full" ? "full" : file.chosen ? "concise" : opens;
+      const view =
+        shown === "full" && !explicitFull && opens === "prefer-full"
+          ? "prefer-full"
+          : coverage(file);
       const projection = await deps.load(file.id, signal, { view });
       if (signal.aborted || disposed) {
         return;
@@ -1471,10 +1545,8 @@ export function createMarkdownViews(deps) {
         file.model = ready.model;
         file.build = (html) => sanitizeBlock(html, inert, template, scratch, isTarget);
         file.emptied = emptiedModel(ready.model);
-        if (!file.chosen && file.mode !== ready.view) {
-          // The page's choice, which the server made: Docs' Concise for a long document.
-          file.mode = ready.view;
-          drawControl(file);
+        if (view === "prefer-full") {
+          file.automaticView = ready.view;
         }
         file.state = "ready";
         file.pending = false;
@@ -1502,6 +1574,16 @@ export function createMarkdownViews(deps) {
     }
   }
 
+  /** @param {FileView} file @returns {View} */
+  function coverage(file) {
+    if (shown === "full") {
+      return !explicitFull && !file.forceFull && file.automaticView === "concise"
+        ? "concise"
+        : "full";
+    }
+    return shown === "diff" && file.expandedContext ? "full" : "concise";
+  }
+
   // Draw what a ready Markdown file's chosen view shows, once it holds the blocks to: Full
   // waits for the blocks a Concise answer left out, showing what is drawn meanwhile, or
   // Concise when nothing is.
@@ -1511,9 +1593,9 @@ export function createMarkdownViews(deps) {
     if (model === null || !isRendered(file.mode)) {
       return;
     }
-    const view = /** @type {View} */ (file.mode);
+    const view = file.fullFailed ? "concise" : coverage(file);
     if (view === "full" && !holds(model, 0, model.blocks.length)) {
-      askFull(file);
+      pump();
       if (file.drawn === null) {
         paint(file, "concise");
       }
@@ -1531,6 +1613,8 @@ export function createMarkdownViews(deps) {
       return;
     }
     file.upgrading = true;
+    upgradingFile = file;
+    deps.mutate(() => draw(file));
     askMore(file, { view: "full" })
       .then((answer) => {
         const full = projectionModel(answer);
@@ -1550,21 +1634,19 @@ export function createMarkdownViews(deps) {
           return;
         }
         console.warn("metabrowser diff: Full did not load", error);
-        // Back to what is drawn, so the chooser says what the file shows, unless the
-        // reader chose another view while Full was asked for.
-        if (file.mode === "full") {
-          file.mode = file.drawn ?? "concise";
-          file.chosen = true;
-        }
+        file.fullFailed = true;
+        file.expandedContext = false;
       })
       .finally(() => {
         file.upgrading = false;
+        upgradingFile = null;
         if (!disposed) {
           deps.mutate(() => {
             drawControl(file);
             refresh(file);
             draw(file);
           });
+          pump();
         }
       });
   }
@@ -1682,7 +1764,7 @@ export function createMarkdownViews(deps) {
       // A fold holds only unchanged blocks, so what Current leaves out is the article's own.
       const parts = removedParts(placed);
       for (const part of parts) {
-        part.hidden = current;
+        part.hidden = shown !== "diff";
       }
       file.removed.push(...parts);
     }
@@ -1709,6 +1791,9 @@ export function createMarkdownViews(deps) {
     spacer.replaceWith(...placed);
     markJoins(placed);
     joinChanges([before, ...placed, after]);
+    if (region.top && shown !== "diff") {
+      applyShow(region.file);
+    }
   }
 
   // Draw a run's chunks up to the one that holds block *index*, so the rows above it are
@@ -1932,19 +2017,11 @@ export function createMarkdownViews(deps) {
 
   /** @param {FileView} file @param {Mode} mode */
   function select(file, mode) {
-    const modes =
-      file.format === "markdown" ? ["full", "concise", "source"] : ["rendered", "source"];
-    if (
-      disposed ||
-      file.mode === mode ||
-      !modes.includes(mode) ||
-      (isRendered(mode) && file.state === "unavailable")
-    ) {
+    if (disposed || file.mode === mode || (isRendered(mode) && file.state === "unavailable")) {
       return;
     }
     deps.mutate(() => {
       file.mode = mode;
-      file.chosen = true;
       file.holding = false;
       if (isRendered(mode)) {
         file.retryAt = 0;
@@ -2036,8 +2113,14 @@ export function createMarkdownViews(deps) {
       const progressLabel = document.createElement("span");
       progressLabel.className = "sr-only";
       progress.append(spinner, progressLabel);
-      /** @type {Mode} */
-      const opened = format !== "markdown" ? "rendered" : opens === "concise" ? "concise" : "full";
+      const expand = document.createElement("button");
+      expand.type = "button";
+      expand.className = "diff-file-view";
+      const fallback = document.createElement("div");
+      fallback.className = "diff-availability";
+      const fallbackMessage = document.createElement("span");
+      fallbackMessage.setAttribute("role", "status");
+      fallback.append(fallbackMessage, expand);
       /** @type {FileView} */
       const file = {
         section,
@@ -2049,8 +2132,14 @@ export function createMarkdownViews(deps) {
         format,
         tree: null,
         control,
-        mode: unavailable === undefined ? opened : "source",
-        chosen: false,
+        mode: unavailable === undefined ? "rendered" : "source",
+        expand,
+        fallback,
+        fallbackMessage,
+        automaticView: null,
+        expandedContext: false,
+        forceFull: false,
+        fullFailed: false,
         expanded: true,
         pending: false,
         holding: unavailable === undefined,
@@ -2099,8 +2188,20 @@ export function createMarkdownViews(deps) {
       // The progress mark leads the chooser, on the side of the bar's free space, so the
       // chooser stays where it is when the mark appears.
       bar.classList.add("diff-file-bar-markdown");
+      expand.addEventListener("click", () => {
+        deps.mutate(() => {
+          file.fullFailed = false;
+          if (shown === "diff") {
+            file.expandedContext = !file.expandedContext;
+          } else {
+            file.forceFull = true;
+          }
+          refresh(file);
+          draw(file);
+        });
+      });
       end.append(progress, control);
-      source.before(rendered);
+      source.before(fallback, rendered);
       files.set(section, file);
       controls.set(source.id, file);
       drawControl(file);
@@ -2128,7 +2229,7 @@ export function createMarkdownViews(deps) {
           if (
             file !== undefined &&
             selectType === "one" &&
-            ["full", "concise", "rendered", "source"].includes(value)
+            (value === "rendered" || value === "source")
           ) {
             // The shared handler moves focus first. Repaint once that handler
             // returns so its focus recovery cannot find another file's chips.
@@ -2237,17 +2338,18 @@ export function createMarkdownViews(deps) {
       }
     },
     /**
-     * Show each file's current version, or its changes (*next* false): Current leaves out
-     * what Rendered draws as removed, and a deleted file shows its Source body. The diff
-     * holds the reader's place around it, so this draws without `mutate`.
-     * @param {boolean} next
+     * Apply the comparison mode without changing any file's format choice.
+     * @param {"diff" | "current" | "full"} next
      */
     show(next) {
-      if (disposed || next === current) {
+      if (disposed || (next === shown && (next !== "full" || explicitFull))) {
         return;
       }
-      current = next;
+      shown = next;
+      explicitFull = shown === "full";
       for (const file of files.values()) {
+        file.fullFailed = false;
+        refresh(file);
         applyShow(file);
         draw(file);
       }

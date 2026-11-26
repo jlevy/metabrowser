@@ -700,11 +700,10 @@ async function main() {
     const viewFile = make("a");
     bar.append(...(lead ? [make("span"), toggle, viewFile, end] : [toggle, viewFile, end]));
     const state = view.add({ section, bar, end, source, id, format: "markdown" });
-    assert.equal(section.children.length, 3, "Rendered is all that goes beside Source");
-    const [, rendered] = section.children;
+    const [, fallback, rendered] = section.children;
+    assert.equal(fallback.hidden, true, "a Full fallback notice only shows when needed");
     assert.equal(bar.children.at(-1), end, "the chooser adds nothing to the bar itself");
     const [progress, control] = end.children;
-    assert.equal(end.children.length, 2);
     assert.equal(progress.getAttribute("role"), "status", "the progress mark leads its chooser");
     assert.equal(end.children.at(-1), control, "the chooser is last, at the bar's far end");
     assert.equal(bar.children.at(-2), viewFile, "View file stays where the bar put it");
@@ -719,10 +718,7 @@ async function main() {
       toggle,
       // A Markdown file opens in Concise, as Changes opens one.
       get renderedChoice() {
-        return control.children.find((chip) => chip.dataset.chipValue === "concise");
-      },
-      get fullChoice() {
-        return control.children.find((chip) => chip.dataset.chipValue === "full");
+        return control.children.find((chip) => chip.dataset.chipValue === "rendered");
       },
       get sourceChoice() {
         return control.children.find((chip) => chip.dataset.chipValue === "source");
@@ -874,18 +870,15 @@ async function main() {
   assert.equal(c.renderedChoice.dataset.tipText, why, "as its tooltip");
   assert.equal(
     c.renderedChoice.attributes.get("aria-label"),
-    `Concise, unavailable. ${why}`,
+    `Rendered, unavailable. ${why}`,
     "and in its accessible name",
   );
-  assert.equal(c.fullChoice.attributes.get("aria-disabled"), "true", "Full goes too");
-  assert.equal(c.fullChoice.dataset.tipText, why);
-  assert.equal(c.fullChoice.attributes.get("aria-label"), `Full, unavailable. ${why}`);
   assert.equal(c.sourceChoice.dataset.tipText, undefined);
   assert.equal(c.sourceChoice.attributes.get("aria-disabled"), undefined);
   assert.equal(document.activeElement, c.sourceChoice, "focus follows the format shown");
   assert.equal(c.source.hidden, false, "it shows Source");
   assert.equal(c.rendered.hidden, true);
-  assert.equal(c.section.children.length, 3, "and adds nothing beside Source to say so");
+  assert.equal(c.section.children[1].hidden, true, "there is no Full fallback notice in Diff");
   await c.renderedChoice.click();
   await new Promise(setImmediate);
   assert.equal(calls.length, 4, "choosing an unavailable Rendered asks for nothing");
@@ -927,7 +920,7 @@ async function main() {
   assert.equal(d.progress.hidden, false);
   assert.ok(d.bar.classList.contains("diff-file-bar-markdown"));
   assert.equal(d.source.hidden, false, "a failed render shows Source");
-  assert.equal(d.section.children.length, 3, "and says nothing about it");
+  assert.equal(d.section.children[1].hidden, true, "and says nothing about it");
   await d.renderedChoice.click();
   assert.equal(calls.length, 6, "choosing Rendered asks again");
   assert.equal(d.source.hidden, false, "Source stays until the answer arrives");
@@ -1020,10 +1013,9 @@ async function main() {
     // Diff | Current is the diff's, in its toolbar: the end group is the progress mark and
     // Rendered | Source alone, in Current as in Diff.
     const [progress, control] = end.children;
-    assert.equal(end.children.length, 2);
     assert.equal(progress.getAttribute("role"), "status", "the progress mark leads the group");
     assert.ok(control.classList.contains("diff-markdown-control"), "Rendered | Source ends it");
-    return { section, source, rendered: section.children[1] };
+    return { section, source, rendered: section.children[2] };
   };
   const changed5 = file5("m", false);
   const deleted5 = file5("x", true);
@@ -1043,6 +1035,7 @@ async function main() {
         { key: "title", text: "Guide", change: "context" },
         { key: "status", text: "draft", change: "removed" },
         { key: "status", text: "final", change: "added" },
+        { key: "draft", text: "true", change: "removed" },
       ],
     },
     blocks: [
@@ -1057,6 +1050,9 @@ async function main() {
   const [front, kept, removed5, added5] = blockRows(drawn5);
   const list = front.children[0].children[1];
   const [, , oldTerm, oldValue, newTerm, newValue] = list.children;
+  const [removedKey, removalNotice] = list.children.slice(-2);
+  assert.equal(removedKey.textContent, "draft");
+  assert.equal(removalNotice.hidden, true);
   assert.ok(removed5.className.includes("diff-markdown-removed"));
   assert.equal(removed5.parent.className, "diff-markdown-run diff-markdown-run-removed");
   assert.equal(added5.parent.className, "diff-markdown-run diff-markdown-run-added");
@@ -1092,7 +1088,9 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(emptied5.rendered.hidden, false, "and the emptied file's");
   assert.equal(emptied5.source.hidden, true);
-  view5.show(true);
+  view5.show("current");
+  assert.equal(removalNotice.hidden, false, "Excerpt marks a removed frontmatter key");
+  assert.equal(removalNotice.textContent, "Removed. See Diff.");
   assert.deepEqual(
     hiddenParts(),
     [false, true, true, false, true, true, false, false],
@@ -1104,7 +1102,8 @@ async function main() {
   assert.equal(emptied5.rendered.hidden, true, "an emptied file has nothing Current draws");
   assert.equal(emptied5.source.hidden, false, "so it shows its Source body, which says so");
   assert.equal(loads5.length, 3, "nothing is asked again");
-  view5.show(false);
+  view5.show("diff");
+  assert.equal(removalNotice.hidden, true, "Diff draws the actual removed key and value");
   assert.deepEqual(hiddenParts(), [false, false, false, false, false, false, false, false]);
   assert.equal(deleted5.rendered.hidden, false, "Diff shows the deleted file's Rendered again");
   assert.equal(deleted5.source.hidden, true);
@@ -1124,7 +1123,7 @@ async function main() {
     now: time.now,
     later: time.later,
     cancel: time.cancel,
-    current: true,
+    show: "current",
   });
   const section6 = make("section");
   root6.append(section6);
@@ -1146,7 +1145,7 @@ async function main() {
   observer.notify([{ target: section6, isIntersecting: true }]);
   loads6[0].resolve({ ...changedProjection, frontmatter: undefined });
   await new Promise(setImmediate);
-  const [, removed6, added6] = blockRows(section6.children[1].children[0]);
+  const [, removed6, added6] = blockRows(section6.children[2].children[0]);
   assert.equal(removed6.hidden, true, "its removed block is hidden as it is placed");
   assert.equal(removed6.parent.hidden, true, "and its run");
   assert.equal(added6.hidden, false);
@@ -1191,7 +1190,7 @@ async function main() {
   await new Promise(setImmediate);
   // Past the loading delay, so no timer but the wait below is left.
   time7.advance(50);
-  const [, rendered7] = section7.children;
+  const [, , rendered7] = section7.children;
   // The article holds the fragment it was drawn from, as this page's elements keep one.
   const withheld7 = rendered7.children
     .flatMap((node) => (node.tagName === "" ? node.children : [node]))
@@ -1226,7 +1225,7 @@ async function main() {
   const root8 = make("div");
   const section8 = make("section");
   const spacers8 = () =>
-    section8.children[1].children
+    section8.children[2].children
       .flatMap((node) => (node.tagName === "" ? node.children : [node]))
       .filter((node) => node.className === "diff-markdown-spacer");
   const view8 = createMarkdownViews({
@@ -1337,7 +1336,7 @@ async function main() {
     format: "markdown",
   });
   const [, control2] = end2.children;
-  const [, rendered2] = section2.children;
+  const [, , rendered2] = section2.children;
   view2.observe(root2, null);
   observer.notify([{ target: section2, isIntersecting: true }]);
   retried[0].resolve(ready);
@@ -1361,7 +1360,7 @@ async function main() {
   assert.equal(rendered2.hidden, false);
   console.warn = warn2;
   assert.equal(warnings, 2, "both sanitizer failures were logged");
-  assert.equal(section2.children.length, 3, "and none was shown");
+  assert.equal(section2.children[1].hidden, true, "and none was shown");
   view2.dispose();
 
   // The first screen settles once none of its files waits: here when both are Rendered,

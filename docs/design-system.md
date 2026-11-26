@@ -1507,7 +1507,7 @@ state looks like.
 
 | Offers | Primitive | ARIA and keyboard | Used by |
 | --- | --- | --- | --- |
-| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Diff / Current, Rendered / Source, Files / Bytes, Branches / Tags, and for a checkout Branches / Remotes / Tags |
+| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Diff / Excerpt / Full, Rendered / Source, Files / Bytes, Branches / Tags, and for a checkout Branches / Remotes / Tags |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
 | One of a long list | A named trigger over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns and the Files revision chooser for mirrors and checkouts |
@@ -1532,14 +1532,10 @@ Build a chip group with `metabrowser.filterControls.groupHtml` and `bind`, inclu
 outside a filter bar: an exclusive choice is the same control whatever it chooses.
 A consumer may repaint the group from its state on every change, and `bind` puts focus
 back on the chosen chip, so the arrow keys keep working.
-A diff’s toolbar has a Diff | Current chooser beside Split | Unified, one choice for the
-whole diff ([Diff Toolbar](#diff-toolbar)). Every changed file of a rendered format has
-a chooser of its views, whatever its size and whatever the server answers: Full |
-Concise | Source for Markdown, where Full is every block and Concise the changes with
-their unchanged runs folded, and Rendered | Source for YAML and JSON, whose tree has no
-runs to fold. Where only Source can be shown, each rendered view keeps its place, dimmed
-and `aria-disabled`, and its tooltip and accessible name say why: a disabled button
-takes no pointer and no focus, so nothing could say it.
+The [diff toolbar](#diff-toolbar) uses joined choices for the whole comparison.
+An eligible file uses **Rendered** | **Source** in its own header.
+Where only Source can be shown, Rendered stays dimmed and `aria-disabled`. Its tooltip
+and accessible name say why.
 
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and
@@ -2827,11 +2823,9 @@ pair and any note.
 The stat pair and notes are not in the disclosure trigger but describe
 it (`aria-describedby`), so the copy control can sit between them and the name.
 The View file or View on branch control follows that group, and the bar ends with a
-file’s chooser of its views alone (**Full** | **Concise** | **Source** for Markdown,
-**Rendered** | **Source** for YAML and JSON), so the chooser is at the far end of every
-bar that has one, on Docs and Changes alike.
-**Diff** | **Current** chooses for the whole diff, so it is in the diff’s
-[toolbar](#diff-toolbar), not on a bar.
+file’s **Rendered** | **Source** chooser when the file supports both formats.
+A Markdown file can also expand or collapse its unchanged sections in Diff.
+The [toolbar](#diff-toolbar) chooses the presentation for the whole comparison.
 
 The bar reveals the copy control while the pointer is on it or the keyboard’s focus is
 in it; unseen, the control keeps its place, so nothing moves when it shows.
@@ -2858,12 +2852,14 @@ branch control, and the chooser of views opting out.
 On a pull request’s Docs and Changes, a changed Markdown file’s bar carries that
 chooser, a joined chip group, and before it a small spinner that keeps its place in the
 bar and appears only after the loading-state delay while the rendered view is on its
-way. A file that falls back permanently to Source loses the chooser and the spinner, and
-its bar lays out as any other file’s. Where the main UI can show the file the change
-makes, the name’s group is followed by one quiet text action that opens it there, with
-the tree, the tabs, and the ref selector around it: **View file** on a commit’s diff, at
-the commit, and **View on branch** on a pull request’s Changes and Docs, at the pull
-request’s head, on a mirror or beside a checkout whose `HEAD` is the head.
+way.
+A file that falls back permanently to Source keeps the format chooser, with Rendered
+unavailable and a tooltip giving the reason.
+Where the main UI can show the file the change makes, the name’s group is followed by
+one quiet text action that opens it there, with the tree, the tabs, and the ref selector
+around it: **View file** on a commit’s diff, at the commit, and **View on branch** on a
+pull request’s Changes and Docs, at the pull request’s head, on a mirror or beside a
+checkout whose `HEAD` is the head.
 Its label is a constant, since a branch name is the author’s, long, and on every bar;
 its tooltip says the commit and whether the pin switches.
 It stays visible rather than revealing on hover, because it is how a reader leaves the
@@ -2912,8 +2908,9 @@ green or red literals.
 The gutter is an inset decoration on the first line-number cell, not a grid column or
 added element, so context and changed rows retain identical line number and text
 alignment. Unified and split layouts consume the same `.diff-line-add`/`.diff-line-del`
-and `.diff-intraline-change` vocabulary, and **Current** draws the new file’s lines in
-it too: an added line keeps its fills and gutter, and no deleted line is drawn.
+and `.diff-intraline-change` vocabulary.
+**Excerpt** and **Full** keep those marks on added lines in the new version.
+In Excerpt a deletion marker stands where lines were removed.
 
 The line marker and line numbers continue to state change direction without color.
 The gutter is a persistent structural cue, not the only cue.
@@ -2923,9 +2920,9 @@ stronger overlay.
 
 ### Diff Toolbar
 
-The diff’s toolbar ends with its choosers for the whole diff, one group on one line at
-its right: `[Diff | Current] [Split | Unified]`. A pull request’s Docs tab fixes the
-layout, so its toolbar holds **Diff** | **Current** alone, at the same end.
+The diff’s toolbar ends with `[Diff | Excerpt | Full] [Split | Unified]`, in one group
+at its right. Docs fixes the source layout to Unified and shows only the presentation
+chooser. A standalone patch omits Full because it has only the hunks.
 Where the diff has a [File type](#diff-file-type-control) control, it leads them.
 On a commit’s page and a pull request’s Changes and Docs the toolbar holds nothing else,
 since the page draws the [Diff summary](#diff-summary) at its top; a patch’s toolbar
@@ -2940,38 +2937,35 @@ Each chooser chooses one thing, and its scope is what it chooses:
 
 | Chooser | Chooses | Where, and for what | Remembered as | Key |
 | --- | --- | --- | --- | --- |
-| **Diff** \| **Current** | What changed, or the new version alone | The diff’s toolbar, for the whole diff | `diff.show`; on Docs, `github.docs.show` | `N` |
-| **Split** \| **Unified** | How the code rows are laid out | The diff’s toolbar, for the whole diff | `diff.layout` | `L` |
+| **Diff** \| **Excerpt** \| **Full** | Both sides, the new side near changes, or the entire new side | The comparison or guide reference block | `diff.show`, or `github.docs.show` on Docs. Guide choices stay with the block. | `N` switches between Diff and Excerpt on a comparison |
+| **Split** \| **Unified** | Source layout in Diff | The comparison | Settings saves the default as `diff.layout`. The toolbar overrides it for the comparison. | `L` |
 | **Rendered** \| **Source** | How one file is drawn | A rendered-format file’s bar, for that file | Not remembered | None |
 
-Each surface opens on its own **Diff** | **Current** and keeps its own choice: Changes,
-a commit’s page, and a patch open on **Diff** and share `diff.show`; Docs opens on
-**Current** and keeps `github.docs.show`, so a choice on one never moves the other.
-The page that mounts the diff passes its default and its preference; a stored value that
-is not a choice reads as that default.
-Choosing redraws every file, and the reader’s place stays on the screen: the line or
-rendered block at the pane’s top keeps where it is, or, where the choice leaves that row
-out, the next row it draws (`anchorRow` in `diff-view.js`). A file with no such row
+Changes, commits, and patches open on Diff.
+Docs prefers Full and opens a large document as an excerpt, with a notice on that file.
+Full source is checked against the comparison and bounded per file.
+An unavailable full file falls back to its excerpt with a notice.
+A guide keeps each citation’s default until the reader chooses a presentation for the
+block. An old-side citation keeps its cited lines visible.
+Eligible files open Rendered, and changing the presentation preserves the file’s format
+choice.
+Choosing redraws every file, and the reader’s place stays on the screen: the line
+or rendered block at the pane’s top keeps where it is, or, where the choice leaves that
+row out, the next row it draws (`anchorRow` in `diff-view.js`). A file with no such row
 keeps its own top.
 
 ### Diff Layout Control
 
 The joined layout control always orders **Split** on the left and **Unified** on the
-right. A reader without a valid stored `diff.layout` preference starts in Split.
-Either valid stored choice remains authoritative, and switching layouts reprojects the
-shared semantic model without re-fetching or re-running syntax highlighting.
+right. Settings supplies the default for new comparisons, Split when unset.
+Switching the toolbar layout reprojects the shared semantic model from cached rows.
 A diff too narrow for Split draws Unified, and the control shows what is drawn, with a
 tip on **Split** saying why; the stored choice is not touched, so Split returns when
 there is room, and choosing **Split** there draws it with a sideways scroll.
-A pull request’s Docs tab has no layout control and no `L`: a rendered document has no
-layout, so the tab draws a document’s text diff in **Unified**, one column as its
-rendered view is, whatever the stored choice, and its toolbar holds **Diff** |
-**Current** alone. While the diff shows **Current**, which is one column whatever the
-layout, the control keeps its place and shows the layout **Diff** draws, so nothing in
-the toolbar moves. Its chips are `aria-disabled`, not `disabled`, and their tooltip and
-accessible name say that Current shows the new version in one column and that **Diff**
-has Split and Unified; neither they nor `L` change the layout then, and **Diff** returns
-in it.
+Docs and Guided Review draw source comparisons in Unified.
+In Excerpt and Full, the layout control keeps its place and marks its chips
+`aria-disabled`. Their tooltip and accessible name say “Switch to Diff to change the
+layout.” Returning to Diff restores the toolbar’s layout.
 
 The diff’s toolbar, which holds the control, draws no rule under itself.
 The first file card’s own border, at the cards’ 12 px gap below the toolbar’s padding,
@@ -3408,8 +3402,9 @@ reader does with it.
 | Arrows | Icon buttons, `arrowLeft` and `arrowRight`, centered in an icon button’s box, with no label of their own | `.github-pull-guide-arrow` |
 | Way on and back | Worded buttons below a step that name the step they go to | `.github-pull-guide-pager` |
 | Step | A page card, as Conversation draws a comment: the badge and the place, the title as text and the note’s Markdown rendered as the description is, at the description’s inset, then its excerpts; a note whose render did not come, as typed, and, when it was refused, the warning a description’s refusal has under it, in its words | `.github-pull-guide-card`, `.github-pull-text`, `.github-pull-guide-commentary`, `.github-pull-guide-note-refused`, `textRefusalNote` |
-| Excerpt | The diff plugin’s own drawing, as in Changes: hunk bars, rows, and fold bars that expand | `mountFilePatch` in the diff plugin |
-| Document | A Markdown file a step cites whole, as Docs draws it, and a YAML or JSON file, as Changes draws it: the file bar, the rendered layer and its Rendered and Source choice, and Diff and Current; one that could not be drawn, the guide’s bar for it above the view’s notice | `mountRenderedFile` in the diff plugin, `DOCS_DRAWING`, `CHANGES_DRAWING`, `.github-pull-guide-document` |
+| Reference block | One comparison chooser immediately above the step’s file cards. Full appears when a whole-file reference can use it. | `guidePatchDrawer`, [Diff Toolbar](#diff-toolbar) |
+| Excerpt | A collapsible file card with the cited side and inclusive range, source hunks, their fold bars, and Open full diff. A presentation change stays within the cited range. | `mountFilePatch`, `mountExcerptDisclosure` |
+| Document | A whole file in the same collapsible card as Changes or Docs, with Rendered and Source where available. A failed read keeps the file name and Open full diff above its notice. | `mountRenderedFile`, `DOCS_DRAWING`, `CHANGES_DRAWING` |
 | Out of date | One warning notice above the guide and its one remedy, or a quiet line when no file it cites changed; a step that cites a changed file is marked “changed” in the list and on its card, in muted text | `OUTDATED`, `CHANGED`, `.github-pull-guide-stale`, `.github-pull-guide-step-changed` |
 | Another pull request’s file | An excerpt or a document, as a file of this pull request is drawn, under a bar that names that pull request’s number before the path, in a pull request number’s weight and muted ink; its Open full diff opens the file in that pull request’s Changes | `referenceBar`, `.github-pull-guide-reference-pull` |
 | Pull request | One row in an excerpt’s card, a stack’s [member row](#stacks) in its order: the state icon and the title, which alone gives way, then at the row’s end its place in a stack, its number after a muted dot, and its author after another; the place is bare in the guide’s own stack, “1/3”, names any other stack by the Layers glyph and its number, “⧉300 2/2”, and says its stack in its tip and its accessible name, “Stack #71, position 1 of 3”; one in no stack has no place, and one this copy has not read keeps the icon’s slot empty and names itself by its number | `pullRow`, `stackMemberRow`, `namedStackPositionNodes`, `stackPlaceHint`, `.github-pull-guide-row`, `.github-pull-stack-member` |

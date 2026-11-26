@@ -52,6 +52,68 @@ The commit edits `app.py`, 40 lines, at lines 5 and 30, so its hunks leave lines
 The fixture pins identity and dates, so the comparison’s ID is the same on every
 machine.
 
+## Test: Full source at the reviewed revision
+
+Full uses the same pinned comparison route.
+A short file’s answer includes lines before, between, and after the hunks.
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&file=app.py&view=lines&whole=1'
+api: /api/plugin/diff/comparison?revision=HEAD&file=app.py&view=lines&whole=1
+status: 200
+{
+  "comparison_id": "git:e46d73d09b6c9e6f",
+  "file_id": "f1",
+  "path": "app.py",
+  "start": 1,
+  "lines": [
+    "line 1",
+    "line 2",
+    "line 3",
+    "line 4",
+    "line 5, changed",
+    "line 6",
+    "line 7",
+    "line 8",
+    "line 9",
+    "line 10",
+    "line 11",
+    "line 12",
+    "line 13",
+    "line 14",
+    "line 15",
+    "line 16",
+    "line 17",
+    "line 18",
+    "line 19",
+    "line 20",
+    "line 21",
+    "line 22",
+    "line 23",
+    "line 24",
+    "line 25",
+    "line 26",
+    "line 27",
+    "line 28",
+    "line 29",
+    "line 30, changed",
+    "line 31",
+    "line 32",
+    "line 33",
+    "line 34",
+    "line 35",
+    "line 36",
+    "line 37",
+    "line 38",
+    "line 39",
+    "line 40"
+  ],
+  "line_count": 40,
+  "ends_with_newline": true
+}
+? 0
+```
+
 ## Test: the lines between two hunks
 
 ```console

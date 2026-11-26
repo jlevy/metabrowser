@@ -517,7 +517,7 @@ try {
   same(
     "its file, no longer in the pull request's changes, says so in its place",
     await evaluate(
-      `[...document.querySelectorAll(".github-pull-guide-reference > p")].map((note) => note.textContent)`,
+      `[...document.querySelectorAll(".github-pull-guide-reference > .diff-file-body > p")].map((note) => note.textContent)`,
     ),
     ["This file is no longer in the pull request's changes."],
   );

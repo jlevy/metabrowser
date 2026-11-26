@@ -324,6 +324,9 @@ async function run() {
   /** Each patch the diff plugin drew, and whether its view was disposed. */
   const patches = [];
   const diff = {
+    guidePatchDrawer() {
+      return (body, change, patch) => this.mountFilePatch(body, change, patch);
+    },
     mountFilePatch(_body, change, patch) {
       const drawn = { path: change.new.path, lines: patch.hunks[0].lines.length, disposed: false };
       patches.push(drawn);

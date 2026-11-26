@@ -284,17 +284,16 @@ def test_session_replays_the_recording() -> None:
         "one whose changes did not load shows Source"
     ]["files"]
     assert len(mounted) == 10
-    # Changes opens a Markdown file in Concise.
-    assert mounted["f1 docs/guide.md"]["chooser"] == "Full | *Concise | Source"
+    assert mounted["f1 docs/guide.md"]["chooser"] == "*Rendered | Source"
     unread = "This change is too large to show inline."
     assert mounted["f9 docs/unread.md"] == {
-        "chooser": f"Full (unavailable: {unread}) | Concise (unavailable: {unread}) | *Source",
+        "chooser": f"Rendered (unavailable: {unread}) | *Source",
         "shows": "source",
     }
     refused = steps["a file Rendered cannot show stays in Source, and its chooser says why"]
     same = "This file's content did not change."
     assert refused["files"]["f2 docs/renamed.md"] == {
-        "chooser": f"Full (unavailable: {same}) | Concise (unavailable: {same}) | *Source",
+        "chooser": f"Rendered (unavailable: {same}) | *Source",
         "shows": "source",
     }
     again = steps["choosing an unavailable view changes nothing and asks for nothing"]
@@ -307,12 +306,12 @@ def test_session_replays_the_recording() -> None:
     assert large["requests"] == ["f8 view=concise"]
     huge = "This file is too large to show rendered."
     assert large["files"]["f8 docs/huge.md"]["chooser"] == (
-        f"Full (unavailable: {huge}) | Concise (unavailable: {huge}) | *Source"
+        f"Rendered (unavailable: {huge}) | *Source"
     )
     assert not any(
         "f9" in request for step in transcript["steps"] for request in step.get("requests", [])
     )
-    kept = steps["choosing Concise again shows the kept answer without asking"]
+    kept = steps["choosing Rendered again shows the kept answer without asking"]
     assert kept["requests"] == [] and kept["files"]["f4 README.md"]["shows"] == "rendered"
     front = steps[
         "front matter that did not change is closed above the body's change, "
@@ -328,9 +327,9 @@ def test_session_replays_the_recording() -> None:
     assert steps["its fold opens and asks for its blocks"]["requests"] == ["f10 blocks=13-15"]
     [went] = steps["scrolled into view"]["scrolled"]
     assert went["id"].endswith("-new-deep-heading")
-    assert steps["Full asks for the blocks still withheld, showing Concise meanwhile"][
-        "requests"
-    ] == ["f10 view=full"]
+    assert steps["expanding unchanged sections asks for the blocks still withheld"]["requests"] == [
+        "f10 view=full"
+    ]
     # A withheld fold's blocks are asked for under the file's progress mark, and blocks that
     # did not load close the fold again, its bar saying so; a press asks again (A3 of
     # review A on #811). Full that fails after the reader chose Source leaves Source chosen
@@ -345,11 +344,12 @@ def test_session_replays_the_recording() -> None:
     )
     assert steps["a press on it asks again"]["requests"] == ["f10 blocks=21-23"]
     chose = steps["Full failing after Source was chosen leaves Source chosen"]["files"]
-    assert chose["f10 docs/long.md"]["chooser"] == "Full | Concise | *Source"
-    assert steps["choosing Full again asks for it again"]["requests"] == ["f10 view=full"]
+    assert chose["f10 docs/long.md"]["chooser"] == "Rendered | *Source"
+    assert steps["expanding unchanged sections again retries the request"]["requests"] == [
+        "f10 view=full"
+    ]
     assert (
-        steps["back to Concise, asking nothing, the folds the reader opened still open"]["requests"]
-        == []
+        steps["collapsing unchanged sections keeps the folds the reader opened"]["requests"] == []
     )
     # A long document draws a chunk and keeps the rest's place until the reader nears it.
     book = steps["a long document draws its first chunk and keeps the place of the rest"]
