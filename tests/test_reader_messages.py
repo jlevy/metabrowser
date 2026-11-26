@@ -263,6 +263,11 @@ BROWSER_ALLOWLIST: dict[tuple[str, str, str], str] = {
         _WORKER_FALLBACK
     ),
     ("builtin_plugins/markdown/markdown-worker-client.js", "mechanics", "pump"): _WORKER_FALLBACK,
+    ("builtin_plugins/github/pull-readiness.js", "mechanics", "<module>"): (
+        "SLOT_LABELS copies the server's readiness labels (pull_readiness.LABELS) to size "
+        "the header's slot; 'Leaving queue' names GitHub's merge queue, a feature the "
+        "reader uses on github.com, not Metabrowser's own machinery"
+    ),
     ("builtin_plugins/markdown/markdown-worker.js", "exception-text", "<module>"): (
         "the worker posts its failure to markdown-worker-client.js, which rejects with it; "
         "the views that await it show their own copy and log the error"

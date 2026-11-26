@@ -87,7 +87,9 @@
     "next_after": null,
     "rows": []
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "not_due",
+   "status_scan_at": null
   }
  },
  "pending": {
@@ -611,7 +613,9 @@
      "duration_ms": 300
     }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "started",
+   "status_scan_at": null
   }
  },
  "pin_changed": {
@@ -710,7 +714,9 @@
      "duration_ms": 300
     }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "stale_refreshing": {
@@ -844,7 +850,9 @@
      "duration_ms": 300
     }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "probe_changed": {
@@ -890,7 +898,9 @@
      "duration_ms": 300
     }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "probe_scanned": {
@@ -1587,7 +1597,9 @@
      "duration_ms": 300
     }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "started",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "another_reader": {
@@ -1745,7 +1757,9 @@
     "next_after": null,
     "rows": []
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "started",
+   "status_scan_at": "2026-10-01T12:00:00Z"
   }
  },
  "landing_empty_refreshing": {
@@ -1877,7 +1891,11 @@
    "gh api graphql catalog state=all cursor=all-100"
   ],
   "cached windows, filters, scrolling and reopen": [
-   "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1"
+   "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1",
+   "gh api graphql statuses cursor=start",
+   "gh api graphql statuses cursor=statuses-25",
+   "gh api graphql statuses cursor=statuses-50",
+   "gh api graphql statuses cursor=statuses-75"
   ],
   "due metadata refresh": [
    "gh api user (If-None-Match)",

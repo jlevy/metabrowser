@@ -368,7 +368,12 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
     # The stack's slot ends the row (mb-646g, mb-dwha), on a record's row and on the one held
     # before a record, with nothing after it: the page has no Refresh of its own (mb-ablv).
-    assert "placeChildren(openedRow, [stateSlot, opened.row, stackColumn]);" in page
+    # An open pull request's readiness has its slot after the state's (mb-io36).
+    assert (
+        "placeChildren(openedRow, [\n        stateSlot,\n"
+        "        ...(paintReadiness(model.readiness) ? [readinessSlot] : []),\n"
+        "        opened.row,\n        stackColumn,\n      ]);"
+    ) in page
     assert "          ),\n          stackColumn,\n        ]);" in page
     assert "github-pull-refresh" not in page and "github-pull-refresh" not in css
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page
@@ -606,9 +611,9 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     mb-d0a3, mb-85op, mb-lqkb, mb-pw8t, mb-rb3n). The run is one flow of the state icon, then
     the title, a stack member's place, the number, and the author, "title · 5/12 · #N · jlevy",
     every line of it in the text column, past the icon, as a tree's title wraps; the last line
-    is the lines with the chevron after them, "+12 −3 ›", and the age at the row's end. The
-    lines and the chevron are the toggle of its changed files, and the rest of the row opens
-    it. Before, the lines and the chevron ended the run, and the author and the age were the
+    is the lines with the chevron after them, "+12 −3 ›", the readiness column (mb-3n21), and
+    the age at the row's end. The lines and the chevron are the toggle of its changed files,
+    and the rest of the row opens it. Before, the lines and the chevron ended the run, and the author and the age were the
     last line (mb-pw8t); before that, the title alone held two lines, cut short at the second,
     and a third line held the number, the author, and the lines. The DOM keeps the title the link's first
     text, so its accessible name gives the state icon's label, the title, and the place, before
@@ -620,8 +625,8 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     build = _function(panel, "buildRow")
     # The run's order is the one every row of a pull request's fields has, the builder's
     # (stack-member-row.js); the last line is the toggle, whose lines come before its chevron,
-    # and the age.
-    assert 'h("span", { class: "github-pulls-tail" }, [change, updated])' in build
+    # the readiness column, and the age.
+    assert 'h("span", { class: "github-pulls-tail" }, [change, run.readiness, updated])' in build
     toggle = build[build.index('{ class: "github-pulls-change disclosure-toggle collapsed"') :]
     assert toggle.index("changeLine,") < toggle.index('"github-pulls-toggle"'), (
         "the chevron comes after the lines it expands"

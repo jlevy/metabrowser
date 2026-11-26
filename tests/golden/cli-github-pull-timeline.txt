@@ -16,12 +16,11 @@ gh auth status
 gh api repos/octo/demo --jq .size
 gh api user
 gh api repos/octo/demo/pulls/7
-gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
 ## GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic work leaves to the reader. The page's own ask for the timeline waits: nothing is asked of GitHub, and the answer says to ask again in a minute, which the page does for as long as the budget refuses.
 # metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-timeline --data timeline.json
 exit: 0
@@ -29,7 +28,7 @@ exit: 0
 api: /api/plugin/github/pull-timeline
 status: 200
 {
-  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+  "record_revision": "a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538",
   "state": "unavailable",
   "events": [],
   "retryable": true,
@@ -47,7 +46,7 @@ exit: 0
 api: /api/plugin/github/pull-timeline
 status: 200
 {
-  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+  "record_revision": "a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538",
   "state": "complete",
   "events": [
     {
@@ -84,7 +83,7 @@ exit: 0
 api: /api/plugin/github/pull-timeline
 status: 200
 {
-  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+  "record_revision": "a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538",
   "state": "complete",
   "events": [
     {

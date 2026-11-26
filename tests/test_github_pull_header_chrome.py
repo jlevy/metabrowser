@@ -51,6 +51,7 @@ PARTS = (
     "summary-wait",
     "cold-landing",
     "corner",
+    "readiness",
 )
 # On a Mac at a load average of 10 to 16, each header part took 5.0 to 6.7 s, the Pulls
 # rows 1.4 to 2.6 s, the offers and the run badge 1.4 to 1.7 s, and the launch 1.3 to

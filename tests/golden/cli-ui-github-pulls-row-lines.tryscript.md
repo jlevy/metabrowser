@@ -575,6 +575,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
           "#106": {
             "run": [
               "github-pull-state-icon",
+              "sr-only github-pull-readiness-said",
               "github-pulls-title",
               "github-pulls-place",
               "github-pulls-sep",
@@ -612,6 +613,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
           "#105": {
             "run": [
               "github-pull-state-icon",
+              "sr-only github-pull-readiness-said",
               "github-pulls-title",
               "github-pulls-place",
               "github-pulls-sep",
@@ -638,6 +640,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
           "#104": {
             "run": [
               "github-pull-state-icon",
+              "sr-only github-pull-readiness-said",
               "github-pulls-title",
               "github-pulls-place",
               "github-pulls-sep",
@@ -664,6 +667,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
           "#103": {
             "run": [
               "github-pull-state-icon",
+              "sr-only github-pull-readiness-said",
               "github-pulls-title",
               "github-pulls-place",
               "github-pulls-sep",
@@ -696,6 +700,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
           "#106": {
             "run": [
               "github-pull-state-icon",
+              "sr-only github-pull-readiness-said",
               "github-pulls-title",
               "github-pulls-place",
               "github-pulls-sep",
@@ -746,6 +751,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
           "#105": {
             "run": [
               "github-pull-state-icon",
+              "sr-only github-pull-readiness-said",
               "github-pulls-title",
               "github-pulls-place",
               "github-pulls-sep",
@@ -772,6 +778,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
           "#104": {
             "run": [
               "github-pull-state-icon",
+              "sr-only github-pull-readiness-said",
               "github-pulls-title",
               "github-pulls-place",
               "github-pulls-sep",
@@ -798,6 +805,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
           "#103": {
             "run": [
               "github-pull-state-icon",
+              "sr-only github-pull-readiness-said",
               "github-pulls-title",
               "github-pulls-place",
               "github-pulls-sep",

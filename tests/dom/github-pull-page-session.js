@@ -32,13 +32,50 @@ const recorded = JSON.parse(
 const kpressTree = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-kpress-tree.json"), "utf8"),
 );
-// The recording holds each distinct record once: an answer whose record an earlier
-// pull-route answer carried names that answer, and reads here as that record.
+// The recording holds each distinct record, status, verdict, and checks once: an answer
+// whose record an earlier pull-route answer carried names that answer, and reads here as
+// that answer's, and so for each of the others.
+// A status whose checks were listed when it was observed is recorded without the time they
+// were listed, which is its own `observed_at`, and one whose checks were never seen
+// otherwise without `moved_at`, which is none; any other value is as recorded.
+function listedWhenObserved(field, value) {
+  if (field !== "status" || value === null || typeof value !== "object" || !value.checks) {
+    return value;
+  }
+  if (value.same_as !== undefined) {
+    return value;
+  }
+  const checks = { ...value.checks };
+  if (!("listed_at" in checks)) {
+    checks.listed_at = value.observed_at;
+  }
+  if (!("moved_at" in checks)) {
+    checks.moved_at = null;
+  }
+  return { ...value, checks };
+}
 for (const answer of Object.values(recorded)) {
   for (const envelope of [answer.body, answer.body?.pull]) {
-    const holder = envelope?.record?.same_as;
-    if (holder !== undefined) {
-      envelope.record = recorded[holder].body.record;
+    for (const field of ["record", "status", "readiness", "checks"]) {
+      const holder = envelope?.[field]?.same_as;
+      if (holder !== undefined) {
+        // Anything kept beside the name, a status's own time, is this answer's; a dotted
+        // name is a part of a part, as the time its checks were listed. Checks the held
+        // status listed when it was observed are listed when this one was, unless it says.
+        const { same_as: _held, ...own } = envelope[field];
+        const held = listedWhenObserved(field, recorded[holder].body[field]);
+        const value = { ...held };
+        if (held.checks?.listed_at !== undefined && held.checks.listed_at === held.observed_at) {
+          value.checks = { ...held.checks, listed_at: own.observed_at ?? held.observed_at };
+        }
+        for (const [name, part] of Object.entries(own)) {
+          const [outer, inner] = name.split(".");
+          value[outer] = inner === undefined ? part : { ...value[outer], [inner]: part };
+        }
+        envelope[field] = value;
+      } else if (envelope?.[field] !== undefined) {
+        envelope[field] = listedWhenObserved(field, envelope[field]);
+      }
     }
   }
 }
@@ -106,8 +143,12 @@ function browseCode(model) {
   return model.browse.kind === "link" ? "link to the root" : `switches to ${model.browse.ref}`;
 }
 
-/** What a reader would see, in a line per item. */
-function summarize(model) {
+/**
+ * What a reader would see, in a line per item. The first part's paints leave out which checks
+ * a rule requires and say the header's badge as its tone and label alone, since that part is
+ * near the size tryscript's matcher compiles; `--part readiness` says both in full.
+ */
+function summarize(model, { full = false } = {}) {
   const pull = model.pull;
   return {
     status: model.status,
@@ -130,7 +171,13 @@ function summarize(model) {
             (label) =>
               `${label.name} ${label.color === null ? "neutral" : `#${label.color} ${label.style}`} ${label.tip === null ? "no tip" : `tip: ${label.tip}`}`,
           ),
-    merge: pull?.merge?.label ?? null,
+    // The header's readiness badge in a line: its tone and its label, and its accessible name
+    // where it adds to the label. The Merge status section is `--part readiness`'s.
+    readiness: full
+      ? readinessBadgeLine(model.readiness)
+      : model.readiness === null
+        ? null
+        : `[${model.readiness.tone}: ${model.readiness.label}]`,
     timeline: model.timeline.map(
       (item) =>
         // A review's chip is only for a state its verb does not say (mb-novh).
@@ -140,16 +187,22 @@ function summarize(model) {
       (comment) =>
         `${comment.path}:${comment.line ?? "outdated"} ${comment.author}${comment.reply ? " (reply)" : ""}${comment.hunk ? " +hunk" : ""}`,
     ),
+    // Each check's badge, its bucket's ink and its own words, as `gh pr checks` lists them.
+    // The summary as its paragraph reads, gh's headline and then each bucket's tally.
     checks:
       model.checks === null
         ? null
         : {
-            counts: model.checks.counts,
+            summary: `${model.checks.headline}: ${Object.entries(model.checks.counts)
+              .map(([word, count]) => `${count} ${word}`)
+              .join(" · ")}`,
             items: model.checks.items.map(
               (item) =>
-                `[${item.label}] ${item.name}${item.detail === null ? "" : ` (${item.detail})`} -> ${item.action === null ? "no action" : `${item.action.label} ${item.action.href}`}`,
+                `[${item.bucket}: ${item.label}] ${item.name}${full && item.required ? " [Required]" : ""}${item.detail === null ? "" : ` (${item.detail})`} -> ${item.action === null ? "no action" : `${item.action.label} ${item.action.href}`}`,
             ),
+            ...(model.checks.listing ? { listing: "the list is being read" } : {}),
           },
+    ...(model.checkNotes.length === 0 ? {} : { checkNotes: model.checkNotes }),
     notes: model.notes,
     browse: browseCode(model),
     comparison:
@@ -157,6 +210,88 @@ function summarize(model) {
         ? null
         : `${model.comparison.left.slice(0, 12)}...${model.comparison.right.slice(0, 12)}`,
   };
+}
+
+/** Where a requirement's row links, as its text and what it opens. */
+function requirementLink(link) {
+  if (link === null) {
+    return "no link";
+  }
+  if (link.kind === "check") {
+    return `${link.label} -> the list's check ${link.at + 1}, "${link.check}"`;
+  }
+  if (link.kind === "tab") {
+    return `${link.label} -> the ${link.tab || "conversation"} tab`;
+  }
+  return `${link.label} ${link.href}`;
+}
+
+/** The header's readiness badge: its tone, its label, and its accessible name. */
+function readinessBadgeLine(readiness) {
+  return readiness === null
+    ? null
+    : `[${readiness.tone}: ${readiness.label}]${readiness.name === readiness.label ? "" : ` named "${readiness.name}"`} -> the checks tab`;
+}
+
+/** The header's readiness badge and the Merge status section, as a reader meets them. */
+function summarizeReadiness(readiness) {
+  if (readiness === null) {
+    return null;
+  }
+  return {
+    badge: readinessBadgeLine(readiness),
+    tip: readiness.tip,
+    sentence: readiness.sentence,
+    rows: [
+      ...readiness.rows.map(
+        (row) =>
+          `[${row.tone}: ${row.word}] ${row.kind}: ${row.summary} -> ${requirementLink(row.link)}`,
+      ),
+      ...(readiness.autoMerge === null ? [] : [`auto-merge: ${readiness.autoMerge}`]),
+    ],
+  };
+}
+
+/**
+ * The recorded open pull request 7 as its page draws it once the list of pull requests says
+ * another state, a second after the record's update (`withListedState`), beside its record
+ * and beside its core while the record is on its way: the state the header shows, and the
+ * header's badge, which the Merge status section is drawn with, or null. The server judged
+ * the verdict with the pull request open, so only an open state draws it.
+ */
+function listedReadiness(runtime, nowMs) {
+  const body = recorded.current.body;
+  const later = new Date(Date.parse(body.record.pull.updated_at) + 1000)
+    .toISOString()
+    .replace(".000Z", "Z");
+  const core = {
+    ...body,
+    record: null,
+    core_preview: {
+      source: body.source,
+      number: body.number,
+      reader: body.record.reader,
+      observed_at: body.record.fetched_at,
+      revision: "core",
+      pull: body.record.pull,
+      comparison_state: "pending",
+    },
+  };
+  return Object.fromEntries(
+    ["merged", "draft", "closed", "open"].map((state) => {
+      const listed = { state, updatedAt: later };
+      const drawn = (envelope) => {
+        const model = runtime.describePull(envelope, {
+          number: 7,
+          tab: "checks",
+          nowMs,
+          listed,
+        });
+        return `[${model.pull.stateLabel}] ${readinessBadgeLine(model.readiness) ?? "no readiness"}`;
+      };
+      return [`the list says ${state}`, { record: drawn(body), core: drawn(core) }];
+    }),
+  );
 }
 
 // ── The template the page parses a text into ──────────────────────
@@ -1628,54 +1763,37 @@ async function main() {
   // github.com page and a check's own site each say where they open, an address a page
   // may not follow has no action, and only an Actions link stands in for the app's name.
   const variedChecks = structuredClone(recorded.current.body);
-  variedChecks.record.check_runs.push(
+  const passed = { kind: "run", bucket: "pass", status: "COMPLETED", conclusion: "SUCCESS" };
+  variedChecks.checks.items.push(
     {
-      id: 1,
+      ...passed,
       name: "coverage",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://github.com/octo/demo/runs/123",
       app: "Codecov",
     },
+    { ...passed, name: "lint", details_url: "https://ci.example/runs/2", app: "GitHub Actions" },
+    { ...passed, name: "gist", details_url: "https://gist.github.com/octo/abc", app: "Gist bot" },
     {
-      id: 2,
-      name: "lint",
-      status: "completed",
-      conclusion: "success",
-      details_url: "https://ci.example/runs/2",
-      app: "GitHub Actions",
-    },
-    {
-      id: 3,
-      name: "gist",
-      status: "completed",
-      conclusion: "success",
-      details_url: "https://gist.github.com/octo/abc",
-      app: "Gist bot",
-    },
-    {
-      id: 4,
+      ...passed,
       name: "proxied",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://github.com:8443/octo/demo/actions/runs/9",
       app: "Proxy",
     },
     {
-      id: 5,
+      ...passed,
       name: "credentialed",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://bot@github.com/octo/demo/runs/5",
       app: "Bot",
     },
+    {
+      kind: "status",
+      bucket: "pass",
+      conclusion: "SUCCESS",
+      name: "legacy-ci",
+      description: "Passed",
+      details_url: "ftp://ci.example/7",
+    },
   );
-  variedChecks.record.status.statuses.push({
-    context: "legacy-ci",
-    state: "success",
-    description: "Passed",
-    target_url: "ftp://ci.example/7",
-  });
   const checkActions = runtime
     .describePull(variedChecks, { number: 7, tab: "checks", nowMs: page.clock.now })
     .checks.items.map(({ name, detail, action }) => ({ name, detail, action }));
@@ -1899,6 +2017,50 @@ async function main() {
     }),
   );
 
+  // A pull request's readiness on the page, the header's badge and the Checks tab's Merge
+  // status section, for the recorded story's verdict, for four more answers GitHub could have
+  // given about pull request 7, recorded as the server decides them
+  // (tests/fixtures/github-pull-page-readiness.json), and for a merged pull request, which
+  // has none. The conflicts answer is drawn twice: as recorded, its changes-requested
+  // review is GitHub's alone, and with a review in the conversation that requested them,
+  // whose row then links there.
+  const readinessScenarios = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-readiness.json"), "utf8"),
+  );
+  const drawn = (body) => {
+    const model = runtime.describePull(body, {
+      number: body.number,
+      tab: "checks",
+      nowMs: page.clock.now,
+    });
+    const said = summarize(model, { full: true });
+    return {
+      readiness: summarizeReadiness(model.readiness),
+      checks: said.checks,
+      ...(said.checkNotes === undefined ? {} : { checkNotes: said.checkNotes }),
+    };
+  };
+  const drawnAs = (scenario, change = (body) => body) => {
+    const body = structuredClone(recorded.current.body);
+    Object.assign(body, structuredClone(scenario));
+    return drawn(change(body));
+  };
+  const readiness = {
+    recorded: drawn(recorded.current.body),
+    ...Object.fromEntries(
+      Object.entries(readinessScenarios).map(([name, scenario]) => [name, drawnAs(scenario)]),
+    ),
+    "conflicts, with a review in the conversation that requested changes": drawnAs(
+      readinessScenarios.conflicts,
+      (body) => {
+        body.record.reviews[0].state = "CHANGES_REQUESTED";
+        return body;
+      },
+    ).readiness.rows,
+    merged: drawn(recorded.merged.body).readiness,
+    listed: listedReadiness(runtime, page.clock.now),
+  };
+
   // Printed in two parts: this script prints the first, and
   // github-pull-page-second-session.js, which runs this same session, the second.
   // tryscript matches a command's expected output as one regular expression, and the
@@ -1980,9 +2142,19 @@ async function main() {
     docsEmpty,
     docsOffered,
   };
+  // `--part readiness` prints the page's readiness alone (github-pull-readiness-session.js), for
+  // cli-ui-github-pull-readiness.tryscript.md, since the first part is near the size tryscript's
+  // matcher compiles.
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];
-  const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;
+  const chosen =
+    wanted === "all"
+      ? { ...first, ...second, readiness }
+      : wanted === "2"
+        ? second
+        : wanted === "readiness"
+          ? { readiness }
+          : first;
   console.log(JSON.stringify(chosen, null, 2));
 }
 

@@ -880,6 +880,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-statuses",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-timeline",
       "methods": [
         "POST"
@@ -1223,7 +1231,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 103
+  "count": 104
 }
 ? 0
 ```

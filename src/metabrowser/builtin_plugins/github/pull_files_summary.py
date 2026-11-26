@@ -85,7 +85,8 @@ type SummaryAbsence = Literal[
 
 
 class SummaryRequestError(Exception):
-    """A request the summary route refuses. ``str()`` names only the request."""
+    """A request the summary route, or the statuses route, refuses. ``str()`` names only the
+    request."""
 
 
 class StatusCount(TypedDict):
@@ -157,20 +158,25 @@ _KEPT_LOCK: Final = threading.Lock()
 def summary_numbers(params: Mapping[str, str]) -> tuple[int, ...]:
     """The pull requests a request names, in its order, or :class:`SummaryRequestError`."""
 
+    return named_numbers(params, request="a summary", limit=MAX_SUMMARY_NUMBERS)
+
+
+def named_numbers(params: Mapping[str, str], *, request: str, limit: int) -> tuple[int, ...]:
+    """The pull requests *request*, a route's request, names by ``numbers`` alone, in its
+    order: at most *limit*, each once. Anything else is :class:`SummaryRequestError`."""
+
     if set(params) != {"numbers"}:
-        raise SummaryRequestError('a summary names its pull requests by "numbers" alone')
+        raise SummaryRequestError(f'{request} names its pull requests by "numbers" alone')
     text = params["numbers"]
     if not _NUMBERS.fullmatch(text):
         raise SummaryRequestError('"numbers" is pull request numbers separated by commas')
     numbers = tuple(int(part) for part in text.split(","))
     if (
-        len(numbers) > MAX_SUMMARY_NUMBERS
+        len(numbers) > limit
         or len(set(numbers)) != len(numbers)
         or any(number > MAX_PULL_REQUEST_NUMBER for number in numbers)
     ):
-        raise SummaryRequestError(
-            f'"numbers" names at most {MAX_SUMMARY_NUMBERS} distinct pull request numbers'
-        )
+        raise SummaryRequestError(f'"numbers" names at most {limit} distinct pull request numbers')
     return numbers
 
 
@@ -417,5 +423,6 @@ __all__ = [
     "envelope_etag",
     "files_summary",
     "listing_numbers",
+    "named_numbers",
     "summary_numbers",
 ]

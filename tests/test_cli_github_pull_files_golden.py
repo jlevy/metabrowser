@@ -64,6 +64,7 @@ from tests.golden_harness import (
     isolate_cli,
     label_home,
     normalize_pull_comparison_scopes,
+    operational_once,
     origin_identity,
     quoted,
     run_metab,
@@ -261,7 +262,7 @@ def test_golden_pull_files_listed_refreshed_and_refused(
     )
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
-    check_golden("cli-github-pull-files-refresh.txt", rendered)
+    check_golden("cli-github-pull-files-refresh.txt", operational_once(rendered))
 
 
 def test_golden_a_changes_url_anchor_opens_the_file_it_names(
@@ -328,7 +329,7 @@ def test_golden_a_changes_url_anchor_opens_the_file_it_names(
     )
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
-    check_golden("cli-github-pull-file-anchor.txt", rendered)
+    check_golden("cli-github-pull-file-anchor.txt", operational_once(rendered))
 
 
 def test_golden_pull_files_failures(

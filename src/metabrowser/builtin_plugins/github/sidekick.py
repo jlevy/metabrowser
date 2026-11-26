@@ -1,7 +1,8 @@
 """The plugin's data routes, every one the manifest names, all under ``/api/plugin/github/``:
 one pull request's (``pull``, ``pull-refresh``, and the routes of its guide, texts, timeline,
 comparison, rendered diffs, and their images), the catalog's (``pulls``, ``pulls-refresh``,
-``pull-cores-prepare``), changed files (``pull-files``, ``pull-files-refresh``), stacks
+``pull-cores-prepare``), every open pull request's status (``pull-statuses``), changed
+files (``pull-files``, ``pull-files-refresh``), stacks
 (``stacks``, ``stacks-refresh``, ``stack-change``, and a stack's page, ``stack`` and
 ``stack-comparison``), background prefetch (``pulls-prefetch``),
 ``cache-clear``, which discards all of a repository's, and ``status``, the GitHub status
@@ -97,12 +98,14 @@ def _without_store(envelope: Any) -> bool:
 
 
 def _drop_core_preview(envelope: PullEnvelope) -> None:
-    """Drop a revoked core preview, and the label entries and fast poll it alone asked for."""
+    """Drop a revoked core preview, and the label entries, fast poll, and verdict it alone
+    asked for: with no pull request shown there is no head to judge."""
 
     envelope["core_preview"] = None
     if envelope["record"] is None:
         envelope["repository_labels"] = []
         envelope["labels_pending"] = False
+        envelope["readiness"] = None
 
 
 async def _preview_current(view: PullView, preview: PullCorePreview | None) -> bool:
@@ -818,6 +821,16 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     rows, with ``refreshing`` as of the start. When a job runs after the start, ``pulls``
     was read before it, so a job this request started has not changed it; when none runs,
     it is read after ``refreshing``, as ``GET`` reads it.
+
+    Once the list's answer is read, the ask starts the scan of every open pull request's
+    status when it is due (:func:`.pull_status_scan.ask_status_scan`), and ``status_scan``
+    says whether it ``started``, ``joined``, or was ``not_due``; ``status_scan_at`` is when
+    the last scan ended, ``None`` before any (:func:`.pull_status_scan.scan_ended_at`), so a
+    page learns of a scan that ended since its last ask whoever started it. The scan is a
+    job of its own, so it never holds the list's refresh, and ``GET pull-statuses`` answers
+    it. The ask reads only the scan's stamp for it, never Git: a look at the mirror's base
+    branches, when only a moved one could start a scan, runs as a job of its own after the
+    answer, and starts the scan itself.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (
@@ -866,7 +879,28 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
         # refreshing, so an answer that says nothing is refreshing shows how it ended.
         found = await asyncio.to_thread(read_catalog_window, after, window)
     envelope = list_envelope(after, found, window)
-    answer = {"refresh": started, "pulls": dict(envelope), "status_route": status_route(ask.name)}
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+    from metabrowser.builtin_plugins.github.pull_status_scan import ask_status_scan, scan_ended_at
+
+    host = pull_host(request.app)
+    # The catalog as this ask read it before the list's start: a first read the job just
+    # started is not yet one the scan may follow.
+    listed = found.listed if found is not None else None
+    scan = await ask_status_scan(
+        view.repository,
+        view.coordinator,
+        reader=listed.reader if listed is not None else None,
+        git_dir=host.pulls.git_dir if host is not None else None,
+        retry=ask.retry,
+        changed=wanted == "changed",
+    )
+    answer = {
+        "refresh": started,
+        "pulls": dict(envelope),
+        "status_route": status_route(ask.name),
+        "status_scan": scan,
+        "status_scan_at": await scan_ended_at(view.repository, view.coordinator),
+    }
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 
 
@@ -1383,6 +1417,43 @@ async def pull_files_summary_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
+async def pull_statuses_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/pull-statuses?numbers=<n>,<n>`` — see :mod:`.pull_statuses_route`.
+
+    Each named pull request's operational status and the verdict on it, for its Pulls row:
+    from the cache alone, with no gh and no Git.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_files_summary import SummaryRequestError
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_status_scan import scanning
+    from metabrowser.builtin_plugins.github.pull_statuses_route import (
+        envelope_etag,
+        pull_statuses,
+        status_numbers,
+    )
+    from metabrowser.mirror_refresh import refresh_coordinator
+
+    # A repeated parameter would be read as its last value alone: refused, as any other shape.
+    if len(request.query_params.getlist("numbers")) > 1:
+        return _invalid_request('"numbers" is named once')
+    try:
+        numbers = status_numbers(request.query_params)
+    except SummaryRequestError as exc:
+        return _invalid_request(str(exc))
+    await _resolve(request)
+    repository = served_repository(request.app)
+    running = repository is not None and scanning(
+        refresh_coordinator(request.app), repository.source
+    )
+    envelope = await asyncio.to_thread(pull_statuses, repository, numbers, scanning=running)
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
 async def pull_files_refresh_handler(request: Request) -> JSONResponse:
     """``POST /api/plugin/github/pull-files-refresh`` — start or join one file list's refresh.
 
@@ -1458,6 +1529,7 @@ __all__ = [
     "pull_comparison_handler",
     "pull_rendered_diff_handler",
     "pull_size_handler",
+    "pull_statuses_handler",
     "pulls_handler",
     "pulls_prefetch_handler",
     "stack_change_handler",

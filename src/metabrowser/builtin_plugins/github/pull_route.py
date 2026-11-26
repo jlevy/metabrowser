@@ -80,10 +80,17 @@ from metabrowser.builtin_plugins.github.pull_labels import (
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_list_probe import checked_at
 from metabrowser.builtin_plugins.github.pull_list_route import catalog_job_key
+from metabrowser.builtin_plugins.github.pull_readiness import DisplayState, lifecycle, readiness
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
     read_pull_record,
+)
+from metabrowser.builtin_plugins.github.pull_status import PullStatus, describes
+from metabrowser.builtin_plugins.github.pull_status_store import (
+    CheckProbes,
+    KeptStatus,
+    kept_status,
 )
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
@@ -92,6 +99,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     ServedPull,
     ServedPulls,
     cached_comparison_record,
+    probe_inputs,
     written_without_store,
 )
 from metabrowser.builtin_plugins.github.served_pull import record_revision as _record_revision
@@ -163,6 +171,89 @@ class PullEnvelope(TypedDict):
     # set does not hold one of those labels, so a page reads again soon.
     repository_labels: list[LabelEntry]
     labels_pending: bool
+    # The pull request's operational status as last read (:class:`~.pull_status.PullStatus`),
+    # by the page or by the Pulls tab's scan, its head's checks (:class:`~.pull_status.PullChecks`),
+    # and the verdict on it (:func:`~.pull_readiness.readiness`), beside the record and never
+    # in it: they change with a check, and the record does not. Each names the head it
+    # describes, and ``readiness`` judges ``status`` only when it describes the head and the
+    # base of the record or core shown, so a status of the base before a retarget is
+    # ``checking`` until a read of the new one; it is ``None`` for a closed or merged pull
+    # request, and with nothing shown. ``checks`` is the list ``status`` counts, of the pull
+    # request shown, and ``None`` until the page has read one (:func:`shown_checks`): a scan's
+    # status of a new head, or of checks that moved, counts no list.
+    # ``status_unavailable`` is why the last read of the status failed, when it did; what
+    # an earlier read kept is still answered.
+    status: dict[str, Any] | None
+    readiness: dict[str, Any] | None
+    checks: dict[str, Any] | None
+    status_unavailable: str | None
+
+
+def display_state(pull: Mapping[str, object]) -> DisplayState:
+    """The state badge of *pull*, a record's or core's ``pull`` as the wire has it.
+
+    Merged and draft come before open and closed, as GitHub's badge shows them.
+    """
+
+    return lifecycle(
+        closed=pull.get("state") == "closed",
+        draft=bool(pull.get("draft")),
+        merged=bool(pull.get("merged")),
+    )
+
+
+def _side(shown: object, side: str, key: str) -> str | None:
+    """*shown*'s ``<side>.<key>``, of the ``pull`` the envelope shows, or ``None``."""
+
+    found = shown.get(side) if isinstance(shown, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    value = found.get(key) if isinstance(found, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    return value if isinstance(value, str) else None
+
+
+def _describes_shown(shown: object, status: PullStatus | None) -> bool:
+    """Whether *status* describes *shown*'s head and base (:func:`.pull_status.describes`)."""
+
+    return describes(status, head=_side(shown, "head", "sha"), base_ref=_side(shown, "base", "ref"))
+
+
+def shown_checks(shown: object, kept: KeptStatus) -> dict[str, Any] | None:
+    """The checks the envelope carries beside *shown*, as the wire has them, or ``None``.
+
+    Only the list the kept status counts (:attr:`~.pull_status_store.KeptStatus.listed_checks`),
+    and only while that status describes the pull request shown, its head and base: checks
+    of another head, ones a newer status no longer sums to, and ones whose ``required`` was
+    another base's are never served, and ``None`` says the pull request shown has no list
+    yet.
+    """
+
+    checks = kept.listed_checks
+    if checks is None or not _describes_shown(shown, kept.status):
+        return None
+    return checks.model_dump(mode="json")
+
+
+def judged_readiness(shown: object, kept: KeptStatus) -> dict[str, Any] | None:
+    """The verdict on *shown*, the ``pull`` the envelope shows, with what *kept* holds, as the
+    wire has it: its status, judged only for the head and base shown, and the list of
+    checks that status counts, which the checks row's sentence counts as the page lists it.
+
+    ``None`` with no pull request shown, or a closed or merged one.
+    """
+
+    sha = _side(shown, "head", "sha")
+    if not isinstance(shown, dict) or sha is None:
+        return None
+    pull: dict[str, object] = shown  # pyright: ignore[reportUnknownVariableType]
+    url = pull.get("html_url")
+    verdict = readiness(
+        state=display_state(pull),
+        head=sha,
+        base_ref=_side(shown, "base", "ref"),
+        status=kept.status,
+        listed=kept.listed_checks,
+        html_url=url if isinstance(url, str) else None,
+    )
+    return None if verdict is None else verdict.model_dump(mode="json")
 
 
 def _parse_stamp(stamp: str) -> datetime:
@@ -182,7 +273,8 @@ def pull_state(
     A record written with no store, by a checkout's server, is stale whatever its age on a
     server that *has_store*, which can give it its Files changed. Otherwise the catalog's
     *freshness* verdict decides when it has one (:mod:`.pull_freshness`), and the
-    refresh coordinator's window when it has none.
+    refresh coordinator's window when it has none. A ``checks`` verdict is a current
+    record whose status alone is due, which the record does not hold.
     """
 
     if not isinstance(record, PullRecord):
@@ -190,7 +282,7 @@ def pull_state(
     if has_store and written_without_store(record):
         return "stale", None
     if freshness is not None and freshness.verdict != "unverified":
-        return ("current" if freshness.verdict == "current" else "stale"), None
+        return ("stale" if freshness.verdict == "changed" else "current"), None
     age = now - _parse_stamp(record.fetched_at)
     return ("current" if age <= timedelta(seconds=FRESHNESS_WINDOW_S) else "stale"), None
 
@@ -466,7 +558,8 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     """The envelope, and the catalog's verdict on its record for the held state to adopt.
 
     Blocking and bounded; run it off the loop. Besides the record it reads the catalog's
-    checkpoint and one row (:func:`~.pull_catalog.catalog_member`).
+    checkpoint and one row (:func:`~.pull_catalog.catalog_member`), and the kept status
+    (:func:`~.pull_status_store.kept_status`).
     """
 
     host = view.host
@@ -496,6 +589,10 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             core_preview=None,
             repository_labels=[],
             labels_pending=False,
+            status=None,
+            readiness=None,
+            checks=None,
+            status_unavailable=None,
         )
         return none, None
     served = host.pulls
@@ -503,10 +600,12 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     has_store = served.git_dir is not None
     # Through the module, so records and their age share one clock seam.
     now = pulls.utc_now()
+    operational = kept_status(served.home, served.slug, view.number)
     freshness = (
         record_freshness(
             record,
             *catalog_member(served.home, served.slug, view.number),
+            status=operational.status,
             now=now,
             scanning=view.catalog_scanning,
             checked_at=view.catalog_checked_at,
@@ -584,6 +683,10 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         core_preview=preview if not isinstance(record, PullRecord) else None,
         repository_labels=lookup.entries,
         labels_pending=view.labels_running and bool(lookup.missing),
+        status=(None if operational.status is None else operational.status.model_dump(mode="json")),
+        readiness=judged_readiness(shown, operational),
+        checks=shown_checks(shown, operational),
+        status_unavailable=operational.unavailable,
     )
     if view.preparing_comparison:
         envelope["preparing_comparison"] = True
@@ -634,16 +737,39 @@ def record_and_freshness(
     """The cached record of *number* and the catalog's verdict on it. Blocking and bounded.
 
     *scanning* is :func:`catalog_scanning` and *checked_at* :func:`catalog_checked_at`,
-    read on the event loop before the call.
+    read on the event loop before the call. The verdict reads the kept status's row too.
+    """
+
+    record, freshness, _status, _probes = held_record(
+        served, number, scanning=scanning, checked_at=checked_at
+    )
+    return record, freshness
+
+
+def held_record(
+    served: ServedPulls, number: int, *, scanning: bool = False, checked_at: str | None = None
+) -> tuple[PullRecord | None, RecordFreshness | None, PullStatus | None, CheckProbes | None]:
+    """:func:`record_and_freshness`, and what a probe of the record compares with.
+
+    That is the kept status of *number* and what the last probe of its head's checks saw
+    (:func:`~.served_pull.probe_inputs`). Blocking and bounded: the record, a catalog row
+    and the status's, and one small file.
     """
 
     record, _dumped, _revision = cached_pull_record(served.home, served.slug, number)
     if not isinstance(record, PullRecord):
-        return None, None
+        return None, None, None, None
     member = catalog_member(served.home, served.slug, number)
-    return record, record_freshness(
-        record, *member, now=pulls.utc_now(), scanning=scanning, checked_at=checked_at
+    status, probes = probe_inputs(served.published, number)
+    freshness = record_freshness(
+        record,
+        *member,
+        status=status,
+        now=pulls.utc_now(),
+        scanning=scanning,
+        checked_at=checked_at,
     )
+    return record, freshness, status, probes
 
 
 def note_full_record(view: PullView) -> None:
@@ -737,6 +863,11 @@ def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) ->
     change nothing else a page shows, so they are left out: a ``304`` carries them in
     :data:`VERIFIED_HEADER` instead (:func:`verified_header`). What the verdict changes,
     ``state``, ``head_moved``, and ``checks_pending``, stays in.
+
+    The status, its verdict, and the checks are in it whole, so a read that moves the
+    status's head or ``observed_at`` changes the tag. The checks are at most
+    ``MAX_CHECK_ITEMS``: 400 checks as this repository's CI names them took about 110 KB
+    and about 1 ms to hash here, 20 to 35 a tenth of that (measured 2026-11-26).
     """
 
     fields: dict[str, Any] = {
@@ -1014,9 +1145,9 @@ async def _start_refresh(
         served = await host.pulls.companion(ask.number)
         if served.fetched_at is None:
             return "not_cached"
-        held, freshness = await asyncio.to_thread(
+        held, freshness, status, probes = await asyncio.to_thread(
             partial(
-                record_and_freshness,
+                held_record,
                 host.pulls,
                 ask.number,
                 scanning=catalog_scanning(host),
@@ -1032,7 +1163,7 @@ async def _start_refresh(
             # A visible page asks every ATTENDED_PROBE_S; most asks end here, in a free
             # conditional read that finds nothing new (:meth:`ServedPull.probe`).
             try:
-                await served.probe(held, coordinator=host.coordinator)
+                await served.probe(held, status=status, probes=probes, coordinator=host.coordinator)
             except TimeoutError:
                 return "not_due"
             due = served.automatic_due(pulls.utc_now())
@@ -1085,8 +1216,12 @@ __all__ = [
     "catalog_checked_at",
     "catalog_scanning",
     "comparison_route",
+    "display_state",
     "envelope_etag",
+    "held_record",
     "image_route",
+    "judged_readiness",
+    "shown_checks",
     "pull_answer",
     "pull_envelope",
     "pull_host",

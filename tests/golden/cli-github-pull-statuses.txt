@@ -1,0 +1,281 @@
+## Nothing is cached: no pull request named has a row or a status, and none asks GitHub.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=101,999'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-statuses?numbers=101,999
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "scanning": false,
+  "scan": null,
+  "rows": [
+    {
+      "number": 101,
+      "state": "absent",
+      "reason": "not_cached",
+      "lifecycle": null,
+      "head": null,
+      "status": null,
+      "readiness": null
+    },
+    {
+      "number": 999,
+      "state": "absent",
+      "reason": "not_cached",
+      "lifecycle": null,
+      "head": null,
+      "status": null,
+      "readiness": null
+    }
+  ]
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- gh ---
+gh auth status
+gh api repos/octo/demo --jq .size
+## The list's first ask reads the catalog. The scan waits for it: the ask found no catalog before the list's job started.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+refresh=started status_scan=not_due
+--- stderr ---
+--- gh ---
+gh api user
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=all cursor=start
+## The clock moves on 20 s, to 2026-09-17T12:00:20Z.
+## The next ask probes the list, which is unchanged, and starts the first scan: one page of the newest open pull requests, one GraphQL point, with no account check.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+refresh=not_due status_scan=started
+--- stderr ---
+--- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api graphql statuses cursor=start
+## One pull request for each verdict, judged on the lifecycle, head, and base of its catalog row; #112's mergeability GitHub had not finished computing. The scan lists no check.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,999'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-statuses?numbers=101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,999
+status: 200
+scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:00:20Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 1, "rows": 14, "cost": 1, "unknown": 1, "settle_at": "2026-09-17T12:00:50Z"}
+#101 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
+#102 status reason=- lifecycle=draft observed_by=scan verdict=ready_for_review/success conflicts:met,checks:met
+#103 status reason=- lifecycle=open observed_by=scan verdict=conflicts/danger conflicts:unmet,checks:met
+#104 status reason=- lifecycle=open observed_by=scan verdict=checks_failing/danger conflicts:met,checks:unmet
+#105 status reason=- lifecycle=open observed_by=scan verdict=changes_requested/danger conflicts:met,checks:met,reviews:unmet
+#106 status reason=- lifecycle=open observed_by=scan verdict=blocked/danger conflicts:met,checks:met,rules:unmet
+#107 status reason=- lifecycle=open observed_by=scan verdict=queue_failing/danger queue:unmet,conflicts:met,checks:met
+#108 status reason=- lifecycle=open observed_by=scan verdict=queued/attention queue:waiting,conflicts:met,checks:met
+#109 status reason=- lifecycle=open observed_by=scan verdict=checks_pending/attention conflicts:met,checks:waiting
+#110 status reason=- lifecycle=open observed_by=scan verdict=review_required/attention conflicts:met,checks:met,reviews:waiting
+#111 status reason=- lifecycle=open observed_by=scan verdict=behind/attention conflicts:met,checks:met,up_to_date:waiting
+#112 status reason=- lifecycle=open observed_by=scan verdict=checking/attention conflicts:unknown,checks:met,rules:unknown
+#113 absent reason=other_head lifecycle=open observed_by=- verdict=-
+#114 absent reason=no_status lifecycle=closed observed_by=- verdict=-
+#115 absent reason=other_base lifecycle=open observed_by=- verdict=-
+#999 absent reason=not_cached lifecycle=- observed_by=- verdict=-
+--- stderr ---
+--- gh ---
+## The route's whole answer for one pull request with a status and one without.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=104,113'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-statuses?numbers=104,113
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "scanning": false,
+  "scan": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:20Z",
+    "reader": "gh:octo-reader",
+    "trigger": "periodic",
+    "pages": 1,
+    "rows": 14,
+    "cost": 1,
+    "unknown": 1,
+    "settle_at": "2026-09-17T12:00:50Z"
+  },
+  "rows": [
+    {
+      "number": 104,
+      "state": "status",
+      "reason": null,
+      "lifecycle": "open",
+      "head": "0000000000000000000000000000000000000000",
+      "status": {
+        "number": 104,
+        "head": "0000000000000000000000000000000000000000",
+        "base_ref": "topic",
+        "base": "0000000000000000000000000000000000000000",
+        "observed_at": "2026-09-17T12:00:20Z",
+        "observed_by": "scan",
+        "conflicts": "mergeable",
+        "merge_state": "unstable",
+        "review_decision": null,
+        "checks": {
+          "state": "failure",
+          "counts": {
+            "pass": 2,
+            "fail": 1,
+            "pending": 0,
+            "skipping": 0,
+            "cancel": 0
+          },
+          "required_failing": null,
+          "required_pending": null,
+          "listed_at": null,
+          "moved_at": null
+        },
+        "auto_merge": null,
+        "queue": null
+      },
+      "readiness": {
+        "verdict": "checks_failing",
+        "tone": "danger",
+        "label": "Checks failing",
+        "head": "0000000000000000000000000000000000000000",
+        "observed_at": "2026-09-17T12:00:20Z",
+        "requirements": [
+          {
+            "kind": "conflicts",
+            "status": "met",
+            "summary": "No merge conflicts with topic.",
+            "github_url": null
+          },
+          {
+            "kind": "checks",
+            "status": "unmet",
+            "summary": "Some checks were not successful: 1 failing, and 2 successful. GitHub allows merging, since no failing check is required.",
+            "github_url": "https://github.com/octo/demo/pull/104/checks"
+          }
+        ],
+        "auto_merge": null,
+        "auto_merge_summary": null
+      }
+    },
+    {
+      "number": 113,
+      "state": "absent",
+      "reason": "other_head",
+      "lifecycle": "open",
+      "head": "0000000000000000000000000000000000000000",
+      "status": null,
+      "readiness": null
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+## The clock moves on 10 s, to 2026-09-17T12:00:30Z.
+## An ask inside the settle wait starts nothing: the scan's spacing holds it.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+refresh=not_due status_scan=not_due
+--- stderr ---
+--- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+## The clock moves on 20 s, to 2026-09-17T12:00:50Z.
+## 30 s after the scan, the next ask reads the page that held the unknown answer once more, inside the spacing, and GitHub has it.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+refresh=not_due status_scan=started
+--- stderr ---
+--- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api graphql statuses cursor=start
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=112'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-statuses?numbers=112
+status: 200
+scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:00:50Z", "reader": "gh:octo-reader", "trigger": "settle", "pages": 1, "rows": 14, "cost": 1, "unknown": 0, "settle_at": null}
+#112 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
+--- stderr ---
+--- gh ---
+## The clock moves on 61 s, to 2026-09-17T12:01:51Z.
+## Once only: past the spacing, nothing is due until the periodic scan.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+refresh=started status_scan=not_due
+--- stderr ---
+--- gh ---
+gh api user
+gh api graphql catalog state=updated cursor=start
+## The clock moves on 60 s, to 2026-09-17T12:02:51Z.
+## The periodic scan is due, and GitHub refuses its page. The list's answer stands, every status the scans kept is still answered, and the route says how the scan ended.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+refresh=not_due status_scan=started
+--- stderr ---
+--- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api graphql statuses cursor=start
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=101,112'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-statuses?numbers=101,112
+status: 200
+scanning=false scan={"outcome": "gh_failed", "message": "GitHub could not complete the metadata query", "reset_at": null, "at": "2026-09-17T12:02:51Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 0, "rows": 0, "cost": 0, "unknown": 0, "settle_at": null}
+#101 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
+#112 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
+--- stderr ---
+--- gh ---
+## The clock moves on 61 s, to 2026-09-17T12:03:52Z.
+## GitHub no longer lists #111 among the open pull requests. The next periodic walk does not read it, so the status an older scan kept of it is not_scanned, with no verdict, while its catalog row is still open.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+refresh=started status_scan=started
+--- stderr ---
+--- gh ---
+gh api user
+gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=111,101'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-statuses?numbers=111,101
+status: 200
+scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:03:52Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 1, "rows": 13, "cost": 1, "unknown": 0, "settle_at": null}
+#111 absent reason=not_scanned lifecycle=open observed_by=- verdict=-
+#101 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
+--- stderr ---
+--- gh ---
+## A request that names anything but the pull requests' numbers is refused.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=101&extra=1'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-statuses?numbers=101&extra=1
+status: 400
+{
+  "error": "a status request names its pull requests by \"numbers\" alone",
+  "code": "invalid_request"
+}
+--- stderr ---
+Error: /api/plugin/github/pull-statuses?numbers=101&extra=1 returned HTTP 400
+--- gh ---

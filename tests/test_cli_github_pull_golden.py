@@ -19,7 +19,10 @@ A pull envelope carries the whole record, and this story reads pull request 7's 
 dozen times. The transcript prints a record in full once and after that as
 ``<RECORD n>``: the record of pull request *n*, equal to the last one printed in full.
 A record that differs is printed in full again, so a read that changed it shows as the
-whole record appearing where the label was.
+whole record appearing where the label was. The envelope's operational status, its
+verdict, and its checks, which the status read keeps beside the record, are printed the
+same way, as ``<STATUS n>``, ``<READINESS head>``, and ``<CHECKS n>``
+(``golden_harness.operational_once``).
 """
 
 from __future__ import annotations
@@ -58,6 +61,7 @@ from tests.golden_harness import (
     isolate_cli,
     label_home,
     normalize_pull_comparison_scopes,
+    operational_once,
     origin_identity,
     quoted,
     run_metab,
@@ -152,7 +156,8 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
 
     session.blocks.append(
         "## <RECORD n> is the record of pull request n, equal to the last one printed in "
-        "full above; a record that differs is printed in full.\n"
+        "full above; a record that differs is printed in full. <STATUS n>, <READINESS "
+        "head>, and <CHECKS n> are its status, verdict, and checks, the same way.\n"
     )
     first = session.run(f"{PULL}/7", "--api", f"{ROUTE}?number=7")
     assert first.exit_code == 0, first.stderr
@@ -178,6 +183,25 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
         f"{PULL}/7/commits/{origin['fork_earlier'][:7]}", "--show", "src/app.txt"
     )
     assert fork_commit.exit_code == 0, fork_commit.stderr
+
+    # GitHub refuses the status query alone: the record's refresh succeeds as ever, and the
+    # status the read before kept stays, named unavailable.
+    session.blocks.append(
+        "## GitHub refuses the status query alone: the record is read and published as "
+        "ever, the status an earlier read kept is still answered, and status_unavailable "
+        "says why. The Checks tab's model line prints the verdict and each requirement.\n"
+    )
+    status_page = "graphql:status:7:start"
+    session.answer(_api(online, status_page, {"status": 502, "body": {"message": "Bad Gateway"}}))
+    refused = session.run(f"{PULL}/7", "--no-serve")
+    assert refused.exit_code == 0 and "the refresh failed" not in refused.stdout
+    checks_tab = session.run(f"{PULL}/7", "--show", "/pull/7/checks")
+    assert checks_tab.exit_code == 0, checks_tab.stderr
+    assert (
+        " readiness=checks_pending requirements=conflicts:met,checks:waiting,reviews:waiting"
+        " status_unavailable=" in checks_tab.stdout
+    )
+    session.answer(online)
 
     # Offline: every API read fails, and nothing that reads the cache asks gh.
     session.answer(
@@ -385,7 +409,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     assert "file://" not in rendered
     # One full print of each distinct record: pull request 7's, 10's, and 8's.
     assert session.in_full == [7, 10, 8]
-    check_golden("cli-github-pull-refresh.txt", rendered)
+    check_golden("cli-github-pull-refresh.txt", operational_once(rendered))
 
 
 def test_golden_pull_timeline_fetch_and_offline(
@@ -508,4 +532,4 @@ def test_golden_pull_timeline_fetch_and_offline(
     assert unchanged.payload() == envelope
     rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered
-    check_golden("cli-github-pull-timeline.txt", rendered)
+    check_golden("cli-github-pull-timeline.txt", operational_once(rendered))

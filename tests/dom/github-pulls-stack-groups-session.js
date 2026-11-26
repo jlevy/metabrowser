@@ -304,7 +304,8 @@ async function mountStory() {
     // icon, then the title, then the stack menu's muted dot and its place in bold, " · 3/3",
     // where another stack's glyph is written ⧉, then the dot and the number, and no stack icon
     // on its row, whose stack's row has it (mb-dzsi, mb-vkhd, mb-pw8t). A pull request in no
-    // stack has no place and no dot before one.
+    // stack has no place and no dot before one. The readiness's words, out of view after the
+    // state icon (mb-3n21), are the run's too.
     const textOf = (node) =>
       node.data !== undefined
         ? node.data
@@ -315,20 +316,21 @@ async function mountStory() {
     const titleLine = (row) => {
       const heading = find(row, "github-pulls-heading");
       assert.deepEqual(
-        heading.childNodes.map(classOf).slice(0, 5),
+        heading.childNodes.map(classOf).slice(0, 6),
         [
           "github-pull-state-icon",
+          "sr-only",
           "github-pulls-title",
           "github-pulls-place",
           "github-pulls-sep",
           "github-pulls-number",
         ],
-        "the state icon, then the title, the place, and the number, one flow",
+        "the state icon, its readiness's words, then the title, the place, and the number, one flow",
       );
-      const place = heading.childNodes[2];
-      const number = heading.childNodes[4];
+      const place = heading.childNodes[3];
+      const number = heading.childNodes[5];
       // The no-break space before each dot is written as a space.
-      const text = [heading.childNodes[1], place, heading.childNodes[3], number.firstChild]
+      const text = [heading.childNodes[2], place, heading.childNodes[4], number.firstChild]
         .map(textOf)
         .join("")
         .replaceAll("\u00a0", " ");
