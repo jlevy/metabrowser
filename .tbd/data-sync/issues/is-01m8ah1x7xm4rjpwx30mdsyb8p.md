@@ -3,17 +3,21 @@ type: is
 id: is-01m8ah1x7xm4rjpwx30mdsyb8p
 title: Nav Refresh becomes a circular-arrow icon left of the gear
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-25T23:36:02.556Z
-updated_at: 2026-11-26T00:35:55.739Z
+updated_at: 2026-11-26T03:09:02.361Z
 started_at: 2026-11-25T23:37:05.600Z
+closed_at: 2026-11-26T03:09:02.359Z
+close_reason: "Merged in #858"
+resolution: null
+duplicate_of: null
 ---
 User request 2026-11-25: the Refresh button moves to a refresh icon (circular arrow or similar) at the top of the nav column, just left of the gear icon.
 
