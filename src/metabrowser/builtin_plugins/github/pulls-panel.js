@@ -4752,9 +4752,11 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A stack's row: the chevron, the Layers icon, and its heading, the stack's label in the
-   * label register the stack menu's heading has (`.group-heading`, docs/design-system.md,
-   * "Stacks"), then the lines the stack changes, after a muted dot: "Stack #286 · +1,234
+   * A stack's row: the chevron and its heading, with no glyph between them, since its Whole
+   * stack row, the first under it, carries the stack's Layers glyph (mb-68uk): the stack's
+   * label in the label register the stack menu's heading has (`.group-heading`,
+   * docs/design-system.md, "Stacks"), then the lines the stack changes, after a muted dot:
+   * "Stack #286 · +1,234
    * −567", the shell's brief change line of its line totals alone, with no file statuses, as
    * a pull request's row says its own (`metabrowser.changeLine`; mb-lqkb), whose words the
    * row's accessible name says. It draws no tally: its pull requests are the
@@ -4782,13 +4784,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-level": "1",
           tabindex: "-1",
         },
-        [
-          h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]),
-          h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
-            stackSvg === null ? null : document.importNode(stackSvg, true),
-          ]),
-          heading,
-        ],
+        [h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]), heading],
       );
       row.dataset.stack = String(group.stack.number);
       const item = h("li", { class: "github-pulls-item github-pulls-stack-item", role: "none" }, [
@@ -4861,9 +4857,10 @@ export function mountPullsPanel(container, ctx, mb) {
   /**
    * Draw a stack's Whole stack row, the first under its open stack: a link to the stack's own
    * page (`/stack/<n>`, stack-page.js), one line in a member's row grid, the stack's Layers
-   * glyph, muted, in the state icon's slot and "Whole stack" where the members' titles start,
-   * as the stack menu's Whole stack row has them (docs/design-system.md, "Stack Groups in the
-   * Pulls Tab"). It takes the current-row mark while the address is the stack's page.
+   * glyph, in the text's ink, in the state icon's slot and "Whole stack" where the members'
+   * titles start, as the stack menu's Whole stack row has them (docs/design-system.md, "Stack
+   * Groups in the Pulls Tab"). It takes the current-row mark while the address is the stack's
+   * page.
    *
    * @param {import("./pull-stacks.js").WholeStackRow} whole
    */

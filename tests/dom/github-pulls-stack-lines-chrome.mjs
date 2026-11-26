@@ -18,7 +18,7 @@
 //
 // - a heading waits only while its own stack's read is on its way: the list draws #290
 //   first, and while its read is held #286's heading, queued behind it, holds no placeholder;
-// - nothing moves when the line arrives: the row, its chevron, its icon, its label, and the
+// - nothing moves when the line arrives: the row, its chevron, its label, and the
 //   placeholder's start, which is the line's;
 // - the heading stays one line: the row is one `--ui-row-height`, and the line, the stack's
 //   line totals alone with no file statuses (mb-lqkb), is either whole on the heading's line
@@ -240,7 +240,7 @@ const READ = `(() => {
     const stats = change.querySelector(".change-line-stats");
     return [row.dataset.stack, {
       row: box(row), toggle: box(row.querySelector(".github-pulls-toggle")),
-      icon: box(row.querySelector(".github-pull-stack-icon")), heading: box(heading),
+      heading: box(heading),
       label: box(label), labelCut: label.scrollWidth > label.clientWidth + 0.5,
       change: box(change), pending: box(pending), pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
       line: box(line), stats: box(stats), note: box(change.querySelector(".github-pulls-stack-change-note")),
@@ -414,7 +414,7 @@ async function main() {
             was.pending.left >= was.label.right - TOLERANCE_PX,
           );
         }
-        for (const part of ["row", "toggle", "icon", "label"]) {
+        for (const part of ["row", "toggle", "label"]) {
           check(
             `${at}: #286's ${part} does not move when its line arrives`,
             ["left", "top", "width", "height"].every((side) =>
