@@ -72,6 +72,10 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [SoftSchema collection tables](specs/active/plan-2026-11-26-softschema-collection-tables.md):
+  a draft for opening a folder of SoftSchema records as linked tables, one per contract,
+  from a cached collection index that a SoftSchema collection API builds and a
+  background worker keeps current, so one bad record costs a row, never the table
 - [Lean language support](specs/active/plan-2026-11-25-lean-language-support.md): Lean
   as a code family with GitHub’s color and a tested port of the official Lean 4 grammar,
   and the [Adding a Language](../adding-a-language.md) recipe and the `mb-*` skills that
@@ -220,6 +224,10 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [Tables over folders of SoftSchema records](research/research-2026-11-26-softschema-collection-tables.md):
+  the SoftSchema format, how real knowledge bases lay out records and schemas, measured
+  costs of reading and validating thousands of records, and which parts of Paraverse’s
+  browser Metabrowser already has
 - [Drawing dense, deep treemaps in the browser](research/research-2026-11-22-dense-treemap-rendering.md):
   how desktop disk-usage tools and web libraries draw treemaps down to single files, and
   measured canvas, DOM, and hit-testing costs in Chrome and WKWebView

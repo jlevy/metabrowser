@@ -166,7 +166,9 @@ def _parse_text(text: str, ext: str) -> Any:
             YAML,  # type: ignore[import-not-found]
         )
 
-        yaml = YAML(typ="safe")
+        # Preserve the YAML 1.2 behavior this view had before installing the native
+        # extension for SoftSchema. The native loader uses different scalar syntax.
+        yaml = YAML(typ="safe", pure=True)
         docs = list(yaml.load_all(text))
     except ImportError:
         import yaml as pyyaml  # type: ignore[import-not-found]
