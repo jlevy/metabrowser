@@ -192,11 +192,14 @@ async function loadModule() {
     "utf8",
   );
   const projectAdaptersUrl = `data:text/javascript;base64,${Buffer.from(projectAdaptersSource).toString("base64")}`;
-  const githubLocalizerSource = fs.readFileSync(
-    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/github-localizer.js"),
-    "utf8",
-  );
-  const githubLocalizerUrl = `data:text/javascript;base64,${Buffer.from(githubLocalizerSource).toString("base64")}`;
+  // The page loads the repository links (static/repository-links.js, with the GitPath codec
+  // they spell a pin's paths with) before it enhances a document, as rendered.js does
+  // through metabrowser.loadRepositoryLinks, and hands them to the enhancer.
+  global.window ??= global;
+  for (const name of ["git-path.js", "repository-links.js"]) {
+    const file = path.join(repoRoot, "src/metabrowser/static", name);
+    require("node:vm").runInThisContext(fs.readFileSync(file, "utf8"), { filename: file });
+  }
   const wikiResolverSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki-resolver.js"),
     "utf8",
@@ -265,7 +268,6 @@ async function loadModule() {
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/link-enhancer.js"),
       "utf8",
     )
-    .replace('"./github-localizer.js"', JSON.stringify(githubLocalizerUrl))
     .replace('"./links.js"', JSON.stringify(linksUrl))
     .replace('"./dom-traversal.js"', JSON.stringify(traversalUrl))
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
@@ -294,6 +296,22 @@ async function loadModule() {
     href: `https://github.com/example/docs/blob/${revision}/docs/guide.md#Install`,
   });
   const externalIssue = new FakeElement("a", { href: "//github.com/another/repo/issues/23" });
+  // An inert render gives every outside link a new tab; an in-app one loses it.
+  const githubPull = new FakeElement("a", {
+    href: "https://github.com/example/docs/pull/12/files",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  });
+  const githubBranch = new FakeElement("a", {
+    href: "https://github.com/example/docs/tree/main",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  });
+  const githubOtherBranch = new FakeElement("a", {
+    href: "https://github.com/example/docs/blob/release/docs/guide.md",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  });
   const unsafe = new FakeElement("a", { href: "javascript:alert(1)" });
   const download = new FakeElement("a", { download: "", href: "files/archive.zip" });
   const newTab = new FakeElement("a", { href: "other.md", target: "_blank" });
@@ -310,6 +328,9 @@ async function loadModule() {
     external,
     externalIssue,
     github,
+    githubPull,
+    githubBranch,
+    githubOtherBranch,
     unsafe,
     download,
     newTab,
@@ -355,6 +376,7 @@ async function loadModule() {
     },
   };
   const handle = module.enhanceRenderedLinks(container, "docs/readme.md", mb, {
+    repositoryLinks: global.MetabrowserRepositoryLinks,
     cancel: (id) => frames.delete(id),
     eventTarget,
     schedule: (callback) => {
@@ -390,6 +412,30 @@ async function loadModule() {
     externalIssue.children[0]?.getAttribute("data-external-kind") === "issue",
   );
   check("localized GitHub link has no external mark", github.children.length === 0);
+  check(
+    "a pull request's Changes open in the app, in this tab",
+    githubPull.getAttribute("href") === "/pull/12/files" &&
+      githubPull.getAttribute("data-metabrowser-github-localization") === "pull" &&
+      !githubPull.hasAttribute("target") &&
+      !githubPull.hasAttribute("rel") &&
+      githubPull.children.length === 0,
+    JSON.stringify([...githubPull.attributes]),
+  );
+  check(
+    "the served branch's root opens the served root, in this tab",
+    githubBranch.getAttribute("href") === "/view/" &&
+      githubBranch.getAttribute("data-metabrowser-github-localization") === "working-tree" &&
+      !githubBranch.hasAttribute("target"),
+    JSON.stringify([...githubBranch.attributes]),
+  );
+  check(
+    "another branch stays an outside link",
+    githubOtherBranch.getAttribute("href") ===
+      "https://github.com/example/docs/blob/release/docs/guide.md" &&
+      githubOtherBranch.getAttribute("target") === "_blank" &&
+      !githubOtherBranch.hasAttribute("data-metabrowser-github-localization"),
+    JSON.stringify([...githubOtherBranch.attributes]),
+  );
   check("unrelated destination has no GitHub mark", external.children.length === 0);
   check("unsafe href removed", !unsafe.hasAttribute("href"));
   check("unsafe link keyboard reachable", unsafe.getAttribute("tabindex") === "0");
@@ -439,6 +485,22 @@ async function loadModule() {
   check("plain click intercepted", internalClick.defaultPrevented);
   check("plain click opened once", opened.length === 1);
   check("resolved click target", opened[0].path === "docs/guide.md");
+
+  const branchClick = click(githubBranch);
+  container.listeners.get("click")(branchClick);
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "a plain click on the served branch's root opens it here",
+    branchClick.defaultPrevented && opened.length === 2 && opened[1].path === "",
+    JSON.stringify(opened),
+  );
+  opened.pop();
+  const pullClick = click(githubPull);
+  container.listeners.get("click")(pullClick);
+  check(
+    "a plain click on a pull request's page is followed as a link",
+    !pullClick.defaultPrevented && opened.length === 1,
+  );
 
   const sameDocumentClick = click(sameDocument);
   container.listeners.get("click")(sameDocumentClick);
@@ -849,7 +911,12 @@ async function loadModule() {
     githubPinContainer,
     "g1-UkVBRE1FLm1k",
     { ...mb, sourceKind: () => "git_revision" },
-    { cancel: () => {}, eventTarget: new FakeEventTarget(), schedule: () => 0 },
+    {
+      repositoryLinks: global.MetabrowserRepositoryLinks,
+      cancel: () => {},
+      eventTarget: new FakeEventTarget(),
+      schedule: () => 0,
+    },
   );
   check(
     "pinned GitHub blob link localized to a GitPath wire",

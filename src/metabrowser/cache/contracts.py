@@ -272,6 +272,7 @@ def validate_config_values(values: Any) -> ValidationResult:
         model=contract.model,
         schema=contract.schema_path,
         status=SchemaStatus.permissive,
+        require=("structural", "semantic"),
     )
 
 

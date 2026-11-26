@@ -51,10 +51,10 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from metabrowser.builtin_plugins.github.pull_route import PullRequestError, pull_host
+from metabrowser.builtin_plugins.github.pull_route import PullRequestError
 from metabrowser.builtin_plugins.github.pull_snapshot import (
     Snapshot,
-    admitted_snapshot,
+    admitted_pair,
     requested_snapshot,
 )
 from metabrowser.diff.adapters.base import DiffSourceError
@@ -95,9 +95,11 @@ from metabrowser.git.tree_source import (
     blob_logical_ext,
     held_store_readers,
     read_store_blob,
+    read_store_blob_sizes,
 )
 from metabrowser.git.wire import is_full_revision
 from metabrowser.loading_cache import LoadingCache
+from metabrowser.server_timing import phase
 
 if TYPE_CHECKING:
     from metabrowser.builtin_plugins.diff.comparison_cache import ResolvedManifest
@@ -336,7 +338,9 @@ class _Slot:
             raise _Busy
         self._waiting += 1
         try:
-            await self._lock.acquire()
+            # The wait for the slot, in the request log and Server-Timing (mb-1jp0).
+            with phase("queue"):
+                await self._lock.acquire()
         finally:
             self._waiting -= 1
         try:
@@ -471,7 +475,8 @@ async def _project(
 
     target = RepositoryStoreTarget(published.git_dir, published.object_format)
     source = GitDiffSource(GitLocation.revision(target, snapshot.head))
-    comparison = await listed()
+    with phase("read"):
+        comparison = await listed()
     resolved, manifest = comparison.resolved, comparison.manifest
     if resolved.left.id != snapshot.base or resolved.right.id != snapshot.head:
         return _fallback()
@@ -495,15 +500,29 @@ async def _project(
         # none held, the two reads took p50 5.6-6.5 ms a file, most of a JSON file's
         # time, and 0.5-0.7 ms held (mb-8274 review C5).
         async with held_store_readers(target):
+            # The sizes first: a pair over its budget is refused before either side is read.
+            # A 566 KB document beside its 566 KB old side was read whole and then refused,
+            # 260 to 380 ms holding the one projection slot at a load average near 120
+            # (mb-1jp0).
+            oids = tuple(
+                side.content.oid
+                for side in (change.old, change.new)
+                if side is not None and side.content.oid is not None
+            )
+            # The reads below still check each side, so an object read twice is bounded too.
+            sizes = await read_store_blob_sizes(target, oids)
+            if sum(size or 0 for size in sizes.values()) > budget:
+                return _fallback("too_large", rendered)
             old = await blob(change.old, budget)
             new = await blob(change.new, budget - len(old or b""))
     except GitBlobTooLargeError:
         return _fallback("too_large", rendered)
     if rendered != "markdown":
         # The tree compares parsed values, so it reads no patch, and shows no images.
-        tree = dict(
-            await projection_worker(state).project_structured(old=old, new=new, fmt=rendered)
-        )
+        with phase("render"):
+            tree = dict(
+                await projection_worker(state).project_structured(old=old, new=new, fmt=rendered)
+            )
         if tree.get("reason") == "deadline":
             raise _Unkept(_encoded(tree), stopped=True)
         return tree
@@ -527,9 +546,10 @@ async def _project(
 
         rewrite = head_reference
 
-    prepared = await projection_worker(state).prepare(
-        old=old, new=new, patch=patch, namespace=namespace
-    )
+    with phase("render"):
+        prepared = await projection_worker(state).prepare(
+            old=old, new=new, patch=patch, namespace=namespace
+        )
     answered = prepared.projection
     if answered["status"] == "too_large" and answered.get("reason") in (None, "deadline"):
         # Not the pair's own answer: the child has no input budget, so this is a thread's
@@ -556,10 +576,8 @@ async def _project(
 
 
 async def pull_rendered_diff_handler(request: Request) -> Response:
-    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
     from metabrowser.builtin_plugins.github.pull_manifest import shared_pull_manifest
-    from metabrowser.builtin_plugins.github.pull_stack import combined, read_stack
-    from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
+    from metabrowser.builtin_plugins.github.pull_stack import combined
 
     params = request.query_params
     try:
@@ -582,7 +600,8 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     ):
         return _invalid()
     snapshot = Snapshot(number, base, head, params.get("store", ""), scope)
-    published, admission = await admitted_snapshot(request, snapshot)
+    with phase("admit"):
+        published, admission, admitted = await admitted_pair(request, snapshot)
     if admission == "unknown":
         return JSONResponse({"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE)
     if published is None:
@@ -594,7 +613,8 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
         worker.start()
         # No reader waits on a prefetch, so it waits for the child, where a projection
         # runs under its deadline (mb-8274 review C2); a reader's own request does not.
-        await worker.settle()
+        with phase("start"):
+            await worker.settle()
     cache = getattr(state, "pull_rendered_diff_cache", None)
     if cache is None:
         cache = state.pull_rendered_diff_cache = LoadingCache[tuple[str, ...], _Kept](
@@ -611,23 +631,10 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     named = str(number)
     if scope == "stack":
         # The stack's own manifest, restricted to its layers' files, whose digest names it:
-        # a pull request keeps the key, and so the rendered namespace, it had.
-        host = pull_host(request.app)
-        reader = host.pulls.observed_reader if host is not None else None
-        current = (await read_stack(served_repository(request.app), published, number, reader)).pair
-        # Admission found the pair current or retained; a retained one is the most recent
-        # with these commits, whose listing numbers the files as any other does.
-        pair = (
-            current
-            if current is not None and (current.base, current.head) == (base, head)
-            else await asyncio.to_thread(
-                retained_stack_pair, published, number, reader, base, head, None
-            )
-        )
-        if pair == "unknown":
-            return JSONResponse(
-                {"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE
-            )
+        # a pull request keeps the key, and so the rendered namespace, it had. Admission
+        # found the pair current or retained; a retained one is the most recent with these
+        # commits, whose listing numbers the files as any other does.
+        pair = admitted
         if pair is None:
             return JSONResponse({"code": "snapshot_expired"}, status_code=410, headers=_NO_STORE)
         named = f"stack-{number}-{pair.digest}"

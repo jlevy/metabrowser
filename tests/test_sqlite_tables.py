@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -415,6 +416,31 @@ def test_counts_are_capped(client: TestClient, monkeypatch: pytest.MonkeyPatch) 
     assert filtered["count_complete"] is False
 
 
+def test_back_reference_count_is_incomplete_for_a_previewed_target(
+    client: TestClient, root: Path
+) -> None:
+    value = "x" * 70_000
+    build(
+        root / "wide-key.sqlite",
+        "CREATE TABLE parent (id INTEGER PRIMARY KEY, code TEXT UNIQUE);"
+        "CREATE TABLE child (id INTEGER PRIMARY KEY, code TEXT REFERENCES parent(code));"
+        f"INSERT INTO parent VALUES (1, '{value}');"
+        "INSERT INTO child SELECT 2, code FROM parent;",
+    )
+    path = "wide-key.sqlite/parent"
+    key = _get(client, "rows", path=path)["rows"][0]["key"]
+    related = _get(client, "record", path=path, key=key)["referenced_by"][0]
+    assert (related["count"], related["count_complete"]) == (0, False)
+    page = _get(
+        client,
+        "rows",
+        path="wide-key.sqlite/child",
+        ref=f"parent:{key}",
+        via=json.dumps([["code"], ["code"]]),
+    )
+    assert page["count"] == 1 and page["count_complete"] is True
+
+
 def test_search_continues_past_empty_windows(
     client: TestClient, root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -487,6 +513,7 @@ def test_record_and_card(client: TestClient) -> None:
     user = _get(client, "rows", path="app.db/users", limit=1)["rows"][0]["key"]
     record = _get(client, "record", path="app.db/users", key=user)
     assert record["cells"]["name"] == "Ada"
+    assert record["label"] == "Ada"
     assert record["referenced_by"] == [
         {"table": "orders", "fields": ["user_id"], "to": ["id"], "count": 2, "count_complete": True}
     ]
@@ -498,6 +525,43 @@ def test_record_and_card(client: TestClient) -> None:
     order = _get(client, "rows", path="app.db/orders", limit=1)["rows"][0]
     assert decode_key(order["key"]) == [1]
     assert _get(client, "record", path="app.db/orders", key=order["key"])["cells"]["rowid"] == 1
+
+
+def test_back_reference_drilldown_counts_the_declared_relationship(
+    client: TestClient, root: Path
+) -> None:
+    build(
+        root / "relationships.sqlite",
+        """
+        CREATE TABLE person (id INTEGER PRIMARY KEY);
+        CREATE TABLE sale (
+            id INTEGER PRIMARY KEY,
+            buyer INTEGER REFERENCES person(id),
+            seller INTEGER REFERENCES person(id)
+        );
+        INSERT INTO person VALUES (1), (2);
+        INSERT INTO sale VALUES (10, 1, 2), (20, 2, 1), (30, 1, 2);
+        """,
+    )
+    person_path = "relationships.sqlite/person"
+    key = _get(client, "rows", path=person_path)["rows"][0]["key"]
+    record = _get(client, "record", path=person_path, key=key)
+    sale_path = "relationships.sqlite/sale"
+    observed: dict[str, list[int]] = {}
+    for relationship in record["referenced_by"]:
+        page = _get(
+            client,
+            "rows",
+            path=sale_path,
+            ref=f"person:{key}",
+            via=json.dumps([relationship["fields"], relationship["to"]]),
+        )
+        observed[relationship["fields"][0]] = [row["cells"]["id"] for row in page["rows"]]
+        assert len(page["rows"]) == relationship["count"]
+    assert observed == {"buyer": [10, 30], "seller": [20]}
+    assert _get(client, "rows", path=sale_path, ref=f"person:{key}")["count"] == 3
+    invalid = _get(client, "rows", path=sale_path, ref=f"person:{key}", via='[["id"],["id"]]')
+    assert (invalid["_status"], invalid["param"]) == (400, "via")
 
 
 @pytest.mark.parametrize("replace", [False, True], ids=["commit", "replace-file"])

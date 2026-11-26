@@ -40,7 +40,7 @@ default: install format lint test
 install:
 	# --locked also asserts uv.lock matches pyproject.toml and uv.toml, so a
 	# stale or locally contaminated lock fails here instead of shipping.
-	$(UV) sync --all-extras --all-groups --locked
+	$(UV) sync --all-groups --locked
 	npm ci
 
 hooks-install: install
@@ -431,7 +431,7 @@ lock:
 
 upgrade:
 	$(UV) lock --upgrade
-	$(UV) sync --all-extras --all-groups --frozen
+	$(UV) sync --all-groups --frozen
 
 build:
 	$(UV) build --clear --no-build-isolation

@@ -157,6 +157,29 @@ def test_template_readiness_joins_prefetch_and_retries_before_plugin_evaluation(
     }
 
 
+def test_repository_link_wait_is_bounded_and_keeps_a_late_success(
+    view_helpers: dict[str, Any],
+) -> None:
+    observed = view_helpers["repositoryLinkReadiness"]
+    codec = "script /static/git-path.js"
+    resolver = "script /static/repository-links.js"
+    assert observed["plainFolder"] == {"state": "no resolver", "requests": []}
+    assert observed["slow"] == {
+        "beforeDeadline": {"states": ["pending", "pending"], "deadlines": 1},
+        "timedOut": ["no resolver", "no resolver", "no resolver"],
+        "afterLateSuccess": "ready",
+        "originalStatesAfterSuccess": ["no resolver", "no resolver"],
+        "requests": [codec, resolver],
+        "remainingTimers": 0,
+    }
+    assert observed["retry"] == {
+        "failure": {"state": "no resolver", "deadlines": 0},
+        "recovered": "ready",
+        "requests": [codec, resolver, resolver],
+        "remainingTimers": 0,
+    }
+
+
 # The shell's prefetch chain, as the server wrote it into the page, run to its end with
 # every script answering at once. It reports whether the flag was already set when the
 # terminal event was dispatched.

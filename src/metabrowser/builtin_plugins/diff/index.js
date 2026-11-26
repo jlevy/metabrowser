@@ -247,7 +247,7 @@ function pagePin() {
 // Whether this page has heard that the server serves another pin than the one it shows
 // (static/source-pin-guard.js announces it), after which a `/view/` address it holds
 // opens that other pin. The plugin loads once per page, so one listener serves every diff.
-let pinChanged = false;
+let pinChanged = window.MetabrowserSourcePinGuard?.hasChanged() ?? false;
 /** @type {Set<() => void>} */
 const pinChangeListeners = new Set();
 window.addEventListener?.("metabrowser:pin-changed", () => {
@@ -418,7 +418,8 @@ async function viewFileOpener(comparison) {
  * Whether a link in rendered Markdown to a file of the head may open at its `/view/`
  * address: only while this page shows that head, the one commit at which the address
  * names that file. The rendered answer is the same for every page (its cache key names no
- * pin), so the page decides, and a link it does not keep is plain text.
+ * pin), so the page decides, and a link it does not keep opens the file on github.com
+ * (`headFile`).
  *
  * @param {Comparison | undefined} comparison
  * @returns {() => boolean}
@@ -426,6 +427,25 @@ async function viewFileOpener(comparison) {
 function headLinksOpen(comparison) {
   const pin = pagePin();
   return () => pin !== null && pin === comparison?.right && !pinChanged;
+}
+
+/**
+ * The file a link in rendered Markdown names at the comparison's head, on github.com, for
+ * when the page does not show that head (`headLinksOpen`): static/repository-links.js reads
+ * the link's `/view/` address back and spells the github.com one (`viewFileUrl`). Null
+ * without a GitHub repository, or for a name that is not text.
+ *
+ * The renderer supplies the resolver it receives alongside the allowlist. A load
+ * that misses the SDK deadline can still serve a projection that renders later.
+ *
+ * @param {Comparison | undefined} comparison
+ * @returns {(href: string, links?: MetabrowserRepositoryLinksRuntime | null) => string | null}
+ */
+function headFile(comparison) {
+  return (href, links) => {
+    const head = comparison?.right;
+    return links && typeof head === "string" ? links.viewFileUrl(mb.repository, head, href) : null;
+  };
 }
 
 /**
@@ -781,10 +801,12 @@ const diffView = {
         ? {}
         : {
             markdownViews,
+            onPinChanged,
             renderMarkdown: (fileId, signal, ask) => markdown.load(fileId, signal, ask),
             markdownTargets: markdownViews.markdownTargets(
               ctx.comparison?.image_route,
               headLinksOpen(ctx.comparison),
+              headFile(ctx.comparison),
             ),
             ...(typeof ctx.markdownHoldMs === "number"
               ? { markdownHoldMs: ctx.markdownHoldMs }

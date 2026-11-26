@@ -998,6 +998,22 @@ try {
   // Code's heading, marked, to tell a heading refreshed in place from one drawn again.
   const CODE_HEADING = `document.querySelector('.tree-section[data-tree-group="type:code"] > .tree-section-heading')`;
   await browser.evaluate(`(${CODE_HEADING}.dataset.before = "1", true)`);
+  // The page's own event stream, counted from here. It carries the tree two levels deep,
+  // so the write shows on it as a change to the folders above the file. A stream the page
+  // opens afterwards, as on a reconnect, is counted too, and a page with none counts none.
+  await browser.evaluate(`(() => {
+    window.__fsChanges = 0;
+    const count = (source) => source?.addEventListener("fs.change", () => { window.__fsChanges += 1; });
+    count(inventoryEventSource);
+    const Native = window.EventSource;
+    window.EventSource = class extends Native {
+      constructor(...args) {
+        super(...args);
+        count(this);
+      }
+    };
+    return true;
+  })()`);
   fs.writeFileSync(path.join(root, "src", "lib", "k99.py"), "x99\n");
   const written = Date.now();
   let afterWrite = await browser.evaluate(REFRESH_STATE);
@@ -1007,6 +1023,10 @@ try {
   }
   await browser.evaluate(frames);
   result.refresh = { before: beforeWrite, after: await browser.evaluate(REFRESH_STATE) };
+  // Whether any change reached the page after the write, which says where a refresh that
+  // did not come stopped: before the page, in the operating system's file events, the
+  // server's watcher, or the event stream; or in the page, with the change in hand.
+  result.refreshDelivered = await browser.evaluate("window.__fsChanges > 0");
   // The heading kept its place, its category's icon, and its name, and updated its tally
   // beside its name.
   result.refreshedHeading = await browser.evaluate(

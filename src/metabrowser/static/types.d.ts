@@ -1350,6 +1350,8 @@ type MetabrowserFilterControls = {
   activateMenuRow(row: HTMLElement): boolean;
   /** The File type menu's rows, built from a tally. */
   typeMenu: MetabrowserTypeMenu;
+  /** Wire one control's element. It answers for every dropdown inside `root`, so bind no
+   * region that holds another bound control: it would take that control's open dropdown. */
   bind(root: Element, handlers: MetabrowserFilterHandlers): () => void;
   checkHtml(spec: {
     checked?: boolean;
@@ -1514,6 +1516,20 @@ type AgentLogRenderers = {
 type AgentsExports = {
   /** The agent-log renderers and their stylesheet, loaded on demand, once. */
   loadLogRenderers: () => Promise<AgentLogRenderers>;
+};
+
+/** A file card's disclosure, as the diff view's `fileDisclosure` makes one: its `bar`,
+ * empty, and its `toggle`, the button that holds the chevron, for the caller to name the
+ * file in and place first on the bar; and the card's state, open at first. The one shape
+ * of it: the diff view returns it, and a plugin that requires the diff plugin takes it
+ * from `guidePatchDrawer().disclose(section, folded, changed)`, whose optional `changed`
+ * hears each fold and opening, after it is drawn, with whether the card is now open; a
+ * page that keeps a reader's folds keeps them from it. */
+type DiffFileDisclosureShape = {
+  bar: HTMLElement;
+  toggle: HTMLButtonElement;
+  expanded(): boolean;
+  setExpanded(next: boolean): void;
 };
 
 /** What the diff plugin exports to a plugin that requires it. */
@@ -2032,6 +2048,12 @@ type MetabrowserSdk = {
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   /** The shared changed-files tree model, loaded once on demand (static/changed-files-tree.js). */
   loadChangedFilesTree(): Promise<MetabrowserChangedFilesTree>;
+  /**
+   * What a link in authored text opens (static/repository-links.js). Resolves to null off
+   * GitHub repository pages or when the load fails or exceeds its shared deadline.
+   * Later calls can use the resolver after it arrives (static/plugin-sdk-views.js).
+   */
+  loadRepositoryLinks(): Promise<MetabrowserRepositoryLinksRuntime | null>;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
   /**
@@ -3413,7 +3435,8 @@ declare global {
     close(how: MetabrowserMenuClose): void;
   };
   type MetabrowserDismissibleHandle = {
-    /** Call each time the menu opens: it closes any other menu and starts listening. */
+    /** Call each time the menu opens: it closes any other menu, whichever handle holds it,
+     * so one menu has one handle, and starts listening. */
     opened(): void;
     /** Call when the menu's own code closes it, so the listeners go at once. */
     closed(): void;
@@ -3905,6 +3928,70 @@ declare global {
     | { kind: "reload"; text: string; button: string }
     | { kind: "retry"; text: string; button: string };
 
+  type MetabrowserPublicRepositoryContext = MetabrowserRepositoryContext;
+  /** static/repository-links.js, the `repository-links` on-demand bundle. */
+  type MetabrowserRepositoryLinkTarget =
+    | Readonly<{
+        kind: "view";
+        target: MetabrowserNavigationTarget;
+        localization: "revision" | "working-tree";
+      }>
+    | Readonly<{
+        kind: "route";
+        href: string;
+        localization: "pull" | "commit" | "pulls";
+        /** The pull request or stack a `pull` route opens, for a page that opens it in place. */
+        pull: Readonly<{
+          number: number;
+          tab: "" | "files" | "checks" | "changes";
+          file: string;
+          stack: boolean;
+        }> | null;
+      }>
+    | Readonly<{ kind: "external"; url: string }>;
+
+  /** A pull request's text: the commit it describes and, when known, the files it changes. */
+  type MetabrowserRepositoryTextContext = {
+    head: string | null;
+    changes?: { number: number; stack: boolean; files: ReadonlySet<string> };
+  };
+
+  type MetabrowserRepositoryLinksRuntime = Readonly<{
+    /** The tooltip of a link that opens whatever revision is served. */
+    WORKING_TREE_TITLE: string;
+    localize(
+      url: string,
+      context: MetabrowserRepositoryContext | null | undefined,
+      options?: {
+        sourceKind?: "filesystem" | "git_revision";
+        text?: MetabrowserRepositoryTextContext;
+        pathRelative?: boolean;
+        views?: boolean;
+      },
+    ): MetabrowserRepositoryLinkTarget | null;
+    enhance(
+      root: ParentNode,
+      mb: Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">,
+      options?: {
+        text?: MetabrowserRepositoryTextContext;
+        open?: (route: Extract<MetabrowserRepositoryLinkTarget, { kind: "route" }>) => boolean;
+        views?: boolean;
+      },
+    ): number;
+    fileUrl(
+      context: MetabrowserRepositoryContext | null | undefined,
+      revision: string,
+      path: string[],
+      directory?: boolean,
+      suffix?: string,
+    ): string | null;
+    viewFileUrl(
+      context: MetabrowserRepositoryContext | null | undefined,
+      revision: string,
+      href: string,
+    ): string | null;
+  }>;
+
   /** What the freshness label says and offers; see static/source-freshness.js. */
   /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
   type MetabrowserInertHtmlRuntime = Readonly<{
@@ -3936,7 +4023,7 @@ declare global {
     outsideLink(href: string | null, base: string | null): string | null;
     remoteImage(src: string | null, base: string | null): string | null;
     kpressProse(nodes: Node[], doc: Document): HTMLElement;
-    sanitizeHtml(html: string, base: string | null): Node[];
+    sanitizeHtml(html: string, base: string | null, keepPathRelative?: boolean): Node[];
     sanitizeNodes(
       nodes: ArrayLike<Node>,
       doc: Pick<Document, "createElement" | "createTextNode">,
@@ -4988,17 +5075,7 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
-  /** A file card's disclosure, as the diff view's `fileDisclosure` makes one: its `bar`,
-   * empty, and its `toggle`, the button that holds the chevron, for the caller to name the
-   * file in and place first on the bar; and the card's state, open at first. The one shape
-   * of it: the diff view returns it, and a plugin that requires the diff plugin takes it
-   * from `guidePatchDrawer().disclose(section, folded)`. */
-  type DiffFileDisclosure = {
-    bar: HTMLElement;
-    toggle: HTMLButtonElement;
-    expanded(): boolean;
-    setExpanded(next: boolean): void;
-  };
+  type DiffFileDisclosure = DiffFileDisclosureShape;
   type MetabrowserPluginAssets = PluginAssets;
   type MetabrowserAgentLogRenderers = AgentLogRenderers;
   type MetabrowserGithubPullStateIcon = GithubExports["pullStateIcon"];
@@ -5130,6 +5207,7 @@ declare global {
     /** static/git-path.js, which only a pinned revision's shell loads. */
     MetabrowserGitPath?: Readonly<{
       display(path: string): string | null;
+      text(path: string): string | null;
       wire(path: string | Uint8Array): string | null;
     }>;
     /** static/pull-route.js, the `pull-route` on-demand bundle. */
@@ -5170,9 +5248,11 @@ declare global {
     }>;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
+    MetabrowserRepositoryLinks?: MetabrowserRepositoryLinksRuntime;
     /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
     MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{
+      hasChanged(): boolean;
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;
       /** What the page of a checkout's working tree names in place of a commit. */

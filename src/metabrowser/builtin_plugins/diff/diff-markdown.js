@@ -84,11 +84,35 @@ const MORE_TRIES = 5;
 // the reader has already scrolled past) is asked again after this, doubling to the cap.
 const RETRY_MS = 100;
 const RETRY_MAX_MS = 1600;
-// The app's --loading-state-delay: until it passes, a Markdown file on screen at mount
-// waits for its projection with Source hidden, so a ready answer paints its rendered view
-// first and never replaces Source in view. Past it, Source shows and the rendered view
-// replaces it.
+// The app's --loading-state-delay: how long `firstScreen` waits for the first screen's
+// files, for a page that asks for no other bound (*holdMs*).
 const LOADING_DELAY_MS = 50;
+// How long, from mount, a file near the first screen waits for its rendered view with
+// Source hidden, so that view is the first thing its body shows and never replaces Source
+// in view. At this ceiling a file still waiting shows Source and keeps it, as one whose
+// request failed does: Rendered stays to choose, its request goes on and its answer is
+// kept for that choice, and it is asked for no more by itself, which also ends a busy
+// server's retries. Nothing replaces Source afterwards, so nothing moves. A page, or a
+// file drawn alone, can set its own (*waitMs*).
+// Measured 2026-11-26 in headless Chrome on a pull request's Changes at a load average
+// near 25, from the file's mount to its rendered view drawn: 10 to 97 ms (median 17,
+// n 12); the page's own hold measured 29 to 170 ms (CHANGES_FIRST_SCREEN_MS in
+// github/pull-page.js). This is ten times the longest of those, so a rendering that is
+// merely slow still lands as the first thing shown, and short enough that files which
+// need nothing from the server are not kept out of sight behind one that will not come:
+// a Markdown child started cold has taken 0.57 to 6.8 s (markdown_projection_worker.py),
+// and past this such a file shows Source.
+export const RENDERED_WAIT_MS = 2000;
+// A file's section while it waits so. styles.css keeps everything after it in the diff
+// out of sight meanwhile, so its body arriving moves nothing a reader sees. Shown at the
+// wait's bound with Source, as it was, a file's card grew from 75 to 118 px when its
+// answer came and every card below moved 43 px, under a press already aimed (review A of
+// #872, A1; mb-ne65). Measured 2026-11-26 in headless Chrome on a pull request's Changes
+// with the rendered answer held 1.5 s: the page showed at 271 ms with the waiting file's
+// bar alone, 31 px, and the file after it out of sight; at 1,657 ms the body drew, 118 px,
+// and the file after it first showed, at the top it keeps.
+// tests/dom/diff-file-bar-chrome.mjs holds the rule under the real stylesheet.
+export const WAITING_CLASS = "diff-file-awaiting-rendered";
 // Why a file's rendered views are unavailable, by the `reason` the server's refusal names
 // (`MarkdownRefusal` in diff/markdown_projection.py, `StructuredRefusal` in
 // diff/structured_projection.py) and, where it names none, by its `status`. Each is the
@@ -323,35 +347,57 @@ const HEAD_LINK = /^\/view\/g1-[\w-]+(?:\/g1-[\w-]+)*(?:#[\w%.~-]+)?$/;
 
 /**
  * Which addresses in a rendered block open something of this comparison, as the server
- * spelled them, before the shared sanitizer, which would drop every local one:
+ * spelled them, before the shared sanitizer, which would drop every local one, and the
+ * address each keeps:
  *
  * - an image, on the comparison's own image route, which the server completes with the
  *   path of an image at the head in the Git path codec's wire form;
- * - a link to a file of the head, at its `/view/` address, only while *linksOpen* says
- *   the page shows that head. Anywhere else the address would open the same path at
- *   another commit, and a link that switched the pin first would let content choose what
- *   the server serves, so the link stays plain text.
+ * - a link to a file of the head, at its `/view/` address while *linksOpen* says the page
+ *   shows that head, and otherwise at *headFile*'s, that file at the head on github.com.
+ *   Anywhere else the `/view/` address would open the same path at another commit, and a
+ *   link that switched the pin first would let content choose what the server serves; a
+ *   link with neither stays plain text.
  *
- * Every other local address is dropped.
+ * Every other local address is dropped (null).
  * @param {string | undefined} imageRoute The comparison's `image_route`, when it names one.
  * @param {() => boolean} linksOpen
- * @returns {(value: string, image: boolean) => boolean}
+ * @param {(href: string, links?: MetabrowserRepositoryLinksRuntime | null) => string | null} [headFile] The head's file a `/view/` link
+ *   names, on github.com, or null.
+ * @returns {(value: string, image: boolean, links?: MetabrowserRepositoryLinksRuntime | null) => string | null}
  */
-export function markdownTargets(imageRoute, linksOpen) {
+export function markdownTargets(imageRoute, linksOpen, headFile = () => null) {
   const images =
     typeof imageRoute === "string" && imageRoute.startsWith("/") && imageRoute.includes("?")
       ? imageRoute
       : null;
-  return (value, image) => {
+  return (value, image, links) => {
     if (!image) {
-      return HEAD_LINK.test(value) && linksOpen();
+      if (!HEAD_LINK.test(value)) {
+        return null;
+      }
+      return linksOpen() ? value : headFile(value, links);
     }
     if (images === null || !value.startsWith(`${images}&`)) {
-      return false;
+      return null;
     }
     const query = new URLSearchParams(value.slice(images.length + 1));
-    return [...query.keys()].join() === "path" && GIT_PATH.test(query.get("path") ?? "");
+    return [...query.keys()].join() === "path" && GIT_PATH.test(query.get("path") ?? "")
+      ? value
+      : null;
   };
+}
+
+/**
+ * Give a link the shape of one that leaves the page, as the sanitizer gives every outside
+ * link: a new tab, with no opener or referrer.
+ *
+ * @param {Element} link
+ * @param {string} href An `http` or `https` address.
+ */
+function leaveFor(link, href) {
+  link.setAttribute("href", href);
+  link.setAttribute("target", "_blank");
+  link.setAttribute("rel", "noopener noreferrer");
 }
 
 // The files a projection is asked for before the reader opens Changes: the rendered files
@@ -403,13 +449,14 @@ function outsideLink(value) {
 
 /**
  * The shared sanitizer discards reserved application URLs. Preserve only
- * the addresses *isTarget* keeps (`markdownTargets`) through it and discard other local targets
- * before the detached nodes can load any resource.
+ * the addresses *isTarget* keeps (`markdownTargets`) through it, as it keeps them, and
+ * discard other local targets before the detached nodes can load any resource. A link kept
+ * as an outside address leaves the page as the sanitizer's own outside links do.
  * @param {string} html
  * @param {MetabrowserInertHtmlRuntime} inert
  * @param {HTMLTemplateElement} template
  * @param {Document} scratch
- * @param {(value: string, image: boolean) => boolean} isTarget
+ * @param {(value: string, image: boolean) => string | null} isTarget
  */
 export function sanitizeBlock(html, inert, template, scratch, isTarget) {
   template.innerHTML = html;
@@ -419,9 +466,10 @@ export function sanitizeBlock(html, inert, template, scratch, isTarget) {
     const image = element.tagName === "IMG";
     const attribute = image ? "src" : "href";
     const value = element.getAttribute(attribute) ?? "";
-    if (isTarget(value, image)) {
+    const kept = isTarget(value, image);
+    if (kept !== null) {
       const marker = `mb-markdown-target-${targets.size}`;
-      targets.set(marker, value);
+      targets.set(marker, kept);
       element.setAttribute(attribute, marker);
     } else if (
       // An image from the web keeps its address: the sanitizer loads it or replaces it
@@ -441,7 +489,9 @@ export function sanitizeBlock(html, inert, template, scratch, isTarget) {
     const image = element.tagName === "IMG";
     const attribute = image ? "src" : "href";
     const scoped = targets.get(element.getAttribute(attribute) ?? "");
-    if (scoped !== undefined) {
+    if (scoped !== undefined && !image && outsideLink(scoped)) {
+      leaveFor(element, scoped);
+    } else if (scoped !== undefined) {
       element.setAttribute(attribute, scoped);
     }
   }
@@ -1077,9 +1127,12 @@ export function kpressStylesheets(assets, base) {
  * projection slot. An answer that arrives after its file switched to Source or left
  * the lookahead is kept for when the reader comes back to it.
  *
- * *holdMs* is how long the first screen's files wait for Rendered with Source hidden,
- * `LOADING_DELAY_MS` unless a page says otherwise. `firstScreen` settles once none of
- * them waits: each is drawn, Rendered or Source, or the wait is over. *opens* is the view
+ * *holdMs* is how long `firstScreen` waits for the first screen's files,
+ * `LOADING_DELAY_MS` unless a page says otherwise. It settles once none of them waits,
+ * each drawn, Rendered or Source, or when the wait is over; a file still waiting then
+ * goes on waiting with Source hidden and nothing shown below it (`WAITING_CLASS`), until
+ * *waitMs* from mount, `RENDERED_WAIT_MS` unless the host says otherwise, when it shows
+ * Source and keeps it. *opens* is the view
  * a Markdown file opens in: `concise`, as Changes opens one, or `prefer-full`, Full for a
  * document small enough to draw whole and Concise otherwise, as Docs does; the server
  * decides which (`prefers_full` in diff/markdown_views.py). A page that keeps the
@@ -1088,22 +1141,25 @@ export function kpressStylesheets(assets, base) {
  *   load: (fileId: string, signal: AbortSignal, ask?: RenderedAsk) => Promise<unknown>,
  *   controls: NonNullable<MetabrowserPublicSdk["filterControls"]>,
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
+ *   prepareLinks?: () => Promise<void>,
  *   ensureStructured?: () => Promise<TreeHelpers | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
  *   mutate: (change: () => void) => void,
- *   isTarget?: (value: string, image: boolean) => boolean,
+ *   isTarget?: (value: string, image: boolean) => string | null,
+ *   enhanceLinks?: (prose: HTMLElement) => void,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void,
  *   opens?: "concise" | "prefer-full",
  *   holdMs?: number,
+ *   waitMs?: number,
  *   show?: "diff" | "current" | "full"
  * }} deps
  *   *show* is the comparison's initial presentation.
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
-  const isTarget = deps.isTarget ?? (() => false);
+  const isTarget = deps.isTarget ?? (() => null);
   const opens = deps.opens ?? "concise";
   let shown = deps.show ?? "diff";
   let explicitFull = false;
@@ -1117,8 +1173,14 @@ export function createMarkdownViews(deps) {
     ((handle) => clearTimeout(/** @type {ReturnType<typeof setTimeout>} */ (handle)));
   /** @type {Map<HTMLElement, FileView>} */
   const files = new Map();
-  /** @type {Map<string, FileView>} */
-  const controls = new Map();
+  // Each file's chooser is bound by itself, never the diff around them all: a bound
+  // container answers for every dropdown inside it, and the diff's toolbar holds the File
+  // type menu, which is its own control's (mb-yn7w). A binding is three listeners on the
+  // chooser and one on the window: 1,000 of them took 2.9 to 4.4 ms to bind, 4.3 to 5.4 ms
+  // to answer one window resize, and 3.2 to 3.7 ms to unbind (headless Chrome,
+  // 2026-11-26, load average near 50, five runs).
+  /** @type {Array<() => void>} */
+  const unbinds = [];
   /** @type {Set<FileView>} */
   const nearby = new Set();
   /** @type {Map<HTMLElement, {region: Region, chunk: Chunk}>} */
@@ -1142,8 +1204,9 @@ export function createMarkdownViews(deps) {
   let holdTimer;
   /** @type {unknown} */
   let retryTimer;
-  /** @type {(() => void) | undefined} */
-  let unbind;
+  /** @type {unknown} */
+  let waitTimer;
+  let waitUntil = 0;
   /** @type {(() => void) | undefined} */
   let unprint;
   let firstScreenSettled = false;
@@ -1190,9 +1253,13 @@ export function createMarkdownViews(deps) {
   function draw(file) {
     const wanted = wantsRendered(file);
     const rich = wanted && file.state === "ready";
-    const hidden = rich || (file.holding && wanted && file.expanded);
+    const waiting = !rich && file.holding && wanted && file.expanded;
+    const hidden = rich || waiting;
     const changed = file.source.hidden !== hidden;
     file.source.hidden = hidden;
+    // Nothing shows below a file whose first drawing is still to come (styles.css), so
+    // its body, whenever it arrives, moves nothing a reader can see or press.
+    file.section.classList.toggle(WAITING_CLASS, waiting);
     file.rendered.hidden = !file.expanded || !rich;
     const markdown = wanted && file.format === "markdown" && file.model !== null;
     const shortened = shown === "full" && file.drawn === "concise";
@@ -1311,18 +1378,28 @@ export function createMarkdownViews(deps) {
     );
   }
 
+  // The wait for the first screen is over, so a page that kept the comparison out of
+  // sight shows it. A file still waiting goes on waiting, its bar drawn and nothing shown
+  // below it: drawing its Source now and replacing it when its answer came moved every
+  // file under it (mb-ne65).
   function release() {
     holdTimer = undefined;
-    const held = Array.from(files.values()).filter((file) => file.holding);
-    if (held.length > 0) {
-      deps.mutate(() => {
-        for (const file of held) {
-          file.holding = false;
-          draw(file);
-        }
-      });
+    settleFirstScreen();
+    // The ceiling is counted from mount, and timed only while a file may still wait.
+    if (Array.from(files.values()).some((file) => file.holding && file.state === "idle")) {
+      waitTimer = later(endWaits, Math.max(0, waitUntil - now()));
     }
-    checkFirstScreen();
+  }
+
+  // The ceiling on a file's wait (`RENDERED_WAIT_MS`): each file still waiting shows
+  // Source and keeps it, as one whose request failed does.
+  function endWaits() {
+    waitTimer = undefined;
+    for (const file of files.values()) {
+      if (file.section.classList.contains(WAITING_CLASS)) {
+        fallBack(file, null);
+      }
+    }
   }
 
   function pump() {
@@ -1516,7 +1593,7 @@ export function createMarkdownViews(deps) {
       /** @type {MetabrowserInertHtmlRuntime | undefined} */
       let inert;
       try {
-        inert = await inertReady;
+        [inert] = await Promise.all([inertReady, deps.prepareLinks?.()]);
       } catch {
         inert = undefined;
       }
@@ -1543,7 +1620,11 @@ export function createMarkdownViews(deps) {
       settled = true;
       deps.mutate(() => {
         file.model = ready.model;
-        file.build = (html) => sanitizeBlock(html, inert, template, scratch, isTarget);
+        file.build = (html) => {
+          const prose = sanitizeBlock(html, inert, template, scratch, isTarget);
+          deps.enhanceLinks?.(prose);
+          return prose;
+        };
         file.emptied = emptiedModel(ready.model);
         if (view === "prefer-full") {
           file.automaticView = ready.view;
@@ -2203,7 +2284,21 @@ export function createMarkdownViews(deps) {
       end.append(progress, control);
       source.before(fallback, rendered);
       files.set(section, file);
-      controls.set(source.id, file);
+      unbinds.push(
+        deps.controls.bind(control, {
+          onChange(key, value, selectType) {
+            if (
+              key === source.id &&
+              selectType === "one" &&
+              (value === "rendered" || value === "source")
+            ) {
+              // The shared handler moves focus first. Repaint once that handler
+              // returns, so its focus recovery finds the chips it acted on.
+              queueMicrotask(() => select(file, /** @type {Mode} */ (value)));
+            }
+          },
+        }),
+      );
       drawControl(file);
       draw(file);
       return {
@@ -2215,28 +2310,15 @@ export function createMarkdownViews(deps) {
         },
       };
     },
-    /** @param {HTMLElement} container @param {Element | null} root */
-    observe(container, root) {
+    /** @param {Element | null} root */
+    observe(root) {
       observed = true;
       if (files.size === 0) {
         settleFirstScreen();
         return;
       }
       holdTimer = later(release, deps.holdMs ?? LOADING_DELAY_MS);
-      unbind = deps.controls.bind(container, {
-        onChange(key, value, selectType) {
-          const file = controls.get(key);
-          if (
-            file !== undefined &&
-            selectType === "one" &&
-            (value === "rendered" || value === "source")
-          ) {
-            // The shared handler moves focus first. Repaint once that handler
-            // returns so its focus recovery cannot find another file's chips.
-            queueMicrotask(() => select(file, /** @type {Mode} */ (value)));
-          }
-        },
-      });
+      waitUntil = now() + (deps.waitMs ?? RENDERED_WAIT_MS);
       observer = new IntersectionObserver(
         (entries) => {
           if (disposed) {
@@ -2356,15 +2438,23 @@ export function createMarkdownViews(deps) {
       pump();
     },
     /**
-     * Make every link to a file of the head plain text, in what is drawn: the page learned
-     * that the server serves another pin, at which those addresses open other files. What
-     * is drawn later asks *isTarget*, which says so itself.
+     * Point every link to a file of the head, in what is drawn, where *isTarget* now keeps
+     * it: the page learned that the server serves another pin, at which those addresses
+     * open other files, so each opens that file at the head on github.com, or is plain text
+     * where it cannot. What is drawn later asks *isTarget*, which says so itself.
      */
     closeHeadLinks() {
       for (const file of files.values()) {
         for (const link of file.rendered.querySelectorAll('a[href^="/view/"]')) {
-          link.removeAttribute("href");
+          const kept = isTarget(link.getAttribute("href") ?? "", false);
+          if (kept !== null && outsideLink(kept)) {
+            leaveFor(link, kept);
+          } else {
+            link.removeAttribute("href");
+          }
         }
+        // Marked as the outside links it now holds, as one drawn after the change is.
+        deps.enhanceLinks?.(file.rendered);
       }
     },
     dispose() {
@@ -2378,13 +2468,14 @@ export function createMarkdownViews(deps) {
       if (active !== null) {
         active.file.progress.classList.remove("mb-delayed-loading");
       }
-      for (const handle of [holdTimer, retryTimer]) {
+      for (const handle of [holdTimer, retryTimer, waitTimer]) {
         if (handle !== undefined) {
           cancel(handle);
         }
       }
-      unbind?.();
-      unbind = undefined;
+      for (const unbind of unbinds.splice(0)) {
+        unbind();
+      }
       for (const file of files.values()) {
         for (const controller of file.asking) {
           controller.abort();
@@ -2395,7 +2486,6 @@ export function createMarkdownViews(deps) {
       }
       spacers.clear();
       files.clear();
-      controls.clear();
       nearby.clear();
     },
   };

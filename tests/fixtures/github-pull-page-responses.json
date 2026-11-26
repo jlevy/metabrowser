@@ -963,7 +963,7 @@
       "fetched_at": "2026-09-17T12:06:00Z",
       "record_revision": "582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a",
       "part": "issue_comment/3341937856",
-      "html": "\n<div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/badge.png\" alt=\"build badge\"> <span class=\"mb-image-fallback\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p></div></div>"
+      "html": "\n<div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\" data-metabrowser-path-relative=\"\">the docs</a>.</p>\n\n<img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/badge.png\" alt=\"build badge\"> <span class=\"mb-image-fallback\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p></div></div>"
     }
   },
   "probed": {

@@ -69,6 +69,12 @@ page’s glue between them.
   Retry disposes the view a failed draw left and draws once more, and a Retry left
   behind by a tab switch, or pressed after the page is disposed, draws nothing.
   The page logs each failure once.
+- `note_links`: what a note’s links open, with `static/repository-links.js` run whole,
+  on a server whose tree is not the stack’s head.
+  The note is drawn before the comparison is read, so a path-relative link opens the
+  file on github.com at the head of the comparison drawn; once the read says what the
+  comparison changes, the same note’s link to a changed file opens it in the stack’s
+  Changes, in place, and a link to an unchanged file stays on github.com.
 
 ```console
 $ node tests/dom/github-stack-guide-mount-session.js
@@ -395,6 +401,20 @@ $ node tests/dom/github-stack-guide-mount-session.js
       {
         "summary": ""
       }
+    ]
+  },
+  "note_links": {
+    "before_the_read": [
+      "the draft → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/docs/draft.md",
+      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt"
+    ],
+    "once_read": [
+      "the draft → /stack/70/changes/docs/draft.md",
+      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt"
+    ],
+    "clicks": [
+      "the draft: {\"number\":70,\"tab\":\"changes\",\"file\":\"docs/draft.md\",\"stack\":true}",
+      "an unchanged file: the browser follows it"
     ]
   }
 }

@@ -901,7 +901,7 @@ async function headLinkChecks(mountDiffView, byName) {
   // request's Docs, a 17,177-line document's Source, drawn at load behind its rendered view,
   // was 72,000 nodes and 4 s of main-thread work (mb-qzgs). Here a 2,000-line Markdown file
   // drawn as Docs draws it, every fold open.
-  async function heldSourceChecks(viewFile) {
+  async function heldSourceChecks() {
     const book = structuredClone(byName.get("added-text-file"));
     const lines = Array.from({ length: 2000 }, (_, index) => ({
       op: "add",
@@ -921,7 +921,7 @@ async function headLinkChecks(mountDiffView, byName) {
      * sections as *near* or not: the diff's own hydration lookahead (240 px) apart from the
      * rendered views'.
      */
-    const mount = async ({ answer, holdMs, near }) => {
+    const mount = async ({ answer, holdMs, near, embedded = false }) => {
       const first = observers.length;
       const host = new MarkupElement("div");
       const handle = mountDiffView(
@@ -932,12 +932,12 @@ async function headLinkChecks(mountDiffView, byName) {
           ensureAsset: async () => {},
         },
         {
-          viewFile,
           markdownViews,
           renderMarkdown: answer,
           markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
           markdownHoldMs: holdMs,
           unfold: true,
+          ...(embedded ? { embedded } : {}),
         },
       );
       const hydration = observers
@@ -1013,18 +1013,56 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     answered.handle.dispose();
 
-    // Past the loading delay with no answer, the first screen shows Source, drawn there.
+    // Past the loading delay with no answer, a first-screen file still waits, its Source
+    // undrawn: shown then, it was replaced when the answer came, and the files below moved.
     const late = await mount({
       answer: pending,
       holdMs: 0,
       near: { hydration: true, rendered: true },
     });
     check(
-      "a first-screen file past its loading delay shows Source and draws it",
-      late.body.hidden !== true && late.rows() > 1000,
+      "a first-screen file past its loading delay still waits and draws none of its Source",
+      late.body.hidden === true && late.rows() === 0,
       JSON.stringify({ hidden: late.body.hidden, rows: late.rows() }),
     );
     late.handle.dispose();
+
+    // A file drawn alone in a host of its own, as a guided review's document is, has
+    // nothing after it in its diff to keep out of sight: past its host's hold with no
+    // answer it shows Source, and the answer that comes late replaces nothing, so the
+    // host's page does not move.
+    let lateAnswer = () => {};
+    const alone = await mount({
+      answer: () =>
+        new Promise((resolve) => {
+          lateAnswer = () => resolve(structuredClone(recording.answers.f1["view=prefer-full"]));
+        }),
+      holdMs: 0,
+      near: { hydration: true, rendered: true },
+      embedded: true,
+    });
+    const atHold = { hidden: alone.body.hidden, rows: alone.rows() };
+    lateAnswer();
+    await turns();
+    check(
+      "a file drawn alone shows Source at its host's hold, and a late answer replaces nothing",
+      atHold.hidden !== true && atHold.rows > 1000 && alone.body.hidden !== true,
+      JSON.stringify({ atHold, after: alone.body.hidden }),
+    );
+    alone.handle.dispose();
+
+    // The server refuses its rendered view: it shows Source, drawn there.
+    const refused = await mount({
+      answer: async () => ({ status: "refused" }),
+      holdMs: 60_000,
+      near: { hydration: true, rendered: true },
+    });
+    check(
+      "a first-screen file whose rendered view is refused shows Source and draws it",
+      refused.body.hidden !== true && refused.rows() > 1000,
+      JSON.stringify({ hidden: refused.body.hidden, rows: refused.rows() }),
+    );
+    refused.handle.dispose();
   }
 
   const markupText = (value) => {
@@ -1063,10 +1101,6 @@ async function headLinkChecks(mountDiffView, byName) {
   vm.runInNewContext(fs.readFileSync(inertPath, "utf8"), realm, { filename: inertPath });
   const markdownViews = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
-  );
-  const { createPinSwitch, createViewFileOpener } = await import(
-    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view-file.js"))
-      .href
   );
 
   const saved = {
@@ -1110,36 +1144,12 @@ async function headLinkChecks(mountDiffView, byName) {
     MetabrowserInertHtml: realm.window.MetabrowserInertHtml,
   };
   try {
-    const { head } = Object.fromEntries(
-      new URL(recording.image_route, ORIGIN).searchParams
-        .entries()
-        .map(([key, value]) => [key === "right" ? "head" : key, value]),
-    );
-    // The page's opener, on a pin at the head: the pin guard's news reaches the diff as the
-    // shell's listener on the window hands it on (builtin_plugins/diff/index.js).
+    // A stack's rendered changes omit View file controls. The view still watches
+    // the pin for links in Markdown, including after the first projection is drawn.
     let pinChanged = null;
-    const pinSwitch = createPinSwitch({
-      post: () => new Promise(() => {}),
-      onRestored: () => () => {},
-    });
-    const viewFile = (callbacks) =>
-      createViewFileOpener(
-        {
-          kind: "pin",
-          pin: head,
-          branch: "refs/pull/7/head",
-          href: (address) => (typeof address === "string" ? `/view/${address}` : null),
-          navigate() {},
-          onPinChanged(listener) {
-            pinChanged = listener;
-            return () => {
-              pinChanged = null;
-            };
-          },
-          pinSwitch,
-        },
-        callbacks,
-      );
+    let headOpen = true;
+    const fallback =
+      "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md";
     const requested = [];
     const container = new MarkupElement("div");
     const handle = mountDiffView(
@@ -1150,13 +1160,22 @@ async function headLinkChecks(mountDiffView, byName) {
         ensureAsset: async () => {},
       },
       {
-        viewFile,
+        onPinChanged(listener) {
+          pinChanged = listener;
+          return () => {
+            pinChanged = null;
+          };
+        },
         markdownViews,
         renderMarkdown: async (fileId) => {
           requested.push(fileId);
           return structuredClone(recording.answers.f1["view=concise"]);
         },
-        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+        markdownTargets: markdownViews.markdownTargets(
+          recording.image_route,
+          () => headOpen,
+          (href, links) => links?.viewFileUrl(null, "b".repeat(40), href) ?? null,
+        ),
         markdownHoldMs: 0,
       },
     );
@@ -1197,11 +1216,14 @@ async function headLinkChecks(mountDiffView, byName) {
       JSON.stringify({ requested, hrefs: drawn().map((link) => link.getAttribute("href")) }),
     );
     check("the page heard no pin change yet", typeof pinChanged === "function");
+    // The first file already rendered when the optional resolver became available.
+    global.window.MetabrowserRepositoryLinks = { viewFileUrl: () => fallback };
+    headOpen = false;
     pinChanged?.();
     check(
-      "a pin another tab changed makes each drawn link to a file of the head plain text",
+      "a stale diff with a late resolver updates links without View file controls",
       toHead.length === 1 &&
-        toHead.every((link) => link.getAttribute("href") === null && drawn().includes(link)),
+        toHead.every((link) => link.getAttribute("href") === fallback && drawn().includes(link)),
       JSON.stringify(drawn().map((link) => link.getAttribute("href"))),
     );
     handle.dispose();
@@ -1232,7 +1254,6 @@ async function headLinkChecks(mountDiffView, byName) {
         ensureAsset: async () => {},
       },
       {
-        viewFile,
         markdownViews,
         renderMarkdown: async (fileId) => {
           requested.push(fileId);
@@ -1269,7 +1290,7 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     unreadHandle.dispose();
 
-    await heldSourceChecks(viewFile);
+    await heldSourceChecks();
   } finally {
     global.document = saved.document;
     global.window = saved.window;

@@ -16,6 +16,16 @@ context, and the record in it is the same list. The phases are:
 ``encode``
     Turning the answer into bytes: JSON serialization, and gzip compression
     (:class:`TimedGZipMiddleware`).
+``queue``
+    Waiting for a slot another request holds, as a pull request's rendered diff waits
+    for its one projection.
+``start``
+    Waiting for a worker process to start, as a page's rendered-diff prefetch waits for
+    the Markdown child.
+``admit``
+    Deciding whether a pull request's snapshot is one the server still answers for, as
+    every request that names a snapshot does first: for a stack's, reading the stack's
+    current pair of commits, or the retained one the request names.
 
 A phase opened inside another one adds nothing, so a ``git`` call inside a ``read`` is
 not counted twice. Phases that run side by side, as ``asyncio.gather`` runs them, are

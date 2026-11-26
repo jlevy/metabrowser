@@ -15,6 +15,7 @@ env:
   METABROWSER_STATE_DIR: "/tmp/metabrowser-doctor-golden-never-created/state"
   METABROWSER_EVENT_LOG: "1"
   METABROWSER_CACHE_RESERVE_MB: "0"
+  SOFTSCHEMA_PURE_YAML: "1"
 patterns:
   FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
   FAKE_GIT: '[^\s"]+/fixtures/doctor/git'
@@ -81,6 +82,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
+  SoftSchema YAML parser: pure
   installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
@@ -188,6 +190,10 @@ $ metab --doctor --json
         {
           "name": "python",
           "value": "[PYTHON]"
+        },
+        {
+          "name": "SoftSchema YAML parser",
+          "value": "pure"
         },
         {
           "name": "installed",
@@ -316,6 +322,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
+  SoftSchema YAML parser: pure
   installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
@@ -441,6 +448,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
+  SoftSchema YAML parser: pure
   installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
@@ -561,6 +569,10 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
         {
           "name": "python",
           "value": "[PYTHON]"
+        },
+        {
+          "name": "SoftSchema YAML parser",
+          "value": "pure"
         },
         {
           "name": "installed",

@@ -78,6 +78,7 @@ import {
   attachTabKeys,
   authorLabel,
   CHANGES_FIRST_SCREEN_MS,
+  changedPaths,
   changesDocuments,
   describeLabel,
   FAST_POLL_MS,
@@ -105,6 +106,7 @@ import {
   statusLine,
   summaryPlaceholders,
   textRefusalNote,
+  textRouteOpening,
   titleHeading,
 } from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
@@ -1656,6 +1658,10 @@ export function mountStackPage(container, ctx, mb) {
   /** The allowlist a guide's notes are inserted through, loaded with the first guide.
    * @type {Promise<MetabrowserInertHtmlRuntime | null> | null} */
   let inertReady = null;
+  /** What a note's links open (`linkNote`): `metabrowser.loadRepositoryLinks()`'s answer,
+   * asked with the allowlist, or null.
+   * @type {MetabrowserRepositoryLinksRuntime | null} */
+  let repositoryLinks = null;
   /** Whether the page is held out of sight as cold: null before the first paint.
    * @type {boolean | null} */
   let coldHeld = null;
@@ -1682,6 +1688,23 @@ export function mountStackPage(container, ctx, mb) {
   /** The comparison read once for the Diff summary and Changes, by its key.
    * @type {{key: string, read: Promise<unknown>} | null} */
   let comparisonRead = null;
+  /** The paths that read says the comparison changes, by its key (`changedPaths`): what a
+   * note's path-relative link to one of them opens, the stack's Changes at it.
+   * @type {{key: string, paths: ReadonlySet<string>} | null} */
+  let changedFiles = null;
+  /** Each note's prose the guide drew (`loadDrawProse`), by the comparison it was drawn for,
+   * which `relinkNotes` reads again; weak, so a note the guide lets go is not held here.
+   * @type {WeakMap<Element, StackComparison>} */
+  const noteProses = new WeakMap();
+  let noteViewsOpen = !window.MetabrowserSourcePinGuard?.hasChanged();
+  window.addEventListener?.(
+    "metabrowser:pin-changed",
+    () => {
+      noteViewsOpen = false;
+      relinkNotes();
+    },
+    { signal: listening.signal, once: true },
+  );
   /** The Diff summary: the comparison it is drawn for, the claim of its latest draw, its
    * mount, its file count for the size line, and whether its last draw failed. */
   let summary = {
@@ -2056,15 +2079,79 @@ export function mountStackPage(container, ctx, mb) {
   function readComparison(view, comparison) {
     if (comparisonRead?.key !== comparison.key) {
       const read = Promise.resolve(view.prefetch(diffComparison(comparison), listening.signal));
-      // A read that failed is not kept, so the next asks again.
-      read.catch(() => {
-        if (comparisonRead?.read === read) {
-          comparisonRead = null;
-        }
-      });
+      // A read that failed is not kept, so the next asks again. One that answered says what
+      // the comparison changes, which the notes drawn before it read their links with again.
+      read.then(
+        (raw) => {
+          const paths = changedPaths(raw);
+          if (!listening.signal.aborted && comparisonRead?.read === read && paths !== null) {
+            changedFiles = { key: comparison.key, paths };
+            relinkNotes();
+          }
+        },
+        () => {
+          if (comparisonRead?.read === read) {
+            comparisonRead = null;
+          }
+        },
+      );
       comparisonRead = { key: comparison.key, read };
     }
     return comparisonRead.read;
+  }
+
+  /**
+   * What a note of the guide drawn at *comparison* describes, for its links
+   * (static/repository-links.js): the comparison's head, the commit the guide reads, and the
+   * paths it changes once read, so a path-relative link to a changed file opens it in the
+   * stack's Changes.
+   *
+   * @param {StackComparison} comparison
+   * @returns {MetabrowserRepositoryTextContext}
+   */
+  function noteText(comparison) {
+    return changedFiles !== null && changedFiles.key === comparison.key
+      ? { head: comparison.right, changes: { number, stack: true, files: changedFiles.paths } }
+      : { head: comparison.right };
+  }
+
+  /**
+   * Make a note's links open what *text* says they open, in place for a pull request's or
+   * this stack's page, and mark each outside link as a description's is.
+   *
+   * @param {Element} prose
+   * @param {MetabrowserRepositoryTextContext} text
+   */
+  function linkNote(prose, text) {
+    repositoryLinks?.enhance(prose, mb, {
+      text,
+      views: noteViewsOpen,
+      open: (route) => {
+        const opening = textRouteOpening(route);
+        if (opening === null || listening.signal.aborted) {
+          return false;
+        }
+        open(opening);
+        return true;
+      },
+    });
+    for (const anchor of prose.querySelectorAll("a[href]")) {
+      mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor), {});
+    }
+  }
+
+  /**
+   * Read the drawn notes' links again once the paths their comparison changes are read, so a
+   * link to a changed file drawn before them becomes the stack's Changes in place, never at
+   * its click: one pass for each read, over the notes the page shows.
+   */
+  function relinkNotes() {
+    for (const prose of container.querySelectorAll(".kpress-prose")) {
+      const drawnAt = noteProses.get(prose);
+      if (drawnAt !== undefined && (!noteViewsOpen || drawnAt.key === changedFiles?.key)) {
+        linkNote(prose, noteText(drawnAt));
+      }
+    }
   }
 
   /**
@@ -2320,10 +2407,19 @@ export function mountStackPage(container, ctx, mb) {
     if (!owns()) {
       return null;
     }
-    inertReady ??= mb
-      .ensureAsset("inert-html")
-      .then(() => window.MetabrowserInertHtml ?? null)
-      .catch(() => null);
+    // The allowlist a note passes through, and what its links open (static/repository-links.js),
+    // without which they stay github.com links; a page with no repository identity asks for
+    // no resolver, which it would answer with none. A note is drawn once both have answered.
+    inertReady ??= Promise.all([
+      mb.ensureAsset("inert-html").then(() => window.MetabrowserInertHtml ?? null),
+      mb.repository ? mb.loadRepositoryLinks() : null,
+    ]).then(
+      ([inert, links]) => {
+        repositoryLinks = links;
+        return inert;
+      },
+      () => null,
+    );
     const prose = inertReady;
     const view = mountGuidedReview(host, null, subject, {
       open: (path) => open({ number, tab: "changes", file: path, stack: true }),
@@ -2385,7 +2481,8 @@ export function mountStackPage(container, ctx, mb) {
             return diff.mountRenderedFile(body, shown, path, {
               ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
               // Rendered waits with Source hidden for as long as the rendered route can
-              // take, so the step never shows Source first in its place.
+              // take; a document not drawn by then shows Source and keeps it, so the step
+              // never moves.
               markdownHoldMs: GUIDE_DOCUMENT_HOLD_MS,
             });
           },
@@ -2397,15 +2494,18 @@ export function mountStackPage(container, ctx, mb) {
           throw new Error("the inert HTML allowlist did not load");
         }
         // A note's links were made absolute against the member that carries the guide,
-        // whose page the step names; an outside link is marked as a description's is.
+        // whose page the step names. A link into the repository opens its page here, and a
+        // path-relative reference names the stack's head's file, the commit the guide reads:
+        // in the stack's Changes when the comparison changes it (`noteText`), and on
+        // github.com otherwise (static/repository-links.js); an outside link is marked as a
+        // description's is.
         return (html, base) => {
           const prose = inert.kpressProse(
-            inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/"),
+            inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/", true),
             document,
           );
-          for (const anchor of prose.querySelectorAll("a[href]")) {
-            mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor), {});
-          }
+          noteProses.set(prose, comparison);
+          linkNote(prose, noteText(comparison));
           return prose;
         };
       },

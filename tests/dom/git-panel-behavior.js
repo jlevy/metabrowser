@@ -142,6 +142,12 @@ class FakeElement {
   get firstElementChild() {
     return this.children[0] || null;
   }
+  get childNodes() {
+    return this.children;
+  }
+  get lastChild() {
+    return this.children.at(-1) ?? null;
+  }
 
   set textContent(value) {
     this._text = String(value);
@@ -334,6 +340,9 @@ class FakeElement {
   }
   matchesSelector(selector) {
     // Only the selector forms the panel actually uses.
+    if (/^[a-z][a-z0-9-]*$/i.test(selector)) {
+      return this.tagName === selector.toUpperCase();
+    }
     const classMatch = selector.match(/^\.([a-z0-9-]+)/i);
     if (classMatch && !this.classNames.has(classMatch[1])) {
       return false;
@@ -5674,6 +5683,7 @@ async function run() {
       body: { error: "unknown revision", code: "commit_not_found" },
     };
     const SHA_MISSING = "2".repeat(40);
+    const SHA_SHALLOW = "b2".repeat(20);
     const SHA_BROKEN = "3".repeat(40);
     const SHA_UNFETCHED = "4".repeat(40);
     const SHA_LEFT = "5".repeat(40);
@@ -5700,6 +5710,49 @@ async function run() {
       null,
     );
     assertEqual("missing commit: state on the element", previewNode.dataset.state, "not_found");
+    assertEqual("missing commit: no hosted repository", previewNode.querySelector("a"), null);
+
+    const hosted = {
+      host: "github.com",
+      owner: "example",
+      name: "docs",
+      revision: SHA_A,
+      branch: "main",
+      served_prefix: "",
+    };
+    sandbox.metabrowser.repository = hosted;
+    responses.set(`/api/git/commit/${SHA_SHALLOW}`, notFound);
+    await internals.selectCommit(SHA_SHALLOW);
+    await tick();
+    const outside = previewNode.querySelector("a");
+    assertEqual(
+      "missing commit: fallback names the exact commit on GitHub",
+      outside?.getAttribute("href"),
+      `https://github.com/example/docs/commit/${SHA_SHALLOW}`,
+    );
+    assertEqual("missing commit: fallback is labeled", outside?.textContent, "View on GitHub");
+    assertEqual(
+      "missing commit: fallback opens in a new tab",
+      outside?.getAttribute("target"),
+      "_blank",
+    );
+    assertEqual(
+      "missing commit: fallback isolates the opened page",
+      outside?.getAttribute("rel"),
+      "noopener noreferrer",
+    );
+
+    assertEqual(
+      "missing commit: fallback has the external link mark",
+      outside?.querySelector(".external-link-icon")?.getAttribute("data-external-kind"),
+      "github",
+    );
+
+    sandbox.metabrowser.repository = { ...hosted, name: ".." };
+    await internals.selectCommit(SHA_MISSING);
+    await tick();
+    assertEqual("missing commit: invalid repository name", previewNode.querySelector("a"), null);
+    sandbox.metabrowser.repository = hosted;
 
     // A request that failed is still a load failure, not a missing commit.
     responses.set(`/api/git/commit/${SHA_BROKEN}`, {
@@ -5838,6 +5891,11 @@ async function run() {
     );
     const retry = previewNode.querySelector(".git-commit-missing-retry");
     assertTrue("unfetched commit: offers the fetch again", retry !== null);
+    assertEqual(
+      "unfetched commit: the outbound link and Retry coexist",
+      previewNode.querySelector("a")?.getAttribute("href"),
+      `https://github.com/example/docs/commit/${SHA_UNFETCHED}`,
+    );
 
     // Retry is the reader's click; this time the fetch brings the commit and it opens.
     retry.dispatch("click");
@@ -5929,6 +5987,7 @@ async function run() {
     await tick();
     assertContains("left commit: the newer preview stays", previewHtml, "the reader moved on");
     freshnessController = null;
+    delete sandbox.metabrowser.repository;
   }
 
   // ── Kept comparisons ───────────────────────────────────────

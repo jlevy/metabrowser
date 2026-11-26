@@ -264,19 +264,24 @@ def test_session_replays_the_recording() -> None:
     transcript = run_session("diff-markdown-session.js", "all")
     assert transcript["links"]["route"] == read_recording(_RECORDING)["image_route"]
     # The plugin's rule (`headLinksOpen` in builtin_plugins/diff/index.js): a link to a file
-    # of the head opens only on a page that shows the head, until it hears another pin is
-    # served (A2 of review A on #511).
+    # of the head opens here only on a page that shows the head, until it hears another pin
+    # is served (A2 of review A on #511); anywhere else it opens that file at the head on
+    # github.com (`headFile`), once the link resolver has loaded, which spells that address,
+    # and is plain text before then.
+    on_github = f"https://github.com/octo/demo/blob/{'b' * 40}/docs/setup.md"
     assert transcript["links"]["pages"] == {
-        "pinned at the comparison's head": True,
-        "pinned at the merge base": False,
-        "beside a checkout at the head, which has no pin": False,
-        "pinned at the comparison's head, after another tab changed the pin": False,
+        "pinned at the comparison's head": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+        "pinned at the merge base before the resolver arrives": None,
+        "pinned at the merge base after the resolver arrives": on_github,
+        "beside a checkout at the head, which has no pin": on_github,
+        "pinned at the comparison's head, after another tab changed the pin": on_github,
     }
     steps = {step["step"]: step for step in transcript["steps"]}
     first = steps["an answer within the loading delay paints Rendered first"]["files"]
     assert first["f1 docs/guide.md"]["shows"] == "rendered"
-    after = steps["past the loading delay a waiting file shows Source"]["files"]
-    assert after["f2 docs/renamed.md"]["shows"] == "source"
+    # A file still waiting past the delay goes on showing nothing: Source shown then was
+    # replaced when the answer came, which moved every file below it (mb-ne65).
+    assert steps["past the loading delay a waiting file still waits, Source hidden"]["files"] == {}
     # Every file of a rendered format keeps its chooser, and a file its rendered views
     # cannot show says why (mb-rm40): the session itself fails on a chooser that is gone.
     mounted = steps[

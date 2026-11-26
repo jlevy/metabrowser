@@ -72,6 +72,10 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [SoftSchema collection tables](specs/active/plan-2026-11-26-softschema-collection-tables.md):
+  a draft for opening a folder of SoftSchema records as linked tables, one per contract,
+  from a cached collection index that a SoftSchema collection API builds and a
+  background worker keeps current, so one bad record costs a row, never the table
 - [Lean language support](specs/active/plan-2026-11-25-lean-language-support.md): Lean
   as a code family with GitHub’s color and a tested port of the official Lean 4 grammar,
   and the [Adding a Language](../adding-a-language.md) recipe and the `mb-*` skills that
@@ -228,39 +232,61 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [Tables over folders of SoftSchema records](research/research-2026-11-26-softschema-collection-tables.md):
+  the SoftSchema format, how real knowledge bases lay out records and schemas, measured
+  costs of reading and validating thousands of records, and which parts of Paraverse’s
+  browser Metabrowser already has
+
+- [Paraverse and Metabrowser tables](research/research-2026-11-26-paraverse-table-design.md):
+  live view comparison and shared table, relationship, and record design
+
 - [Drawing dense, deep treemaps in the browser](research/research-2026-11-22-dense-treemap-rendering.md):
   how desktop disk-usage tools and web libraries draw treemaps down to single files, and
   measured canvas, DOM, and hit-testing costs in Chrome and WKWebView
+
 - [Operational visibility into Claude Code and Codex](research/research-2026-11-19-agent-home-visibility.md):
   every file format under `~/.claude` and `~/.codex`, what Metabrowser shows of them
   today, and a proposed agents plugin built on the public plugin contract
+
 - [Why CI takes twenty minutes](research/research-2026-11-16-ci-speed.md): where a CI
   run’s minutes go by job, step, and test, what flakes cost, and the options for the
   fast CI plan
+
 - [What eager startup JavaScript costs](research/research-2026-11-12-eager-startup-script-cost.md):
   measured cost of the scripts a folder page loads before `DOMContentLoaded`
+
 - [Loading plugins from any source](research/research-2026-11-12-plugin-sources.md): how
   a system-installed Metabrowser could use plugins from directories, environments, and
   packages without being reinstalled, with a 2026-11-26 addendum on confining a child
   process and on what identifies a clone
+
 - [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md):
   the CLI-first and app-first install paths
+
 - [Apparent UI performance for the native app](research/research-2026-11-11-ui-apparent-performance.md):
   what makes the app feel instant, and the evidence behind the stable-layout plan
+
 - [Native app server topology, lifecycle, and agent handoff](research/research-2026-11-10-native-app-server-topology.md):
   one server per folder, warm switching, and handing pages to agents
+
 - [Native macOS app: shells, uv runtimes, and CLI layering](research/research-2026-11-08-macos-app-packaging.md):
   the AppKit shell over `metab` and how it finds a runtime
+
 - [Git status and dirty working-tree browsing](research/research-2026-08-26-git-status-and-dirty-working-trees.md):
   input to the Git status plan
+
 - [fdu and Metabrowser inventory-engine alignment](research/research-2026-08-23-fdu-metabrowser-inventory-engine.md):
   the provider contract the fdu engine will implement
+
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md):
   input to the Mermaid plan
+
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md):
   link dialects and resolution rules, input to the navigation extensions plan
+
 - [Fuzzy file ranking](research/research-2026-07-31-fuzzy-file-ranking.md): the Quick
   Search matcher’s ranking contract and measurements
+
 - [Browser contributor toolchain and distribution](research/research-2026-07-18-browser-contributor-toolchain.md):
   when to evaluate TypeScript, Vite, and Vitest for the raw-source browser build
 

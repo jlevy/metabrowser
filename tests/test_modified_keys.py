@@ -86,7 +86,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         Listener(
             "Escape closing the menu opened last, every menu's",
             "!(key.defaultPrevented || key.altKey || key.ctrlKey || key.metaKey)",
-            via=("onEscape",),
+            via=("onKey",),
             checks=("tests/dom/menu-dismissal-session.js", _SESSION),
         ),
     ),

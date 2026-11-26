@@ -392,9 +392,17 @@ Changed words are marked by a bounded word diff.
   ([What a Pin Serves](arch-source-sessions-and-pins.md#what-a-pin-serves)); a
   projection that finds such a render holding the child runs in a thread instead, and
   one waiting for the child goes before every waiting render.
-- **Paint:** a file on screen waits for its projection for the app’s loading-state delay
-  with Source hidden; past it, Source paints first and the rendered view replaces it
-  when it arrives. Conversation prefetches the projections of the first screen’s files.
+- **Paint:** a file near the first screen waits for its projection with Source hidden,
+  so its rendered view is the first thing its body shows, and nothing after it in the
+  diff shows meanwhile (`WAITING_CLASS` in `diff/diff-markdown.js`): its body takes a
+  height only its answer knows, so whatever followed it would move when the answer came.
+  A page that keeps the diff out of sight for its first screen shows it at a bound
+  (`holdMs`), with any file still waiting drawn so.
+  The wait ends at a ceiling from mount, `RENDERED_WAIT_MS`, or the host’s hold for a
+  file drawn alone (`waitMs`): a file still waiting shows Source and keeps it, its
+  request goes on and its answer is kept for the reader’s choice of Rendered, and it is
+  asked for no more by itself, which bounds a busy server’s retries.
+  Conversation prefetches the projections of the first screen’s files.
   The diff draws a file’s Source rows only while they show (`onSource`), so Source
   hidden behind the rendered view is never drawn.
 

@@ -574,11 +574,14 @@ A note is Markdown, rendered as the description is: code spans, emphasis, links,
 lists render, and raw HTML is cut to a safe subset.
 As in the description, a single line break joins two lines into one paragraph, so leave
 a blank line between paragraphs; a list needs no blank line before it, only its own
-lines. Write a link as a full URL: a relative one resolves against the pull request’s
-page. A note says what to check and why; the description says what the change is, so do
-not repeat it. When the description or a note warns of a doubt, a risk, or a check still
-running, make the warning short, give at most one simple remedy, and leave out internals
-such as commit IDs, commit lists, and merge-base or rebase mechanics.
+lines. In a note, which GitHub shows as code inside the guide’s block, write a link to a
+file as its path from the repository’s root, such as `docs/plan.md`, which Metabrowser
+opens at the pull request’s head; write any other link, and every link in the
+description, which GitHub renders, as a full URL. A note says what to check and why; the
+description says what the change is, so do not repeat it.
+When the description or a note warns of a doubt, a risk, or a check still running, make
+the warning short, give at most one simple remedy, and leave out internals such as
+commit IDs, commit lists, and merge-base or rebase mechanics.
 
 ### Write the Block
 
