@@ -96,6 +96,22 @@ guard, record the refusal before moving on.
 For a worked record that separates preparation from later reads, see
 [exp-104](experiments/exp-104-history-startup.md).
 
+### GitHub and origin transport
+
+Read the [GitHub request report](../../docs/realtime-debugging.md#github-requests) for
+the server and time window that handled the trial.
+Use its provider call durations, queue time, response status, duplicate calls, and
+reported budget charges together.
+Keep those separate from Git subprocess time and the browser’s useful-paint clock.
+An authenticated quota snapshot describes the account and can include other callers.
+
+[Exp-112](experiments/exp-112-selected-provider-handoff.md) tests a provider-slot
+handoff with an exact ASGI response.
+[Exp-113](experiments/exp-113-origin-fetch-order.md) and
+[exp-114](experiments/exp-114-origin-negotiation-hints.md) compare Git transport in
+isolated stores. Verify the origin ref digest and the intended diff before using timing
+or storage differences to decide a round.
+
 ### Exporting the Ledger
 
 ```shell
