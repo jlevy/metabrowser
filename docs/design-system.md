@@ -3752,6 +3752,88 @@ selector’s rows, in the shell, draw the same icon through the plugin’s expor
 `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
 4.5:1 contrast on both grounds, because a badge sets its word in that color.
 
+### A Pull Request’s Readiness
+
+An open pull request’s readiness says whether it can merge and, when it cannot, what
+stands in its way. The server decides it, its verdict, its tone, and its label
+(`readiness` in `builtin_plugins/github/pull_readiness.py`), so every surface that shows
+it and `metab` say the same.
+A closed or merged pull request has no readiness, since its state is the answer, and
+draws no mark.
+
+The browser draws it with one vocabulary, `VERDICT_GLYPHS` in
+`builtin_plugins/github/pull-readiness.js`, a glyph for each verdict and nothing more:
+
+| Verdict | Glyph |
+| --- | --- |
+| `ready` | Lucide `circle-check` |
+| `ready_for_review` | Lucide `circle-check` |
+| `conflicts` | Lucide `triangle-alert` |
+| `checks_failing` | Lucide `circle-x` |
+| `changes_requested` | Lucide `file-diff` |
+| `blocked` | Lucide `ban` |
+| `queue_failing` | Lucide `list-ordered` |
+| `queued` | Lucide `list-ordered` |
+| `checks_pending` | Lucide `clock` |
+| `review_required` | Lucide `eye` |
+| `behind` | Lucide `arrow-up-to-line` |
+| `checking` | Lucide `circle-dashed` |
+
+Two verdicts share a glyph only where they mean one thing, and the label says which:
+`circle-check` that nothing blocks the pull request, Ready to merge or, on a draft,
+Ready for review, and `list-ordered` that it is in the merge queue
+([Icon Catalog](design-system-icons.md#git-and-github-objects)). The label and the tone
+come with each readiness, so the browser holds no label of its own and never infers a
+color from a verdict.
+`tests/test_github_pull_readiness_js.py` holds the vocabulary’s verdicts to the server’s
+`Verdict`, and `test_a_plugins_readiness_verdicts_draw_the_plugins_glyphs` holds this
+table to the vocabulary.
+
+The module draws it in two forms:
+
+- **The glyph**, `readinessIcon`, at the app’s one glyph size.
+  It is named by default, by the label, for a row where nothing else says the verdict,
+  as a state icon is; beside text that says the label it is hidden (`named: false`).
+- **The badge**, `readinessBadge`: the label in the outlined form of the state’s badge,
+  `file-header-badge github-pull-badge`, so a state and a readiness side by side read as
+  one vocabulary.
+
+Each carries `data-verdict`, for what reads the page, and `data-tone`, which alone sets
+its color.
+
+The tone is the worst status among the readiness’s requirements (`STATUS_TONES` in
+`pull_readiness.py`), and each tone takes one ink, the same for the glyph and the badge:
+
+| Tone | Ink |
+| --- | --- |
+| `success` | `--status-success-text`, the shell’s |
+| `attention` | `--github-pull-attention`, the plugin’s |
+| `danger` | `--status-error-text`, the shell’s |
+
+- **Success and danger** are the shell’s status inks, which carry GitHub’s green and
+  red, so a readiness and a check read in one color.
+  The lifecycle’s `--github-pull-open` and `--github-pull-closed` stay the lifecycle’s,
+  since a color has one meaning.
+- **Attention** has a token of its own.
+  The shell’s only warning ink, `--status-warning-text`, is orange and reserved for a
+  degraded or partial result
+  ([Empty and Failed Loads](#empty-and-failed-loads-in-the-navigation-column)), and
+  GitHub shows what waits, a pending check or a queued pull request, in yellow.
+  `--github-pull-attention` is Primer’s `fgColor-attention` in light, with its hue held
+  in dark; its comment in the plugin’s `styles.css` says where each value comes from.
+- **No verdict is neutral**: GitHub shows every unknown in yellow, so `checking` is
+  attention.
+
+`test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn` holds that no
+rule colors a readiness by its verdict, that the stylesheet’s inks are this table’s,
+that attention’s hue is outside the warning ink’s family, and that each ink reads at
+4.5:1 on `--bg` and `--sidebar-bg` in both themes.
+`test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the attention
+token’s hue across the themes.
+
+Color is never the only signal: the glyph says what stands in the way, and the label,
+the badge’s text or the glyph’s accessible name, says the verdict.
+
 ### Pull Request Numbers
 
 A pull request’s number, “#455”, is bold wherever it names the pull request, at the

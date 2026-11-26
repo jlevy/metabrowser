@@ -1121,6 +1121,50 @@
   height: 1em;
 }
 
+/* ── A pull request's readiness ──────────────────────────────────
+   One vocabulary for the page's header, its Checks tab, and a Pulls row: docs/design-system.md,
+   "A Pull Request’s Readiness". The server gives each verdict its tone (pull_readiness.py), and
+   the tone alone sets the color, never the verdict (pull-readiness.js). Success and danger are
+   the shell's status inks, which carry GitHub's green and red. Attention has a token of its
+   own: the shell's warning ink is orange and reserved for a degraded result, and GitHub's
+   pending and queued are yellow. It is Primer's `fgColor-attention`: its light value
+   exactly, and in dark the lightness and chroma of Primer's dark value, which sits at hue
+   80, held at the light hue, 75. It reads at 7.06:1 on the dark `--bg` and 6.18:1 on the
+   dark `--sidebar-bg`, and Primer's light value at 4.87:1 and 4.66:1 on the light ones
+   (2026-11-26). test_pull_state_colors_keep_their_hue_and_read_on_both_grounds holds the
+   hue and the contrast, and
+   test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn that the tone
+   alone colors a mark. */
+:root {
+  --github-pull-attention: oklch(55.4% 0.117 75);
+}
+[data-theme="dark"] {
+  --github-pull-attention: oklch(72% 0.14 75);
+}
+.github-pull-badge.github-pull-readiness[data-tone="success"],
+.github-pull-readiness-icon[data-tone="success"] {
+  color: var(--status-success-text);
+}
+.github-pull-badge.github-pull-readiness[data-tone="attention"],
+.github-pull-readiness-icon[data-tone="attention"] {
+  color: var(--github-pull-attention);
+}
+.github-pull-badge.github-pull-readiness[data-tone="danger"],
+.github-pull-readiness-icon[data-tone="danger"] {
+  color: var(--status-error-text);
+}
+/* The glyph at the app's one size. Where it sits is its surface's. */
+.github-pull-readiness-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+.github-pull-readiness-icon svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+
 /* ── The Pulls tab ───────────────────────────────────────────────
    docs/design-system.md, "The Pulls Tab". Its controls, notices, and ages are the shell's
    primitives; what is here is their placement, and a row, which takes the row contract. */
