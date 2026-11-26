@@ -1,0 +1,25 @@
+created_at: 2026-11-26T05:12:22.140Z
+ops:
+  - bead_id: is-01m8ahev7t0174z3a2vhhnpw81
+    external_id: 6f903eec-ab37-494d-8aa0-dde216250a32
+    kind: update_issue
+    patch:
+      hold: null
+      resolution: completed
+      slot: done
+      status: closed
+  - bead_id: is-01m8ahev7t0174z3a2vhhnpw81
+    block: |-
+      ⟦tbd⟧
+      `mb-h7f9` · epic · closed · P2
+      Spec: [plan-2026-11-25-lean-language-support.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-25-lean-language-support.md)
+      Children: 17 (1 ready)
+      Bead: `tbd show mb-h7f9`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 6f903eec-ab37-494d-8aa0-dde216250a32
+    kind: splice_description
+provider: linear
+run_id: 01m8b49qvvx70ta7cj7ahmy5f2
+type: in
