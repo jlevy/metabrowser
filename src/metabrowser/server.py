@@ -6098,11 +6098,13 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
         lifespan_checkout_store(app),
         lifespan_checkout(),
     ):
-        history_preparation = (
-            asyncio.create_task(prepare_initial_history(), name="metabrowser-history-prepare")
-            if getattr(app.state, "prepare_initial_history", False)
-            else None
-        )
+        history_preparation = None
+        if getattr(app.state, "prepare_initial_history", False):
+            # The in-process CLI also uses this application, after the serve has ended.
+            app.state.prepare_initial_history = False
+            history_preparation = asyncio.create_task(
+                prepare_initial_history(), name="metabrowser-history-prepare"
+            )
         try:
             if not get_capabilities().active_content:
                 # Every document an untrusted session serves renders in the Markdown child,

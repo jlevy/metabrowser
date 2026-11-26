@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -96,8 +97,10 @@ def test_one_walk_pages_are_contiguous_and_replayable(tmp_path: Path) -> None:
             assert "--skip" not in session.command_args
             assert session.command_args[-1] == "--stdin"
             assert not set(session.scope.arguments) & set(session.command_args)
-            spool_path = session.spool_path
-            assert spool_path is not None and spool_path.is_file()
+            spool = session._spool
+            assert spool is not None and not spool.closed
+            if os.name == "posix":
+                assert os.fstat(spool.fileno()).st_nlink == 0
 
             second = await registry.read_page(
                 root,
@@ -144,7 +147,7 @@ def test_one_walk_pages_are_contiguous_and_replayable(tmp_path: Path) -> None:
         finally:
             await registry.close_all()
 
-        assert not spool_path.exists()
+        assert spool.closed
 
     asyncio.run(scenario())
 
@@ -316,7 +319,7 @@ def test_parser_budget_expires_the_session(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
-def test_storage_exhaustion_deletes_the_private_spool(tmp_path: Path) -> None:
+def test_storage_exhaustion_closes_the_private_spool(tmp_path: Path) -> None:
     root = _history(tmp_path / "history", commits=4)
 
     async def scenario() -> None:
@@ -329,8 +332,8 @@ def test_storage_exhaustion_deletes_the_private_spool(tmp_path: Path) -> None:
             storage_max_bytes=8,
             clock=lambda: 0.0,
         )
-        spool_path = session.spool_path
-        assert spool_path is not None
+        spool = session._spool
+        assert spool is not None
         cursor = HistoryCursor(
             session_id=session.id,
             page=0,
@@ -341,12 +344,12 @@ def test_storage_exhaustion_deletes_the_private_spool(tmp_path: Path) -> None:
         with pytest.raises(HistoryStorageError):
             await session.page(cursor)
         assert session.closed is True
-        assert not spool_path.exists()
+        assert spool.closed
 
     asyncio.run(scenario())
 
 
-def test_idle_reaping_deletes_the_spool_and_expires_its_cursor(tmp_path: Path) -> None:
+def test_idle_reaping_closes_the_spool_and_expires_its_cursor(tmp_path: Path) -> None:
     root = _history(tmp_path / "history", commits=8)
     now = 10.0
 
@@ -361,13 +364,13 @@ def test_idle_reaping_deletes_the_spool_and_expires_its_cursor(tmp_path: Path) -
             assert first["cursor"] is not None
             decoded = decode_history_cursor(first["cursor"])
             assert decoded is not None
-            spool_path = registry._sessions[decoded.session_id].spool_path
-            assert spool_path is not None and spool_path.exists()
+            spool = registry._sessions[decoded.session_id]._spool
+            assert spool is not None and not spool.closed
 
             now = 16.0
             await registry.reap_expired()
             assert registry.session_count == 0
-            assert not spool_path.exists()
+            assert spool.closed
             with pytest.raises(ExpiredHistorySessionError):
                 await registry.read_page(
                     root,
@@ -381,7 +384,7 @@ def test_idle_reaping_deletes_the_spool_and_expires_its_cursor(tmp_path: Path) -
     asyncio.run(scenario())
 
 
-def test_missing_replay_spool_expires_the_session(tmp_path: Path) -> None:
+def test_unreadable_replay_spool_expires_the_session(tmp_path: Path) -> None:
     root = _history(tmp_path / "history", commits=8)
 
     async def scenario() -> None:
@@ -392,11 +395,12 @@ def test_missing_replay_spool_expires_the_session(tmp_path: Path) -> None:
             assert page_cursor is not None
             decoded = decode_history_cursor(page_cursor)
             assert decoded is not None
-            spool_path = registry._sessions[decoded.session_id].spool_path
-            assert spool_path is not None
-            spool_path.unlink()
-
-            with pytest.raises(HistoryStorageError, match="spool read failed"):
+            spool = registry._sessions[decoded.session_id]._spool
+            assert spool is not None
+            with (
+                mock.patch.object(spool, "read", side_effect=OSError("spool unreadable")),
+                pytest.raises(HistoryStorageError, match="spool read failed"),
+            ):
                 await registry.read_page(
                     root,
                     wants_all=True,

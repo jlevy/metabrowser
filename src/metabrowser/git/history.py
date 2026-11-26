@@ -25,16 +25,18 @@ import contextlib
 import hashlib
 import json
 import logging
+import os
 import re
 import secrets
 import struct
 import tempfile
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import BinaryIO, Literal
 
 from metabrowser.git.log import (
     LOG_FORMAT,
@@ -588,8 +590,9 @@ class HistorySession:
         self.storage_max_bytes = storage_max_bytes
         self._clock = clock
         self.last_access = clock()
-        self._temporary_directory: tempfile.TemporaryDirectory[str] | None = None
-        self._spool_path: Path | None = None
+        self._spool: BinaryIO | None = None
+        # A cancelled await can release the session lock before its worker finishes.
+        self._spool_io = threading.Lock()
         self._process: asyncio.subprocess.Process | None = None
         self._stderr_task: asyncio.Task[bytes] | None = None
         self._stderr = b""
@@ -625,11 +628,14 @@ class HistorySession:
             storage_max_bytes=storage_max_bytes,
             clock=clock,
         )
-        session._temporary_directory = await asyncio.to_thread(
-            tempfile.TemporaryDirectory,
-            prefix="metabrowser-git-history-",
-        )
-        session._spool_path = Path(session._temporary_directory.name) / "pages.bin"
+        try:
+            # Ctrl-C can exit without running lifespan cleanup. Keep no named spool that
+            # would outlive this server when the OS closes its file handles.
+            session._spool = await asyncio.to_thread(
+                tempfile.TemporaryFile, "w+b", prefix="metabrowser-git-history-"
+            )
+        except OSError as exc:
+            raise HistoryStorageError("could not create the git history replay spool") from exc
         args = (
             "log",
             # At a store target, what every log there says (GitLocation.diff_driver_args);
@@ -649,8 +655,7 @@ class HistorySession:
                 pipe_stdin=True,
             )
         except BaseException:
-            await asyncio.to_thread(session._temporary_directory.cleanup)
-            session._temporary_directory = None
+            await session._close_locked()
             raise
         session._stderr_task = asyncio.create_task(
             _drain_stderr(session._process.stderr),
@@ -686,10 +691,6 @@ class HistorySession:
     @property
     def closed(self) -> bool:
         return self._closed
-
-    @property
-    def spool_path(self) -> Path | None:
-        return self._spool_path
 
     async def page(self, cursor: HistoryCursor) -> GitLogPage:
         """Build or replay the exact page named by *cursor*."""
@@ -805,24 +806,24 @@ class HistorySession:
         if self._storage_bytes + frame_bytes > self.storage_max_bytes:
             await self._close_locked()
             raise HistoryStorageError("git history session storage budget exhausted")
-        spool_path = self._spool_path
-        if spool_path is None:
-            raise ExpiredHistorySessionError("history spool no longer exists")
+        spool = self._spool
+        if spool is None:
+            raise ExpiredHistorySessionError("history spool is closed")
 
-        def append() -> tuple[int, int]:
-            with spool_path.open("ab") as destination:
-                offset = destination.tell()
-                destination.write(_FRAME_HEADER.pack(len(payload)))
-                destination.write(payload)
-                destination.flush()
-            return offset, frame_bytes
+        def append() -> int:
+            with self._spool_io:
+                offset = spool.seek(0, os.SEEK_END)
+                spool.write(_FRAME_HEADER.pack(len(payload)))
+                spool.write(payload)
+                spool.flush()
+                return offset
 
         try:
-            offset, written = await asyncio.to_thread(append)
+            offset = await asyncio.to_thread(append)
         except OSError as exc:
             await self._close_locked()
             raise HistoryStorageError("git history replay spool write failed") from exc
-        self._storage_bytes += written
+        self._storage_bytes += frame_bytes
         return _Frame(
             offset=offset,
             length=len(payload),
@@ -832,20 +833,20 @@ class HistorySession:
         )
 
     async def _replay_frame(self, frame: _Frame) -> list[GitCommit]:
-        spool_path = self._spool_path
-        if spool_path is None:
-            raise ExpiredHistorySessionError("history spool no longer exists")
+        spool = self._spool
+        if spool is None:
+            raise ExpiredHistorySessionError("history spool is closed")
 
         def read() -> bytes:
-            with spool_path.open("rb") as source:
-                source.seek(frame.offset)
-                header = source.read(_FRAME_HEADER.size)
+            with self._spool_io:
+                spool.seek(frame.offset)
+                header = spool.read(_FRAME_HEADER.size)
                 if len(header) != _FRAME_HEADER.size:
                     raise HistoryParserError("git history frame header is truncated")
                 length = _FRAME_HEADER.unpack(header)[0]
                 if length != frame.length:
                     raise HistoryParserError("git history frame index is inconsistent")
-                payload = source.read(length)
+                payload = spool.read(length)
                 if len(payload) != length:
                     raise HistoryParserError("git history frame payload is truncated")
                 return payload
@@ -918,14 +919,17 @@ class HistorySession:
             with contextlib.suppress(asyncio.CancelledError):
                 self._stderr = await self._stderr_task
             self._stderr_task = None
-        temporary_directory = self._temporary_directory
-        self._temporary_directory = None
-        self._spool_path = None
+        spool, self._spool = self._spool, None
         self._frames.clear()
         self._buffer.clear()
         self._lookahead = None
-        if temporary_directory is not None:
-            await asyncio.to_thread(temporary_directory.cleanup)
+        if spool is not None:
+
+            def close_spool() -> None:
+                with self._spool_io:
+                    spool.close()
+
+            await asyncio.to_thread(close_spool)
 
 
 def _first_cursor(session: HistorySession) -> HistoryCursor:
@@ -1169,7 +1173,7 @@ class HistorySessionRegistry:
                 await self.reap_expired()
             except Exception:
                 # If a failing pass ended the loop, every remaining idle
-                # session would keep its git process and spool directory
+                # session would keep its git process and spool
                 # until process exit — the leak the idle TTL exists to
                 # prevent. Cancellation still propagates and stops the
                 # task.

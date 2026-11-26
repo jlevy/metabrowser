@@ -661,6 +661,11 @@ These samples leave the startup cost and browser acceptance unresolved.
 The registry tests cover reuse when the first reader overlaps preparation and refusal to
 start a walk with no reuse key.
 
+The review found that the measured candidate could leave a named spool after Ctrl-C. The
+follow-up keeps the spool anonymous and makes the serve-only flag single-use.
+A real server completed preparation and exited on SIGINT with zero named history spools.
+Process-tree memory and idle Git child retention remain startup guards.
+
 The [protocol](exp-104-protocol.txt) and [samples](exp-104-history-startup.jsonl) record
 the measurement and its limits.
 

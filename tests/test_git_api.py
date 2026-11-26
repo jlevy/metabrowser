@@ -907,6 +907,52 @@ def test_startup_skips_a_history_walk_with_no_reuse_key(
     asyncio.run(check())
 
 
+def test_history_prepare_intent_belongs_to_one_serving_lifespan(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser import server
+    from metabrowser.cli.asgi_client import InProcessClient
+
+    async def check() -> None:
+        prepared = asyncio.Event()
+
+        async def prepare() -> None:
+            prepared.set()
+
+        monkeypatch.setattr(server, "prepare_initial_history", prepare)
+        monkeypatch.setattr(server.app.state, "prepare_initial_history", True, raising=False)
+        async with InProcessClient(server.app):
+            await asyncio.wait_for(prepared.wait(), timeout=5)
+        prepared.clear()
+        async with InProcessClient(server.app) as client:
+            assert (await client.get("/api/git/repo")).status_code == 200
+        assert not prepared.is_set()
+
+    asyncio.run(check())
+
+
+def test_startup_history_tolerates_an_unavailable_spool(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import history as history_module
+
+    async def check() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        monkeypatch.setattr("metabrowser.git.routes.HISTORY_SESSIONS", registry)
+        with mock.patch.object(
+            history_module.tempfile, "TemporaryFile", side_effect=OSError("spool unavailable")
+        ):
+            try:
+                await prepare_initial_history()
+                assert registry.session_count == 0
+                response = await api_git_log(_FakeRequest())  # pyright: ignore[reportArgumentType]
+                assert response.status_code == 507
+            finally:
+                await registry.close_all()
+
+    asyncio.run(check())
+
+
 def test_route_log_clamps_an_out_of_range_limit(repo: Path) -> None:
     async def scenario() -> None:
         try:
