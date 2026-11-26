@@ -1093,13 +1093,14 @@ async function mountOn(page, body, tab, ageLabel, more = {}) {
     createElement: (tag) => new Element(tag),
     importNode: () => new Element("svg"),
   };
+  // *fetchFirst* answers a route it knows, or null for the 304 every other route gets;
+  // *setTimeout* is the page's timer, one that never fires unless a story says otherwise.
+  const { fetchFirst, setTimeout: schedule, ...sdk } = more;
   globalThis.window = {
     location: { pathname: `/pull/${body.number}${tab ? `/${tab}` : ""}` },
-    setTimeout: () => Symbol(),
+    setTimeout: schedule ?? (() => Symbol()),
     clearTimeout() {},
   };
-  // *fetchFirst* answers a route it knows, or null for the 304 every other route gets.
-  const { fetchFirst, ...sdk } = more;
   globalThis.fetch = async (route) =>
     (await fetchFirst?.(route)) ?? { status: 304, headers: { get: () => null } };
   const container = new Element("main");
@@ -1138,11 +1139,20 @@ async function mountOn(page, body, tab, ageLabel, more = {}) {
 // replaces the description's plain text, whatever the guide answered: here that the
 // description has no guide, as `/pull/10/guided` answers in Chrome
 // (tests/dom/github-guided-review-chrome.mjs). A render that replaced the plain text without
-// telling the wait left the guide out of sight for good.
-async function guideIntroduction(page) {
+// telling the wait left the guide out of sight for good. With *bounded*, the Markdown never
+// comes: past `GUIDE_INTRODUCTION_HOLD_MS` the guide shows all the same, the description
+// with its placeholder, so no render that never ends keeps the guide out of sight.
+async function guideIntroduction(page, bounded = false) {
+  const { GUIDE_INTRODUCTION_HOLD_MS } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guide-reads.js")).href
+  );
+  /** The page's timers that run out at the introduction's bound. */
+  const bounds = [];
   const body = structuredClone(recorded.current.body);
   body.record_revision = "c".repeat(64);
-  body.record.pull.body = "Counts to two.\n\n```guided-review\nsoftschema: {}\n```\n";
+  // A text of its own for each, since the page keeps the renders it has inserted.
+  const said = bounded ? "Counts to three." : "Counts to two.";
+  body.record.pull.body = `${said}\n\n\`\`\`guided-review\nsoftschema: {}\n\`\`\`\n`;
   body.record.issue_comments = [];
   body.record.reviews = [];
   body.record.review_comments = [];
@@ -1187,7 +1197,7 @@ async function guideIntroduction(page) {
             fetched_at: body.fetched_at,
             record_revision: body.record_revision,
             part: "body",
-            html: "Counts to two, rendered.",
+            html: `${said.slice(0, -1)}, rendered.`,
             assets: {},
           }),
         );
@@ -1196,6 +1206,12 @@ async function guideIntroduction(page) {
         return Promise.resolve(answer({ state: "absent", record_revision: body.record_revision }));
       }
       return null;
+    },
+    setTimeout(callback, delay) {
+      if (delay === GUIDE_INTRODUCTION_HOLD_MS) {
+        bounds.push(callback);
+      }
+      return Symbol();
     },
   });
   const guide = () =>
@@ -1215,15 +1231,28 @@ async function guideIntroduction(page) {
     const waiting = host?.children.some(
       (child) => typeof child !== "string" && child.classes.has("github-pull-guide-incoming"),
     );
-    return `the notice ${notice === undefined || notice.hidden ? "hidden" : `says ${notice.textContent}`}; the description ${introduction === undefined || introduction.hidden ? "hidden" : `shows ${introduction.querySelector(".github-pull-guide-introduction")?.textContent ?? ""}`}; a step waits out of sight ${waiting === true}`;
+    const text = introduction?.querySelector(".github-pull-guide-introduction");
+    // A placeholder keeps the source's box out of sight (`showPending`), so it says nothing.
+    const shows = text?.querySelector(".github-pull-plain-pending")
+      ? "its placeholder"
+      : (text?.textContent ?? "");
+    return `the notice ${notice === undefined || notice.hidden ? "hidden" : `says ${notice.textContent}`}; the description ${introduction === undefined || introduction.hidden ? "hidden" : `shows ${shows}`}; a step waits out of sight ${waiting === true}`;
   };
   const steps = [];
   await settle();
   steps.push(`asked: ${[...new Set(asked)].join(", ")}`);
   steps.push(`the guide answered, its description's Markdown not yet: ${shownState()}`);
-  releaseMarkdown();
-  await settle();
-  steps.push(`the Markdown is inserted: ${shownState()}`);
+  if (bounded) {
+    for (const bound of bounds.splice(0)) {
+      bound();
+    }
+    await settle();
+    steps.push(`its Markdown never comes, and the bound runs out: ${shownState()}`);
+  } else {
+    releaseMarkdown();
+    await settle();
+    steps.push(`the Markdown is inserted: ${shownState()}`);
+  }
   console.warn = consoleWarn;
   handle.dispose();
   steps.push(`warned: ${warned.length}`);
@@ -4295,6 +4324,7 @@ async function run() {
   const counterpartStepsTold = await counterpartSteps(page);
   const tabKeySteps = await tabKeys(page);
   const guideIntroductionSteps = await guideIntroduction(page);
+  const guideIntroductionBoundSteps = await guideIntroduction(page, true);
   const textRefusalSteps = await textRefusal();
   const textDiagramSteps = await textDiagrams();
   const switchUnavailableSteps = await switchUnavailable(page);
@@ -4330,6 +4360,7 @@ async function run() {
     counterpart: counterpartStepsTold,
     tabKeys: tabKeySteps,
     guideIntroduction: guideIntroductionSteps,
+    guideIntroductionBound: guideIntroductionBoundSteps,
     textRefusal: textRefusalSteps,
     textDiagrams: textDiagramSteps,
     switchUnavailable: switchUnavailableSteps,

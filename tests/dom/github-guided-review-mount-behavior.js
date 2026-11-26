@@ -804,7 +804,7 @@ async function run() {
     await settle();
     const answered = step(1, 1, 3);
     const head = "c".repeat(40);
-    wide.pending()[0].answer({
+    const past = {
       ...answered,
       state: "stale",
       stale: {
@@ -889,9 +889,19 @@ async function run() {
           target: { subject: "Fetched and dated", committed_at: "2026-08-29T14:40:00Z" },
         }),
       ],
-    });
+    };
+    wide.pending()[0].answer(past);
     await settle();
     view.press("Next step");
+    await settle();
+    // It cites pull requests this copy has not read, so its answer is not kept: the step is
+    // read again as the reader moves to it, and fills in once they are read (`retryable` in
+    // guide-reads.js).
+    const again = wide.pending();
+    steps.push(
+      `moving to it reads it again: ${again.length} read, ${view.shown() ?? "the overview"} shown meanwhile`,
+    );
+    again[0].answer(past);
     await settle();
     steps.push(`a step past its pull request: ${view.card()}; ${view.references()}`);
     const plain = {

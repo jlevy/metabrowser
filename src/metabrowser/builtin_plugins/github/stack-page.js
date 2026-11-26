@@ -1912,10 +1912,12 @@ export function mountStackPage(container, ctx, mb) {
       at: { left: comparison.left, right: comparison.right, key: comparison.key },
     };
     // The guide's first step is asked for now, beside the module's import, rather than
-    // after it; the guide reads the same request (guide-reads.js).
+    // after it; the guide reads the same request (guide-reads.js). A stack's guide is shown
+    // with no head moved past its record (`show`'s *moved*), since the stack's comparison
+    // says what moved, so it is read ahead the same way.
     const readAt = guideReadAt();
     if (readAt !== null) {
-      guideReads.prefetch(guideAsks(subject), 1, readAt);
+      guideReads.prefetch(guideAsks(subject), 1, readAt, false);
     }
     const host = h(
       "section",
@@ -2076,7 +2078,7 @@ export function mountStackPage(container, ctx, mb) {
         if (listening.signal.aborted) {
           return;
         }
-        guideReads.prefetch(guideAsks(subject), 1, revision);
+        guideReads.prefetch(guideAsks(subject), 1, revision, false);
         void import("./guided-review.js").catch(() => {});
       },
       { timeout: PREFETCH_IDLE_TIMEOUT_MS },

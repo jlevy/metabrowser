@@ -53,7 +53,12 @@ import {
   unavailableText,
 } from "./copy.js";
 import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
-import { GUIDE_DOCUMENT_HOLD_MS, guideAsks, guideReads } from "./guide-reads.js";
+import {
+  GUIDE_DOCUMENT_HOLD_MS,
+  GUIDE_INTRODUCTION_HOLD_MS,
+  guideAsks,
+  guideReads,
+} from "./guide-reads.js";
 import {
   createStackIndex,
   memberRoute,
@@ -8487,8 +8492,12 @@ export function mountPullPage(container, ctx, mb) {
     textsChanged();
   }
 
-  /** The record revision whose guide was read ahead, so it is read once (`readGuideAhead`). */
-  /** @type {string | null} */
+  /**
+   * The record revision whose guide was read ahead, and whether the head had moved past it,
+   * so it is read once for each (`readGuideAhead`).
+   *
+   * @type {string | null}
+   */
   let guideAhead = null;
   /** @type {(() => void) | null} */
   let cancelGuideAhead = null;
@@ -8503,16 +8512,18 @@ export function mountPullPage(container, ctx, mb) {
    */
   function readGuideAhead(model) {
     const revision = model.recordRevision;
+    const moved = model.newCommits !== null;
+    const ahead = JSON.stringify([revision, moved]);
     if (
       revision === null ||
       model.corePreview ||
-      guideAhead === revision ||
+      guideAhead === ahead ||
       model.tab === "guided" ||
       !GUIDED_FENCE.test(model.pull?.text ?? "")
     ) {
       return;
     }
-    guideAhead = revision;
+    guideAhead = ahead;
     cancelGuideAhead?.();
     cancelGuideAhead = mb.whenIdle(
       () => {
@@ -8520,7 +8531,7 @@ export function mountPullPage(container, ctx, mb) {
         if (listening.signal.aborted) {
           return;
         }
-        guideReads.prefetch(guideAsks({ kind: "pull", number }), 1, revision);
+        guideReads.prefetch(guideAsks({ kind: "pull", number }), 1, revision, moved);
         void import("./guided-review.js").catch(() => {});
       },
       { timeout: PREFETCH_IDLE_TIMEOUT_MS },
@@ -8551,6 +8562,25 @@ export function mountPullPage(container, ctx, mb) {
     });
   }
 
+  /**
+   * Resolve once the guide's introduction, *node*, shows as it will stay (`textsSettled`), or
+   * once `GUIDE_INTRODUCTION_HOLD_MS` has passed, so a render that never ends never keeps the
+   * guide out of sight: the overview then shows with the description's placeholder.
+   *
+   * @param {HTMLElement} node
+   * @returns {Promise<void>}
+   */
+  function introductionSettled(node) {
+    /** @type {number | undefined} */
+    let timer;
+    const bound = new Promise((resolve) => {
+      timer = window.setTimeout(resolve, GUIDE_INTRODUCTION_HOLD_MS);
+    });
+    return Promise.race([textsSettled(node), bound]).then(() => {
+      window.clearTimeout(timer);
+    });
+  }
+
   /** @param {PullModel} model */
   function paintGuided(model) {
     const moved = model.newCommits !== null;
@@ -8562,7 +8592,7 @@ export function mountPullPage(container, ctx, mb) {
     // The guide's first step is asked for now, beside the module's import, rather than
     // after it; the guide reads the same request (guide-reads.js).
     if (model.recordRevision !== null) {
-      guideReads.prefetch(guideAsks({ kind: "pull", number }), 1, model.recordRevision);
+      guideReads.prefetch(guideAsks({ kind: "pull", number }), 1, model.recordRevision, moved);
     }
     // The description shows with the guide's first answer, as its overview.
     const introduction = h("div", { hidden: "" }, []);
@@ -8676,8 +8706,9 @@ export function mountPullPage(container, ctx, mb) {
           // A refused note says why in a description's words.
           refusalNote: textRefusalNote,
           // The overview shows the description once its Markdown is drawn, or its source
-          // with the line that says why, never its source and then its rendering.
-          introductionReady: () => textsSettled(introduction),
+          // with the line that says why, never its source and then its rendering, waiting
+          // at most `GUIDE_INTRODUCTION_HOLD_MS`.
+          introductionReady: () => introductionSettled(introduction),
           // A step's neighbors are read when the page is idle, after what it shows.
           ahead: (run) => mb.whenIdle(run, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
         });
@@ -8685,6 +8716,9 @@ export function mountPullPage(container, ctx, mb) {
       },
       () => {
         if (guided === mount) {
+          // The description is kept out of sight for the guide's first answer, which never
+          // comes now, so it shows here, above the line that says why.
+          introduction.hidden = false;
           host.replaceChildren(
             introduction,
             h("p", { class: "github-pull-quiet", role: "status" }, [

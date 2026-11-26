@@ -24,6 +24,10 @@ Read through the document’s keep (`guide-reads.js`), as the page reads, a show
 neighbors are read ahead, a move to one shows it at once with no loading state, and a
 guide mounted again over the same keep moves through what it kept, reading nothing; a
 new revision shows none of what the old one kept.
+Under `head`, a head GitHub reports past the record, with the record unchanged, shows
+nothing the keep read before: the step is read again, and that answer is kept for the
+moved head. An answer that cites a pull request this copy has not read is never kept, so
+the step is read again, and kept once what it cites is read.
 
 ```console
 $ node tests/dom/github-guided-review-session.js
@@ -166,6 +170,27 @@ $ node tests/dom/github-guided-review-session.js
       "mounted again step 2: loading (read 1 2 3)",
       "mounted again step 2: step 2 (read 1 2 3 2)"
     ]
+  },
+  "head": {
+    "read": [
+      "1",
+      "1",
+      "1",
+      "1"
+    ],
+    "states": [
+      "before the push overview: loading (read )",
+      "before the push overview: ready step 1 (read 1)",
+      "after the push overview: ready step 1 (read 1)",
+      "after the push overview: loading (read 1)",
+      "after the push overview: stale step 1 (read 1 1)",
+      "mounted again overview: stale step 1 (read 1 1)",
+      "citing #9 overview: loading (read 1 1)",
+      "citing #9 overview: ready step 1, citing not_cached (read 1 1 1)",
+      "#9 opened overview: loading (read 1 1 1)",
+      "#9 opened overview: ready step 1, citing ready (read 1 1 1 1)",
+      "back again overview: ready step 1, citing ready (read 1 1 1 1)"
+    ]
   }
 }
 ? 0
@@ -201,15 +226,17 @@ header already says new commits were pushed.
 A guide whose head the local copy lacks marks no step and says some may not match; above
 an excerpt it says the file may have changed, and in a reference’s place that its lines
 may have. A guide whose cited files did not change says so in a quiet line.
-A step can cite past its pull request: another pull request is a row as the stack menu
-lists a member, its title, its place in a stack, bare in the guide’s own stack and
-naming any other, with its stack in its tip, its number, and its author, and goes to
-that pull request’s page, and one this copy has not read is named by its number; a file
-of another pull request is drawn under a bar that names that pull request, whose Open
-full diff opens the file in that pull request’s Changes, and one that is not loaded here
-says how to load it; a commit is a row of its short ID, its subject, and when it was
-committed, a plain link to the commit, one the store lacks says it is unavailable, and
-one this checkout cannot open says so before when it was committed, which ends the row.
+A step can cite past its pull request, and one that cites a pull request this copy has
+not read is read again when the reader moves to it, the overview shown meanwhile:
+another pull request is a row as the stack menu lists a member, its title, its place in
+a stack, bare in the guide’s own stack and naming any other, with its stack in its tip,
+its number, and its author, and goes to that pull request’s page, and one this copy has
+not read is named by its number; a file of another pull request is drawn under a bar
+that names that pull request, whose Open full diff opens the file in that pull request’s
+Changes, and one that is not loaded here says how to load it; a commit is a row of its
+short ID, its subject, and when it was committed, a plain link to the commit, one the
+store lacks says it is unavailable, and one this checkout cannot open says so before
+when it was committed, which ends the row.
 None of them is marked changed, even when the guide is stale and a path another pull
 request’s reference names changed.
 A guide whose merge base alone moved is out of date too: a step that cites a file
@@ -272,6 +299,7 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "a guide behind a newer head on GitHub: none; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "a guide whose head this copy lacks: warning: This guide was written for an earlier version of this pull request, so some steps may not match it. Its author can update the guide.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "and its step: Step 1; src/app.txt: This file may have changed since the guide was written. | gone.txt: This path is not in the comparison. | src/app.txt: These lines may have changed since the guide was written.",
+  "moving to it reads it again: 1 read, the overview shown meanwhile",
   "a step past its pull request: Guided Review | Step 1 of 3; row to /pull/8: Say <b>more</b> 1/3 · #8 · maintainer (tip: Stack #71, position 1 of 3) | row to /pull/50: Work item 50 300 2/2 · #50 · contributor (tip: Stack #300, position 2 of 2) | row to /pull/2000: Pull request #2000 #2000 | #9 src/app.txt: no note | #12 docs/plan.md: This pull request has not been loaded here. Open it to load its changes. | row to /commit/cccccccccccccccccccccccccccccccccccccccc: ccccccc Count <i>to</i> two committed now | row: eeeeeee This commit is unavailable. | row: fffffff Fetched with its pull request Not in this checkout. | row: ddddddd Fetched and dated Not in this checkout. committed now",
   "its pull request row, then its other pull request's Open full diff, open: #8 front page; #9 files src/app.txt",
   "a guide whose cited files did not change: quiet: This guide was written for an earlier version of this pull request, but the files it cites have not changed.",

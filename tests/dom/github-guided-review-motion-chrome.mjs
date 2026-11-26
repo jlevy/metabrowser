@@ -17,7 +17,8 @@
 // its page (tests/dom/github-stack-page-chrome.mjs): the box of each part of the guide, of the
 // step's card, its notes, its references, and its documents' files, and whether a loading
 // block or the arrows' waiting mark shows. A recording starts before the reader's press, or
-// with the document for a page load, and ends once nothing has changed for `SETTLE_MS`.
+// with the document for a page load, and ends once the guide waits for nothing, no step out
+// of sight and no loading state, and nothing has changed for `SETTLE_MS` since.
 // The guide is measured cold, with nothing read ahead: a page loaded on Guided Review, and a
 // step the guide has not read; and warm: Guided Review opened once the page has read its first
 // step ahead, a step next to the one shown, and the tab again after another, where a warm
@@ -44,9 +45,9 @@ const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - start
 // One page load, a guide's read, or a member's fetch through the fake gh; a loaded machine has
 // needed several seconds for one.
 const STEP_MS = 45000;
-// A recording ends once its frames have not changed for this long: past the longest wait a
-// step's parts have between them, a document's rendered layer, which a loaded machine has
-// taken over a second to answer.
+// A recording ends once the guide waits for nothing and its frames have not changed for this
+// long: past the longest wait a step's parts have between them once it shows, a document's
+// rendered layer, which a loaded machine has taken over a second to answer.
 const SETTLE_MS = 2500;
 // And at most this long after the press.
 const RECORD_MS = 30000;
@@ -230,7 +231,23 @@ try {
     `performance.getEntriesByType("resource").some((entry) => entry.name.includes("/api/plugin/github/guided-review?") && entry.name.includes(${JSON.stringify(query)}) && entry.responseEnd > 0)`;
   const loaded = `performance.getEntriesByType("resource").some((entry) => /\\/guided-review\\.js$/.test(new URL(entry.name).pathname) && entry.responseEnd > 0)`;
   const position = `document.querySelector(".github-pull-guided-review .github-pull-guide-position")?.textContent ?? ""`;
-  /** Wait until the recording has not changed for SETTLE_MS, then end it. */
+  /**
+   * Whether the guide still waits for what it shows: not mounted yet, its loading block shown,
+   * a step composed out of sight (`.github-pull-guide-incoming`, which the frames leave out
+   * and which may wait `GUIDE_DOCUMENT_HOLD_MS` for a document), or the arrows' waiting mark
+   * on. A quiet stretch of frames while it does says nothing about where the guide settles.
+   */
+  const WAITS = `(() => {
+    const host = document.querySelector(".github-pull-guided-review");
+    const mark = host?.querySelector(".github-pull-guide-waiting") ?? null;
+    return host === null ||
+      host.querySelector(":scope > .github-pull-guide-incoming, :scope > .mb-delayed-loading") !== null ||
+      (mark !== null && !mark.hidden);
+  })()`;
+  /**
+   * Wait until the guide waits for nothing and the recording has not changed for SETTLE_MS
+   * since, or RECORD_MS has passed, then end it.
+   */
   const settle = async (name, warm) => {
     const began = Date.now();
     let count = -1;
@@ -238,7 +255,7 @@ try {
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, 250));
       const frames = await evaluate("window.__guideMotion.count()");
-      quiet = frames === count ? quiet + 250 : 0;
+      quiet = frames === count && !(await evaluate(WAITS)) ? quiet + 250 : 0;
       count = frames;
       if (quiet >= SETTLE_MS || Date.now() - began >= RECORD_MS) {
         break;

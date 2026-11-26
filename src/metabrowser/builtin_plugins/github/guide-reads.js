@@ -20,7 +20,10 @@
 /** @typedef {import("./guided-review.js").Refusal} Refusal */
 /** @typedef {import("./guided-review.js").GuideSubject} GuideSubject */
 
-// UTF-16 code units of the answers' JSON kept across the document's guides, 4 MB at most.
+// How much of the answers' JSON the document keeps across its guides, counted as that JSON
+// text's characters (UTF-16 code units, the answer's `text.length` as read), which is what
+// the cost above was measured in. It is not the heap the parsed answers take, which this does
+// not measure.
 export const GUIDE_KEPT_CHARS = 2_000_000;
 
 // How long a document a step cites whole waits, out of sight, for its rendered layer before
@@ -33,17 +36,38 @@ export const GUIDE_KEPT_CHARS = 2_000_000;
 // rendered in 12 to 120 ms each once the child was warm, measured with the step reads above.
 export const GUIDE_DOCUMENT_HOLD_MS = 6_000;
 
+// How long Guided Review's overview waits, out of sight, for the description it shows above
+// the guide to show as it will stay (`introductionReady` in pull-page.js), before it shows with
+// the description's placeholder instead, which the render replaces when it comes. The
+// description renders in the same Markdown child, under the same deadline, as a document's
+// rendered layer, so this is that hold: by then its render has answered or been refused, and
+// a shorter one would show the overview and then move it as the render lands. It bounds a
+// render that never ends. Measured 2026-11-25 in eight cold page loads on the stand-in's pull
+// request 7's Guided Review (tests/dom/github-guided-review-motion-chrome.mjs's recordings):
+// the description's Markdown answered before the guide's first step every time, and the
+// overview showed 6 to 151 ms after that step's answer.
+export const GUIDE_INTRODUCTION_HOLD_MS = GUIDE_DOCUMENT_HOLD_MS;
+
+// What a step's later read can answer otherwise. A note's renderer that was busy or could not
+// start renders it next time (`_rendered_note` in guided_review.py). A reference to another
+// pull request this copy had not read (`not_cached`), or whose comparison it could not read
+// then (`comparison_unavailable`), is filled in once the reader opens that pull request, and
+// a file whose diff the diff source could not read then (`diff_unavailable`) once it can
+// (`_references` in guided_review.py).
+const RETRIED_NOTES = new Set(["renderer_busy", "renderer_unavailable"]);
+const RETRIED_REFERENCES = new Set(["not_cached", "comparison_unavailable", "diff_unavailable"]);
+
 /**
- * Whether *step*'s note, or its group's, was refused by a renderer that was busy or could
- * not start, which the step's next read can render (`_rendered_note` in guided_review.py):
- * such an answer is never kept, so its step is read again.
+ * Whether *step*'s answer holds something its next read can answer otherwise: a note, or
+ * its group's, that a busy renderer refused, or a reference not read yet. Such an answer is
+ * never kept, so its step is read again when the reader returns to it.
  *
  * @param {Step} step
  */
-export const renderRetried = (step) =>
+export const retryable = (step) =>
   [step.note_refusal, step.group_note_refusal].some(
-    (code) => code === "renderer_busy" || code === "renderer_unavailable",
-  );
+    (code) => code !== undefined && code !== null && RETRIED_NOTES.has(code),
+  ) || step.references.some((reference) => RETRIED_REFERENCES.has(reference.state));
 
 /**
  * The guided-review route's query for *subject*, without its step: a pull request's guide,
@@ -60,11 +84,14 @@ export function guideAsks(subject) {
 
 /**
  * The document's keep of step answers. An answer is kept by its query and step, for the
- * record revision it names, and only while it is a step whose note rendered or was refused
- * for good: a refusal, a failure, or a note a busy renderer refused is read again when asked
- * again. A read in flight is shared by everyone who asks for that step at the revision it was
- * asked at; one asked at another revision does not wait on it, since its answer may name the
- * revision the asker has moved past.
+ * record revision it names and for whether the head had moved past that record when it was
+ * asked for (*moved*): GitHub can report a newer head without a new record, and the server
+ * then answers the guide's steps as out of date, so an answer read before is not that step's
+ * any more. It is kept only while it holds nothing a later read can answer otherwise
+ * (`retryable`): a refusal, a failure, a note a busy renderer refused, or a reference not read
+ * yet is read again when asked again. A read in flight is shared by everyone who asks for
+ * that step at the revision, and the *moved*, it was asked at; one asked at another does not
+ * wait on it, since its answer may be for a pull request the asker has moved past.
  *
  * @param {{
  *   fetch?: (url: string, signal: AbortSignal) => Promise<{ok: boolean, text: () => Promise<string>}>,
@@ -77,11 +104,11 @@ export function createGuideReads(options = {}) {
     ((/** @type {string} */ url, /** @type {AbortSignal} */ signal) =>
       globalThis.fetch(url, { cache: "no-store", signal }));
   const maxChars = options.maxChars ?? GUIDE_KEPT_CHARS;
-  /** @type {Map<string, {answer: Step, chars: number}>} */
+  /** @type {Map<string, {answer: Step, moved: boolean, chars: number}>} */
   const kept = new Map();
   /**
-   * @type {Map<string, {revision: string | null, promise: Promise<Step | Refusal>,
-   *   controller: AbortController}>}
+   * @type {Map<string, {revision: string | null, moved: boolean,
+   *   promise: Promise<Step | Refusal>, controller: AbortController}>}
    */
   const flights = new Map();
   let chars = 0;
@@ -97,13 +124,13 @@ export function createGuideReads(options = {}) {
     }
   }
 
-  /** @param {string} key @param {Step} answer @param {number} size */
-  function keep(key, answer, size) {
+  /** @param {string} key @param {Step} answer @param {boolean} moved @param {number} size */
+  function keep(key, answer, moved, size) {
     drop(key);
     if (size > maxChars) {
       return;
     }
-    kept.set(key, { answer, chars: size });
+    kept.set(key, { answer, moved, chars: size });
     chars += size;
     for (const [oldest, entry] of kept) {
       if (chars <= maxChars) {
@@ -115,18 +142,20 @@ export function createGuideReads(options = {}) {
   }
 
   /**
-   * The kept answer for *step* of the guide *asks* names at *revision*, or undefined.
+   * The kept answer for *step* of the guide *asks* names at *revision*, asked for with the
+   * head *moved* past that record or not, or undefined.
    *
    * @param {string} asks @param {number} step @param {string | null} revision
+   * @param {boolean} moved
    * @returns {Step | undefined}
    */
-  function peek(asks, step, revision) {
+  function peek(asks, step, revision, moved) {
     const key = `${asks}&step=${step}`;
     const entry = kept.get(key);
     if (entry === undefined) {
       return undefined;
     }
-    if (entry.answer.record_revision !== revision) {
+    if (entry.answer.record_revision !== revision || entry.moved !== moved) {
       drop(key);
       return undefined;
     }
@@ -137,20 +166,22 @@ export function createGuideReads(options = {}) {
   }
 
   /**
-   * *step* of the guide *asks* names, as read for *revision*: kept, on its way, or read now.
-   * Rejects when the route answers with an error status or the read fails.
+   * *step* of the guide *asks* names, as read for *revision* with the head *moved* past it
+   * or not: kept, on its way, or read now. Rejects when the route answers with an error
+   * status or the read fails.
    *
    * @param {string} asks @param {number} step @param {string | null} revision
+   * @param {boolean} moved
    * @returns {Promise<Step | Refusal>}
    */
-  function read(asks, step, revision) {
-    const kept = peek(asks, step, revision);
+  function read(asks, step, revision, moved) {
+    const kept = peek(asks, step, revision, moved);
     if (kept !== undefined) {
       return Promise.resolve(kept);
     }
     const key = `${asks}&step=${step}`;
     const flight = flights.get(key);
-    if (flight !== undefined && flight.revision === revision) {
+    if (flight !== undefined && flight.revision === revision && flight.moved === moved) {
       return flight.promise;
     }
     const controller = new AbortController();
@@ -166,14 +197,14 @@ export function createGuideReads(options = {}) {
       if (
         asked === generation &&
         "step" in answer &&
-        !renderRetried(answer) &&
+        !retryable(answer) &&
         answer.record_revision === revision
       ) {
-        keep(key, answer, text.length);
+        keep(key, answer, moved, text.length);
       }
       return answer;
     })();
-    const entry = { revision, promise, controller };
+    const entry = { revision, moved, promise, controller };
     flights.set(key, entry);
     const done = () => {
       if (flights.get(key) === entry) {
@@ -192,9 +223,10 @@ export function createGuideReads(options = {}) {
      * reader's to meet when they ask for it.
      *
      * @param {string} asks @param {number} step @param {string | null} revision
+     * @param {boolean} moved
      */
-    prefetch(asks, step, revision) {
-      void read(asks, step, revision).catch(() => {});
+    prefetch(asks, step, revision, moved) {
+      void read(asks, step, revision, moved).catch(() => {});
     },
     /** Forget every answer, and end every read on its way. */
     clear() {

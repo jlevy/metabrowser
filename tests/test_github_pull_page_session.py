@@ -892,6 +892,18 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "false",
             "warned: 2",
         ],
+        # A description whose Markdown never comes keeps the guide out of sight only until
+        # the introduction's bound, `GUIDE_INTRODUCTION_HOLD_MS` (review of #859, M2): then
+        # the step shows with the description's placeholder.
+        "guideIntroductionBound": [
+            "asked: pull-files-summary, stacks, guided-review, pull-markdown, pull",
+            "the guide answered, its description's Markdown not yet: the notice hidden; "
+            "the description hidden; a step waits out of sight true",
+            "its Markdown never comes, and the bound runs out: the notice says This pull "
+            "request has no guide.; the description shows its placeholder; a step waits out "
+            "of sight false",
+            "warned: 2",
+        ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):
         # one notice right after its plain text, which a rebuilt text element keeps, a
         # later refusal replaces, and a render takes away.

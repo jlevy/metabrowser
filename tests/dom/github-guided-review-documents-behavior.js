@@ -394,6 +394,16 @@ async function harness() {
         marked() {
           return container.querySelector(".github-pull-guide-waiting")?.hidden === false;
         },
+        /** The arrows a reader can press, by label. */
+        pressable() {
+          const arrows = [...container.descendants()].filter(
+            (node) =>
+              node.tag === "button" &&
+              ["Previous step", "Next step"].includes(node.getAttribute("aria-label")) &&
+              node.disabled !== true,
+          );
+          return arrows.map((node) => node.getAttribute("aria-label")).join(" and ") || "none";
+        },
         /** Each reference of the step on screen, as it is drawn: not a step that waits. */
         drawn() {
           const shown = container
@@ -596,10 +606,12 @@ async function run() {
 
   // A step whose document's read is held shows only once the document is drawn: the
   // overview stays until then, and the step never shows with a document still to come.
+  // Meanwhile the arrows move on from the step the reader went to, as while a step is read,
+  // so Previous goes back to the overview.
   {
     world.hold.add("docs/held.md");
     const view = await opened(world, body, step(body, 1, [markdown("docs/held.md")]));
-    const held = `${view.drawn() || "nothing"}, a step waits out of sight ${view.incoming()}, the arrows' mark shows ${view.marked()}`;
+    const held = `${view.drawn() || "nothing"}, a step waits out of sight ${view.incoming()}, the arrows' mark shows ${view.marked()}, the arrows to press ${view.pressable()}`;
     world.release("docs/held.md");
     await settle();
     steps.push(

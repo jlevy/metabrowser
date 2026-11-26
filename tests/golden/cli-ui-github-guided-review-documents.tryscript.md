@@ -15,7 +15,8 @@ A range of the same file, a file the route answers with its hunks, and a file pa
 step’s budget draw as before.
 A step shows only once its documents are drawn: while a document’s read is on its way,
 the step waits out of sight, and the step shown before it stays, every view it drew with
-it, with the arrows’ delayed mark beside the step list until the step shows.
+it, with the arrows’ delayed mark beside the step list until the step shows, and the
+arrows move on from the step that waits, so Previous goes back from it.
 Moving on again before the read answers withdraws the waiting step, which aborts its
 read, whose late answer draws nothing, and the next step replaces the shown one, which
 disposes its views. A step read at another merge base or another head than the page’s
@@ -47,7 +48,7 @@ $ node tests/dom/github-guided-review-documents-behavior.js
   "step 2 waits for its document: a step waits out of sight true, the arrows' mark shows true; step 1's disposed: 0 of 2 documents, 0 of 2 patches",
   "on screen meanwhile: docs/guide.md: document | docs/guide.md: patch | src/app.py: patch | config/settings.yaml: document | notes.md: says This file's diff is too large to show in this step.",
   "step 3 before it answered: read aborted true; views drawn after 0; step 1's disposed: 2 of 2 documents, 2 of 2 patches; src/app.py: patch",
-  "a held document: while its read is held, the step shows nothing, a step waits out of sight true, the arrows' mark shows true; once drawn, docs/held.md: document, a step waits false, the arrows' mark shows false",
+  "a held document: while its read is held, the step shows nothing, a step waits out of sight true, the arrows' mark shows true, the arrows to press Previous step and Next step; once drawn, docs/held.md: document, a step waits false, the arrows' mark shows false",
   "a step read at another merge base: docs/guide.md: says This file's diff is unavailable.",
   "a step read at another head: docs/guide.md: says This file's diff is unavailable.",
   "a comparison with no rendered route: docs/guide.md: document, its rendered layer absent",

@@ -2,7 +2,7 @@
 // guide's first step with it (guide-reads.js), so Guided Review draws at once when opened.
 // A step is shown in one change, once everything its layout depends on is in hand.
 
-import { guideAsks, guideReads, renderRetried } from "./guide-reads.js";
+import { guideAsks, guideReads, retryable } from "./guide-reads.js";
 import {
   namedStackPosition,
   namedStackPositionNodes,
@@ -130,8 +130,10 @@ import { stackMemberRow } from "./stack-member-row.js";
  * draws itself; steps 1 to `step_count` are the guide's. The overview shows the answer
  * for step 1, whose step titles list the guide, so the first step the reader moves to is
  * already in hand. Answers with a step are kept for the record revision they were read for,
- * except one whose note's renderer was busy or could not start: that step is read again when
- * the reader returns to it, so its note renders once the renderer can, as a reload would.
+ * and for whether GitHub reported a head past it then, except one that holds what a later
+ * read can answer otherwise (`retryable` in guide-reads.js), such as a note a busy renderer
+ * refused or another pull request not read yet: that step is read again when the reader
+ * returns to it, so it fills in once it can, as a reload would.
  * A step whose read was refused or failed keeps the guide's steps, from the last answer that
  * had them, so the reader can still move, and is read again when the reader returns to it.
  * A refusal that names no revision, a stack's while it is pending or cannot be paired, is
@@ -153,15 +155,17 @@ import { stackMemberRow } from "./stack-member-row.js";
  * state between.
  *
  * @param {{
- *   read(step: number, signal: AbortSignal, revision: string): Promise<Step | Refusal>,
+ *   read(step: number, signal: AbortSignal, revision: string, moved: boolean):
+ *     Promise<Step | Refusal>,
  *   render(state: GuideState, at: number, steps: number): void,
- *   prefetch?(step: number, revision: string): void,
- *   peek?(step: number, revision: string): Step | undefined,
+ *   prefetch?(step: number, revision: string, moved: boolean): void,
+ *   peek?(step: number, revision: string, moved: boolean): Step | undefined,
  *   first?: 0 | 1,
- * }} deps *read* is told the record revision the guide expects. *render* is told the
- *   guide's step count, 0 while no answer has had a step. *peek* answers only a step at
- *   *revision* whose note rendered or was refused for good, as *read* keeps one. *first* is
- *   the first place, 0, the overview, unless it says 1.
+ * }} deps *read* is told the record revision the guide expects, and whether the head has
+ *   moved past it (`show`'s *moved*). *render* is told the guide's step count, 0 while no
+ *   answer has had a step. *peek* answers only a step read at *revision* with the same
+ *   *moved* that holds nothing a later read answers otherwise, as *read* keeps one. *first*
+ *   is the first place, 0, the overview, unless it says 1.
  */
 export function createGuideNavigation(deps) {
   const first = deps.first ?? 0;
@@ -185,13 +189,13 @@ export function createGuideNavigation(deps) {
    * Read ahead the steps a move from *at* reaches that this guide does not hold: those
    * next to the step whose answer *at* shows, the overview's being step 1's.
    *
-   * @param {number} at @param {string} expected
+   * @param {number} at @param {string} expected @param {boolean} moved
    */
-  function readAhead(at, expected) {
+  function readAhead(at, expected, moved) {
     const shown = Math.max(at, 1);
     for (const step of [shown + 1, shown - 1]) {
       if (step >= 1 && step <= count && !answers.has(step)) {
-        deps.prefetch?.(step, expected);
+        deps.prefetch?.(step, expected, moved);
       }
     }
   }
@@ -199,11 +203,12 @@ export function createGuideNavigation(deps) {
   /** @param {string} expected */
   async function load(expected) {
     pending?.abort();
+    const moved = headMoved;
     const at = selected;
     const asked = Math.max(at, 1);
     let kept = answers.get(asked);
     if (kept === undefined) {
-      const peeked = deps.peek?.(asked, expected);
+      const peeked = deps.peek?.(asked, expected, moved);
       if (peeked !== undefined && peeked.record_revision === expected) {
         answers.set(asked, peeked);
         count = peeked.step_count;
@@ -213,7 +218,7 @@ export function createGuideNavigation(deps) {
     if (kept !== undefined) {
       pending = null;
       deps.render(kept, at, count);
-      readAhead(at, expected);
+      readAhead(at, expected, moved);
       return;
     }
     const request = new AbortController();
@@ -223,13 +228,13 @@ export function createGuideNavigation(deps) {
     // read, so a read ahead that fails never stands for the step's.
     let shownStep = false;
     try {
-      let result = await deps.read(asked, request.signal, expected);
+      let result = await deps.read(asked, request.signal, expected, moved);
       if (request.signal.aborted) {
         return;
       }
       if (result.record_revision === expected && result.state === "step_not_found" && asked > 1) {
         selected = 1;
-        result = await deps.read(1, request.signal, expected);
+        result = await deps.read(1, request.signal, expected, moved);
       }
       if (request.signal.aborted) {
         return;
@@ -248,7 +253,7 @@ export function createGuideNavigation(deps) {
         return;
       }
       if ("step" in result) {
-        if (!renderRetried(result)) {
+        if (!retryable(result)) {
           answers.set(Math.max(selected, 1), result);
         }
         count = result.step_count;
@@ -265,7 +270,7 @@ export function createGuideNavigation(deps) {
       }
     }
     if (shownStep) {
-      readAhead(selected, expected);
+      readAhead(selected, expected, moved);
     }
   }
 
@@ -1447,11 +1452,12 @@ export function mountGuidedReview(host, introduction, subject, deps) {
    * Show *stage* now when nothing it waits for is out, and otherwise lay it out of sight, in
    * the guide's column (`.github-pull-guide-incoming`), so its documents draw at the width
    * they show at, and show it once they are in. Meanwhile the arrows' delayed mark says it
-   * is on its way, as it does while a step is read.
+   * is on its way, as it does while a step is read, and the arrows move on from the step at
+   * *at* of *steps*, as they do then, so a reader who presses again is not held back.
    *
-   * @param {Stage} stage
+   * @param {Stage} stage @param {number} at @param {number} steps
    */
-  function present(stage) {
+  function present(stage, at, steps) {
     withdraw();
     if (stage.waits.length === 0) {
       show(stage);
@@ -1460,6 +1466,8 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     incoming = stage;
     stage.detail.classList.add("github-pull-guide-incoming");
     host.append(stage.detail);
+    previous.disabled = at <= first;
+    next.disabled = at >= steps;
     waiting.hidden = false;
     void Promise.all(stage.waits.map((wait) => wait.catch(() => {}))).then(() => {
       if (incoming === stage) {
@@ -1470,10 +1478,10 @@ export function mountGuidedReview(host, introduction, subject, deps) {
 
   const navigation = createGuideNavigation({
     first,
-    async read(step, _signal, revision) {
+    async read(step, _signal, revision, moved) {
       // The document's read, shared with any read ahead of it; the navigation drops an
       // answer for a step the reader has left.
-      const result = await guideReads.read(asks, step, revision);
+      const result = await guideReads.read(asks, step, revision, moved);
       if (result.state === "stack_moved") {
         deps.moved?.();
       }
@@ -1496,13 +1504,13 @@ export function mountGuidedReview(host, introduction, subject, deps) {
       }
       return result;
     },
-    peek(step, revision) {
-      return stylesIn && drawersIn ? guideReads.peek(asks, step, revision) : undefined;
+    peek(step, revision, moved) {
+      return stylesIn && drawersIn ? guideReads.peek(asks, step, revision, moved) : undefined;
     },
-    prefetch(step, revision) {
+    prefetch(step, revision, moved) {
       const run = () => {
         reading.delete(cancel);
-        guideReads.prefetch(asks, step, revision);
+        guideReads.prefetch(asks, step, revision, moved);
       };
       const cancel = deps.ahead?.(run) ?? (() => {});
       reading.add(cancel);
@@ -1520,7 +1528,7 @@ export function mountGuidedReview(host, introduction, subject, deps) {
         waiting.hidden = false;
         return;
       }
-      present(compose(state, at, steps));
+      present(compose(state, at, steps), at, steps);
     },
   });
   previous.addEventListener("click", () => navigation.move(-1));
