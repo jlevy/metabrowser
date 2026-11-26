@@ -210,10 +210,14 @@ When a checkout lacks a linked commit object, the commit pane offers that commit
 GitHub.
 
 In rendered Markdown in Changes, Docs, and guided documents, a link to a file of the
-head opens it in place while the served pin is the head, as now; when it is not, or the
-pin changes, it becomes the external link to that file at the head instead of plain
-text. Its repository links are localized as everywhere else, and its external links get
-the external-link mark the other surfaces give them.
+head opens it in place while the served pin is the head: a plain click opens its
+`/view/` address through `mb.navigation.open` (`openHeadLinks` in `diff-markdown.js`,
+reading the click with the resolver’s `isPlainClick`), as the resolver’s own `/view/`
+targets beside it open, where it once loaded the page again; when the pin is not the
+head, or it changes, the link becomes the external link to that file at the head instead
+of plain text, and its click is the browser’s. Its repository links are localized as
+everywhere else, and its external links get the external-link mark the other surfaces
+give them.
 
 A repository link the resolver would open at a `/view/` address follows the same rule
 (`mb-e2lo`): a `blob/` or `tree/` link to the served branch or commit opens in place, as
@@ -236,7 +240,8 @@ from the link it kept, since its targets include folders and queries, which
 - An in-app link’s `href` is the address a plain click opens, so a new tab, a copied
   address, and the browser’s history open what the click opens.
 - A plain click opens an in-app page in place whenever the shell can show it, on every
-  surface: no route link loads the page again once the shell’s tabs have loaded.
+  surface: no link loads the page again once the shell can show its address
+  ([Phase 2](#phase-2-routes-in-place) lists when it cannot yet).
 - No link in authored text switches the served pin, starts a fetch, or posts anything.
 - `localize` is a pure function of the URL, the repository context, and the text
   context: one table of cases pins every surface.
@@ -273,8 +278,14 @@ request loaded the page again, which lost the shell’s state.
   (`openMainTab`, through the same `land`): the tab that holds it in front, its panel
   revealing the item, and the pane showing what the address names, the Commits panel
   selecting a commit as Back makes it select one.
-  It answers false for any other address, and before the shell tools have loaded, and
-  the browser follows the link.
+  The address already shown it opens again where it is, as `navigation.open` does: it
+  pushes no entry and lands nothing, so the page keeps its place, and the panel reveals
+  the item again, as Quick Search for the item shown does.
+  It answers false for an address the shell cannot show in place, or cannot show yet,
+  and the browser follows the link: any other address; any before the shell tools have
+  loaded; a pull request’s, a stack’s, or the list’s before `pull-route.js` has loaded,
+  or on a page with no Pulls tab; and a commit’s before Git discovery registers the
+  Commits tab.
 - [x] The SDK’s `metabrowser.navigation.openRoute(href)`, an additive method of the
   facade, so `PLUGIN_SDK_VERSION` stays; it is one eager line that asks the controller.
 - [x] `enhance` falls back to it for every route a page’s own `open` declines, so the
@@ -304,11 +315,19 @@ request loaded the page again, which lost the shell’s state.
   session, which draws without the diff’s view, clicks a link to a commit’s page, to the
   list, and to another pull request, plainly and with a modifier;
   `diff-view-behavior.js` does for the production diff view.
+  The diff Markdown session and `diff-view-behavior.js` also click a link to a file of
+  the head the server spelled, at the head and after the pin changes, the second at the
+  target the shell’s own `parse` reads its address as.
 - `tests/dom/nav-reveal-session.js`’s part `links` runs the SDK’s `openRoute` and the
   tab controller’s whole over the shell’s tabs: each address it opens, what each part of
   the shell is asked, and the addresses it leaves to the browser;
   `cli-ui-nav-reveal.tryscript.md` pins it, and parity row `navigation.route-open`
-  credits it.
+  credits it. It opens a stack’s page, the list, and a changed file twice each, and the
+  second open pushes nothing.
+- `tests/dom/nav-reveal-chrome.mjs` (step 16, run by `tests/test_nav_reveal_chrome.py`)
+  clicks a document’s links to a commit, a pull request, and the list in a real Chrome,
+  and waits for the tab, the row, the address, and the reading pane, claimed by its
+  owner and showing what the address names, with the page not loaded again.
 - `cli-github-guided-review.tryscript.md` keeps pinning the server’s render, which does
   not change; the browser side is the sessions above.
 - A real-browser check of a fixture checkout and the GitHub pull request fixture: the

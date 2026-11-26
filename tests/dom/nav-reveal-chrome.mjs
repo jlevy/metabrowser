@@ -819,9 +819,18 @@ try {
   await shot("commit");
 
   // 16. A document's links to a commit, a pull request, and the list open each in place
-  // (mb-0uzt): its tab comes to the front and its panel reveals it, and the page is not
-  // loaded again, so a mark set on its window before the click is still there after.
-  const routeLink = async (label, href, tab, row) => {
+  // (mb-0uzt): its tab comes to the front and its panel reveals it, the pane shows what the
+  // address names, claimed by its owner (`data-preview-owner`, app.js `claimPreview`), and
+  // the page is not loaded again, so a mark set on its window before the click is still
+  // there after.
+  /** In the page: whether the pane, claimed by *owner*, shows *selector*, saying *text*. */
+  const paneShows = (owner, selector, text = null) => {
+    const shown = `document.querySelector(${JSON.stringify(`#preview-pane[data-preview-owner="${owner}"] ${selector}`)})`;
+    return text === null
+      ? `${shown} !== null`
+      : `(${shown}?.textContent ?? "").includes(${JSON.stringify(text)})`;
+  };
+  const routeLink = async (label, href, tab, row, pane) => {
     await load(`${base}/view/docs/links.md`);
     const link = `document.querySelector('#preview-pane a[href=${JSON.stringify(href)}]')`;
     // Its click is the tab controller's once the shell tools and the Pulls tab's routes
@@ -839,6 +848,7 @@ try {
       `location.pathname === ${JSON.stringify(href)} && document.querySelector(".nav-tab-bar .tab-btn.active")?.dataset.tab === ${JSON.stringify(tab)}`,
       `${label}: the address and its tab`,
     );
+    await waitFor(pane, `${label}: the pane shows what the address names`);
     check(
       `${label}: opened in place`,
       (await evaluate("window.metabrowserStayed === true")) === true,
@@ -854,14 +864,31 @@ try {
       `document.querySelector('#preview-pane a[href^="/commit/"]').getAttribute("href")`,
     );
   })();
+  const headCommit = headLink.slice("/commit/".length);
   await routeLink(
     "a document's link to a commit",
     headLink,
     "git",
-    `#tab-git .git-graph-row[data-revision="${headLink.slice("/commit/".length)}"]`,
+    `#tab-git .git-graph-row[data-revision="${headCommit}"]`,
+    // The commit's own page, whose revision's copy button holds its full ID.
+    paneShows("git", `.git-commit-revision-copy[data-mb-copy-text="${headCommit}"]`),
   );
-  await routeLink("a document's link to a pull request", "/pull/8", "pulls", pullRow(8));
-  await routeLink("a document's link to the list", "/pulls", "pulls", null);
+  await routeLink(
+    "a document's link to a pull request",
+    "/pull/8",
+    "pulls",
+    pullRow(8),
+    // #8's page, under its title (tests/github_pull_fixture.py, `pull_bodies`).
+    paneShows("pull-request", ".github-pull-title", "Say more in the guide"),
+  );
+  await routeLink(
+    "a document's link to the list",
+    "/pulls",
+    "pulls",
+    null,
+    // The list is the Pulls tab's; the pane, which shows no pull request, says to choose one.
+    paneShows("pull-request", ".preview-empty", "Select a pull request."),
+  );
   await shot("route-links");
 
   check("no script error on the page", pageErrors.length === 0, pageErrors.join("\n"));

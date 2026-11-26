@@ -352,7 +352,8 @@ type MetabrowserNavigationApi = Readonly<{
   /**
    * Open an in-app page other than a file's in place, by the address a link carries: a
    * pull request's page and its tabs and changed files (`/pull/`), a stack's (`/stack/`),
-   * the list (`/pulls`), or a commit (`/commit/`). Answers whether the shell opened it:
+   * the list (`/pulls`), or a commit (`/commit/`); the address shown is opened again
+   * where it is, pushing no history entry. Answers whether the shell opened it:
    * false for any other address, one the shell cannot show yet, or before its tabs have
    * loaded, and the caller then lets the browser follow the link. The shell's tab
    * controller opens it (static/main-tabs.js, `openRoute`).
@@ -3994,6 +3995,8 @@ declare global {
       directory?: boolean,
       suffix?: string,
     ): string | null;
+    /** Whether a click is a plain primary one, which a link it made in-app opens in place. */
+    isPlainClick(event: Event): boolean;
     viewFileUrl(
       context: MetabrowserRepositoryContext | null | undefined,
       revision: string,

@@ -17,8 +17,9 @@
 // merge base, pinned on the pull request's branch at an earlier commit, and beside a
 // checkout, which has no pin), handing the diff, here the stand-in for diff-view.js, the
 // `markdownTargets` this session draws with and the `headLinksOpen` it reads a block's
-// github.com links with, through the production static/repository-links.js, as the diff
-// does. The pin guard's `metabrowser:pin-changed` is played on the window as
+// github.com links with, through the production static/repository-links.js, and opens its
+// links to files of the head with (`openHeadLinks`), as the diff does. The pin guard's
+// `metabrowser:pin-changed` is played on the window as
 // static/source-pin-guard.js sends it.
 // The comparison mounted is the conformance corpus's added Markdown file, which the plugin
 // validates; only the routes the session's own recording names decide anything here.
@@ -403,8 +404,9 @@ function repositoryAt(revision, branch = null) {
     served_prefix: "",
   };
 }
-// The page's navigation API, through which a link the resolver opens in place goes: the
-// address it spells for a `/view/` target, and what each plain click opened.
+// The page's navigation API, through which a link the page opens in place goes: the
+// address it spells for a `/view/` target, and what each plain click opened, a `/view/`
+// target or another in-app page's address, which the shell opens in place here.
 const opened = [];
 const navigation = {
   href: (target) =>
@@ -412,6 +414,10 @@ const navigation = {
   open(target) {
     opened.push(target);
     return Promise.resolve();
+  },
+  openRoute(href) {
+    opened.push(href);
+    return true;
   },
 };
 /** What the page knows of its source: a pin's page is a Git revision, a checkout's a folder. */
@@ -764,7 +770,7 @@ function press(link, modifiers) {
   }
   // An in-app link's `href` is what its plain click opens, so a new tab, a copied address,
   // and the browser's history open the same.
-  const address = navigation.href(went[0]);
+  const address = typeof went[0] === "string" ? went[0] : navigation.href(went[0]);
   assert(address === link.getAttribute("href"), `a link opens ${address}, not its href`);
   return `in place: ${address}`;
 }
@@ -917,12 +923,17 @@ async function main() {
     return {
       isTarget: (href, image, links = globalThis.window.MetabrowserRepositoryLinks) =>
         target(href, image, links),
-      // As diff-view.js reads a drawn block's links (`enhanceLinks`), its own call held by
+      // As diff-view.js reads a drawn block's links (`enhanceLinks`), its own calls held by
       // tests/dom/diff-view-behavior.js: the page's resolver, with the plugin's rule for
-      // when a `/view/` target opens.
+      // when a `/view/` target opens, and the same rule for a link to a file of the head,
+      // whose click is plain as the resolver reads one.
       enhanceLinks(prose) {
-        globalThis.window.MetabrowserRepositoryLinks.enhance(prose, sdk, {
-          views: headLinksOpen() === true,
+        const links = globalThis.window.MetabrowserRepositoryLinks;
+        links.enhance(prose, sdk, { views: headLinksOpen() === true });
+        markdown.openHeadLinks(prose, {
+          navigation,
+          linksOpen: headLinksOpen,
+          isPlainClick: (event) => links.isPlainClick(event),
         });
       },
     };
@@ -1305,6 +1316,11 @@ async function main() {
     step: "a plain click opens it through the navigation API, and a modified one is the browser's",
     clicks: clicksOn(byId.f12.rendered),
   });
+  // So does the link to a file of the head that the server spelled, beside it in the guide.
+  steps.push({
+    step: "a link to a file of the head opens it in place the same way",
+    clicks: clicksOn(byId.f1.rendered),
+  });
 
   near("f10");
   await settle();
@@ -1412,7 +1428,7 @@ async function main() {
   );
   steps.push({
     step: "every click on a link the page opened in place is the browser's",
-    clicks: clicksOn(byId.f12.rendered),
+    clicks: { ...clicksOn(byId.f1.rendered), ...clicksOn(byId.f12.rendered) },
   });
   for (const file of files) {
     for (const link of anchorsIn(file.rendered)) {

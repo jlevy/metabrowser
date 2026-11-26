@@ -412,10 +412,16 @@
      * (`openMainTab`). A pull request's page that holds the pane writes its place into its
      * own entry first.
      *
+     * The address shown is opened again where it is, as `navigation.open` and a pull
+     * request's page open theirs: it pushes no entry and lands nothing, so the page keeps
+     * its place, and its panel reveals the item again, as Quick Search for the item shown
+     * does (`revealAtAddress`'s *again*).
+     *
      * It answers whether it opened the address, and opens nothing for an address it cannot
      * show in place: a file's, which `navigation.open` opens; one on another origin, or no
-     * tab's; a pull request's that the routes do not read, or before they have loaded; and
-     * a commit before the Commits tab is here. The browser then follows the link.
+     * tab's; a pull request's that the routes do not read, or before they have loaded; a
+     * commit before the Commits tab is here; and any before the tab that holds it has its
+     * button. The browser then follows the link.
      *
      * @param {string} href
      * @returns {boolean}
@@ -423,9 +429,10 @@
     function openRoute(href) {
       const routes = window.MetabrowserNavigationRoute;
       const pulls = window.MetabrowserPullRoute;
+      let here;
       let address;
       try {
-        const here = new URL(window.location.href);
+        here = new URL(window.location.href);
         address = new URL(href, here);
         if (address.origin !== here.origin) {
           return false;
@@ -450,6 +457,12 @@
         return false;
       }
       gitOpenPending = false;
+      if (`${pathname}${search}${hash}` === `${here.pathname}${here.search}${here.hash}`) {
+        void revealAtAddress("open", { again: true }).catch((error) => {
+          console.error("Could not reveal the opened address", error);
+        });
+        return true;
+      }
       deps.flushPull();
       rememberMainTabAddress();
       land(panelId, `${pathname}${search}${hash}`, null, () => {

@@ -4,7 +4,9 @@ Which tab a route brings to the front, what each route asks a panel to reveal, a
 panel says of an item it cannot show are browserless (``tests/dom/nav-reveal-session.js``).
 What only a browser can tell is held here: that after each route the item's row is in the
 tab in front, selected, and inside the navigation pane's scroller, and that focus stays
-where the reader was (docs/design-system.md, "Navigation Reveals the Item").
+where the reader was (docs/design-system.md, "Navigation Reveals the Item"); and that a
+document's link to a commit, a pull request, or the list opens it in place, with the
+reading pane showing what the address names.
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh`` whose ``gh stack``
 answers two native stacks, #286 (pull requests 7 to 10) and #300 (5 and 10), and whose

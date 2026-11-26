@@ -316,15 +316,25 @@ def test_session_replays_the_recording() -> None:
     assert all(
         each["with a modifier"].startswith("the browser's: /view/") for each in clicks.values()
     )
+    # The link to a file of the head the server spelled beside them opens in place the same
+    # way, and not by loading the page again.
+    head_link = "/view/g1-ZG9jcw/g1-c2V0dXAubWQ"
+    assert steps["a link to a file of the head opens it in place the same way"]["clicks"] == {
+        "first setup notes": {
+            "plain": f"in place: {head_link}",
+            "with a modifier": f"the browser's: {head_link}",
+        }
+    }
     # Another tab changed the pin: every link the page opened in place is the link the text
-    # wrote again, and reads as one in a file drawn after the change.
+    # wrote again, and reads as one in a file drawn after the change; the server's link to
+    # a file of the head opens that file at the head on github.com.
     closed = steps[
         "a page that learns another pin is served links a file of the head on github.com, "
         "and a branch link as written"
     ]
     assert not any("/view/" in row for each in closed["files"].values() for row in each["rows"])
     after = steps["every click on a link the page opened in place is the browser's"]["clicks"]
-    assert [each["plain"] for each in after.values()] == written
+    assert [each["plain"] for each in after.values()] == [f"the browser's: {on_github}", *written]
     relinked = steps["a file drawn after the pin change links as the one the change closed"]
     assert relinked["files"]["f12 docs/links.md"] == closed["files"]["f12 docs/links.md"]
     first = steps["an answer within the loading delay paints Rendered first"]["files"]

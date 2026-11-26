@@ -561,7 +561,12 @@ async function linksStory() {
   const refused = [];
   /** A plain click on a link to *href*: *reveals*, for one that names a pull request. */
   const click = async (what, href, { reveals = null } = {}) => {
-    const before = { address: address(), tab: mainTabs?.active() ?? "files", pushed };
+    const before = {
+      address: address(),
+      hash: context.location.hash,
+      tab: mainTabs?.active() ?? "files",
+      pushed,
+    };
     const opened = navigation.openRoute(href);
     await settle();
     // The Pulls view tells the reveal its own read of the list makes and the current row
@@ -581,8 +586,11 @@ async function linksStory() {
       refused.push({ link: what, href });
       return;
     }
-    // One entry, the link's own address, as a click on any link pushes.
-    assert.equal(pushed - before.pushed, 1, what);
+    // One entry, the link's own address, as a click on any link pushes; a link to the
+    // address shown opens it again where it is, and pushes none, as `navigation.open` and
+    // a pull request's page push none for the address shown.
+    const again = `${before.address}${before.hash}` === href;
+    assert.equal(pushed - before.pushed, again ? 0 : 1, what);
     assert.equal(`${after.address}${context.location.hash}`, href, what);
     if (reveals !== null) {
       assert.equal(
@@ -659,6 +667,15 @@ async function linksStory() {
     { reveals: false },
   );
   await click("a link opens a stack's page", "/stack/3", { reveals: false });
+  // A link to the address shown, as a document in a page's own Changes links that page.
+  await click("a link to the stack's page shown opens it again, pushing nothing", "/stack/3");
+  await click("a link opens the list", "/pulls", { reveals: false });
+  await click("a link to the list shown opens it again, pushing nothing", "/pulls");
+  await click("a link opens a changed file of #8", "/pull/8/files/docs/a%20b.md");
+  await click(
+    "a link to the changed file shown opens it again, pushing nothing",
+    "/pull/8/files/docs/a%20b.md",
+  );
 
   // Each leaves the browser to follow the link.
   for (const [what, href] of [
@@ -1785,7 +1802,7 @@ async function main(part = process.argv[2] ?? null) {
     const transcript = {
       "a link's address": await linksStory(),
       invariants: {
-        "an open pushes one entry, the link's own address": true,
+        "an open pushes one entry, the link's own address, and none for the address shown": true,
         "an address the shell cannot open in place moves, writes, and tells nothing": true,
         "no link moves focus": true,
       },

@@ -80,11 +80,13 @@ Every other local address is dropped before the shared sanitizer.
 A GitHub link to a file or folder on the served branch or commit opens it in place on
 the same condition, as a README’s does: a plain click opens it through the navigation
 API, and a click with a modifier is the browser’s, which opens the same address.
+The link to a file of the head that the server spelled opens in place the same way,
+rather than loading the page again.
 Anywhere else it stays the link the text wrote, here on a page pinned on the pull
 request’s branch at an earlier commit, where that address would open the earlier files.
 When the page learns that another tab changed the pin, every link it opened in place is
-the link it would be in a file drawn after the change, and no link opens a `/view/`
-address; the session fails otherwise.
+the link it would be in a file drawn after the change, a click on each is the browser’s,
+and no link opens a `/view/` address; the session fails otherwise.
 
 This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`,
 `builtin_plugins/diff/index.js`, `static/repository-links.js`, and
@@ -100,7 +102,8 @@ an element tree that records what the production code builds, and time is a cloc
 session advances by hand.
 The plugin mounts the pull request’s comparison on each page the shell renders and hands
 the diff its rules for which addresses open there, which this session draws with,
-reading a drawn block’s links with the resolver as the diff does.
+reading a drawn block’s links with the resolver as the diff does, and opening its links
+to files of the head through `openHeadLinks`, as the diff does too.
 
 `links.pages` says whether a link to a file of the head opens on each page: pinned at
 the comparison’s head, pinned at its merge base, pinned on the pull request’s branch at
@@ -533,6 +536,15 @@ $ node tests/dom/diff-markdown-session.js
         "the docs folder": {
           "plain": "in place: /view/g1-ZG9jcw/",
           "with a modifier": "the browser's: /view/g1-ZG9jcw/"
+        }
+      }
+    },
+    {
+      "step": "a link to a file of the head opens it in place the same way",
+      "clicks": {
+        "first setup notes": {
+          "plain": "in place: /view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+          "with a modifier": "the browser's: /view/g1-ZG9jcw/g1-c2V0dXAubWQ"
         }
       }
     }
@@ -1064,6 +1076,10 @@ $ node tests/dom/diff-markdown-session.js long
     {
       "step": "every click on a link the page opened in place is the browser's",
       "clicks": {
+        "first setup notes": {
+          "plain": "the browser's: https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
+          "with a modifier": "the browser's: https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md"
+        },
         "the setup notes": {
           "plain": "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
           "with a modifier": "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md"

@@ -6,3 +6,6 @@
   Away from the head, beside a checkout, or once another tab serves something else, it
   stays the GitHub link the document wrote, so a link never opens another commit’s files
   ([Links in a Pull Request’s Text](docs/reviewing-pull-requests.md#links-in-a-pull-requests-text)).
+  A relative link to another file of the head, such as `[setup](setup.md)`, now opens in
+  place on a plain click at the head too, where it loaded the page again and lost the
+  app’s state.

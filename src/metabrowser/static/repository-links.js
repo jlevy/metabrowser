@@ -40,7 +40,10 @@
 //
 // The answers are in-app addresses, spelled in one place each (In-app addresses, below),
 // or a github.com address, spelled by `fileUrl`. `enhance` applies them to every link of
-// an inert text, already reduced to the allowlist (static/inert-html.js).
+// an inert text, already reduced to the allowlist (static/inert-html.js). `isPlainClick` is
+// what a click must be for a link it made in-app to open in place, and a rendered diff's
+// links to files of its head read it too (builtin_plugins/diff/diff-markdown.js,
+// `openHeadLinks`), so the links of one text open alike.
 //
 // Loaded on demand (`ensureAsset("repository-links")`) by the views that show authored text
 // from a GitHub repository: only a page with a repository identity uses it, and the startup
@@ -739,6 +742,26 @@
   }
 
   /**
+   * Whether a click on a link is the page's to open in place: a primary click with no
+   * modifier that nothing has kept from the browser yet. A modified or middle click opens
+   * the link's own `href` the browser's way, in a new tab or window.
+   *
+   * @param {Event} event
+   * @returns {boolean}
+   */
+  function isPlainClick(event) {
+    const mouse = /** @type {MouseEvent} */ (event);
+    return !(
+      mouse.defaultPrevented ||
+      mouse.button !== 0 ||
+      mouse.altKey ||
+      mouse.ctrlKey ||
+      mouse.metaKey ||
+      mouse.shiftKey
+    );
+  }
+
+  /**
    * Open what `enhance` last made of *anchor* on a plain primary click: a route by the
    * page's own `open` first, then by the shell's. Any other click is the browser's, which
    * follows the same `href`, as it does a route neither opened.
@@ -747,19 +770,11 @@
    * @param {Event} event
    */
   function openOnPlainClick(anchor, event) {
-    const mouse = /** @type {MouseEvent} */ (event);
     const opened = opens.get(anchor);
-    if (
-      !opened ||
-      mouse.defaultPrevented ||
-      mouse.button !== 0 ||
-      mouse.altKey ||
-      mouse.ctrlKey ||
-      mouse.metaKey ||
-      mouse.shiftKey
-    ) {
+    if (!opened || !isPlainClick(event)) {
       return;
     }
+    const mouse = /** @type {MouseEvent} */ (event);
     const { resolved, mb, open } = opened;
     if (resolved.kind === "view") {
       mouse.preventDefault();
@@ -890,6 +905,7 @@
     WORKING_TREE_TITLE,
     enhance,
     fileUrl,
+    isPlainClick,
     localize,
     viewFileUrl,
   });

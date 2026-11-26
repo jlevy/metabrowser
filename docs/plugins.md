@@ -1031,10 +1031,15 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   address a link to it carries: a pull request’s page, one of its tabs or changed files,
   a stack’s page, the list of pull requests, or a commit (`/pull/…`, `/stack/…`,
   `/pulls`, `/commit/…`). The shell pushes a history entry, brings the tab that holds
-  the page to the front, and shows the page, and the call returns `true`. It returns
-  `false` for any other address, a file’s among them, and before the shell’s tabs have
-  loaded; leave the click to the browser then, which follows the link’s `href`. The
-  links `loadRepositoryLinks()`’s `enhance` makes already open this way.
+  the page to the front, and shows the page, and the call returns `true`; for the
+  address already shown it pushes nothing and keeps the page where it is.
+  It returns `false` for an address the shell cannot show in place, or cannot show yet:
+  any other address, a file’s among them; any address before the shell’s tabs have
+  loaded; a pull request’s, a stack’s, or the list’s before the Pulls tab’s routes
+  (`static/pull-route.js`) have loaded, or on a page with no Pulls tab; and a commit’s
+  before Git discovery has registered the Commits tab.
+  Leave the click to the browser then, which follows the link’s `href`. The links
+  `loadRepositoryLinks()`’s `enhance` makes already open this way.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length
@@ -1052,7 +1057,8 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
 
 Use `navigation.href()` for real anchor `href` values so status previews, copy-link,
 modifier clicks, new tabs, and reloads keep native behavior, and call
-`navigation.open()` only for an unmodified in-app activation:
+`navigation.open()` only for an unmodified in-app activation that nothing has handled
+yet:
 
 ```javascript
 const target = { path: "docs/guide.md", fragment: "setup" };
@@ -1060,7 +1066,14 @@ const link = document.createElement("a");
 link.href = mb.navigation.href(target);
 link.textContent = "Setup guide";
 link.addEventListener("click", (event) => {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
     return;
   }
   event.preventDefault();
