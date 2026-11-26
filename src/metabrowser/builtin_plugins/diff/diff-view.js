@@ -5525,13 +5525,14 @@ export function mountDiffView(container, document_, api, options = {}) {
   ) {
     /** What a rendered file's links open, once loaded with its allowlist. @type {MetabrowserRepositoryLinksRuntime | null} */
     let repositoryLinks = null;
+    // A bundle that arrives after the first file's deadline can also serve a later pin event.
+    const loadedLinks = () => repositoryLinks ?? window.MetabrowserRepositoryLinks ?? null;
     view.markdown = {
       format: options.markdownViews.renderedFormat,
       controller: options.markdownViews.createMarkdownViews({
         load: options.renderMarkdown,
         controls: api.filterControls,
-        isTarget: (value, image) =>
-          options.markdownTargets?.(value, image, repositoryLinks) ?? null,
+        isTarget: (value, image) => options.markdownTargets?.(value, image, loadedLinks()) ?? null,
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
         // A file drawn alone has nothing after it in its diff to keep out of sight, so a
         // rendering that came later would move its host's page: its wait ends with its
@@ -5556,8 +5557,9 @@ export function mountDiffView(container, document_, api, options = {}) {
         enhanceLinks(prose) {
           const navigation = api?.navigation;
           const sourceKind = api?.sourceKind;
-          if (repositoryLinks && navigation && sourceKind && api?.repository) {
-            repositoryLinks.enhance(
+          const links = loadedLinks();
+          if (links && navigation && sourceKind && api?.repository) {
+            links.enhance(
               prose,
               { navigation, repository: api.repository, sourceKind },
               { views: false },

@@ -757,8 +757,6 @@ async function step(label, revision, body, before = null) {
       "only a /view/ address opens in place",
     );
   }
-  delete sandbox.metabrowser.repository;
-  delete sandbox.metabrowser.sourceKind;
   sandbox.MetabrowserSourcePinGuard = { hasChanged: () => true };
   const staleCommit = summary(LINKED, "linked");
   await internals.placeCommitBody(staleCommit, detail(LINKED, "linked"));
@@ -771,6 +769,8 @@ async function step(label, revision, body, before = null) {
     "commit prose in a stale shell keeps the authored GitHub document link",
   );
   delete sandbox.MetabrowserSourcePinGuard;
+  delete sandbox.metabrowser.repository;
+  delete sandbox.metabrowser.sourceKind;
   delete sandbox.metabrowser.loadRepositoryLinks;
   delete sandbox.metabrowser.navigation;
 
