@@ -983,6 +983,7 @@ let groupHeadings = 0;
  *   refusalNote: RefusalNote,
  *   introductionReady?: () => Promise<unknown>,
  *   ahead?: (read: () => void) => () => void,
+ *   moved?: () => void,
  * }} deps *open* goes to a file's Changes address, and *openPull* to another pull
  *   request's page, or to a file in its Changes. *age* and *shortCommit* say when a commit
  *   was made and name it, as the Commits tab does; *identity* draws a pull request's
@@ -1000,6 +1001,9 @@ let groupHeadings = 0;
  *   inserted or refused, which the overview waits for. *ahead* schedules a read ahead of the
  *   reader, as the page schedules its idle work, and returns its canceller; without it a
  *   step is read ahead at once.
+ *   *moved*, a stack's page's, hears each read the route answers `stack_moved`, which says
+ *   the comparison the guide is read at has moved, so the page can read the stack at once
+ *   rather than at its next poll, and offer the comparison the refusal names.
  *
  * Nothing the guide shows moves once shown (docs/design-system.md, "Guided Review"). Each
  * answer is composed out of sight, its step's card with every excerpt and document drawn,
@@ -1468,6 +1472,9 @@ export function mountGuidedReview(host, introduction, subject, deps) {
       // The document's read, shared with any read ahead of it; the navigation drops an
       // answer for a step the reader has left.
       const result = await guideReads.read(asks, step, revision);
+      if (result.state === "stack_moved") {
+        deps.moved?.();
+      }
       if ("step" in result) {
         // A failed stylesheet leaves the text readable in the page's own type.
         if (result.assets !== undefined) {

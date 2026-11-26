@@ -48,13 +48,23 @@
 // keeps the repository's list probed so that the catalog keeps reporting every member's
 // head (docs/project/specs/active/plan-2026-11-24-stack-review.md, "Staying Current").
 //
-// A comparison drawn stays drawn while the stack moves: one that changes is offered, not
-// swapped in, and while a new member is fetched or the stack cannot be shown, the drawn
-// one stays under the status line, since the server keeps answering a pair it gave
-// (pull_stack_retained.py). `bodyPlan` decides what the body does with each answer, and a
-// file is scrolled to once, when the reader opens it, never again by a later answer.
-// Guided Review stays with it (`guideShown`): the guide is read again when the reader takes
-// the comparison offered, or when the description that carries it changes.
+// A comparison drawn stays drawn while the stack moves, since the server keeps answering a
+// pair it gave, and keeps the one each poll names `since` (pull_stack_retained.py); a new
+// one is drawn, kept from, or offered by one rule (`answerAction`). One the reader would see
+// no difference in, the same two commits and the same files, is no change: the drawn one
+// stays, nothing is drawn again, and a later notice says what changed since that answer.
+// Any other, until the reader does anything on the page, is drawn in its place silently,
+// since a stack whose members' records arrive one by one catches up and has not changed;
+// after that it is offered, its notice saying what changed in each member (`changeText`),
+// from the members of the two answers and the commits each new head adds (`moved`, which
+// the poll asks `since` the comparison drawn), naming no member whose new head the drawn
+// comparison already shows, or, while a member it waits on is fetched, held until it
+// arrives. An answer without `moved` says the server no longer keeps the comparison drawn:
+// the new one is drawn in its place if it looks the same, and otherwise offered at once.
+// `bodyPlan` decides what the body does with each answer, and a file is scrolled to once,
+// when the reader opens it, never again by a later answer. Guided Review stays with it
+// (`guideShown`): the guide is read again when the reader takes the comparison offered, or
+// when the description that carries it changes.
 //
 // tests/dom/github-stack-page-session.js runs the pure parts and the controller here from
 // the command line.
@@ -131,7 +141,11 @@ export const STACK_TABS = Object.freeze([
  *   guide: {number: number, revision: string} | null,
  *   github_url: string | null,
  *   probe: {number: number, held: string | null, every_s: number} | null,
+ *   moved: StackMoved | null,
  * }} StackEnvelope
+ * @typedef {{since: string, members: Array<{number: number, commits: number | null}>}} StackMoved
+ *   Asked `since` a comparison the route gave before: each member, in both, whose head moved
+ *   from it, with the commits its new head adds, or null when its branch was rewritten.
  */
 
 /**
@@ -177,22 +191,173 @@ export function shownTab(tab, envelope, guide) {
 }
 
 /**
- * What a new answer does to the comparison the page shows: `wait` while there is none to
- * show, `show` the first, `keep` the same, and `offer` another, which the reader takes.
+ * What a reader sees of an answer's comparison, as one string: its two commits, and the files
+ * the stack's comparison keeps with their totals. Docs, Changes, and the Diff summary are
+ * drawn from these alone, since each file's diff is the two commits', so two comparisons
+ * with the same look draw the same body; null for an answer that draws none.
  *
- * @param {string | null} shownKey The key of the comparison shown, or null.
  * @param {StackEnvelope | null} envelope
- * @returns {"wait" | "show" | "keep" | "offer"}
+ * @returns {string | null}
  */
-export function comparisonAction(shownKey, envelope) {
-  const next = envelope?.state === "current" ? (envelope.comparison?.key ?? null) : null;
-  if (next === null) {
-    return shownKey === null ? "wait" : "keep";
+export function comparisonLook(envelope) {
+  if (envelope === null || envelope.state !== "current" || envelope.comparison === null) {
+    return null;
   }
-  if (shownKey === null) {
+  const { left, right } = envelope.comparison;
+  const paths = envelope.files.map((file) => file.path);
+  return JSON.stringify([left, right, paths, envelope.totals, envelope.truncated]);
+}
+
+/**
+ * What a new answer does to the comparison the body draws: `wait` while there is none to
+ * show, `show` the first, and `keep` the drawn one while the stack is pending or cannot be
+ * shown, and for another comparison that looks the same (`comparisonLook`), since nothing
+ * the reader sees would change; any other is drawn in its place, `adopt`, before the reader
+ * has done anything on the page, is held, `hold`, while a member it waits on is fetched, and
+ * is otherwise offered, `offer`, for the reader to take.
+ *
+ * The server keeps the comparison drawn while the page's poll names it (`since`), and says
+ * so in `moved`, which it answers only for a comparison it keeps. An answer with another
+ * comparison and no `moved` says the drawn one is gone, so the reads of what is drawn would
+ * be refused: one that looks the same is drawn in its place at once, and any other is
+ * offered without waiting for a member's fetch, so the reader always has a way on.
+ *
+ * @param {StackBody} body
+ * @param {StackEnvelope | null} envelope
+ * @param {boolean} interacted Whether the reader has scrolled, clicked, pressed a key, or
+ *   opened a tab or a file on the page.
+ * @param {number[]} failed The members whose fetch ended without a usable record.
+ * @returns {"wait" | "show" | "keep" | "adopt" | "hold" | "offer"}
+ */
+export function answerAction(body, envelope, interacted, failed) {
+  const next = envelope?.state === "current" ? (envelope.comparison ?? null) : null;
+  if (envelope === null || next === null) {
+    return body.drawn === null ? "wait" : "keep";
+  }
+  if (body.drawn === null) {
     return "show";
   }
-  return next === shownKey ? "keep" : "offer";
+  if (next.key === body.drawn.key) {
+    return "keep";
+  }
+  const kept = envelope.moved !== null;
+  if (comparisonLook(envelope) === comparisonLook(body.answer)) {
+    return kept ? "keep" : "adopt";
+  }
+  if (!interacted) {
+    return "adopt";
+  }
+  if (!kept) {
+    return "offer";
+  }
+  return envelope.pending.some((number) => !failed.includes(number)) ? "hold" : "offer";
+}
+
+// How many changes a notice of a new comparison names before it counts the rest.
+export const CHANGES_NAMED = 3;
+// What the notice says when the two answers name no change of a member.
+const CHANGED = "This stack has changed since its comparison was drawn.";
+
+/**
+ * *items* as one list a sentence reads: "a", "a and b", "a, b, and c".
+ *
+ * @param {string[]} items
+ */
+function joined(items) {
+  return items.length === 1
+    ? items[0]
+    : `${items.slice(0, -1).join(", ")}${items.length > 2 ? "," : ""} and ${items.at(-1)}`;
+}
+
+/**
+ * What became of one member, in both answers, since the comparison drawn, or null.
+ *
+ * @param {StackMember} was
+ * @param {StackMember} now
+ * @param {Map<number, number | null> | null} added The commits each moved member's new head
+ *   adds, or null when the answer does not say.
+ * @returns {string | null}
+ */
+function memberChange(was, now, added) {
+  const pull = `#${now.number}`;
+  if (was.state !== now.state) {
+    if (now.state === "merged") {
+      return `${pull} was merged`;
+    }
+    if (now.state === "closed") {
+      return `${pull} was closed`;
+    }
+    if (was.state === "merged" || was.state === "closed") {
+      return `${pull} was reopened`;
+    }
+  }
+  if (was.head !== now.head) {
+    const commits = added?.get(now.number);
+    if (commits === 0) {
+      // Its new head adds nothing the comparison drawn did not show: its record caught up.
+      return null;
+    }
+    if (typeof commits === "number") {
+      return `${pull} has ${commits} new ${commits === 1 ? "commit" : "commits"}`;
+    }
+    return commits === null ? `${pull} was rewritten` : `${pull} was updated`;
+  }
+  return was.base === now.base ? null : `${pull} was updated`;
+}
+
+/**
+ * What the notice of a new comparison says: what became of each member since the comparison
+ * drawn, top first, in one sentence, "#845 has 2 new commits, #843 was merged, and #848
+ * joined the stack.", naming at most `CHANGES_NAMED` changes and counting the rest. A
+ * member's new commits come from the answer's `moved`, when it was asked `since` the
+ * comparison drawn.
+ *
+ * @param {StackEnvelope | null} drawn The answer whose comparison is drawn.
+ * @param {StackEnvelope} envelope The answer whose comparison is offered.
+ * @returns {string}
+ */
+export function changeText(drawn, envelope) {
+  const before = new Map((drawn?.members ?? []).map((member) => [member.number, member]));
+  const after = new Set(envelope.members.map((member) => member.number));
+  const since = drawn?.comparison?.key ?? null;
+  const added =
+    envelope.moved !== null && envelope.moved.since === since
+      ? new Map(envelope.moved.members.map((member) => [member.number, member.commits]))
+      : null;
+  /** @type {string[]} */
+  const changes = [];
+  for (const member of topFirst(envelope)) {
+    const was = before.get(member.number);
+    const change =
+      was === undefined ? `#${member.number} joined the stack` : memberChange(was, member, added);
+    if (change !== null) {
+      changes.push(change);
+    }
+  }
+  for (const member of topFirst(drawn)) {
+    if (!after.has(member.number)) {
+      changes.push(`#${member.number} left the stack`);
+    }
+  }
+  if (
+    changes.length === 0 &&
+    drawn !== null &&
+    drawn.members.map((member) => member.number).join() !== [...after].join()
+  ) {
+    changes.push("the stack’s order changed");
+  }
+  if (changes.length === 0) {
+    return CHANGED;
+  }
+  const named =
+    changes.length > CHANGES_NAMED
+      ? [
+          ...changes.slice(0, CHANGES_NAMED - 1),
+          `${changes.length - CHANGES_NAMED + 1} more pull requests changed`,
+        ]
+      : changes;
+  const sentence = joined(named);
+  return `${sentence[0].toUpperCase()}${sentence.slice(1)}.`;
 }
 
 /**
@@ -319,10 +484,7 @@ export function failedMembers(envelope, asks) {
  * @param {number[]} numbers
  */
 function named(numbers) {
-  const all = numbers.map((number) => `#${number}`);
-  return all.length === 1
-    ? all[0]
-    : `${all.slice(0, -1).join(", ")}${all.length > 2 ? "," : ""} and ${all.at(-1)}`;
+  return joined(numbers.map((number) => `#${number}`));
 }
 
 /**
@@ -409,31 +571,31 @@ function fetchText(fetching, failed, until) {
 
 /**
  * What the header's status line says, in order: the read's failure, then what became of
- * the stack since the drawn comparison, the members its top lacks, and its members'
- * fetches. With nothing drawn, the body says why itself (`bodyPlan`).
+ * the stack since the drawn comparison (`answerAction`): a new comparison offered, saying
+ * what changed (`changeText`), or held while a member it waits on is fetched; then the
+ * members its top lacks, and its members' fetches. With nothing drawn, the body says why
+ * itself (`bodyPlan`).
  *
  * @param {StackEnvelope | null} envelope
- * @param {string | null} drawnKey The key of the comparison drawn, or null.
+ * @param {StackBody} body What the body draws.
  * @param {string | null} error
  * @param {number[]} failed The members whose fetch ended without a usable record.
+ * @param {boolean} interacted Whether the reader has done anything on the page.
  * @returns {StackNotice[]}
  */
-export function statusNotices(envelope, drawnKey, error, failed) {
+export function statusNotices(envelope, body, error, failed, interacted) {
   /** @type {StackNotice[]} */
   const notices = [];
   if (error !== null) {
     // A failed read keeps the last answer drawn, so it is a warning; with none, an error.
     notices.push({ text: error, severity: envelope === null ? "error" : "warning", action: null });
   }
-  if (envelope === null || drawnKey === null) {
+  if (envelope === null || body.drawn === null) {
     return notices;
   }
-  if (comparisonAction(drawnKey, envelope) === "offer") {
-    notices.push({
-      text: "This stack has changed since its comparison was drawn.",
-      severity: null,
-      action: "take",
-    });
+  const action = answerAction(body, envelope, interacted, failed);
+  if (action === "offer") {
+    notices.push({ text: changeText(body.answer, envelope), severity: null, action: "take" });
   }
   if (envelope.state === "absent") {
     notices.push({ text: absentText(envelope.reason), severity: "warning", action: null });
@@ -445,7 +607,7 @@ export function statusNotices(envelope, drawnKey, error, failed) {
   }
   const waiting = envelope.pending.filter((number) => !failed.includes(number));
   const said = fetchText(
-    envelope.state === "pending" ? waiting : [],
+    envelope.state === "pending" || action === "hold" ? waiting : [],
     failed,
     "its new comparison can be shown",
   );
@@ -459,41 +621,109 @@ export function statusNotices(envelope, drawnKey, error, failed) {
 }
 
 /**
- * What the body shows and has shown: the comparison drawn, the key of what is mounted
- * ("" for nothing or a notice), whether that mount has finished, and a file to scroll to
- * once, which the reader's opening a file sets and the scroll clears.
+ * What the body shows and has shown: the comparison drawn and the answer that named it, the
+ * key of what is mounted ("" for nothing or a notice), whether that mount has finished, and
+ * a file to scroll to once, which the reader's opening a file sets and the scroll clears.
  *
- * @typedef {{drawn: StackComparison | null, shown: string, ready: boolean, jump: string | null}} StackBody
+ * @typedef {{drawn: StackComparison | null, answer: StackEnvelope | null, shown: string,
+ *   ready: boolean, jump: string | null}} StackBody
  */
 
 /** The body before any answer. @type {StackBody} */
-export const NO_BODY = Object.freeze({ drawn: null, shown: "", ready: false, jump: null });
+export const NO_BODY = Object.freeze({
+  drawn: null,
+  answer: null,
+  shown: "",
+  ready: false,
+  jump: null,
+});
 
 /**
- * The body after a new answer: its first comparison is drawn; any later one waits for the
- * reader to take it, and the drawn one stays while the stack is pending or absent.
+ * The body after a new answer: its first comparison is drawn, and a later one is drawn in
+ * its place when `answerAction` adopts it; otherwise the drawn one stays, while the stack is
+ * pending or absent, while a new one looks the same, and while a new one is held or
+ * offered. An answer kept from, the drawn one's or one that looks the same, becomes what a
+ * later notice says changed since: the answer, at the comparison drawn, so a member whose
+ * record caught up meanwhile is not named as a change.
  *
  * @param {StackBody} body
  * @param {StackEnvelope | null} envelope
+ * @param {boolean} interacted Whether the reader has done anything on the page.
+ * @param {number[]} failed The members whose fetch ended without a usable record.
  * @returns {StackBody}
  */
-export function bodyAnswered(body, envelope) {
-  return comparisonAction(body.drawn?.key ?? null, envelope) === "show"
-    ? { ...body, drawn: envelope?.comparison ?? null }
-    : body;
+export function bodyAnswered(body, envelope, interacted, failed) {
+  const action = answerAction(body, envelope, interacted, failed);
+  if (envelope === null) {
+    return body;
+  }
+  if (action === "show" || action === "adopt") {
+    return { ...body, drawn: envelope.comparison, answer: envelope };
+  }
+  const next = envelope.state === "current" ? envelope.comparison : null;
+  if (action !== "keep" || next === null || body.drawn === null || body.answer === envelope) {
+    return body;
+  }
+  return {
+    ...body,
+    answer: next.key === body.drawn.key ? envelope : { ...envelope, comparison: body.drawn },
+  };
 }
 
 /**
- * The body after the reader takes the comparison offered.
+ * The body after the reader takes the comparison offered: the answer's own, whatever it
+ * holds or offers, since the reader asked for it.
  *
  * @param {StackBody} body
  * @param {StackEnvelope | null} envelope
  * @returns {StackBody}
  */
 export function bodyTaken(body, envelope) {
-  return comparisonAction(body.drawn?.key ?? null, envelope) === "offer"
-    ? { ...body, drawn: envelope?.comparison ?? null }
-    : body;
+  const next = envelope?.state === "current" ? (envelope.comparison ?? null) : null;
+  return envelope === null || next === null || next.key === body.drawn?.key
+    ? body
+    : { ...body, drawn: next, answer: envelope };
+}
+
+/**
+ * Whether the comparison drawn is the stack's own, as Guided Review reads its guide: true
+ * when the answer's comparison is the one drawn or looks the same (`comparisonLook`), so an
+ * edit of the description that carries the guide is read at the comparison drawn; false
+ * when the stack has moved past it, so a guide its carrier's move changed is not read there;
+ * null while the answer has none or nothing is drawn.
+ *
+ * @param {StackBody} body
+ * @param {StackEnvelope | null} envelope
+ * @returns {boolean | null}
+ */
+export function drawnCurrent(body, envelope) {
+  const current = envelope?.state === "current" ? (envelope.comparison ?? null) : null;
+  if (current === null || body.drawn === null) {
+    return null;
+  }
+  return current.key === body.drawn.key || comparisonLook(envelope) === comparisonLook(body.answer);
+}
+
+// Keys pressed alone that begin a chord, as one that leaves the page for another window or
+// tab does, and so are not the reader's move on the page.
+const MODIFIER_KEYS = Object.freeze(new Set(["Shift", "Control", "Alt", "AltGraph", "Meta"]));
+
+/**
+ * Whether a key the document hears is the reader's move on the page: one pressed with focus
+ * in the page, or on nothing in particular, the document's body or root, and not a modifier
+ * pressed alone. A key typed into the shell's own fields is not.
+ *
+ * @param {{key: string, target: unknown}} event
+ * @param {{contains(node: unknown): boolean}} container The page's own element.
+ * @param {{body: unknown, documentElement: unknown}} doc
+ * @returns {boolean}
+ */
+export function readerKey(event, container, doc) {
+  if (MODIFIER_KEYS.has(event.key)) {
+    return false;
+  }
+  const { target } = event;
+  return target === doc.body || target === doc.documentElement || container.contains(target);
 }
 
 /**
@@ -534,9 +764,9 @@ export function bodyInColumn(body, tab) {
  * What the body does now, and the body once it has: `wait` before any answer or a tab, a
  * `notice` while nothing is drawn, `mount` the drawn comparison in the tab when that is
  * not what is mounted (Guided Review reads its guide against the stack's comparison, and
- * mounts again when the reader takes another), `scroll` to a file the reader opened once the mount is ready, and otherwise
- * `keep`, so an answer that changes nothing the body shows leaves the reader where they
- * are.
+ * mounts again when another is drawn), `scroll` to a file the reader opened once the mount
+ * is ready, and otherwise `keep`, so an answer that changes nothing the body shows leaves
+ * the reader where they are.
  *
  * @param {StackBody} body
  * @param {StackEnvelope | null} envelope
@@ -606,21 +836,23 @@ export function bodyMounted(body, key) {
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
+ *   since(): string | null,
  *   render(model: {envelope: StackEnvelope | null, error: string | null, failed: number[]}): void,
  * }} StackDependencies
  */
 
 /**
  * The poll and the asks of one stack's page. It reads the stack route while the page is in
- * sight, one read at a time, asks for each pending member and again for one refused, sends
- * the top member's automatic ask at its interval, and renders each answer that changed and
- * each change in which members it could not fetch.
+ * sight, one read at a time, `since` the comparison the page draws (`deps.since`), so the
+ * answer says how each member moved from it; asks for each pending member and again for one
+ * refused, sends the top member's automatic ask at its interval, and renders each answer
+ * that changed and each change in which members it could not fetch.
  *
  * @param {StackDependencies} deps
  * @param {{number: number}} options
  */
 export function createStackController(deps, options) {
-  const route = `${STACK_ROUTE}?number=${options.number}`;
+  const stackRoute = `${STACK_ROUTE}?number=${options.number}`;
   /** @type {StackEnvelope | null} */
   let envelope = null;
   /** @type {string | null} */
@@ -723,6 +955,8 @@ export function createStackController(deps, options) {
     let changed = false;
     let answered = false;
     try {
+      const since = deps.since();
+      const route = since === null ? stackRoute : `${stackRoute}&since=${since}`;
       const response = await deps.request("GET", route, { etag });
       if (disposed) {
         return;
@@ -1164,6 +1398,9 @@ export function mountStackPage(container, ctx, mb) {
   let knownSource = null;
   /** What the body shows (`bodyPlan`). @type {StackBody} */
   let shown = NO_BODY;
+  /** Whether the reader has done anything on the page, after which a new comparison that
+   * looks different is offered rather than drawn (`answerAction`). */
+  let interacted = false;
   /** @type {{dispose?: () => void, scrollToFile?: (path: string) => unknown} | null} */
   let handle = null;
   /** The guide's view while Guided Review is drawn, told each revision of the description
@@ -1360,7 +1597,7 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   function paintHeader() {
-    const notices = statusNotices(envelope, shown.drawn?.key ?? null, error, failed);
+    const notices = statusNotices(envelope, shown, error, failed, interacted);
     const model = stackHeader(envelope, known, listed, notices, shown.drawn !== null);
     holdCold(model.cold);
     paintMembers(model.members);
@@ -1610,6 +1847,34 @@ export function mountStackPage(container, ctx, mb) {
     void paintBody();
   }
 
+  // What the reader does on the page: a wheel, a finger, a click, or a scrollbar in the pane
+  // that scrolls it, and a key on the page (`readerKey`), as a pull request's page tells the
+  // reader's own scroll from the browser's; opening a tab or a file is the reader's too
+  // (`setTab`, `showFile`). From then on a new comparison that looks different is offered,
+  // not drawn (`answerAction`).
+  const pane = /** @type {HTMLElement} */ (
+    container.closest("[data-kpress-viewport]") ?? container
+  );
+  const interact = () => {
+    interacted = true;
+  };
+  for (const type of ["wheel", "touchstart", "pointerdown"]) {
+    pane.addEventListener(type, interact, {
+      capture: true,
+      passive: true,
+      signal: listening.signal,
+    });
+  }
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (readerKey(event, container, document)) {
+        interacted = true;
+      }
+    },
+    { capture: true, signal: listening.signal },
+  );
+
   /** Retry: the stack read again, and a Diff summary whose draw failed drawn again. */
   function retryStack() {
     if (shown.drawn !== null) {
@@ -1648,7 +1913,7 @@ export function mountStackPage(container, ctx, mb) {
     };
     // The guide's first step is asked for now, beside the module's import, rather than
     // after it; the guide reads the same request (guide-reads.js).
-    const readAt = guideReadAt(comparison.key);
+    const readAt = guideReadAt();
     if (readAt !== null) {
       guideReads.prefetch(guideAsks(subject), 1, readAt);
     }
@@ -1749,6 +2014,9 @@ export function mountStackPage(container, ctx, mb) {
         };
       },
       refusalNote: textRefusalNote,
+      // The comparison drawn has moved, and may be gone: the stack is read now, so the
+      // page draws its own comparison in its place or offers it (`answerAction`).
+      moved: () => void controller.start(),
       // A step's neighbors are read when the page is idle, after what it shows.
       ahead: (run) => mb.whenIdle(run, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
     });
@@ -1756,19 +2024,17 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   /**
-   * The revision of the guide that Guided Review reads at the comparison *key* names, or
-   * null when it reads none there: once the stack has moved past that comparison, only the
-   * guide read there before (`behind` in guided-review.js, as `paintBody` tells it).
+   * The revision of the guide that Guided Review reads at the comparison drawn, or null when
+   * it reads none there: once the stack has moved past that comparison (`drawnCurrent`), only
+   * the guide read there before (`behind` in guided-review.js, as `paintBody` tells it).
    *
-   * @param {string} key
    * @returns {string | null}
    */
-  function guideReadAt(key) {
+  function guideReadAt() {
     if (guide === null) {
       return null;
     }
-    const current = envelope?.state === "current" ? (envelope.comparison?.key ?? null) : null;
-    if (current === null || current === key) {
+    if (drawnCurrent(shown, envelope) !== false) {
       return guide.revision;
     }
     return guideRead === null || guideRead === guide.revision ? guide.revision : null;
@@ -1788,7 +2054,7 @@ export function mountStackPage(container, ctx, mb) {
    */
   function readGuideAhead() {
     const drawn = shown.drawn;
-    const revision = drawn === null ? null : guideReadAt(drawn.key);
+    const revision = drawn === null ? null : guideReadAt();
     if (tab === "guided" || drawn === null || revision === null) {
       return;
     }
@@ -1944,18 +2210,18 @@ export function mountStackPage(container, ctx, mb) {
     }
     if (action.do === "keep") {
       // An edit of the description that carries the guide is read again while the
-      // comparison drawn is the stack's current one. A new comparison is offered, not
-      // swapped in: until the reader takes it, the guide stays as it was read at the drawn
-      // one, as Docs and Changes stay, and a guide its carrier's move changed is not read
-      // there (`behind` in guided-review.js).
-      const current = envelope?.state === "current" ? (envelope.comparison?.key ?? null) : null;
-      if (current !== null && current === shown.drawn?.key) {
+      // comparison drawn is the stack's current one, or looks the same (`drawnCurrent`). A
+      // new comparison is offered, not swapped in: until the reader takes it, the guide
+      // stays as it was read at the drawn one, as Docs and Changes stay, and a guide its
+      // carrier's move changed is not read there (`behind` in guided-review.js).
+      const current = drawnCurrent(shown, envelope);
+      if (current === true) {
         guidedView?.behind(null);
         if (guide !== null) {
           guideRead = guide.revision;
           guidedView?.show(guide.revision, false);
         }
-      } else if (current !== null) {
+      } else if (current === false) {
         guidedView?.behind(guideRead);
       }
       return;
@@ -2001,8 +2267,7 @@ export function mountStackPage(container, ctx, mb) {
           // An answer that came while the guide was imported may name a newer revision,
           // which the keep path could not tell a view not yet mounted.
           const revision = (guide ?? carried).revision;
-          const current = envelope?.state === "current" ? (envelope.comparison?.key ?? null) : null;
-          if (current !== null && current !== action.comparison.key) {
+          if (drawnCurrent(shown, envelope) === false) {
             // Back on the tab while the stack has moved past the comparison drawn: the guide
             // is read there only if it is the one read there before.
             view.behind(guideRead ?? revision);
@@ -2058,11 +2323,12 @@ export function mountStackPage(container, ctx, mb) {
       cancel: (timer) => window.clearTimeout(/** @type {number} */ (timer)),
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
+      since: () => shown.drawn?.key ?? null,
       render(model) {
         envelope = model.envelope;
         error = model.error;
         failed = model.failed;
-        shown = bodyAnswered(shown, envelope);
+        shown = bodyAnswered(shown, envelope, interacted, failed);
         guide = guideShown(guide, envelope);
         tab = shownTab(routeTab, envelope, guide);
         paintHeader();
@@ -2095,7 +2361,10 @@ export function mountStackPage(container, ctx, mb) {
   /** @param {string} next */
   function setTab(next) {
     routeTab = next;
+    const before = tab;
     tab = shownTab(next, envelope, guide);
+    // Another tab is the reader's: the shell lands the page on its own route's too.
+    interacted ||= tab !== before && before !== "";
     shown = bodyOpened(shown, "");
     paintTabs();
     void paintBody();
@@ -2103,6 +2372,7 @@ export function mountStackPage(container, ctx, mb) {
 
   /** @param {string} path */
   function showFile(path) {
+    interacted = true;
     routeTab = "changes";
     tab = "changes";
     shown = bodyOpened(shown, path);

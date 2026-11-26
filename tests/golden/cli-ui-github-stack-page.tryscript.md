@@ -12,7 +12,9 @@ comparison from the bottom member’s merge base to the top member’s head, kep
 files a layer changes.
 `tests/test_cli_github_stack_golden.py` records the route’s answers for the GitHub
 stand-in’s stacks in `tests/fixtures/github-stack-responses.json`: 70 while its members
-have no record and then current, 71, whose top lacks 7, and 72, which is not linear.
+have no record and then current, 71, whose top lacks 7, 72, which is not linear, 70 once
+8 left it, asked `since` its earlier comparison, and 74, whose one member, 7, is
+rewritten and then gains a commit, each asked `since` the comparison before.
 
 This browserless session runs the production `builtin_plugins/github/stack-page.js` on
 them.
@@ -24,16 +26,55 @@ them.
   answer then moves from.
   A tab the page does not have, Files among them, since the stack’s files are its
   header’s Diff summary, shows what the front page shows.
-- `guided` is the front page of 70, whose guide 10 carries, while the stack moves: the
-  guide shown, the tab, and what the body does after each answer.
-  While a member is fetched or the stack cannot be shown, Guided Review and its guide
-  stay, as the drawn comparison does, and the guide is mounted again only when the
-  reader takes the comparison offered; a description that no longer carries the guide
-  turns the front page to Changes.
+- `guided` is the front page of 70, whose guide 10 carries, while the stack moves after
+  the reader has moved on the page: the guide shown, the tab, and what the body does
+  after each answer. While a member is fetched or the stack cannot be shown, Guided
+  Review and its guide stay, as the drawn comparison does, and the guide is mounted
+  again only when the reader takes the comparison offered; a description that no longer
+  carries the guide turns the front page to Changes.
   `column` is the body’s column (`bodyInColumn`): the reading column, as a pull
   request’s body takes it, except on a drawn Docs or Changes, which take the full pane.
-- `comparison` is what a new answer does to the comparison drawn: the first is shown,
-  the same one kept, and another offered rather than swapped in under the reader.
+- `comparison` is what a new answer does to the comparison drawn (`answerAction`): the
+  first is shown and the same one kept, and so is the one drawn when another looks the
+  same, the same two commits and the same files, as 71’s does beside 70’s, since nothing
+  the reader sees would change.
+  One that looks different is drawn without a word before the reader does anything on
+  the page, since a stack whose members’ records arrive one by one is catching up, not
+  changing. After the reader’s move, it is held while a member it waits on is fetched,
+  and then offered rather than swapped in under the reader.
+  An answer asked `since` the comparison drawn has `moved` while the server keeps that
+  comparison; one without it (`gone`) says the server no longer does, so what the body
+  reads at it would be refused: one that looks the same is drawn in its place, and one
+  that looks different is offered at once, though a member it waits on is fetched.
+- `guide_current` is whether Guided Review reads an edit of its guide at the comparison
+  drawn (`drawnCurrent`): when the stack’s comparison is the one drawn or looks the
+  same, and not when the stack has moved past it.
+- `changes` is what the notice of a new comparison says (`changeText`): what became of
+  each member since the comparison drawn, top first, in one sentence, its new commits
+  counted from the answer’s `moved`, or said to be rewritten when its branch no longer
+  holds the head drawn; with no `moved` for the comparison drawn, a moved member was
+  updated. A member whose new head the comparison drawn already shows, its record caught
+  up, adds no commit and is named nowhere (`caught_up`). It names at most
+  `CHANGES_NAMED` changes, one fewer and a count once there are more, says when only the
+  order changed, and otherwise that the stack changed.
+- `notices` is a reader on Changes of 70 while the stack moves: a comparison that looks
+  the same leaves 70’s drawn, before the reader does anything on the page and after;
+  before, one that looks different is drawn at once with no notice; after they scroll,
+  one that looks different is held while 10 is fetched, then offered with what changed,
+  and drawn when the reader takes it, which clears the notice.
+  Once the server no longer keeps 70’s, one that looks the same is drawn in its place
+  without a word, and one that looks different is offered while 10 is still fetched.
+  `since` is the key each next read asks the route `since`: the comparison drawn, which
+  the server keeps while the page asks.
+- `caught_up` is a reader on Changes of 70 whose page draws it; 8’s record then catches
+  up to a head the comparison drawn already shows, an answer that looks the same, and
+  after the reader scrolls, 10 gains two commits.
+  The notice names 10 alone: the answer kept from is what it says changed since, and the
+  route counts no commit for 8.
+- `reader_keys` is which keys the document hears count as the reader’s move on the page
+  (`readerKey`): one pressed in the page, or with focus on nothing in particular, the
+  body or the document’s root, and not a key typed into the shell’s own fields, nor a
+  modifier pressed alone, which may begin a chord that leaves the page.
 - `header` is the page’s header, row by row (`stackHeader`), a pull request’s header
   made of the rows a stack has: its title, the View on GitHub corner, its members top
   first, the merge it makes, the status line while it has something to say, the size
@@ -58,7 +99,9 @@ them.
   otherwise at the top member’s probe interval, slowly without one, and not at all out
   of sight (`null`): a hidden page reads the stack again when it is shown.
 - `sent` and `rendered` are the controller over a scripted poll: pending, current, an
-  unchanged answer, then another comparison (71’s answer standing in for 70 moved).
+  unchanged answer, then another comparison that looks the same (71’s answer standing in
+  for 70 moved, asked `since` 70’s), which leaves 70’s drawn.
+  Each read after a comparison is drawn asks `since` it.
   Each pending member is asked for at its head, a member with no record as the reader’s
   own open of it (`retry`), and the top member’s automatic ask is sent at its interval
   with the record revision the stack route names, so its answer leaves the record out.
@@ -86,8 +129,8 @@ them.
   stack moves. The file is scrolled to when its diff is first drawn and when the reader
   opens it again, never on a later answer.
   While a member is pending or its fetch has failed, and when another comparison
-  arrives, the drawn comparison stays and the header’s status line says why, until the
-  reader takes the new one.
+  arrives, the drawn comparison stays and the header’s status line says why, and what
+  changed, until the reader takes the new one, which draws it.
   A stack that can no longer be shown as one keeps the comparison drawn; with nothing
   drawn, the body says what is missing.
   `column` is the body’s column, as under `guided`: the full pane once Changes is drawn,
@@ -196,12 +239,242 @@ $ node tests/dom/github-stack-page-session.js
       "keep"
     ],
     [
-      "drawn, another comparison",
+      "drawn, the stack now absent",
+      "keep"
+    ],
+    [
+      "drawn, another that looks the same",
+      "keep"
+    ],
+    [
+      "drawn, another that looks the same, gone",
+      "adopt"
+    ],
+    [
+      "drawn, another, before the reader's move",
+      "adopt"
+    ],
+    [
+      "drawn, another, after the reader's move",
       "offer"
     ],
     [
-      "drawn, the stack now absent",
-      "keep"
+      "drawn, another, while 10 is fetched",
+      "hold"
+    ],
+    [
+      "drawn, another, once 10's fetch failed",
+      "offer"
+    ],
+    [
+      "drawn, another, while 10 is fetched, gone",
+      "offer"
+    ]
+  ],
+  "guide_current": [
+    [
+      "nothing drawn",
+      null
+    ],
+    [
+      "the same answer",
+      true
+    ],
+    [
+      "another that looks the same",
+      true
+    ],
+    [
+      "another",
+      false
+    ],
+    [
+      "the stack now absent",
+      null
+    ]
+  ],
+  "changes": {
+    "left": "#8 left the stack.",
+    "joined": "#8 joined the stack.",
+    "one_new_commit": "#7 has 1 new commit.",
+    "rewritten": "#7 was rewritten.",
+    "not_asked_since": "#7 was updated.",
+    "caught_up": "This stack has changed since its comparison was drawn.",
+    "three": "#11 joined the stack, #10 has 2 new commits, and #7 was closed.",
+    "four": "#12 joined the stack, #11 joined the stack, and 2 more pull requests changed.",
+    "reordered": "The stack’s order changed.",
+    "nothing_named": "This stack has changed since its comparison was drawn."
+  },
+  "notices": [
+    {
+      "step": "70, drawn",
+      "do": "mount changes",
+      "drawn": "70",
+      "notices": [],
+      "since": "70"
+    },
+    {
+      "step": "looks the same, before the reader's move: 70's stays",
+      "do": "keep",
+      "drawn": "70",
+      "notices": [
+        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
+      ],
+      "since": "70"
+    },
+    {
+      "step": "looks different, before the reader's move: drawn at once",
+      "do": "mount changes",
+      "drawn": "70 without 8",
+      "notices": [],
+      "since": "70 without 8"
+    },
+    {
+      "step": "70 again, drawn",
+      "do": "mount changes",
+      "drawn": "70",
+      "notices": [],
+      "since": "70"
+    },
+    {
+      "step": "looks the same, after the reader scrolls: 70's stays",
+      "do": "keep",
+      "drawn": "70",
+      "notices": [
+        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
+      ],
+      "since": "70"
+    },
+    {
+      "step": "70's again",
+      "do": "keep",
+      "drawn": "70",
+      "notices": [],
+      "since": "70"
+    },
+    {
+      "step": "looks different while 10 is fetched: held",
+      "do": "keep",
+      "drawn": "70",
+      "notices": [
+        "Fetching #10 before its new comparison can be shown."
+      ],
+      "since": "70"
+    },
+    {
+      "step": "looks different, 10 fetched: offered",
+      "do": "keep",
+      "drawn": "70",
+      "notices": [
+        "#8 left the stack. [take]"
+      ],
+      "since": "70"
+    },
+    {
+      "step": "the reader takes it",
+      "do": "mount changes",
+      "drawn": "70 without 8",
+      "notices": [],
+      "since": "70 without 8"
+    },
+    {
+      "step": "70 once more, drawn",
+      "do": "mount changes",
+      "drawn": "70",
+      "notices": [],
+      "since": "70"
+    },
+    {
+      "step": "looks the same, 70's gone: drawn in its place",
+      "do": "mount changes",
+      "drawn": "71",
+      "notices": [
+        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
+      ],
+      "since": "71"
+    },
+    {
+      "step": "70 drawn again",
+      "do": "mount changes",
+      "drawn": "70",
+      "notices": [],
+      "since": "70"
+    },
+    {
+      "step": "looks different while 10 is fetched, 70's gone: offered",
+      "do": "keep",
+      "drawn": "70",
+      "notices": [
+        "#8 left the stack. [take]"
+      ],
+      "since": "70"
+    },
+    {
+      "step": "the reader takes it, 70's gone",
+      "do": "mount changes",
+      "drawn": "70 without 8",
+      "notices": [],
+      "since": "70 without 8"
+    }
+  ],
+  "caught_up": [
+    {
+      "step": "70, drawn",
+      "action": "show",
+      "drawn": "70",
+      "notices": []
+    },
+    {
+      "step": "8's record catches up, looks the same: kept",
+      "action": "keep",
+      "drawn": "70",
+      "notices": []
+    },
+    {
+      "step": "the reader scrolls; 10 gains two commits: offered",
+      "action": "offer",
+      "drawn": "70",
+      "notices": [
+        "#10 has 2 new commits. [take]"
+      ]
+    }
+  ],
+  "reader_keys": [
+    [
+      "j in the page",
+      true
+    ],
+    [
+      "Enter on the page's link",
+      true
+    ],
+    [
+      "j on the body",
+      true
+    ],
+    [
+      "Escape on the root",
+      true
+    ],
+    [
+      "a in the shell's search field",
+      false
+    ],
+    [
+      "Meta alone in the page",
+      false
+    ],
+    [
+      "Shift alone on the body",
+      false
+    ],
+    [
+      "Control alone on the body",
+      false
+    ],
+    [
+      "Alt alone on the body",
+      false
     ]
   ],
   "header": {
@@ -333,7 +606,7 @@ $ node tests/dom/github-stack-page-session.js
     },
     {
       "method": "GET",
-      "route": "/api/plugin/github/stack?number=70",
+      "route": "/api/plugin/github/stack?number=70&since=ebfe45cd812c6d00f8d4a921576b31d7",
       "etag": "\"current\""
     },
     {
@@ -346,7 +619,7 @@ $ node tests/dom/github-stack-page-session.js
     },
     {
       "method": "GET",
-      "route": "/api/plugin/github/stack?number=70",
+      "route": "/api/plugin/github/stack?number=70&since=ebfe45cd812c6d00f8d4a921576b31d7",
       "etag": "\"current\""
     },
     {
@@ -384,7 +657,7 @@ $ node tests/dom/github-stack-page-session.js
       "lacking": [
         7
       ],
-      "comparison": "offer",
+      "comparison": "keep",
       "error": null,
       "failed": []
     }
@@ -662,13 +935,12 @@ $ node tests/dom/github-stack-page-session.js
       ]
     },
     {
-      "step": "it arrived: another comparison",
+      "step": "8 leaves instead: another comparison, offered",
       "do": "keep",
       "drawn": "current",
       "column": "full pane",
       "notices": [
-        "This stack has changed since its comparison was drawn. [take]",
-        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
+        "#8 left the stack. [take]"
       ]
     },
     {
@@ -676,9 +948,7 @@ $ node tests/dom/github-stack-page-session.js
       "do": "mount changes",
       "drawn": "other",
       "column": "full pane",
-      "notices": [
-        "The top of this stack does not contain #7, so this view leaves out its changes. Open it to see them."
-      ]
+      "notices": []
     },
     {
       "step": "the stack can no longer be shown as one",
