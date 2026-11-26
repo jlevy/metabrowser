@@ -1,0 +1,1 @@
+- The Pulls Refresh tooltip shows the last refresh time and duration on their own.

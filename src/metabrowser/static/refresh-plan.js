@@ -33,7 +33,6 @@
 // A press while the button waits does nothing, as the click of any waiting control does. A
 // part that fails says so where it is drawn, and the rest still run.
 (() => {
-  const CLICK_HINT = "Click to refresh.";
   // Keep a quick press visible for part of a spinner turn.
   const FEEDBACK_MS = 240;
 
@@ -215,7 +214,7 @@
     const tips = new Map();
     function paintTooltip() {
       const detail = tips.get(view().front)?.() ?? null;
-      button.dataset.tipText = detail === null ? CLICK_HINT : `${CLICK_HINT} ${detail}`;
+      button.dataset.tipText = detail ?? "Refresh";
       if (detail === null) {
         button.removeAttribute("aria-description");
       } else {
