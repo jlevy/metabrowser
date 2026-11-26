@@ -5,8 +5,8 @@ base:
     - linear
     - Feature
   priority: 2
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: "Merge readiness: show whether a pull request is ready to merge as plainly as its
     state, with operational status modeled apart from the core"
 bead_id: is-01m8be438xa5kc27fpbd5rkbcy
@@ -15,7 +15,7 @@ external_key: OS-635
 external_url: https://linear.app/finterm-ai/issue/OS-635/merge-readiness-show-whether-a-pull-request-is-ready-to-merge-as
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-26T08:21:02.233Z
+remote_updated_at: 2026-11-26T09:05:04.592Z
 state: linked
-synced_at: 2026-11-26T08:35:40.862Z
+synced_at: 2026-11-26T09:05:04.872Z
 type: lk

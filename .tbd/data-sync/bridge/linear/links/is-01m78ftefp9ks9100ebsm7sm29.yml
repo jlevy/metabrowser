@@ -11,10 +11,10 @@ base:
 bead_id: is-01m78ftefp9ks9100ebsm7sm29
 external_id: 2c899caa-16c3-454c-acd8-d66b8a42baf7
 external_key: OS-613
-external_url: https://linear.app/finterm-ai/issue/OS-613/plugin-sources-and-out-of-process-plugin-environments
+external_url: https://linear.app/finterm-ai/issue/OS-613/plugin-sources-process-isolation-and-out-of-process-plugin
 refinement_slot: in_progress
 refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
 remote_updated_at: 2026-11-26T08:44:00.384Z
 state: linked
-synced_at: 2026-11-26T08:44:00.544Z
+synced_at: 2026-11-26T09:04:57.793Z
 type: lk
