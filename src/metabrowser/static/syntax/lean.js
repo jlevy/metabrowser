@@ -61,7 +61,7 @@
   // Oniguruma's `\w` on UTF-8 text: General_Category Letter, Mark, Decimal_Number, or
   // Connector_Punctuation (oniguruma doc/RE, "Character Property"). `\b` is the edge
   // between such a character and any other.
-  const WORD = "[\\p{L}\\p{M}\\p{Nd}\\p{Pc}]";
+  const WORD = "[\\p{Letter}\\p{Mark}\\p{Decimal_Number}\\p{Connector_Punctuation}]";
   const WORD_EDGE = `(?:(?<=${WORD})(?!${WORD})|(?<!${WORD})(?=${WORD}))`;
 
   // The longest run an upstream `[^…]*` may scan for its closing bracket. Upstream's

@@ -76,24 +76,44 @@ diffs route alike. Take the first grammar that applies:
    `lean.js` ports the official Lean 4 grammar.
    The Lean 3 grammar Highlight.js lists missed most of Lean 4, which is why Lean took
    this path.
-   - Copy every upstream regex verbatim into one table of `String.raw` strings, and map
-     its TextMate scopes to the
+   - Copy every upstream regex verbatim into a `String.raw` constant of its own, so one
+     no rule reads fails the lint as an unused variable, and map its TextMate scopes to
+     the
      [standard Highlight.js scopes](https://highlightjs.readthedocs.io/en/latest/css-classes-reference.html).
-     Highlight.js tries a mode’s contents before its `end`, the reverse of TextMate;
+   - Change a regex only where it is compiled, through a named adaptation, as
+     `ADAPTATIONS` in `lean.js` does.
+     A TextMate grammar runs on Oniguruma, one line at a time; Highlight.js runs
+     JavaScript regexes over the whole file.
+     So `\b` and `\w` are Unicode upstream and ASCII in JavaScript, POSIX classes do not
+     exist in JavaScript, and a scan that upstream stops at the end of its line runs to
+     the end of the file here, at every occurrence.
+     Bound each such scan, and measure a file of `SYNTAX_HIGHLIGHT_MAX_BYTES` made of
+     the unclosed opener before and after.
+   - Highlight.js tries a mode’s contents before its `end`, the reverse of TextMate;
      guard a contained pattern with a lookahead of the `end` where the two can meet.
-   - Pin the upstream file and its license under `tests/fixtures/`, and test that the
-     port’s table holds every upstream regex and no other, as
-     `tests/test_lean_grammar.py` does, so refreshing the fixture fails until the port
-     follows it.
+     It scopes one capture of a `begin` only when the `begin` is an array of parts.
+   - Pin the upstream file and its license under `tests/fixtures/`, and test as
+     `tests/test_lean_grammar.py` does: the port’s constants are every upstream regex
+     and no other, so refreshing the fixture fails until the port follows it, and every
+     constant and every adaptation has source run through the vendored runtime with the
+     scopes it should take.
    - Put the license beside the port and add it to `NOTICE.md`.
 
-Either way, add the script to the prefetched tier in `server.py`’s
-`optional_script_assets` with `"requires": "hljs"`
-([Asset Loading Tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)),
-and to the lists in `tests/test_index_cdn_origins.py` and
-`tests/test_plugin_sdk_helpers.py`. The syntax shim
-(`tests/dom/syntax-token-sdk-behavior.js`) loads every grammar in `static/vendor/` and
-`static/syntax/` and fails when a mapped language is not registered.
+The first path adds no script.
+The other two add one, and it needs a loading tier chosen from its measured size
+([Asset Loading Tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)).
+A grammar that is small beside the Highlight.js runtime joins the prefetched tier:
+`optional_script_assets` in `server.py` with `"requires": "hljs"`, where a comment
+records each grammar’s size; add the new one’s. That tier is fetched on every page, so
+when the grammars together are no longer small beside the runtime, the next step is to
+load each on demand by language.
+Add the script to the lists in `tests/test_index_cdn_origins.py` and
+`tests/test_plugin_sdk_helpers.py` as well.
+
+The syntax shim (`tests/dom/syntax-token-sdk-behavior.js`) loads every grammar in
+`static/vendor/` and `static/syntax/` and fails when a language the extension map names
+is not registered. That mapping check is the shim’s whole coverage of a new language;
+what the grammar highlights is for the grammar’s own test.
 
 A scope the stylesheet does not color takes an existing `--color-syntax-*` or status
 token in `styles.css`, or stays plain.

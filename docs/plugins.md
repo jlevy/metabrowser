@@ -312,10 +312,10 @@ render_runtime = "client"
 View order in the manifest is tab order.
 At most one view per kind may set `default = true`. A plugin may register a view for a
 kind declared by another plugin, which is useful for composing generic renderers.
-`render_runtime` documents what renders the view (`kpress`, `client`, `server`, or
-`plugin`; descriptive only, since the view’s registration still dispatches), and a
-printable view declares a `print_profile`: `document`, `source`, `table`, `tree`, or
-`plain`, the default.
+`render_runtime` documents what renders the view; it is descriptive only, since the
+view’s registration still dispatches.
+A printable view declares a `print_profile`. The values each field accepts are its
+`Literal` in `ViewSpec`, in `src/metabrowser/plugin_loader/manifest.py`.
 
 A view may set `offer = "module:function"`, a Python predicate that decides where the
 view is served; one that raises is logged and its view left out, and an operator

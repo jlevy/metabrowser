@@ -6189,9 +6189,9 @@ pre.code-block code.hljs {
 .hljs .hljs-bullet {
   color: var(--color-syntax-number);
 }
-/* Lean's grammar (syntax/lean.js) scopes `sorry`, `admit`, and `#exit`, which leave a
-   proof unfinished and which the official Lean 4 grammar marks invalid, apart from
-   keywords so a reader can find them. */
+/* Lean's grammar (syntax/lean.js) scopes `sorry` and `admit`, which leave a proof
+   unfinished and which the official Lean 4 grammar marks invalid, apart from keywords
+   so a reader can find them. */
 .hljs .hljs-sorry {
   color: var(--status-warning-text);
   font-weight: var(--weight-bold);

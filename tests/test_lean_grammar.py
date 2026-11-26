@@ -277,7 +277,7 @@ RULES: dict[str, list[Case]] = {
     "escapeUnicode": [
         (r'"\u03B1\u03"', [(STRING, '"'), (ESCAPE, r"\u03B1"), (STRING, r'\u03"')]),
     ],
-    "booleans": [("true false truely x", [(LITERAL, "true"), (LITERAL, "false")])],
+    "booleans": [("true false truer x", [(LITERAL, "true"), (LITERAL, "false")])],
     "character": [
         ("'a' f' x' 'b'", [(STRING, "'a'"), (STRING, "'b'")]),
         ("a]'b'", []),

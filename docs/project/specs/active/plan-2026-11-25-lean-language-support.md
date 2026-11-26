@@ -91,19 +91,31 @@ The kind lists linguist’s extensions, `.lean` and `.hlean`.
 **Port the official grammar.** The Lean 3 grammar Highlight.js lists was vendored first
 and replaced once the gap was measured: most Lean 4 declarations lost their keywords.
 `static/syntax/lean.js` ports `lean4.json` rule for rule: every upstream regex is copied
-verbatim into one table, TextMate scopes map to standard Highlight.js scopes, and it
-registers as `lean` with the alias `lean4`. Two adaptations, both named in the file:
-POSIX `[:space:]` becomes `\s`, and the Markdown grammar inside comments is not ported.
+verbatim into a constant of its own, TextMate scopes map to standard Highlight.js
+scopes, and it registers as `lean` with the alias `lean4`. The Markdown grammar inside
+comments is not ported.
+What Oniguruma under TextMate and a JavaScript regex under Highlight.js read differently
+is changed where a constant is compiled, by the entries of `ADAPTATIONS` in the file:
+POSIX `[:space:]`, the Unicode `\b` and `\w`, a binder that stays on its line, and a
+bound, `SCAN_LIMIT`, on each scan for a closing bracket.
+The bound is there because Highlight.js gives a regex the whole file where TextMate
+gives it a line: an unclosed `def {` or `trace[` rescanned the rest of the file at every
+occurrence, and a file at the highlight limit froze the tab for most of a minute.
+The measurement is beside the constant.
 Highlight.js tries a mode’s contents before its `end`, the reverse of TextMate, so the
 declaration-name pattern carries a lookahead of the upstream `end` and
 `structure Point where` ends at `where` as upstream does.
 The upstream file is pinned at vscode-lean4 commit `9ac77ca57bf7`, with its license, in
-`tests/fixtures/vscode-lean4/`; `tests/test_lean_grammar.py` holds the port’s table to
-it in both directions and runs a Lean 4 sample through the vendored runtime.
-The port loads in the prefetched tier beside the TOML grammar.
+`tests/fixtures/vscode-lean4/`; `tests/test_lean_grammar.py` holds the port’s constants
+to it in both directions and runs source for every constant and every adaptation through
+the vendored runtime.
+The port loads in the prefetched tier beside the TOML grammar; `server.py` records its
+size there.
 
-`sorry`, `admit`, and `#exit`, which upstream marks invalid, keep a `sorry` scope, and
-the stylesheet gives it the warning token.
+`sorry` and `admit`, which upstream marks invalid, keep a `sorry` scope, and the
+stylesheet gives it the warning token.
+Upstream’s rule names `#exit` too, but between two `\b`, so it never matches the command
+at the start of a line; the port keeps that.
 
 **Skills are routers.** `mb-add-language` and `mb-add-plugin` live in `.agents/skills/`,
 linked from `.claude/skills/`, and send an agent to the documents; neither restates a
@@ -162,8 +174,10 @@ Serving a doc-gen4 build itself needs no work beyond serving the folder.
 
 ## Testing Strategy
 
-- `tests/test_lean_grammar.py`: the port against the pinned upstream grammar, and a Lean
-  4 sample through the vendored runtime.
+- `tests/test_lean_grammar.py`: the port against the pinned upstream grammar; source for
+  every upstream rule and every adaptation through the vendored runtime, with the scopes
+  it takes; and an unclosed opener repeated to the highlight limit, which must finish
+  within the test’s node budget.
 - `tests/test_file_extensions.py` and `test_plugin_sdk_syntax_token_contracts` hold the
   syntax registry to the loaded grammars; the shim loads every grammar in
   `static/vendor/` and `static/syntax/`.
