@@ -1667,8 +1667,8 @@ $ node tests/dom/nav-reveal-session.js links
         "tab": "pulls",
         "told": [
           "#8's page writes its place into its entry",
-          "Pulls: current 8",
-          "the pane shows /pull/8/files"
+          "the pane shows /pull/8/files",
+          "Pulls: current 8"
         ]
       },
       {
@@ -1678,9 +1678,9 @@ $ node tests/dom/nav-reveal-session.js links
         "tab": "pulls",
         "told": [
           "#8's page writes its place into its entry",
-          "Pulls: current 7",
+          "the pane shows /pull/7",
           "Pulls: #7 revealed",
-          "the pane shows /pull/7"
+          "Pulls: current 7"
         ]
       },
       {
@@ -1691,9 +1691,9 @@ $ node tests/dom/nav-reveal-session.js links
         "told": [
           "#7's page writes its place into its entry",
           "the pane given up",
-          "Pulls: current null",
           "the pane shows /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          "Commits: selects bbbbbbb and reveals its row"
+          "Commits: selects bbbbbbb and reveals its row",
+          "Pulls: current null"
         ]
       },
       {
@@ -1703,8 +1703,8 @@ $ node tests/dom/nav-reveal-session.js links
         "tab": "pulls",
         "told": [
           "the pane given up",
-          "Pulls: current null",
-          "the pane shows /pulls"
+          "the pane shows /pulls",
+          "Pulls: current null"
         ]
       },
       {
@@ -1713,8 +1713,8 @@ $ node tests/dom/nav-reveal-session.js links
         "address": "/stack/3",
         "tab": "pulls",
         "told": [
-          "Pulls: current null",
-          "the pane shows /stack/3"
+          "the pane shows /stack/3",
+          "Pulls: current null"
         ]
       }
     ],

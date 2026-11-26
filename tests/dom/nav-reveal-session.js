@@ -564,7 +564,13 @@ async function linksStory() {
     const before = { address: address(), tab: mainTabs?.active() ?? "files", pushed };
     const opened = navigation.openRoute(href);
     await settle();
+    // The Pulls view tells the reveal its own read of the list makes and the current row
+    // the host gives it, which nothing orders against each other (its controller starts
+    // unawaited, as pulls-panel.js mounts it), so its lines are kept together, sorted,
+    // after the shell's, which keep their order.
     const said = told.splice(0);
+    const view = said.filter((line) => line.startsWith("Pulls: ")).sort();
+    said.splice(0, said.length, ...said.filter((line) => !line.startsWith("Pulls: ")), ...view);
     const after = { address: address(), tab: mainTabs?.active() ?? "files" };
     assert.equal(document.activeElement, reading, `${what}: focus stays where the reader reads`);
     if (!opened) {
