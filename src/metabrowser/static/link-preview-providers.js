@@ -34,7 +34,10 @@
    * @typedef {{kind: "pull", number: number, tab: "" | "files" | "checks", file: string}} PullSubject
    * @typedef {{kind: "stack", number: number, file: string}} StackSubject
    * @typedef {{kind: "commit", revision: string}} CommitSubject
-   * @typedef {{kind: "file" | "folder", path: string, opens: "here" | "working-tree"}} PathSubject
+   * @typedef {{
+   *   kind: "file" | "folder", path: string, opens: "here" | "working-tree",
+   *   target: {path: string, query?: string, fragment?: string},
+   * }} PathSubject
    * @typedef {{kind: "pulls"}} PullsSubject
    */
   /**
@@ -350,10 +353,7 @@
    */
   function summarizePath(subject, { mb }) {
     const shown = subject.path.replace(/\/+$/, "");
-    const path = servedPath(shown, mb);
-    if (path === null) {
-      return Promise.resolve(null);
-    }
+    const path = servedPath(subject);
     if (subject.kind === "folder") {
       const totals = mb.directoryTotals.get(path);
       return Promise.resolve(
@@ -416,27 +416,16 @@
   }
 
   /**
-   * A shown path as the served tree's inventory spells it, the identity its catalog, its
-   * totals, and its addresses use: on a pin the GitPath wire, which the bundle loads first
-   * (static/git-path.js), and on a folder each `%` as `%25`, as the resolver spells a
-   * `/view/` target (static/repository-links.js, `viewTarget`). Null for a name the wire
-   * cannot spell.
+   * The subject's path as the served tree's inventory spells it, the identity its catalog,
+   * its totals, and its addresses use: the path of the navigation target the resolver gave
+   * the link (static/repository-links.js, `viewTarget`), on a pin the GitPath wire, less a
+   * folder's closing slash. The spelling is the resolver's alone.
    *
-   * @param {string} shown
-   * @param {Sdk} mb
-   * @returns {string | null}
+   * @param {PathSubject} subject
+   * @returns {string}
    */
-  function servedPath(shown, mb) {
-    if (shown === "") {
-      return "";
-    }
-    if (mb.sourceKind() === "git_revision") {
-      return window.MetabrowserGitPath?.wire(shown) ?? null;
-    }
-    return shown
-      .split("/")
-      .map((segment) => segment.replaceAll("%", "%25"))
-      .join("/");
+  function servedPath(subject) {
+    return subject.target.path.replace(/\/+$/, "");
   }
 
   /**
@@ -449,14 +438,15 @@
    * @returns {Promise<void>}
    */
   function prefetchPathPage(subject, { mb }) {
-    const path = servedPath(subject.path.replace(/\/+$/, ""), mb);
     // The SDK's view helpers bring it, so a page that has drawn no view has none yet.
-    if (path === null || !mb.repository || typeof mb.prefetchCounterpart !== "function") {
+    if (!mb.repository || typeof mb.prefetchCounterpart !== "function") {
       return Promise.resolve();
     }
     let page;
     try {
-      page = mb.navigation.href({ path: subject.kind === "folder" && path ? `${path}/` : path });
+      // The page's own address, as its header asks: the target's path, with no query or
+      // fragment, which name a place on the page rather than another page.
+      page = mb.navigation.href({ path: subject.target.path });
     } catch {
       // An address the navigation codec will not spell has no page to warm.
       return Promise.resolve();

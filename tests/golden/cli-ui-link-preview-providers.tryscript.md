@@ -261,7 +261,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "docs/guide.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "docs/guide.md"
+        }
       },
       "summary": {
         "detail": "Markdown file"
@@ -273,7 +276,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "docs/guide.md",
-        "opens": "working-tree"
+        "opens": "working-tree",
+        "target": {
+          "path": "docs/guide.md"
+        }
       },
       "summary": {
         "detail": "Markdown file"
@@ -285,7 +291,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "docs/old-guide.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "docs/old-guide.md"
+        }
       },
       "summary": {
         "detail": "Markdown file",
@@ -298,7 +307,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "docs/old-guide.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "docs/old-guide.md"
+        }
       },
       "summary": {
         "detail": "Markdown file"
@@ -310,7 +322,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "notes/100%.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "notes/100%25.md"
+        }
       },
       "summary": {
         "detail": "Markdown file"
@@ -322,7 +337,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "notes/draft.zzz-unclaimed",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "notes/draft.zzz-unclaimed"
+        }
       },
       "summary": null,
       "asked": [],
@@ -332,7 +350,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "folder",
         "path": "docs/",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "docs/"
+        }
       },
       "summary": {
         "detail": "1 file · 48 B"
@@ -344,7 +365,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "folder",
         "path": "",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": ""
+        }
       },
       "summary": {
         "detail": "3 files · 112 B"
@@ -356,7 +380,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "folder",
         "path": "src/",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "src/"
+        }
       },
       "summary": null,
       "asked": [],
@@ -366,7 +393,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "docs/guide.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ"
+        }
       },
       "summary": {
         "detail": "Markdown file"
@@ -378,7 +408,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "docs/old-guide.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "g1-ZG9jcw/g1-b2xkLWd1aWRlLm1k"
+        }
       },
       "summary": {
         "detail": "Markdown file",
@@ -462,7 +495,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "docs/guide.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "docs/guide.md"
+        }
       },
       "asked": [],
       "assets": [],
@@ -474,7 +510,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "folder",
         "path": "docs/",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "docs/"
+        }
       },
       "asked": [],
       "assets": [],
@@ -486,7 +525,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "folder",
         "path": "",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": ""
+        }
       },
       "asked": [],
       "assets": [],
@@ -498,7 +540,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "docs/guide.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ"
+        }
       },
       "asked": [],
       "assets": [],
@@ -510,7 +555,10 @@ $ node tests/dom/link-preview-providers-session.js
       "subject": {
         "kind": "file",
         "path": "README.md",
-        "opens": "here"
+        "opens": "here",
+        "target": {
+          "path": "README.md"
+        }
       },
       "asked": [],
       "assets": [],

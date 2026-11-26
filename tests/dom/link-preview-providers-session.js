@@ -238,6 +238,7 @@ for (const name of [
   "git-graph.js",
   "git-history-window.js",
   "git-panel.js",
+  "repository-links.js",
   "link-preview-providers.js",
 ]) {
   const file = path.join(repoRoot, "src/metabrowser/static", name);
@@ -280,8 +281,36 @@ const commit = recorded.commit.revision;
 const absent = recorded["commit absent"].revision;
 const pull = (number, tab = "", file = "") => ({ kind: "pull", number, tab, file });
 const stack = (number) => ({ kind: "stack", number, file: "" });
-const file = (shown, opens = "here") => ({ kind: "file", path: shown, opens });
-const folder = (shown) => ({ kind: "folder", path: shown, opens: "here" });
+// A file's or folder's subject as the card makes one from the resolver's answer for a
+// github.com link to it on the served branch (static/link-previews.js, `subject`): its target
+// is the resolver's own, spelled for the page's source kind, and its path the one shown.
+const viewTarget = (shown, directory) =>
+  sandbox.MetabrowserRepositoryLinks.localize(
+    `https://github.com/octo/demo/${directory ? "tree" : "blob"}/main/${encodeURI(shown)}`,
+    // The repository the link names, whatever the page's own context says, so a page with
+    // none still has the subject a page with one would give the link.
+    {
+      host: "github.com",
+      owner: "octo",
+      name: "demo",
+      branch: "main",
+      revision: "a".repeat(40),
+      served_prefix: "",
+    },
+    { sourceKind },
+  ).target;
+const file = (shown, opens = "here") => ({
+  kind: "file",
+  path: shown,
+  opens,
+  target: viewTarget(shown, false),
+});
+const folder = (shown) => ({
+  kind: "folder",
+  path: shown,
+  opens: "here",
+  target: viewTarget(shown.replace(/\/$/, ""), true),
+});
 
 async function run() {
   const summaries = {};
