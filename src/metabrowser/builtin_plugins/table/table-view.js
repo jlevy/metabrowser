@@ -286,7 +286,8 @@ export function mountTable(container, ctx, host = {}) {
   /** The answer held: the first page's count and columns, the last's cursor, every page's rows (`rows`). @type {(TablePage & {rows: TableRow[]}) | null} */
   let page = null;
   /** The table id the schema answered for, "" for a source that is its own table. */
-  let tableId = "";
+  /** @type {string | null} */
+  let tableId = null;
   /** The question `page` answers, whose rows its `next_after` continues. @type {TableState} */
   let answered = state;
   /** @type {string[]} */
@@ -1552,7 +1553,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /** The table id the schema answered for, "" for a source that is its own table. */
   function tableOf() {
-    return tableId;
+    return tableId ?? "";
   }
 
   function drawEmpty() {
@@ -1679,7 +1680,7 @@ export function mountTable(container, ctx, host = {}) {
   function drawChips() {
     const made = [];
     if (state.ref) {
-      made.push(referenceChip(state.ref, withRef(state, null)));
+      made.push(referenceChip(state.ref, state.via, withRef(state, null)));
     }
     for (const filter of state.filters) {
       made.push(
@@ -1693,11 +1694,29 @@ export function mountTable(container, ctx, host = {}) {
     chips.replaceChildren(...made);
   }
 
-  /** @param {string} raw @param {TableState} without */
-  function referenceChip(raw, without) {
+  /** @param {string | undefined} via */
+  function relationshipContext(via) {
+    if (via === undefined) {
+      return "";
+    }
+    try {
+      const [names] = JSON.parse(via);
+      if (Array.isArray(names) && names.length && names.every((name) => typeof name === "string")) {
+        return ` via ${names.map((name) => fieldsByName.get(name)?.title || name).join(", ")}`;
+      }
+    } catch {
+      // The rows route reports invalid filters.
+    }
+    return "";
+  }
+
+  /** @param {string} raw @param {string | undefined} via @param {TableState} without */
+  function referenceChip(raw, via, without) {
     const boundary = raw.lastIndexOf(":");
-    if (boundary < 0) {
-      return chip("ref", `Referencing ${raw}`, without);
+    const context = relationshipContext(via);
+    const pill = chip("ref", `Referencing ${raw}${context}`, without);
+    if (boundary < 0 || tableId === null) {
+      return pill;
     }
     const ref = { table: raw.slice(0, boundary), key: raw.slice(boundary + 1) };
     const target = referenceTarget(ref);
@@ -1712,10 +1731,9 @@ export function mountTable(container, ctx, host = {}) {
       },
       raw,
     );
-    const pill = chip("ref", `Referencing ${raw}`, without);
     const label = /** @type {HTMLElement} */ (pill.firstChild);
     const remove = /** @type {HTMLElement} */ (pill.lastChild);
-    label.replaceChildren("Referencing ", link);
+    label.replaceChildren("Referencing ", link, context);
     void getCard(target.path, ref.key).then(
       (answer) => {
         if (!pill.isConnected) {
@@ -1724,7 +1742,10 @@ export function mountTable(container, ctx, host = {}) {
         const display = presentCell(answer.label, undefined);
         if (["text", "number"].includes(display.kind) && display.text) {
           link.textContent = display.text;
-          remove.setAttribute("aria-label", `Remove the filter Referencing ${display.text}`);
+          remove.setAttribute(
+            "aria-label",
+            `Remove the filter Referencing ${display.text}${context}`,
+          );
         }
       },
       () => {},
@@ -2570,7 +2591,7 @@ export function mountTable(container, ctx, host = {}) {
           },
           "Open as table",
         );
-        recordControls.set(`referenced:${ref.table}:${ref.fields.join(",")}`, open);
+        recordControls.set(JSON.stringify([ref.table, ref.fields, ref.to]), open);
         section.append(
           el(
             "p",
