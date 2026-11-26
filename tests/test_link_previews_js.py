@@ -37,7 +37,7 @@ def _session() -> dict[str, Any]:
         [require_node(), str(SESSION_JS)],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=30,
         check=False,
     )
     assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
