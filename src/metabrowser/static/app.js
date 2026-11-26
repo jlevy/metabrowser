@@ -721,7 +721,7 @@ function initSettingsControl() {
       close: () => setOpen(false),
     });
     btn.addEventListener("click", () => {
-      void window.MetabrowserAssets?.ensureAsset("remote-images");
+      void window.MetabrowserAssets?.ensureAsset("settings-menu");
       setOpen(!isOpen());
       dismissal?.[isOpen() ? "opened" : "closed"]();
     });

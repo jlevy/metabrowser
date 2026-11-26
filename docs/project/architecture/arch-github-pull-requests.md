@@ -1158,9 +1158,9 @@ draws a comment, its title and note prose in a KPress article, as a description 
 each excerpt is drawn by the diff plugin’s own renderer (`mountFilePatch`, which the
 page loads with `plugins.load("diff")`; `renderReference` in `guided-review.js`), so its
 hunk bars, folds, type, row height, gutter, and change fills are Changes’.
-The card around an excerpt folds by the diff view’s own bar and chevron, which the
-mounted patch hands over (`disclose`, the diff view’s `fileDisclosure`), so the guide
-builds no bar of its own for a file that shows a diff
+Each card the guide draws for a file folds by the diff view’s own bar and chevron, which
+the guide’s drawer hands over (`disclose` on `guidePatchDrawer`, the diff view’s
+`fileDisclosure`), so the guide builds no bar of its own
 ([Diff File Bar](../../design-system.md#diff-file-bar)). A range is one hunk in the diff
 model’s shape (`_rows_hunk` in `guided_review.py`), and a path alone is its file’s whole
 patch, within the step’s budget for whole files; a file past it, or past what the diff

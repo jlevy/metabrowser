@@ -1260,11 +1260,9 @@ async function headLinkChecks(mountDiffView, byName) {
       "a Markdown file whose changes did not load keeps its chooser, its views unavailable for the reason its body gives",
       chooser?.value === "source" &&
         JSON.stringify(chooser.options.map((option) => option.value)) ===
-          JSON.stringify(["full", "concise", "source"]) &&
-        chooser.options
-          .slice(0, 2)
-          .every((option) => option.tip === "This change is too large to show inline.") &&
-        chooser.options[2].tip === undefined &&
+          JSON.stringify(["rendered", "source"]) &&
+        chooser.options[0].tip === "This change is too large to show inline." &&
+        chooser.options[1].tip === undefined &&
         said.includes("This change is too large to show inline.") &&
         requested.length === asked,
       JSON.stringify({ choosers, said, requested }),
@@ -1331,6 +1329,7 @@ async function main() {
     anchorRow,
     composeTextRuns,
     currentAbsence,
+    fileDisclosure,
     hunkGaps,
     mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
@@ -1860,10 +1859,7 @@ async function main() {
   layoutChange("diff-layout", "unified", "one");
   check("layout switch reprojects immediately", split.find("diff-split-row").length === 0);
   check("unified switch restores four source rows", split.find("diff-line").length === 4);
-  check(
-    "layout preference persists",
-    preferenceWrites.at(-1).key === "diff.layout" && preferenceWrites.at(-1).value === "unified",
-  );
+  check("layout override leaves the default preference alone", preferenceWrites.length === 0);
   layoutChange("diff-layout", "split", "one");
   layoutChange("diff-layout", "unified", "one");
   check("repeated switches never re-run the lexer", layoutSyntaxCalls === callsBeforeSwitch);
@@ -2020,14 +2016,14 @@ async function main() {
   );
   check(
     "the chooser is one joined, exclusive group named for what it chooses",
-    showSpec?.label === "Diff or current version" &&
+    showSpec?.label === "Comparison view" &&
       showSpec.layout === "joined" &&
       showSpec.select === "one" &&
       showSpec.value === "diff" &&
       JSON.stringify(showSpec.options.map((option) => [option.label, option.tip])) ===
         JSON.stringify([
-          ["Diff", "Show what changed, removals included"],
-          ["Current", "Show the new version alone, its changes marked"],
+          ["Diff", "Show additions and removals with surrounding context."],
+          ["Excerpt", "Show the new version around the changes."],
         ]),
     JSON.stringify(showSpec),
   );
@@ -2056,16 +2052,14 @@ async function main() {
     "the layout control keeps the stored layout and says why neither chip can be chosen",
     layoutInCurrent.value === "split" &&
       layoutInCurrent.options.every(
-        (option) =>
-          option.tip ===
-          "Current shows the new version in one column; choose Diff for Split or Unified.",
+        (option) => option.tip === "Switch to Diff to change the layout.",
       ),
     JSON.stringify(layoutInCurrent),
   );
   check(
     "the choice is stored as diff.show, which every surface but Docs shares",
     JSON.stringify(preferenceWrites.slice(writesBefore)) ===
-      JSON.stringify([{ key: "diff.show", value: "current" }]),
+      JSON.stringify([{ key: "diff.show", value: "excerpt" }]),
     JSON.stringify(preferenceWrites.slice(writesBefore)),
   );
   const writesInCurrent = preferenceWrites.length;
@@ -2374,7 +2368,7 @@ async function main() {
   );
   toggle.click();
   // What Changes' bar and trigger are made of, which a card another page draws around a
-  // file patch must match (below, at `mountFilePatch`).
+  // file must match (below, at `fileDisclosure`).
   const classesOf = (node) => String(node.className).split(" ").filter(Boolean).sort().join(" ");
   const changesDisclosure = {
     bar: classesOf(bar),
@@ -3012,20 +3006,21 @@ async function main() {
     intraline(patchBody) > 0 && tokens(patchBody) > 0 && patchLexes > 0,
     `${intraline(patchBody)} intraline, ${tokens(patchBody)} tokens, ${patchLexes} lexes`,
   );
-  // A page that draws its own card around a file patch, as Guided Review does, takes the
-  // card's bar from the patch, and it is Changes' own: the same bar, trigger, and chevron,
-  // which fold whatever the page hands them, here a box holding a note and the patch.
+  // A page that draws its own card for a file, as Guided Review does, takes the card's bar
+  // from the diff view's builder (`fileDisclosure`, which `guidePatchDrawer` hands over), and
+  // it is Changes' own: the same bar, trigger, and chevron, which fold whatever the page
+  // hands them, here a box holding a note and the patch.
   {
     const card = new FakeElement("section");
     const folded = new FakeElement("div");
     folded.append(new FakeElement("p"), patchBody);
-    const disclosure = patchHandle.disclose(card, folded);
+    const disclosure = fileDisclosure(card, folded);
     const viewLink = new FakeElement("a");
     viewLink.className = "diff-file-view";
     disclosure.bar.append(disclosure.toggle, viewLink);
     card.append(disclosure.bar, folded);
     check(
-      "a file patch's card takes the bar, trigger, and chevron Changes draws",
+      "a page's own card takes the bar, trigger, and chevron Changes draws",
       JSON.stringify({
         bar: classesOf(disclosure.bar),
         toggle: classesOf(disclosure.toggle),
@@ -3044,7 +3039,7 @@ async function main() {
     const shut = { said: "false", body: true, card: true, turned: true, open: false };
     const opened = { said: "true", body: false, card: false, turned: false, open: true };
     check(
-      "a file patch's card starts open, its trigger naming what it folds",
+      "a page's own card starts open, its trigger naming what it folds",
       JSON.stringify(cardFolds()) === JSON.stringify(opened) &&
         disclosure.toggle.getAttribute("aria-controls") === folded.getAttribute("id") &&
         card.getAttribute("aria-labelledby") === disclosure.toggle.getAttribute("id"),
@@ -3068,7 +3063,7 @@ async function main() {
       "the trigger, which a key presses, opens it again",
       JSON.stringify(cardFolds()) === JSON.stringify(opened),
     );
-    const otherCard = patchHandle.disclose(new FakeElement("section"), new FakeElement("div"));
+    const otherCard = fileDisclosure(new FakeElement("section"), new FakeElement("div"));
     check(
       "each card's ids are its own",
       otherCard.toggle.getAttribute("id") !== disclosure.toggle.getAttribute("id") &&
@@ -3076,17 +3071,6 @@ async function main() {
     );
   }
   patchHandle.dispose();
-  {
-    // The builder is on the handle, not of the patch: it answers the same once the patch is
-    // disposed (review A on #872, A3).
-    const late = patchHandle.disclose(new FakeElement("section"), new FakeElement("div"));
-    late.bar.click();
-    check(
-      "a disposed patch's handle still makes a card's bar, which folds",
-      late.expanded() === false && late.toggle.getAttribute("aria-expanded") === "false",
-    );
-  }
-
   // Disposed before its enhancement runs, a file patch stays as first painted, and a fold
   // still materializing stops.
   const lexedBefore = patchLexes;

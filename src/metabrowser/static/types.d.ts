@@ -66,7 +66,9 @@ type MetabrowserRenderContext = {
    *  surface (Diff unless the host says Current), and the preference that choice is
    *  remembered as (`diff.show` unless the host keeps its own): a pull request's Docs tab
    *  opens on `"current"` and remembers it as `github.docs.show`. */
-  show?: "diff" | "current";
+  show?: "diff" | "current" | "full";
+  /** Render a file card inside a block that supplies the comparison controls. */
+  embedded?: boolean;
   showPreference?: string;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
@@ -1516,25 +1518,19 @@ type AgentsExports = {
 
 /** What the diff plugin exports to a plugin that requires it. */
 type DiffExports = {
+  loadFullSource: typeof import("../builtin_plugins/diff/index.js").loadFullSource;
+  guidePatchDrawer: () => ReturnType<
+    typeof import("../builtin_plugins/diff/index.js").guidePatchDrawer
+  >;
   /** One file's hunks, as the diff route answers them, drawn as Changes draws a file's
    * body: each hunk under its header bar, long changed runs behind fold bars, then changed
-   * runs paired and syntax colored. Unified only. `dispose` stops what is still to come.
-   * `disclose` makes the bar and the chevron that fold a file's card in Changes, for the
-   * card the caller draws around the body: *section* is that card and *folded* what the bar
-   * shows or hides, the body or a box that holds it. The caller names the file in `toggle`,
-   * places it first in `bar`, and puts `bar` and *folded* in the card, which starts open.
-   * It is the diff view's `fileDisclosure` and reads nothing of the patch: it rides on the
-   * handle so a host that already binds `mountFilePatch` needs no second export, and it
-   * answers the same before and after `dispose`, each call a card of its own. */
+   * runs paired and syntax colored. Unified only. `dispose` stops what is still to come. */
   mountFilePatch: (
     body: HTMLElement,
     change: Record<string, unknown>,
     patch: Record<string, unknown>,
     api: MetabrowserPublicSdk,
-  ) => {
-    dispose(): void;
-    disclose(section: HTMLElement, folded: HTMLElement): DiffFileDisclosure;
-  };
+  ) => { dispose(): void };
   /** One changed file of a comparison drawn whole from the comparison route's one-file
    * answer by the diff view's own `render`, rendered layer included, *ctx* as a host passes
    * that view. `settled` is true once the file is drawn, and false when it is not: the
@@ -1545,7 +1541,11 @@ type DiffExports = {
     comparison: NonNullable<MetabrowserRenderContext["comparison"]>,
     path: string,
     ctx?: MetabrowserRenderContext,
-  ) => { settled: Promise<boolean>; dispose(): void };
+  ) => {
+    settled: Promise<boolean>;
+    show(mode: "diff" | "current" | "full"): void;
+    dispose(): void;
+  };
 };
 
 /** What the GitHub plugin exports for the shell. */
@@ -4992,7 +4992,7 @@ declare global {
    * empty, and its `toggle`, the button that holds the chevron, for the caller to name the
    * file in and place first on the bar; and the card's state, open at first. The one shape
    * of it: the diff view returns it, and a plugin that requires the diff plugin takes it
-   * from `mountFilePatch`'s handle. */
+   * from `guidePatchDrawer().disclose(section, folded)`. */
   type DiffFileDisclosure = {
     bar: HTMLElement;
     toggle: HTMLButtonElement;

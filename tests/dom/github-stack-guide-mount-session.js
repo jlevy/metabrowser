@@ -327,6 +327,12 @@ async function run() {
   /** Each patch the diff plugin drew, and whether its view was disposed. */
   const patches = [];
   const diff = {
+    guidePatchDrawer() {
+      // With the diff view's own bar and chevron, which fold the cards the guide draws.
+      return Object.assign((body, change, patch) => this.mountFilePatch(body, change, patch), {
+        disclose: (section, folded, changed) => fileDisclosure(section, folded, changed),
+      });
+    },
     mountFilePatch(_body, change, patch) {
       const drawn = { path: change.new.path, lines: patch.hunks[0].lines.length, disposed: false };
       patches.push(drawn);
@@ -334,8 +340,6 @@ async function run() {
         dispose() {
           drawn.disposed = true;
         },
-        // The diff plugin's own bar and chevron, which fold the card the guide draws.
-        disclose: (section, folded) => fileDisclosure(section, folded),
       };
     },
     mountRenderedFile(_body, comparison, file) {

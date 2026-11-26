@@ -49,14 +49,12 @@ ahead or kept, where no loading state shows either; on pull request 7's guide, w
 on documents (``--guided-documents``), and on stack 70's (``--guided-stack``, with the
 stack page's native stacks).
 
-A step's file that shows a diff folds by the diff view's own bar and chevron, and where the
-chevron sits, how it turns, the body's travel, a real press, Enter and Space on the trigger,
-and the reader's place in the scroller are the browser's, so
-``tests/dom/github-guided-review-fold-chrome.mjs`` measures the card against the same
-server's Changes tab, a file's bar there and the card's here, open and folded, on pull
-request 7's guide. Browserless, the bar's state machine is pinned in
-``tests/dom/diff-view-behavior.js`` and the card built from it in
-``tests/dom/github-guided-review-mount-behavior.js``.
+A step's file card folds by the diff view's own bar and chevron, and where the chevron sits
+and how the bar is painted are the browser's, so
+``tests/dom/github-guided-review-fold-chrome.mjs`` measures the card's bar against a file's
+in the same server's Changes tab, open and folded, and folds and opens it with a real press.
+Browserless, the bar's state machine is pinned in ``tests/dom/diff-view-behavior.js`` and the
+card built from it in ``tests/dom/github-guided-review-mount-behavior.js``.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process

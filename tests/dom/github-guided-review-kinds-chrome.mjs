@@ -328,16 +328,16 @@ try {
       { path: "docs/draft.md", notice: null, guideBar: false },
     );
     same(
-      "9's file is drawn under a bar whose chevron leads, then its pull request, then its path",
+      "9's file is drawn under a bar that names its pull request, then its path",
       await evaluate(
-        `[...document.querySelectorAll(".github-pull-guide-reference-header .diff-file-toggle")].map((name) => [...name.children].map((part) => part.classList.contains("diff-file-chevron") ? "chevron" : part.textContent))`,
+        `[...document.querySelectorAll(".github-pull-guide-reference-header .diff-file-toggle")].map((name) => [...name.children].filter((part) => !part.classList.contains("diff-file-chevron")).map((part) => part.textContent))`,
       ),
-      [["chevron", "#9", "src/app.txt"]],
+      [["#9", "src/app.txt"]],
     );
     check(
       "and the number stands apart from the path",
       await evaluate(`(() => {
-      const [number, path] = document.querySelector(".github-pull-guide-reference-header .diff-file-toggle").children;
+      const [number, path] = [...document.querySelector(".github-pull-guide-reference-header .diff-file-toggle").children].filter((part) => !part.classList.contains("diff-file-chevron"));
       return path.getBoundingClientRect().left - number.getBoundingClientRect().right >= 2;
     })()`),
     );

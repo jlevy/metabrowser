@@ -44,7 +44,7 @@ registerHooks({
         format: "module",
         shortCircuit: true,
         source:
-          "export const setChangeLoader = () => {}; export const setGapLoader = () => {}; export const mountDiffView = (_host, _document, _api, options) => ({ options, dispose() {} }); export const mountDiffSummary = () => ({ dispose() {} }); export const mountFilePatch = () => ({ dispose() {} });",
+          "export const setChangeLoader = () => {}; export const setGapLoader = () => {}; export const mountDiffView = (_host, _document, _api, options) => ({ options, dispose() {} }); export const mountDiffSummary = () => ({ dispose() {} }); export const fileDisclosure = () => {}; export const presentationControlHtml = () => ''; export const mountFilePatch = () => ({ dispose() {} });",
       };
     }
     return nextLoad(url, context);
@@ -65,7 +65,7 @@ const ORIGIN = "http://127.0.0.1:8123";
 // every step whichever it prints.
 const PART = process.argv[2] ?? "mount";
 const LONG_FIRST_STEP =
-  "Concise folds a short run with its blocks and withholds the long runs' blocks";
+  "Rendered Diff folds a short run with its blocks and withholds the long runs' blocks";
 /** @param {string | null} part @param {unknown} links @param {{step: string}[]} all */
 function printed(part, links, all) {
   const split = all.findIndex((each) => each.step === LONG_FIRST_STEP);
@@ -679,7 +679,7 @@ function serialize(nodes) {
 }
 
 function describe(file) {
-  const views = file.format === "markdown" ? ["Full", "Concise"] : ["Rendered"];
+  const views = ["Rendered"];
   const chips = file.control.children.map((chip) => {
     const chosen = chip.getAttribute("aria-checked") === "true" ? "*" : "";
     // A chip is never `disabled`, which would take the pointer and focus from it: one that
@@ -711,9 +711,7 @@ function describe(file) {
       file.bar.classList.contains("diff-file-bar-markdown"),
     `${file.name}: the chooser is gone`,
   );
-  // Showing Source instead of Rendered is never a message in the body: nothing but the
-  // Rendered body goes beside Source.
-  assert(file.section.childNodes.length === 3, `${file.name}: something announces the format`);
+  assert(file.section.childNodes.length === 4, `${file.name}: unexpected file content`);
   if (file.rendered.childNodes.length > 0) {
     joinsAreFresh(file);
   }
@@ -889,7 +887,8 @@ async function main() {
         : { unavailable: "This change is too large to show inline." }),
     });
     const [progress, control] = end.childNodes;
-    const [, rendered] = section.childNodes;
+    const [, fallback, rendered] = section.childNodes;
+    const [, expand] = fallback.childNodes;
     return {
       name: `${entry.id} ${(entry.new ?? entry.old).path}`,
       id: entry.id,
@@ -898,6 +897,7 @@ async function main() {
       bar,
       source,
       control,
+      expand,
       progress,
       rendered,
       state,
@@ -1053,7 +1053,7 @@ async function main() {
   await settle();
   step("a file Rendered cannot show stays in Source, and its chooser says why", files);
 
-  await choose(byId.f2, "concise");
+  await choose(byId.f2, "rendered");
   step("choosing an unavailable view changes nothing and asks for nothing", files);
 
   near("f3");
@@ -1080,19 +1080,19 @@ async function main() {
   await settle();
   step("the answer is kept, not shown", files);
 
-  await choose(byId.f4, "concise");
-  step("choosing Concise again shows the kept answer without asking", files);
+  await choose(byId.f4, "rendered");
+  step("choosing Rendered again shows the kept answer without asking", files);
 
   await click(bar(byId.f1, "5 unchanged blocks"));
   step("opening a fold draws its blocks, which the answer holds", [byId.f1]);
 
   await choose(byId.f1, "source");
-  await choose(byId.f1, "concise");
+  await choose(byId.f1, "rendered");
   near("f1");
   step("switching formats asks for nothing, and an open fold stays open", [byId.f1]);
 
-  await choose(byId.f1, "full");
-  step("Full draws every block, and asks for nothing when the answer holds them", [byId.f1]);
+  await click(byId.f1.expand);
+  step("expanding unchanged sections draws every block already held", [byId.f1]);
 
   near("f6", "f7");
   await settle();
@@ -1120,7 +1120,9 @@ async function main() {
   await settle();
   answer("f10 view=concise");
   await settle();
-  step("Concise folds a short run with its blocks and withholds the long runs' blocks", [byId.f10]);
+  step("Rendered Diff folds a short run with its blocks and withholds the long runs' blocks", [
+    byId.f10,
+  ]);
 
   await click(bar(byId.f10, "2 unchanged blocks"));
   step("opening the short run's fold asks for nothing", [byId.f10]);
@@ -1155,8 +1157,8 @@ async function main() {
   step("its blocks are drawn, and the page goes to the heading", [byId.f10]);
   steps.push({ step: "scrolled into view", scrolled: scrolled.splice(0) });
 
-  await choose(byId.f10, "full");
-  step("Full asks for the blocks still withheld, showing Concise meanwhile", [byId.f10]);
+  await click(byId.f10.expand);
+  step("expanding unchanged sections asks for the blocks still withheld", [byId.f10]);
 
   // Source chosen while Full is asked for, and Full fails: the reader's choice stands.
   await choose(byId.f10, "source");
@@ -1166,15 +1168,16 @@ async function main() {
   });
   brief("Full failing after Source was chosen leaves Source chosen", byId.f10);
   steps.push({ step: "the failure is logged all the same", logged: fullLog });
-  await choose(byId.f10, "full");
-  brief("choosing Full again asks for it again", byId.f10);
+  await choose(byId.f10, "rendered");
+  await click(byId.f10.expand);
+  brief("expanding unchanged sections again retries the request", byId.f10);
 
   answer("f10 view=full");
   await settle();
   step("Full draws every block once they arrive", [byId.f10]);
 
-  await choose(byId.f10, "concise");
-  step("back to Concise, asking nothing, the folds the reader opened still open", [byId.f10]);
+  await click(byId.f10.expand);
+  step("collapsing unchanged sections keeps the folds the reader opened", [byId.f10]);
 
   near("f11");
   await settle();

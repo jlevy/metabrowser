@@ -114,6 +114,10 @@ export function createGuideReads(options = {}) {
   let chars = 0;
   // Bumped by `clear`, so an answer on its way then is not kept.
   let generation = 0;
+  // The files a reader folded, by guide: a guide's query, the head it was read at, and the
+  // folded files' keys. One small entry for each guide the document has shown.
+  /** @type {Map<string, {head: string, folded: Set<string>}>} */
+  const folds = new Map();
 
   /** @param {string} key */
   function drop(key) {
@@ -228,9 +232,37 @@ export function createGuideReads(options = {}) {
     prefetch(asks, step, revision, moved) {
       void read(asks, step, revision, moved).catch(() => {});
     },
-    /** Forget every answer, and end every read on its way. */
+    /**
+     * The files a reader folded in the guide *asks* names, as read at *head*. They are kept
+     * for the document, as the answers are, so a fold lasts while the reader moves between
+     * steps, leaves the tab and comes back, or a poll draws the step again. A guide read at
+     * another head starts with nothing folded, since a new head can change its files.
+     *
+     * @param {string} asks @param {string} head
+     * @returns {{has: (key: string) => boolean, set: (key: string, folded: boolean) => void}}
+     */
+    folds(asks, head) {
+      let entry = folds.get(asks);
+      if (entry === undefined || entry.head !== head) {
+        entry = { head, folded: new Set() };
+        folds.set(asks, entry);
+      }
+      const { folded } = entry;
+      return {
+        has: (key) => folded.has(key),
+        set(key, isFolded) {
+          if (isFolded) {
+            folded.add(key);
+          } else {
+            folded.delete(key);
+          }
+        },
+      };
+    },
+    /** Forget every answer and every fold, and end every read on its way. */
     clear() {
       generation += 1;
+      folds.clear();
       kept.clear();
       chars = 0;
       for (const flight of flights.values()) {
