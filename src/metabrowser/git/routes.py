@@ -48,6 +48,7 @@ from metabrowser.git.history import (
     InvalidHistoryCursorError,
     StaleHistorySessionError,
     current_history_scope,
+    current_history_sessions,
 )
 from metabrowser.git.log import read_history_summary, read_refs
 from metabrowser.git.message import read_commit_message, render_commit_body
@@ -224,7 +225,9 @@ async def prepare_initial_history() -> None:
             return
         try:
             # The registry reuses this walk for the same subject, refs, scope, and page size.
-            prepared = await HISTORY_SESSIONS.prepare_default_page(location)
+            prepared = await current_history_sessions(HISTORY_SESSIONS).prepare_default_page(
+                location
+            )
         except (GitError, HistoryStorageError) as exc:
             span.note_failure(type(exc).__name__)
         else:
@@ -276,7 +279,7 @@ async def api_git_log(request: Request) -> Response:
         # Mostly waiting on the session's long-lived `git log`, which run_git's phase
         # does not see; the one-shot commands under it are not counted twice.
         with server_timing.phase("git"):
-            page = await HISTORY_SESSIONS.read_page(
+            page = await current_history_sessions(HISTORY_SESSIONS).read_page(
                 location,
                 wants_all=wants_all,
                 limit=limit,

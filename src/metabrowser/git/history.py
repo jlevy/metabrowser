@@ -33,7 +33,7 @@ import tempfile
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Literal
@@ -945,7 +945,7 @@ def _first_cursor(session: HistorySession) -> HistoryCursor:
 
 
 class HistorySessionRegistry:
-    """Process-wide LRU owner for bounded history sessions and Git walks."""
+    """LRU owner for an event loop’s bounded history sessions and Git walks."""
 
     def __init__(
         self,
@@ -1218,12 +1218,35 @@ class HistorySessionRegistry:
             await session.close()
 
 
+# Direct handler calls without ASGI startup can supply their own registry.
 HISTORY_SESSIONS = HistorySessionRegistry()
+_SERVING_REGISTRIES: dict[asyncio.AbstractEventLoop, HistorySessionRegistry] = {}
+_REGISTRY_LOCK = threading.Lock()
 
 
-async def close_history_sessions() -> None:
-    """Release process-wide Git history resources during server shutdown."""
-    await HISTORY_SESSIONS.close_all()
+def current_history_sessions(fallback: HistorySessionRegistry) -> HistorySessionRegistry:
+    """The history reader owned by the current application lifespan."""
+    loop = asyncio.get_running_loop()
+    with _REGISTRY_LOCK:
+        return _SERVING_REGISTRIES.get(loop, fallback)
+
+
+@contextlib.asynccontextmanager
+async def lifespan_history_sessions() -> AsyncGenerator[None]:
+    """Keep a nested app on another event loop from closing this server's walks."""
+    loop = asyncio.get_running_loop()
+    with _REGISTRY_LOCK:
+        registry = _SERVING_REGISTRIES.get(loop)
+        owner = registry is None
+        if registry is None:
+            registry = _SERVING_REGISTRIES[loop] = HistorySessionRegistry()
+    try:
+        yield
+    finally:
+        if owner:
+            with _REGISTRY_LOCK:
+                _SERVING_REGISTRIES.pop(loop, None)
+            await registry.close_all()
 
 
 __all__ = [
@@ -1236,7 +1259,8 @@ __all__ = [
     "InvalidHistoryCursorError",
     "StaleHistorySessionError",
     "clear_kept_scopes",
-    "close_history_sessions",
+    "current_history_sessions",
+    "lifespan_history_sessions",
     "current_history_scope",
     "kept_scope_targets",
     "decode_history_cursor",

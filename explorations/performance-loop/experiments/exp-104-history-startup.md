@@ -664,6 +664,9 @@ start a walk with no reuse key.
 The review found that the measured candidate could leave a named spool after Ctrl-C. The
 follow-up keeps the spool anonymous and makes the serve-only flag single-use.
 A real server completed preparation and exited on SIGINT with zero named history spools.
+Hosted testing also found that a nested ASGI lifespan could close another loop’s walk.
+Each serving loop now owns its registry.
+The precise failing pin test and a nested lifespan regression pass locally.
 Process-tree memory and idle Git child retention remain startup guards.
 
 The [protocol](exp-104-protocol.txt) and [samples](exp-104-history-startup.jsonl) record

@@ -23,12 +23,14 @@ from metabrowser.git.history import (
     HistoryStorageError,
     InvalidHistoryCursorError,
     StaleHistorySessionError,
+    current_history_sessions,
     decode_history_cursor,
     encode_history_cursor,
+    lifespan_history_sessions,
     resolve_history_scope,
 )
 from metabrowser.git.log import LOG_FORMAT
-from metabrowser.git.process import GitCommandError, run_git
+from metabrowser.git.process import GitCommandError, GitLocation, run_git
 from metabrowser.git.wire import validate_git_log_page
 from metabrowser.settings import GIT_HISTORY_SESSION_PARSER_MAX_BYTES, GIT_LOG_MAX_LIMIT
 from tests.required_tools import needs_git
@@ -39,6 +41,27 @@ pytestmark = needs_git
 def _history(root: Path, *, commits: int = 17) -> Path:
     build_history_corpus(root, shape="linear", commit_count=commits)
     return root
+
+
+def test_nested_lifespan_on_another_loop_keeps_the_active_history_walk(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history")
+    fallback = HistorySessionRegistry()
+    location = GitLocation.filesystem(root)
+
+    async def inner() -> None:
+        async with lifespan_history_sessions():
+            assert current_history_sessions(fallback).session_count == 0
+
+    async def run() -> None:
+        async with lifespan_history_sessions():
+            serving = current_history_sessions(fallback)
+            assert await serving.prepare_default_page(location)
+            await asyncio.to_thread(asyncio.run, inner())
+            assert serving.session_count == 1
+            assert current_history_sessions(fallback) is serving
+        assert serving.session_count == 0
+
+    asyncio.run(run())
 
 
 def test_history_cursor_round_trips_and_rejects_every_invalid_shape() -> None:
