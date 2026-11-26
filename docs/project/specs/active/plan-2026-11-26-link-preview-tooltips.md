@@ -69,7 +69,7 @@ surface that owns it:
 
 | Need | Exists | Gap |
 | --- | --- | --- |
-| A card in the app’s tooltip | `MetabrowserTooltip.show(html, anchor)` and `mb.tooltip.show`: one `.custom-tooltip`, a 300 ms appear delay (`TOOLTIP_APPEAR_DELAY` in `static/app.js`), placed once on its anchor | A visible tooltip does not take new HTML; a `show` still waiting out its delay does |
+| A card in the app’s tooltip | `MetabrowserTooltip.show(html, anchor)` and `mb.tooltip.show`: one `.custom-tooltip`, a 300 ms appear delay (`TOOLTIP_APPEAR_DELAY` in `static/app.js`), placed once on its anchor | A visible tooltip does not take new HTML; a `show` still waiting out its delay does, and waits the whole delay again from then |
 | Which links are in-app | `enhance` and the Markdown enhancer keep each link’s answer by identity (`opens`, `internalTargets`, `routeTargets`) | No registry another module can read; the `data-metabrowser-github-localization` attribute is forgeable in a trusted render |
 | A pull request’s title and state | `GET /api/plugin/github/pulls?q=<n>`, the catalog’s exact-number search (`pull_catalog.py` `catalog_search`), cache-only, about 1 ms | No client cache or export; `listedState` in `pull-state.js` is the github plugin’s own |
 | A commit’s subject | `GET /api/git/commit/<id>`, one `git show`, never a fetch; `fetchCommitDetail`’s cache in `static/git-panel.js` | Private to the Commits panel |
@@ -104,8 +104,8 @@ It uses the tooltip’s existing content classes (`.tip-name`, `.tip-detail` in
 `static/styles.css`), as a Files row’s tooltip does:
 
 1. **What it is**, in `.tip-name`: the object’s mark and its identity: “Pull request
-   #12”, “Stack #3”, “Commit a1b2c3d4e5f6” (the shell’s short commit), the path of a
-   file or folder, or “Pull requests”.
+   #12”, “Stack #3”, “Commit a1b2c3d” (the shell’s short commit), the path of a file or
+   folder, or “Pull requests”.
    A link to a tab or a changed file names it after the identity: “Pull request #12 ·
    Changes · docs/guide.md”.
 2. **Its title**, when known and not already the link’s own text: a pull request’s
@@ -116,6 +116,16 @@ It uses the tooltip’s existing content classes (`.tip-name`, `.tip-detail` in
    a branch that opens whatever is served, “Opens in the served working tree”, which
    replaces `WORKING_TREE_TITLE`. A commit the repository lacks says “Not in this
    repository” instead, and the card makes no fetch for it.
+
+As built, a line that is the link’s own text, in any case and spacing, or a line above
+it, is left out, the identity included, and the first line kept leads with the mark, so
+a link whose text is its identity still shows its state.
+An author’s title is its own line after the object’s title, and a provider’s `detail` a
+`.tip-detail` line before where it opens.
+The marks are the icon catalog’s: the pull request marks `decorateExternalLink` gives a
+pull request’s address, the state’s from the github plugin’s `pullStateIcon`, loaded at
+the first summary that gives a state; a stack’s `layers`; a file’s type from
+`fileTypeIcon`; and none for a folder, which ends in `/`, or a commit, which is its ID.
 
 ### Data and Prefetch
 
@@ -135,11 +145,12 @@ object, all cache-only:
 A link starts its read and its prefetch once the pointer has rested on it for the tree’s
 own hover delay, and asks the tooltip to show the card at once; the tooltip waits out
 its appear delay, and a card whose title arrives in that time is shown with it (a `show`
-still waiting takes the newer HTML). A title that arrives later is cached for the next
-rest.
-At most one read and one prefetch are in flight; a newer rest waits for them rather
-than aborting them, since an aborted request counts against the page’s `fetch_aborts`
-budget.
+still waiting takes the newer HTML, and waits its delay again from then, so a card whose
+title is read at once appears the appear delay after the intent delay rather than after
+the appear delay alone, as the golden’s timing shows).
+A title that arrives later is cached for the next rest.
+At most one read and one prefetch are in flight; a newer rest waits for them rather than
+aborting them, since an aborted request counts against the page’s `fetch_aborts` budget.
 
 ### Where It Lives
 
@@ -154,12 +165,29 @@ fit (Follow-ups).
 
 ### API
 
-- `window.MetabrowserLinkPreviews.register(root, anchor, target, mb)`: called by the
-  resolver’s `enhance`, the Markdown enhancer, and the rendered diff for each in-app
-  link; `target` is the resolver’s answer.
+- `window.MetabrowserLinkPreviews.register(root, anchor, target, mb, { authorTitle })`:
+  called by the resolver’s `enhance`, the Markdown enhancer, and the rendered diff for
+  each in-app link; `target` is the resolver’s answer, a `view` or `route` target, or
+  `{kind: "view-head", href}` for a rendered diff’s link to a file of its head.
   A later call replaces the entry; a link the resolver leaves as written is dropped.
-- `window.MetabrowserLinkPreviews.dispose(root)`: forgets a root’s links and puts its
-  card away.
+  It answers whether the link has a card.
+- `window.MetabrowserLinkPreviews.forget(anchor)`: drops one link and puts its card
+  away.
+- `window.MetabrowserLinkPreviews.dispose(root)`: forgets a root’s links, stops
+  listening to it, and puts its card away (`mb.tooltip.hide(root)`).
+- `window.MetabrowserLinkPreviews.provide(kind, { summary, prefetch })`: a kind’s data,
+  `summary(subject, { mb, signal })` resolving to `{title?, state?, detail?, missing?}`
+  or null, plain text only, and an optional `prefetch(subject, { mb })`. The signal is
+  never aborted.
+- `window.MetabrowserLinkPreviews.subject(target, sourceKind?)`: what a target names,
+  pure: `pull` (`number`, `tab`, `file`), `stack` (`number`, `file`), `commit`
+  (`revision`), `file` or `folder` (`path`, `opens`), or `pulls`. A `/view/` path is
+  read as the page’s source kind spells it, `mb.sourceKind()` when not given, since only
+  that tells a pin’s GitPath wire from a folder’s name that looks like one.
+- `window.MetabrowserLinkPreviews.card(subject, preview, { linkText, authorTitle })`:
+  the one renderer, data in and escaped markup out.
+- `window.MetabrowserLinkPreviews.INTENT_MS`: the intent delay, the tree’s
+  `FILE_PREFETCH_HOVER_DELAY_MS`.
 - `MetabrowserGitPanel.commitSummary(revision, {signal})`: the subject, author, time,
   and whether the repository has it, from the panel’s own cache.
 - `MetabrowserGitPanel.prefetchCommit(revision)`: the commit prepared as a hover on its
@@ -169,9 +197,9 @@ fit (Follow-ups).
 
 ### Phase 1: Link Previews
 
-- [ ] The design-system rule, the card, the registry, and the renderer, with a
-  browserless session, a golden, and a parity row
-- [x] The providers and prefetch for each kind
+- [x] The design-system rule, the card, the registry, and the renderer, with a
+  browserless session, a golden, and a parity row (`mb-wcya`)
+- [x] The providers and prefetch for each kind (`mb-6wiy`)
 - [ ] Every surface registers its links: the resolver’s `enhance`, the Markdown
   enhancer, and the rendered diff; authored titles move into the card; the working-tree
   tooltip goes
