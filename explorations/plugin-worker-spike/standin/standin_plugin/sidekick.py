@@ -122,3 +122,12 @@ def reach(request: Request) -> dict[str, str]:
         "connect over TCP": _attempt(lambda: _connect(query["port"])),
         "start a system tool": _attempt(lambda: subprocess.run(["/bin/true"], check=True)),
     }
+
+
+def native_sleep(request: Request) -> dict[str, Any]:
+    """A synchronous hook inside native code that keeps the interpreter lock, so no other
+    Python thread in the worker runs until it returns."""
+    import ctypes
+
+    ctypes.PyDLL(None).sleep(int(request.query_params.get("seconds", "5")))
+    return {"slept": True}

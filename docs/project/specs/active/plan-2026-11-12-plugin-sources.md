@@ -7,9 +7,10 @@
 **Status:** Draft, awaiting the owner’s answers to the eleven Key Decisions below.
 Epic `mb-xbw3` tracks every item as a bead.
 No product code is changed.
-Spikes proved the worker transport, a host-shipped runtime, and, on Linux, a worker
-confined by the kernel; the macOS half of confinement is designed from the PDF preview’s
-existing sandbox and is not yet run for a plugin worker.
+Spikes proved the worker transport, a host-shipped runtime, and, on Linux, a worker and
+the repository’s own PDF render child confined by the kernel; the macOS half of
+confinement is designed from the PDF preview’s existing sandbox and is not yet run for a
+plugin worker.
 
 ## Overview
 
@@ -69,6 +70,27 @@ This revision:
 - **Reorders the work** so the registry reaches the app before the adapter rework, and
   moves managed packages out of this plan ([Implementation Plan](#implementation-plan)).
 
+A second review the same day, of the isolation layer, the threats, and the protocol, was
+folded in as well:
+
+- **The Linux filter had a hole.** A filter on `socket` alone left `io_uring` open,
+  which reached a Unix socket outside every grant; the filter now refuses it, and the
+  matrix says what is and is not run
+  ([The Enforcement Matrix](#the-enforcement-matrix)).
+- **Needs are grants.** The network and further writes are granted under confinement,
+  one declared need at a time; `full` is for a plugin that cannot be confined; and where
+  the machine cannot confine, a repository’s plugin Python does not load (Key Decision
+  11).
+- **A watchdog leads each worker’s group,** since a lifeline inside a worker cannot
+  promise its end, and a worker is started with `subprocess` and told its pipes’ numbers
+  ([Process Model](#process-model)).
+- **No interpreter of an undecided source starts, in any mode,** because an
+  environment’s `.pth` files run as it starts; and plugin directories are found from
+  metadata, without importing ([The Registry](#the-registry)).
+- **The facility splits containment from supervision,** records what is enforced so
+  every surface prints the same thing, and never downgrades silently
+  ([The Facility](#the-facility)).
+
 ## Key Decisions
 
 Every decision below is awaiting the owner.
@@ -88,9 +110,9 @@ and cons.
 | 6 | The order of the work | Unblock and extract isolation first, then one vertical slice, then the registry | now | No |
 | 7 | Where sources and trust decisions live | The state home, read fail-closed | Phase 2 | Yes: moving a released record needs a migration |
 | 8 | How many plugin API versions | One, under Cargo’s caret rule, plus a build stamp that is not a version | Phase 0 | Somewhat: splitting later adds a field to every manifest |
-| 9 | How widely a worker is shared | One per server and environment | Phase 1 | No: a shared worker can sit behind the same client |
+| 9 | How widely a worker is shared | One per server, environment, and grant set | Phase 1 | No: a shared worker can sit behind the same client |
 | 10 | How log adapters are detected | Declarative predicates in the manifest, proved on the built-in adapters first | Phase 3 | Somewhat: manifests carry the predicates |
-| 11 | What a trusted plugin’s Python may do | Confined by default for a repository’s plugins; full access only when chosen | Phase 4 | No to tighten; a released grant of full access is hard to take back |
+| 11 | What a trusted plugin’s Python may do | Confined, with declared needs as grants; where the machine cannot confine, it does not load | Phase 4 | No to tighten; a released grant of full access is hard to take back |
 
 Decisions 6, 8, 1, 5, and 9 are needed before Phase 1’s code; the rest can wait for the
 phase named.
@@ -455,11 +477,15 @@ Plugins that share a worker share its event loop, its memory, and whatever ends 
 
 **Options.**
 
-- **A. One worker per server and environment, started on demand, exiting when idle.**
+- **A. One worker per server, environment, and grant set, started on demand, exiting
+  when idle.** Plugins of one environment share a worker when they were granted the same
+  things.
   - Pros: a worker serves one root, so plugin caches and root callbacks keep their
     meaning; its lifetime is tied to its server; no new supervisor.
-  - Cons: several open folders on one environment cost one worker each; plugins of one
-    environment share a fate, so ending a worker must be rare.
+  - Cons: several open folders on one environment cost one worker each; plugins that
+    share a worker share a fate, so ending one must be rare; a plugin with a need of its
+    own costs a worker of its own, which is the price of not handing its grant to the
+    others.
 - **B. One worker per environment, shared by every server.**
   - Pros: one worker’s memory per environment, however many folders are open.
   - Cons: needs a supervisor outside any server, a root on every call, and cache
@@ -519,52 +545,68 @@ permanent.
 ### 11. What a Trusted Plugin’s Python May Do
 
 **The question.** When a clone’s plugins are trusted, does their Python run with the
-reader’s full authority, or confined to what a plugin needs?
+reader’s full authority, or confined to what a plugin needs, and what happens where the
+machine cannot confine?
 
 **How to think about it.** The first revision listed sandboxing as a non-goal: a worker
 “runs with the user’s privileges, like any program the user installs”.
 Three things have changed.
-`main` now confines a child process on macOS, for PDF previews of untrusted sources
-(`builtin_plugins/pdf/preview_isolation.py`), and its threat model states the rule.
-A spike confined the plan’s worker on Linux with Landlock and seccomp, with the plugin
-still listing, serving hooks, and calling back to the host ([Isolation](#isolation)).
-And without confinement a per-clone consent that does not bind content hands the
-reader’s whole account to anything that can edit an approved plugin, a sandboxed agent
-included (Key Decision 5).
+`main` now confines a child process on macOS, for PDF previews of untrusted sources, and
+its threat model states the rule: where confinement is required and absent, the work is
+refused. Spikes confined the plan’s worker on Linux with Landlock and seccomp, with the
+plugin still listing, serving hooks, and calling back to the host, and ran the
+repository’s own PDF child behind the same prefix ([Isolation](#isolation)). And without
+confinement a per-clone consent that does not bind content hands the reader’s whole
+account to anything that can edit an approved plugin or add a `.pth` file to its
+environment, a sandboxed agent included (Key Decision 5).
 
 Confinement is not free and not complete.
-A plugin that needs the network, or to write outside a scratch folder, cannot run
-confined; a platform without a working backend cannot confine at all; and the plugin’s
-JavaScript runs in the page with the page’s authority either way.
+It needs a platform with a working backend, the plugin’s JavaScript runs in the page
+with the page’s authority either way, and a filter is only as good as the doors it
+knows: the second revision’s Linux filter left `io_uring` open, which reached a Unix
+socket outside every grant until it was closed.
 What a data hook does today is read files under the served root and compute, which is
-what confinement allows.
+what the default grant allows, and what it lacks (the network, a further folder, a tool)
+can be granted one need at a time without giving up the rest.
 
 **Options.**
 
 - **A. Full access.** A worker is separate, not confined, as the first revision had it.
   - Pros: nothing a plugin does today can break; no platform differences.
   - Cons: trusting a clone means “run its code as me”, and so does every later edit to
-    that code; the consent cannot honestly say less.
-- **B. Confined by default for a repository’s plugins, full access only when chosen.** A
-  decision records an authority, `confined` or `full`. The bar offers `confined`. A
-  plugin whose manifest declares a need confinement cannot grant is listed as needing
-  full access and does not load until the user grants it for that clone.
-  Where no backend works, `confined` is not offered and the consent says that the only
-  choice is full access.
-  Sources the user adds by hand are `full` unless added with `confined`, as an installed
-  plugin is today.
-  - Pros: the default consent is narrow enough to give without reading the code: read
-    the clone, its environment, and the served folder; write a scratch folder; no
-    network; an edit to approved code gains nothing beyond that; the mechanism is the
-    one PDF previews already rely on.
+    that code and every dependency it locks; the consent cannot honestly say less.
+- **B. Confined, with declared needs as grants; where no backend works, the Python does
+  not load.** A repository’s worker requires confinement.
+  The default grant is to read the clone, its environment, and the served folders, and
+  to write a cache. A manifest’s `[plugin.needs]` asks for more (the network, a folder, a
+  program), and each need is granted under confinement when the user approves it.
+  Authority `full` is for a plugin that declares it cannot be confined, or for a user
+  who chooses it deliberately with `--authority full`; the bar never offers it.
+  Where the machine has no backend, a repository’s plugin Python is refused with
+  `no_sandbox`, its manifests, assets, and JavaScript still load, and `--doctor` names
+  the missing piece. Sources the user adds by hand prefer confinement and run without it
+  where there is none, as an installed plugin does today.
+  - Pros: the default consent is narrow enough to give without reading the code, and
+    narrower than a typical agent sandbox, so an edit an agent can make runs with less
+    authority than the agent has; a need that appears later is what asks again, which is
+    a prompt about what code may do and not about what it is; a machine without a
+    backend never teaches the reader to click through to full access; it is the rule PDF
+    previews already follow.
   - Cons: a profile for a full Python environment on macOS is unproven and may need more
-    grants than the PDF child’s; plugins that reach beyond the grants must declare it;
-    two authorities to explain; the Linux backend needs kernel 5.13.
-- **C. Confined always, with no full access.**
-  - Pros: one authority; the strongest statement.
-  - Cons: a plugin that needs the network or a tool outside its grants cannot exist, and
-    the user’s own hand-added plugins lose what they have today.
-- **D. Full access, bound to content** (Key Decision 2, Option C).
+    grants than the PDF child’s; on a machine with no backend a repository’s hooks do
+    not work until the reader opts in by a command; plugins that reach beyond the
+    default must declare it; the Linux backend needs kernel 5.13.
+- **C. As B, but offer `full` in the bar where no backend works.** The second revision’s
+  choice.
+  - Pros: a repository’s plugins work everywhere after one click.
+  - Cons: on exactly the machines that cannot confine, the one-click path grants the
+    whole account, and repeats until the click is a habit.
+- **D. As B, but `network` or `write` forces `full`.** Also the second revision’s.
+  - Pros: two authorities are simple to explain.
+  - Cons: a plugin that only needs the network gets the whole account, although both
+    platforms can grant the network alone (run on Linux; `network-outbound` on macOS is
+    not run).
+- **E. Full access, bound to content** (Key Decision 2, Option C).
   - Pros: nothing changed runs unseen.
   - Cons: prompts on nearly every pull, which nobody reads.
 
@@ -718,7 +760,7 @@ provide them.
 | --- | --- | --- | --- |
 | **Dependencies** | The server’s imports from a plugin’s, and one plugin environment’s from another’s | A fresh interpreter started with `-I`, on the environment’s own Python | No |
 | **Faults** | The server from a crash, a leak, or a native fault | A separate process, replaced when it dies | No |
-| **Time and resources** | The server’s event loop and the machine | A deadline and a kill by the parent; CPU, address-space, file-size, and process limits set in the child; a bounded queue that answers `busy` | Against a slow or greedy child, yes; it limits nothing the child is allowed to do |
+| **Time and resources** | The server’s event loop and the machine | A deadline and a kill by the parent; CPU and address-space limits set in the child; the parent’s watch of resident size; a bounded queue that answers `busy` | Against a slow or greedy child, yes; it limits nothing the child is allowed to do |
 | **Environment** | Secrets in variables, stray descriptors, and the working directory | An allowlisted environment, `/` as the working directory, no inherited descriptors, standard input from `/dev/null` | Hygiene: the child can still read the files those secrets came from |
 | **Authority** | The reader’s files, network, and other processes | The operating system refuses what the policy does not grant: `sandbox-exec` on macOS, Landlock and seccomp on Linux | Yes, with the gaps under [The Enforcement Matrix](#the-enforcement-matrix) |
 
@@ -752,118 +794,159 @@ confinement lives inside a plugin, and that Linux has none.
 
 #### The Facility
 
-A core package, `metabrowser.isolation`, that every one of these and the plugin worker
-start through. It holds no policy of its own: a caller states a tier and a policy, and
-the facility either starts the child that way or refuses.
+A core package, `src/metabrowser/isolation/`, that every one of these and the plugin
+worker start through.
+It holds no policy of its own, and it keeps two things apart.
+**Containment** is what a child may touch.
+**Supervision** is how a child is started, watched, and ended.
+Git and `gh` take supervision alone; the PDF child takes both.
 
 ```python
-class Tier(StrEnum):
-    SEPARATE = "separate"
-    CONFINED = "confined"
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Confinement:
-    """What a confined child may reach, beyond its interpreter and the system's libraries."""
-    read: tuple[Path, ...] = ()
+    read: tuple[Path, ...] = ()        # beyond the child's own code and the system's libraries
     write: tuple[Path, ...] = ()
-    network: bool = False
-    tools: bool = False  # may start other programs, which inherit the confinement
+    network: Literal["none", "internet"] = "none"
+    processes: Literal["none", "confined"] = "none"  # may it start programs; they inherit
+    programs: tuple[Path, ...] = ()    # what it may exec when processes == "confined"
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Limits:
     cpu_seconds: int | None = None
-    address_space_bytes: int | None = None  # enforced on Linux only
-    file_bytes: int | None = None           # 0: no file may grow
-    processes: int | None = None            # 0: no fork
+    address_space_bytes: int | None = None  # Linux only
+    resident_bytes: int | None = None       # watched by the parent, on both platforms
+    file_growth: bool = True
 
-async def backend() -> Backend | None:
-    """The confinement this process can apply, probed once: None where there is none."""
+Requirement = Literal["required", "preferred", "none"]
 
-def launch_plan(command, *, tier, required, confinement, limits, environment) -> Launch | Refusal:
-    """The command line, environment, and descriptors to start, or why not (`no_sandbox`)."""
-
-async def start(plan: Launch, *, descriptors) -> Child:
-    """Start it in its own process group, in `/`, with only the descriptors named."""
+def decide(requirement, backend, confinement) -> Enforcement | Literal["no_sandbox"]: ...
+async def spawn(argv, *, enforcement, limits, environment, cwd, pass_fds, deadline) -> Child: ...
 ```
 
+| Module | Holds |
+| --- | --- |
+| `policy.py` | `Confinement`, `Limits`, `Enforcement`, and `decide`: pure data and the rule |
+| `probe.py` | One real probe per backend, run once, replaceable in goldens as `set_sandbox_probe` is |
+| `macos.py` | A policy rendered as a profile, generalizing `macos_profile` |
+| `linux.py`, `_confine.py` | The Landlock and seccomp launcher: one standalone file, usable as a prefix command and loadable by path by Metabrowser’s own children |
+| `child.py` | `spawn`: the group, the watchdog, the deadline, capped reads, reaping by pid |
+| `groups.py` | The stop registry, moved out of `git/process.py` and `git/children.py` |
+
 - **A backend is a command prefix.** That is the shape `preview_isolation.Sandbox`
-  already has: on macOS `sandbox-exec -p PROFILE`, and on Linux the host’s interpreter
-  running a small launcher that applies the policy to itself and then replaces itself
-  with the child (`confine_linux.py` in the spike).
-  Because it is a prefix, the child can be any program, including another environment’s
-  interpreter, and nothing runs between `fork` and `exec` in a threaded server.
-- **The policy is data,** and each backend renders it: a profile’s `subpath` rules, or a
-  Landlock ruleset. A caller never writes a profile.
-- **The probe is real.** A backend counts only after a child started under it has
-  answered and been refused something it should be refused, as the PDF probe starts the
-  real render child today.
-  A process that is itself sandboxed and may not nest another gets none.
-- **`required` is the rule threat model T7 already states** (`isolation_for`): where a
-  caller requires confinement and there is no backend, the launch is refused with
-  `no_sandbox`; where it does not, the child is confined when a backend exists and
-  separate when none does.
-- **Every child leads its own process group,** so the parent’s kill takes what the child
-  started, and the server’s shutdown stops each group.
-- **One supervisor** holds what the three children each wrote: a deadline with a grace
-  before the kill, a bounded queue that answers `busy`, a start limit with a cool-off,
-  one subject per child, and an idle exit.
+  already has, and the seam takes a second backend as it stands: the repository’s
+  unmodified render child drew the suite’s sample PDF behind the Linux prefix, byte for
+  byte the bare render, and `isolation_for` answered `Isolation` where today it answers
+  `no_sandbox` (`probes.py pdf`). Because it is a prefix, the child can be another
+  environment’s interpreter, and the confinement is in place before that interpreter
+  starts, which matters: an environment’s `.pth` files run as it starts, and one written
+  for the probe was refused its write behind the prefix (`probes.py pth`).
+- **`decide` is `isolation_for`, generalized,** with three requirements.
+  `required` and no backend: the launch is refused with `no_sandbox`, and the route or
+  plugin says so. `preferred` and no backend: the child starts separate, and every
+  surface says “not confined”.
+  `none`: supervision only.
+  There is never a silent downgrade.
+- **`Enforcement` records what is actually enforced,** property by property, for the
+  backend and kernel at hand.
+  `--doctor`, `GET /api/plugins`, and the consent print it, so the three cannot
+  disagree, and a kernel that lacks one piece is named, not averaged away.
+- **The probe is real.** A backend counts only after a child started under it has run
+  and been refused a read and a socket, as the PDF probe starts the real render child
+  today.
+- **The policy is data,** and each backend renders it.
+  A caller never writes a profile or a filter.
+- **Supervision is one shape,** and [Process Model](#process-model) states it for a
+  worker: `subprocess` with `close_fds`, `pass_fds`, `process_group=0`, and `cwd`; a
+  group led by a watchdog that holds a lifeline; a deadline with a grace; reaping by
+  pid; output read under a cap; and one stop registry.
   Its constants stay with the callers that measured them.
+- **Nothing else starts a process.** A structural test, in the shape of
+  `test_only_the_named_modules_start_git`, fails when a module in `src/` outside the
+  facility does.
+
+**What the extraction fixes on the way.** The existing children have defects that one
+launch removes:
+
+- The SQLite readers inherit the server’s whole environment, stay in its group and
+  session, and have only an address-space limit.
+- `render_child.py` says `RLIMIT_NPROC` of zero “makes a fork fail” and `RLIMIT_FSIZE`
+  of zero “makes any write to a file fail”.
+  The first does not hold for root and stops threads for an ordinary account; the second
+  leaves truncation, removal, and renaming allowed (the second review’s runs).
+  So `Limits` has no process count: a child that may start nothing is refused by the
+  filter, which lets threads through (`confine_probe.py`).
+- Four kinds of child have four stop paths: Git and `gh` through a registry, the
+  Markdown child through `stop_children` and a poll of its parent, the readers through
+  standard input, and the PDF child through none.
 
 #### Who Uses It
 
-| Caller | Tier | Read | Write | Network | Tools | Limits |
-| --- | --- | --- | --- | --- | --- | --- |
-| PDF preview, untrusted source | Confined, required | PDFium’s package and the render child | Nothing | No | No | CPU, no file growth, no fork, address space |
-| PDF preview, trusted folder | Confined when a backend exists | The same | Nothing | No | No | The same |
-| SQLite readers | Separate today; confined is a later choice | The served folder and the pool’s private folder | The private folder | No | No | Address space |
-| Markdown child | Separate today; confined is a later choice | Its interpreter only | Nothing | No | No | None |
-| Plugin worker, authority `confined` | Confined, required | The environment, the clone, the served folder and scoped folders, and what the manifest declares | The plugin’s cache folder, its source’s bytecode cache, and a private temporary folder | No | Yes | Set in Phase 1 from measurements |
-| Plugin worker, authority `full` | Separate | Everything the reader can | Everything the reader can | Yes | Yes | The same |
+| Caller | Requirement | Read | Write | Network | Processes |
+| --- | --- | --- | --- | --- | --- |
+| PDF preview, untrusted source | required | Its code only | Nothing | none | none |
+| PDF preview, trusted folder | preferred | The same | Nothing | none | none |
+| SQLite readers | none at first, then preferred | The subject’s folder and the pool’s private folder | The private folder | none | none |
+| Markdown child | none at first, then preferred | Its code only | Nothing | none | none |
+| Git, `gh` | none |  |  |  |  |
+| Plugin worker, a repository’s | required | The environment and its base interpreter, the editable roots its `.pth` files name, the runtime, the clone, the served folder and scoped folders, and declared reads | The plugin cache, a private temporary folder, and its own bytecode cache | none unless declared and approved | confined |
+| Plugin worker, a source the user added | preferred | The same | The same | As declared | confined |
 
 The extraction changes no behavior for the PDF preview on macOS and gives it a backend
 on Linux, where an untrusted source’s card has no image today.
-The readers and the Markdown child adopt the launch (their own group, an allowlisted
-environment) and keep their tier.
+Metabrowser’s own children can confine themselves as they start, with no extra process;
+a foreign interpreter needs the prefix.
 
 #### The Enforcement Matrix
 
-What a confined child is refused, by platform.
-The macOS column is what `macos_profile` denies today for the PDF child.
-`tests/test_pdf_preview_sandbox.py` checks a write, a connection, a fork, an exec, and a
-read there; the column’s other rows follow from that profile denying by default and are
-not run, and a profile for a plugin worker is not yet written.
-The Linux column was observed in `confine_probe.py` and `probes.py confined` on kernel
-6.18, Landlock ABI 7, x86-64, as root, which both mechanisms bind like any account.
+What enforces each property, by platform.
+The macOS column is what a deny-by-default profile does, as `macos_profile` is for the
+PDF child. `tests/test_pdf_preview_sandbox.py` checks a write, a connection, a fork, an
+exec, and a read there; the rest of that column is not run, and no profile for a plugin
+worker is written yet.
+The Linux column was observed in `confine_probe.py` and `probes.py` on kernel 6.18,
+Landlock ABI 7, x86-64, as root, which both mechanisms bind like any account.
 
-| Attempt | macOS, `sandbox-exec` | Linux, Landlock and seccomp | No backend |
+| Property | macOS, `sandbox-exec` | Linux, Landlock and seccomp | Observed on Linux |
 | --- | --- | --- | --- |
-| Read a file outside the grants | Refused | Refused (observed); kernel 5.13 | Allowed |
-| Learn that a path exists | Allowed | Allowed | Allowed |
-| Write outside the write grants | Refused | Refused (observed) | Allowed |
-| Open a TCP connection | Refused | Refused (observed); by the seccomp filter, and by Landlock from 6.7 | Allowed |
-| Open any other socket, a Unix one included | Refused | Refused (observed), by seccomp | Allowed |
-| Start a program inside the grants | Refused for the PDF child; allowed with `tools` | Allowed, and the program is confined too (observed) | Allowed |
-| Signal a process outside | Refused | Refused (observed); kernel 6.12, allowed before it | Allowed |
-| Reach a system service by name | Refused unless the profile names it | Not applicable | Allowed |
-| Use a descriptor it was started with | Allowed | Allowed (observed) | Allowed |
-| Raise its own limits or leave the confinement | Refused | Refused; both survive `exec` and are inherited | — |
+| Read a file | A `file-read*` allowlist | Landlock, kernel 5.13 | Refused outside the grants; that a path exists stays visible |
+| Write a file | A `file-write*` allowlist | Landlock | Refused in a read-only grant and outside the grants |
+| Network: none | `network*` denied, Unix sockets included | The filter fails `socket` and `io_uring_setup`; Landlock adds TCP from 6.7 | TCP, UDP, and a Unix socket by path refused |
+| Network: internet | `network-outbound` | The filter admits the two internet families only | TCP and UDP allowed; a Unix socket by path refused |
+| Start a program | `process-fork` and `process-exec` rules | Landlock’s exec right by path; the filter for `fork` and `clone` | With `processes: none`, a tool and a fork refused and a thread started; otherwise a tool runs, confined too |
+| Signals and other processes | Denied by default | Landlock scopes signals and abstract sockets from 6.12, and ptrace to its own domain | A signal to the parent refused |
+| System services | Mach lookups denied unless named | The keyring, `bpf`, and `perf_event_open` fail in the filter | The keyring call refused |
+| Memory | No address-space limit; the parent watches resident size | `RLIMIT_AS`, and the same watch | Not run here |
+| Inherited descriptors | Usable | Usable | Usable |
+| Leaving the confinement | Refused | Refused; both survive `exec` and are inherited | Not run here |
+
+**The hole a filter on `socket` alone leaves.** Landlock does not judge a connection to
+a Unix socket by its path, and `IORING_OP_SOCKET` makes a socket with no `socket` call.
+With `io_uring_setup` left open, a confined child connected to a Unix socket outside
+every grant, the kind an SSH agent or a session bus listens on; with it refused, it
+could not (`confine_probe.py`, the column “io_uring left open”). This plan’s second
+revision had that hole, and the second review found it.
+The filter is a list of refusals, so the next such door is a risk this design carries:
+`mb-v2m7` decides between this list and a filter that allows only what a Python worker
+calls.
 
 What it does not hold:
 
 - **The inherited descriptors are the remaining channel.** For a worker these are the
-  protocol pipes, so the host checks every call a worker makes against that worker’s
-  subject and bounds every frame ([Protocol](#protocol)).
+  protocol pipes, so the host checks every call a worker makes and bounds every frame
+  ([Protocol](#protocol)).
 - **A granted folder is granted whole.** A confined worker can read every file in the
   clone and the served folder, including ones no plugin needs.
 - **macOS privacy grants** do not widen a confined child: the profile refuses the read
   before a grant is consulted (inferred, not run).
+- **A program started in a session of its own** outlives a group kill, unless the policy
+  refuses new processes.
 - **Linux before 5.13,** a kernel with Landlock turned off, an architecture the filter
   does not know, and Windows have no backend.
 - **`sandbox-exec` is deprecated by Apple** and is what its own tools still use; the
   probe finds out on each machine, and a macOS that drops it leaves no backend.
 
-Cost on Linux: the prefix adds one interpreter start, 18 ms median to a trivial child
-and 30 ms to a worker’s start (`results/` in the spike folder).
+Cost on Linux: the prefix adds one interpreter start, about 20 ms to a trivial child and
+to a worker’s start, and 37 ms to one PDF render (`results/` in the spike folder).
 Unmeasured on macOS for a worker; the PDF probe took 0.10 to 0.16 s there.
 
 #### What a Manifest Declares
@@ -871,25 +954,39 @@ Unmeasured on macOS for a worker; the PDF probe took 0.10 to 0.16 s there.
 A plugin states what it needs beyond the default grants, and the consent shows it:
 
 ```toml
-[plugin.authority]
-environment = ["WORKFLOW_HOME"]   # variables passed to the worker
-read = ["~/.config/workflow"]     # further folders to read
-network = false                   # true needs authority `full`
-write = []                        # anything here needs authority `full`
+[plugin.needs]
+read = ["~/.config/workflow"]   # further folders to read
+write = []                      # further folders to write
+network = "internet"            # none (the default) or internet
+run = ["git"]                   # programs beyond its own interpreter; they run confined too
+environment = ["WORKFLOW_HOME"] # variables passed to the worker
+unconfined = false              # true: it cannot run confined, and says so alone
 ```
 
-- `environment` and `read` are granted under `confined` and shown in the consent.
-- `network = true` or a `write` entry means the plugin runs only under `full`. It is
-  listed as needing full access, and the others in the clone still load.
-- An omitted table declares nothing, which is the confined default.
-- The table is read by the host from the manifest and never from the worker.
+- **Every need is a grant under `confined`,** the network and further writes included: a
+  worker ran with the internet families allowed and everything else still refused
+  (`confine_probe.py`). Per-host rules are not offered, since neither platform enforces
+  them.
+- **The grant is the intersection of what is declared and what was approved.** A need
+  that appears in a later version is refused until approved, with a line in the bar
+  (“workflow now asks to use the network”); nothing asks on a version bump that declares
+  nothing new. So what asks again is a change in what the code may do, not a change in
+  the code.
+- **`unconfined = true`** is for a plugin that cannot run confined at all.
+  It is shown alone, is never granted by the bar’s Trust button, and loads only under
+  authority `full` (Key Decision 11).
+- **A denial reads as one.** The runtime catches a refused access at the hook’s boundary
+  and says that the worker is confined and which need to declare.
+  In author mode an audit hook logs each file, connection, and program a hook asked for,
+  which is the list to declare.
+- The table is read by the host from the manifest, never from the worker, and the
+  manifest is found without importing anything ([The Registry](#the-registry)).
 
-A checked-in plugin’s manifest is readable before consent.
-A packaged plugin’s is known only once its entry point has been imported, so a workspace
-member may name its plugin directory in its own `pyproject.toml`
-(`[tool.metabrowser] plugin-dir`), which discovery already reads; a provider whose
-manifest cannot be read before consent is first listed inside a confined worker with the
-default grants, and what it declares is shown before anything beyond them is granted.
+What confinement breaks for a plugin that declares nothing, by reading and not yet
+measured on the three plugins: configuration under the home directory, library caches
+written there (the worker’s `XDG_CACHE_HOME` and `TMPDIR` point inside its write grant),
+SQLite opened read-write in the served folder, Git writing its index, and
+`multiprocessing` where programs are refused.
 
 #### How It Fits the macOS App
 
@@ -980,8 +1077,12 @@ plugins:
       providers:
         - name: app-viewer
           from: editable:app-viewer
+          directory: app-viewer/src/app_viewer/plugin
+          granted: {}
         - name: workflow-lib
           from: editable:vendor/workflow-lib
+          directory: vendor/workflow-lib/src/workflow/plugin
+          granted: {network: internet}
       folders: [~/data/app-runs]
       decided_at: 2026-11-12T10:05:00Z
     - id: stranger
@@ -1000,6 +1101,11 @@ plugins:
 - **`environment`** is the prefix the decision approved.
   A different prefix, whether the repository’s settings named a new one or the old one
   moved, is undecided until approved.
+- **`providers[].directory`** is the plugin directory the decision approved, and a
+  directory the repository’s `dirs` setting adds is a provider like any other: a
+  directory that changes or appears asks.
+- **`providers[].granted`** is what was approved of that provider’s declared needs.
+  A worker gets what is both declared now and granted here.
 - **`providers[].from`** is where the distribution was installed from, as its
   `direct_url.json` or its index records it, relative to the clone where it is inside
   it. A provider whose `from` changes is treated as new.
@@ -1007,15 +1113,20 @@ plugins:
 - A denied clone records only its path, so a reclone at a denied path stays quiet;
   denial grants nothing, so its identity needs no strength.
 
-**Listing.** Where a packaged plugin’s directory is can be known only by importing its
-entry point, unless its project names it.
-The listing is cached in the cache home, keyed by the environment’s fingerprint: its
+**Listing.** A provider’s plugin directory is found from its metadata, without importing
+it. A wheel’s `RECORD` lists every file it owns, its `manifest.toml` among them; an
+editable install’s `RECORD` lists a `.pth` file whose path line is the source root, and
+the plugin directory is the `manifest.toml` with an `index.js` beside it under the entry
+point’s package there.
+That is what uv writes for both, and a locator of that shape found both in under a
+millisecond with no provider module imported (`probes.py locate`). So a manifest, its
+hooks, and its needs are known before consent, a JavaScript-only packaged plugin never
+starts a worker, and a cold start imports nothing.
+Only where the metadata does not say, a `.pth` that is code or an install with no
+`RECORD`, is an entry point imported to ask, in a worker and after the decision.
+What is cached, in the cache home and keyed by the environment’s fingerprint (its
 `pyvenv.cfg`, the base interpreter’s identity, and the modification times of
-`site-packages`, each `*.dist-info`, and each `*.pth`. A server with a warm cache spawns
-nothing at start. A cold or stale listing is taken before the classifier is built, once
-after an environment changes; the add and trust modes take it ahead of time.
-Serving writes the cache only for sources the user added or decided, so an ordinary
-browse still creates no state.
+`site-packages`, each `*.dist-info`, and each `*.pth`), is only those imported answers.
 
 ### The Plugin Runtime
 
@@ -1038,9 +1149,9 @@ distribution, that Metabrowser depends on at one exact version (Key Decision 1).
   - `LogEvent`, `LogParser`, `register_log_adapter`, `registered_log_adapters`,
     `create_parser`, and `detect_adapter`;
   - the table-source protocol, its types, cell and token helpers, and bounds;
-  - host services, which in a worker are calls to the host: the agent-log chart
-    projection and its memo, `jsonl_parse_max_bytes`, and `plugin_cache_directory`,
-    which answers the folder the host made and granted;
+  - host services: the agent-log chart projection, which in a worker is a call to the
+    host; its memo, which a worker keeps for itself; `jsonl_parse_max_bytes`; and
+    `plugin_cache_directory`, which answers the folder the host made and granted;
   - the worker loop, `HookRequest`, and `HookResponse`.
 - **Bound two ways.** In the server the runtime’s host-facing functions call the
   server’s own. In a worker they call the host over the protocol.
@@ -1061,7 +1172,7 @@ transition.
 | Extension point | Phase | In a worker |
 | --- | --- | --- |
 | `[[data_hook]]` | 1 | A call per request |
-| `[plugin] register` | 1 | Imported when the worker lists its plugins |
+| `[plugin] register` | 1 | Imported as the worker starts, on the host’s `register` |
 | Log adapter parsers | 3 | Batched parse calls, one parser per stream |
 | `[[view]] offer` | 3 | Designed in Phase 3 from a measurement: it runs for every folder page and text file today, which a worker started on demand cannot answer without a wait |
 | `[[table_source]]` | 3 | The five source methods as calls, and `read_window` as a host call |
@@ -1073,126 +1184,149 @@ by name, and the plugin’s other parts load.
 
 A worker is a child of the isolation facility, with a protocol on top.
 
-- **One worker per server and environment** (Key Decision 9). Plugins of one environment
-  share it; a worker serves one server and one root.
+- **One worker per server, environment, and grant set** (Key Decision 9). Plugins of one
+  environment that were granted the same things share a worker; a plugin with a need of
+  its own gets its own, so no plugin runs with what only another was granted.
+  A worker serves one server and one root.
 - **Started on evidence.** A worker starts at the first hook call or parse for one of
   its plugins, or when the server first classifies a file into a kind one of them owns.
-  It exits after an idle period that Phase 1 sets from measurements, and never while it
-  holds an open live stream, which means a tab left on a live log keeps its worker.
-- **How it is started.**
-  `[confinement prefix] <interpreter> -I -X pycache_prefix=<cache home> <runtime>/worker.py`,
-  in `/`, leading its own process group.
-  The bytecode cache goes under Metabrowser’s cache home, so nothing is written into the
-  plugin environment and a foreign interpreter still compiles the runtime once, not at
-  every start as `-B` would have it.
-  Each source has its own cache folder, which is one of its worker’s write grants and no
-  other worker’s: bytecode one worker writes is code the next one to read it runs, so a
-  shared cache would let a confined worker reach a `full` one.
-- **Its own descriptors.** The request pipe is descriptor 3 and the reply pipe 4, both
-  close-on-exec in the worker; descriptor 0 is `/dev/null`, descriptor 1 is stderr,
-  which goes to the server’s log under the source id, and SIGINT is ignored, since the
-  server owns Ctrl-C. A plugin’s `print`, and a program it starts, cannot reach the
-  protocol. A child it forks without `exec` can, and so can the plugin itself, so the
-  host treats a malformed frame as that worker’s failure and never as a crash of its own
-  reader.
-- **The lifeline.** The thread that reads the request pipe exits the process when the
-  pipe closes. It does not ask the event loop to stop, which a blocking hook would hold.
+  It exits after an idle period that Phase 1 sets from measurements.
+  An open live stream does not hold it: a live stream is at most 2 MiB, so re-priming a
+  parser in the next worker is cheap.
+- **How it is started.** With `subprocess`, as every other child is: `close_fds`,
+  `pass_fds` for its pipes, `process_group=0`, and `cwd="/"`. The command is
+  `[confinement prefix] <watchdog> <interpreter> -I -X pycache_prefix=<its cache> <runtime>/worker.py <request fd> <reply fd>`.
+  The pipes’ numbers are arguments, not fixed descriptors: raw `posix_spawn` closes
+  nothing it was not told to, cannot set a working directory, and a fixed number
+  collides with whatever the host already has there.
+- **The bytecode cache** goes under Metabrowser’s cache home, so nothing is written into
+  the plugin environment and a foreign interpreter compiles the runtime once.
+  Each worker’s cache is its own write grant and no other worker’s: bytecode one worker
+  writes is code the next one to read it runs.
+- **A watchdog leads the group.** The group’s leader is not the worker but a small
+  trusted program, the confinement launcher or `/bin/sh`, which holds a lifeline pipe
+  from the server, starts the worker, and kills its own process group when the lifeline
+  ends or the worker exits.
+  A lifeline inside the worker cannot promise that: a worker whose hook sat in native
+  code holding the interpreter lock was still running 2 s after its request pipe closed,
+  and a worker that does exit leaves the programs it started.
+  The watchdog ended a target that ignores signals, and that target’s child, within half
+  a second of the server’s kill (`probes.py lifecycle` and `watchdog`). The worker’s
+  reader also exits at end of file; that is the fast path, not the guarantee.
+- **The server learns a worker is gone by waiting on its pid,** never from end of file
+  on the reply pipe, which a forked child can hold open.
+- **Signals.** SIGINT is not ignored.
+  A worker outside the server’s group never receives Ctrl-C, and an ignored signal is
+  inherited by every program a plugin starts.
+- **Standard streams.** Descriptor 0 is `/dev/null`, descriptor 1 is moved to 2, and 2
+  is a pipe the host drains under a cap into the server’s log, under the source id.
 - **An allowlisted environment.** A worker gets `HOME`, `USER`, `LOGNAME`, `TZ`, the
-  locale and proxy names, the server’s `PATH`, `PYTHONNOUSERSITE=1`, a private `TMPDIR`,
-  and the names its plugins declare.
-  A key exported in the user’s shell does not reach plugin code unless a manifest asks
-  for it. This is hygiene: only confinement keeps the plugin from the file the key came
-  from.
-- **A deadline fails a call, not a worker.** A call carries a deadline, a default that a
-  hook’s manifest entry can raise.
-  When it passes, that call is answered with the degraded `plugin_error` envelope and
-  its result, if one ever comes, is dropped.
-  The worker is ended only at a hard limit, several times the deadline, or when the
-  handlers past their deadlines reach a cap, or when its event loop stops answering a
-  heartbeat, which is what a blocking `async def` hook does.
-  Ending it kills its process group, fails its other calls with the same envelope, and
-  the next call starts a new one.
-  Today’s in-process hooks have no deadline, and the motivating hook took 1.8–2.6 s
-  under load, so the default must clear what real hooks take; Phase 1 sets all three
-  numbers from measurements of the three plugins.
-- **A client that goes away** cancels an `async` handler and abandons a synchronous one.
-  It never ends a worker.
-- **Backpressure.** Calls in flight per worker are capped, and one more is answered
-  `busy` at once, as the SQLite readers answer theirs.
-- **Changes under a running worker.** The server compares the environment’s fingerprint,
-  and in author mode each editable plugin’s source tree, with the worker’s, at most once
-  in an interval Phase 1 measures, not on every call.
-  On a change it stops the worker.
-  If the manifests it serves are unchanged, the next call starts a worker on the new
-  code. If a manifest changed, those plugins report that a restart applies it, until
-  reload in Phase 5.
-- **Streams survive a new worker.** A live stream’s parser state is in its worker, so a
-  replacement worker re-primes the parser by replaying the stream up to the cursor, as
-  `sse.py`’s `_prime_parser_to_cursor` does for a resumed cursor today.
-  That replay is why ending a worker must be rare.
-- **Repeated failure.** A worker that fails to start three times in a minute is marked
-  failed until its environment changes or the user reloads.
-  A worker ended at a hard limit is not counted with those; the hook that held it is
-  refused for a cool-off instead, so one bad hook cannot disable its environment.
+  locale and proxy names, the server’s `PATH`, `PYTHONNOUSERSITE=1`, a private `TMPDIR`
+  and `XDG_CACHE_HOME`, and the names its plugins declare.
+  This is hygiene: only confinement keeps a plugin from the file a key came from.
+- **An import guard.** The worker installs a finder that fails `import metabrowser` with
+  a sentence naming `metabrowser_sdk`. Without it a plugin that has not moved would bind
+  silently to whatever Metabrowser its environment holds, with no root, which is what
+  the brief’s Option G did.
+- **Changes under a running worker.** A worker’s generation is its environment’s
+  fingerprint and the stamp `asset_stamps.py` already computes for each plugin
+  directory, compared at most once in an interval Phase 1 measures, off the event loop
+  and never per call. The fingerprint alone does not see an edit to an editable plugin’s
+  source, which is all three of the motivating plugins.
+  Python outside a plugin’s directory changes only at a worker restart, and the page
+  says so when a plugin’s JavaScript is newer than its worker.
+- **Repeated failure.** Three failed starts in a row, then a cool-off, as the Markdown
+  child has. A kill at a hard deadline counts against the hook, not the environment.
 
 #### Protocol
 
-One multiplexed stream each way.
-The frame, its bounds, and the operations are stated here so that a golden session and
-the fault tests have something to hold; the table grows as phases add operations.
+One multiplexed stream each way, over the two pipes.
+This is the specification a golden session and the fault tests hold; the table of
+operations grows as phases add them.
 
-- **Frame.** One JSON header line, at most 64 KiB, then `body_len` raw bytes.
-  The host refuses a header past the bound, or a `body_len` past the operation’s bound,
-  before reading the body, and ends the worker.
-- **Ids.** A host request carries `id` and is answered once.
-  A worker’s own request to the host carries `wid`, and its answer returns on the
-  request pipe.
-- **The first frame** is `hello`, with the host’s build stamp, the served root, the
-  subject’s kind, the plugin cache folder, and the scratch folder.
-  A worker from another build’s files answers `wrong_build` and exits (Key Decision 8).
-  Its answer carries its `sys.path`, which the host checks before any plugin module is
-  imported ([Trust and Consent](#trust-and-consent)).
-- **Bounds.** A request body is at most 1 MiB. The response bound is set in Phase 1; the
-  largest response measured was 429 KB, and 64 MiB took 122 ms of transport and held a
-  small call behind it for 31 ms, so a large reply is sent in chunks that other frames
-  may pass.
-- **Host calls are checked.** Each is validated against the calling worker’s root and
-  subject on the host, whatever the worker’s runtime already checked: under confinement
-  the pipe is the worker’s only way out.
+1. **Framing.** `u32 header length | u32 body length | header, one JSON object | body`,
+   as the Markdown child frames.
+   Both lengths are known before anything is parsed, so no read is unbounded.
+   A header is at most 64 KiB and a request body 1 MiB; the response bound is a constant
+   Phase 1 measures (64 MiB took 122 ms and held a small call behind it for 31 ms in one
+   run and 153 ms in another, so a large reply goes in chunks other frames may pass).
+2. **The reply pipe is untrusted input.** A frame past a bound, a header that does not
+   parse, or an id the host did not issue ends the worker’s group and never raises in
+   the host’s reader. The spike’s reader died on both a malformed frame and an unknown
+   id.
+3. **Handshake.** The host sends `hello {build, root, subject, cache_dir, scratch}`. The
+   worker answers `ready {build, python, pid}`, or `wrong_build` and exits (Key Decision
+   8). The start has a deadline.
+   The host does not trust a worker’s own word that it is confined: the prefix fails
+   closed before `exec`, and a test reads `NoNewPrivs` and `Seccomp` from `/proc`.
+4. **Calls.** `call {id, plugin, hook, method, query, headers, deadline_ms}` and a body.
+   Every handler, `async` or not, runs off the thread that reads the pipe and off the
+   loop that dispatches, so a blocking `async def` hook stalls only the handlers’ loop.
+   The runtime refuses its own oversized response before sending it, so an honest
+   overrun is an error answer and never a protocol fault.
+5. **Cancellation.** `cancel {id}` cancels a coroutine and marks a synchronous handler’s
+   budget expired, the `Budget` table sources already use.
+   A client that goes away cancels, and the host answers at once; it never ends a
+   worker.
+6. **Deadlines, two levels,** as the SQLite readers have.
+   At the deadline the call is cancelled and answered with the degraded `plugin_error`
+   envelope. At the deadline plus a grace, with the handler still running, the group is
+   killed, calls past their own deadlines fail, a `GET` in flight that is not past its
+   own is sent once more to the replacement, and the refusal is kept for that plugin,
+   hook, and query for a time, so a reloading page cannot loop kills.
+   Today’s in-process hooks have no deadline, and the motivating hook took 1.8–2.6 s
+   under load, so the default must clear what real hooks take.
+7. **Backpressure.** Calls in flight per worker are capped, with a short queue, then
+   `busy`, as the readers and the Markdown child answer theirs.
+   The host’s writes do not block; a write stuck past its deadline is a fault.
+   A worker’s calls to the host are capped per call and refused once that call has
+   ended.
+8. **Streams.** `stream.open {sid, adapter}` and `stream.lines {sid}`; the host keeps
+   each cursor. A new worker gets `open` and a replay up to the cursor with its events
+   discarded.
+9. **Memory.** The host reads a worker’s resident size on an interval.
+   Past a soft bound it recycles the worker when idle; past a hard bound it kills the
+   group. `RLIMIT_AS` is a backstop on Linux only, since address space is not memory.
+10. **Host calls are checked** against the calling worker’s root, subject, and grants on
+    the host, whatever the worker’s runtime already checked: under confinement the pipes
+    are the worker’s only way out.
 
 | Direction | Operation | Phase | Purpose |
 | --- | --- | --- | --- |
 | Host to worker | `hello` | 1 | Bind the root and check the build |
-| Host to worker | `list` | 1 | Import entry points and register modules; answer plugin directories |
-| Host to worker | `call` | 1 | Run a data hook |
-| Host to worker | `cancel` | 1 | A client went away, or a deadline passed |
-| Host to worker | `ping` | 1 | The event-loop heartbeat |
-| Host to worker | `parse` | 3 | A batch of lines for one stream’s parser |
+| Host to worker | `register` | 1 | Import the plugins’ register modules |
+| Host to worker | `call`, `cancel` | 1 | Run a data hook; cancel one |
+| Host to worker | `ping` | 1 | The handlers’ loop still answers |
+| Host to worker | `locate` | 1 | Import an entry point to find its plugin directory, only where the metadata does not say |
+| Host to worker | `stream.open`, `stream.lines` | 3 | A stream’s parser, and a batch of its lines |
 | Host to worker | `offer`, `table` | 3 | View offers and table-source methods |
 | Worker to host | `content.*` | 1 | The content reader, by a handle the host keeps for that call |
-| Worker to host | `charts.*` | 1 | The agent-log chart projection and its memo |
+| Worker to host | `charts.project` | 1 | The agent-log chart projection, which is the built-in plugin’s code |
 | Worker to host | `detect` | 3 | Adapter detection, which the host owns |
+
+The chart memo (`lookup_agent_charts`, `remember_agent_charts`) is kept in the worker.
+As a host call it would let one worker plant a payload that another plugin’s view
+serves.
 
 #### Threats
 
-The plugin-specific rows this plan adds to the
-[threat model](../../architecture/arch-threat-model.md), in the pull request that lands
-each.
+The rows this plan adds to the [threat model](../../architecture/arch-threat-model.md).
+That document requires a change to a policy to name the threat it answers, or add one,
+in the same pull request, so each row lands there with the code that answers it.
 
-| Threat | Answer | Residual |
-| --- | --- | --- |
-| A browsed repository wants its code run | Nothing from an undecided clone runs or is served; discovery reads data only | The bar is a prompt, and prompts get clicked; the default grant is confined |
-| A different repository is cloned at a trusted path | The clone token (Key Decision 2) | A copy that keeps both path and `.git` is the same clone |
-| A folder claims to be a trusted clone’s worktree | The clone’s own back-pointer (Key Decision 3) | None known |
-| A pull repoints the environment or a provider | The decision binds both | A version bump of an approved provider from its approved origin runs unasked |
-| An agent, or anyone who can write the clone, edits approved plugin Python | Confinement: the code gains the worker’s grants and nothing else | Under `full`, it gains the reader’s account; the consent says so |
-| The same, for plugin JavaScript | None: it runs in the page | Every route of that folder’s server, and whatever the page can fetch; accepted, and stated in the consent |
-| A request carries a path that leaves the root | The runtime’s identity codec, and the host’s check of every host call | None known |
-| A hook’s HTML runs on the application origin | Hook response headers | A hook that sets its own permissive policy |
-| Another local account can write the environment | The ownership rule | Group-writable layouts, until the survey settles them |
-| A worker is started from another release’s files | The build stamp | None known |
-| A worker floods the host | Frame and response bounds; `busy` | Memory up to the bounds, per worker |
-| The registry is copied, synced, or read by an older `metab` | The state home; fail-closed entries | A user who copies the state home by hand |
+| Actor | What it can do | The answer | What remains |
+| --- | --- | --- | --- |
+| A repository the reader browses | Write every byte of the tree: `.git`, `pyproject.toml`, a tracked `.venv`, `.metabrowser/` | Nothing from an undecided clone runs, in any mode: no interpreter of its environment starts. Discovery reads data only, each file and the walk bounded. A clone is known by its token, and membership is read from the clone’s side | The bar is a prompt, and prompts get clicked; what it grants by default is confined |
+| A dependency the clone locks | Run code as the environment’s interpreter starts (`.pth`) and at import, without being a plugin provider | Confinement is in place before the interpreter starts; the consent says that everything in the environment runs, not only the listed providers | Under `full`, it runs as the reader |
+| A plugin’s author, later | Ship a new version of an approved provider: Python and JavaScript | The grant is what was approved, so a version that needs more asks; the lock pins the version | JavaScript reads the served folder and can send it anywhere the page can |
+| A sandboxed agent in the clone | Edit approved code, the clone’s settings, perhaps `.venv`; run `metab --present` outside its sandbox | The default grant is narrower than an agent’s sandbox: read the clone, write a cache, no network. The decision binds the environment and each plugin directory. `--present` takes no plugin option | Under `full`, an edit runs as the reader; a terminal can answer a prompt |
+| Another local account | Write group- or world-writable paths; call the loopback server | The ownership rule, on the paths code is loaded from; the state home is owner-only | Hooks answer any local caller, as the server has no authentication |
+| Plugin JavaScript | Call any route of the page’s origin, other plugins’ hooks included | No route writes a source or a decision, and none writes under an environment, a plugin directory, `.metabrowser/`, or `pyproject.toml`; the chart memo is per worker | Another plugin’s hooks, the `gh`-backed ones among them: accepted, and stated in the consent |
+| A worker, against the server | As the same account: loopback HTTP, `/proc`, ptrace, signals | Confined: sockets refused, signals and ptrace scoped, `/proc` ungranted. Every host call is checked and every frame bounded | Unconfined, there is no boundary; memory up to the bounds |
+| A request | Carry a path that leaves the root | The runtime’s identity codec, and the host’s check of every host call | None known |
+| A hook’s response | Serve HTML that runs on the application origin | Hook response headers | A hook that sets its own permissive policy |
+| An upgrade under a running server | Pair an old host with new runtime files | The build stamp | None known |
+| A copied or older registry | Carry a grant to another machine, or lose a narrowing field | The state home; entries read fail-closed | A state home copied by hand |
 
 ### Hook Response Headers
 
@@ -1321,14 +1455,19 @@ Metabrowser-specific file:
 For a folder server, never a Git source opened from a URL, a pin, a mirror, or an
 `--untrusted` session, and again whenever a server’s subject changes:
 
-1. **The clone.** Discovery’s own reader finds the nearest `.git` at or above the served
-   folder and no higher than the home directory.
-   A `.git` directory is the clone’s own.
-   A `.git` file names a Git directory, and the folder is that clone’s linked worktree
-   only when the common directory’s `worktrees/<name>/gitdir` names this folder’s `.git`
-   file back; otherwise the folder is its own, undecided, subject.
-   The server’s existing repository context answers only for GitHub origins and checks
-   no ownership, so it is not used.
+1. **The clone.** The served folder never says which clone it belongs to.
+   A folder belongs to a recorded clone when its resolved top level is that clone’s
+   path, or the clone’s `worktrees/<name>/gitdir` names the `.git` file at that top
+   level, or the folder is under one of the record’s `folders`. A `.git` file or a
+   `commondir` in the served folder is never read for this: three forgeries, a `.git`
+   file naming the clone’s Git directory, one naming one of its worktrees, and a `.git`
+   directory holding only `HEAD` and `commondir`, each made Git report the trusted
+   clone, and the clone held a back-pointer to none (`probes.py identity`). A worktree
+   moved by hand leaves a stale back-pointer and is undecided until
+   `git worktree repair`. For a clone with no record, discovery finds the nearest `.git`
+   directory at or above the served folder and no higher than the home directory, to
+   propose it. The server’s existing repository context answers only for GitHub origins
+   and checks no ownership, so it is not used.
    Outside Git, a folder has no clone and repository plugins do not apply; its plugins
    are added as a directory or an environment.
 2. **The environment.** The nearest uv project or workspace root at or above the served
@@ -1363,23 +1502,25 @@ For a decided clone its result rides on the listing cache.
 
 | Decision | What is recorded | What happens automatically |
 | --- | --- | --- |
-| Undecided, the default | nothing | The page shows a bar naming the providers found, and `--plugins` and `--doctor` list them as undecided. No interpreter runs, and no plugin JavaScript, style, asset, kind, or view is served. |
+| Undecided, the default | nothing | The page shows a bar naming the providers found, and `--plugins` and `--doctor` list them as undecided. No interpreter of the clone’s environment starts, in any mode, `--doctor` and `--plugins` included, since starting one runs its `.pth` files; and no plugin JavaScript, style, asset, kind, or view is served. |
 | Trusted | the clone’s path and token, its environment, its normalized origin for display, each approved provider with its origin, the authority, and any further folders | Every server for a folder in the clone, a worktree it lists, or a further folder loads the approved providers’ plugins: manifests, assets, JavaScript, and a worker on the clone’s primary environment, confined unless the authority is `full`. Version bumps and pulls take effect at the next worker start without asking. A new provider, a changed origin, or a moved environment is reported in the bar and loads only once approved. |
 | Denied | the clone’s path | Nothing loads, and nothing is reported beyond `--plugins --json`. |
 
 - **One decision per clone.** The worktrees it lists share it, and a reclone at the same
   path is undecided again.
-- **Review lists what can be known.** Before trust, the bar and
-  `metab ROOT --plugins-trust` show each provider’s name, version, and origin; the
-  environment; the authority on offer and, in one sentence, what it allows; and, for
-  checked-in directories, members that name their plugin directory, and providers
-  already listed, their hooks, adapters, and declared authority.
+- **Review lists what the metadata says,** which is nearly everything.
+  Before trust, the bar and `metab ROOT --plugins-trust` show each provider’s name,
+  version, origin, and plugin directory; the environment; the grant on offer and, in one
+  sentence, what it allows; and each plugin’s hooks, adapters, and declared needs, read
+  from the manifest its metadata locates.
+  A provider whose directory the metadata does not give is shown by name, with the note
+  that its manifest is read only once it is trusted.
 - **What was shown is what is approved.** A trust write takes a terminal answer, or the
   app’s confirmation, which runs `metab ROOT --plugins-trust --expect SHA256` with the
   hash it displayed; the mode refuses when the set no longer matches.
   The hash covers the clone’s path, the environment’s prefix, the authority, and each
-  provider’s name, version, origin, and declared authority, and no file contents.
-  There is no `--yes`.
+  provider’s name, version, origin, plugin directory, and declared needs, and no file
+  contents. There is no `--yes`.
 - **Commands:** `metab ROOT --plugins-trust [--authority confined|full]`,
   `--plugins-deny`, `--plugins-untrust`, and `--plugins-scope-add ID FOLDER`.
 - **Never trusted:** a Git source opened from a URL, a pin, a mirror, an `--untrusted`
@@ -1449,25 +1590,30 @@ This plan changes only Metabrowser.
 
 | Source | Who adds it | How it is approved | Authority |
 | --- | --- | --- | --- |
-| A directory or environment | the account owner, with `metab --plugins-add` | it shows what the metadata declares, imports nothing first, and asks on a terminal | `full`, or `confined` when added so |
-| A repository clone | discovery proposes; the account owner decides | the bar or `metab ROOT --plugins-trust`, as above | `confined`, or `full` when chosen |
-| Per-command flags | whoever runs the command | the command line; nothing is recorded | `full`, or `confined` with `--plugin-confined` |
+| A directory or environment | the account owner, with `metab --plugins-add` | it shows what the metadata declares, starts no interpreter first, and asks on a terminal | confined where the machine can, and said plainly where it cannot |
+| A repository clone | discovery proposes; the account owner decides | the bar or `metab ROOT --plugins-trust`, as above | `confined`, required; `full` only by declaration or by `--authority full` |
+| Per-command flags | whoever runs the command | the command line; nothing is recorded | as a source the user added; `--plugin-confined` requires it |
 
-- **What each consent says.** `confined`: “These plugins may read this clone, its
-  environment, and the folders you browse with them, and write only their own cache.
-  They cannot use the network.
-  Their JavaScript runs in Metabrowser’s page.”
-  `full`: “These plugins run as you: they can read and change anything your account can,
-  and so can anyone who can edit their code, an agent working in this clone included.”
+- **What each consent says.** `confined`: “These plugins, and everything in this clone’s
+  environment that starts with them, may read this clone, its environment, and the
+  folders you browse with them, and write only their own cache.
+  They cannot use the network or start other programs.”
+  Then each provider’s declared needs in plain words, such as “workflow asks to use the
+  network”, and: “Their JavaScript runs in Metabrowser’s page.”
+  `full`: “These plugins, and everything in this clone’s environment, run as you: they
+  can read and change anything your account can, and so can anyone who can edit their
+  code, an agent working in this clone included.”
+  The environment is named because starting its interpreter runs its `.pth` files,
+  whichever distribution they belong to, so the listed providers are not the boundary of
+  what runs.
 - **Only the owner records anything.** The state home is owner-only, with the
   configuration home’s checks on every directory above it.
 - **The ownership rule.** Before a source is recorded or decided, and again before each
   worker starts, the environment’s prefix, its base interpreter, each plugin directory,
-  and the clone’s top level and common directory must be owned by the user or root and
-  not writable by other accounts.
-  After `hello`, the same rule is applied to every entry of the worker’s `sys.path`
-  before a plugin module is imported, which is where a `.pth` file or an editable
-  install can point outside.
+  each folder a `.pth` path line names, and the clone’s top level and common directory
+  must be owned by the user or root and not writable by other accounts.
+  All of those are read from metadata before any interpreter starts; a check made after
+  a worker says `hello` would come after its `.pth` code had run.
   The app’s `ExecutableTrust` refuses any group-writable path, which would refuse an
   environment built on a Homebrew Python and, where a default umask makes a user’s own
   directories group-writable, most clones; `mb-5qw0` surveys real layouts and settles
@@ -1531,8 +1677,11 @@ The app keeps its rule: `metab` owns the data, the app owns platform behavior.
   actions are native because they are writes no page may reach.
 - **The repository bar** appears when a folder’s server reports an undecided clone or a
   new provider: “This clone provides 3 plugins: …”, with Trust, Review, and Not Now.
-  Trust grants `confined` where a backend exists; Review shows the full consent and the
-  choice of `full`. Not Now lasts for the window and is not recorded.
+  Trust grants `confined` with the defaults; Review shows the consent and each
+  provider’s declared needs to approve.
+  The bar never offers `full`. Where the machine cannot confine, it says that these
+  plugins’ Python will not run here and names the command that grants full access.
+  Not Now lasts for the window and is not recorded.
   When the environment is missing it says so and what the repository documents; it runs
   no setup.
 - **One set of homes.** The app passes the state home’s variables as it was launched
@@ -1571,7 +1720,8 @@ a trust write there cannot ask through it: the page’s bar names
   parser imports; each declared adapter has a parser; collisions are reported.
   Without a root it stays rootless; given a root, it also reports that root’s clone, its
   decision, its missing providers, and why each plugin is or is not loaded.
-  It starts a worker only for a recorded source, and closes every worker it starts.
+  It starts no interpreter of an undecided source, a worker only for a recorded one, and
+  closes every worker it starts.
 - `GET /api/plugins` serves the same model to the page and to `--api`.
 - `metab ROOT --show PATH` names the source and the process that own the selected kind.
 
@@ -1671,8 +1821,11 @@ Independent pull requests, each useful on its own:
   does this.
 - [ ] The isolation facility: move the launch, the limits, the backend probe, and the
   rule out of `builtin_plugins/pdf/preview_isolation.py` into `metabrowser.isolation`,
-  and start the PDF render child, the SQLite readers, and the Markdown child through it.
-  No behavior changes on macOS (`mb-e7t8`).
+  with containment and supervision apart, and start the PDF render child, the SQLite
+  readers, the Markdown child, Git, and `gh` through it.
+  It fixes the defects listed under The Facility: the readers’ inherited environment,
+  the limits that do not do what their comments say, and four stop paths.
+  No behavior changes for the PDF preview on macOS (`mb-e7t8`).
 - [ ] The Linux backend: the Landlock and seccomp launcher behind the same probe, with a
   test that shows each refusal as `tests/test_pdf_preview_sandbox.py` does on macOS, and
   previews of untrusted PDFs on Linux as its first user (`mb-v2m7`).
@@ -1736,9 +1889,10 @@ every folder, which is the requirement’s first half.
   and providers with their origins, worktrees by the clone’s back-pointer, further
   folders, missing-provider reports, the bar’s model, and the `SECURITY.md`, threat
   model, agents guide, and `docs/plugins.md` changes (`mb-nkc3`).
-- [ ] Authority: `confined` and `full` in the registry and the consent, the manifest’s
-  `[plugin.authority]`, a worker confined to its grants, and what happens where no
-  backend exists (`mb-p62c`).
+- [ ] Authority: the manifest’s `[plugin.needs]`, the grant as what is both declared and
+  approved, the consent’s wording, a worker confined to its grants and keyed by them,
+  `full` only by declaration or by command, and `no_sandbox` where no backend exists
+  (`mb-p62c`).
 - [ ] Checked-in `.metabrowser/plugins/` directories, with their Python in the clone’s
   worker or on an isolated interpreter (`mb-wpq3`).
 - [ ] The app’s repository bar, with its contract entries (`mb-qoh1`).
@@ -1776,6 +1930,22 @@ installer inside Metabrowser.
   leaves a subprocess, SIGINT, an oversized body, a worker-to-host call in the middle of
   a hook, the request pipe closing while a hook blocks, and a worker started from
   another build’s files.
+- **The doors of the confinement.** A socket through `io_uring`, a fork and a thread
+  with programs refused, the internet families with the network granted, and a `.pth`
+  line that tries to write, each as `confine_probe.py` and `probes.py pth` run them; and
+  a test that reads `NoNewPrivs` and `Seccomp` of a running worker from `/proc`.
+- **Supervision.** The watchdog ends a target that ignores signals, and its child, when
+  the server is killed; a worker whose hook holds the interpreter lock in native code; a
+  hook that forks, and one that uses `multiprocessing`; an inherited ignored signal; and
+  the host noticing a dead worker whose forked child still holds the reply pipe.
+- **No interpreter before a decision.** For an undecided clone and for a dry run of add,
+  every mode, `--doctor` and `--plugins` included, with an environment whose `.pth` file
+  leaves a mark if it ever runs.
+- **Membership and identity,** each a named test: the three forgeries, a `.git` file
+  naming the clone’s Git directory among them; a worktree moved by hand; a reclone at
+  the same path; and a changed plugin directory or `dirs` entry.
+- **The import guard.** `import metabrowser` in a worker fails with the sentence that
+  names `metabrowser_sdk`.
 - **Conformance.** One fixture plugin’s `--api` transcripts in process and in a worker,
   equal; and on an interpreter other than the host’s.
 - **Goldens through `metab`.** Every row of the CLI and Routes table.
@@ -1821,8 +1991,11 @@ installer inside Metabrowser.
 - The eleven Key Decisions above, each awaiting the owner.
 - What a worker profile on macOS must grant for a real Python environment, and whether
   that still reads as “confined” (`mb-gmut`).
-- Whether the SQLite readers and the Markdown child should be confined as well as
-  separate, once the facility makes it a one-line choice.
+- Whether the Linux filter stays a list of refusals or becomes a list of what a Python
+  worker may call; the first is what the spike ran and what `io_uring` got past.
+- Whether a page that loads a non-built-in plugin’s JavaScript should carry
+  `connect-src 'self'`, which would keep that JavaScript from sending the served folder
+  elsewhere.
 - The names `metabrowser_sdk` and `metabrowser-sdk`, `metabrowser.isolation`,
   `.metabrowser/`, `[tool.metabrowser.plugins]`, and every flag.
   Publishing a second distribution brings release mechanics: versioning, publish order,

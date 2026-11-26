@@ -60,8 +60,17 @@ file.
 - `transport`: what a response costs by its size.
 - `confined` (Linux): the same worker behind `confine_linux.py`, and what a hook can
   then reach.
-- `identity`: whether a Git common directory’s device and inode identify a clone, and
-  whether a folder can claim to be a trusted clone’s worktree.
+- `identity`: whether a Git common directory’s device and inode identify a clone, three
+  ways a folder can claim to be a trusted clone’s worktree, and a worktree moved by
+  hand.
+- `watchdog`: whether a group leader that holds its own lifeline ends a target that
+  ignores signals, and that target’s child, when the server is killed.
+- `locate`: a provider’s plugin directory found from `RECORD` or a `.pth` path line,
+  with nothing imported.
+- `pth`: whether an environment’s `.pth` code runs as its interpreter starts, and
+  whether the confinement prefix is in place before it.
+- `pdf` (Linux): the repository’s own PDF render child, unmodified, behind
+  `confine_linux.py` through the `Sandbox` seam it already has.
 
 `standin/` is that plugin: an entry point, two log adapters, and hooks that import only
 the documented names.
@@ -73,8 +82,14 @@ It stands in for the mechanism, and says nothing about what a real plugin costs.
 host’s interpreter applies a Landlock ruleset and a seccomp filter to itself and then
 replaces itself with the child.
 Standard library only.
-`confine_probe.py` runs one checking program bare and behind it, and times the prefix.
-Nothing here has run on macOS, where the package’s own confinement is
+Its policy names what to read and write, whether the internet families are allowed, and
+whether the child may start programs.
+`confine_probe.py` runs one checking program bare and under four policies, and times the
+prefix. One of the four leaves `io_uring_setup` open, to show the hole a filter on
+`socket` alone has: a socket made by `IORING_OP_SOCKET` reaches a Unix socket outside
+every grant. A second review of this design found that hole in the launcher’s first
+version, and several of the probes here are its checks, rewritten to run on the
+stand-in. Nothing here has run on macOS, where the package’s own confinement is
 `src/metabrowser/builtin_plugins/pdf/preview_isolation.py`.
 
 ## Results
@@ -82,7 +97,9 @@ Nothing here has run on macOS, where the package’s own confinement is
 `results/` holds the JSON each probe printed, named by date and platform, with no path
 in it.
 The 2026-11-26 files are from Linux 6.18 on ext4, x86-64, Python 3.13.18, as root,
-at a load average near 0.
+at a load average near 0. The two without a suffix are the first run, whose launcher
+refused `socket` alone; the two ending `-2` are the run after the launcher was fixed and
+the later probes were added.
 
 ## Running It
 
@@ -95,7 +112,7 @@ uv --config-file uv.toml run --frozen python -I -B \
   explorations/plugin-worker-spike/confine_probe.py tmp/confine-run
 ```
 
-`probes.py` takes the names of the probes to run after the folder, and runs all four
+`probes.py` takes the names of the probes to run after the folder, and runs all of them
 without one. The folder is scratch that a rerun recreates.
 
 The two shapes’ own hosts need a plugin environment whose plugin has `info`,

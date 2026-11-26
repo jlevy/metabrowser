@@ -1,0 +1,143 @@
+{
+  "kernel": "6.18.44",
+  "python": "3.13.18",
+  "load_average": 0.0,
+  "lifecycle": {
+    "request pipe closed while an async hook blocks the loop": {
+      "worker running 3 s later": true,
+      "exited after s": 7.5
+    },
+    "request pipe closed while a synchronous hook runs": {
+      "exited after ms": 1.7
+    },
+    "request pipe closed while a hook holds the interpreter lock in native code": {
+      "worker running 2 s later": true,
+      "exited after s": 5.5
+    },
+    "trivial hook beside a 3 s blocking async hook, ms": 2802,
+    "worker killed at a deadline": {
+      "another call in flight": "never answered",
+      "the hook's subprocess still running": true,
+      "that subprocess in the host's process group": true
+    },
+    "a forked child writes to the reply pipe": {
+      "that call": "never answered",
+      "the next call": "never answered",
+      "host reader thread ended": true
+    }
+  },
+  "transport": {
+    "0 bytes": {
+      "overhead_ms_median": 0.16,
+      "overhead_ms_max": 1.55
+    },
+    "429248 bytes": {
+      "overhead_ms_median": 0.8,
+      "overhead_ms_max": 1.25
+    },
+    "4194304 bytes": {
+      "overhead_ms_median": 5.08,
+      "overhead_ms_max": 7.49
+    },
+    "67108864 bytes": {
+      "overhead_ms_median": 123.82,
+      "overhead_ms_max": 126.82
+    },
+    "trivial hook issued behind a 64 MiB reply, ms": 152.9,
+    "worker resident MB after the 64 MiB replies": 31.7
+  },
+  "confined": {
+    "bare": {
+      "spawn_to_listed_ms": 72.3,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "reach": {
+        "read the served root": "allowed",
+        "read a file outside its grants": "allowed",
+        "write beside that file": "allowed",
+        "write in its scratch folder": "allowed",
+        "connect over TCP": "allowed",
+        "start a system tool": "allowed"
+      },
+      "exit": 0
+    },
+    "confined": {
+      "spawn_to_listed_ms": 94.3,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "reach": {
+        "read the served root": "allowed",
+        "read a file outside its grants": "denied",
+        "write beside that file": "denied",
+        "write in its scratch folder": "allowed",
+        "connect over TCP": "denied",
+        "start a system tool": "allowed"
+      },
+      "exit": 0
+    }
+  },
+  "identity": {
+    "file system": "ext2/ext3",
+    "reclone of another repository kept the device and inode": "5 of 5",
+    "forged folders": {
+      "a .git file naming the clone's Git directory": {
+        "git reports the trusted clone's common directory": true,
+        "the clone lists it or holds a back-pointer to it": false
+      },
+      "a .git file naming one of the clone's worktrees": {
+        "git reports the trusted clone's common directory": true,
+        "the clone lists it or holds a back-pointer to it": false
+      },
+      "a .git directory holding only HEAD and commondir": {
+        "git reports the trusted clone's common directory": true,
+        "the clone lists it or holds a back-pointer to it": false
+      }
+    },
+    "the clone holds a back-pointer to its real linked worktree": true,
+    "after that worktree is moved by hand, to its new path": false
+  },
+  "watchdog": {
+    "running before the server is killed": {
+      "leader": true,
+      "target": true,
+      "its child": true
+    },
+    "running 0.5 s after": {
+      "leader": false,
+      "target": false,
+      "its child": false
+    }
+  },
+  "locate": {
+    "providers": {
+      "standin": {
+        "found by": ".pth path line",
+        "plugin directories": 1
+      },
+      "wheel": {
+        "found by": "RECORD",
+        "plugin directories": 1
+      }
+    },
+    "scan and locate, ms": 0.97,
+    "a provider module was imported to do it": false
+  },
+  "pth": {
+    "a .pth line ran in a bare interpreter started with -I": true,
+    "the same line wrote its file behind the confinement prefix": false
+  },
+  "pdf": {
+    "the rule for an untrusted source with no backend": "no_sandbox",
+    "the rule for an untrusted source with this backend": "Isolation",
+    "confined render equals the bare render": true,
+    "the server's check accepts it": true,
+    "render ms, bare, median of 9": 94,
+    "render ms, confined, median of 9": 131
+  }
+}

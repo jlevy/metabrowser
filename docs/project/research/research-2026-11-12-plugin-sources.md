@@ -794,6 +794,59 @@ What this does and does not show:
 - A confined worker still holds its protocol pipes, by design, so what it can ask the
   host for is the rest of its authority.
 
+### What a Second Review Found
+
+A second review, by another reviewer on the same machine and day, checked the revision
+above. Each of its findings below was reproduced with the probes in the spike folder
+before the plan took it; the answers are in `results/2026-11-26-linux-probes-2.json` and
+`-confine-2.json`, which also rerun everything above.
+
+- **The filter above had a hole.** It refused `socket(2)` and nothing else.
+  Landlock does not judge a connection to a Unix socket by its path, and
+  `IORING_OP_SOCKET` makes a socket with no `socket` call.
+  With `io_uring_setup` left open, a confined child connected to a Unix socket outside
+  every grant; with it refused, the same attempt failed with `ENOSYS`
+  (`confine_probe.py`, the column “io_uring left open”). The table above is right about
+  `socket`, and was wrong to read as “no socket”.
+- **The network can be granted alone.** With the filter admitting only the two internet
+  families, TCP and UDP worked, a Unix socket by path was refused, and every file rule
+  still held.
+- **Programs can be refused without refusing threads.** With `clone` allowed only for a
+  thread, `clone3` answered `ENOSYS`, and `fork` refused, a tool and a fork failed and a
+  thread started. `RLIMIT_NPROC`, which `render_child.py` uses for this, does not stop
+  root and stops threads for an ordinary account (the second review’s run).
+- **A lifeline inside the worker is not a guarantee.** A hook in native code holding the
+  interpreter lock kept its worker running 2 s after the request pipe closed, until it
+  returned at 5.5 s: no Python thread runs to notice.
+  A `/bin/sh` group leader holding its own lifeline ended a target that ignores signals,
+  and that target’s child, within half a second of the server’s `SIGKILL`
+  (`probes.py watchdog`).
+- **`.pth` code runs as an interpreter starts,** `-I` included: a line added to the
+  environment wrote its file in a bare start, and was refused behind the prefix
+  (`probes.py pth`). Every uv environment has one such file of its own.
+  So starting an undecided environment’s interpreter, for any reason, runs its code.
+- **A plugin directory is in the metadata.** With uv 0.11.32, a wheel’s `RECORD` lists
+  `plugin/manifest.toml` and `plugin/index.js`, and an editable install’s `RECORD` lists
+  `_editable_impl_<name>.pth`, a path line naming the source root, with
+  `"editable": true` in `direct_url.json` (checked by hand on a scratch package).
+  A locator of that shape found an editable and a wheel-shaped install in under a
+  millisecond without importing either (`probes.py locate`). This brief’s “can be known
+  only by importing the module” is withdrawn for what uv installs.
+- **The repository’s PDF render child runs behind the Linux prefix unmodified,** through
+  the `Sandbox` seam it has: the PNG was byte for byte the bare render, the server’s
+  check accepted it, and `isolation_for` answered `Isolation` for an untrusted source.
+  One render took 131 ms against 94 ms (`probes.py pdf`).
+- **Three forgeries, not one.** A `.git` file naming the clone’s Git directory, one
+  naming one of its worktrees, and a `.git` directory holding only `HEAD` and
+  `commondir` each made Git report the trusted clone’s common directory, and the clone
+  held a back-pointer to none of them.
+  A worktree moved by hand left the clone’s back-pointer naming its old path.
+
+Measurements that moved between the two runs: a trivial call behind a 64 MiB reply
+waited 31 ms in the first and 153 ms in the second, which is the reply’s whole transfer,
+so the figure depends on where in it the call lands; and a worker was listed 94 ms after
+its start confined against 72 ms bare.
+
 ### Options Considered Since
 
 - **A second executable for the modes that run plugin code** (the plan’s first
@@ -818,6 +871,8 @@ What this does and does not show:
 - The real downstream plugins, so every memory and handler time in the body of this
   brief is as it was measured on 2026-11-12.
 - Landlock on a kernel older than 6.18, and the seccomp filter on aarch64.
+- That the filter’s list of refusals is complete.
+  `io_uring` was the door a reviewer found; nothing shows it was the last.
 - That an in-place `uv tool upgrade` under a running server pairs an old host with new
   runtime files; it follows from the worker being started from disk each time.
 
