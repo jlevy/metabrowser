@@ -12,6 +12,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from click import unstyle
+
 from tests.required_tools import require_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -124,4 +126,5 @@ def test_a_golden_passes_from_a_shell_outside_the_checkout(tmp_path: Path) -> No
     )
 
     assert completed.returncode == 0, completed.stdout
-    assert f"PASS {golden}" in completed.stdout
+    # CI forces color, so tryscript styles its verdict there; the words are what count.
+    assert f"PASS {golden}" in unstyle(completed.stdout)
