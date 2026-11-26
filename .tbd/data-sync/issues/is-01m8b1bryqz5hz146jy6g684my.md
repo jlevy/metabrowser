@@ -5,11 +5,12 @@ title: Unify diff presentation across Metabrowser reviews
 kind: epic
 status: in_progress
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-25-diff-presentation.md
 delegate: codex@spud10.local
 labels: []
 dependencies: []
+parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 child_order_hints:
   - is-01m8b1bvqet2m5ehafrwawhpmv
   - is-01m8b1bxvpsm9zca9gry86ndbp
@@ -18,6 +19,6 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T04:21:03.039Z
-updated_at: 2026-11-26T04:21:30.646Z
+updated_at: 2026-11-26T05:06:12.923Z
 started_at: 2026-11-26T04:21:30.635Z
 ---
