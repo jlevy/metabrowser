@@ -197,8 +197,9 @@ repository’s pull request, its Changes or Checks, a commit, or the list of pul
 opens that page here, and so does one to a file on the branch or commit being browsed,
 as in a Markdown file ([links](browsing-files.md#markdown)). A path such as
 `docs/plan.md`, which GitHub resolves under the pull request’s own page where nothing
-is, opens that file at the pull request’s head instead: here when the head is what
-Metabrowser serves, and on GitHub otherwise.
+is, opens that file at the pull request’s head instead: in place when the head is what
+Metabrowser serves, in Changes at that file when the pull request changes it, and on
+GitHub otherwise. A stack’s notes do the same with the stack’s Changes.
 A link to another branch, a tag, an issue, or a particular comment stays a GitHub link.
 In Changes and Docs, a rendered document’s link to another file of the head opens it
 here while the head is served, and on GitHub otherwise.
@@ -245,10 +246,10 @@ guide: raw HTML is cut to the same safe subset, a single line break joins two li
 one paragraph, and a blank line starts the next.
 A Mermaid block in a note shows as code.
 Write a link to a file in a note as its path from the repository’s root, such as
-`docs/plan.md`: it opens that file at the pull request’s head, in Metabrowser when the
-head is what it serves and on GitHub otherwise.
-A path whose first folder is named with digits reads as a pull request’s address, so
-write that file’s full GitHub link instead.
+`docs/plan.md`: it opens that file at the pull request’s head, here when Metabrowser can
+show it and on GitHub otherwise. GitHub shows the guide’s block as code, so such a link
+costs nothing there; in the description, which GitHub renders, a path like this leads
+nowhere on GitHub, so write a full link there if its readers matter.
 A full GitHub link into the repository opens its page in Metabrowser when there is one
 ([Links in a Pull Request’s Text](#links-in-a-pull-requests-text)). A note whose render
 takes too long, or fails, shows as typed, with its line breaks kept and the line a

@@ -111,6 +111,9 @@ are at their transfer budget (`performance-budgets.toml`).
   already reduced to the allowlist, rewrites each in-app link’s `href`, drops its
   `target` and `rel`, opens a `/view/` target through `mb.navigation.open` on a plain
   click, and returns how many links it changed.
+  It can run again over the same text with more context: it keeps the authored address
+  in `data-metabrowser-authored-href`, reads it on the later pass, and moves the link’s
+  one click handler to the new answer.
   A link whose address the navigation codec will not spell is left as written, and the
   text’s other links are still read.
   The Markdown link enhancer keeps its own DOM pass and calls only `localize`.
@@ -126,8 +129,8 @@ address can spell.
 
 | Repository link | In-app target |
 | --- | --- |
-| `/<o>/<r>`, with or without a fragment | `/view/` and the fragment, which scrolls the root’s README as GitHub’s repository page does; only when the served root is the repository root |
-| `tree/<ref>[/<path>]`, `blob/<ref>/<path>` naming the served branch or the served commit’s full ID | `/view/<path>`, `/view/` for the branch’s root; query and fragment kept |
+| `/<o>/<r>`, with or without a fragment, or with the repository page’s `?tab=readme-ov-file` | `/view/` and the fragment, which scrolls the root’s README as GitHub’s repository page does; only when the served root is the repository root |
+| `tree/<ref>[/<path>]`, `blob/<ref>/<path>` naming the served branch or the served commit’s full or abbreviated ID | `/view/<path>`, `/view/` for the branch’s root; query and fragment kept |
 | `pull/<n>` | `/pull/<n>` |
 | `pull/<n>/files`, `pull/<n>/changes` | `/pull/<n>/files`; a `#diff-<hash>` anchor is dropped, since only the server can name its file |
 | `pull/<n>/checks` | `/pull/<n>/checks` |
@@ -151,27 +154,35 @@ is what “respect the current branch” requires; a relative link always does, 
 A description, comment, review, review comment, or Guided Review note has the pull
 request’s page as its base on the server, unchanged, so the page receives the same
 absolute URLs github.com would, and `localize` reads them with a **text context**: the
-pull request’s page and the commit its text describes, the head.
+commit the text describes, the head, and, once the page knows them, the files its
+comparison changes.
 
-A URL under `/<o>/<r>/pull/` whose rest is not a pull-request address (one that begins
-with a number, or with GitHub’s `new`, the page that opens a pull request) is what a
+A URL under `/<o>/<r>/pull/` whose rest is not a pull-request address is what a
 path-relative reference becomes against that page, and is read as the repository path it
-names, at the head:
+names, at the head. A pull-request address begins with GitHub’s `new`, the page that
+opens a pull request, or with a number followed by nothing or one of a pull request’s
+pages (`files`, `changes`, `checks`, `commits`), so `7/files` is still pull request 7’s
+Changes and `2024/notes.md` is a folder named with digits. A bare `pull` is no reference.
+The path opens where Metabrowser can show that file without switching what it serves:
 
-- when the served revision is the head and the path is inside the served root, it opens
-  in place at `/view/<path>`;
-- otherwise it becomes the external link to that path at the head,
-  `github.com/<o>/<r>/blob/<head>/<path>`, or `tree/` for a path ending in `/`, which
-  shows exactly the file the author meant, where github.com itself showed a missing
-  page.
+1. in place at `/view/<path>`, when the served revision is the head and the path is
+   inside the served root;
+2. in the pull request’s Changes at that file, `/pull/<n>/files/<path>`, or a stack’s,
+   `/stack/<n>/changes/<path>`, when the comparison changes the file, since Changes
+   shows it at the head; the page opens it in place;
+3. otherwise, the external link to that path at the head,
+   `github.com/<o>/<r>/blob/<head>/<path>`, or `tree/` for a path ending in `/`, which
+   shows exactly the file the author meant, where github.com itself showed a missing
+   page.
 
-So `docs/x.md` and `./docs/x.md` name the head’s file, `../blob/main/x.md` and
-`/<o>/<r>/blob/main/x.md` mean what they mean on github.com, and `7/files` is still pull
-request 7’s Changes.
-A path whose first folder is named with digits, such as `2024/notes.md`, reads as a pull
-request’s address and stays as written, since `pull/2024/...` is one on github.com.
-A stack’s Guided Review notes use the stack page’s drawn comparison head as their
-commit, since the stack’s guide describes the whole stack.
+So `docs/x.md` and `./docs/x.md` name the head’s file, and `../blob/main/x.md` and
+`/<o>/<r>/blob/main/x.md` mean what they mean on github.com.
+A merged pull request’s head is never the served commit again, so the second step is
+what keeps its description’s links to its own documents inside Metabrowser.
+The changed files can arrive after a text is drawn; the page then runs `enhance` again
+over its drawn texts, which reads each link as the text wrote it.
+A stack’s Guided Review notes use the stack page’s drawn comparison, its head and its
+files, since the stack’s guide describes the whole stack.
 
 ### Commit Messages and Rendered Diffs
 

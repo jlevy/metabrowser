@@ -5,7 +5,9 @@
   its Changes and Checks, a commit, the list of pull requests, and a file or folder on
   the branch or commit being browsed.
   A path such as `docs/plan.md` in a pull request’s text, which GitHub resolves to a
-  page that does not exist, opens that file at the pull request’s head.
+  page that does not exist, opens that file at the pull request’s head: in place when the
+  head is served, in Changes when the pull request changes the file, and on GitHub
+  otherwise.
   A link in a rendered document in Changes or Docs to another file of the head opens it
   on GitHub when Metabrowser serves another revision, where it was plain text.
   A link to another branch, a tag, an issue, or a comment stays a GitHub link
