@@ -3,16 +3,20 @@ type: is
 id: is-01m8cfgb7tygn471x857dgjzpb
 title: "KPress: sanitize without diagnostics, for Metabrowser's Markdown projection"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-26T17:47:27.347Z
-updated_at: 2026-11-26T19:18:33.985Z
+updated_at: 2026-11-26T22:02:39.476Z
 started_at: 2026-11-26T19:18:33.984Z
+closed_at: 2026-11-26T22:02:39.472Z
+close_reason: "Merged in #895: projection sanitizes with diagnose=False (kpress 0.3.11); 1.4-2.6x per side."
+resolution: null
+duplicate_of: null
 ---
 Measured for mb-3dkn on docs/plugins.md (85 KB a side), best of 7 at load ~50: sanitize_raw_html takes ~56 ms a side, of which ~49 ms is its diagnostics (the _SanitizerAudit parse ~17 ms and two _content_events parses ~32 ms). markdown_projection._hardened discards the diagnostics. A keyword such as diagnose=False that skips the audit and the content-event comparison, keeping nh3.clean, the filter errors, and _canonical_inputs, would cut about a third of each side's ~135 ms. Needs a KPress PR and release, then a kpress bump here.
