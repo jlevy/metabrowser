@@ -3,9 +3,9 @@ type: is
 id: is-01m8bmwx2pehff86p5zd3v6e5t
 title: Bring Paraverse relationship context and record identity to the shared table view
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 refs:
   - kind: pr
@@ -24,8 +24,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T10:02:27.266Z
-updated_at: 2026-11-26T17:59:24.858Z
+updated_at: 2026-11-26T18:20:02.872Z
 started_at: 2026-11-26T10:04:05.984Z
+closed_at: 2026-11-26T18:20:02.869Z
+close_reason: "Merged as Metabrowser PR #882 with green CI, independent review, and regression coverage for SQLite/fSQLite relationships, labels, focus, and bounds."
+resolution: null
+duplicate_of: null
 ---
 Use the existing TableSource and table renderer for SQLite, fSQLite, structured, delimited and future SoftSchema data. Fix field-specific back-reference drilldowns and improve human-readable record context without changing stable keys or workbench conventions.
 

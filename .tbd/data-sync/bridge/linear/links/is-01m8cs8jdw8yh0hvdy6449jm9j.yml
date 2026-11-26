@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  labels:
+    - linear
+    - Improvement
+  priority: 1
+  slot: in_progress
+  status: in_progress
+  title: Refresh the post-load navigation and fetch performance campaign
+bead_id: is-01m8cs8jdw8yh0hvdy6449jm9j
+external_id: 83946ca1-f902-4d2b-8df2-2988e9b02f48
+external_key: OS-636
+external_url: https://linear.app/finterm-ai/issue/OS-636/refresh-the-post-load-navigation-and-fetch-performance-campaign
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-26T22:13:45.670Z
+state: linked
+synced_at: 2026-11-26T22:13:46.056Z
+type: lk

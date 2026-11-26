@@ -1,0 +1,23 @@
+---
+type: is
+id: is-01m8cn80yz2se1ghesgd9ah6t6
+title: "PR #888 B1: Index the previous catalog during a rate hold"
+kind: bug
+status: closed
+priority: 1
+version: 3
+delegate: codex@spud10.local
+labels: []
+dependencies: []
+parent_id: is-01m8cn7g58hfbbdjx6x1ng7bbg
+hold: null
+hold_until: null
+created_at: 2026-11-26T19:27:46.142Z
+updated_at: 2026-11-26T20:08:35.837Z
+started_at: 2026-11-26T19:27:48.286Z
+closed_at: 2026-11-26T20:08:35.744Z
+close_reason: "Fixed, independently reviewed, passed CI, and merged with PR #888."
+resolution: null
+duplicate_of: null
+---
+High. The previous catalog becomes invisible if provider admission prevents migration. src/metabrowser/builtin_plugins/github/pull_catalog.py:437. Review B https://github.com/jlevy/metabrowser/pull/888#pullrequestreview-6079458071
