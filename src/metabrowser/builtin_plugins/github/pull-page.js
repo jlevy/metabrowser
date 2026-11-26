@@ -91,6 +91,7 @@ import {
   withListedState,
 } from "./pull-state.js";
 import { briefLine, createSummaryBrief, PULL_FILES_SUMMARY_ROUTE } from "./pull-summary-brief.js";
+import { createRowReadiness, PULL_STATUSES_ROUTE } from "./row-readiness.js";
 import { stackMemberRow } from "./stack-member-row.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
@@ -5138,7 +5139,10 @@ export function stackMemberAuthor(stack, at, own) {
  * is `deps.state`'s, read again each time the menu opens or the page repaints, and the author
  * the stack's (`stackMemberAuthor`), the page's own, `deps.author`'s, for its pull request; a
  * member whose state is not known yet keeps the icon's slot empty, so every member's place
- * starts at one edge, and one whose author is not known has no dot and no author. The current
+ * starts at one edge, and one whose author is not known has no dot and no author. With
+ * `deps.readiness`, each member's line ends with its readiness's glyph, the page's own for its
+ * pull request and the server's for each other (row-readiness.js), read again each time the
+ * menu opens (`deps.onOpen`) and drawn again as it arrives (`repaint`). The current
  * member is marked by the Pulls list's current-row mark and
  * `aria-current`, not by a check before its icon.
  *
@@ -5156,7 +5160,7 @@ export function stackMemberAuthor(stack, at, own) {
  * glyph in the icon's slot, and its words where every member's title starts (mb-7cn4).
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, author?(): {login: string, avatar: string | null} | null, identity?(login: string, avatar: string | null): HTMLElement, menus?: MetabrowserMenus}} deps
+ * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, author?(): {login: string, avatar: string | null} | null, identity?(login: string, avatar: string | null): HTMLElement, readiness?(number: number): import("./pull-readiness.js").ShownReadiness | null, menus?: MetabrowserMenus}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -5273,6 +5277,7 @@ export function createStackMenu(initial, number, deps) {
           deps.identity === undefined
             ? null
             : stackMemberAuthor(stack, at, target === number ? (deps.author?.() ?? null) : null),
+        ...(deps.readiness === undefined ? {} : { readiness: deps.readiness(target) }),
       });
     }
   }
@@ -5487,6 +5492,12 @@ export function createStackMenu(initial, number, deps) {
       if (populated && reordered) {
         populate(true);
       } else {
+        updateMembers();
+      }
+    },
+    /** Each drawn member's line drawn again, as a readiness that arrived says it. */
+    repaint() {
+      if (populated) {
         updateMembers();
       }
     },
@@ -5717,8 +5728,46 @@ export function mountPullPage(container, ctx, mb) {
   /** The author the page shows, which its stack menus give its own member (mb-x0z1).
    * @type {{login: string, avatar: string | null} | null} */
   let stackPullAuthor = null;
+  /** The readiness the page shows, which its stack menus give its own member (mb-3n21).
+   * @type {import("./pull-readiness.js").ShownReadiness | null} */
+  let stackPullReadiness = null;
   /** @type {Map<number, ReturnType<typeof createStackMenu>>} */
   const stackMenus = new Map();
+  // Each other member's readiness in the stack menus (row-readiness.js): read for a menu's
+  // members as it opens, from the cache alone, when the browser is idle, and kept for the
+  // document with what the Pulls tab read, so a member the list drew draws its glyph at once.
+  // An SDK without `whenIdle` reads none, and its menus draw no readiness.
+  const stackReadiness =
+    typeof mb.whenIdle !== "function"
+      ? null
+      : createRowReadiness({
+          async read(numbers, signal) {
+            const response = await fetch(`${PULL_STATUSES_ROUTE}?numbers=${numbers.join(",")}`, {
+              signal,
+            });
+            return { status: response.status, body: response.ok ? await response.json() : null };
+          },
+          schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          isVisible: () => document.visibilityState === "visible",
+          now: () => Date.now(),
+          changed() {
+            for (const menu of stackMenus.values()) {
+              menu.repaint();
+            }
+          },
+        });
+  /**
+   * A member as the stack menus' readiness reads it: its number, and the state the Pulls list
+   * last said, with no head, which the menus do not know.
+   * @param {number} target
+   * @returns {import("./row-readiness.js").ReadinessRow}
+   */
+  const memberReadinessRow = (target) => ({
+    number: target,
+    head: null,
+    state: listedState(stackIdentity?.source ?? null, target)?.state ?? null,
+  });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   // Follow the reading column at every width; Files changed keeps the full pane.
   const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
@@ -6745,6 +6794,11 @@ export function mountPullPage(container, ctx, mb) {
     stackPullState = model.pull?.state ?? null;
     stackPullAuthor =
       model.pull === null ? null : { login: model.pull.author, avatar: model.pull.avatar };
+    const readiness = model.readiness ?? null;
+    stackPullReadiness =
+      readiness === null
+        ? null
+        : { verdict: readiness.verdict, tone: readiness.tone, label: readiness.label };
     const nodes = memberships.map((stack) => {
       let menu = stackMenus.get(stack.number);
       if (menu) {
@@ -6763,7 +6817,20 @@ export function mountPullPage(container, ctx, mb) {
           stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
         author: () => stackPullAuthor,
         identity: stackMemberIdentity(mb),
+        ...(stackReadiness === null
+          ? {}
+          : {
+              readiness: (target) =>
+                target === number
+                  ? stackPullReadiness
+                  : stackReadiness.readiness(memberReadinessRow(target)),
+            }),
         onOpen() {
+          // The other members' readiness as it is now, each a minute old read again.
+          stackReadiness?.refresh(
+            stack.pulls.filter((target) => target !== number).map(memberReadinessRow),
+            stackIdentity?.source ?? null,
+          );
           preferredStack = stack.number;
           for (const [other, view] of stackMenus) {
             if (other !== stack.number) {
@@ -10305,6 +10372,7 @@ export function mountPullPage(container, ctx, mb) {
       check();
     }
     summaryBrief?.dispose();
+    stackReadiness?.dispose();
     // A disposed binding leaves its figures as drawn, so the handoff keeps them on screen.
     for (const text of [...textDiagrams.keys()]) {
       disposeTextDiagrams(text);

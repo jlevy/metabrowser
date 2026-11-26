@@ -949,13 +949,16 @@ The two phases are the data, which `metab` shows, and the surfaces that draw it.
 
 **Layer 6: readiness in the Pulls tab and on stacks** (`mb-3n21`).
 
-- [ ] The Pulls tab’s readiness column, its accessible name, and the container query for
-  its label.
-- [ ] Stack member rows.
-- [ ] The user guide’s sentence that the list does not track checks or mergeability
+- [x] The Pulls tab’s readiness column, its accessible name, and the container query for
+  its label, measured in Chrome a pixel at a time (the measurement is beside
+  `@container github-pulls` in the plugin’s `styles.css`). The label is in the text’s
+  ink and the tone the glyph’s alone, since the success ink reads 4.47:1 on the open
+  row’s tint.
+- [x] Stack member rows.
+- [x] The user guide’s sentence that the list does not track checks or mergeability
   ([Reviewing Pull Requests](../../../reviewing-pull-requests.md)) and the design
   system’s Pulls Tab section.
-- [ ] A changelog fragment.
+- [x] A changelog fragment.
 
 ### Phase 3: GitHub Request Performance
 

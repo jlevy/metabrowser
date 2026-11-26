@@ -381,6 +381,10 @@ has the rules.
   the last scan ended (`pull_statuses_route.py`). A scan’s status from before the last
   whole walk, of a pull request that walk did not read, is `not_scanned`: one past the
   last updated the scan reads, or no longer open, whose verdict nothing keeps current.
+  The Pulls tab reads it for the rows it draws, and the stack menu and the stack’s page
+  for their members, each a glyph in the verdict’s tone (`row-readiness.js`, drawn by
+  `stack-member-row.js`;
+  [Design System](../../design-system.md#in-the-pulls-tab-and-on-stacks)).
 
 ## Serving Pull Requests
 

@@ -2619,12 +2619,35 @@ def test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn() -> 
             alias = re.fullmatch(r"var\((--[\w-]+)\)", ink)
             assert alias is not None, f"the {tone} ink is a token: {ink}"
             colors[tone] = _resolved(tokens, alias[1])
+            ink_luminance = _srgb_luminance(_srgb(colors[tone]))
             for ground in ("--bg", "--sidebar-bg"):
-                surface = _resolved(tokens, ground)
-                assert _contrast(colors[tone], surface) >= _AA_TEXT, (
-                    f"the {tone} ink on {ground} in the {theme} theme reads at "
-                    f"{_contrast(colors[tone], surface):.2f}:1"
+                ratio = _ratio(ink_luminance, _srgb_luminance(_ground(tokens, ground)))
+                assert ratio >= _AA_TEXT, (
+                    f"the {tone} ink on {ground} in the {theme} theme reads at {ratio:.2f}:1"
                 )
+            # A Pulls row's glyph, a mark and not text, on the row under the pointer and as
+            # the open one, the highlight's tint over the panel (mb-3n21).
+            for ground in ("--hover-bg", "--highlight-bg"):
+                ratio = _ratio(ink_luminance, _srgb_luminance(_ground(tokens, ground)))
+                assert ratio >= _AA_GRAPHIC, (
+                    f"the {tone} glyph on {ground} in the {theme} theme reads at {ratio:.2f}:1"
+                )
+        # The label after it is text, in an ink no tone sets, and reads at a text's contrast
+        # on every ground a row has.
+        label = next(
+            declarations["color"]
+            for selector, declarations in rules
+            if selector == ".github-pulls-readiness-label" and "color" in declarations
+        )
+        assert label not in inks.values(), "a row's label takes no tone's ink"
+        label_alias = re.fullmatch(r"var\((--[\w-]+)\)", label)
+        assert label_alias is not None, f"the label's ink is a token: {label}"
+        label_luminance = _srgb_luminance(_srgb(_resolved(tokens, label_alias[1])))
+        for ground in ("--sidebar-bg", "--hover-bg", "--highlight-bg"):
+            ratio = _ratio(label_luminance, _srgb_luminance(_ground(tokens, ground)))
+            assert ratio >= _AA_TEXT, (
+                f"a row's label on {ground} in the {theme} theme reads at {ratio:.2f}:1"
+            )
         warning = _oklch_channels(_resolved(tokens, "--status-warning-text"))[2]
         assert _hue_gap(_oklch_channels(colors["attention"])[2], warning) > 15, (
             f"attention is the shell's warning ink in the {theme} theme"
@@ -4640,6 +4663,8 @@ _STATUS_FILL_TOKENS = (
     "--status-info",
 )
 _AA_TEXT = 4.5
+# WCAG 2.2's 1.4.11 Non-text Contrast: a mark that says something, a glyph, against its ground.
+_AA_GRAPHIC = 3.0
 
 
 def test_status_and_badge_inks_read_in_both_themes() -> None:

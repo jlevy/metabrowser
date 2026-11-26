@@ -1359,6 +1359,11 @@
   --github-pull-row-avatar-size: 16px;
 }
 .github-pulls-list {
+  /* The readiness column's label follows its glyph where the list is wide enough
+     (`@container github-pulls`, after `.github-pulls-readiness`). The list, not a row, is
+     the container, so every row's column is one width, a stack's members' too, whose rows
+     are as wide as the rest and indented inside them. */
+  container: github-pulls / inline-size;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1409,6 +1414,11 @@
      13 px, "12mo" is 31.1 px of the column's 32.3 px (tests/dom/type-scale-chrome.mjs holds
      it whole). WebKit was not measured. */
   --github-pulls-age-column: 5ch;
+  /* The readiness's column (`.github-pulls-readiness`, below): the glyph's width, and where
+     the list is wide enough the glyph, a space's gap, and the room of the widest label. */
+  --github-pulls-readiness-column: var(--icon-glyph);
+  --github-pulls-readiness-gap: 0.25em;
+  --github-pulls-readiness-label-room: 8.1em;
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
   padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
@@ -1559,7 +1569,9 @@
    as no column. */
 .github-pulls-row > .github-pulls-tail {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--github-pulls-age-column);
+  grid-template-columns:
+    minmax(0, 1fr) var(--github-pulls-readiness-column)
+    var(--github-pulls-age-column);
   align-items: center;
   height: var(--github-pulls-change-line);
   padding: 0 0 2px var(--github-pull-row-text-column);
@@ -1621,6 +1633,61 @@
 }
 .github-pulls-change-pending > .tally-pending {
   width: 100%;
+}
+/* An open pull request's readiness (mb-3n21; row-readiness.js), in a column of its own between
+   the lines and the age: the verdict's glyph in its tone, `.github-pull-readiness-icon`, at
+   the column's start, so the glyphs down the list read as a checks column, "+1,234 −567 › ⊗
+   3d". The column is one width on every row, the glyph's, and is there empty on a closed or
+   merged row and on one the server has no status of, so a glyph arriving moves nothing and the
+   ages stay in theirs. Its glyph and its label are hidden from assistive technology: the run
+   says the verdict after the state (stack-member-row.js). The column's width and the label's
+   room are on `.github-pulls-row`. */
+.github-pulls-readiness {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  gap: var(--github-pulls-readiness-gap);
+  min-width: 0;
+  overflow: hidden;
+}
+/* The label is in the text's ink, and the tone is the glyph's alone: a list of a hundred rows is
+   not a hundred colored words, and the label reads at the text's contrast on every ground a row
+   has, where the success ink reads 4.47:1 on the open row's highlight tint over the panel
+   (test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn). */
+.github-pulls-readiness-label {
+  display: none;
+  min-width: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Where the list is wide enough, the label follows the glyph, and the column
+   is as wide as the widest label the server gives a verdict, so every glyph and every label
+   start at one edge. The label's room, `--github-pulls-readiness-label-room` on
+   `.github-pulls-row`, is 8.1em: the widest label, "Changes requested", is 104 px at the row's
+   13 px (8em), and the next, "Ready for review", 90 px. The bound is where a stack's member,
+   a row a level in, has beside the column at that width and the age the room its lines need,
+   `--github-pulls-lines-room`, which 44 of this repository's 45 rows' lines take, and its
+   chevron: below it the label would cut short lines that fit beside the glyph alone. Measured
+   in headless Chrome for Testing 158 with KPress's faces, 2026-11-26, by setting the pane's
+   width a pixel at a time from 300 to 600 px: that row first has the room at a list 321 px
+   wide (a 322 px pane), 24.69em of the list's 13 px, so the bound is 24.65em, 320.45 px. The
+   nav's 299 px default pane draws the glyph alone; a flush row has a level's 20 px more.
+   tests/dom/github-pulls-readiness-chrome.mjs holds the label to that side of the bound at
+   every pixel, every label whole in its room, and the column one width on every row. WebKit
+   was not measured. */
+@container github-pulls (width >= 24.65em) {
+  .github-pulls-tail {
+    --github-pulls-readiness-column: calc(
+      var(--icon-glyph) +
+      var(--github-pulls-readiness-gap) +
+      var(--github-pulls-readiness-label-room)
+    );
+  }
+  .github-pulls-readiness-label {
+    display: inline;
+  }
 }
 
 /* A pull request's changed files, under its row: the Files tree's row contract, drawn a window
@@ -1915,6 +1982,17 @@
 }
 .github-pull-stack-member-by[hidden] {
   display: none;
+}
+/* A member's readiness (mb-3n21): the verdict's glyph in its tone, ending the line after the
+   author, in a cell as wide as the glyph, there empty for a member with no readiness, so every
+   member's place, number, and author end at one edge. Its words are the member's name's,
+   after the state (stack-member-row.js). */
+.github-pull-stack-member-readiness {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: center;
+  width: var(--icon-glyph);
 }
 .github-pull-stack-member-by > .github-pull-identity {
   min-width: 0;

@@ -310,6 +310,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_diff_view_file_session.py \
 	tests/test_github_pull_page_session.py \
 	tests/test_github_pulls_panel_session.py \
+	tests/test_github_pulls_readiness_session.py \
 	tests/test_github_pull_files_tree_session.py \
 	tests/test_github_serve.py \
 	tests/test_source_freshness_session.py \
@@ -380,6 +381,7 @@ GOLDEN_RECORDERS := \
 	tests/test_github_pull_readiness_page.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \
+	tests/test_github_pulls_readiness_session.py \
 	tests/test_github_stack_change.py \
 	tests/test_cli_github_stack_golden.py \
 	tests/test_github_pull_files_summary.py \

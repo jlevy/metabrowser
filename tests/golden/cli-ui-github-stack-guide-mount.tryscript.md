@@ -75,6 +75,14 @@ page’s glue between them.
   file on github.com at the head of the comparison drawn; once the read says what the
   comparison changes, the same note’s link to a changed file opens it in the stack’s
   Changes, in place, and a link to an unchanged file stays on github.com.
+- `cold_without_labels` and `unknown_stack`: two more stacks’ headers from first paint
+  to their answers.
+- `members_readiness`: each member’s line ends with its readiness’s glyph in a cell, as
+  in the stack menu (mb-3n21). The page reads the server’s verdict on its open members
+  when the browser is idle, from the statuses
+  `tests/test_github_pulls_readiness_session.py` records: #10, a draft, says “Merge
+  conflicts” after its state and draws the glyph in the danger tone; #8 is merged, so it
+  is not asked and its cell stays empty.
 
 ```console
 $ node tests/dom/github-stack-guide-mount-session.js
@@ -415,6 +423,39 @@ $ node tests/dom/github-stack-guide-mount-session.js
     "clicks": [
       "the draft: {\"number\":70,\"tab\":\"changes\",\"file\":\"docs/draft.md\",\"stack\":true}",
       "an unchanged file: the browser follows it"
+    ]
+  },
+  "members_readiness": {
+    "before_idle": [
+      {
+        "state": "draft",
+        "words": "",
+        "glyph": null,
+        "cell_last": true
+      },
+      {
+        "state": "merged",
+        "words": "",
+        "glyph": null,
+        "cell_last": true
+      }
+    ],
+    "asked": [
+      "/api/plugin/github/pull-statuses?numbers=10"
+    ],
+    "after_idle": [
+      {
+        "state": "draft",
+        "words": "Merge conflicts",
+        "glyph": "conflicts (danger)",
+        "cell_last": true
+      },
+      {
+        "state": "merged",
+        "words": "",
+        "glyph": null,
+        "cell_last": true
+      }
     ]
   }
 }

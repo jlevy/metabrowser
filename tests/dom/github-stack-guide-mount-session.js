@@ -15,9 +15,11 @@
 // disposes the view and aborts its read. Then Docs and Changes that could not load: each says so in a
 // pull request's error notice with Retry, whose press disposes what the failed draw left and
 // draws again, and a Retry left behind by a tab switch or the page's disposal draws nothing.
-// Last, two more stacks' headers from first paint to their answers: one whose members the
+// Then two more stacks' headers from first paint to their answers: one whose members the
 // Pulls tab knows carry no labels, which has no labels row from first paint, and one the
-// Pulls tab does not know, whose members row is held from first paint.
+// Pulls tab does not know, whose members row is held from first paint. Last, the members'
+// readiness (mb-3n21): the page reads the server's verdict on its open members when the
+// browser is idle, and each member's line ends with its glyph's cell, empty for a merged one.
 // The navigation itself is github-guided-review-session.js's, and the stack's own
 // state machine github-stack-page-session.js's; this is the page's glue between them. Paint is
 // Chrome's.
@@ -883,6 +885,87 @@ async function run() {
   report.cold_without_labels = others[75];
   report.unknown_stack = others[76];
   report.note_links = await noteLinks(page, mb);
+
+  // The members' readiness (mb-3n21): the page reads, for the members its card lists, the
+  // server's verdict on each, from the statuses the server answered once the scan of every
+  // open pull request's status had ended (tests/fixtures/github-pulls-readiness-responses.json),
+  // when the browser is idle, and each member's line ends with its glyph's cell. The stack's
+  // recorded heads are placeholders, so each member here names the head that answer judged,
+  // as the stack route and the statuses route name the catalog's. #10, a draft, conflicts;
+  // #8 is merged, so it is not asked and its cell stays empty.
+  const readiness = JSON.parse(
+    fs.readFileSync(
+      path.join(root, "tests/fixtures/github-pulls-readiness-responses.json"),
+      "utf8",
+    ),
+  ).scanned.body;
+  const judged = new Map(
+    readiness.rows.map((row) => JSON.parse(row)).map((row) => [row.number, row]),
+  );
+  const statusReads = [];
+  const answered = globalThis.fetch;
+  globalThis.fetch = async (route, init = {}) => {
+    if (route.startsWith("/api/plugin/github/pull-statuses?")) {
+      const numbers = new URL(route, "http://localhost").searchParams.get("numbers").split(",");
+      statusReads.push(route);
+      return response({
+        ...readiness,
+        rows: numbers.map((number) => judged.get(Number(number))).filter(Boolean),
+      });
+    }
+    return answered(route, init);
+  };
+  const idle = [];
+  const idleMb = {
+    ...mb,
+    whenIdle(callback) {
+      idle.push(callback);
+      return () => {};
+    },
+  };
+  const members = stack(revision(1)).members.map((member) => ({
+    ...member,
+    head: judged.get(member.number)?.head ?? member.head,
+  }));
+  otherAnswers.set(77, { ...stack(revision(1)), number: 77, guide: null, members });
+  const judgedPage = new Element("main");
+  const judging = page.mountStackPage(
+    judgedPage,
+    { number: 77, tab: "changes", open: () => Promise.resolve() },
+    idleMb,
+  );
+  await settle();
+  const memberRows = () =>
+    judgedPage.querySelectorAll(".github-pull-stack-member").map((row) => {
+      const glyph = row.querySelector(".github-pull-readiness-icon");
+      return {
+        state: row.querySelector(".github-pull-state-icon")?.dataset.state ?? null,
+        words: row.querySelector(".github-pull-readiness-said")?.textContent ?? null,
+        glyph: glyph === null ? null : `${glyph.dataset.verdict} (${glyph.dataset.tone})`,
+        cell_last: row.children.at(-1)?.classes.has("github-pull-stack-member-readiness") ?? false,
+      };
+    });
+  const before = memberRows();
+  for (const callback of idle.splice(0)) {
+    callback();
+  }
+  await settle();
+  report.members_readiness = {
+    before_idle: before,
+    asked: [...statusReads],
+    after_idle: memberRows(),
+  };
+  assert.deepEqual(
+    statusReads,
+    ["/api/plugin/github/pull-statuses?numbers=10"],
+    "the page asks for its open member alone, once",
+  );
+  assert.ok(
+    report.members_readiness.after_idle.every((row) => row.cell_last),
+    "every member's line ends with its readiness's cell",
+  );
+  judging.dispose?.();
+  globalThis.fetch = answered;
   console.log(JSON.stringify(report, null, 2));
 }
 

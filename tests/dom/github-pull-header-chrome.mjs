@@ -1660,10 +1660,14 @@ const PULLS_ROWS = `async (rows, width) => {
       h("span", { class: "github-pulls-change-words", hidden: "" }),
     ]);
     const age = h("span", { class: "github-pulls-age", "aria-hidden": "true" }, ["12mo"]);
-    const tail = h("span", { class: "github-pulls-tail" }, [change, age]);
+    // The readiness's column between the toggle and the age, empty here, as a row the server
+    // has no status of has it (stack-member-row.js, mb-3n21).
+    const readiness = h("span", { class: "github-pulls-readiness", "aria-hidden": "true" });
+    const tail = h("span", { class: "github-pulls-tail" }, [change, readiness, age]);
     const by = h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [identity]);
     const heading = h("span", { class: "github-pulls-heading" }, [
       icon,
+      h("span", { class: "sr-only github-pull-readiness-said" }),
       title,
       place,
       separator(),

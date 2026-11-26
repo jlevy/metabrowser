@@ -70,8 +70,8 @@ route-backed selections of `cli/show_cli.py` register them.
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
 | `comparison` | No file; the Commits tab selects it for `/commit/<rev>[/<inner>]` | The `diff` kind’s views | `diff/comparison` document in File Diff Format |
 | `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>] or /checks]` | Pull request, which draws its own Conversation `C`, Changes `G`, and Checks `E` tabs | `github/pull` envelope and the hooks it names; beside its record, the operational status (`PullStatus`), its head’s checks (`PullChecks`), both in `pull_status.py`, and the verdict on them (`Readiness`, `pull_readiness.py`) ([Operational Status](arch-github-pull-requests.md#operational-status)) |
-| `pull-stack` | No file; the shell selects it for `/stack/<n>[/guided, /docs, or /changes[/<path>]]` | Stack, which draws its own Diff summary in its header and its own Guided Review, Docs, and Changes tabs | `github/stack` envelope, the `github/stack-comparison` document it names, and the `github/guided-review` answer by `stack` |
-| `pull-request-list` | No file; the Pulls tab mounts it, and the pane at `/pulls` | Pull requests | `github/pulls` envelope |
+| `pull-stack` | No file; the shell selects it for `/stack/<n>[/guided, /docs, or /changes[/<path>]]` | Stack, which draws its own Diff summary in its header and its own Guided Review, Docs, and Changes tabs | `github/stack` envelope, the `github/stack-comparison` document it names, the `github/guided-review` answer by `stack`, and the `github/pull-statuses` answer for its open members, whose readiness ends their rows |
+| `pull-request-list` | No file; the Pulls tab mounts it, and the pane at `/pulls` | Pull requests | `github/pulls` envelope, and the `github/pull-statuses` answer for the open rows it draws, each row’s readiness; a stack menu’s members on a pull request’s page read it too |
 
 A view’s key is its manifest `[[view]] key`, written here uppercase as the keyboard
 shows it and served lowercase as the envelope’s `views[].key`. A single-view kind

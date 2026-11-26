@@ -7,7 +7,8 @@
 // the server's vocabulary are the labels the header's slot is sized by (`SLOT_LABELS`) and
 // each requirement status's tone (`STATUS_TONES`), both held to the server's by
 // tests/test_github_pull_readiness_js.py. Color is never the only signal, since the glyphs
-// differ and the label is always there, as the badge's text or the glyph's accessible name.
+// differ and the label is always there, as the badge's text, the glyph's accessible name, or a
+// row's words.
 //
 // It loads with the plugin's module graph, as pull-state.js does: the page and the Pulls tab
 // that draw it import it statically, and its ten glyphs are parsed only when first drawn.
@@ -172,9 +173,10 @@ function mark(className, readiness) {
  * The verdict's glyph, in its tone, or null for a pull request with no readiness, as a closed
  * or merged one has none. Browser only.
  *
- * Named by default, for a row, where nothing else says the verdict: its accessible name is the
- * server's label, as a state icon's is the state's (pull-state.js). Text beside it that says
- * the label passes `named: false`, and the glyph is hidden from assistive technology.
+ * Named by default: its accessible name is the server's label, as a state icon's is the
+ * state's (pull-state.js). Text that says the label passes `named: false`, and the glyph is
+ * hidden from assistive technology, as a row's is, whose words say the label after its state
+ * (stack-member-row.js).
  *
  * @param {ShownReadiness | null | undefined} readiness
  * @param {{named?: boolean}} [options]
