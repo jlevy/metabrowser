@@ -335,7 +335,7 @@ it.
 | Keycaps and their hint strips | `--kbd-font-size` | A [key](#keyboard-keys), and a strip of hints that labels keys, at the navigation column’s foot and in Quick Search, so a key and its word read as one mark |
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
 | Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, and raw JSON, at the controls’ size |
-| Ref chip | `--git-ref-font-size` | `--git-ref-font-scale` of the size it inherits, so slightly smaller than the text it sits in: the ramp’s one relative size, because a chip sits in text of several sizes and reads as part of it ([Branch Chips](#branch-chips)) |
+| Ref chip | `--git-ref-font-size` | One size in every context, the size a chip has in the navigation column: `--git-ref-font-scale` of `--nav-font-size`, and never of the text the chip sits in ([Branch Chips](#branch-chips)) |
 | Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu, in a Pulls row, and in a guide’s pull request row |
 
 A path reads at its region’s size, and its metadata with it.
@@ -631,7 +631,7 @@ pull request’s labels, a row of chips at a chip’s size, and a stack’s memb
 stack menu’s member rows at the menu’s size under a toggle at the line’s
 ([The Stack Page](#the-stack-page)). An age in a line takes the line’s size, as an age
 does everywhere ([Type Scale](#type-scale)). A chip in a line keeps its own size, a ref
-chip by the [chip ratio](#one-ratio), and a state badge and a label at theirs
+chip its [one size](#one-size), and a state badge and a label at theirs
 ([Label Colors](#label-colors)), and a revision takes the line’s size
 ([Short Commit IDs](#short-commit-ids)).
 
@@ -2153,7 +2153,7 @@ A row is the graph, then the commit, then who and when:
 | Part | Sizing |
 | --- | --- |
 | Graph gutter | Shrink-wraps **this row’s** lanes, so the subject starts where that row’s graph ends. A shared column would spend the widest row’s width on every row. |
-| Ref chips | Fixed, slightly smaller than the subject by the [chip ratio](#one-ratio); shrink last (see below) |
+| Ref chips | Fixed, at the chip’s [one size](#one-size); shrink last (see below) |
 | Subject | Bold, with a conventional-commit prefix regular ([Titles](#titles)); takes the remaining space and absorbs the row’s shrinkage, ellipsizing |
 | Author | Right-aligned in a column bounded by `.git-graph-meta`’s `max-width`, sliding outward as the panel widens; it ellipsizes in that column first |
 | Age | Fixed, at the column’s end; never cut |
@@ -2243,8 +2243,7 @@ The full subject uses `.page-heading` at `--page-title-font-size`, the PR title�
 Its summary starts at the pane’s content edge and uses `.page-reading-column` for the
 maximum reading width.
 The full summary’s lines and the compact subject, author, age, and change line use
-`--body-font-size`. The ref badges are chips, slightly smaller than that text, by the
-[chip ratio](#one-ratio).
+`--body-font-size`. The ref badges are chips, at the chip’s [one size](#one-size).
 Among the row’s text the revision is the one deliberate exception: it is monospace, at
 the row’s size, with its face scaled to the sans’s x-height so it reads at the size of
 the text beside it ([Short Commit IDs](#short-commit-ids)). The compact tooltip is
@@ -2340,27 +2339,33 @@ and a merge’s two by `mb.mergeRefs` ([Merge Direction](#merge-direction)); no 
 builds its own. A chip answers three questions, each with its own signal: what kind of
 ref it is, whether it is trunk, and whether `HEAD` is on it.
 
-#### One Ratio
+#### One Size
 
-A chip’s type is slightly smaller than the surrounding text.
-Its font size is `--git-ref-font-size`, or `--git-ref-font-scale` times the inherited
-size. The merge, history, summary, and chooser containers inherit their surrounding font
-so the ratio follows the text.
-The box has the shared [compact chip height](#chip-sizes).
+A chip is the same size in every context: the navigation’s history, a commit’s page, a
+pull request’s header, and the ref chooser.
+Its font size is `--git-ref-font-size`, the size a chip has in the navigation column,
+and its line is the box’s height, the shared [compact chip height](#chip-sizes), so one
+token sets the height and centers the name.
+Nothing about a chip follows the text it sits in.
+When the type was a ratio of that text and the box stayed one height, a name sat level
+in a history row and low in a commit’s header, where the text is larger.
+A context that needed another size would get a named form from the builder, never a rule
+that restyles the chip where it sits; there is none.
 
 | Property | Rule | Why |
 | --- | --- | --- |
-| Size | `--git-ref-font-size` | Slightly smaller than its text, so a branch name reads as a tag on that text rather than the text itself. The smallest context stays above `--micro-font-size`, so the ratio needs no floor |
+| Size | `--git-ref-font-size` | One length, the navigation column’s chip size: slightly smaller than the smallest text a chip sits in, so a branch name reads as a tag on that text rather than the text itself |
 | Weight | `--weight-bold` | The name carries the meaning |
-| Line height | `--compact-chip-height` | Aligns with the label chips and fits a `HEAD` ring inside a history row |
+| Line height | `--compact-chip-height` | The box’s height and the name’s centering, from one token. Aligns with the label chips and fits a `HEAD` ring inside a history row |
 | Corner | `--radius-tag` | Square-ish, so a ref and a filter never read as the same control |
 | Padding | `--compact-chip-padding-inline` | A tag adds room on the left for its notch. The menu chevron overlays the chip ([Action Menu](#action-menu)) |
-| Width | A maximum in em, ellipsized, with the full name in its tooltip | In em so the bound keeps its meaning at any chip size; the measurement is beside it |
+| Width | A maximum in em, ellipsized, with the full name in its tooltip | In em of the chip’s own size, so one width everywhere; the measurement is beside it |
 
-`test_branch_chips_scale_with_their_text` in `tests/test_design_vocabulary.py` holds the
-ratio: it fails on a rule in any shipped stylesheet that sets a chip’s type or box from
-a context, or that gives a box a chip sits in a size of its own.
-The size each context’s chip gets is in
+`test_branch_chips_are_one_size_everywhere` in `tests/test_design_vocabulary.py` holds
+the mechanism, not the pixels: it fails on a rule in any shipped stylesheet that sets a
+chip’s type or box from a context, and on a size token with a part that resolves against
+the chip’s surroundings.
+What each context’s chip measured before and after is in
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#branch-chip-sizes).
 
 #### Kinds and Forms
@@ -2476,7 +2481,7 @@ the same way, `old → new`.
 | Part | Rule |
 | --- | --- |
 | Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `menu`) applies to both |
-| Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is slightly smaller. The spaces around it are text, so a copied selection reads `wip → topic` |
+| Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is its own one size. The spaces around it are text, so a copied selection reads `wip → topic` |
 | Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. It has no tooltip: the names beside it say the merge, and a chip cut short carries its own full name ([Tooltips Add Information](#tooltips-add-information)) |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
 | Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding, an ellipsis in each, and the arrow. The pull request header gives the merge a line of its own, under the author’s sentence, so only the names give way there |
@@ -3343,7 +3348,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)), and a conventional-commit prefix that starts it regular ([Titles](#titles)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink; a review’s only for a state its verb does not say ([Conversation Timeline](#conversation-timeline)) | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | The shell’s [actor identity](#actor-identity): an avatar’s box, then `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor, and the person glyph stands in its box where there is none, as on a commit’s page |
-| Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
+| Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), each the chip’s [one size](#one-size), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places |
 | Opened, updated, commented | `metabrowser.ageLabel` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, at the card head’s size | A path is chrome, and in the main view it reads at the body size, as a diff file bar’s does ([Type Scale](#type-scale)) |
