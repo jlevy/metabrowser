@@ -477,9 +477,11 @@ class ServedPull:
     # adopts it.
     full_read_at: str | None = field(default=None, repr=False)
     _full_attempt: datetime | None = field(default=None, repr=False)
-    # A visible page's ask found the full read overdue (:meth:`automatic_due`): the next
-    # refresh reads everything, even for a record whose status alone is due.
-    _full_asked: bool = field(default=False, repr=False)
+    # A visible page's last ask found a read due (:meth:`automatic_due`): the refresh it
+    # starts reads what is due when its turn comes, and nothing if none of it still is
+    # (:meth:`_reads`). Each ask sets it again, so one whose start was refused leaves it at
+    # most until the page asks next.
+    _page_asked: bool = field(default=False, repr=False)
 
     def note_comparison(self, pair: tuple[str, str], *, displayed: bool = False) -> None:
         """Remember a comparison this PR issued; metadata cannot evict the displayed pair."""
@@ -608,10 +610,13 @@ class ServedPull:
         has, are due once a window from the last read of the status, whether or not the
         record is current. GitHub's limit holds each, and below the GraphQL floor
         (:meth:`status_below_floor`) the last two wait, as the reads the clock asks for do.
-        Only a held record has a status read.
+        Only a held record has a status read, and speculative work never has one due
+        (:func:`.gh_budget.speculating`): a background record reads no operational status,
+        and the prefetch's caps are priced without it (``POINTS_PER_RECORD`` in
+        ``pull_prefetch.py``), so no refresh it starts reads the status alone.
         """
 
-        if self.fetched_at is None or self._held(now):
+        if self.fetched_at is None or self._held(now) or gh_budget.speculating():
             return False
         if self._status_change_found():
             return True
@@ -685,9 +690,12 @@ class ServedPull:
         read at once; one the clock or a missing status asks for is probed for first when
         a probe is due, so a change the probe finds in the record reads the record and the
         status after it in one job, and otherwise the next ask reads the status alone.
-        Either is ``full``: the refresh job decides what it reads (:meth:`refresh`).
+        Either is ``full``. The refresh it starts decides again when its turn at the store
+        comes (:meth:`_reads`): it reads what is due then, and nothing if none of it still
+        is, as when a hold is noted or a floor crossed while it waits.
         """
 
+        self._page_asked = False
         window = self.record_window(now)
         if (
             gh_budget.over_ceiling(now)
@@ -698,14 +706,15 @@ class ServedPull:
             # one a probe found a change for, waits five minutes after the last; a change
             # that waits is not probed for again.
             return "probe" if self._probe_saw_at is None and self.probe_due(now) else None
-        if self.full_read_due(now):
-            self._full_asked = True
-            return "full"
-        if self.record_due(now, window_s=window):
+        if self.full_read_due(now) or self.record_due(now, window_s=window):
+            self._page_asked = True
             return "full"
         if not self.status_due(now):
             return "probe" if self.probe_due(now) else None
-        return "full" if self._status_change_found() or not self.probe_due(now) else "probe"
+        if self._status_change_found() or not self.probe_due(now):
+            self._page_asked = True
+            return "full"
+        return "probe"
 
     def full_read_overdue(self, now: datetime) -> bool:
         """Whether the record held was last read in full longer than FULL_REFRESH_S ago.
@@ -976,9 +985,11 @@ class ServedPull:
         if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
             self.fetched_at = fetched_at
             if not self._refreshing:
-                # Another writer's record, taken as read in full; a refresh of this server's
-                # that is running sets ``full_read_at`` itself when it ends, and may be the
-                # read that published this record (review B6 on #709).
+                # Another writer's record, taken as read in full. A refresh of this
+                # server's that is running sets ``full_read_at`` itself when it ends: a full
+                # read may be the one that published this record (review B6 on #709), and a
+                # read of the status alone, which publishes none, takes the record adopted
+                # meanwhile as read in full (:meth:`_refresh_status`).
                 self.full_read_at = fetched_at
             self.without_store = without_store
             self._forget_probes()
@@ -1051,21 +1062,19 @@ class ServedPull:
 
         A refresh cancelled before it ended, as a background job a reader's work preempts
         is, forgets its attempt, so the next automatic request is not held for a window.
-        An automatic refresh of a held record whose status alone is due
-        (:meth:`status_due`), and which is not due itself (:meth:`record_due`), reads the
-        status alone (:func:`.pulls.refresh_pull_status`), unless a visible page's ask
-        found its full read overdue (:meth:`automatic_due`) or a reader's own action asked
-        for everything. That read moves none of the record's clocks.
+        What it reads is decided when it starts, after its turn at the store and its slot
+        (:meth:`_reads`): the record and its status after it, the status alone
+        (:func:`.pulls.refresh_pull_status`), which moves none of the record's clocks, or
+        nothing.
         """
         started = pulls.utc_now()
+        page, self._page_asked = self._page_asked, False
         self._refreshing = True
         try:
-            if (
-                not self._recoveries
-                and not self._full_asked
-                and self.status_due(started)
-                and not self.record_due(started, window_s=self.record_window(started))
-            ):
+            reads = self._reads(started, page=page)
+            if reads is None:
+                return
+            if reads == "status":
                 await self._refresh_status(started)
                 if not self._recoveries:
                     return
@@ -1085,10 +1094,40 @@ class ServedPull:
 
         return FULL_REFRESH_S if self.probe_vouches(now) else FRESHNESS_WINDOW_S
 
+    def _reads(self, now: datetime, *, page: bool) -> Literal["record", "status"] | None:
+        """What a refresh that starts at *now* reads: ``record``, the record and its status
+        after it; ``status``, the status alone; or nothing.
+
+        A reader's own action (a recovery) reads the record. Otherwise the record when it
+        is due (:meth:`record_due`), or, for a visible page's ask (*page*), when its full
+        read is (:meth:`full_read_due`), so a record whose status alone is due is read in
+        full that often; the status alone when only it is (:meth:`status_due`), which
+        speculative work never has. When nothing is due, a page's ask and speculative work
+        read nothing: each asked for what was due, and a hold noted, a floor crossed, or a
+        record adopted while the job waited its turn has made none of it due. Any other
+        caller's ask is for a read of its own, as a reader's retry of a commit fetch, a
+        commit the mirror lacks, or a comparison that needs the record is, and reads the
+        record.
+        """
+
+        if self._recoveries or (page and self.full_read_due(now)):
+            return "record"
+        if self.record_due(now, window_s=self.record_window(now)):
+            return "record"
+        if self.status_due(now):
+            return "status"
+        return None if page or gh_budget.speculating() else "record"
+
     async def _refresh_status(self, started: datetime) -> None:
-        """Read and keep the status alone; a failure is the status's, kept beside it."""
+        """Read and keep the status alone; a failure is the status's, kept beside it.
+
+        The read publishes no record, so one adopted while it ran (:meth:`saw_record`) is
+        another writer's, and is taken as read in full when it ends, as one adopted while no
+        refresh runs is: :data:`FULL_REFRESH_S` counts from it.
+        """
 
         previous, self._status_attempt = self._status_attempt, started
+        held = self.fetched_at
         try:
             await pulls.refresh_pull_status(self.published, self.number)
         except asyncio.CancelledError:
@@ -1096,12 +1135,15 @@ class ServedPull:
             raise
         except pulls.PullDataError as exc:
             log.debug("reading the status of pull request %s failed: %s", self.number, exc)
+        finally:
+            if self.fetched_at != held:
+                self.full_read_at = self.fetched_at
 
     async def _refresh_record(self, started: datetime) -> None:
         """Read the record, and its status after it, consuming each recovery request."""
 
         previous_attempt, self._last_attempt = self._last_attempt, started
-        previous_full, previous_asked = self._full_attempt, self._full_asked
+        previous_full = self._full_attempt
         previous_row, self._attempted_row = self._attempted_row, self.changed_row
         previous_updated, self._attempted_updated = (
             self._attempted_updated,
@@ -1167,7 +1209,6 @@ class ServedPull:
 
                 progress = stage_core if self._core_requested and self.fetched_at is None else None
                 self._full_attempt = started
-                self._full_asked = False
                 try:
                     if progress is not None or self._source_pulls is not None:
                         record = await pulls.refresh_pull_request(
@@ -1229,7 +1270,7 @@ class ServedPull:
         except asyncio.CancelledError:
             self._last_attempt, self._attempted_row = previous_attempt, previous_row
             self._attempted_updated = previous_updated
-            self._full_attempt, self._full_asked = previous_full, previous_asked
+            self._full_attempt = previous_full
             self._status_attempt = previous_status
             raise
 

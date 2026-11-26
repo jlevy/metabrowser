@@ -668,7 +668,9 @@ async def _record(host: PullHost, lane: Lane, item: Item) -> ItemOutcome:
         companion.saw_record(
             held.fetched_at, without_store=written_without_store(held), freshness=freshness
         )
-        if not companion.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
+        # The record's own due rule, not its status's: a background record reads no status,
+        # so one whose status alone is due, as a prefetched record's is, has nothing to read.
+        if not companion.record_due(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
             return "skipped:not_due"
     verdict = await _governor(served)
     if not verdict.admitted:

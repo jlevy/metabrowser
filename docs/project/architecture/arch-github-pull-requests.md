@@ -287,7 +287,9 @@ has the rules.
 - **Budget.** The prefetch’s records, which nobody is looking at, read no status
   (`gh_budget.speculating`): its caps are priced without it (`POINTS_PER_RECORD` in
   `pull_prefetch.py`), so a prefetched record’s page reads its status when it is shown.
-  Below `BACKGROUND_FLOOR` of either the REST or the GraphQL budget, a visible page’s
+  Speculative work has no status read due (`ServedPull.status_due`), so the prefetch
+  starts a record only when the record itself is due (`ServedPull.record_due`). Below
+  `BACKGROUND_FLOOR` of either the REST or the GraphQL budget, a visible page’s
   clock-driven full reads wait (`ServedPull.below_floor`); a status read alone spends
   GraphQL, and waits below that floor alone (`ServedPull.status_below_floor`).
 - **Keeping.** The status is a row of the catalog’s `pull_status` table, one for each
@@ -338,7 +340,10 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   reads it alone and asks the probe first when one is due, so a change it finds reads
   the record and its status in one job; and a [prefetch](#background-prefetch) that
   names it. A failed refresh is tried again after a window, and after `rate_limited` not
-  before `reset_at`. A branch or tag pin never runs `gh`.
+  before `reset_at`. A branch or tag pin never runs `gh`. A job decides what it reads
+  when its turn at the store comes (`ServedPull._reads`): one a page’s ask or a prefetch
+  started reads nothing if nothing is still due then, as when a hold was noted while it
+  waited.
 - **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
   current record the server answers with a probe (`ServedPull.probe`), a conditional
   read of the pull request’s issue (`pulls.probe_path`) that GitHub answers `304`

@@ -576,6 +576,103 @@ def test_a_visible_record_with_no_status_of_its_head_reads_one_whatever_the_cata
     assert not held.status_due(NOW)
 
 
+def test_speculative_work_reads_no_status_and_nothing_while_its_record_is_not_due(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A background record reads no operational status, and the prefetch's caps are priced
+    without it. A changed record whose row an attempt already saw, prefetched with no
+    status, has a status read due on its page; a speculative refresh of it read that status
+    alone, spending a record's place in each cap, and now reads nothing. Once its record is
+    due it reads the record, and no status after it."""
+
+    record = _record(fetched=NOW - timedelta(seconds=30))
+    held = _held(record, tmp_path)
+    changed = _verdict(
+        record,
+        _catalog(published=NOW - timedelta(seconds=20)),
+        _row(updated=NOW - timedelta(seconds=25)),
+        status=None,
+    )
+    held.saw_record(record.fetched_at, freshness=changed)
+    held._attempted_row = changed.changed_row  # pyright: ignore[reportPrivateUsage]
+    held._last_attempt = NOW - timedelta(seconds=10)  # pyright: ignore[reportPrivateUsage]
+    assert changed.verdict == "changed" and held.status_missing and held.status_due(NOW)
+    assert not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
+
+    async def speculative() -> bool:
+        with gh_budget.speculative():
+            stale = held.is_stale(clock[0], window_s=FRESHNESS_WINDOW_S)
+            await held.refresh()
+            return stale
+
+    assert not asyncio.run(speculative())
+    assert read == [] and held._status_attempt is None  # pyright: ignore[reportPrivateUsage]
+    clock[0] = NOW + WINDOW
+    assert asyncio.run(speculative())
+    assert read == ["full"] and held._status_attempt is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_pages_ask_reads_nothing_once_what_it_found_due_no_longer_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ask found the status alone due, and its job waited its turn at the store; a
+    rate-limit hold noted meanwhile holds the status and the record alike. The job read
+    the record in full all the same, about four ``core`` during the hold, and now reads
+    nothing. A reader's own action still reads everything, and a job another caller
+    started, a commit the mirror lacks, asks for a read of its own and reads the record."""
+
+    record = _record(fetched=NOW - timedelta(seconds=30))
+    held = _held(record, tmp_path)
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), _row(), status=None))
+    # A probe has just run, so the ask reads the status rather than probing first.
+    held._probe_attempt = NOW  # pyright: ignore[reportPrivateUsage]
+    assert held.status_due(NOW) and not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    assert held.automatic_due(NOW) == "full"
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
+    gh_budget.hold(_stamp(NOW + timedelta(minutes=10)), now=NOW)
+    assert not held.status_due(NOW) and not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    asyncio.run(held.refresh())
+    assert read == [] and held._last_attempt is None  # pyright: ignore[reportPrivateUsage]
+    held.request_recovery()
+    asyncio.run(held.refresh())
+    assert read == [repr({"recover": True, "recovery_pair": None, "adopt_current": False})]
+    gh_budget.forget()
+    assert not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    asyncio.run(held.refresh())
+    assert read[1:] == ["full"]
+
+
+def test_a_record_adopted_while_the_status_alone_is_read_counts_as_read_in_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A read of the status alone publishes no record, so one another process published
+    while it ran, which the page adopted, is another writer's: the next full read is due
+    FULL_REFRESH_S after that record, not up to that much earlier, after the one before."""
+
+    record = _record(fetched=NOW - timedelta(seconds=30))
+    held = _held(record, tmp_path)
+    held.full_read_at = record.fetched_at
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), _row(), status=None))
+    assert held.status_due(NOW) and not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
+    published = NOW - timedelta(seconds=1)
+
+    async def status(*_args: object) -> None:
+        read.append("status")
+        held.saw_record(_stamp(published))
+
+    monkeypatch.setattr(pulls, "refresh_pull_status", status)
+    asyncio.run(held.refresh())
+    assert read == ["status"] and held.fetched_at == _stamp(published)
+    full = timedelta(seconds=FULL_REFRESH_S)
+    assert not held.full_read_overdue(published + full)
+    assert held.full_read_overdue(published + full + timedelta(seconds=1))
+
+
 def test_a_verdict_on_another_record_is_not_adopted(tmp_path: Path) -> None:
     record = _record()
     held = _held(record, tmp_path)
@@ -1057,15 +1154,15 @@ def test_below_the_floor_probes_go_on_and_only_a_change_they_find_is_read_in_ful
     asyncio.run(held.probe(record))
     late = NOW + timedelta(seconds=FULL_REFRESH_S + 1)
     assert held.automatic_due(late) == "full"
-    held._full_asked = False  # pyright: ignore[reportPrivateUsage]
 
     _observe_core(int(gh_budget.BACKGROUND_FLOOR * 5000))
     assert held.below_floor(late)
-    # The full read is as overdue as it was, and waits; the probe is what is due.
+    # The full read is as overdue as it was, and waits; the probe is what is due, and the
+    # ask that found the full read due before leaves nothing for a refresh to read.
     assert held.full_read_overdue(late) and not held.full_read_due(late)
     assert not held.is_stale(late, window_s=FRESHNESS_WINDOW_S)
     assert held.automatic_due(late) == "probe"
-    assert not held._full_asked  # pyright: ignore[reportPrivateUsage]
+    assert not held._page_asked  # pyright: ignore[reportPrivateUsage]
     # A probe that finds a change starts its full read all the same.
     clock[0] = late
     asyncio.run(held.probe(record))
