@@ -6,7 +6,8 @@
 
 **Status:** Draft, for review.
 Nothing here is built.
-Epic `mb-u16j`; Phase 1 is `mb-pcvm` and Phase 2 is `mb-ntnz`.
+Epic `mb-u16j`; Phase 1 is `mb-pcvm` and Phase 2 is `mb-ntnz`, built as one stack (see
+[Implementation Plan](#implementation-plan)).
 
 ## Overview
 
@@ -20,10 +21,11 @@ queue, and the Pulls tab shows nothing at all.
 
 This plan makes merge readiness as obvious as the lifecycle state:
 
-- **One verdict for each open pull request**, such as Ready to merge, Conflicts, Checks
-  failing, Changes requested, Checks running, Review required, Out of date, Blocked, or
-  Queued, in GitHub’s colors: green when it can merge, red when the author must change
-  something, yellow while it waits on someone or something, gray while unknown.
+- **One verdict for each open pull request**, such as Ready to merge, Merge conflicts,
+  Checks failing, Changes requested, Checks pending, Review required, Not up to date,
+  Blocked, or Queued, classified and colored as GitHub classifies and colors them: green
+  when it can merge, red when the author must change something, yellow while it waits on
+  someone or something or GitHub has not answered.
 - **On the pull request page**, a readiness badge beside the state badge, and a Merge
   status section at the top of the Checks tab with one row per requirement, as
   github.com’s merge box has, each linking to its details.
@@ -318,6 +320,63 @@ So GitHub answers “is this ready” only on the pull request’s own page.
 Its list answers “are checks green” and “is it reviewed”, but not “does it conflict” or
 “can it merge”.
 
+### How GitHub Classifies Each State
+
+The owner decided on 2026-11-26 that whether a state shows as passing, failing, or
+pending follows GitHub by default.
+GitHub’s web interface is not open source, but two GitHub sources are exact.
+
+**The server’s rollup.** `statusCheckRollup.state` is GitHub’s own verdict for a commit.
+Over this repository’s 813 pull requests with a rollup on 2026-11-26, it read:
+
+| Conclusions present besides `SUCCESS` | Rollup |
+| --- | --- |
+| None | `SUCCESS` (445) |
+| `SKIPPED` | `SUCCESS` (306) |
+| `NEUTRAL` | `SUCCESS` (37) |
+| `IN_PROGRESS` | `PENDING` (1) |
+| `FAILURE`, with or without `SKIPPED` | `FAILURE` (15) |
+| `CANCELLED` and `FAILURE`, with or without `SKIPPED` | `FAILURE` (9) |
+
+**GitHub’s CLI.** `gh` 2.97.0, the version this repository’s tooling installs, read from
+its module source:
+
+- **Each check.** `gh pr checks` sorts each check into a bucket, with a mark and a color
+  (`pkg/cmd/pr/checks/aggregate.go`, `output.go`):
+
+| Bucket | States | Mark and color |
+| --- | --- | --- |
+| pass | `SUCCESS` | green `✓` |
+| fail | `FAILURE`, `ERROR`, `TIMED_OUT`, `ACTION_REQUIRED` | red `X` |
+| pending | `EXPECTED`, `REQUESTED`, `WAITING`, `QUEUED`, `PENDING`, `IN_PROGRESS`, `STALE`, and anything else, `STARTUP_FAILURE` among them | yellow `*` |
+| skipping | `SKIPPED`, `NEUTRAL` | muted `-` |
+| cancel | `CANCELLED` | muted `-`, with the status “fail” |
+
+It lists checks failing first, then pending, then the rest.
+It keeps only the latest run of each check, and summarizes in this order of precedence:
+“Some checks were not successful”, “Some checks are still pending”, “Some checks were
+cancelled”, “All checks were successful”.
+
+- **A pull request’s summary.** `gh pr status` counts a cancelled run as failing, as the
+  rollup does (`parseCheckStatusFromCheckRunState` in `api/queries_pr.go`), and prints
+  each part of an open pull request, drafts included (`pkg/cmd/pr/status/status.go`,
+  `pkg/cmd/pr/shared/display.go`):
+
+| Part | Green | Yellow | Red | Muted |
+| --- | --- | --- | --- | --- |
+| Checks | “Checks passing” | “Checks pending” | “n/m checks failing” | “No checks” |
+| Reviews (`reviewDecision`) | “Approved” | “Review required” | “Changes requested” | Nothing when `null` |
+| Conflicts (`mergeable`) | “No merge conflicts” | “Merge conflict status unknown” | “Merge conflicts” |  |
+| Up to date, under strict checks | “Up to date” | “Not up to date” |  |  |
+| Auto-merge | “Auto-merge enabled” |  |  |  |
+
+The lifecycle colors match Primer: open green, draft gray, closed red, merged magenta.
+
+GitHub’s documentation adds one rule the CLI does not need: “Draft pull requests cannot
+be merged, and code owners are not automatically requested to review them.”
+A draft leaves that stage when its author marks it “ready for review”
+([About pull requests](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests#draft-pull-requests)).
+
 ## Background: Metabrowser Today
 
 This section describes `main` at `c0ea0894`.
@@ -432,28 +491,34 @@ points in an hour on an account whose agents spent 1,500 REST calls.
 
 ### Approach
 
-Six decisions shape everything below.
+Seven decisions shape everything below.
 
-1. **GitHub’s verdict decides; the inputs explain.** Whether a pull request can merge is
+1. **GitHub classifies; Metabrowser follows.** Whether a state shows as passing,
+   failing, pending, or muted is what GitHub shows it as
+   ([How GitHub Classifies Each State](#how-github-classifies-each-state)): the server’s
+   rollup for a commit’s checks, and GitHub’s CLI for each check and each part of a pull
+   request, by the owner’s decision of 2026-11-26. Where those differ from Metabrowser
+   today, Metabrowser changes.
+2. **GitHub’s verdict decides; the inputs explain.** Whether a pull request can merge is
    `mergeStateStatus`. Metabrowser never recomputes it from rules it cannot read.
    `mergeable`, the checks rollup, the review decision, and the queue entry say why, and
    which link helps.
-2. **Operational status is a model of its own.** It describes one head against one base
+3. **Operational status is a model of its own.** It describes one head against one base
    at one time. It is kept, refreshed, versioned, and served apart from the core, and
    nothing that changes with a check lives in the core record.
-3. **One store, one derivation.** The Pulls tab’s scan and the pull request page’s read
+4. **One store, one derivation.** The Pulls tab’s scan and the pull request page’s read
    write the same status store.
    One pure function, on the server, turns a status into requirements and a verdict.
    The page, the row, the stack member, and `metab` read its answer.
-4. **Tone is derived, not tabulated.** Each requirement has a status (met, waiting,
+5. **Tone is derived, not tabulated.** Each requirement has a status (met, waiting,
    unmet, unknown). The verdict’s tone is the worst status among the requirements, and
    its headline is the first requirement at that status, so a red verdict always names
    something the author must change.
-5. **GitHub’s colors, in Metabrowser’s tokens.** Each tone takes GitHub’s hue: success
+6. **GitHub’s colors, in Metabrowser’s tokens.** Each tone takes GitHub’s hue: success
    green, danger red, attention yellow, neutral gray.
    Each uses an existing token where one already carries that hue, and a new plugin
    token where none does.
-6. **Glyph in the list, word on the page**, as the lifecycle state already is.
+7. **Glyph in the list, word on the page**, as the lifecycle state already is.
 
 ### Core and Operational Status
 
@@ -497,19 +562,25 @@ at one time. It is small enough for every open row:
 
 `ChecksSummary` has:
 
-- `state`: `success`, `failure`, `pending`, or `none`, from the rollup’s `StatusState`,
-  with `ERROR` read as failure, `EXPECTED` as pending, and no rollup as none;
-- `counts`: totals by tone, folded from `checkRunCountsByState` and
-  `statusContextCountsByState` through the tone mapping the Checks tab uses today;
+- `state`: GitHub’s rollup, `statusCheckRollup.state`, as GitHub gave it (`success`,
+  `failure`, `error`, `pending`, or `expected`), or `none` when the head has no checks;
+- `counts`: how many checks are in each of GitHub’s buckets, pass, fail, pending,
+  skipping, and cancel, folded from `checkRunCountsByState` and
+  `statusContextCountsByState` by the mapping `gh pr checks` uses;
 - `required_failing` and `required_pending`, when the read had the contexts’ nodes, and
   otherwise null.
 
-The tone mapping moves from `pull-page.js` to the server, so the counts a row shows and
-the counts the Checks tab shows have one source.
+The buckets replace `CONCLUSION_TONES` and `STATUS_TONES` in `pull-page.js` and move to
+the server, so the counts a row shows and the counts the Checks tab shows have one
+source, and both are GitHub’s. Three checks change color: a cancelled check stays muted
+but counts as failing in the summary, as the rollup does, and a stale check and one that
+failed to start are pending, as `gh` shows them, where the Checks tab draws them muted
+and failing today.
 
 `PullChecks` is the list of checks for one head, which only the Checks tab needs.
-Each item has its name, its kind (run or status), its tone, its raw status and
+Each item has its name, its kind (run or status), its bucket, its raw status and
 conclusion, `required`, its details address, its app, and its description.
+Like `gh`, it keeps only the latest run of each check.
 It carries the truncation and unavailability that `PullRecord` carries for checks today.
 
 ### Readiness
@@ -526,41 +597,48 @@ It is a pure function, and the only place readiness is decided.
 - `unmet`: the author must change something;
 - `unknown`: GitHub has not answered yet.
 
+A row is present only where GitHub would show one: Reviews only when `reviewDecision` is
+set, Up to date only when GitHub reports `behind`, and Queue only while queued.
+
 | Requirement | `met` | `waiting` | `unmet` | `unknown` |
 | --- | --- | --- | --- | --- |
 | Conflicts | `mergeable` |  | `conflicting`, or `dirty` | `unknown` |
-| Checks | `success`, or no checks | `pending` | `failure` | No checks yet, within `NO_CHECKS_GRACE_S` of the last update |
-| Reviews | `approved`, or no review required | `review_required` | `changes_requested` |  |
-| Up to date | Not `behind` | `behind` |  | `merge_state` `unknown` |
+| Checks | Rollup `success`, or no checks | Rollup `pending` or `expected` | Rollup `failure` or `error` |  |
+| Reviews | `approved` | `review_required` | `changes_requested` |  |
+| Up to date |  | `behind` |  |  |
 | Rules | Not `blocked`, or `blocked` explained by a row above |  | `blocked` that no row above explains | `merge_state` `unknown` |
-| Queue (only while queued) |  | `QUEUED`, `AWAITING_CHECKS`, `MERGEABLE`, `LOCKED` | `UNMERGEABLE` |  |
+| Queue |  | `QUEUED`, `AWAITING_CHECKS`, `MERGEABLE`, `LOCKED` | `UNMERGEABLE` |  |
 
 “Explained” means another requirement is `waiting` or `unmet`. GitHub does not say which
 rule blocks a pull request, so the Rules row says that a rule blocks it and links to the
 pull request on GitHub.
 
-Failing checks that are not required (`unstable`) are `unmet`, with “not required” in
-the detail: the reader sees red, and learns that GitHub would let the pull request merge
-(see [Open Questions](#open-questions)).
+Checks follow the rollup, so failing checks that no rule requires (`unstable`) are
+`unmet` and red, as `gh pr status` and the merge box show them.
+The row adds what `unstable` says: GitHub allows the merge, since none of the failing
+checks is required.
 
-**Verdict.** The worst status among the requirements, ordered unmet, then waiting, then
-unknown, then met, gives the tone.
+**Verdict.** Each status has a tone: `unmet` danger, `waiting` and `unknown` attention
+(GitHub’s CLI shows an unknown mergeability in yellow), and `met` success.
+The worst status among the requirements, ordered unmet, then waiting, then unknown, then
+met, gives the verdict’s tone.
 The first requirement at that status, in the order Queue, Conflicts, Checks, Reviews, Up
 to date, Rules, gives the headline:
 
 | Verdict | Requirement and status | Tone |
 | --- | --- | --- |
 | `ready` | Every requirement met | success |
+| `ready_for_review` | Every requirement met, on a draft | success |
 | `conflicts` | Conflicts unmet | danger |
 | `checks_failing` | Checks unmet | danger |
 | `changes_requested` | Reviews unmet | danger |
 | `blocked` | Rules unmet | danger |
 | `queue_failing` | Queue unmet | danger |
 | `queued` | Queue waiting | attention |
-| `checks_running` | Checks waiting | attention |
+| `checks_pending` | Checks waiting | attention |
 | `review_required` | Reviews waiting | attention |
-| `out_of_date` | Up to date waiting | attention |
-| `checking` | Anything unknown, nothing worse | neutral |
+| `behind` | Up to date waiting | attention |
+| `checking` | Anything unknown, nothing worse | attention |
 
 Three rules sit outside the requirements:
 
@@ -568,13 +646,15 @@ Three rules sit outside the requirements:
   Their lifecycle is the answer.
 - **A status for another head** gives `checking`. A status is never shown for a head it
   does not describe.
-- **A draft whose requirements are all met** has no verdict, since it cannot merge until
-  it is marked ready and its Draft badge says so.
-  A draft with a requirement waiting or unmet shows it like any open pull request.
+- **A draft** is judged as an open pull request is, as GitHub’s `mergeStateStatus` and
+  `gh pr status` judge it, since a draft reports the state it would have if it were
+  ready. GitHub never merges a draft, so a draft with every requirement met is
+  `ready_for_review`, in the words GitHub uses for a draft’s next step, rather than
+  `ready`.
 
 Auto-merge is not a requirement.
 When it is on, the verdict keeps its tone, and the Merge status section and the
-verdict’s accessible name add “Auto-merge is on (squash)”.
+verdict’s accessible name add “Auto-merge enabled (squash)”, `gh`’s words.
 
 `Readiness` on the wire has the verdict, its tone, and each requirement with its status,
 a sentence, and its link.
@@ -668,8 +748,8 @@ It has a slot of its own, as wide as its widest label, so a verdict that changes
 checks finish moves nothing in the row.
 It links to the Checks tab’s Merge status section.
 Its tooltip lists the requirements that are not met, which is what the badge
-abbreviates. A clean draft, and a closed or merged pull request, leave the slot empty.
-Phase 2 measures whether the slot fits the row’s 420 px and 560 px limits, and shortens
+abbreviates. A closed or merged pull request leaves the slot empty.
+Layer 5 measures whether the slot fits the row’s 420 px and 560 px limits, and shortens
 the widest labels if it does not.
 
 **Checks tab.** A **Merge status** section opens the tab, before the checks:
@@ -687,9 +767,10 @@ the widest labels if it does not.
 - an Auto-merge row while it is on.
 
 This replaces the sentence at the end of the tab.
-The checks below it are ordered failing, then running, then the rest, as GitHub orders
-them, and a required check carries a compact “Required” chip.
-The summary of counts takes the same order.
+The checks below it are ordered failing, then pending, then the rest, as `gh pr checks`
+orders them; each is drawn in its bucket’s color, and a required check carries a compact
+“Required” chip. The summary of counts takes the same order and leads with `gh`’s
+sentence, such as “Some checks were not successful”.
 
 **Pulls tab.** An open pull request’s last line gains a readiness glyph in a column of
 its own, between the change line and the age: `+1,234 −567 › ⊗ 3d`. Aligned down the
@@ -698,7 +779,7 @@ The glyph’s accessible name is the verdict’s label, and the row’s name (`r
 it after the state, as the state icon’s does.
 Where the pane is wide enough, the label follows the glyph, by a container query
 measured as the stack tally’s noun is.
-Closed and merged rows, and a clean draft, leave the column empty.
+Closed and merged rows leave the column empty.
 
 **Stacks.** A stack member’s row (`stackMemberRow`, in the stack menu, on the stack
 page, and in a Pulls run) shows the same glyph.
@@ -712,16 +793,21 @@ A test holds its keys to the server’s verdict enum.
 | Verdict | Label | Glyph (Lucide) | Tone | GitHub’s equivalent |
 | --- | --- | --- | --- | --- |
 | `ready` | Ready to merge | `circle-check` | success | Green merge button |
-| `conflicts` | Conflicts | `triangle-alert` | danger | “This branch has conflicts…” |
-| `checks_failing` | Checks failing | `circle-x` | danger | Red `x` |
-| `changes_requested` | Changes requested | `file-diff` | danger | “Changes requested” |
-| `blocked` | Blocked | `ban` | danger | “Merging is blocked” |
+| `ready_for_review` | Ready for review | `circle-check` | success | A draft marked “ready for review” |
+| `conflicts` | Merge conflicts | `triangle-alert` | danger | `gh`: red “Merge conflicts” |
+| `checks_failing` | Checks failing | `circle-x` | danger | `gh`: red “checks failing”; red `x` |
+| `changes_requested` | Changes requested | `file-diff` | danger | `gh`: red “Changes requested” |
+| `blocked` | Blocked | `ban` | danger | Merge box: “Merging is blocked” |
 | `queue_failing` | Leaving queue | `list-ordered` | danger | Removed from the queue |
-| `queued` | Queued | `list-ordered` | attention | `pullQueued`, `git-merge-queue` |
-| `checks_running` | Checks running | `clock` | attention | Yellow `dot-fill` |
-| `review_required` | Review required | `eye` | attention | “Review required” |
-| `out_of_date` | Out of date | `arrow-up-to-line` | attention | “This branch is out-of-date…” |
-| `checking` | Checking | `circle-dashed` | neutral | — |
+| `queued` | Queued | `list-ordered` | attention | Primer `pullQueued`, `git-merge-queue` |
+| `checks_pending` | Checks pending | `clock` | attention | `gh`: yellow “Checks pending”; yellow `dot-fill` |
+| `review_required` | Review required | `eye` | attention | `gh`: yellow “Review required” |
+| `behind` | Not up to date | `arrow-up-to-line` | attention | `gh`: yellow “Not up to date” |
+| `checking` | Checking | `circle-dashed` | attention | `gh`: yellow “Merge conflict status unknown” |
+
+The labels are `gh`’s words where `gh` has them.
+`ready` and `ready_for_review` share a glyph because they mean one thing, that nothing
+blocks the pull request; the label says which.
 
 All of these glyphs are in Lucide 1.17.0, the version the plugin draws, and none is in
 the icon catalog yet.
@@ -747,7 +833,9 @@ running, since it means an issue.
   `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` extends to it.
   The Checks tab’s pending checks move to it from `--status-warning-text`, so waiting is
   one color across the plugin.
-- **Neutral** is `--muted`, which the Checks tab uses for skipped and unknown checks.
+- **Neutral** is `--muted`, for the checks `gh` mutes, skipped, neutral, and cancelled,
+  and for “No checks”.
+  No verdict is neutral: GitHub shows every unknown in yellow.
 
 No color is the only signal: each verdict has its own glyph and its label, in the
 accessible name in the list and as text on the page.
@@ -763,50 +851,75 @@ That plan’s corpus work settles the facet list.
 
 ## Implementation Plan
 
-One phase builds the model and data, which `metab` can show; the second builds the
-surfaces. Each phase is a stack of a few pull requests.
+The work lands as one formal stack on `main`. Each layer is one pull request that
+builds, passes, and can be reviewed and reverted on its own.
+The two phases are the data, which `metab` shows, and the surfaces that draw it.
 
 ### Phase 1: Status Model, Readiness, and Data
 
+**Layer 0: this plan** (epic `mb-u16j`).
+
+**Layer 1: the status model and readiness** (`mb-epm3`).
+
 - [ ] `pull_status.py`: `PullStatus`, `ChecksSummary`, and `PullChecks`, with their
-  bounds and wires, and the tone mapping moved from `pull-page.js`.
+  bounds, their wire forms, and GitHub’s buckets for each check state.
 - [ ] `pull_readiness.py`: requirements and verdict, with the invariant tests in
   [Testing Strategy](#testing-strategy).
-- [ ] The page’s `PullStatus` GraphQL read, replacing the REST `check-runs` and `status`
-  reads, and started where a `checks_only` read is started today.
-  Fixtures and the fake GraphQL answer the new query.
-- [ ] Separate the core: take `mergeable` out of `PullRequest` and cores, and the checks
-  parts out of `PullRecord`. Raise `PULL_RECORD_SCHEMA`. `mergeability_pending`,
-  `checks_settling`, `record_freshness`, and `_same_mergeability` read the status.
-- [ ] The `pull_status` table and `pulls/<n>.checks.json`, cleared with the cache.
-- [ ] The Pulls tab’s `PullStatuses` scan, started by `pulls-refresh` when due, with the
-  `MERGEABLE_SETTLE_S` re-read and the base-moved trigger.
-- [ ] The envelope’s `status`, `readiness`, and `checks`; the `pull-statuses` route; the
-  `--show` model line.
-- [ ] Goldens, the parity registry, the route table in
-  [GitHub Pull Requests](../../architecture/arch-github-pull-requests.md#routes), and
+
+**Layer 2: reading and keeping the status** (`mb-8bp1`).
+
+- [ ] The page’s `PullStatus` GraphQL read, started on every full read and where a
+  `checks_only` read is started today, with fixtures and the fake GraphQL answering it.
+- [ ] The `pull_status` table in the catalog database and `pulls/<n>.checks.json`,
+  cleared with the cache.
+- [ ] The envelope’s `status`, `readiness`, and `checks`, and the `--show` model line.
+- [ ] Goldens, the parity registry, and
   [the map](../../architecture/arch-views-models-routes.md).
-- [ ] Measure both reads’ cost and latency, and record them beside their constants.
-- [ ] Answer the open questions that need GitHub’s behavior: `reviewDecision` when no
-  review is required, and whether `mergeStateStatus` depends on the viewer.
-- [ ] A changelog fragment: the new route and fields.
+- [ ] Measure the read’s cost and latency, and record them beside its constants.
+- [ ] Check whether `mergeStateStatus` depends on the viewer.
+- [ ] A changelog fragment.
+
+**Layer 3: the core without operational status** (`mb-1iru`).
+
+- [ ] Take `mergeable` out of `PullRequest` and cores, and the checks parts out of
+  `PullRecord`, and raise `PULL_RECORD_SCHEMA`. The full read stops reading `check-runs`
+  and `status` over REST; the probes stay.
+- [ ] `mergeability_pending`, `checks_settling`, `record_freshness`, and
+  `_same_mergeability` read the status.
+- [ ] The Checks tab draws its list from the envelope’s `checks`, in GitHub’s buckets.
+- [ ] [GitHub Pull Requests](../../architecture/arch-github-pull-requests.md) describes
+  the split.
+
+**Layer 4: every open pull request’s status** (`mb-0vb0`).
+
+- [ ] The Pulls tab’s `PullStatuses` scan, started by `pulls-refresh` when due, with the
+  `MERGEABLE_SETTLE_S` re-read and the base-moved trigger, measured.
+- [ ] The `pull-statuses` route, its parity row, golden, and route-table row.
+- [ ] A changelog fragment.
 
 ### Phase 2: Readiness on the Page, the List, and Stacks
 
-- [ ] `pull-readiness.js` vocabulary, the glyphs (with their catalog rows), and
-  `--github-pull-attention` with its dark twin and contrast tests.
-- [ ] The page header’s readiness badge and slot, measured at 420 px and 560 px in
-  Chrome.
-- [ ] The Checks tab’s Merge status section, the severity order, and the Required chip;
-  pending checks move to `--github-pull-attention`.
+**Layer 5: readiness on the pull request page** (`mb-io36`).
+
+- [ ] `pull-readiness.js` vocabulary and the glyphs, with their catalog rows.
+- [ ] `--github-pull-attention`, its dark twin, and its contrast and hue tests; pending
+  checks move to it.
+- [ ] The header’s readiness badge and slot, measured at 420 px and 560 px in Chrome.
+- [ ] The Checks tab’s Merge status section, `gh`’s order and summary sentence, and the
+  Required chip.
+- [ ] [Design System](../../../design-system.md) sections beside
+  [A Pull Request’s State](../../../design-system.md#a-pull-requests-state).
+- [ ] A changelog fragment.
+
+**Layer 6: readiness in the Pulls tab and on stacks** (`mb-3n21`).
+
 - [ ] The Pulls tab’s readiness column, its accessible name, and the container query for
   its label.
 - [ ] Stack member rows.
-- [ ] [Design System](../../../design-system.md) sections for readiness beside
-  [A Pull Request’s State](../../../design-system.md#a-pull-requests-state), and the
-  user guide’s sentence that the list does not track checks or mergeability
-  ([Reviewing Pull Requests](../../../reviewing-pull-requests.md)).
-- [ ] A changelog fragment: readiness on the page and in the list.
+- [ ] The user guide’s sentence that the list does not track checks or mergeability
+  ([Reviewing Pull Requests](../../../reviewing-pull-requests.md)) and the design
+  system’s Pulls Tab section.
+- [ ] A changelog fragment.
 
 ## Testing Strategy
 
@@ -817,11 +930,13 @@ enums, generated rather than listed:
 - a status for another head gives `checking`;
 - the tone is the worst requirement status, and the headline names a requirement at that
   status, so a danger verdict always names an unmet requirement;
-- `ready` holds only when `merge_state` is `clean` or `has_hooks`, the pull request is
-  not a draft, and no requirement is anything but met;
+- `ready` and `ready_for_review` hold only when every requirement is met, and
+  `ready_for_review` exactly when the pull request is a draft;
+- the Checks requirement’s status is a function of the rollup’s state alone;
 - `conflicting` or `dirty` always yields an unmet Conflicts requirement;
 - `blocked` with every other requirement met yields `blocked`, never `ready`;
-- a clean draft has no verdict.
+- a draft and an open pull request with the same status have the same verdict, but for
+  `ready` and `ready_for_review`.
 
 **Goldens.**
 
@@ -864,29 +979,34 @@ If the macOS app reads the pull envelope’s `record.pull.mergeable` or check fi
 changes in the same commit, with `MetabRequirement.minimumRelease` raised.
 Phase 1 checks this first.
 
+## Decisions
+
+The owner’s decisions of 2026-11-26:
+
+1. **Follow GitHub.** Whether a state shows as passing, failing, or pending is what
+   GitHub shows it as, by default
+   ([How GitHub Classifies Each State](#how-github-classifies-each-state)). This settled
+   two questions the draft left open: failing checks that no rule requires are red, as
+   GitHub’s rollup and CLI show them, and a draft is judged as an open pull request is,
+   with Ready for review in place of Ready to merge.
+2. **Implement everything as one stack of pull requests**, in the layers under
+   [Implementation Plan](#implementation-plan).
+
 ## Open Questions
 
 1. **Placement.** This plan reads “the checks column” as the Checks tab, since the Pulls
-   tab has no column model.
-   It also gives the Pulls tab a readiness column of its own.
-   Is that the intent?
-2. **Failing checks that are not required.** Red “Checks failing” with “not required” in
-   the detail (this plan), or green “Ready to merge” with a warning in the Merge status
-   section, as GitHub’s merge button would be?
-3. **Clean drafts.** No verdict (this plan), or a neutral “Ready for review”?
-4. **Labels and glyphs.** Are the labels and glyphs in
-   [Vocabulary and Colors](#vocabulary-and-colors) the right words and shapes?
+   tab has no column model, and also gives the Pulls tab a readiness column of its own.
+2. **Labels and glyphs.** Are the glyphs in
+   [Vocabulary and Colors](#vocabulary-and-colors) the right shapes?
    Should the list show a word as well as the glyph in a narrow pane?
-5. **Badge form.** Outlined, as the state badge is (this plan), or filled, as GitHub’s
+3. **Badge form.** Outlined, as the state badge is (this plan), or filled, as GitHub’s
    `StateLabel` and the core `.badge-*` tones are?
-6. **Stack header.** Should the stack page’s state tally gain a readiness tally, such as
-   “3 Ready · 1 Conflicts”?
-7. **GitHub’s behavior** (Phase 1 answers these):
-   - Does `reviewDecision` read `null` whenever no rule requires a review, even after a
-     changes-requested review?
-   - Does `mergeStateStatus` depend on the viewer, such as an admin who may bypass?
-8. **Behind without a rule.** Should the Up to date row say how far behind its base a
-   pull request is when no rule requires updating?
+4. **Stack header.** Should the stack page’s state tally gain a readiness tally, such as
+   “3 Ready · 1 Merge conflicts”?
+5. **Viewer.** Does `mergeStateStatus` depend on the viewer, such as an admin who may
+   bypass? Layer 2 checks it.
+6. **Behind without a rule.** Should the pull request say how far behind its base it is
+   when no rule requires updating?
    The mirror can count it locally from the comparison’s base commit.
 
 ## References
