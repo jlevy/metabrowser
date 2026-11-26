@@ -21,6 +21,7 @@ status: 200
 cloning https://github.com/octo/demo into <HOME>
 cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 # metab https://github.com/octo/demo --api /api/plugin/github/labels-refresh --data request.json
 exit: 0
@@ -84,9 +85,9 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/labels?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/labels
 exit: 0
 --- stdout ---
@@ -198,11 +199,13 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -226,6 +229,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -236,6 +240,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -419,14 +424,14 @@ status: 200
 --- body ---
 {"number": 7, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
 exit: 0
 --- stdout ---
@@ -446,6 +451,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -456,6 +462,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -656,6 +663,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "b86c50ad9d889336a7bfb252733dd1c4c9c859512ac375613f6083846ce509ee",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -666,6 +674,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 1,
@@ -942,9 +951,9 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/labels?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/labels
 exit: 0
 --- stdout ---

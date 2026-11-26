@@ -143,7 +143,6 @@ class Element {
 function createSdk(answer, files) {
   const calls = { renders: [], completeText: [], fetched: [], sources: [] };
   const mb = {
-    builtins: {},
     escapeHtml,
     errors: { isAbortError: (error) => error?.name === "AbortError" },
     formatSize: (bytes) => `${bytes} B`,
@@ -297,8 +296,22 @@ async function documentTab(rendered, answer, envelope, complete) {
     const result = await documentTab(rendered, REFUSALS[code], FILE_ENVELOPE, SLOW_TEXT);
     session.otherCodes[code] = { markup: result.markup, renderError: result.renderError };
   }
-  const failed = await documentTab(rendered, FAILED, FILE_ENVELOPE, SLOW_TEXT);
-  session.renderFailure = { renderError: failed.renderError, sources: failed.sources };
+  // A failed render's detail goes to the console, not the notice
+  // (docs/design-system-messages.md): record that it did.
+  const logged = [];
+  const consoleError = console.error;
+  console.error = (message, error) => logged.push(`${message} · ${error.message}`);
+  let failed;
+  try {
+    failed = await documentTab(rendered, FAILED, FILE_ENVELOPE, SLOW_TEXT);
+  } finally {
+    console.error = consoleError;
+  }
+  session.renderFailure = {
+    renderError: failed.renderError,
+    sources: failed.sources,
+    logged,
+  };
 
   // The folder Overview's README panel: the README is not the page's file, so its window
   // is read from /api/file, and the notice links to the file for the rest.
@@ -307,9 +320,14 @@ async function documentTab(rendered, answer, envelope, complete) {
       complete: README_TEXT,
       envelopes: { "README.md": README_ENVELOPE },
     });
-    mb.builtins.markdown = {
-      mountRendered: (container, ctx, options) =>
-        rendered.mountRenderedMarkdown(container, ctx, mb, { ...options, workerClient: NO_WORKER }),
+    mb.plugins = {
+      load: async () => ({
+        mountRendered: (container, ctx, options) =>
+          rendered.mountRenderedMarkdown(container, ctx, mb, {
+            ...options,
+            workerClient: NO_WORKER,
+          }),
+      }),
     };
     const panel = readme.createReadmePanel(mb);
     const folder = { path: "", raw: { type: "folder", path: "", readme_path: "README.md" } };

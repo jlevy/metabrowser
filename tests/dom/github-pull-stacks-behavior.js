@@ -25,8 +25,18 @@ const { pathToFileURL } = require("node:url");
         open: true,
         pulls: [7, 8, 9],
         titles: ["Base", "Middle", "Top"],
+        authors: ["octo", null, "octo"],
+        avatars: [null, null, null],
       },
-      { number: 900, base_ref: "topic", open: true, pulls: [9, 10], titles: ["Top", "Next"] },
+      {
+        number: 900,
+        base_ref: "topic",
+        open: true,
+        pulls: [9, 10],
+        titles: ["Top", "Next"],
+        authors: ["octo", "octo"],
+        avatars: [null, null],
+      },
     ],
   };
   const index = createStackIndex(cached);

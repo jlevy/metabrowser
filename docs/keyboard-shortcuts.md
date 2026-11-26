@@ -16,23 +16,36 @@ work.
 | --- | --- | --- |
 | `?` | Help | Always |
 | `T` or `/` | Quick Search, the file finder | Always |
+| `#` | Quick Search with the pull request prefix entered | A GitHub repository is shown |
 | `0` | Home: the served folder’s home view, every tab at its first | Always |
+| `\` | Hide or show the navigation pane | Always |
 | `F` | The Files tab | Always |
 | `P` | The Pulls tab | The Pulls tab is shown, for a GitHub repository |
 | `H` | The Commits tab: commit History | The served folder is a Git repository’s root, or a repository opened by its URL |
-| `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus |
+| `J` or `K` | Down or up a row | A tree, Commits, Pulls, changed-file, or table row has focus |
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
-| `W` | The branch or tag switcher | A repository opened by its URL, or a folder that is a repository’s root, is shown |
-| `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown |
-| `S` | The source: Source, or Raw JSON | A file’s tab bar is shown |
+| `W` | Open the branch or tag chooser below Files and Commits | A repository opened by its URL, or a folder that is a repository’s root, is shown |
+| `V` | The rendered view: Document, Diagram, Preview, Table, Tree, Timeline, or Log | A file’s tab bar is shown |
+| `A` | Table: a JSON or YAML list of records as a table | A JSON or YAML file is shown |
+| `S` | The source: Source, or Raw JSON; a SQLite database’s Schema; or the Sessions list of an agent home | A file’s tab bar is shown, or a folder that is or holds a Claude Code or Codex home |
+| `E` | Session, the session’s header and events | An agent log or a compressed Codex rollout is shown |
+| `A` | Agents, the home of a Claude Code or Codex history | A folder that is or holds a Claude Code or Codex home is shown |
 | `C` | Charts | An agent log is shown |
+| `L` | Latency | An event log is shown |
+| `B` | By kind | An event log is shown |
+| `E` | Errors | An event log is shown |
+| `I` | Info: how a SQLite database was read, its pages and log, and the SQLite library | A SQLite database or one of its tables is shown |
 | `O` | Overview | A folder is shown |
 | `M` | Treemap, from its map | A folder is shown |
 | `C` | Conversation | A pull request page is shown |
-| `G` | Changes, from chan-*g*es | A pull request page is shown |
+| `D` | Docs: the changed documents, rendered | A pull request or stack page that changes a document is shown |
+| `G` | Changes, from chan-*g*es | A pull request or stack page is shown |
+| `R` | Guided Review, from guided P-*R*, a review | A pull request or stack page’s Guided Review tab is shown |
 | `E` | Checks, from ch-*e*-cks | A pull request page is shown |
 | `L` | Diff layout: Split or Unified | A diff with a layout control is shown |
+| `N` | Diff or Current: what changed, or the new version alone, from curre*n*t | A diff is shown |
+| `Y` | Diff File type: which types of changed files a diff shows | A diff of more than one file is shown |
 | `1`–`9` | The numbered links and actions on this screen, in reading order | A numbered control is shown |
 
 A letter that appears twice, such as `C`, belongs to two screens never shown together.
@@ -42,6 +55,18 @@ shows the folder as a fresh load shows it, with Files in front at the folder’s
 every filter and Group by at its default, and every tab back at its first view.
 What has been read, such as pull requests and history, stays in memory, so only the tree
 and the folder’s view are read again.
+
+Backslash does what a click on the chevron at the start of the main page’s foot does: it
+hides the navigation pane, and the page slides over it to fill the window, or shows the
+pane again. Shift-Backslash, which types `|` on a US keyboard, does the same.
+Shortcuts use the character the key types.
+On UK and German keyboards, the key in that position types `#`. Use the chevron on
+layouts where Backslash needs Option or AltGr.
+While the pane is hidden, the keys of its controls, such as `0`, `F`, and the filters’
+numbers, do nothing until it is shown again.
+With the pane hidden, a pull request page that waits on a fetch or a failed refresh
+still offers Fetch or Retry on its status line, but its other refreshes, such as one for
+a newer copy, wait for the Pulls tab’s Refresh.
 
 ## Keys in a Menu
 
@@ -61,9 +86,10 @@ Each control is numbered only while it is shown:
 
 | Screen | Numbered controls |
 | --- | --- |
-| The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has no Modified within |
-| The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
-| A pull request page | The header’s links and actions, such as View on GitHub, Browse code, and Refresh, in the order the header shows them; Refresh keeps its number while it waits |
+| The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has Modified within, and Group by age, only where its Git can read file ages |
+| The Pulls tab | Open, Closed, and All, then Refresh, which refreshes the pull request page beside the list and then the list, and keeps its number while it waits |
+| A pull request page | The header’s links and actions, such as Browse code, the status line’s Retry or Fetch where it offers one, and Browse the checkout, in the order the header shows them; Retry keeps its number while it waits |
+| A stack page | The status line’s Retry where it offers one, then Show the new comparison where it offers that |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers continue
 after those of the tab beside it.
@@ -85,14 +111,20 @@ In the file tree:
 In the Commits list, Up and Down or `K` and `J` move a row, and Enter or Space opens the
 commit.
 
-In the Pulls list, Up and Down or `K` and `J` move a row, Enter opens the pull request,
-and Space shows or hides its changed files; Right shows them and Left hides them.
+In the Pulls list, Up and Down or `K` and `J` move a row, a pull request’s three lines
+being one, Enter opens the pull request, and Space shows or hides its changed files;
+Right shows them or moves into them, and Left hides them.
 Grouped by stack, a stack’s row opens nothing: Enter and Space open or close it, Right
-opens it or goes to its first pull request, and Left closes it or returns to it from a
-pull request inside it whose files are closed.
+opens it or goes to its first row, and Left closes it, or returns to it from its Whole
+stack row or from a pull request inside it whose files are closed.
+An open stack’s first row, Whole stack, above its pull requests, opens the stack’s page:
+a move onto it opens it, as a move onto a pull request opens that, so `J` or Right from
+the stack’s row opens it, Enter and Space open it, and Left returns to the stack’s row.
 
-In Quick Search, Up and Down move through the results, Enter opens one, and Escape
-closes it. In Help, `?` or Escape closes it.
+Press `#` to open Quick Search for pull requests.
+The cursor starts after the prefix, ready for a number or title.
+Up and Down move through the results, Enter opens one, and Escape closes Quick Search.
+In Help, `?` or Escape closes it.
 
 ## Browser and App Keys
 

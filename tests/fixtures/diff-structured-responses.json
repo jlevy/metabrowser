@@ -1,0 +1,230 @@
+{
+  "config/app.yaml": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "yaml",
+    "root": [
+      {
+        "change": "modified",
+        "type": "map",
+        "entries": [
+          {
+            "change": "context",
+            "value": "demo",
+            "key": "name"
+          },
+          {
+            "change": "removed",
+            "value": 3,
+            "key": "version"
+          },
+          {
+            "change": "added",
+            "value": 4,
+            "key": "version"
+          },
+          {
+            "change": "modified",
+            "type": "map",
+            "entries": [
+              {
+                "change": "modified",
+                "type": "map",
+                "entries": [
+                  {
+                    "change": "context",
+                    "value": "nginx",
+                    "key": "image"
+                  },
+                  {
+                    "change": "modified",
+                    "type": "list",
+                    "entries": [
+                      {
+                        "change": "context",
+                        "value": 80
+                      },
+                      {
+                        "change": "added",
+                        "value": 443
+                      }
+                    ],
+                    "key": "ports"
+                  }
+                ],
+                "key": "web"
+              },
+              {
+                "change": "removed",
+                "value": {
+                  "image": "postgres",
+                  "port": 5432
+                },
+                "key": "db"
+              }
+            ],
+            "key": "services"
+          },
+          {
+            "change": "context",
+            "value": [
+              "fast",
+              "safe"
+            ],
+            "key": "flags"
+          }
+        ]
+      }
+    ],
+    "source_only": false
+  },
+  "package.json": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "json",
+    "root": [
+      {
+        "change": "added",
+        "value": {
+          "name": "demo",
+          "scripts": {
+            "test": "make"
+          }
+        }
+      }
+    ],
+    "source_only": false
+  },
+  "data/swap.json": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "json",
+    "root": [
+      {
+        "change": "removed",
+        "value": [
+          1,
+          2
+        ]
+      },
+      {
+        "change": "added",
+        "value": "text"
+      }
+    ],
+    "source_only": false
+  },
+  "deploy/anchors.yaml": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "yaml",
+    "root": [
+      {
+        "change": "modified",
+        "type": "map",
+        "entries": [
+          {
+            "change": "modified",
+            "type": "map",
+            "entries": [
+              {
+                "change": "removed",
+                "value": 1,
+                "key": "replicas"
+              },
+              {
+                "change": "added",
+                "value": 2,
+                "key": "replicas"
+              }
+            ],
+            "key": "base"
+          },
+          {
+            "change": "modified",
+            "type": "map",
+            "entries": [
+              {
+                "change": "removed",
+                "value": 1,
+                "key": "replicas"
+              },
+              {
+                "change": "added",
+                "value": 2,
+                "key": "replicas"
+              }
+            ],
+            "key": "worker"
+          }
+        ]
+      }
+    ],
+    "source_only": false
+  },
+  "deploy/duplicate.yaml": {
+    "version": "structured-diff-v1",
+    "status": "unsupported",
+    "root": [],
+    "source_only": false
+  },
+  "config/comments.yaml": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "yaml",
+    "root": [
+      {
+        "change": "context",
+        "value": {
+          "mode": "fast",
+          "retries": 3
+        }
+      }
+    ],
+    "source_only": true
+  },
+  "config/dates.yaml": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "yaml",
+    "root": [
+      {
+        "change": "modified",
+        "type": "map",
+        "entries": [
+          {
+            "change": "context",
+            "value": "2026-11-18",
+            "key": "released"
+          },
+          {
+            "change": "removed",
+            "value": 3,
+            "key": "retries"
+          },
+          {
+            "change": "added",
+            "value": 4,
+            "key": "retries"
+          }
+        ]
+      }
+    ],
+    "source_only": true
+  },
+  "tools/package.json": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "json",
+    "root": [
+      {
+        "change": "added",
+        "value": {
+          "scripts": {},
+          "name": "demo"
+        }
+      }
+    ],
+    "source_only": true
+  }
+}

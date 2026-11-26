@@ -32,6 +32,10 @@ class _FakeQuery:
     def get(self, key: str, default: str = "") -> str:
         return self._params.get(key, default)
 
+    def getlist(self, key: str) -> list[str]:
+        """Every value of *key*, as Starlette's ``QueryParams`` reads a repeated one."""
+        return [self._params[key]] if key in self._params else []
+
 
 def _request(path: str) -> Any:
     request = Mock(spec=["query_params", "headers"])
@@ -98,7 +102,7 @@ def test_unrecognizable_input_warns_instead_of_claiming_no_changes(tmp_path: Pat
     assert status == 200
     document = validate_document(body)
     assert document.manifest.totals.files == 0
-    assert any("no diff sections" in warning for warning in document.resolved.warnings)
+    assert "No changes could be read from this patch." in document.resolved.warnings
 
 
 # ── The comparison hook (Review finding R2 + S1) ────────────────────
@@ -119,7 +123,9 @@ def test_comparison_unknown_revision_is_a_404_not_a_500(tmp_path: Path) -> None:
     server._set_root_dir(root)
     status, body = _comparison(revision="no-such-revision")
     assert status == 404
-    assert "no-such-revision" in body["message"]
+    # The page says what happened; the revision asked for is the agent's detail.
+    assert body["message"] == "This commit is not in this repository."
+    assert (body["code"], "no-such-revision" in body["detail"]) == ("commit_not_found", True)
 
 
 def test_comparison_outside_a_repository_is_a_404(tmp_path: Path) -> None:
@@ -213,9 +219,7 @@ def test_a_file_the_diff_did_not_produce_is_named_and_the_rest_are_kept(
     assert lost.id not in document.patches
     assert len(document.patches) > 1
     path = (lost.new or lost.old).path  # pyright: ignore[reportOptionalMemberAccess]
-    assert document.resolved.warnings == (
-        f"1 file(s) could not be read from the produced diff: {path}",
-    )
+    assert document.resolved.warnings == (f"Changes to these files could not be read: {path}",)
 
 
 def test_a_name_with_a_space_at_either_end_hydrates_alone(tmp_path: Path) -> None:
@@ -258,7 +262,8 @@ def test_a_git_failure_names_no_path_in_its_body(
     status, body = _comparison(left=base, right=target)
     assert status == 502 and body == {
         "error": "diff_comparison",
-        "message": "git diff failed",
+        "message": "These changes could not be read from Git.",
+        "detail": "git diff failed",
         "path": "",
     }
 
@@ -267,7 +272,8 @@ def test_a_git_failure_names_no_path_in_its_body(
 
     monkeypatch.setattr(sidekick.GitDiffSource, "_patch", hangs)
     status, body = _comparison(left=base, right=target)
-    assert status == 504 and body["message"] == "git diff timed out"
+    assert status == 504 and body["message"] == "Comparing these commits took too long. Try again."
+    assert body["detail"] == "git diff timed out"
 
 
 def test_a_file_past_the_bound_says_so_and_the_rest_are_served(
@@ -403,7 +409,7 @@ def test_document_hook_parses_a_file_whatever_it_is_called(tmp_path: Path) -> No
     assert status == 200, body
     document = validate_document(body)
     assert document.manifest.totals.files == 0
-    assert any("no diff sections" in warning for warning in document.resolved.warnings)
+    assert "No changes could be read from this patch." in document.resolved.warnings
 
 
 def test_children_and_virtual_children_need_a_patch_name(tmp_path: Path) -> None:
@@ -521,7 +527,9 @@ def test_damage_past_what_the_hooks_read_of_a_compressed_patch_is_not_reached(
     assert status == 200, past
     document = validate_document(past)
     assert document.manifest.truncated
-    assert "input truncated at parser bounds" in document.resolved.warnings
+    assert "This patch is too long to show in full, so its end is left out." in (
+        document.resolved.warnings
+    )
     status, whole = _document("whole.patch.gz")
     assert status == 200, whole
     assert past["manifest"]["totals"] == whole["manifest"]["totals"]

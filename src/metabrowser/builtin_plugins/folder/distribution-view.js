@@ -10,6 +10,23 @@ function element(parent, className) {
 
 let distributionViewSequence = 0;
 
+/**
+ * Make the section's status line a `.notice` of one severity, or plain muted text for
+ * `null`. A line that says something is incomplete or failed is a notice; progress and a
+ * neutral fact are not.
+ *
+ * @param {Element} status
+ * @param {"warning" | "error" | null} severity
+ */
+export function setStatusNotice(status, severity) {
+  status.classList?.toggle("notice", severity !== null);
+  if (severity === null) {
+    status.removeAttribute?.("data-severity");
+  } else {
+    status.setAttribute?.("data-severity", severity);
+  }
+}
+
 /** @param {DistributionHandle} handle @param {string} key */
 function controlledRowId(handle, key) {
   return `${handle.idPrefix}-${encodeURIComponent(key).replace(/%/g, "_")}`;
@@ -27,22 +44,33 @@ function createMetricCell() {
   fill.className = "file-type-summary-fill";
   track.append(fill);
   const percent = document.createElement("span");
-  percent.className = "file-type-summary-percent";
+  percent.className = "file-type-summary-percent data-num";
   contents.append(value, track, percent);
   cell.append(contents);
   return { cell, fill, percent, value };
 }
 
-/** @param {string} className @param {string} label */
-function createGroupBody(className, label) {
+/**
+ * A group's rows under its heading. The heading names the category in the shared
+ * category heading's type, led by the category's icon, `iconSvg`, when it has one
+ * (docs/design-system.md, "File-Type Category Icons").
+ * @param {string} className @param {string} label @param {string} iconSvg
+ */
+function createGroupBody(className, label, iconSvg) {
   const body = document.createElement("tbody");
   body.className = className;
   const headingRow = document.createElement("tr");
   headingRow.className = "file-type-summary-group-row";
   const heading = document.createElement("th");
   heading.scope = "rowgroup";
+  // The table's resting label type (docs/design-system.md, "Data Tables").
+  heading.className = "data-label";
   heading.colSpan = 2;
-  heading.textContent = label;
+  // The icon's markup is the shell's own icon registry's, never the folder's data.
+  heading.innerHTML = iconSvg;
+  const name = document.createElement("span");
+  name.textContent = label;
+  heading.append(name);
   headingRow.append(heading);
   body.append(headingRow);
   return body;
@@ -56,6 +84,7 @@ function createGroupBody(className, label) {
  * @param {FileTypeIconResolver} fileTypeIcon
  * @param {DistributionHover} hover The hover the legend shares with the population bars
  *   above it, which draw it, as the Details table's rows do while it is open.
+ * @param {CategoryIconResolver} categoryIcon A category's icon, by the name a group gives.
  */
 export function mountDistributionView(
   container,
@@ -64,6 +93,7 @@ export function mountDistributionView(
   metricClasses,
   fileTypeIcon,
   hover,
+  categoryIcon,
 ) {
   const root = document.createElement("div");
   root.className = "file-type-summary";
@@ -75,6 +105,7 @@ export function mountDistributionView(
     palette,
     metricClasses,
     fileTypeIcon,
+    categoryIcon,
     hover,
     // The legend, bound to the hover while the body shows one (distribution-legend.js).
     legendView: /** @type {DistributionLegend | null} */ (null),
@@ -157,8 +188,9 @@ export function updateDistributionView(handle, model) {
   if (model.state === "failed") {
     resetBody(handle, "failed");
     const failure = element(handle.body, "file-type-summary-status");
-    failure.setAttribute("role", "status");
-    failure.textContent = "Indexing failed; no file summary is available.";
+    setStatusNotice(failure, "error");
+    failure.setAttribute("role", "alert");
+    failure.textContent = "Could not scan this folder; no file summary is available.";
     return;
   }
   if (model.state === "unavailable") {
@@ -199,13 +231,16 @@ export function updateDistributionView(handle, model) {
   handle.status.hidden = false;
   handle.status.replaceChildren();
   handle.status.classList?.remove("file-type-summary-status-progress");
+  setStatusNotice(handle.status, null);
   if (model.state === "truncated") {
-    handle.status.textContent = `Summary is partial: ${(model.indexedFiles ?? 0).toLocaleString()} files indexed at the ${(model.maxFiles ?? 0).toLocaleString()}-file cap.`;
+    setStatusNotice(handle.status, "warning");
+    handle.status.textContent = `Only the first ${model.maxFilesText ?? "0 files"} were scanned; percentages cover those files.`;
   } else if (model.indexFailed) {
+    setStatusNotice(handle.status, "warning");
     handle.status.textContent =
-      "Indexing failed; percentages cover files indexed before the failure.";
+      "Could not finish scanning this folder; percentages cover the files found before it stopped.";
   } else if (model.scanning) {
-    renderScanningProgress(handle.status, model.indexedFiles);
+    renderScanningProgress(handle.status, model.indexedFilesText);
   } else if (model.state === "zero-bytes") {
     handle.status.textContent = "All included files are zero bytes.";
   } else {
@@ -225,17 +260,16 @@ export function updateDistributionView(handle, model) {
  * that has not arrived yet falls back to the bare label.
  *
  * @param {HTMLElement} status
- * @param {number | undefined} indexedFiles
+ * @param {string | undefined} indexedFilesText the formatted count, "" or absent before one arrives
  */
-function renderScanningProgress(status, indexedFiles) {
+function renderScanningProgress(status, indexedFilesText) {
   status.classList?.add("file-type-summary-status-progress");
   const spinner = document.createElement("span");
   spinner.className = "index-progress-spinner";
   spinner.setAttribute("aria-hidden", "true");
   const text = document.createElement("span");
   text.className = "index-progress-text";
-  const files = typeof indexedFiles === "number" && indexedFiles > 0 ? indexedFiles : null;
-  text.textContent = files === null ? "Scanning…" : `~${files.toLocaleString()} files scanned`;
+  text.textContent = indexedFilesText ? `~${indexedFilesText} files scanned` : "Scanning…";
   status.append(spinner, text);
 }
 
@@ -373,17 +407,19 @@ function updateMetricValue(element, metric, value, text, metricClasses) {
   const baseClass = metric === "files" ? "count" : "size";
   const emphasisClass =
     metric === "files" ? metricClasses.countClass(value) : metricClasses.sizeClass(value);
-  element.className = `file-type-summary-value ${baseClass} ${emphasisClass}`.trim();
+  element.className = `file-type-summary-value data-num ${baseClass} ${emphasisClass}`.trim();
   element.textContent = text;
 }
 
-/** @param {DistributionHandle} handle @param {string} groupId @param {string} label */
-function ensureGroup(handle, groupId, label) {
+/** @param {DistributionHandle} handle @param {SummaryGroup} descriptor */
+function ensureGroup(handle, descriptor) {
+  const groupId = descriptor.id;
   let group = handle.groups.get(groupId);
   if (group || !handle.table) {
     return group;
   }
-  const body = createGroupBody("file-type-summary-group", label);
+  const icon = descriptor.icon ? handle.categoryIcon(descriptor.icon) : "";
+  const body = createGroupBody("file-type-summary-group", descriptor.label, icon);
   body.dataset.category = groupId;
   group = { body };
   handle.groups.set(groupId, group);
@@ -441,7 +477,7 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
       continue;
     }
     liveCategories.add(category);
-    const group = ensureGroup(handle, category, descriptor.label);
+    const group = ensureGroup(handle, descriptor);
     if (!group) {
       continue;
     }
@@ -586,15 +622,16 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
   }
 }
 
-/** @typedef {{id: string, label: string}} SummaryGroup */
+/** @typedef {{id: string, label: string, icon?: string | null}} SummaryGroup */
 /** @typedef {{key: string, label: string, paletteKey: string, kind: "family" | "other", value: number, percent: string, share: number}} SummaryLegendEntry */
 /** @typedef {{key: string, rawKey?: string | null, extension?: string | null, iconPath?: string | null, label: string, category: string, kind?: string, child?: boolean, paletteKey?: string, disclosable?: boolean, children?: ReadonlyArray<SummaryRow>, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} Palette */
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
-/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, legend?: ReadonlyArray<SummaryLegendEntry>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
+/** @typedef {(name: string) => string} CategoryIconResolver */
+/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, legend?: ReadonlyArray<SummaryLegendEntry>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number, indexedFilesText?: string, maxFilesText?: string}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, metricCell: HTMLTableCellElement, metricValue: HTMLElement, metricFill: HTMLElement, metricPercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
 /** @typedef {import("./distribution-legend.js").DistributionLegend} DistributionLegend */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, hover: DistributionHover, legendView: DistributionLegend | null, hovered: Array<HTMLElement>, unsubscribeHover: () => void, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, categoryIcon: CategoryIconResolver, hover: DistributionHover, legendView: DistributionLegend | null, hovered: Array<HTMLElement>, unsubscribeHover: () => void, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */

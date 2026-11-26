@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
 
 import pytest
 
@@ -20,6 +19,7 @@ from metabrowser.file_type_filters import (
     validate_file_type_taxonomy,
 )
 from metabrowser.settings import client_settings_dict
+from tests.shell_request import shell_request
 
 
 def test_required_families_use_longest_declared_suffixes() -> None:
@@ -70,7 +70,7 @@ def test_projected_families_track_the_registry() -> None:
 
 
 def test_catalog_validation_rejects_duplicate_members() -> None:
-    categories = (FileTypeCategory("code", "Code", ()),)
+    categories = (FileTypeCategory("code", "Code", (), None, "alignLeft"),)
     families = (
         FileTypeFamily("first", "First", "code", (".x",), 12.5),
         FileTypeFamily("second", "Second", "code", (".x",), 200.0),
@@ -83,8 +83,8 @@ def test_catalog_validation_rejects_duplicate_members() -> None:
         raise AssertionError("duplicate family members must be rejected")
 
     overlapping_categories = (
-        FileTypeCategory("code", "Code", ()),
-        FileTypeCategory("data", "Data", (".x",)),
+        FileTypeCategory("code", "Code", (), None, "alignLeft"),
+        FileTypeCategory("data", "Data", (".x",), None, "list"),
     )
     try:
         validate_file_type_taxonomy(
@@ -106,7 +106,7 @@ def test_client_settings_publish_one_authoritative_registry() -> None:
 
 
 def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:
-    response = asyncio.run(server.index(cast(Any, None)))
+    response = asyncio.run(server.index(shell_request()))
     html = bytes(response.body).decode()
     assert "/static/file-type-taxonomy.js?v=" in html
     assert html.index("/static/file-type-taxonomy.js") < html.index("/static/plugin-sdk.js")

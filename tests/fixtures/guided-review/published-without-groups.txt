@@ -1,0 +1,54 @@
+```guided-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "dcada5a4b18f0f33ccdc7d4e92267a164c1ed28b"
+    head: "df5dc6cbe35cb38f35edd0ca2cf3e40aa50b7d1c"
+  items:
+    - title: "Keystone: the check before publishing is a route"
+      note: >-
+        Decided: the draft check is a GitHub plugin route, guided-review-check, not a new
+        CLI mode, following the parity rule in AGENTS.md that a route is reachable through
+        --api and golden-pinned for free. It reads the draft from a file in the served
+        checkout through the safe-path helpers and a bounded read, answers from local Git
+        objects and the cached record only, and belongs to the guided-review carrier, not
+        to the collection format. This rules out a CLI flag, a check that calls GitHub,
+        and a generic collection check. The route is planned here, not built. If you would
+        rather have a mode or a format-level check, stop here.
+      references:
+        - {path: docs/project/specs/active/plan-2026-11-24-guided-reviews-skill.md, side: new, start_line: 82, end_line: 99}
+        - {path: docs/project/specs/active/plan-2026-11-24-guided-reviews-skill.md, side: new, start_line: 156, end_line: 164}
+    - title: "Keystone: a guide is the reviewer's agenda, one step or run per concern"
+      note: >-
+        Decided: a guide gives six review concerns a step or a run of steps each, in a
+        fixed order (keystone decisions, key documents, each area of change, ambiguity,
+        testing split three ways, future work), and keeps testing and ambiguity even when
+        a small change merges the rest, a one-file change included. The owner set these
+        concerns on 2026-11-24. This rules out a guide that only tours the diff, and a
+        single testing claim that mixes CI with what an agent did by hand. If the fixed
+        order does not suit the pull requests this repository opens, stop here.
+      references:
+        - {path: docs/project/specs/active/plan-2026-11-24-guided-reviews-skill.md, side: new, start_line: 107, end_line: 116}
+        - {path: docs/project/specs/active/plan-2026-11-24-guided-reviews-skill.md, side: new, start_line: 135, end_line: 139}
+        - {path: skills/metabrowser/SKILL.md, side: new, start_line: 441, end_line: 475}
+    - title: "Document: the skill's new section"
+      note: >-
+        What it now promises an agent: a guided review on every pull request it opens
+        unless the user says not to, refreshed on every push; the six concerns in order;
+        a block skeleton and its YAML rules; the pins and ranges; and recipes to publish,
+        confirm, and refresh a guide. Check that nothing in it contradicts the format
+        reference it links to.
+      references:
+        - {path: skills/metabrowser/SKILL.md}
+    - title: "Change: the changelog fragment and the plans index"
+      note: >-
+        Check that the fragment claims only what ships here, the skill section, in a
+        short bullet that links to it, and that the index entry says what shipped and
+        what is still to build.
+      references:
+        - {path: changelog.d/mb-uqwl.md}
+        - {path: docs/project/README.md, side: new, start_line: 70, end_line: 78}
+```

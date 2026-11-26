@@ -1,6 +1,6 @@
-// A pull request's brief change line, the third line of its row in the Pulls column (mb-d0a3):
-// "21 A, 7 D, 15 M · +1,234 −567", with no file total, the chevron for its changed files before
-// it.
+// A pull request's brief change line, at the end of its row's run in the Pulls column
+// (mb-d0a3, mb-pw8t), after its number and a dot: its line totals alone, "+1,234 −567", with
+// no file total and no file statuses (mb-lqkb), the chevron for its changed files after it.
 //
 // What it says is what the row's own list of changed files sums to, the list its chevron
 // discloses, so the line and the tree under it agree: the server sums the cached list
@@ -13,7 +13,9 @@
 //
 // - Only for the rows the list draws, its rows in view and the window's overscan, in one
 //   request for all of them, when the browser is idle and once no comparison is being read, so
-//   a page's own read goes first (`keep.quiet`). A read is the cache alone: no GitHub call, no
+//   a page's own read goes first (`keep.quiet`). The rows it names are the window's once its
+//   rows are measured (`settle`), not the window first placed at estimated heights, which the
+//   measures move by a row or more. A read is the cache alone: no GitHub call, no
 //   Git, and no fetch. The lists themselves are the ones the Pulls tab already has read, the
 //   changed files its prefetch names for the rows in view and a reader's own expansions, so a
 //   row's line asks GitHub for nothing.
@@ -26,8 +28,8 @@
 //   into view or in a Pulls tab mounted again, has its line in the paint that draws it.
 //
 // A row waits for its line in the shell's pending placeholder, after the quiet period, so
-// nothing moves when the line arrives; the line's box is the row's third line, which is always
-// there, as the chevron is. A row whose list is not cached and is not being listed shows no
+// nothing moves when the line arrives; the line's box keeps the placeholder's room at the run's
+// end, which is always there, as the chevron is. A row whose list is not cached and is not being listed shows no
 // line and no placeholder.
 
 import { changeLineInput, createBoundedIndex } from "./change-lines.js";
@@ -71,7 +73,7 @@ const RECENT = 8;
  * last said it.
  * @typedef {{number: number, head: string | null}} LineRow
  *
- * What a row's third line shows now: its line, its pending placeholder, or nothing.
+ * What a row's lines show now: its line, its pending placeholder, or nothing.
  * @typedef {{phase: "shown", summary: FilesSummary} | {phase: "waiting"} | {phase: "none"}} RowLineState
  *
  * What the document remembers of a row: the head it was read for, its last listed answer,
@@ -130,8 +132,8 @@ export function rowLineInput(change, breakdown) {
 }
 
 /**
- * The change line's item's accessible name: what it is, and the line in words once it is
- * shown, as a stack's row says its line after its label (`stackGroupHint`).
+ * The change line's accessible name, which describes its row: what it is, and the line in
+ * words once it is shown, as a stack's row says its line after its label (`stackGroupHint`).
  *
  * @param {string | null} words The line's `label`, or null while there is none.
  */
@@ -165,10 +167,12 @@ export const documentRowLines = createRowLineIndex();
  *   read(numbers: number[], signal: AbortSignal): Promise<{status: number, body: unknown}>,
  *   schedule(callback: () => void): unknown,
  *   cancel(handle: unknown): void,
+ *   settle(): void,
  *   isVisible(): boolean,
  *   now(): number,
  *   changed(numbers: number[] | null): void,
- * }} deps `changed` repaints the rows named, or every row for null.
+ * }} deps `changed` repaints the rows named, or every row for null. `settle` brings the
+ *   rows drawn up to date, asking `want` again if they changed, before a read names them.
  */
 export function createRowLines(deps) {
   const keep = deps.keep ?? documentComparisons;
@@ -248,6 +252,12 @@ export function createRowLines(deps) {
       return;
     }
     handle = deps.schedule(() => {
+      // The rows drawn as their window stands once measured, so one read names every row
+      // drawn: the browser can be idle between the frame that measured the rows of a window
+      // placed at `ROW_ESTIMATE_PX` and the one that draws it again at their heights, and the
+      // rows that frame adds would wait for a second read (mb-hb4a). While the handle is
+      // held, the `want` this asks for schedules nothing more.
+      deps.settle();
       handle = null;
       void run();
     });
@@ -375,7 +385,7 @@ export function createRowLines(deps) {
 
   return Object.freeze({
     /**
-     * What *row*'s third line shows now: its kept line, shown while a newer answer is read,
+     * What *row*'s lines show now: its kept line, shown while a newer answer is read,
      * until one replaces it; the placeholder while a read of it is coming or its list is being
      * listed; or nothing, when its list is not cached and nothing lists it.
      *

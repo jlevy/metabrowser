@@ -28,11 +28,14 @@ import json
 import os
 import re
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from metabrowser.builtin_plugins.github import gh_budget, pull_timeline
+from metabrowser.builtin_plugins.github.gh_status import SIGN_IN_STATES
 from metabrowser.cache import pull_refs
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import GitCommandError
@@ -126,7 +129,8 @@ class _Session:
 def _body(tmp_path: Path, **fields: Any) -> str:
     """A request body in the sandbox, which the transcript names by its file alone."""
 
-    body = tmp_path / ("reader.json" if fields.get("retry") else "automatic.json")
+    name = "reader" if fields.get("retry") else "held" if "held" in fields else "automatic"
+    body = tmp_path / f"{name}.json"
     body.write_text(json.dumps(fields) + "\n", encoding="utf-8")
     return str(body)
 
@@ -212,6 +216,23 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     assert not_due.exit_code == 0, not_due.stderr
     assert not_due.payload()["refresh"] == "not_due"
     assert logged_gh_calls(tmp_path) == []
+    # A page left open names the record it shows, and the answer leaves that record out.
+    revision = not_due.payload()["pull"]["record_revision"]
+    session.blocks.append(
+        "## held.json names that record_revision as the record the asker holds: the answer "
+        "says record_held in place of the record.\n"
+    )
+    held = session.run(
+        CANONICAL, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=10, held=revision)
+    )
+    assert held.exit_code == 0, held.stderr
+    answered = held.payload()["pull"]
+    assert answered["record_held"] is True and "record" not in answered
+    whole = not_due.payload()["pull"]
+    assert {name: answered[name] for name in answered if name != "record_held"} == {
+        name: whole[name] for name in whole if name != "record"
+    }
+    assert logged_gh_calls(tmp_path) == []
     # The pin is still the default branch, and status names no pull request.
     status = session.run(CANONICAL, "--api", "/api/source/status").payload()
     assert (status["pull_request"], status["ref"]) == (
@@ -282,6 +303,12 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     for state, answers in refusals:
         session.answer(answers)
         refused = session.run(f"{PULL}/11", "--no-serve")
+        if state in SIGN_IN_STATES:
+            # Only gh reads a pull request, so the default branch would answer another
+            # URL: the command stops with the step that fixes it.
+            assert refused.exit_code == 1, (state, refused.stdout)
+            assert refused.stderr.rstrip().endswith(f"({state})"), (state, refused.stderr)
+            continue
         assert refused.exit_code == 0, (state, refused.stderr)
         assert f"({state}); the pin is the default branch)" in refused.stdout, (
             state,
@@ -337,10 +364,8 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
 
     monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
     missing = session.run(f"{PULL}/11", "--api", f"{ROUTE}?number=11")
-    assert (
-        missing.exit_code == 0 and "(gh_missing); the pin is the default branch)" in missing.stderr
-    )
-    assert missing.payload()["reason"] == "not_cached"
+    assert missing.exit_code == 1 and missing.stderr.rstrip().endswith("(gh_missing)")
+    assert missing.stdout == ""
     # The cached record outlived every failed refresh.
     kept = session.run(f"{PULL}/7", "--api", f"{ROUTE}?number=7")
     assert kept.exit_code == 0 and kept.payload()["record"] == envelope["record"]
@@ -424,6 +449,32 @@ def test_golden_pull_timeline_fetch_and_offline(
     body = tmp_path / "timeline.json"
     body.write_text(json.dumps({"number": 7, "record_revision": revision}), encoding="utf-8")
     args = (selected, "--api", f"{ROUTE}-timeline", "--data", str(body))
+    session.blocks.append(
+        "## GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic "
+        "work leaves to the reader. The page's own ask for the timeline waits: nothing is "
+        "asked of GitHub, and the answer says to ask again in a minute, which the page does "
+        "for as long as the budget refuses.\n"
+    )
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "1000",
+            "x-ratelimit-reset": str(int((datetime.now(UTC) + timedelta(hours=1)).timestamp())),
+        },
+        resource="graphql",
+    )
+    waiting = session.run(*args)
+    assert waiting.exit_code == 0, waiting.stderr
+    assert waiting.payload() == {
+        "record_revision": revision,
+        "state": "unavailable",
+        "retryable": True,
+        "retry_after_s": pull_timeline.HELD_RETRY_S,
+        "events": [],
+    }, session.blocks[-1]
+    assert "gh api graphql timeline" not in session.blocks[-1]
+    gh_budget.forget()
+    session.blocks.append("## With the budget above the floor again, it is read.\n")
     live = session.run(*args)
     assert live.exit_code == 0, live.stderr
     assert live.payload() == {

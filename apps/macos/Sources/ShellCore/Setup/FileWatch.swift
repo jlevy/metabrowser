@@ -102,7 +102,7 @@ public final class SetupWatch {
         case recheck
         /// Search for `metab` again: one appeared, changed, or went away.
         case discover
-        /// Work out the first-run steps again: `uv` appeared or went away.
+        /// Locate uv’s tool directory again when uv appears or goes away.
         case replan
     }
 

@@ -963,12 +963,11 @@ line. Open that address with the browser’s developer tools open.
     - Each keycap is a small yellow key with a deeper yellow border and dark text.
       A tab’s keycap sits inside the tab at its end, centered top to bottom, over the
       label’s last letter, which still reads through it.
-      In the file header, the Up keycap sits over the end of the folder’s breadcrumb.
-      Each covers no text outside its own control: the file name, the mirror note, and
-      the size read in full.
-      At the root, Up’s control is the `/` crumb, which is narrower than a keycap, so
-      the keycap also reaches back over the last letter or two of the dimmed root name,
-      the folder Up opens.
+      In the file’s view header, the Up keycap sits over the Up button at the start of
+      the eyebrow. It covers no text outside its own control: the address, the mirror
+      note, the file name, and the size read in full.
+      (In 0.12, Up’s control for a file was its folder’s crumb; at the root, the `/`
+      crumb, whose keycap reached back over the dimmed root name.)
       No keycap is cut off, and nothing beside one moves.
     - The Copy path button, which shows only on hover and has no key, stays hidden while
       Shift is held with the pointer away from the header.
@@ -1484,16 +1483,18 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    equal `/api/rollup?depth=0` (a symlink counts as a file on a pin).
    The file header prefix is `<name>`, not a commit.
 2. Open `README.md` in a window at least 1100px wide.
-   The file header reads `<name> / README.md`, then, toward the right and before the
-   file’s size, a muted `mirror in <location>`, cut with an ellipsis at its end if it
-   does not fit. Hovering the note, or `<name>` in the file header, shows the same
+   The view header’s eyebrow reads `<name> /`, then, toward the right, a muted
+   `mirror in <location>`, cut with an ellipsis at its end if it does not fit, and the
+   title under it is `README.md`, with the size under that.
+   (In 0.12 the one-row file header read `<name> / README.md`, the note before the
+   file’s size.) Hovering the note, or `<name>` in the file header, shows the same
    `Mirror of … with no checked-out files.` sentence, wrapped inside the tooltip.
    Narrow the window: the note disappears whole (never a one- or two-letter stub) before
-   `<name>` or any part of the path narrows, and the file name is the last thing to
-   shorten. In a terminal, `git -C <location> log --all --oneline | head -3` lists
-   commits, and `curl -s "$BASE/api/source/status"` reports the same `name`, `origin`,
-   and `location`. Repeat with a repository name of at least 24 characters: its width
-   must match the heading with the note removed, even at narrow widths.
+   `<name>` or any part of the eyebrow’s path narrows; the title shortens on its own
+   row. In a terminal, `git -C <location> log --all --oneline | head -3` lists commits,
+   and `curl -s "$BASE/api/source/status"` reports the same `name`, `origin`, and
+   `location`. Repeat with a repository name of at least 24 characters: its width must
+   match the heading with the note removed, even at narrow widths.
    A checkout made by 0.1 is named `checkout`, so also test a longer-named origin.
 3. The tree lists this repository’s top-level entries with sizes; folders expand.
    The filter bar has no recency filter and no “Show ignored” control, and neither has
@@ -1745,12 +1746,14 @@ address.
    `"${QA_PR}/fake-gh-scenario.json"` (rebuild that entry with the fixture’s `ok()`, so
    its entity tag changes), and serve 7 again with the browser’s network panel open.
    Once the freshness row’s refresh brings it, scroll to the comment.
-   It shows as plain paragraphs, links, and text only: **build badge** is a link to the
-   image, `x` a link, and `video`, `copy`, `fake dialog`, and `styled` plain text; no
-   dialog covers the page; and the network panel shows no document-origin image request,
-   no `/kpress-static/` script, and no iframe.
-   Application-owned author avatars may request the fixed
-   `avatars.githubusercontent.com` host.
+   It shows as plain paragraphs, links, and text only: **build badge** is an image from
+   the web, shown as on github.com, `x` a link, and `video`, `copy`, `fake dialog`, and
+   `styled` plain text; no dialog covers the page; and the network panel shows no
+   document-origin image request, no `/kpress-static/` script, and no iframe.
+   An image from the web is requested over `https` with no `Referer`; with **Block
+   remote images** ticked in the Metabrowser menu, **build badge** is a chip with its
+   alt text, and the only image requests are application-owned author avatars from the
+   fixed `avatars.githubusercontent.com` host.
 10. A record cached before label colors.
     Stop the server, and in pull request 7’s record, `sources/*/pulls/7.json` in the
     home under `"${QA_PR}"`, set `projection_version` to `1` and `pull.labels` to
@@ -1912,10 +1915,12 @@ Retain screenshots, provider traces and errors with the artifact pin.
 These are focused functional observations; a historical catalog profile does not measure
 this layer.
 
-### 5.8 A hostile README on a mirror (no network)
+### 5.8 A hostile README on a mirror
 
 Serve a `file://` origin whose README carries every payload of the hostile corpus,
-`tests/fixtures/untrusted-markdown`, with the browser’s network panel open:
+`tests/fixtures/untrusted-markdown`, with the browser’s network panel open.
+The README’s images from the web are the only requests that leave the machine, and only
+while **Block remote images** is off, which it is until step 7 ticks it:
 
 ```shell
 QA_README="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-readme.XXXXXX")"
@@ -1928,15 +1933,27 @@ uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --n
 ```
 
 1. Open `http://127.0.0.1:8479/view/`. The folder Overview’s README shows **Hostile
-   readme** as plain paragraphs, links, and text: **build badge** and **tracker** are
-   links to their images, `video`, `copy`, `fake dialog`, and `styled` are plain text,
-   and the repository image `docs/diagram.png` shows.
-2. The network panel shows no request to any origin but `127.0.0.1`, no
-   `/kpress-static/` script (its stylesheets and fonts load), and no iframe; no dialog
-   covers the page.
+   readme** as plain paragraphs, links, and text: `video`, `copy`, `fake dialog`, and
+   `styled` are plain text, and the repository image `docs/diagram.png` shows.
+   Its images from the web over `https` show as images, as on github.com: **build
+   badge**, **tracker**, and the badge row, where **Follow @ojoshe on X** goes to
+   `https://x.com/ojoshe` and **CI** to its workflow, whatever its image does, and no
+   badge leaves an empty link before it or a link to its image inside it.
+   **insecure**, over `http`, is a small chip with an image mark, inside a link to its
+   image; hovering it shows the image’s address.
+   A link around nothing but an image has no GitHub mark after it.
+2. The network panel shows requests to the README’s image hosts (`example.com`,
+   `img.shields.io`, `github.com`), each an image with no `Referer` header; none over
+   `http`; no other origin but `127.0.0.1`; no `/kpress-static/` script (its stylesheets
+   and fonts load); and no iframe; no dialog covers the page.
+   Add a `flowchart LR` Mermaid block with the node
+   `A@{ img: "https://example.com/m.png", label: "x", w: 60, h: 60 }` to the README and
+   reload: its image is requested too, and with no `Referer` either, which the
+   response’s `Referrer-Policy` (step 3) is what guarantees.
 3. The page’s response carries `Content-Security-Policy` with
-   `script-src 'self' 'nonce-…'`. In the console,
-   `document.body.append(Object.assign(document.createElement("img"), {src: "https://example.com/x.png"}))`
+   `script-src 'self' 'nonce-…'`, `img-src 'self' data: https:`, and, as a header beside
+   it, `Referrer-Policy: no-referrer`. In the console,
+   `document.body.append(Object.assign(document.createElement("img"), {src: "http://example.com/x.png"}))`
    is refused by `img-src`, and no other policy violation is reported.
 4. Open `README.md` itself, then **Guide**: the relative link opens `docs/guide.md` at
    the pin.
@@ -1946,12 +1963,23 @@ uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --n
    Wiki links and embeds in a mirrored document show as plain text.
 6. Serve the same folder as a trusted local folder (`metab "${QA_README}/work"`): the
    README renders with KPress’s full styling, and the response carries no policy.
+7. Back on the mirror, open the Metabrowser menu and tick **Block remote images**. The
+   page loads again and the box is ticked.
+   Every image of the README from the web is a chip with its alt text, inside the link
+   it was in: **Follow @ojoshe on X** still goes to `https://x.com/ojoshe`, and
+   **tracker** is a link to its image; `docs/diagram.png` still shows.
+   The network panel, cleared before the reload, shows no request to any origin but
+   `127.0.0.1`. The response’s `Content-Security-Policy` now has
+   `img-src 'self' data: https://avatars.githubusercontent.com`, and in the console the
+   probe of step 3 with `https://example.com/x.png` is refused by `img-src`. Untick the
+   box: the page loads again and the images are back.
 
 **Pass:** every step as described.
 
-**Fail:** any request to another origin, a KPress script loaded for the mirror’s README,
-an iframe, a dialog over the page, a policy violation from the application itself, or a
-trusted folder that renders plainly.
+**Fail:** any request to another origin while the box is ticked, a request with a
+`Referer`, one over `http`, a KPress script loaded for the mirror’s README, an iframe, a
+dialog over the page, a policy violation from the application itself, an empty link or a
+link inside another around a badge, or a trusted folder that renders plainly.
 
 ### 5.9 Heading anchors and the table of contents on a mirror (no network)
 

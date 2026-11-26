@@ -7,7 +7,7 @@ import os
 import re
 import stat
 from pathlib import Path
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 from urllib.parse import urlsplit
 
 # Keep first-paint repository discovery bounded even for corrupt metadata.
@@ -22,6 +22,9 @@ class RepositoryContext(TypedDict):
     """Public-safe GitHub identity used to verify localizable repository URLs."""
 
     branch: str | None
+    # Whether the checked-out branch corresponds to the same-named branch at origin.
+    # Matching tips or explicit tracking establish it; a mirror's branch is origin's.
+    branch_on_origin: bool
     host: str
     name: str
     owner: str
@@ -40,7 +43,10 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     if git_dir is None:
         return None
     common_dir = resolve_common_dir(git_dir)
-    remote = _read_origin_remote(common_dir / "config")
+    config = _read_git_config(common_dir / "config")
+    if config is None:
+        return None
+    remote = _parse_github_remote(config.get('remote "origin"', "url", fallback="").strip())
     if remote is None:
         return None
     owner, name = remote
@@ -48,18 +54,69 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     if head is None:
         return None
     branch, revision = head
+    on_origin = False
+    if branch is not None:
+        remote_tip = _read_reference(git_dir, common_dir, f"refs/remotes/origin/{branch}")
+        tracking = f'branch "{branch}"'
+        on_origin = remote_tip is not None and (
+            remote_tip.lower() == revision.lower()
+            or (
+                config.get(tracking, "remote", fallback="") == "origin"
+                and config.get(tracking, "merge", fallback="") == f"refs/heads/{branch}"
+            )
+        )
     try:
         served_prefix = root.relative_to(git_root).as_posix()
     except ValueError:
         return None
     return RepositoryContext(
         branch=branch,
+        branch_on_origin=on_origin,
         host="github.com",
         name=name,
         owner=owner,
         revision=revision.lower(),
         served_prefix="" if served_prefix == "." else served_prefix,
     )
+
+
+class CheckedOutHead(NamedTuple):
+    """Where a checkout's ``HEAD`` is: its branch, ``None`` when detached, and its commit."""
+
+    branch: str | None
+    revision: str
+
+
+def checked_out_head(root: Path) -> CheckedOutHead | None:
+    """Read the checkout's ``HEAD`` without running Git, or ``None`` when it names no commit.
+
+    The working tree's revision row names it: the branch the files on disk are on, or the
+    commit a detached ``HEAD`` is at (``static/source-ref-selector.js``).
+    """
+    git_dir = resolve_git_dir(root)
+    if git_dir is None:
+        return None
+    head = _read_head(git_dir, resolve_common_dir(git_dir))
+    if head is None:
+        return None
+    branch, revision = head
+    return CheckedOutHead(branch=branch, revision=revision.lower())
+
+
+def is_checkout_root(root: Path) -> bool:
+    """Whether *root* holds a ``.git`` entry: the cheap test that it is a checkout's root.
+
+    Git's own answer is not asked, so a ``.git`` that Git refuses, a repository another user
+    owns for one, still counts: this is what the folder is on disk, the test the Commits tab
+    is drawn by and the kind ``GET /api/identity`` gives a folder (``git`` or ``folder``).
+    A checkout's subfolder is not one, and neither is a folder with no ``.git`` of its own,
+    however deep in a repository.
+    """
+
+    try:
+        return (root / ".git").exists()
+    except OSError:
+        return False
 
 
 def find_git_root(start: Path) -> Path | None:
@@ -92,17 +149,16 @@ def resolve_common_dir(git_dir: Path) -> Path:
     return (git_dir / raw_path).resolve() if raw_path and "\0" not in raw_path else git_dir
 
 
-def _read_origin_remote(config_path: Path) -> tuple[str, str] | None:
+def _read_git_config(config_path: Path) -> configparser.ConfigParser | None:
     source = read_bounded_text(config_path, MAX_GIT_CONFIG_BYTES)
     if source is None:
         return None
     parser = configparser.ConfigParser(interpolation=None, strict=False)
     try:
         parser.read_string(source)
-        remote = parser.get('remote "origin"', "url")
-    except (configparser.Error, KeyError, ValueError):
+    except (configparser.Error, ValueError):
         return None
-    return _parse_github_remote(remote.strip())
+    return parser
 
 
 def _parse_github_remote(remote: str) -> tuple[str, str] | None:
@@ -132,7 +188,11 @@ def _read_head(git_dir: Path, common_dir: Path) -> tuple[str | None, str] | None
         return None, value
     if not value.startswith("ref: refs/heads/"):
         return None
+    from metabrowser.git.ref_names import is_valid_ref_name
+
     reference = value.removeprefix("ref: ")
+    if not is_valid_ref_name(reference):
+        return None
     branch = reference.removeprefix("refs/heads/")
     revision = _read_reference(git_dir, common_dir, reference)
     if revision is None:

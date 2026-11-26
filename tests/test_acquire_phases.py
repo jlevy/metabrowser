@@ -15,16 +15,19 @@ import itertools
 import logging
 import os
 import re
+import shutil
 import signal
 import time
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import RepositoryTooLargeError, acquire_source
+from metabrowser.cache.free_space import FREE_SPACE_RESERVE_ENV
 from metabrowser.cache.origin import classify_remote_failure
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.cli import acquire_cli, clone_report
@@ -154,10 +157,8 @@ def _fetch_after(monkeypatch: pytest.MonkeyPatch, prelude: str, *, then_fetch: b
     real_args = acquire_module.mirror_fetch_args
     after = 'exec git "$@"' if then_fetch else "exit 1"
 
-    def args(
-        remote_url: str, *, prune: bool, progress: bool = False, negotiation: tuple[str, ...] = ()
-    ) -> list[str]:
-        fetch = real_args(remote_url, prune=prune, progress=progress, negotiation=negotiation)
+    def args(remote_url: str, **options: Any) -> list[str]:
+        fetch = real_args(remote_url, **options)
         return ["-c", f"alias.standin=!f() {{ {prelude}; {after}; }}; f", "standin", *fetch]
 
     monkeypatch.setattr(acquire_module, "mirror_fetch_args", args)
@@ -511,7 +512,7 @@ def test_a_provider_refusal_writes_nothing_and_runs_no_git(
     _allow_installed_git(monkeypatch)
     source = _source(tmp_path)
 
-    async def too_large(checked: GitSource) -> None:
+    async def too_large(checked: GitSource, *, home: Path) -> None:
         raise RepositoryTooLargeError(checked.normalized, detail="measured")
 
     async def no_git(*_args: object, **_kwargs: object) -> bytes:
@@ -525,13 +526,40 @@ def test_a_provider_refusal_writes_nothing_and_runs_no_git(
     assert not home.exists()
 
 
+def test_a_volume_below_the_reserve_refuses_a_first_clone_from_any_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``file://`` origin no provider owns is refused too, and the volume read is the
+    one that will hold the cache, which does not exist yet."""
+
+    _allow_installed_git(monkeypatch)
+    source = _source(tmp_path)
+    asked: list[Path] = []
+
+    def low(path: str | Path) -> SimpleNamespace:
+        asked.append(Path(path))
+        return SimpleNamespace(total=10**12, used=10**12, free=400_000_000)
+
+    async def no_git(*_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("a refused first clone runs no Git")
+
+    monkeypatch.delenv(FREE_SPACE_RESERVE_ENV, raising=False)
+    monkeypatch.setattr(shutil, "disk_usage", low)
+    monkeypatch.setattr(acquire_module, "_run", no_git)
+    home = tmp_path / "home"
+    with pytest.raises(RepositoryTooLargeError, match=r"has 400 MB free, less than the 1\.0 GB"):
+        asyncio.run(acquire_source(source, home=home))
+    assert asked == [tmp_path]
+    assert not home.exists()
+
+
 def test_a_below_floor_git_is_refused_before_any_provider_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def below_floor() -> tuple[int, int, int]:
         raise UnsupportedGitVersionError("git version 2.43.0", "2.43.7")
 
-    async def no_check(_source: GitSource) -> None:
+    async def no_check(_source: GitSource, *, home: Path) -> None:
         raise AssertionError("the provider check ran before the Git floor")
 
     monkeypatch.setattr(acquire_module, "require_acquisition_git", below_floor)

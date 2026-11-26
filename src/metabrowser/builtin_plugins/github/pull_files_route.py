@@ -24,7 +24,8 @@ while they are the pull request's as last known: the newer of the record and the
 list row, by ``updated_at``. A comment, a review, or a label changes neither. When the list
 or that newer source names no head, the list is current while the pull request's
 ``updated_at`` is no newer than the list's ``fetched_at``, because any push updates it, and
-with neither known it ages by the refresh coordinator's window. A list another account
+with neither known it ages by ``FULL_REFRESH_S``, the interval at which what a view shows
+is read in full when nothing reports its change. A list another account
 read, or one whose last refresh ended ``account_changed``, is stale, as a list of pull
 requests is. ``fetched_at`` is this machine's clock and ``updated_at`` GitHub's, so under
 that fallback a clock behind GitHub's can make a new list stale; the window holds such a
@@ -52,7 +53,7 @@ import os
 import re
 import stat
 import threading
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import timedelta
@@ -60,7 +61,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
 
-from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github import gh_budget, pull_list
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_PULL_FILES,
@@ -86,6 +87,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     RecordAbsence,
 )
 from metabrowser.builtin_plugins.github.pull_route import cached_pull_record, pull_host
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_files
 from metabrowser.http_caching import build_scoped_etag
 from metabrowser.invisible_chars import display_segment
@@ -418,7 +420,11 @@ def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) 
     if facts.updated_at is not None:
         fresh = pull_list.parse_stamp(facts.updated_at) <= fetched
     else:
-        fresh = pull_list.utc_now() - fetched <= timedelta(seconds=FRESHNESS_WINDOW_S)
+        # Nothing reports this list's change, so it is read in full every FULL_REFRESH_S
+        # while something shows it. A list the catalog's row or the record vouches for is
+        # not read again on a clock: it is a function of the head and base it names, and
+        # is read at once when either moves.
+        fresh = pull_list.utc_now() - fetched <= timedelta(seconds=FULL_REFRESH_S)
     return "current" if fresh else "stale"
 
 
@@ -670,6 +676,15 @@ def files_refresh_wanted(
             seconds=FRESHNESS_WINDOW_S
         )
         return due, local
+    if isinstance(listed, PullFileList) and listed.complete and stamp is not None:
+        # A whole list from GitHub, read again because it aged or its pull request changed
+        # with its head where it was: automatic work, admitted as background work is, and
+        # five minutes apart over the process's own ceiling.
+        apart = gh_budget.full_read_interval(FRESHNESS_WINDOW_S, now=now)
+        if not gh_budget.admission(
+            ("core",), now=now, ceiling=False
+        ).admitted or now - pull_list.parse_stamp(stamp.at) <= timedelta(seconds=apart):
+            return False, local
     return refresh_is_due(stamp, now=now), local
 
 
@@ -685,6 +700,7 @@ def start_files_refresh(
     wanted: bool,
     local: LocalComparison | None,
     background: bool = False,
+    fallback: Callable[[], Awaitable[bool]] | None = None,
 ) -> FilesRefreshStart:
     """Start the refresh *ask* names, join the one running, or say why it starts none.
 
@@ -694,7 +710,10 @@ def start_files_refresh(
     Like the pull-request jobs, at most :data:`MAX_PULL_JOBS` may be queued or running,
     since the numbers are request text; past it a request is refused, ``too_many``, and
     starts nothing. A *background* job, a prefetch's, counts toward no bound and holds no
-    network slot for its requests; a reader's request that joins it makes it count.
+    network slot for its requests; a reader's request that joins it makes it count. Its
+    *fallback* says whether GitHub's list may be read when *local* gives none, which the
+    job asks only then (:func:`~.pull_files_refresh.refresh_pull_files`); once a reader's
+    request has joined the job, the list is read without asking it.
     """
 
     repository, coordinator = view.repository, view.coordinator
@@ -711,8 +730,22 @@ def start_files_refresh(
         if len(_FILE_JOBS) >= MAX_PULL_JOBS:
             return "too_many"
         _FILE_JOBS.add(key)
+    else:
+        # No job runs under the key, so a reader's mark an earlier one left is not this one's.
+        _FILE_JOBS.discard(key)
+    admits = fallback
+    if fallback is not None:
+        asked = fallback
+
+        async def joined_or_asked() -> bool:
+            # A reader who joined waits on this job for the list, which their own request
+            # would have read from GitHub had the job not been running; refused, they had
+            # none until their tree asked again (review D3 of #737).
+            return key in _FILE_JOBS or await asked()
+
+        admits = joined_or_asked
     slot: _Slot = _no_slot if background else coordinator.slot
-    work = partial(_run_files_refresh, repository, ask.number, local, slot)
+    work = partial(_run_files_refresh, repository, ask.number, local, slot, admits)
     return coordinator.start(key, work, network=False)
 
 
@@ -732,9 +765,13 @@ async def _run_files_refresh(
     number: int,
     local: LocalComparison | None,
     slot: _Slot,
+    fallback: Callable[[], Awaitable[bool]] | None = None,
 ) -> None:
     # Here, not at the top: answering from the cache starts no gh, and loads none of it.
-    from metabrowser.builtin_plugins.github.pull_files_refresh import refresh_pull_files
+    from metabrowser.builtin_plugins.github.pull_files_refresh import (
+        FallbackRefused,
+        refresh_pull_files,
+    )
 
     try:
         await refresh_pull_files(
@@ -743,9 +780,14 @@ async def _run_files_refresh(
             local=local,
             slot=slot,
             known_head=partial(known_head, repository.home, repository.slug, number),
+            fallback=fallback,
         )
     except PullDataError:
         # Its stamp says how it ended, and the route reports that.
+        return
+    except FallbackRefused:
+        # Nothing was asked of GitHub, so no stamp says anything; the caller that refused
+        # it reports why.
         return
     except Exception:
         # A bug, which no stamp names; keep one, as the list's job does.

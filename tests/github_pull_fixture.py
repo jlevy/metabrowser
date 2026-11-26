@@ -13,7 +13,8 @@ so every commit ID is the same on every machine. It stands in for
 
 ``scenario`` answers every ``gh api`` read of those pull requests from
 ``tests/fixtures/github-pull/responses.json``, scrubbed real responses, and ``gh auth
-status`` for one signed-in account. GraphQL catalog pages contain 102 rows, of which
+status`` for one signed-in account, which ``gh api user``, the account check's read,
+names too. GraphQL catalog pages contain 102 rows, of which
 100 are open and two are closed. Fixed REST list entries remain available for generic
 transport tests:
 
@@ -38,6 +39,13 @@ With ``--serve``, it serves one of those pull requests from that home for a brow
 the QA runbook's pull-request page walkthrough does::
 
     github_pull_fixture.py <directory> --serve <number> <port>
+
+With ``--guided`` the descriptions of 7 and 8 carry guides, and 9's two blocks;
+``--guided-stack`` adds a native stack's guide to 10's, for a stack whose top is 10;
+``--describe`` then writes one of ``GUIDE_VARIANTS`` or ``BUILT_VARIANTS`` into a cached
+description, pinned as the guide already there is::
+
+    github_pull_fixture.py <directory> --describe <number> <variant>
 """
 
 from __future__ import annotations
@@ -53,7 +61,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Generator, Mapping
+from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -72,7 +80,7 @@ DEFAULT_BRANCH: Final = "topic"
 _WHEN: Final = 1788000000
 
 _FAKE_GH: Final = """#!{python}
-import json, os, sys
+import hashlib, json, os, re, sys
 
 args = sys.argv[1:]
 log = os.environ.get("FAKE_GH_LOG")
@@ -151,13 +159,57 @@ if args[:1] == ["api"]:
             path = "graphql:" + state + ":" + fields.get("cursor", "start")
         if fields.get("owner", "").casefold() != "octo" or fields.get("name", "").casefold() != "demo":
             path = "graphql:unavailable-repository"
-    entry = pick(path, scenario["api"].get(path, {{"status": 404, "body": {{"message": "Not Found"}}}}))
+    if path == "user" and "user" not in scenario["api"]:
+        # The account check's read (gh.gh_account). It names the login the scenario's
+        # ``auth`` answer does, from the same sequence ``gh auth status`` draws on, with
+        # an ETag that is the login's own, so the same login answers 304.
+        # A gh too old for ``auth status --json`` answers ``gh api user`` as any does, so
+        # a scenario whose ``auth`` is that refusal is such a gh signed out: the account
+        # check then asks ``gh auth status`` why, and that is the refusal it meets. One
+        # that is signed in answers from an ``api`` entry for ``user``.
+        answer = pick("auth", scenario["auth"])
+        too_old = "unknown flag" in answer.get("stderr", "")
+        if answer.get("exit", 0) != 0 and not too_old:
+            sys.stderr.write(answer.get("stderr", ""))
+            sys.exit(answer["exit"])
+        hosts = [] if too_old else (
+            json.loads(answer["stdout"]).get("hosts", {{}}).get("github.com", []))
+        active = next((host for host in hosts if host.get("active")), None)
+        if active is None:
+            sys.stderr.write("To get started with GitHub CLI, please run:  gh auth login\\n")
+            sys.exit(4)
+        if active.get("state") != "success" and "401" not in str(active.get("error")):
+            sys.stderr.write("error connecting to api.github.com\\n")
+            sys.exit(1)
+        if active.get("state") != "success":
+            entry = {{"status": 401, "body": {{"message": "Bad credentials"}}}}
+        else:
+            entry = {{"status": 200, "headers": {{"Etag": '"user-' + active["login"] + '"'}},
+                     "body": {{"login": active["login"], "id": 1, "type": "User"}}}}
+    else:
+        missing = {{"status": 404, "body": {{"message": "Not Found"}}}}
+        issue = re.fullmatch(r"(repos/[^/]+/[^/]+)/issues/([0-9]+)", path or "")
+        if issue and path not in scenario["api"]:
+            # A probe's read (pulls.probe_path): the pull request as its issue carries it,
+            # from the scenario's answer for the pull. It embeds no repository, so its
+            # ETag is its own fields' and a push that moves the pull's ETag leaves it
+            # alone, as measured on 2026-11-23 (pulls.PROBE_RESOURCE).
+            pull = scenario["api"].get(issue.group(1) + "/pulls/" + issue.group(2), missing)
+            entry = pick(path, pull)
+            if entry["status"] == 200 and isinstance(entry.get("body"), dict):
+                body = {{key: entry["body"].get(key) for key in ("number", "updated_at", "state", "title")}}
+                body["pull_request"] = {{"merged_at": entry["body"].get("merged_at")}}
+                tag = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:32]
+                headers = {{**entry.get("headers", {{}}), "Etag": 'W/"issue-' + tag + '"'}}
+                entry = {{"status": 200, "headers": headers, "body": body}}
+        else:
+            entry = pick(path, scenario["api"].get(path, missing))
     status = entry["status"]
     headers = dict(entry.get("headers", {{}}))
     body = entry["raw"].encode() if "raw" in entry else json.dumps(entry.get("body", None)).encode()
     if match is not None and headers.get("Etag") == match:
         status, body = 304, b""
-    reason = {{200: "OK", 304: "Not Modified", 403: "Forbidden", 404: "Not Found",
+    reason = {{200: "OK", 304: "Not Modified", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
               429: "Too Many Requests"}}.get(status, "Status")
     out = f"HTTP/2.0 {{status}} {{reason}}\\n".encode()
     for name, value in headers.items():
@@ -218,8 +270,12 @@ def _commit(
     return (stream + "\n").encode()
 
 
-def build_origin(directory: Path) -> Origin:
-    """The origin; every pull-request ref is written the way GitHub writes it."""
+def build_origin(directory: Path, *, more: Mapping[str, str] | None = None) -> Origin:
+    """The origin; every pull-request ref is written the way GitHub writes it.
+
+    *more* are files pull request 7's head adds besides its own, for a guide that cites them
+    (:func:`build_home` with *documents*); every other build leaves the recipe as it is.
+    """
 
     origin = directory / "github-pull-origin.git"
     env = git_env(directory)
@@ -245,7 +301,7 @@ def build_origin(directory: Path) -> Origin:
                 "refs/pull/7/head",
                 4,
                 "count to two",
-                {"src/app.txt": "one\ntwo\n", "docs/new.md": "# New\n"},
+                {"src/app.txt": "one\ntwo\n", "docs/new.md": "# New\n", **(more or {})},
                 parent=3,
             ),
             _commit(
@@ -495,23 +551,45 @@ HOSTILE_COMMENT: Final = (
 def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
     """Every tag and attribute in *html* the page may not insert, parsed as HTML.
 
-    The allowlist is :mod:`metabrowser.inert_html`'s. *images* admits an image, which a
-    document inside the served tree keeps and a pull-request comment never does. Every
-    link must leave for http(s) or stay inside the served tree, a heading's ``id`` must
-    be one of the hardener's anchors, and an image's ``loading`` must be ``lazy``.
+    The allowlist is :mod:`metabrowser.inert_html`'s. An image from the web is always
+    admitted, as an ``https`` address with no referrer sent; *images* also admits one
+    inside the served tree, which a document keeps and a pull-request comment never does.
+    Every link must leave for http(s) or stay inside the served tree, a heading's ``id``
+    must be one of the hardener's anchors, an image's ``loading`` must be ``lazy``, a
+    span may only be the image fallback's, an input only a disabled checkbox, and a layout
+    attribute (``align``, ``width``, ``height``) must hold a value the hardener keeps.
     """
 
     from html.parser import HTMLParser
 
-    from metabrowser.inert_html import ALLOWED_ATTRIBUTES, ALLOWED_TAGS, ANCHOR_PREFIX, is_inside
+    from metabrowser.inert_html import (
+        ALLOWED_ATTRIBUTES,
+        ALLOWED_TAGS,
+        ANCHOR_PREFIX,
+        CHECKBOX_ATTRIBUTES,
+        IMAGE_FALLBACK_CLASS,
+        allowed_attributes,
+        is_inside,
+    )
 
-    tags = ALLOWED_TAGS | ({"img"} if images else set())
+    tags = ALLOWED_TAGS | {"img", "input"}
     found: list[str] = []
 
     class _Check(HTMLParser):
         def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
             if tag not in tags:
                 found.append(f"<{tag}>")
+            if tag == "input" and [
+                (name, value or "") for name, value in attrs if name != "checked"
+            ] != list(CHECKBOX_ATTRIBUTES):
+                found.append(f"input{attrs}")
+            if tag == "img":
+                written = dict(attrs)
+                if (written.get("src") or "").startswith("https://"):
+                    if written.get("referrerpolicy") != "no-referrer":
+                        found.append("img[referrerpolicy missing]")
+                elif not images:
+                    found.append("<img>")
             for name, value in attrs:
                 if name not in ALLOWED_ATTRIBUTES.get(tag, ()):
                     found.append(f"{tag}[{name}]")
@@ -519,6 +597,19 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
                     found.append(f"{tag}[id={value}]")
                 elif name == "loading" and value != "lazy":
                     found.append(f"{tag}[loading={value}]")
+                elif name == "referrerpolicy" and value != "no-referrer":
+                    found.append(f"{tag}[referrerpolicy={value}]")
+                elif name == "class" and value != IMAGE_FALLBACK_CLASS:
+                    found.append(f"{tag}[class={value}]")
+                elif name == "data-tip-text" and not (value or "").startswith(
+                    ("https://", "http://")
+                ):
+                    found.append(f"{tag}[data-tip-text={value}]")
+                elif name in {"align", "width", "height"}:
+                    # A layout attribute holds what the hardener would keep of it.
+                    kept = allowed_attributes(tag, {name: value}, None)
+                    if (name, value or "") not in kept:
+                        found.append(f"{tag}[{name}={value}]")
                 elif name in {"href", "src"} and not (
                     (value or "").startswith(("https://", "http://")) or is_inside(value)
                 ):
@@ -635,7 +726,7 @@ def logged_gh_calls(directory: Path) -> list[str]:
                 f"gh api graphql catalog state={state} cursor={fields.get('cursor', 'start')}"
             )
             continue
-        path = next(arg for arg in args if arg.startswith("repos/"))
+        path = next(arg for arg in args if arg == "user" or arg.startswith("repos/"))
         if "--jq" in args:
             calls.append(f"gh api {path} --jq {args[args.index('--jq') + 1]}")
             continue
@@ -645,17 +736,32 @@ def logged_gh_calls(directory: Path) -> list[str]:
     return calls
 
 
+# What a first clone of octo/demo asks gh, in order: the GitHub status check, then the
+# repository's size (`GithubProvider.check_first_clone`). A command that clones and
+# should otherwise ask GitHub nothing logs exactly these.
+FIRST_CLONE_GH_CALLS: Final[list[str]] = [
+    "gh auth status",
+    "gh api repos/octo/demo --jq .size",
+]
+
+
 def in_a_stable_order(calls: list[str]) -> list[str]:
     """The log's calls, with those that run together in one order.
 
     A refresh reads the pull first, for its head, and then its other parts in flight
     together, which reach the log in whatever order the processes did. Only those parts
     are sorted: a list's pages are read one after another, and their order is pinned.
+    The list probe, which runs beside all of it, is listed first.
     """
 
-    ordered: list[str] = []
+    # The list probe a page's automatic ask starts runs beside that ask's own work
+    # (`attend_list`), so it reaches the log anywhere among it: it is listed first.
+    beside = [call for call in calls if _LIST_PROBE.match(call)]
+    ordered: list[str] = list(beside)
     together: list[str] = []
     for call in calls:
+        if _LIST_PROBE.match(call):
+            continue
         if _RECORD_PART.match(call):
             together.append(call)
             continue
@@ -666,6 +772,7 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
     return ordered
 
 
+_LIST_PROBE = re.compile(r"gh api repos/[^/]+/[^/]+/(issues|pulls)\?state=all&sort=updated&")
 # The parts of a record a refresh reads together, after the pull itself.
 _RECORD_PART = re.compile(
     r"gh api repos/[^/]+/[^/]+/"
@@ -820,6 +927,38 @@ def generated_item(number: int) -> dict[str, Any]:
     )
 
 
+def head_item(
+    number: int,
+    head: str,
+    title: str,
+    *,
+    state: str = "open",
+    draft: bool = False,
+    merged: bool = False,
+    head_repository: str | None = "octo/demo",
+) -> dict[str, Any]:
+    """A pull request from branch *head* of *head_repository*, as the ref chooser lists it.
+
+    Its repository is the demo's own by default, so its branch is the repository's; a fork
+    names another, and a deleted fork none.
+    """
+
+    item = generated_item(number)
+    item["title"] = title
+    item["state"] = state
+    item["draft"] = draft
+    item["head"] = {
+        "ref": head,
+        "sha": "0" * 40,
+        "repo": {"full_name": head_repository} if head_repository is not None else None,
+    }
+    if state == "closed":
+        item["closed_at"] = item["updated_at"]
+    if merged:
+        item["merged_at"] = item["updated_at"]
+    return item
+
+
 def list_entries(origin: Origin) -> dict[str, Any]:
     """Every ``gh api`` path of the repository's lists and its answer."""
 
@@ -970,6 +1109,10 @@ def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
     return {"stdout": json.dumps({"hosts": {"github.com": [host]}}) + "\n", "exit": 0}
 
 
+LIST_PROBE_PATH = "repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1"
+NEWEST_PULL_PATH = "repos/octo/demo/pulls?state=all&sort=updated&direction=desc&per_page=1"
+
+
 def catalog_entries(
     items: list[dict[str, Any]], *, reader: str = READER, repository_id: str = "R_demo"
 ) -> dict[str, Any]:
@@ -1034,6 +1177,24 @@ def catalog_entries(
                 }
             }
             entries[key] = ok(key, body)
+    # The list probe's one-row page: the pull request updated last, as the issues list
+    # names it, and the pulls page asked when an issue is newest.
+    newest = max(items, key=lambda item: (item["updated_at"], item["number"]), default=None)
+    as_issue = (
+        []
+        if newest is None
+        else [
+            {
+                "number": newest["number"],
+                "updated_at": newest["updated_at"],
+                "pull_request": {
+                    "url": f"https://api.github.com/repos/octo/demo/pulls/{newest['number']}"
+                },
+            }
+        ]
+    )
+    entries[LIST_PROBE_PATH] = ok(LIST_PROBE_PATH, as_issue)
+    entries[NEWEST_PULL_PATH] = ok(NEWEST_PULL_PATH, [newest] if newest is not None else [])
     return entries
 
 
@@ -1156,10 +1317,24 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
         setattr(target, name, original)
 
 
-def build_home(directory: Path, *, files: bool = False) -> None:
+def build_home(
+    directory: Path,
+    *,
+    files: bool = False,
+    guided: bool = False,
+    documents: bool = False,
+    large: bool = False,
+    stack_guide: bool = False,
+) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
     With *files*, :func:`build_file_lists` adds lists of changed files.
+    With *guided*, the fake GitHub serves guides against known fixture comparisons; with
+    *documents* too, pull request 7 also adds a YAML file, and its guide ends on a step that
+    cites it and a Markdown file whole. With *large* as well, it adds a Markdown file whose
+    whole patch charges past a step's budget for whole files, which that step cites too
+    (:data:`_DOCUMENT_FILES`). With *stack_guide*, 10's description also carries the guide
+    of a native stack whose top it is (:data:`_STACK_GUIDE_ITEMS`).
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -1173,8 +1348,14 @@ def build_home(directory: Path, *, files: bool = False) -> None:
     from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
     from metabrowser.git.process import detect_git_version
 
-    origin = build_origin(directory)
+    kept = ("config/settings.yaml", "docs/large.md") if large else ("config/settings.yaml",)
+    more = {path: _DOCUMENT_FILES[path] for path in kept} if documents else None
+    origin = build_origin(directory, more=more)
     answers = scenario(origin)
+    if guided:
+        _add_guides(origin, answers, documents=kept if documents else ())
+    if stack_guide:
+        _add_stack_guide(origin, answers)
     environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
@@ -1202,6 +1383,337 @@ def build_home(directory: Path, *, files: bool = False) -> None:
             build_file_lists(directory, answers)
     write_damaged_records(directory / "home")
     (directory / "root").mkdir(exist_ok=True)
+
+
+def guide_body(origin: Origin) -> str:
+    """An author-written description for the stand-in pull request 7."""
+    return _guide_body(
+        origin["base"], origin["fork_head"], _COUNT_STEP + _DOCS_STEP + _MORE_DOCS_REFERENCES
+    )
+
+
+def _guide_body(merge_base: str, head: str, items: str) -> str:
+    """A description that introduces a guide pinned to *merge_base* and *head*, whose
+    `items` are the YAML lines *items*."""
+    return f"""The app learns to count to two. Its count and its explanation live in separate
+files.
+
+```guided-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "{merge_base}"
+    head: "{head}"
+  items:
+{items}```
+"""
+
+
+# The stand-in guide's two steps, entries at the top of `items`, which `_in_group` indents
+# into a group.
+_COUNT_STEP = """\
+    - title: Start with the count
+      note: Check that the original value is preserved.
+      references:
+        - {path: src/app.txt, side: new, start_line: 1, end_line: 2}
+"""
+_DOCS_STEP = """\
+    - title: Read the new guide
+      note: Check the new docs against the behavior.
+      references:
+        - {path: docs/new.md, side: new, start_line: 1, end_line: 1}
+"""
+# The second step's references after its first, as guide_body cites them.
+_MORE_DOCS_REFERENCES = """\
+        - {path: src/app.txt}
+        - {path: missing.txt}
+        - {path: src/app.txt, side: old, start_line: 2, end_line: 4}
+"""
+
+
+def _in_group(step: str) -> str:
+    return "".join(f"    {line}\n" for line in step.splitlines())
+
+
+# Two more steps over the stand-in's changes, so each group of a longer guide can hold two:
+# the count's old side, and each changed file whole.
+_OLD_COUNT_STEP = """\
+    - title: Compare the old count
+      note: Check what the count replaced.
+      references:
+        - {path: src/app.txt, side: old, start_line: 1, end_line: 1}
+"""
+_WHOLE_STEP = """\
+    - title: Read each file whole
+      note: Check the two changes together.
+      references:
+        - {path: src/app.txt}
+        - {path: docs/new.md}
+"""
+# The count's step with Markdown in its note, which renders as the description does: two
+# lines that join, a list with no blank line before it, a relative link, raw HTML, a
+# script, an image whose source is not a URL, and an image over https. Its title is markup
+# too, which stays text.
+_MARKDOWN_STEP = """\
+    - title: Start with the <b>count</b>
+      note: |-
+        Check that the **original** value
+        is preserved:
+        - `one` stays,
+        - and [the guide](docs/new.md) says so.
+
+        Raw <b>bold</b><script>alert(1)</script> <img src=x onerror=alert(1)> ![chart](https://example.com/chart.png)
+      references:
+        - {path: src/app.txt, side: new, start_line: 1, end_line: 2}
+"""
+
+# The count's step with a note KPress takes seconds to render, 100 unpaired `[` before
+# 60 KiB of `%` (SLOW in tests/test_inert_render_deadline.py), which a deadline shortened
+# through METABROWSER_INERT_RENDER_DEADLINE_MS refuses on any machine.
+_SLOW_NOTE_STEP = f"""\
+    - title: Start with the count
+      note: |-
+        {"[" * 100 + "%" * (60 * 1024)}
+      references:
+        - {{path: src/app.txt, side: new, start_line: 1, end_line: 2}}
+"""
+
+
+# References the format refuses, each in a step of its own: a range in another pull
+# request's file, a commit beside a path, a commit beside a pull request, and a commit
+# named by a short SHA.
+_REFUSED_REFERENCES: Final[dict[str, str]] = {
+    "pull-file-range": "{pull: 10, path: docs/draft.md, side: new, start_line: 1, end_line: 1}",
+    "commit-and-path": '{commit: "' + "e" * 40 + '", path: src/app.txt}',
+    "commit-and-pull": '{commit: "' + "e" * 40 + '", pull: 8}',
+    "short-commit": '{commit: "85fcb2f"}',
+}
+
+
+# The guides `--describe` writes into a cached description: the stand-in guide's steps each
+# in a group, the first with a note; groups mixed with a step; a longer guide, two groups
+# of two steps each, which tells numbering through the groups from numbering by entry;
+# ten steps in no group, whose numbers run to two digits from the list's edge;
+# notes in Markdown, a group's of two steps and the first step's; a note too slow to
+# render; and blocks the page refuses: an empty group, a group inside a group, and each
+# reference of `_REFUSED_REFERENCES` after the count's step.
+GUIDE_VARIANTS: Final[dict[str, str]] = {
+    "grouped": (
+        "    - title: The count\n"
+        "      note: Read the value before its explanation.\n"
+        "      items:\n" + _in_group(_COUNT_STEP) + "    - title: The docs\n"
+        "      items:\n" + _in_group(_DOCS_STEP + _MORE_DOCS_REFERENCES)
+    ),
+    "mixed": (
+        "    - title: The count\n"
+        "      note: Read the value before its explanation.\n"
+        "      items:\n" + _in_group(_COUNT_STEP) + _DOCS_STEP
+    ),
+    "longer": (
+        "    - title: The count\n"
+        "      items:\n" + _in_group(_COUNT_STEP + _OLD_COUNT_STEP) + "    - title: The docs\n"
+        "      items:\n" + _in_group(_DOCS_STEP + _WHOLE_STEP)
+    ),
+    "ten-steps": (_COUNT_STEP + _DOCS_STEP) * 5,
+    "markdown": (
+        "    - title: The count\n"
+        "      note: Read the `count` before *its* explanation.\n"
+        "      items:\n" + _in_group(_MARKDOWN_STEP + _OLD_COUNT_STEP) + _DOCS_STEP
+    ),
+    "slow-note": _SLOW_NOTE_STEP + _DOCS_STEP,
+    "empty-group": "    - title: The count\n      items: []\n" + _DOCS_STEP,
+    "nested-group": (
+        "    - title: The count\n"
+        "      items:\n"
+        "        - title: The value\n"
+        "          items:\n" + _in_group(_in_group(_COUNT_STEP))
+    ),
+    **{
+        name: _COUNT_STEP
+        + f"    - title: Cite it\n      note: Check it.\n      references:\n        - {reference}\n"
+        for name, reference in _REFUSED_REFERENCES.items()
+    },
+}
+
+
+def _past_max_items(_head: str) -> str:
+    """Two groups whose steps pass MAX_ITEMS together, though each list is within its own
+    bound, so only the total refuses the guide."""
+    from metabrowser.builtin_plugins.github.guided_review import MAX_ITEMS
+
+    group = _in_group(_COUNT_STEP) * (MAX_ITEMS // 2)
+    return "".join(f"    - title: Part {part}\n      items:\n{group}" for part in (1, 2))
+
+
+# A step that cites past this pull request: a layer of its stack, a document another pull
+# request changes and a patch a third does, a pull request this copy knows from its list
+# alone and one it has not read, the guide's own head as a commit, and a commit the store
+# lacks.
+_MISSING_COMMIT: Final = "e" * 40
+
+
+def _kinds_step(head: str) -> str:
+    return f"""\
+    - title: Read it beside its neighbors
+      note: Check the layer below and the draft above it.
+      references:
+        - {{pull: 8}}
+        - {{pull: 10, path: docs/draft.md}}
+        - {{pull: 9, path: src/app.txt}}
+        - {{pull: 50}}
+        - {{pull: 2000}}
+        - {{commit: "{head}"}}
+        - {{commit: "{_MISSING_COMMIT}"}}
+"""
+
+
+def _kinds(head: str) -> str:
+    """The count's step, then a step of every other kind of reference (:func:`_kinds_step`)."""
+    return _COUNT_STEP + _kinds_step(head)
+
+
+# The guides `--describe` builds as it writes one, from the format's bounds, so they follow
+# the constants, or from the guide's head: a guide past MAX_ITEMS, and one of every kind of
+# reference.
+BUILT_VARIANTS: Final[dict[str, Callable[[str], str]]] = {
+    "past-max-items": _past_max_items,
+    "kinds": _kinds,
+}
+
+
+def grouped_guide_body(origin: Origin) -> str:
+    """The stand-in guide of :func:`guide_body` with each of its steps in a group."""
+    return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["grouped"])
+
+
+def kinds_guide_body(origin: Origin) -> str:
+    """The stand-in guide's count step, then a step that cites every other kind of
+    reference (``kinds`` of :data:`BUILT_VARIANTS`)."""
+    return _guide_body(origin["base"], origin["fork_head"], _kinds(origin["fork_head"]))
+
+
+def commits_guide_body(origin: Origin, commits: Sequence[str]) -> str:
+    """The stand-in guide's count step, then a step that cites each of *commits*."""
+    cited = "".join(f'        - {{commit: "{commit}"}}\n' for commit in commits)
+    step = (
+        "    - title: Read the commits\n      note: Check each commit.\n      references:\n" + cited
+    )
+    return _guide_body(origin["base"], origin["fork_head"], _COUNT_STEP + step)
+
+
+def markdown_guide_body(origin: Origin) -> str:
+    """The stand-in guide with Markdown in its notes (``markdown`` of :data:`GUIDE_VARIANTS`)."""
+    return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["markdown"])
+
+
+# The files a documents build adds to pull request 7's head: a YAML file, which a step that
+# cites it whole draws as Changes does, and a Markdown file whose whole patch charges past
+# MAX_STEP_PATCH_BYTES in guided_review.py, though the file is inside the rendered route's
+# read bound, as test_guided_review_route.py checks.
+_DOCUMENT_FILES: Final[dict[str, str]] = {
+    "config/settings.yaml": "count: 2\nname: demo\n",
+    "docs/large.md": "# Large\n\n"
+    + "".join(
+        f"Paragraph {n} of a document a step cites whole, past the step's budget for whole files.\n\n"
+        for n in range(1, 3001)
+    ),
+}
+
+
+def _document_step(paths: tuple[str, ...]) -> str:
+    """A step that names docs/new.md and each of *paths* whole: files the rendered route
+    renders, which the guide draws whole, and, with docs/large.md, src/app.txt after it,
+    whose patch still has the step's whole budget."""
+    cited = ("docs/new.md", *paths, *(("src/app.txt",) if "docs/large.md" in paths else ()))
+    return (
+        "    - title: Read the new guide whole\n"
+        "      note: Check that it reads as a document.\n"
+        "      references:\n" + "".join(f"        - {{path: {path}}}\n" for path in cited)
+    )
+
+
+# The guide of a stack whose bottom's merge base is the stand-in's base and whose top is 10,
+# as stack 70 (8, then 10) reads it: a group with a note over the layers, then the draft
+# whole, as tests/test_cli_github_stack_golden.py's top guide reads them without the group.
+_STACK_GUIDE_ITEMS: Final = """\
+    - title: Orientation
+      note: The stack's two layers, bottom first.
+      items:
+        - title: The layers
+          note: 8 extends the guide; 10 starts a draft on top of it.
+          references:
+            - {pull: 8}
+            - {pull: 10}
+    - title: The draft
+      note: Read the draft whole.
+      references:
+        - {path: docs/draft.md}
+"""
+
+
+def _add_stack_guide(origin: Origin, answers: dict[str, Any]) -> None:
+    """10's description, with a `stack-review` block pinned to the base and 10's head after
+    what it says: the guide of a stack whose top is 10, which 10 carries."""
+    pull = answers["api"]["repos/octo/demo/pulls/10"]["body"]
+    pull["body"] = f"""{pull["body"]}
+
+```stack-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "{origin["base"]}"
+    head: "{origin["draft_head"]}"
+  items:
+{_STACK_GUIDE_ITEMS}```
+"""
+
+
+def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: tuple[str, ...]) -> None:
+    fence = guide_body(origin)
+    api = answers["api"]
+    if documents:
+        head, close, tail = fence.rpartition("```")
+        api["repos/octo/demo/pulls/7"]["body"]["body"] = (
+            head + _document_step(documents) + close + tail
+        )
+    else:
+        api["repos/octo/demo/pulls/7"]["body"]["body"] = fence
+    api["repos/octo/demo/pulls/8"]["body"]["body"] = fence
+    api["repos/octo/demo/pulls/9"]["body"]["body"] = fence + "\n" + fence
+
+
+def describe(directory: Path, number: int, variant: str) -> None:
+    """Write the guide *variant* of :data:`GUIDE_VARIANTS` or :data:`BUILT_VARIANTS` into the
+    cached description of pull request *number* in the home :func:`build_home` wrote with
+    ``--guided``, pinned as the guide already there is, as a fetch of the edited description
+    would leave it. The pins are read as :func:`_guide_body` writes them, so a variant the
+    page refuses can follow another."""
+
+    from metabrowser.builtin_plugins.github.pull_record import (
+        PullRecord,
+        read_pull_record,
+        write_pull_record,
+    )
+
+    home = directory / "home"
+    record = read_pull_record(home, _source_slug(), number)
+    assert isinstance(record, PullRecord)
+    pins = re.search(
+        r'^    merge_base: "([0-9a-f]{40})"\n    head: "([0-9a-f]{40})"$', record.pull.body, re.M
+    )
+    assert pins is not None, f"pull request {number} has no guide to rewrite"
+    items = (
+        GUIDE_VARIANTS[variant] if variant in GUIDE_VARIANTS else BUILT_VARIANTS[variant](pins[2])
+    )
+    body = _guide_body(pins[1], pins[2], items)
+    pull = record.pull.model_copy(update={"body": body})
+    write_pull_record(home, _source_slug(), record.model_copy(update={"pull": pull}))
 
 
 def _source_slug() -> str:
@@ -1311,12 +1823,18 @@ def write_damaged_records(home: Path) -> None:
     write_private_file_atomic(home, source_pull_record(slug, 13), b"{not json")
 
 
-def serve_stand_in(directory: Path, number: int, port: int) -> None:
+def serve_stand_in(
+    directory: Path, number: int, port: int, *, exit_on_eof: bool = False, checkout: bool = False
+) -> None:
     """Serve pull request *number* from a home :func:`build_home` wrote, for a browser.
 
     The same seams as :func:`build_home`, with the real clock, so the records read as
     stale and a refresh through the page asks the fake ``gh`` again. Nothing leaves
-    ``127.0.0.1``: the mirror refreshes from the ``file://`` origin.
+    ``127.0.0.1``: the mirror refreshes from the ``file://`` origin. With *exit_on_eof* the
+    server stops when its standard input closes, as a test that owns it needs. With
+    *checkout* it serves a reader's clone of the origin (:func:`clone_checkout`), made beside
+    the home, which lacks 7's head, so a guide's commit row names that commit, fetched with
+    its pull request, as not in this checkout.
     """
 
     from metabrowser.cache import acquire
@@ -1333,11 +1851,17 @@ def serve_stand_in(directory: Path, number: int, port: int) -> None:
     def remote_url_for(source: GitSource) -> str:
         return local if source.normalized == CANONICAL else source.normalized
 
+    served = f"{CANONICAL}/pull/{number}"
+    if checkout:
+        origin = Origin(directory / "github-pull-origin.git", {})
+        served = str(clone_checkout(origin, directory / "checkout"))
     with (
         _patched(acquire, "remote_url_for", remote_url_for),
         _patched(acquire, "require_acquisition_git", lambda: version),
     ):
-        _run_cli([f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)])
+        _run_cli(
+            [served, "--no-open", "--port", str(port)] + (["--exit-on-eof"] if exit_on_eof else [])
+        )
 
 
 # The checkouts :func:`build_checkout_home` makes, each with its ``origin`` and any other
@@ -1419,14 +1943,45 @@ if __name__ == "__main__":
         run_files_refresh(sys.argv[2:])
     elif len(sys.argv) == 3 and sys.argv[2] == "--checkout":
         build_checkout_home(Path(sys.argv[1]).resolve())
-    elif len(sys.argv) == 5 and sys.argv[2] == "--serve":
-        serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
+    elif (
+        len(sys.argv) in (5, 6, 7)
+        and sys.argv[2] == "--serve"
+        and sys.argv[5:] in ([], ["--exit-on-eof"], ["--checkout"], ["--checkout", "--exit-on-eof"])
+    ):
+        serve_stand_in(
+            Path(sys.argv[1]).resolve(),
+            int(sys.argv[3]),
+            int(sys.argv[4]),
+            exit_on_eof="--exit-on-eof" in sys.argv[5:],
+            checkout="--checkout" in sys.argv[5:],
+        )
     elif len(sys.argv) == 3 and sys.argv[2] == "--files":
         build_home(Path(sys.argv[1]).resolve(), files=True)
+    elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
+        build_home(Path(sys.argv[1]).resolve(), guided=True)
+    elif len(sys.argv) == 3 and sys.argv[2] == "--guided-stack":
+        build_home(Path(sys.argv[1]).resolve(), guided=True, stack_guide=True)
+    elif len(sys.argv) == 3 and sys.argv[2] in ("--guided-documents", "--guided-large-document"):
+        build_home(
+            Path(sys.argv[1]).resolve(),
+            guided=True,
+            documents=True,
+            large=sys.argv[2] == "--guided-large-document",
+        )
+    elif (
+        len(sys.argv) == 5
+        and sys.argv[2] == "--describe"
+        and sys.argv[4] in {*GUIDE_VARIANTS, *BUILT_VARIANTS}
+    ):
+        describe(Path(sys.argv[1]).resolve(), int(sys.argv[3]), sys.argv[4])
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
     else:
         raise SystemExit(
-            "usage: github_pull_fixture.py <directory> [--files | --checkout | --serve <number> <port>] "
+            "usage: github_pull_fixture.py <directory> "
+            "[--files | --guided | --guided-stack | --guided-documents "
+            "| --guided-large-document | --checkout "
+            "| --serve <number> <port> [--checkout] [--exit-on-eof] "
+            f"| --describe <number> {{{','.join([*GUIDE_VARIANTS, *BUILT_VARIANTS])}}}] "
             "or --files-refresh <metab arguments>"
         )

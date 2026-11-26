@@ -18,7 +18,7 @@ before: >-
   mkdir url co tmp &&
   (cd url && METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
-  --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" .
+  --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --guided
   > fixture.log 2>&1) &&
   (cd co && METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
@@ -27,21 +27,24 @@ before: >-
 ---
 # Golden Tests: The Agent Skill’s Pull-Request Recipes
 
-The recipes in `skills/metabrowser/SKILL.md` under “Read a Pull Request”, run as an
-agent runs them. Each recipe writes `metab`’s answer to a file and reads the file with
-`jq` only when `metab` succeeded, so its parts are consecutive blocks here, split where
-the recipe chains with `&&`: each block then records the status of the command that ran
-last, and a failure stops the recipe with a nonzero status.
+The recipes in `skills/metabrowser/SKILL.md` under “Read a Pull Request” and “Write a
+Guided Review”, run as an agent runs them.
+Each recipe writes `metab`’s answer to a file and reads the file with `jq` only when
+`metab` succeeded, so its parts are consecutive blocks here, split where the recipe
+chains with `&&`: each block then records the status of the command that ran last, and a
+failure stops the recipe with a nonzero status.
 `tests/test_skill_commands.py` fails when a recipe there is not a run of consecutive
 blocks here joined with `&&`, with `<invocation>` read as `metab` and the fixture’s
 cache and configuration directories, `<url>` as `https://github.com/octo/demo/pull/7`,
-`<n>` as `7`, `<path>` as `src/app.txt`, and `<tmp>` as `tmp`.
+`<n>` as `7`, `<k>` as `1`, `<path>` as `src/app.txt`, `<side>` as `new`, `<start>` as
+`1`, `<end>` as `2`, and `<tmp>` as `tmp`.
 
 `tests/github_pull_fixture.py` builds two homes before these commands run.
 `url/home` holds a mirror of `https://github.com/octo/demo` and the records of pull
 requests 7 to 10, each fetched once through `metab <pr-url> --no-serve` with a fake `gh`
-and a fixed clock; `co/home` holds what a checkout’s folder server wrote for
-`co/checkout`: the records of 7 and 10, with no store.
+and a fixed clock, with a guided review in the descriptions of 7 and 8 and two blocks in
+9’s; `co/home` holds what a checkout’s folder server wrote for `co/checkout`: the
+records of 7 and 10, with no store.
 `gh` is `tests/fixtures/github-pull/no-gh/gh`, which fails every command, so nothing
 here reaches GitHub.
 A record fetched more than a minute ago reads as `stale`, which every one here is.
@@ -110,6 +113,56 @@ $ jq -c '.patches["f2"].hunks[] | [.old_start, .new_start, [.lines[] | .op]]' tm
 ? 0
 ```
 
+That holds only the first few files’ hunks, and marks the rest `deferred`; `&file=`
+answers one file alone, with its hunks, whatever its place.
+Each line is one hunk, its first and last line on each side.
+
+```console
+$ ROUTE=$(jq -er .comparison_route tmp/pull.json) &&
+> METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api "$ROUTE&file=src/app.txt" --format json > tmp/file.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.patches[].hunks[] | "old \(.old_start)-\(.old_start + .old_count - 1) new \(.new_start)-\(.new_start + .new_count - 1)"' tmp/file.json
+old 1-1 new 1-2
+? 0
+```
+
+The same answer numbers the new side’s lines, to pick a range from, without a checkout.
+
+```console
+$ jq -r '.patches[].hunks[] | "--", (reduce .lines[] as $l ({n: .new_start, out: []}; if $l.op == "del" then . else .out += ["\(.n) \({add: "+", context: " "}[$l.op]) \($l.text)"] | .n += 1 end) | .out[])' tmp/file.json
+--
+1   one
+2 + two
+? 0
+```
+
+A range inside one hunk on its side is one a step can cite; the old side’s lines 2 to 4,
+which step 2 of 7’s guide cites as `range_unavailable` below, are not.
+
+```console
+$ jq -r --arg side new --argjson start_line 1 --argjson end_line 2 '[.patches[].hunks[] | if $side == "old" then [.old_start, .old_count] else [.new_start, .new_count] end | select(.[0] <= $start_line and $start_line <= $end_line and $end_line < .[0] + .[1])] | if length > 0 then "inside" else "outside" end' tmp/file.json
+inside
+? 0
+```
+
+```console
+$ jq -r --arg side old --argjson start_line 2 --argjson end_line 4 '[.patches[].hunks[] | if $side == "old" then [.old_start, .old_count] else [.new_start, .new_count] end | select(.[0] <= $start_line and $start_line <= $end_line and $end_line < .[0] + .[1])] | if length > 0 then "inside" else "outside" end' tmp/file.json
+outside
+? 0
+```
+
+```console
+$ jq -c '[.manifest.files[] | [.id, .availability]]' tmp/file.json
+[["f2","ready"]]
+? 0
+```
+
 ## Test: a file at the head, read with Git in the mirror
 
 ```console
@@ -149,6 +202,15 @@ not_cached
 gh_failed
 refs/remotes/origin/topic
 ? 0
+```
+
+With no record, and so no comparison, the pin recipe exits 1 rather than give pins.
+
+```console
+$ jq -er '.record.comparison.base, .record.comparison.head' tmp/pull.json
+null
+null
+? 1
 ```
 
 The record has no comparison route, so the diff recipe stops before it runs `metab`.
@@ -207,5 +269,143 @@ $ jq -r '.state, .comparison_route, .record.unavailable.comparison' tmp/pull.jso
 stale
 null
 no_store
+? 0
+```
+
+## Test: a guided review, read step by step
+
+A guide’s pins are the base and head of its pull request’s comparison in the record,
+which the guide of 7 is pinned to.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7' --format json > tmp/pull.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -er '.record.comparison.base, .record.comparison.head' tmp/pull.json
+f92fd713acd521d4ebb62fb9f345ec927b8b6d1b
+85fcb2fa9e77eb5db485ffef445cbbc645d6db4a
+? 0
+```
+
+So the guide answers `ready`. Read without a step, it answers step 1 with the whole
+guide: the count of steps to read and its outline.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json > tmp/guide.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, (.message // empty), .step_count, (.outline[]? | if .kind == "group" then "\(.title): steps \([.children[].step] | map(tostring) | join(" "))" else "\(.step) \(.title)" end)' tmp/guide.json
+ready
+2
+1 Start with the count
+2 Read the new guide
+? 0
+```
+
+Each step answers its title, its note, and each reference, with its range.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=1' --format json > tmp/step.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, (.message // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
+ready
+Start with the count
+Check that the original value is preserved.
+file src/app.txt new 1 2 ready
+? 0
+```
+
+A step whose references are not all ready still answers `ready`; each reference says why
+it is not.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=2' --format json > tmp/step.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, (.message // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
+ready
+Read the new guide
+Check the new docs against the behavior.
+file docs/new.md new 1 1 ready
+file src/app.txt ready
+file missing.txt path_not_changed
+file src/app.txt old 2 4 range_unavailable
+? 0
+```
+
+The description of 9 holds two blocks, so the page refuses the guide and says why.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/9 --api '/api/plugin/github/guided-review?number=9&step=1' --format json > tmp/step.json
+selection: pull_request
+pin: 0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd (pull request 9 head)
+pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, (.message // empty), (.title // empty), (.note // empty), (.references[]? | [.kind, .pull, .path, .commit, .side, .start_line, .end_line, .state] | map(select(. != null) | tostring) | join(" "))' tmp/step.json
+invalid
+Use one guided-review block in the pull request description.
+? 0
+```
+
+## Test: a pushed pull request names the steps to recheck
+
+The guide of 7 matches its pull request, so nothing needs rechecking.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json > tmp/guide.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .stale.changed_steps, .stale.changed_paths' tmp/guide.json
+"ready"
+null
+null
+? 0
+```
+
+8 carries the same guide, pinned to 7’s head, and a commit since changed files both of
+its steps cite.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/guided-review?number=8' --format json > tmp/guide.json
+selection: pull_request
+pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
+pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .stale.changed_steps, .stale.changed_paths' tmp/guide.json
+"stale"
+[1,2]
+["docs/new.md","src/app.txt"]
 ? 0
 ```

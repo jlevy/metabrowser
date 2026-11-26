@@ -171,7 +171,7 @@ function loadHeldOutsideImagesEagerly(root) {
  *
  * @template T
  * @param {HTMLElement} target
- * @param {{html: string, inert?: boolean, toc?: boolean, model?: {headings?: unknown}}} rendered
+ * @param {{html: string, inert?: boolean, toc?: boolean, model?: {headings?: unknown}, diagnostics?: Array<unknown>}} rendered
  * @param {MetabrowserPublicSdk} mb
  * @param {((root: HTMLElement) => T) | null} [enhance] Resolves the render's links and
  *   images under *root*; inert-render.js says when it runs for an inert render.
@@ -187,4 +187,69 @@ export async function placeRendered(target, rendered, mb, enhance = null) {
   }
   const inert = await import("./inert-render.js");
   return { enhanced: await inert.placeRendered(target, rendered, mb, enhance), inert };
+}
+
+/**
+ * Whether *diagnostic* is a render's `frontmatter_error`: why the file's front matter,
+ * read from its own bytes by the server, is not shown as metadata.
+ *
+ * The document shows it once, as KPress's Frontmatter error notice ahead of the prose: a
+ * trusted render carries KPress's own, and inert-render.js draws one for an inert render,
+ * whose allowlist cannot keep it. So the Diagnostics disclosure does not list it again.
+ *
+ * @param {unknown} diagnostic
+ * @returns {diagnostic is {type: "frontmatter_error", message: string}}
+ */
+export function isFrontmatterError(diagnostic) {
+  if (!diagnostic || typeof diagnostic !== "object") {
+    return false;
+  }
+  const value = /** @type {Record<string, unknown>} */ (diagnostic);
+  return value.type === "frontmatter_error" && typeof value.message === "string";
+}
+
+/** What marks a Mermaid diagram in a trusted render, and in an inert one. */
+const DIAGRAM_PROBE = '[data-kpress-diagram="mermaid"], pre[lang="mermaid"]';
+
+/**
+ * Draw the Mermaid diagrams a placed render holds, or do nothing when it holds none.
+ *
+ * The host (diagrams.js), KPress's diagram modules, and Mermaid itself are imported only
+ * for a render that has a diagram, so a document without one fetches none of them. An
+ * inert render's diagrams are drawn as images, and untrusted text's on a page that may have
+ * no policy are drawn as images laid out in a frame of their own (diagrams.js,
+ * `mountDiagrams`, has the modes). Returns null when there is nothing to draw.
+ *
+ * @param {ParentNode} root
+ * @param {MetabrowserPublicSdk} mb
+ * @param {"document" | "image" | "isolated"} mode
+ * @returns {{dispose(): void, ready: Promise<void>} | null}
+ */
+export function drawDiagrams(root, mb, mode) {
+  if (!root.querySelector(DIAGRAM_PROBE)) {
+    return null;
+  }
+  let disposed = false;
+  /** @type {{dispose(): void} | null} */
+  let handle = null;
+  const ready = import("./diagrams.js")
+    .then((diagrams) => {
+      if (disposed) {
+        return undefined;
+      }
+      const mounted = diagrams.mountDiagrams(root, mb, { mode });
+      handle = mounted;
+      return mounted.ready;
+    })
+    .catch((error) => {
+      console.warn("metabrowser markdown: the diagram renderer could not load", error);
+    });
+  return {
+    ready,
+    dispose() {
+      disposed = true;
+      handle?.dispose();
+      handle = null;
+    },
+  };
 }

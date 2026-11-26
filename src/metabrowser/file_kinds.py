@@ -17,7 +17,7 @@ from typing import Any, cast
 
 from frontmatter_format import FmFormatError, FmStyle, fmf_split_frontmatter
 
-from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, sniff_artifact
 from metabrowser.frontmatter_yaml import (
     FRONTMATTER_MAX_BYTES,
     FrontmatterError,
@@ -25,6 +25,7 @@ from metabrowser.frontmatter_yaml import (
     unclosed_frontmatter_error,
 )
 from metabrowser.gz_io import (
+    ArtifactCompressionError,
     ArtifactDecompressionLimitError,
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
@@ -34,11 +35,6 @@ from metabrowser.gz_io import (
 # Third-party plugins contribute additional kinds and views through their
 # manifests without extending this registry.
 VIEW_REGISTRY: dict[str, list[dict[str, Any]]] = {
-    "agent-log": [
-        {"id": "log", "label": "Log", "default": True},
-        {"id": "charts", "label": "Charts"},
-        {"id": "raw", "label": "Raw JSON"},
-    ],
     "unknown-jsonl": [
         {"id": "log", "label": "Log"},
         {"id": "raw", "label": "Raw JSON"},
@@ -168,6 +164,8 @@ class FileContext:
         "_frontmatter_cache",
         "_frontmatter_loaded",
         "_frontmatter_parse_error",
+        "_head_cache",
+        "_head_loaded",
         "_json_top_level_cache",
         "_json_top_level_loaded",
         "_yaml_top_level_cache",
@@ -199,6 +197,27 @@ class FileContext:
         self._json_top_level_loaded = False
         self._yaml_top_level_cache: dict[str, Any] | None = None
         self._yaml_top_level_loaded = False
+        self._head_cache: bytes | None = None
+        self._head_loaded = False
+
+    @property
+    def head(self) -> bytes | None:
+        """The file's first ``SNIFF_PREFIX_BYTES`` logical bytes, or None if unreadable.
+
+        Read only when a ``magic`` rule that names this file's extension asks, so a
+        text file named ``.pdf`` is checked for ``%PDF-``; cached like the parsed
+        predicates, and bounded by the sniff prefix every magic rule fits in.
+        """
+        if not self._head_loaded:
+            self._head_loaded = True
+            try:
+                with ArtifactPath(self.path).open_binary(
+                    max_output_bytes=SNIFF_PREFIX_BYTES
+                ) as stream:
+                    self._head_cache = stream.read(SNIFF_PREFIX_BYTES)
+            except (ArtifactCompressionError, OSError):
+                self._head_cache = None
+        return self._head_cache
 
     @property
     def content_class(self) -> ContentClass:
@@ -281,16 +300,9 @@ FileKindDetector = Callable[[FileContext], "str | None"]
 
 
 def _detect_jsonl(ctx: FileContext) -> str | None:
-    """Return the built-in kind for a JSONL file.
+    """Keep JSONL browsable when no plugin classifier claims it."""
 
-    Plugin classifiers run before this fallback and may claim additional
-    adapters. Unknown streams remain browsable as generic JSONL.
-    """
-    if ctx.ext != ".jsonl":
-        return None
-    if ctx.adapter in ("claude", "gemini", "pi"):
-        return "agent-log"
-    return "unknown-jsonl"
+    return "unknown-jsonl" if ctx.ext == ".jsonl" else None
 
 
 def _detect_markdown(ctx: FileContext) -> str | None:

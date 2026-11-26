@@ -107,9 +107,9 @@ through `metab --api`:
 - **Cached mirror** (a pure cache location, served by `metab <git-url>`): `short_name`
   is the repository name; `full_name` is the origin abbreviated to `host/owner/repo@ref`
   (or `@` and 12 hex digits for a commit pin), never the path in the cache; `kind_label`
-  is “Cached mirror”.
-- **A repository folder showing a revision** keeps `kind: folder` and adds `@<ref>` to
-  `full_name`, by the design in
+  was “Cached mirror”, now “Cloud mirror”.
+- **A repository folder showing a revision** keeps its kind (`git` since mb-4s2y, a
+  checkout; it was `folder`) and adds `@<ref>` to `full_name`, by the design in
   [Open Modes](../../architecture/arch-open-modes.md#views); it is not built.
 - **Title:** the short name, a bullet (U+2022), and “Metabrowser”.
   The served page uses it as its `<title>`, so browser tabs show it too.
@@ -282,7 +282,7 @@ review’s fixes), and the window layers jlevy/metabrowser#384 and jlevy/metabro
 The stack merged to `main` on 2026-11-13. Steps 1 to 8 below have merged, though step
 5’s gate ran and failed and what follows is open (`mb-gvtw`, `mb-76nv`). Step 9 is under
 way: on 2026-11-14 the check ran on `main` at c098e6a8. Flow 1 from PyPI waits on a
-published 0.12.1, because the app refuses 0.12.0 by design.
+published 0.13.0, because the app refuses 0.12.0 by design.
 The checks that need the owner’s clicks are scripted locally, as `mb-hwxu`’s notes
 record, and wait for the owner.
 The stale setup-flow stand-ins it found were fixed in jlevy/metabrowser#436 (`mb-jeb5`).
@@ -406,6 +406,10 @@ Outside the milestone, each for a stated reason:
 
 ### Phase 3: Host Mode, the Registry, and the Agent Front Door
 
+A release-scoped slice of the front door, delivered through LaunchServices before host
+mode, with GitHub URLs in the app, is
+[Opening Anything from the CLI and the App](plan-2026-11-17-open-anything-from-cli-and-app.md).
+
 No root is admitted on an agent’s request alone.
 Socket ownership authenticates the user, not the agent, so a request through the front
 door, by rendezvous or by link, may present a root the app already has open or warm, or
@@ -493,11 +497,19 @@ The owner asked, on 2026-11-18:
    back at launch, Retry, Restart Server, and an upgrade’s restart do not record, so the
    app starts those servers with `METABROWSER_RECORD_RECENT=0`. The same variable keeps
    benchmark, test, and development servers out of the list, also the owner’s decision.
+   **Superseded by `mb-1q02`:** a serve records itself only when run at a terminal or
+   told to, so the agents’, tests’, and tools’ serves that had crowded out the user’s
+   opens record nothing.
+   The app records every open itself, once, with `metab ROOT --recent-add` as it shows
+   it, and starts every server with `METABROWSER_RECORD_RECENT=0`; a restore is still
+   not an open. [What Records](../../architecture/arch-recent-targets.md#what-records)
+   has the rules.
 5. **Repository windows are recent targets.** jlevy/metabrowser#539 kept them out of
    Open Recent because the app registered only folders with macOS. The server it starts
    for a link now records the repository, with no code in the app, so that rule is
-   dropped. The app lists a repository entry once its build opens links, which it knows
-   from `MetabrowserOpensURLs` in its `Info.plist`, the key that pull request adds.
+   dropped. Since `mb-1q02` the app records it, as it records every open (decision 4).
+   The app lists a repository entry once its build opens links, which it knows from
+   `MetabrowserOpensURLs` in its `Info.plist`, the key that pull request adds.
    Repository windows still stay out of the saved session, which names folders by path.
 6. **The list lives in the configuration directory**, in a file of its own beside
    `config.yml`: `recent-targets.yml`. The owner decided this on 2026-11-18. It is
@@ -571,6 +583,11 @@ left of that bead is the route below and which roots skip Phase 3’s confirmati
 - [ ] Quick folder switcher, listing recent targets with live servers from the registry
   (`mb-9lf4`). The switcher’s membership and order come from `metab`, so it needs no
   shell-only exemption.
+  The app’s native switching (a window that shows any open folder, the title as a
+  chooser, and a switcher panel) is
+  [its own plan](plan-2026-11-18-macos-folder-switching.md), which needs neither the
+  route nor the registry, and takes a shell-only exemption, `app.folder-chooser`, until
+  the registry exists.
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
 ### Phase 5: Setup, Runtime, and Updates

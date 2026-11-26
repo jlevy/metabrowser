@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ from metabrowser.git import repo as git_repo
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.server import app
 from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source_routes import PIN_HEADER, WORKING_TREE_PIN
 from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
@@ -39,6 +41,7 @@ from tests.github_pull_fixture import (
 )
 from tests.golden_harness import run_session
 from tests.required_tools import needs_git
+from tests.source_checkout_fixture import admit_installed_git
 from tests.test_cache_acquire import _allow_installed_git
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -61,13 +64,27 @@ def _tabs(html: str) -> dict[str, bool]:
     return tabs
 
 
+def _div_body(html: str, start: int) -> str:
+    """The markup inside the div whose opening tag ends at *start*, its nested divs included.
+
+    The Files toolbar ships its row, with the branch and tag chooser in it, on a page that
+    has one, so a toolbar's body is not what comes before the first ``</div>``.
+    """
+
+    depth = 1
+    for tag in re.finditer(r"<div\b|</div>", html[start:]):
+        depth += 1 if tag.group(0) == "<div" else -1
+        if depth == 0:
+            return html[start : start + tag.start()]
+    raise AssertionError(f"a div that is never closed: {html[start : start + 200]}")
+
+
 def _toolbars(html: str) -> dict[str, bool]:
     """Each toolbar in the navigation's slot, and whether it is shown; one per tab, never empty."""
 
     toolbars: dict[str, bool] = {}
-    for opening, body in re.findall(
-        r'(<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>)(.*?)</div>', html
-    ):
+    for match in re.finditer(r'<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>', html):
+        opening, body = match.group(0), _div_body(html, match.end())
         name = re.search(r'data-nav-toolbar="([a-z]+)"', opening)
         assert name is not None
         toolbars[name.group(1)] = " hidden" not in opening
@@ -207,6 +224,15 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
                 # slot holds the Pulls toolbar in its filters' place, never empty.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
                 assert _toolbars(html) == {"files": False, "git": False, "pulls": True}, route
+                # Directly under the Pulls toolbar, and outside the scroller, the empty band
+                # the list's count and connection lines fill (pulls-panel.js), which shows
+                # only while that toolbar does.
+                assert re.search(
+                    r'id="nav-toolbar-pulls"[^>]*>.*?</div>\s*'
+                    r'<div class="nav-metadata-band" id="nav-metadata-pulls"></div>',
+                    html,
+                ), route
+                assert html.index('id="nav-metadata-pulls"') < html.index('id="tree-content"')
                 sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
                 assert sidebar.count('class="spinner spinner-sm"') == 1
                 assert sidebar.count("Fetching pull requests…") == 1
@@ -286,6 +312,62 @@ def test_a_github_checkout_draws_the_tab_and_puts_it_in_front_at_its_addresses(
             r'<div class="pull-request-placeholder[^>]*>', client.get("/pull/7").text
         )
         assert placeholder is not None and "data-preview-empty" in placeholder.group(0)
+    reset_source_session()
+
+
+@needs_git
+def test_pulls_stays_available_while_a_checkout_shows_a_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """A checkout's catalog covers its origin while Files shows a different commit."""
+
+    from metabrowser import server
+
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    admit_installed_git(monkeypatch)
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "home"))
+    for name, value in install_fake_gh(tmp_path, scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    server._set_root_dir(checkout)  # pyright: ignore[reportPrivateUsage]
+    route = "/api/plugin/github/pulls"
+    with TestClient(app) as client:
+        head = client.get("/api/git/repo").json()["head"]["revision"]
+        pinned = client.post(
+            "/api/source/pin", json={"ref": f"refs/remotes/origin/{DEFAULT_BRANCH}"}
+        )
+        assert pinned.status_code == 200, pinned.text
+        status = pinned.json()["status"]
+        pin = status["pin"]
+        assert pin == pull_origin["topic"] and pin != head
+        headers = {PIN_HEADER: pin}
+        shell = client.get("/view/").text
+        assert _tabs(shell) == {"files": True, "pulls": False, "git": False}
+        assert _tabs(client.get("/pulls").text)["pulls"] is True
+        assert "/static/pulls-nav.js" in _shell_tools(shell)
+        context = re.search(r"window\.METABROWSER_REPOSITORY_CONTEXT=(\{.*?\});</script>", shell)
+        checkout_context = re.search(
+            r"window\.METABROWSER_CHECKOUT_REF_CONTEXT=(\{.*?\});</script>", shell
+        )
+        assert context is not None and checkout_context is not None
+        assert json.loads(context[1])["revision"] == pin
+        assert json.loads(context[1])["branch"] is None
+        assert json.loads(checkout_context[1])["revision"] == head
+
+        cached = client.get(route, headers=headers).json()
+        assert (cached["state"], cached["reason"]) == ("absent", "not_cached")
+        assert cached["source"] == CANONICAL
+        stale = client.get(route, headers={PIN_HEADER: WORKING_TREE_PIN})
+        assert (stale.status_code, stale.json()["code"]) == (409, "pin_changed")
+
+        refresh = client.post(f"{route}-refresh", headers=headers, json={})
+        assert refresh.status_code == 202, refresh.text
+        deadline = time.monotonic() + 25
+        while cached["refreshing"] or not cached["rows"]:
+            assert time.monotonic() < deadline, cached["last_refresh"]
+            time.sleep(0.02)
+            cached = client.get(route, headers=headers).json()
+        assert cached["total"] == 100
+        assert client.get("/api/source/status").json()["pin"] == pin
     reset_source_session()
 
 

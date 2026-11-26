@@ -88,7 +88,10 @@ function createShell(
       shell.host = host;
       return {
         setShown: (shown) => log.push(`view told: ${shown ? "shown" : "hidden"}`),
-        setCurrent: (number) => log.push(`view told: current ${number}`),
+        setCurrent: (number, _file, options) =>
+          log.push(
+            `view told: current ${number}${options?.stack ? `, Stack #${options.stack}'s page` : ""}`,
+          ),
         setFilter: (state) => log.push(`view told: filter ${state}`),
         move: (delta, how) => {
           log.push(`view told: move ${delta}${how?.repeat ? " repeating" : ""}`);
@@ -148,7 +151,11 @@ function createShell(
     scrollRoot: () => ({}),
     pageFor: (number) => shell.pages?.get(number) ?? null,
     openPull(route) {
-      log.push(`opened pull request ${route.number}`);
+      log.push(
+        route.stack
+          ? `opened Stack #${route.number}'s page`
+          : `opened pull request ${route.number}`,
+      );
       return Promise.resolve({ status: "opened" });
     },
     schedulePrefetch(callback) {
@@ -187,6 +194,8 @@ async function run() {
     ["/pulls", "?state=merged"],
     ["/pull/7", ""],
     ["/pull/7/files", ""],
+    ["/stack/70", ""],
+    ["/stack/70/changes", ""],
     ["/view/README.md", ""],
     ["/commit/abc", ""],
   ]) {
@@ -256,6 +265,12 @@ async function run() {
   page.shell.address = new URL("/pull/8", "http://x");
   host.routeChanged();
   log.push({ "another pull request: the row follows": page.take() });
+  // A native stack's page names no one pull request: the list marks its Whole stack row.
+  page.shell.address = new URL("/stack/70/changes", "http://x");
+  host.routeChanged();
+  log.push({ "a stack's page: its Whole stack row is the current row": page.take() });
+  void page.shell.host.open({ number: 70, tab: "", stack: true });
+  log.push({ "the Whole stack row's open is the shell's": page.take() });
   page.shell.address = new URL("/pulls?state=open", "http://x");
   host.routeChanged();
   log.push({ "the list's address: its filter": page.take() });
@@ -1008,30 +1023,36 @@ function twoTreesPage() {
   const filesTab = make("div", { id: "tab-files", "data-tab-content": "files" }, [
     make("div", { role: "tree", "aria-label": "Files" }, files),
   ]);
-  // The Pulls tab's list, as the panel paints it: a tree of anchors in items of no role.
-  const pullRow = (number) =>
-    make("a", {
-      class: "github-pulls-row",
-      href: `/pull/${number}`,
-      role: "treeitem",
-      "aria-level": "1",
-      tabindex: number === 3900 ? "0" : "-1",
-      "data-number": String(number),
-    });
-  const pulls = [3900, 3899, 3898].map(pullRow);
-  // Each row's third line, its change line: the row's one child item, which owns its changed
-  // files and alone toggles them (mb-h0ml).
+  // Each row's toggle, the lines and the chevron at the end of its run, in its link
+  // (mb-pw8t): the pointer's alone. It is no stop of the tree's and hidden from assistive
+  // technology, so Space on the row is the keyboard's way to its files, and the row's
+  // `aria-expanded` is their one state; the toggle only turns its chevron.
   const changeLines = [3900, 3899, 3898].map((number) =>
-    make("div", {
+    make("span", {
       class: "github-pulls-change disclosure-toggle collapsed",
-      role: "treeitem",
-      "aria-level": "2",
-      "aria-expanded": "false",
-      tabindex: "-1",
+      "aria-hidden": "true",
       "data-number": String(number),
-      "data-tree-id": `#${number}'s change line`,
+      "data-tree-id": `#${number}'s toggle`,
     }),
   );
+  // The Pulls tab's list, as the panel paints it: a tree of anchors in items of no role. A
+  // pull request's row is the tree's item, whose changed files are its children, as a
+  // folder's are (mb-1z7j).
+  const pullRow = (number, index) =>
+    make(
+      "a",
+      {
+        class: "github-pulls-row",
+        href: `/pull/${number}`,
+        role: "treeitem",
+        "aria-level": "1",
+        "aria-expanded": "false",
+        tabindex: number === 3900 ? "0" : "-1",
+        "data-number": String(number),
+      },
+      [changeLines[index]],
+    );
+  const pulls = [3900, 3899, 3898].map(pullRow);
   const copyRef = make("button", { "aria-label": "Copy ref main" });
   const pullsList = make(
     "ul",
@@ -1040,9 +1061,7 @@ function twoTreesPage() {
       make(
         "li",
         { role: "none" },
-        [row, make("div", { role: "group" }, [changeLines[index]])].concat(
-          index === 0 ? [copyRef] : [],
-        ),
+        [make("div", { class: "github-pulls-entry" }, [row])].concat(index === 0 ? [copyRef] : []),
       ),
     ),
   );
@@ -1059,6 +1078,17 @@ function twoTreesPage() {
     "data-tree-id": "Stack #286",
   });
   const stackItem = make("li", { role: "none" }, [stackRow]);
+  // Its Whole stack row, the first under it: a row link to the stack's own page.
+  const wholeRow = make("a", {
+    class: "github-pulls-row github-pulls-whole-row",
+    role: "treeitem",
+    "aria-level": "2",
+    tabindex: "-1",
+    href: "/stack/286",
+    "data-stack": "286",
+    "data-tree-id": "Whole stack of #286",
+  });
+  const wholeItem = make("li", { role: "none" }, [wholeRow]);
   document.body.append(
     make("div", { id: "tree-pane" }, [make("div", { id: "tree-content" }, [filesTab, pullsTab])]),
     make("div", { id: "preview-pane" }),
@@ -1124,7 +1154,7 @@ function twoTreesPage() {
         }
       },
       openPullRequest(route) {
-        shell.address = `/pull/${route.number}${route.tab ? `/${route.tab}` : ""}${route.file ? `/${route.file}` : ""}`;
+        shell.address = `/${route.stack ? "stack" : "pull"}/${route.number}${route.tab ? `/${route.tab}` : ""}${route.file ? `/${route.file}` : ""}`;
         log.push(`the shell opened ${shell.address}, ${route.replace ? "replacing" : "pushing"}`);
         return Promise.resolve({ status: "opened" });
       },
@@ -1178,11 +1208,14 @@ function twoTreesPage() {
               return true;
             },
             toggleFiles(number) {
-              const row = changeLines.find((item) => Number(item.dataset.number) === number);
-              assert.ok(row, "Space identifies the actual focused change line");
+              const row = pulls.find((item) => Number(item.dataset.number) === number);
+              assert.ok(row, "Space identifies the actual focused pull request");
+              const line = changeLines.find((item) => Number(item.dataset.number) === number);
               const expanded = row.getAttribute("aria-expanded") !== "true";
               row.setAttribute("aria-expanded", String(expanded));
-              log.push(expanded ? "expanded changed files" : "collapsed changed files");
+              line.classList.toggle("expanded", expanded);
+              line.classList.toggle("collapsed", !expanded);
+              log.push(`${expanded ? "expanded" : "collapsed"} #${number}'s changed files`);
               return true;
             },
             moveFile(delta) {
@@ -1217,11 +1250,11 @@ function twoTreesPage() {
             },
             activateAnchor() {
               const row = document.activeElement;
-              void ctx.pullsNav.open({
-                number: Number(row.dataset.number),
-                tab: "",
-                replace: false,
-              });
+              void ctx.pullsNav.open(
+                row.classList.contains("github-pulls-whole-row")
+                  ? { number: Number(row.dataset.stack), tab: "", stack: true, replace: false }
+                  : { number: Number(row.dataset.number), tab: "", replace: false },
+              );
               return true;
             },
             dispose() {},
@@ -1289,13 +1322,16 @@ function twoTreesPage() {
     changedFiles,
     copyRef,
     stackRow,
-    /** Put a stack's row in the list, or take it out. @param {boolean} shown */
+    wholeRow,
+    /** Put a stack's row and its Whole stack row in the list, or take them out. @param {boolean} shown */
     showStack(shown) {
-      if (shown) {
-        pullsList.append(stackItem);
-      } else {
-        pullsList.children.splice(pullsList.children.indexOf(stackItem), 1);
-        stackItem.parentElement = null;
+      for (const item of [stackItem, wholeItem]) {
+        if (shown) {
+          pullsList.append(item);
+        } else {
+          pullsList.children.splice(pullsList.children.indexOf(item), 1);
+          item.parentElement = null;
+        }
       }
     },
     shell,
@@ -1344,35 +1380,51 @@ async function twoTreesStory() {
   story["a Pulls row takes focus: each tree keeps its own Tab stop"] = page.tabStops();
   const beforeSpace = page.shell.address;
   const [firstPull, nextPull] = page.pulls;
-  const [firstChange, nextChange] = page.changeLines;
-  // On a pull request's own row, Space toggles nothing (mb-h0ml), and is consumed, so it does
-  // not scroll the list a page from under the focused row.
-  story["Space on a pull request's row toggles nothing"] = page.press(" ");
-  assert.equal(story["Space on a pull request's row toggles nothing"].handled, true);
-  assert.deepEqual(story["Space on a pull request's row toggles nothing"].did, []);
-  assert.equal(story["Space on a pull request's row toggles nothing"].address, beforeSpace);
-  assert.equal(firstChange.getAttribute("aria-expanded"), "false", "the row's files stay closed");
-  // Its change line, the row's child, takes Space.
-  firstChange.focus();
-  // A catalog refresh can move the roving tab stop without stealing DOM focus.
+  // A pull request's three lines are one item and one stop (mb-1z7j): Space on its row opens
+  // and closes its changed files in place, as Space on a folder's row does, and is
+  // consumed, so it does not scroll the list a page from under the focused row.
+  // A catalog refresh can move the roving tab stop without stealing DOM focus: Space is the
+  // focused row's.
   firstPull.setAttribute("tabindex", "-1");
   nextPull.setAttribute("tabindex", "0");
-  story["Space on its change line expands changed files in place"] = page.press(" ");
-  assert.equal(firstChange.getAttribute("aria-expanded"), "true", "Space expands its files");
+  story["Space on a pull request's row expands its changed files in place"] = page.press(" ");
+  assert.equal(firstPull.getAttribute("aria-expanded"), "true", "Space expands its files");
   story["holding Space leaves the tree open"] = page.press(" ", { repeat: true });
-  assert.equal(firstChange.getAttribute("aria-expanded"), "true", "a held Space does not toggle");
+  assert.equal(firstPull.getAttribute("aria-expanded"), "true", "a held Space does not toggle");
   story["Space again collapses changed files in place"] = page.press(" ");
-  assert.equal(firstChange.getAttribute("aria-expanded"), "false", "Space collapses its files");
+  assert.equal(firstPull.getAttribute("aria-expanded"), "false", "Space collapses its files");
   for (const action of [
-    story["Space on its change line expands changed files in place"],
+    story["Space on a pull request's row expands its changed files in place"],
     story["holding Space leaves the tree open"],
     story["Space again collapses changed files in place"],
   ]) {
     assert.equal(action.handled, true, "Space cannot scroll the page");
     assert.equal(action.address, beforeSpace, "Space keeps the current page");
-    assert.equal(action["focus on"], page.named(firstChange), "Space keeps focus on the line");
+    assert.equal(action["focus on"], page.named(firstPull), "Space keeps focus on the row");
   }
-  assert.equal(nextChange.getAttribute("aria-expanded"), "false", "Space ignores the tab stop");
+  assert.equal(nextPull.getAttribute("aria-expanded"), "false", "Space ignores the tab stop");
+  // The toggle is no stop: no key reaches it, so focus never lands on it. Hidden from
+  // assistive technology, it is not one of the tree's children either.
+  assert.ok(
+    page.changeLines.every((line) => line.getAttribute("tabindex") === null),
+    "the toggle is no stop of the tree's",
+  );
+  assert.ok(
+    page.changeLines.every((line) => line.getAttribute("aria-hidden") === "true"),
+    "the toggle is hidden from assistive technology",
+  );
+  assert.ok(
+    page.changeLines.every((line) => line.getAttribute("aria-expanded") === null),
+    "the row, not its toggle, says whether its files are open",
+  );
+  assert.ok(
+    page.changeLines.every(
+      (line, index) =>
+        line.classList.contains("expanded") ===
+        (page.pulls[index].getAttribute("aria-expanded") === "true"),
+    ),
+    "each toggle's chevron turns with its row's state",
+  );
   // Grouped by stack, Space on a stack's row opens and closes the stack, by its number, and
   // a held Space does nothing more.
   page.showStack(true);
@@ -1393,6 +1445,21 @@ async function twoTreesStory() {
       [true, "opened Stack #286"],
     ],
     "Space on a stack's row is the stack's, not a pull request's",
+  );
+  // Space on its Whole stack row opens the stack's page, as Enter does: the row has no files.
+  page.wholeRow.focus();
+  story["Space on a stack's Whole stack row opens the stack's page"] = page.press(" ");
+  story["holding Space on it opens nothing more"] = page.press(" ", { repeat: true });
+  assert.deepEqual(
+    [
+      story["Space on a stack's Whole stack row opens the stack's page"],
+      story["holding Space on it opens nothing more"],
+    ].map((action) => [action.handled, action.did.length]),
+    [
+      [true, 1],
+      [true, 0],
+    ],
+    "Space on a Whole stack row opens the stack's page once",
   );
   page.showStack(false);
   firstPull.focus();

@@ -52,6 +52,8 @@ introduces.
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
 | `kpress==0.3.8` | `0.3.6` | Browser assets plus two names in the public CSS contract (0.3.7 and 0.3.8 together): TOC scrollspy without `IntersectionObserver`, over host-rewritten same-document links, and past headings with no layout box; a reload scroll restore confirmed one frame later; the public `--kpress-code-border` and `--kpress-code-radius` tokens; TOC inset and blockquote defaults; `kbd`, `samp`, and link-preview code in the shipped mono face; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `99c32266…f5b0efa9` and sdist `1db5df40…465833bd` match `uv.lock` |
+| `kpress==0.3.9` | `0.3.8` | Releases jlevy/kpress#80, which this repository built from commit `5a8e9ae` until KPress released it; the release tree differs from that commit only in `docs/README.md` and the new `docs/releases/0.3.9.md`. It adds the Mermaid diagram renderer and its opt-in controls (`js/diagrams.js`, `js/diagram-controls.js`), their styles and sprite symbols, and the `diagrams` render-request field; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `d3d4cc33…e7ef23f2` and sdist `b15c3e42…a30d09f1` match `uv.lock` |
+| `kpress==0.3.10` | `0.3.9` | Releases jlevy/kpress#82, which this repository built from commit `0c0f857` until KPress released it; the release adds the PR’s final-review fixes on top of that commit: the structural box style keeps an ordered or footnote item’s number and applies only to a disabled checkbox (`components.css`), and an `<input>` the sanitizer’s rewrite does not recognize is removed rather than kept (`sanitize.py`). Against `0.3.9` it draws task-list boxes from KPress’s own token (`kpress_task_checkbox`) instead of `mdit-py-plugins`’ `tasklists` raw HTML, keeps an `<input>` in `sanitized` mode only as a disabled checkbox, removes a raw `<link>`, and styles the box by structure as well as by class; its other sanitizer and parser changes, that a `<button>` is always `type="button"` and no element keeps `form`, that each footnote’s note and a host’s `body_html` are sanitized, that an `svg` fence drops any `<input>`, and that a document defining `[x]` as a link shows the link and no box, a marker ending its line is text, and any whitespace between the brackets is an open box, reach no untrusted page unchecked, because Metabrowser’s own allowlist runs after KPress on every untrusted path (`kpress_adapter.inert_render`, `markdown_projection._hardened`, `markdown_projection_worker._render`); runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `205d7f58…f9a28ab1` and sdist `8a00b909…cd5c110e` match `uv.lock` |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
@@ -227,11 +229,16 @@ repository does not pin.
 The `admitted-git` CI job therefore builds Git from source, so acquisition and the
 full-clone acceptance tests run on releases production admits: the lowest admitted
 release and the newest patched one.
+It builds a third, the oldest it tests that reads file ages on a Git revision
+(`git last-modified`, `FILE_AGES_GIT_MINIMUM` in `src/metabrowser/git/file_ages.py`), so
+the present path of that feature runs in CI whichever Git the runner image ships and the
+other two builds exercise the absent one.
 
 | Release | Role | SHA-256 of `git-<release>.tar.xz` |
 | --- | --- | --- |
 | 2.43.7 | Lowest admitted release | `657e2374455d9e62f6cdb3e7c55d867b6db5404d744e97e112cc5b0db687a19f` |
 | 2.50.1 | Newest patched release | `7e3e6c36decbd8f1eedd14d42db6674be03671c2204864befa2a41756c5c8fc4` |
+| 2.56.1 | Reads file ages (`git last-modified`) | `f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f` |
 
 - **Source.** The archives come from
   `https://mirrors.edge.kernel.org/pub/software/scm/git/`. The checksums were copied
@@ -240,8 +247,13 @@ release and the newest patched one.
   `B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1`; the signature was not verified when the
   checksums were copied.
   The 2.50.1 values also match those recorded independently in the tracking issue.
-- **Cool-off.** Both archives were published on July 8, 2025, in the security batch the
-  version floor is based on, so they are well past the 14-day cool-off.
+  The 2.56.1 value was first copied from Homebrew’s `git` formula, whose `url` is that
+  directory’s `git-2.56.1.tar.xz`, and it matches the `git-2.56.1.tar.xz` line of that
+  directory’s `sha256sums.asc`, checked on November 20, 2026; the signature on that file
+  was not verified. The build fails closed on a wrong value.
+- **Cool-off.** The 2.43.7 and 2.50.1 archives were published on July 8, 2025, in the
+  security batch the version floor is based on, so they are well past the 14-day
+  cool-off. The 2.56.1 tag is dated October 26, 2026, 25 days before the pin.
 - **Build.** `devtools/build_admitted_git.sh` holds the pins and builds only a pinned
   release. It downloads over HTTPS only and checks the SHA-256 before unpacking.
   It builds without Tcl/Tk, gettext, Perl, Python, Expat, or OpenSSL. Its only other
@@ -286,6 +298,26 @@ more, reviewed on November 17, 2026:
 - **Actions.** No new action: the jobs use the pinned checkout, uv, Node, and cache
   actions already reviewed, and the runner image’s own `gh` and `jq`. Every checkout
   sets `persist-credentials: false`.
+- **uv.** Before each setup-uv step, `devtools/install_uv.sh` fetches the same pinned uv
+  release archive from GitHub Releases over HTTPS, refuses it unless its SHA-256 is the
+  one that step pins, and puts it in the runner’s tool cache, so setup-uv neither
+  downloads uv nor fetches its version manifest.
+  The manifest fetch has a fixed 5 s limit and no retry, and one slow answer failed a
+  job; the script retries instead.
+- **Node.** Before each setup-node step, `devtools/install_node.sh` fetches the archive
+  setup-node would download from an `actions/node-versions` release, over HTTPS, refuses
+  it unless its SHA-256 is the one the script pins for the runner’s platform, and
+  unpacks it into the runner’s tool cache, so setup-node neither downloads Node nor
+  copies it there. setup-node checks no checksum, so the pins are new.
+  Reviewed on November 25, 2026: for Node 24.18.0 the script pins release
+  `24.18.0-28070977815`, published June 24, 2026, and each archive’s SHA-256 is the
+  digest GitHub records for that release asset.
+  setup-node v6.4.0 has no manifest of its own: it reads `versions-manifest.json` from
+  `actions/node-versions` at `main` when it runs, and on that date the manifest named
+  this release for both platforms’ 24.18.0 archives.
+  The download had no limit on a slow transfer and the copy went file by file, and each
+  stalled for over a minute (mb-z4i7); the script ends a stalled transfer and retries,
+  and unpacks in place.
 
 `devtools/check_ci.py`, in `make lint-check`, fails:
 
@@ -300,7 +332,11 @@ more, reviewed on November 17, 2026:
   `GitHub.Head_Ref`, or inside `format()`, with the expression ended where the runner
   ends it, so a `}}` in a quoted string hides nothing;
 - an expression in a `run:` line that reads `env`, which the shell reads as `"$NAME"`
-  instead.
+  instead;
+- a setup-uv step that does not come just after `devtools/install_uv.sh` with its own
+  version and checksum;
+- a setup-node step that does not come just after `devtools/install_node.sh` with its
+  own version.
 
 ## Apple Developer ID Intermediate (November 17, 2026)
 
@@ -390,6 +426,28 @@ Its source is [pygments/pygments](https://github.com/pygments/pygments), its lic
 BSD-2-Clause, and its Python requirement, `>=3.9`, covers this project’s supported
 range. Its registry artifact hashes in `uv.lock` are unchanged.
 
+### Mermaid (November 18, 2026)
+
+`mermaid` 12.3.0 is a new development dependency, vendored by
+`devtools/vendor_assets.py` into `src/metabrowser/static/vendor/mermaid/` so Markdown
+documents draw their Mermaid diagrams as GitHub does.
+12.3.0 is the release GitHub’s own renderer embeds, and nothing in this repository draws
+diagrams without it.
+Its source is [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid), published by
+that project’s maintainers, and its license is MIT. It was published on November 3,
+2026, so it satisfies the 14-day cool-off without an exception, and `min-release-age` in
+`.npmrc` held every transitive release to the same age at install.
+
+The lock delta is 116 added packages and the root entry’s new pin: no existing package
+changes version or record, and none of the added ones has an install script.
+Their licenses are MIT (67), ISC (33), Apache-2.0 (6), BSD-3-Clause (6), Unlicense (1),
+DOMPurify’s MPL-2.0 or Apache-2.0, elkjs’s EPL-2.0 or GPL-3.0-or-later, and khroma’s MIT
+license file with no declared field; [NOTICE.md](NOTICE.md) records how they apply.
+The vendored tree is only the ESM entry and its chunks; source maps are left out, and
+`TOTAL_CAP_BYTES` in `devtools/vendor_assets.py` records the measured size.
+The browser imports the entry only for a document with a diagram, and Mermaid runs with
+`securityLevel: "strict"`, which sanitizes labels and disables `click` callbacks.
+
 ### Node Type Declarations (November 11, 2026)
 
 `@types/node` 24.19.2 is a new development dependency.
@@ -452,6 +510,58 @@ this one on 2026-11-16.
   requirements, and nothing else; pytest, xdist’s other requirement, is already locked.
 - **Reach.** Development only: neither is a runtime requirement, in the wheel, or used
   by the publish workflow.
+
+### psutil Is Development Only (November 24, 2026)
+
+`psutil` moves from the runtime requirements to the `dev` group.
+No code in the package imports it: `devtools/git_history_benchmark.py` samples memory
+with it, and pytest-xdist’s `-n auto` reads physical cores through it, both in
+development.
+`devtools/check_plugin_deps.py` now fails a runtime requirement that neither
+core nor a built-in plugin imports, which is how this one was found.
+- **Lock delta.** `psutil` leaves the package’s `dependencies` and `requires-dist` and
+  joins the `dev` group’s; the locked release and its artifact hashes are unchanged.
+- **Reach.** The wheel, and the macOS app that bundles its requirements, no longer
+  install a compiled extension that nothing at run time uses.
+
+### pypdfium2 Review (November 24, 2026)
+
+`pypdfium2` is a new runtime dependency of the `pdf` plugin alone (its manifest’s
+`python_requires`, which `devtools/check_plugin_deps.py` keeps true).
+It is Python’s binding to PDFium, the PDF engine of Chrome, and draws the first page of
+a PDF for the plugin’s preview card.
+It is the one maintained binding that ships PDFium prebuilt for every platform this
+package supports and needs no imaging library; the plugin encodes the PNG with the
+standard library (`render_child.py`). PDFium parses bytes a content author wrote, so it
+never runs in the server: each render is a child process with resource limits, and for
+an untrusted source an OS sandbox (threat model T7 in
+`docs/project/architecture/arch-threat-model.md`).
+
+| Package | Release | Published | Source | License | Wheel SHA-256 | sdist SHA-256 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pypdfium2` | 5.15.2 | 2026-11-09 | [pypdfium2-team/pypdfium2](https://github.com/pypdfium2-team/pypdfium2) | BSD-3-Clause, Apache-2.0, and PDFium’s dependencies’ licenses | macOS arm64 `e71fe832…c2a44c35`, Linux x86_64 `dc31aea5…85161e37` | `0185193b…d2ce2aef` |
+
+- **Cool-off.** 5.15.2 is the newest release, published fifteen days before this review,
+  so it passes the 14-day `exclude-newer` window without an exception.
+  PyPI lists no known vulnerability for it.
+- **Artifacts.** `uv.lock` holds the sdist and 22 wheels, and their 23 digests match the
+  ones PyPI lists for the release.
+  PyPI holds a Trusted Publishing attestation for the files, naming the project’s
+  `main.yaml` release workflow.
+  The wheels are `py3-none-<platform>`: the Python binding, and a bundled `libpdfium`
+  built from PDFium’s sources by the project’s toolchain (`pypdfium2 --version` reports
+  `pdfium 159.0.8149.0@sourcebuild-toolchained`), built without V8 or XFA, so it runs no
+  JavaScript in a PDF and parses no XFA form.
+  The macOS arm64 wheel installed here holds no `.pth` file; its one console script,
+  `pypdfium2`, is a command line nothing here runs.
+- **Import.** Only the render child imports it (`render_child.py`, run by path in a
+  child process); the server process loads only its version file to name the renderer in
+  each preview’s cache key (`preview.renderer_version`).
+- **Lock delta.** The one package, and `pypdfium2>=5.15.2` among the package’s
+  `dependencies`; it requires nothing else.
+- **Reach.** The wheel, and so the macOS app that bundles its requirements, install it
+  and its native library (7.6 MB installed on macOS arm64, from a 3.7 MB wheel).
+  A disabled `pdf` plugin never starts the child.
 
 ### Automated Checks
 

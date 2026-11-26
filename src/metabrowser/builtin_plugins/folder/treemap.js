@@ -16,7 +16,9 @@
 // segment in every tally row, and pointing at a cell or a segment marks it and
 // its family's entry (docs/design-system.md, "Aggregate Distributions").
 //
-// Geometry comes from treemap-layout.js. Toggle state comes from the shared
+// The cells themselves, their layout, labels, tooltip, activation, and their
+// part of the shared hover, are the map component (treemap-map.js), which the
+// Overview's compact map mounts too. Toggle state comes from the shared
 // folder rollup controls, persists through mb.prefs (host-only cookies,
 // shared across per-root ports), and live refresh rides mb.watchRollup's
 // debounced /api/events signal.
@@ -30,20 +32,24 @@ import {
   normalizeFolderTotals,
   notIndexedStatement,
 } from "./folder-totals.js";
-import { layoutTree } from "./treemap-layout.js";
+import {
+  createTreemapMap,
+  isCompleteSnapshot,
+  TREEMAP_LOADING_HTML,
+  TREEMAP_VIEW_ID,
+  treemapAvailability,
+  treemapFullRollupQuery,
+  withOuterBox,
+} from "./treemap-map.js";
 import { parentNavigation } from "./treemap-model.js";
+import { decodeRollupEnvelope } from "./treemap-rollup-decode.js";
 
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
-/** @typedef {import("./distribution-hover.js").DistributionHoverTarget} DistributionHoverTarget */
 
 /** @param {MetabrowserPublicSdk} mb @param {TreemapPalette} palette @param {{mount: (container: HTMLElement) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
 export function registerTreemap(mb, palette, rollupControls) {
-  const TREEMAP_VIEW_ID = "treemap";
-  /** Minimum paint thresholds; type size itself comes from cell geometry. */
-  const LABEL_MIN_W = 56;
-  const LABEL_MIN_H = 16;
   /** Viewport height bounds: the map fills the space between its own
    * top edge and the window bottom (minus the status line and pane
    * padding), so wrapped toolbars or long breadcrumbs never push it
@@ -52,134 +58,6 @@ export function registerTreemap(mb, palette, rollupControls) {
   const VIEWPORT_MIN_H = 280;
   const VIEWPORT_MAX_H = 900;
   const VIEWPORT_BOTTOM_RESERVE = 64;
-
-  /**
-   * The distribution key for a cell: the family behind a file's extension, and
-   * the neutral fallback for the remainder cell that stands for what did not
-   * fit.
-   * @param {Record<string, any>} cell
-   * @returns {string}
-   */
-  function cellPaletteKey(cell) {
-    const extension = cell.ext || "(none)";
-    return cell.kind === "rest" ? "" : mb.fileTypes.distributionKeyForExtension(extension);
-  }
-
-  /** @param {Record<string, any>} cell @param {TreemapState} state */
-  function cellClasses(cell, state) {
-    const cls = [
-      "tm-cell",
-      `tm-${cell.kind}`,
-      "tm-type-fill",
-      palette.classFor(cellPaletteKey(cell)),
-    ];
-    if (cellIsActionable(cell)) {
-      cls.push("tm-actionable");
-    }
-    if (cell.gitignored && state.includeIgnored) {
-      cls.push("tm-ignored");
-    }
-    if (cell.state === "pending") {
-      cls.push("tm-pending");
-    }
-    if (cell.nested) {
-      cls.push("tm-nested");
-    }
-    return cls.join(" ");
-  }
-
-  /**
-   * Value phrase for a cell: aggregate cells follow the active metric;
-   * file leaves retain their more useful byte size in both modes.
-   * @param {Record<string, any>} cell
-   * @param {TreemapState} state
-   * @returns {string}
-   */
-  function cellValueText(cell, state) {
-    // One file is already obvious from a leaf rectangle. Its byte size
-    // remains useful in either area mode; folders and remainder cells
-    // report the active metric because their count is aggregate data.
-    if (cell.kind === "file") {
-      return mb.formatSize(cell.bytes ?? cell.value);
-    }
-    if (state.metric === "files") {
-      return mb.formatFileCount(cell.files ?? cell.value);
-    }
-    return mb.formatSize(cell.bytes ?? cell.value);
-  }
-
-  /**
-   * @param {Record<string, any>} cell
-   * @param {TreemapState} state
-   * @returns {string}
-   */
-  function cellAriaLabel(cell, state) {
-    if (cell.kind === "rest") {
-      return `${mb.formatFileCount(cell.files || 0)} represented by the remainder, ${cellValueText(cell, state)}`;
-    }
-    const what = cell.kind === "dir" ? "folder" : "file";
-    return `${cell.name} (${what}, ${cellValueText(cell, state)})`;
-  }
-
-  /** @param {Record<string, any>} cell @returns {boolean} */
-  function cellIsActionable(cell) {
-    return cell.kind === "dir" || cell.kind === "file";
-  }
-
-  /**
-   * @param {Record<string, any>} cell
-   * @param {TreemapState} state
-   * @param {number} index
-   */
-  function cellHtml(cell, state, index) {
-    const style =
-      `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
-      `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px;` +
-      `--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px;`;
-    const labelLineHeight = cell.labelPx * 1.2;
-    const valueLineHeight = cell.valuePx * 1.2;
-    const showLabel = cell.w >= LABEL_MIN_W && cell.h >= Math.max(LABEL_MIN_H, labelLineHeight + 2);
-    // Nested parents suppress the sublabel: the reserved header strip
-    // is one line tall, and a second line would overlap child cells.
-    const showStackedSub =
-      showLabel &&
-      cell.h >= labelLineHeight + valueLineHeight + 6 &&
-      cell.kind !== "rest" &&
-      !cell.nested;
-    const showInlineSub = showLabel && cell.nested && cell.kind === "dir" && cell.w >= 140;
-    const sub = cellValueText(cell, state);
-    const aria = mb.escapeHtml(cellAriaLabel(cell, state));
-    const actionable = cellIsActionable(cell);
-    // A nested directory cell contains its children's cells, so the
-    // cell itself stays a group and its label is the keyboard control.
-    // Pointer routing uses the deepest outer cell instead, avoiding a
-    // nested button tree without shrinking the hit target to the label.
-    const titleInteractive = actionable && cell.nested;
-    const titleAttrs = titleInteractive
-      ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
-      : "";
-    const visibleName = cell.kind === "dir" ? `${cell.name}/` : cell.name;
-    const fileIcon = showLabel && cell.kind === "file" ? mb.fileTypeIcon(cell.name) : null;
-    const fileIconHtml = fileIcon?.svg
-      ? `<span class="file-identity-icon tm-cell-file-icon ${mb.escapeHtml(fileIcon.className)}" aria-hidden="true">${fileIcon.svg}</span>`
-      : "";
-    const label = showLabel
-      ? `<span class="tm-cell-title"${titleAttrs}>${fileIconHtml}<span class="tm-cell-label">${mb.escapeHtml(visibleName)}</span>${
-          showInlineSub
-            ? `<span class="tm-cell-sub tm-cell-sub-inline">${mb.escapeHtml(sub)}</span>`
-            : ""
-        }</span>${showStackedSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : ""}`
-      : "";
-    const outerInteractive = actionable && !titleInteractive;
-    const outerAttrs = outerInteractive
-      ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
-      : ` role="group" aria-label="${aria}"`;
-    return (
-      `<div class="${cellClasses(cell, state)}"${outerAttrs}` +
-      ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
-      ` style="${style}${palette.styleFor(cellPaletteKey(cell))}">${label}</div>`
-    );
-  }
 
   /**
    * Exceptional status copy; steady-state totals render above the map.
@@ -191,42 +69,12 @@ export function registerTreemap(mb, palette, rollupControls) {
       return "";
     }
     if (envelope.index_status === "failed") {
-      return "Indexing failed; the treemap is unavailable.";
+      return "Could not scan this folder; the treemap is unavailable.";
     }
     if (envelope.truncated) {
-      return `Index capped at ${mb.formatFileCount(envelope.max_files)}; the treemap covers the indexed files.`;
+      return `Only the first ${mb.formatFileCount(envelope.max_files)} were scanned; the treemap covers those files.`;
     }
     return "";
-  }
-
-  /**
-   * @param {Record<string, any>} cell
-   * @param {TreemapState} state
-   * @returns {string}
-   */
-  function tooltipHtml(cell, state) {
-    const rows = [];
-    if (cell.kind === "rest") {
-      rows.push(`<strong>${mb.formatFileCount(cell.files || 0)} in the remainder</strong>`);
-      rows.push(cellValueText(cell, state));
-    } else {
-      const pathLabel =
-        window.MetabrowserNavigationRoute?.displayPath?.(cell.path || "", mb.sourceKind()) ||
-        cell.path ||
-        cell.name;
-      rows.push(`<strong>${mb.escapeHtml(pathLabel)}</strong>`);
-      rows.push(`${mb.formatFileCount(cell.files || 0)} · ${mb.formatSize(cell.bytes || 0)}`);
-      if (typeof cell.mtime === "number" && cell.mtime > 0) {
-        rows.push(`modified ${mb.formatTimestamp(cell.mtime)}`);
-      }
-      if (cell.gitignored) {
-        rows.push("gitignored");
-      }
-      if (cell.state === "pending") {
-        rows.push("still scanning");
-      }
-    }
-    return rows.join("<br>");
   }
 
   /**
@@ -238,13 +86,14 @@ export function registerTreemap(mb, palette, rollupControls) {
   function renderTreemap(container, ctx) {
     /** @type {Record<string, any> | null} */
     let envelope = null;
+    // Whether the envelope's tree holds gitignored nodes: the view asks without them
+    // while Show ignored is off (treemapFullRollupQuery).
+    let envelopeHasIgnored = false;
     let rollupFailed = false;
-    /** @type {Record<string, any>[]} */
-    let cells = [];
+    // The last request failed, so a map drawn without ignored files while Show ignored
+    // is on says so until a tree with them arrives.
+    let refreshFailed = false;
     let disposed = false;
-    /** @type {number[]} */
-    let actionableIndexes = [];
-    let focusPos = 0;
     const parent = parentNavigation(ctx.path || "", mb.sourceKind());
     const parentControlHtml = parent
       ? '<div class="tm-parent-nav-row">' +
@@ -262,7 +111,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     const statement = notIndexedStatement(ctx.raw);
     if (statement) {
       container.innerHTML =
-        '<h2 class="tm-totals-heading">Files</h2>' +
+        '<h2 class="section-heading tm-totals-heading">Files</h2>' +
         parentControlHtml +
         `<div class="preview-empty">${mb.escapeHtml(statement)}</div>`;
       const parentControl = parent
@@ -288,7 +137,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     /** @type {TreemapState} */
     let state = rollupControls.get();
     container.innerHTML =
-      '<h2 class="tm-totals-heading">Files</h2>' +
+      '<h2 class="section-heading tm-totals-heading">Files</h2>' +
       // One row for both halves, above the bars they govern — the same
       // arrangement as the Overview's File Overview. They used to sit apart,
       // the measure above the tally bars and the gitignore switch below them,
@@ -302,7 +151,7 @@ export function registerTreemap(mb, palette, rollupControls) {
       '<div class="tm-legend-row"><ul class="file-type-summary-legend tm-legend" hidden></ul></div>' +
       parentControlHtml +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
-      '<div class="tm-status" role="status"></div>';
+      '<div class="notice tm-status" data-severity="warning" role="status"></div>';
     const totalsContainer = /** @type {HTMLElement} */ (container.querySelector(".tm-totals"));
     const rollupControlsHost = /** @type {HTMLElement} */ (
       container.querySelector(".tm-rollup-controls")
@@ -327,11 +176,6 @@ export function registerTreemap(mb, palette, rollupControls) {
     );
     const legendList = /** @type {HTMLElement} */ (container.querySelector(".tm-legend"));
     const legend = createDistributionLegend(legendList, palette, hover);
-    // The hover a cell under the pointer entered, until the pointer leaves the cell.
-    /** @type {DistributionHoverTarget | null} */
-    let cellHover = null;
-    /** @type {Array<HTMLElement>} */
-    let hoveredCells = [];
     const unsubscribeTotals = mb.directoryTotals.subscribe(ctx.path || "", (next) => {
       const normalized = normalizeFolderTotals(next);
       if (normalized.state === "complete") {
@@ -385,56 +229,6 @@ export function registerTreemap(mb, palette, rollupControls) {
       legendList.setAttribute("aria-label", model.caption);
     }
 
-    /**
-     * Draw the hover on the map's cells: a legend entry's hover marks every cell of its
-     * family, the files of its types and the folders it is the dominant type of, the cells
-     * it colors, as `family`; a cell's own hover marks that cell as `self`. The legend
-     * marks its entry and the tally bars their segments (distribution-legend.js,
-     * folder-totals.js). Every marked cell lifts, and none grows, since a cell's area is
-     * its value; only the cell under the pointer shimmers, because a family can hold
-     * every cell the map draws and each shimmering cell is a layer of its own
-     * (styles.css, beside the rule; docs/design-system.md, "Folder Treemap").
-     */
-    function drawCellHover() {
-      for (const element of hoveredCells) {
-        delete element.dataset.hovered;
-      }
-      hoveredCells = [];
-      const target = hover.current();
-      if (!target || !viewport) {
-        return;
-      }
-      if (target.marks === "self") {
-        const own = cellElementFor(target.anchor);
-        if (own === target.anchor && viewport.contains(own)) {
-          own.dataset.hovered = "self";
-          hoveredCells.push(own);
-        }
-        return;
-      }
-      for (const element of /** @type {NodeListOf<HTMLElement>} */ (
-        viewport.querySelectorAll("[data-tm-cell]")
-      )) {
-        const cell = cells[Number(element.dataset.tmCell)];
-        if (cell && cellPaletteKey(cell) === target.key) {
-          element.dataset.hovered = "family";
-          hoveredCells.push(element);
-        }
-      }
-    }
-    const unsubscribeCellHover = hover.subscribe(drawCellHover);
-
-    /**
-     * Let go of the hover the cell under the pointer entered, as a layout replaces the
-     * cell or the pointer leaves it: a removed element never hears the pointer leave it.
-     */
-    function releaseCellHover() {
-      if (cellHover) {
-        hover.leave(cellHover);
-        cellHover = null;
-      }
-    }
-
     // No parts argument: this row is both halves.
     const unmountControls = rollupControls.mount(rollupControlsHost);
 
@@ -467,100 +261,57 @@ export function registerTreemap(mb, palette, rollupControls) {
       }
     }
 
+    // The cells, and their part of the hover the map shares with its bars and legend.
+    const map = createTreemapMap(mb, palette, viewport, {
+      size: "full",
+      getState: mapState,
+      onActivate: activateCell,
+      // The outer box is this view's own folder, so it opens nothing.
+      opens: (cell) => !(cell.kind === "dir" && cell.path === (ctx.path || "")),
+      hover,
+      onParent: openParent,
+    });
+
     /**
-     * The index has stopped, and has said all it will about this folder.
-     * @param {Record<string, any> | null} snapshot
+     * The state the map lays its tree out under. A tree asked for without gitignored
+     * nodes draws as Show ignored off until the one with them arrives, so turning it on
+     * keeps the map it had rather than sizing folders by totals whose nodes are missing.
+     * @returns {TreemapState}
      */
-    function isCompleteSnapshot(snapshot) {
-      return (
-        (snapshot?.index_status === "done" || snapshot?.index_status === "truncated") &&
-        snapshot.node?.state !== "pending"
-      );
+    function mapState() {
+      return envelopeHasIgnored ? state : { ...state, includeIgnored: false };
     }
 
     function relayout() {
       if (disposed || !viewport) {
         return;
       }
-      // The cells are replaced below, and with them the one a cell's hover was entered
-      // from; the browser enters its replacement under a pointer that has not moved. A
-      // legend entry outlives the layout, so its hover is drawn again on the new cells.
-      releaseCellHover();
-      try {
-        layoutCells();
-      } finally {
-        drawCellHover();
-      }
-    }
-
-    function layoutCells() {
-      const rect = viewport.getBoundingClientRect();
-      const node = envelope ? envelope.node : null;
-      status.textContent = statusHtml(envelope);
+      status.textContent =
+        statusHtml(envelope) ||
+        (refreshFailed && state.includeIgnored && !envelopeHasIgnored
+          ? "Could not load the ignored files; the treemap shows the others."
+          : "");
       status.hidden = status.textContent === "";
-      const terminal = isCompleteSnapshot(envelope);
-      if (!terminal || !node || rect.width < 10 || rect.height < 10) {
-        // The index has finished without this folder, stopped at its cap before
-        // finishing it, or the last request failed with no map to keep: nothing
-        // is coming, so no skeleton either.
-        viewport.innerHTML =
-          envelope?.index_status === "failed" ||
-          (terminal && !node) ||
-          (envelope?.index_status === "truncated" && node?.state === "pending") ||
-          rollupFailed
-            ? '<div class="preview-empty">Treemap unavailable.</div>'
-            : '<div class="tm-loading mb-delayed-loading" aria-hidden="true"></div><span class="sr-only">Loading treemap…</span>';
+      const failed = envelope?.index_status === "failed";
+      status.dataset.severity = failed ? "error" : "warning";
+      status.setAttribute("role", failed ? "alert" : "status");
+      const availability = treemapAvailability(envelope, rollupFailed);
+      if (availability !== "map") {
+        // Nothing is coming when it is unavailable, so no skeleton either.
+        map.render(null, {
+          placeholderHtml:
+            availability === "unavailable"
+              ? '<div class="preview-empty">Treemap unavailable.</div>'
+              : TREEMAP_LOADING_HTML,
+        });
         return;
       }
-      cells = layoutTree(
-        node,
-        { w: rect.width, h: rect.height },
-        {
-          metric: state.metric,
-          includeIgnored: state.includeIgnored,
-        },
-      );
-      const html = cells.map((cell, i) => cellHtml(cell, state, i)).join("");
-      viewport.innerHTML =
-        html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
-      // Roving tabindex over actionable cells only (dir/file); ext and
-      // rest cells are descriptive groups outside the focus order.
-      actionableIndexes = [];
-      cells.forEach((cell, i) => {
-        if (cell.kind === "dir" || cell.kind === "file") {
-          actionableIndexes.push(i);
-        }
+      map.render(envelope?.node ? withOuterBox(envelope.node) : null, {
+        // A box too small to draw in yet is a map still arriving.
+        placeholderHtml: TREEMAP_LOADING_HTML,
+        emptyHtml:
+          '<div class="preview-empty">This folder is empty, so there is nothing to draw yet.</div>',
       });
-      focusPos = 0;
-      const first = /** @type {HTMLElement | null} */ (
-        viewport.querySelector(`[data-tm-index="${actionableIndexes[0] ?? -1}"]`)
-      );
-      if (first) {
-        first.setAttribute("tabindex", "0");
-      }
-    }
-
-    /**
-     * The cell element under `el`, which is what a tooltip anchors to.
-     * Every cell carries data-tm-cell.
-     * @param {Element | null} el
-     */
-    function cellElementFor(el) {
-      return el ? /** @type {HTMLElement | null} */ (el.closest("[data-tm-cell]")) : null;
-    }
-
-    /**
-     * Cell record for hover/tooltip lookup.
-     * @param {Element | null} el
-     * @returns {Record<string, any> | null}
-     */
-    function cellForElement(el) {
-      const host = cellElementFor(el);
-      if (!host) {
-        return null;
-      }
-      const idx = Number(host.dataset.tmCell);
-      return Number.isInteger(idx) && idx >= 0 && idx < cells.length ? cells[idx] : null;
     }
 
     /** @param {Record<string, any>} cell */
@@ -573,91 +324,6 @@ export function registerTreemap(mb, palette, rollupControls) {
       // rest / ext cells have no navigation target.
     }
 
-    /** @param {number} nextPos position within actionableIndexes */
-    function moveFocus(nextPos) {
-      if (nextPos < 0 || nextPos >= actionableIndexes.length) {
-        return;
-      }
-      const prev = viewport.querySelector(`[data-tm-index="${actionableIndexes[focusPos]}"]`);
-      if (prev) {
-        prev.setAttribute("tabindex", "-1");
-      }
-      focusPos = nextPos;
-      const next = /** @type {HTMLElement | null} */ (
-        viewport.querySelector(`[data-tm-index="${actionableIndexes[focusPos]}"]`)
-      );
-      if (next) {
-        next.setAttribute("tabindex", "0");
-        next.focus();
-      }
-    }
-
-    viewport.addEventListener("click", (e) => {
-      const cell = cellForElement(/** @type {Element} */ (e.target));
-      if (cell && cellIsActionable(cell)) {
-        activateCell(cell);
-      }
-    });
-    // One delegated pair for the whole map. mouseover fires again for every
-    // descendant the pointer crosses inside a cell, so the tooltip is anchored
-    // to the cell's own element: re-announcing the same anchor holds it still,
-    // and crossing into a different cell replaces it.
-    //
-    // The cell also says where the pointer is to the hover the map shares with its bars
-    // and legend, once per cell: crossing a cell's own label is not leaving it.
-    viewport.addEventListener("mouseover", (e) => {
-      const host = cellElementFor(/** @type {Element} */ (e.target));
-      const cell = cellForElement(/** @type {Element} */ (e.target));
-      if (host && cell) {
-        mb.tooltip.show(tooltipHtml(cell, state), host);
-        if (cellHover?.anchor !== host) {
-          releaseCellHover();
-          /** @type {DistributionHoverTarget} */
-          const target = Object.freeze({
-            population: state.includeIgnored ? "all" : "files",
-            key: cellPaletteKey(cell),
-            anchor: host,
-            marks: /** @type {const} */ ("self"),
-          });
-          cellHover = target;
-          hover.enter(target);
-        }
-      }
-    });
-    viewport.addEventListener("mouseout", (e) => {
-      mb.tooltip.hide();
-      if (
-        cellHover &&
-        cellElementFor(/** @type {Element | null} */ (e.relatedTarget)) !== cellHover.anchor
-      ) {
-        releaseCellHover();
-      }
-    });
-    viewport.addEventListener("keydown", (e) => {
-      // A key held with Command, Control, or Option is the browser's: Command-R
-      // reloads, and Command-Left or Alt-Left goes back.
-      if (e.altKey || e.ctrlKey || e.metaKey) {
-        return;
-      }
-      const key = e.key;
-      if (key === "Enter" || key === " ") {
-        const cell = cells[actionableIndexes[focusPos]];
-        if (cell) {
-          activateCell(cell);
-        }
-        e.preventDefault();
-      } else if (key === "ArrowRight" || key === "ArrowDown") {
-        moveFocus(focusPos + 1);
-        e.preventDefault();
-      } else if (key === "ArrowLeft" || key === "ArrowUp") {
-        moveFocus(focusPos - 1);
-        e.preventDefault();
-      } else if (key === "Backspace") {
-        openParent();
-        e.preventDefault();
-      }
-    });
-
     const unsubscribeControls = rollupControls.subscribe((next) => {
       const metricChanged = next.metric !== state.metric;
       const populationChanged = next.includeIgnored !== state.includeIgnored;
@@ -667,6 +333,9 @@ export function registerTreemap(mb, palette, rollupControls) {
       state = next;
       if (metricChanged || populationChanged) {
         updateTotalsComposition();
+      }
+      if (populationChanged) {
+        syncTreeWatch();
       }
       relayout();
       if (metricChanged || populationChanged) {
@@ -685,46 +354,94 @@ export function registerTreemap(mb, palette, rollupControls) {
     /** @param {unknown} error */
     function onRollupError(error) {
       console.warn("watchRollup refresh failed:", error);
+      refreshFailed = true;
       if (!isCompleteSnapshot(envelope) || !envelope?.node) {
         rollupFailed = true;
         totalsView.stopLoading();
-        relayout();
+      }
+      relayout();
+    }
+    /**
+     * Watch the folder's tree as Show ignored asks for it now.
+     * @returns {ReturnType<MetabrowserPublicSdk["watchRollup"]>}
+     */
+    function watchTree() {
+      const includeIgnored = state.includeIgnored;
+      watchedIgnored = includeIgnored;
+      return mb.watchRollup(
+        ctx.path,
+        {
+          active: isVisible,
+          ...treemapFullRollupQuery(includeIgnored),
+          onError: onRollupError,
+        },
+        (raw) => onTree(raw, includeIgnored),
+      );
+    }
+    /**
+     * @param {Record<string, any>} raw
+     * @param {boolean} includeIgnored  whether it was asked for with gitignored nodes
+     */
+    function onTree(raw, includeIgnored) {
+      /** @type {Record<string, any>} */
+      let env;
+      try {
+        env = decodeRollupEnvelope(raw);
+      } catch (error) {
+        onRollupError(error);
+        return;
+      }
+      envelope = env;
+      envelopeHasIgnored = includeIgnored;
+      rollupFailed = false;
+      refreshFailed = false;
+      const completeSnapshot = isCompleteSnapshot(env);
+      if (completeSnapshot && env.node) {
+        totalsView.update(normalizeFolderTotals(env.node));
+      } else if (
+        completeSnapshot ||
+        env.index_status === "failed" ||
+        env.index_status === "truncated"
+      ) {
+        totalsView.stopLoading();
+      } else {
+        // Still scanning, so the map shows its skeleton, whatever a failure or a
+        // finished index ended before this answer.
+        totalsView.resumeLoading();
+      }
+      const breakdown = env.file_type_breakdown;
+      try {
+        totalsEnvelope = breakdown ? normalizeRollupEnvelope(env) : null;
+      } catch (error) {
+        totalsEnvelope = null;
+        console.warn("Could not read the treemap file-type breakdown.", error);
+      }
+      updateTotalsComposition();
+      relayout();
+      updateLegend();
+    }
+    /** Whether the watch asks for the tree with its gitignored nodes. */
+    let watchedIgnored = state.includeIgnored;
+    let watch = watchTree();
+    /**
+     * The tree is asked for with or without its gitignored nodes, so a Show ignored that
+     * no longer matches the watch asks again; the totals and the legend above hold both
+     * populations already. A view out of sight asks when it shows, since a watch fetches
+     * as it starts and the switch is shared with File Overview's.
+     */
+    function syncTreeWatch() {
+      if (state.includeIgnored !== watchedIgnored && isVisible()) {
+        watch.dispose();
+        watch = watchTree();
       }
     }
-    const watch = mb.watchRollup(
-      ctx.path,
-      { active: isVisible, ext_rank: "dual", onError: onRollupError },
-      (env) => {
-        envelope = env;
-        rollupFailed = false;
-        const completeSnapshot = isCompleteSnapshot(env);
-        if (completeSnapshot && env.node) {
-          totalsView.update(normalizeFolderTotals(env.node));
-        } else if (
-          completeSnapshot ||
-          env.index_status === "failed" ||
-          env.index_status === "truncated"
-        ) {
-          totalsView.stopLoading();
-        } else {
-          // Still scanning, so the map shows its skeleton, whatever a failure or a
-          // finished index ended before this answer.
-          totalsView.resumeLoading();
-        }
-        const breakdown = env.file_type_breakdown;
-        try {
-          totalsEnvelope = breakdown ? normalizeRollupEnvelope(env) : null;
-        } catch (error) {
-          totalsEnvelope = null;
-          console.warn("Could not read the treemap file-type breakdown.", error);
-        }
-        updateTotalsComposition();
-        relayout();
-        updateLegend();
-      },
-    );
     const unsubscribeActive = mb.viewState.subscribeActive(container, (active) => {
-      if (active && watch.stale()) {
+      if (!active) {
+        return;
+      }
+      if (state.includeIgnored !== watchedIgnored) {
+        syncTreeWatch();
+      } else if (watch.stale()) {
         void watch.refresh();
       }
     });
@@ -774,10 +491,10 @@ export function registerTreemap(mb, palette, rollupControls) {
       // The hover goes with the marks it was drawn on. Each part lets go of what it holds
       // before the cells stop listening, so nothing is left marked: the cells, the legend,
       // and the bars, whose disposal clears the hover for every part still listening.
-      releaseCellHover();
+      map.releaseHover();
       legend.dispose();
       totalsView.dispose();
-      unsubscribeCellHover();
+      map.dispose();
       if (parentControl) {
         parentControl.removeEventListener("click", openParent);
       }

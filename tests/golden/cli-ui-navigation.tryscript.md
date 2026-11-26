@@ -621,8 +621,8 @@ $ node tests/dom/navigation-route-behavior.js
     "reject pull-request route /pull/7/files/a%5Cb": null,
     "reject pull-request route /pull/7/files/a%00b": null,
     "reject pull-request route /pull/7/files/%FF": null,
-    "reject invalid pull-request href 0/": "TypeError: pull route requires a pull-request number and a known tab",
-    "reject invalid pull-request href 7/commits": "TypeError: pull route requires a pull-request number and a known tab",
+    "reject invalid pull-request href 0/": "TypeError: pull route requires a pull number and a known tab",
+    "reject invalid pull-request href 7/commits": "TypeError: pull route requires a pull number and a known tab",
     "a changed file's href": ["/pull/7/files/src/app.py","/pull/7/files/docs/a%20b/%E9%9B%AA.md","/pull/7/files/a%25b%3F%23c"],
     "a changed file's route parses back": [{"number":7,"tab":"files","file":"src/app.py"},{"number":7,"tab":"files","file":"docs/a b/雪.md"},{"number":7,"tab":"files","file":"a%b?#c"}],
     "a changed file's href refuses what is not a normalized path": ["TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route names a file by a path that is not Unicode"],
@@ -762,11 +762,12 @@ $ node tests/dom/navigation-route-behavior.js
 ```
 
 The asset loader session pins lazy construction, dependency order, concurrent request
-coalescing, partial-failure recovery, and validation of promised globals.
+coalescing, partial-failure recovery, and validation of promised globals, and for a
+module bundle the one shared import, a retry after a failed import, and unknown names.
 
 ```console
 $ node tests/dom/asset-loader-behavior.js
-{"appendedBeforeAnyRequest":0,"orderedLoad":["chart.js","plugin.js","adapter.js"],"notifiedPerScript":["chart.js","plugin.js","adapter.js"],"loadedFlag":true,"appendsOnSecondRequest":0,"skippedUngatedDependency":["chart.js"],"appendsWhileThreeCallersWait":1,"appendsAfterSharedLoadSettled":1,"unknownBundle":"Unknown asset bundle: absent","failedScript":"Failed to load asset: chart.js","loadedFlagAfterFailure":false,"appendsAfterFailedRetry":2,"partialFailureRetryAppends":["chart.js","charts-runtime.js","adapter.js","adapter.js"],"partialFailureNotifications":["chart.js","charts-runtime.js","adapter.js"],"partialFailureLoaded":true,"missingProvidedGlobal":"Asset chart.js did not provide expected global: Chart","missingProvidedGlobalFirstAppends":["chart.js"],"missingProvidedGlobalFirstNotifications":[],"missingProvidedGlobalLatched":false,"missingProvidedGlobalRetryAppends":["chart.js","chart.js","plugin.js"],"missingProvidedGlobalRetryNotifications":["chart.js","plugin.js"],"missingProvidedGlobalRetryLoaded":true,"concurrentStrongFailure":"Asset shared.js did not provide expected global: Shared","concurrentStrongRetryAppends":["shared.js","shared.js"],"concurrentStrongRetryLoaded":true}
+{"appendedBeforeAnyRequest":0,"orderedLoad":["chart.js","plugin.js","adapter.js"],"notifiedPerScript":["chart.js","plugin.js","adapter.js"],"loadedFlag":true,"appendsOnSecondRequest":0,"skippedUngatedDependency":["chart.js"],"appendsWhileThreeCallersWait":1,"appendsAfterSharedLoadSettled":1,"unknownBundle":"Unknown asset bundle: absent","failedScript":"Failed to load asset: chart.js","loadedFlagAfterFailure":false,"appendsAfterFailedRetry":2,"partialFailureRetryAppends":["chart.js","charts-runtime.js","adapter.js","adapter.js"],"partialFailureNotifications":["chart.js","charts-runtime.js","adapter.js"],"partialFailureLoaded":true,"missingProvidedGlobal":"Asset chart.js did not provide expected global: Chart","missingProvidedGlobalFirstAppends":["chart.js"],"missingProvidedGlobalFirstNotifications":[],"missingProvidedGlobalLatched":false,"missingProvidedGlobalRetryAppends":["chart.js","chart.js","plugin.js"],"missingProvidedGlobalRetryNotifications":["chart.js","plugin.js"],"missingProvidedGlobalRetryLoaded":true,"concurrentStrongFailure":"Asset shared.js did not provide expected global: Shared","concurrentStrongRetryAppends":["shared.js","shared.js"],"concurrentStrongRetryLoaded":true,"moduleCallersShareImport":true,"moduleLoadedWhileImporting":false,"moduleNamespaces":["held","held"],"moduleLoadedAfterImport":true,"moduleLaterCallerShares":true,"moduleFailedImport":"ERR_MODULE_NOT_FOUND","moduleLoadedAfterFailure":false,"moduleRetryIsNewImport":true,"moduleRetryNamespace":"retried","moduleLoadedAfterRetry":true,"moduleUnknownBundle":"Unknown module bundle: absent","moduleScriptBundle":"Unknown module bundle: chart","moduleUnknownAppends":0,"moduleUnknownLoaded":false}
 ? 0
 ```
 

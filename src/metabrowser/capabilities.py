@@ -174,22 +174,57 @@ def raw_sandbox_csp(*, active_content: bool) -> str:
     )
 
 
-def untrusted_shell_csp(nonce: str, origin: str) -> str:
+def untrusted_shell_csp(
+    nonce: str,
+    origin: str,
+    kpress_scripts: tuple[str, ...],
+    *,
+    remote_images: bool,
+) -> str:
     """The Content-Security-Policy of the application page when active content is off.
 
     Rendered Markdown is already reduced to an allowlist before it reaches the page
     (:mod:`metabrowser.inert_html`); this is the second line. Scripts run only from the
     application's own static paths on *origin* -- ``/static/`` and ``/plugin-static/``,
     never ``/raw``, where the browsed repository's own files are -- and the shell's
-    inline scripts only by *nonce*; no inline handler runs. Stylesheets come from those
+    inline scripts only by *nonce*; no inline handler runs. The one exception is
+    *kpress_scripts*, each an exact KPress module path on *origin*: KPress's diagram
+    renderer and controls and the two modules they import, which draw an inert render's
+    Mermaid diagrams as images (``builtin_plugins/markdown/diagrams.js``). They are the
+    installed KPress package's own code, served as ``/static/`` is, and admitted by full
+    path, so no other KPress script runs over an untrusted document. Stylesheets come from those
     paths and ``/kpress-static/``; the Markdown worker from ``/plugin-static/``. Fonts
-    and requests stay on this origin. Images also admit ``data:`` ones the stylesheet
-    draws and GitHub's exact avatar host for application-owned author portraits;
-    document images remain restricted by the markup allowlist. The page frames nothing
-    -- the untrusted profile removes the HTML preview, its only frame -- is framed by
-    nothing, and has no plugins, ``<base>``, or form submission. Inline ``style``
+    and requests stay on this origin. Images admit ``data:`` ones the stylesheet draws
+    and, with *remote_images*, any ``https:`` one, as github.com shows a README's: a
+    document's images are still reduced by the markup allowlist
+    (:mod:`metabrowser.inert_html`) to ``https`` addresses, written with no referrer, and
+    an image is only an image, which runs no script, whatever its address. Without
+    *remote_images*, the reader's privacy setting, the policy is narrow: this origin, and
+    GitHub's exact avatar host for application-owned author portraits, so a page that
+    meant to load a remote image is refused by the browser and not only by the allowlist.
+    The argument has no default, so a caller that forgets it fails and does not quietly
+    admit the web. The page's response also sends ``Referrer-Policy: no-referrer``
+    (``server.index``), beside this policy, which covers an image the allowlist never sees:
+    one a Mermaid diagram laid out in the page names, an ``A@{ img: … }`` shape in a README,
+    is fetched under the page's policy and sends no referrer either.
+    The page frames no URL but ``/raw`` itself, the PDF view's ``<embed>``
+    -- the untrusted profile removes the HTML preview, whose frames are ``/raw/<path>``;
+    its other frame is the ``about:srcdoc`` diagram frame, under a stricter policy of its own as
+    well as this one, which admits its stylesheet from ``/plugin-static/``
+    (``builtin_plugins/markdown/diagram-frame.js``) -- is framed by nothing, embeds an object only from
+    ``/raw`` (the PDF view's ``<embed>``; every ``/raw`` answer carries its own CSP
+    sandbox, ``docs/project/architecture/arch-threat-model.md``), and has no ``<base>``
+    or form submission. Inline ``style``
     attributes stay allowed because the application writes them; an outside ``url()``
-    inside one is still limited to those image origins.
+    inside one is still limited to those image origins. A ``<style>`` element is not:
+    Mermaid lays each diagram out with one, so an untrusted document with diagrams logs
+    one expected ``style-src-elem`` violation per diagram, which costs nothing because
+    KPress's measuring host carries Mermaid's font and the image applies the style
+    outside the page (``tests/dom/markdown-diagrams-chrome.mjs`` admits only those). The
+    same image-origin limit bounds what an untrusted document's diagram can still load
+    while Mermaid lays it out in the page, its image shape (``A@{ img: … }``) and images
+    its own CSS names; a pull request's text is laid out in the diagram frame instead,
+    which loads none of them.
     """
 
     static = f"{origin}/static/"
@@ -198,16 +233,29 @@ def untrusted_shell_csp(nonce: str, origin: str) -> str:
     return "; ".join(
         (
             "default-src 'self'",
-            f"script-src 'nonce-{nonce}' {static} {plugins}",
+            " ".join(
+                (
+                    f"script-src 'nonce-{nonce}' {static} {plugins}",
+                    *(f"{origin}{path}" for path in kpress_scripts),
+                )
+            ),
             f"style-src {static} {plugins} {kpress}",
             "style-src-attr 'unsafe-inline'",
-            "img-src 'self' data: https://avatars.githubusercontent.com",
+            "img-src 'self' data: https:"
+            if remote_images
+            else "img-src 'self' data: https://avatars.githubusercontent.com",
             "font-src 'self'",
             "connect-src 'self'",
             f"worker-src {plugins}",
-            "frame-src 'none'",
+            # A frame and an object only from `/raw` itself (an exact path, so never the
+            # HTML preview's `/raw/<path>`), whose every answer carries its own sandbox:
+            # the PDF view's `<embed>` of a file's bytes. Chrome draws an `<embed>`'s PDF
+            # in a frame of that address and checks it against frame-src as well, so
+            # both must name it (tests/test_pdf_preview_chrome.py). The page makes no
+            # other frame or object, and the sanitizer passes neither from content.
+            f"frame-src {origin}/raw",
             "frame-ancestors 'none'",
-            "object-src 'none'",
+            f"object-src {origin}/raw",
             "base-uri 'none'",
             "form-action 'none'",
         )

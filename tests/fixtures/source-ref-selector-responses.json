@@ -8,7 +8,6 @@
     "body": {
       "kind": "branch",
       "query": "",
-      "limit": 100,
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref": "refs/remotes/origin/topic",
       "kinds": [
@@ -16,13 +15,14 @@
         "tag"
       ],
       "working_tree": null,
-      "total": 2,
-      "truncated": false,
+      "origin": null,
+      "pull_requests": null,
       "refs": [
         {
           "name": "topic",
           "ref": "refs/remotes/origin/topic",
           "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
           "default": true,
           "checked_out": false,
           "current": true
@@ -31,6 +31,7 @@
           "name": "feature",
           "ref": "refs/remotes/origin/feature",
           "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -43,7 +44,6 @@
     "body": {
       "kind": "tag",
       "query": "",
-      "limit": 100,
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref": "refs/remotes/origin/topic",
       "kinds": [
@@ -51,13 +51,14 @@
         "tag"
       ],
       "working_tree": null,
-      "total": 1,
-      "truncated": false,
+      "origin": null,
+      "pull_requests": null,
       "refs": [
         {
           "name": "v1",
           "ref": "refs/tags/v1",
           "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+          "committed_at": 1767225600.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -70,7 +71,6 @@
     "body": {
       "kind": "branch",
       "query": "feat",
-      "limit": 100,
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref": "refs/remotes/origin/topic",
       "kinds": [
@@ -78,13 +78,14 @@
         "tag"
       ],
       "working_tree": null,
-      "total": 1,
-      "truncated": false,
+      "origin": null,
+      "pull_requests": null,
       "refs": [
         {
           "name": "feature",
           "ref": "refs/remotes/origin/feature",
           "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -97,7 +98,6 @@
     "body": {
       "kind": "branch",
       "query": "zzz",
-      "limit": 100,
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref": "refs/remotes/origin/topic",
       "kinds": [
@@ -105,36 +105,9 @@
         "tag"
       ],
       "working_tree": null,
-      "total": 0,
-      "truncated": false,
+      "origin": null,
+      "pull_requests": null,
       "refs": []
-    }
-  },
-  "page": {
-    "status": 200,
-    "body": {
-      "kind": "branch",
-      "query": "",
-      "limit": 1,
-      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-      "ref": "refs/remotes/origin/topic",
-      "kinds": [
-        "branch",
-        "tag"
-      ],
-      "working_tree": null,
-      "total": 2,
-      "truncated": true,
-      "refs": [
-        {
-          "name": "topic",
-          "ref": "refs/remotes/origin/topic",
-          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-          "default": true,
-          "checked_out": false,
-          "current": true
-        }
-      ]
     }
   },
   "refused": {
@@ -142,6 +115,350 @@
     "body": {
       "error": "\"kind\" is \"branch\" or \"tag\"",
       "code": "invalid_request"
+    }
+  },
+  "pending": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "origin": null,
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": true
+      },
+      "refs": [
+        {
+          "name": "topic",
+          "ref": "refs/remotes/origin/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": true,
+          "checked_out": false,
+          "current": true
+        },
+        {
+          "name": "feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "filling": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "origin": null,
+      "pull_requests": {
+        "state": "ready",
+        "complete": false,
+        "refreshing": true
+      },
+      "refs": [
+        {
+          "name": "topic",
+          "ref": "refs/remotes/origin/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": true,
+          "checked_out": false,
+          "current": true,
+          "pulls": [
+            {
+              "number": 12,
+              "title": "Start the topic",
+              "state": "merged"
+            }
+          ],
+          "pulls_total": 1
+        },
+        {
+          "name": "feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "pulls": [
+            {
+              "number": 18,
+              "title": "Try the first design",
+              "state": "closed"
+            }
+          ],
+          "pulls_total": 1
+        }
+      ]
+    }
+  },
+  "filling_by_title": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "try",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "origin": null,
+      "pull_requests": {
+        "state": "ready",
+        "complete": false,
+        "refreshing": true
+      },
+      "refs": [
+        {
+          "name": "feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "pulls": [
+            {
+              "number": 18,
+              "title": "Try the first design",
+              "state": "closed"
+            }
+          ],
+          "pulls_total": 1
+        }
+      ]
+    }
+  },
+  "filling_nothing": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "zzz",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "origin": null,
+      "pull_requests": {
+        "state": "ready",
+        "complete": false,
+        "refreshing": true
+      },
+      "refs": []
+    }
+  },
+  "annotated": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "origin": null,
+      "pull_requests": {
+        "state": "ready",
+        "complete": true,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "topic",
+          "ref": "refs/remotes/origin/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": true,
+          "checked_out": false,
+          "current": true,
+          "pulls": [
+            {
+              "number": 12,
+              "title": "Start the topic",
+              "state": "merged"
+            }
+          ],
+          "pulls_total": 1
+        },
+        {
+          "name": "feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "pulls": [
+            {
+              "number": 21,
+              "title": "feat(ref): choose among branches",
+              "state": "open"
+            },
+            {
+              "number": 18,
+              "title": "Try the first design",
+              "state": "closed"
+            }
+          ],
+          "pulls_total": 2
+        }
+      ]
+    }
+  },
+  "by_number": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "#1",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "origin": null,
+      "pull_requests": {
+        "state": "ready",
+        "complete": true,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "topic",
+          "ref": "refs/remotes/origin/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": true,
+          "checked_out": false,
+          "current": true,
+          "pulls": [
+            {
+              "number": 12,
+              "title": "Start the topic",
+              "state": "merged"
+            }
+          ],
+          "pulls_total": 1
+        },
+        {
+          "name": "feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "pulls": [
+            {
+              "number": 18,
+              "title": "Try the first design",
+              "state": "closed"
+            },
+            {
+              "number": 21,
+              "title": "feat(ref): choose among branches",
+              "state": "open"
+            }
+          ],
+          "pulls_total": 2
+        }
+      ]
+    }
+  },
+  "by_title": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "start the",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "origin": null,
+      "pull_requests": {
+        "state": "ready",
+        "complete": true,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "topic",
+          "ref": "refs/remotes/origin/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": true,
+          "checked_out": false,
+          "current": true,
+          "pulls": [
+            {
+              "number": 12,
+              "title": "Start the topic",
+              "state": "merged"
+            }
+          ],
+          "pulls_total": 1
+        }
+      ]
+    }
+  },
+  "tags_with_pulls": {
+    "status": 200,
+    "body": {
+      "kind": "tag",
+      "query": "",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "origin": null,
+      "pull_requests": null,
+      "refs": [
+        {
+          "name": "v1",
+          "ref": "refs/tags/v1",
+          "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+          "committed_at": 1767225600.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
     }
   },
   "switch_away": {
@@ -156,10 +473,11 @@
         "ref_name": "feature",
         "name": "origin",
         "origin": "file:///sandbox/origin.git",
-        "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
+        "location": "/sandbox/application-home/repos/store-key-1/repository.git",
         "borrows": null,
         "shallow": false,
         "refreshable": true,
+        "follows": true,
         "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
         "ref_on_origin": true,
         "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -169,7 +487,9 @@
           "at": "2026-09-17T12:00:05Z"
         },
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
@@ -189,10 +509,11 @@
         "ref_name": "topic",
         "name": "origin",
         "origin": "file:///sandbox/origin.git",
-        "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
+        "location": "/sandbox/application-home/repos/store-key-1/repository.git",
         "borrows": null,
         "shallow": false,
         "refreshable": true,
+        "follows": true,
         "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
         "ref_on_origin": true,
         "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -202,7 +523,9 @@
           "at": "2026-09-17T12:00:05Z"
         },
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
@@ -222,10 +545,11 @@
         "ref_name": "topic",
         "name": "origin",
         "origin": "file:///sandbox/origin.git",
-        "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
+        "location": "/sandbox/application-home/repos/store-key-1/repository.git",
         "borrows": null,
         "shallow": false,
         "refreshable": true,
+        "follows": true,
         "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
         "ref_on_origin": true,
         "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -235,7 +559,9 @@
           "at": "2026-09-17T12:00:05Z"
         },
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
@@ -255,10 +581,11 @@
         "ref_name": "feature",
         "name": "origin",
         "origin": "file:///sandbox/origin.git",
-        "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
+        "location": "/sandbox/application-home/repos/store-key-1/repository.git",
         "borrows": null,
         "shallow": false,
         "refreshable": true,
+        "follows": true,
         "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
         "ref_on_origin": true,
         "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -268,7 +595,9 @@
           "at": "2026-09-17T12:00:05Z"
         },
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null

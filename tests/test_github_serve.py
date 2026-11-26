@@ -33,6 +33,7 @@ from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
 from tests.golden_harness import settle
+from tests.held_port import listener_on
 from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
@@ -45,6 +46,21 @@ pytestmark = [
 REPO = "https://github.com/octo/demo"
 _JSON_HEADERS = {"content-type": "application/json"}
 runner = CliRunner()
+_GH_LOOKUPS = (
+    "metabrowser.builtin_plugins.github.provider",
+    "metabrowser.builtin_plugins.github.gh",
+    "metabrowser.builtin_plugins.github.gh_status",
+)
+# A gh that is signed in but cannot reach GitHub: the status check says network_error,
+# which stops nothing, and a pull request's read fails the same way.
+_OFFLINE_GH = """#!/bin/sh
+if [ "$1 $2" = "auth status" ]; then
+  printf '{"hosts":{"github.com":[{"state":"error","error":"dial tcp: lookup api.github.com: no such host","active":true,"host":"github.com","login":"octo-reader","tokenSource":"keyring"}]}}\\n'
+  exit 0
+fi
+echo "dial tcp: lookup api.github.com: no such host" >&2
+exit 1
+"""
 
 
 @pytest.fixture
@@ -59,19 +75,33 @@ def origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         return local if source.normalized == REPO else source.normalized
 
     monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
-    # No gh at all, rather than conftest's failing stand-in: the provider imports the
-    # lookup by name, and a pull request's reads go through the gh module's own, so
-    # both are cleared and a pull request is gh_missing.
-    monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
-    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
+    # No gh at all, rather than conftest's failing stand-in: the provider and the status
+    # check import the lookup by name, and a pull request's reads go through the gh
+    # module's own, so all three are cleared and a pull request is gh_missing.
+    for module in _GH_LOOKUPS:
+        monkeypatch.setattr(f"{module}.gh_executable", lambda: None)
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     return built
+
+
+@pytest.fixture
+def offline_gh(origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace the fixture's missing gh with one that cannot reach GitHub."""
+
+    gh = tmp_path / "offline-bin" / "gh"
+    gh.parent.mkdir()
+    gh.write_text(_OFFLINE_GH, encoding="utf-8")
+    gh.chmod(0o755)
+    for module in _GH_LOOKUPS:
+        monkeypatch.setattr(f"{module}.gh_executable", lambda: str(gh))
 
 
 def _serve(url: str) -> Any:
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [url, "--no-open"])
     if result.exit_code == 0:
@@ -129,6 +159,21 @@ def test_a_blob_url_whose_two_segments_are_one_branch_opens_at_the_top(
     assert target.page is None
 
 
+def test_a_pull_request_with_no_gh_stops_before_anything_is_cloned(
+    origin: Path, tmp_path: Path
+) -> None:
+    """Only gh reads a pull request, so serving the default branch would answer another URL."""
+
+    result = _serve(f"{REPO}/pull/7/files")
+    assert result.exit_code == 1, result.output
+    message = str(result.exception)
+    assert message.startswith(f"pull request 7 of {REPO} cannot be read: "), message
+    assert "Install it from https://cli.github.com/" in message
+    assert message.endswith("(gh_missing); nothing was cloned")
+    assert not any((tmp_path / "home").rglob("objects"))
+
+
+@pytest.mark.usefixtures("offline_gh")
 def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(
     origin: Path,
 ) -> None:
@@ -137,7 +182,7 @@ def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(
     assert f"Revision: {FIRST_COMMIT} (topic)\n" in result.stdout
     note = next(line for line in result.stdout.splitlines() if line.startswith("Pull request:"))
     assert note.startswith(f"Pull request: 7 (not opened: pull request 7 of {REPO}: ")
-    assert note.endswith("(gh_missing); the pin is the default branch)")
+    assert note.endswith("(network_error); the pin is the default branch)")
     with TestClient(server.app) as client:
         status = client.get("/api/source/status").json()
         assert (status["pin"], status["pull_request"]) == (FIRST_COMMIT, 7)
@@ -156,6 +201,7 @@ def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(
         (f"/commits/{SECOND_COMMIT[:7]}", f"/commit/{SECOND_COMMIT}", "Selection: commit\n"),
     ],
 )
+@pytest.mark.usefixtures("offline_gh")
 def test_a_pull_request_url_opens_where_it_points(
     origin: Path, tail: str, href: str, selection: str
 ) -> None:

@@ -23,11 +23,17 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const repoRoot = path.resolve(__dirname, "../..");
-const staticDir = path.join(repoRoot, "src/metabrowser/static");
-const recorded = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, "tests/fixtures/source-ref-selector-responses.json"), "utf8"),
-);
+const {
+  assert,
+  createPage,
+  emptyState,
+  recorded,
+  repoRoot,
+  selectorRuntime,
+  settle,
+  staticDir,
+} = require("./source-ref-selector-harness.js");
+
 const recordedCheckout = JSON.parse(
   fs.readFileSync(
     path.join(repoRoot, "tests/fixtures/source-ref-selector-checkout-responses.json"),
@@ -35,169 +41,15 @@ const recordedCheckout = JSON.parse(
   ),
 );
 
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function loadProductionModule() {
-  const context = {
-    window: {},
-    AbortController,
-    console,
-    JSON,
-    Object,
-    Promise,
-    URLSearchParams,
-  };
-  context.window.window = context.window;
-  vm.createContext(context);
-  const file = path.join(staticDir, "source-ref-selector.js");
-  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
-  return context.window.MetabrowserSourceRefSelector;
-}
-
-const selectorRuntime = loadProductionModule();
-assert(selectorRuntime, "the production module did not install its runtime");
-
 // The pin guard, which a checkout's working-tree page takes with the selector's bundle.
 // Its window here has no `fetch`, so it defines its functions and guards nothing.
 function loadPinGuard() {
-  const context = { window: {}, URL, Headers, Request, Promise, Object };
+  const context = { window: {}, URL, Headers, Request, Response, Promise, Object };
   context.window.window = context.window;
   vm.createContext(context);
   const file = path.join(staticDir, "source-pin-guard.js");
   vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   return context.window.MetabrowserSourcePinGuard;
-}
-
-async function settle() {
-  for (let turn = 0; turn < 20; turn += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
-/**
- * Injected browser facilities for one page: requests wait for the step to answer them.
- *
- * @param {{view: string | null}} page The page's pathname.
- */
-function createPage(page) {
-  const log = [];
-  const waiting = [];
-  const timers = new Map();
-  let nextTimer = 1;
-  const navigated = [];
-  let model = null;
-
-  const deps = {
-    request(method, route, body, signal) {
-      const line =
-        body === undefined ? `${method} ${route}` : `${method} ${route} ${JSON.stringify(body)}`;
-      log.push(line);
-      return new Promise((resolve, reject) => {
-        const request = { route, resolve };
-        waiting.push(request);
-        // As fetch does: an aborted request settles at once with an AbortError.
-        signal?.addEventListener("abort", () => {
-          const at = waiting.indexOf(request);
-          if (at >= 0) {
-            waiting.splice(at, 1);
-            log.push(`aborted ${line}`);
-            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
-          }
-        });
-      });
-    },
-    schedule(callback, delayMs) {
-      const handle = nextTimer;
-      nextTimer += 1;
-      timers.set(handle, { callback, delayMs });
-      return handle;
-    },
-    cancel(handle) {
-      timers.delete(handle);
-    },
-    render(next) {
-      model = next;
-    },
-    navigate(href) {
-      navigated.push(href);
-    },
-    currentView: () => page.view,
-  };
-
-  return {
-    deps,
-    /** Answer the oldest waiting request (or the one at *index*) with a recorded answer. */
-    async answer(recording, index = 0) {
-      assert(waiting.length > index, "no request is waiting for an answer");
-      const [request] = waiting.splice(index, 1);
-      request.resolve({ status: recording.status, etag: null, body: recording.body });
-      await settle();
-    },
-    async fireTimer() {
-      const pending = [...timers.entries()];
-      assert(pending.length === 1, `expected one pending timer, found ${pending.length}`);
-      const [handle, timer] = pending[0];
-      assert(timer.delayMs === selectorRuntime.FILTER_DELAY_MS, "the pause is the filter delay");
-      timers.delete(handle);
-      timer.callback();
-      await settle();
-    },
-    observe(step) {
-      const observed = {
-        step,
-        requests: log.splice(0),
-        filterPending: timers.size > 0,
-        paint: paintOf(model),
-      };
-      if (navigated.length > 0) {
-        observed.navigated = navigated.splice(0);
-      }
-      return observed;
-    },
-  };
-}
-
-// What the selector would show, one line per row, so a transcript reads as the page does.
-// A checkout's selector adds what a mirror's has none of: the lists it offers, its
-// working-tree row, the checked-out branch's badge, each row's chip, and its offer to
-// reload. A mirror's paint is printed as it always was.
-function paintOf(model) {
-  if (model === null) {
-    return null;
-  }
-  const checkout = model.workingTree !== null;
-  const stale = model.stale === null ? {} : { stale: `${model.stale} [Reload]` };
-  if (model.removed) {
-    return { removed: true };
-  }
-  if (!model.open) {
-    return { button: model.button, open: false, ...stale };
-  }
-  return {
-    button: model.button,
-    open: true,
-    ...(checkout
-      ? {
-          workingTree: `Working tree: ${model.workingTree.detail}${model.workingTree.current ? " [current]" : ""}`,
-          lists: model.kinds,
-        }
-      : {}),
-    kind: model.kind,
-    query: model.query,
-    loading: model.loading,
-    switching: model.switching,
-    rows: model.rows.map(
-      (row) =>
-        `${row.name} ${row.commit}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
-    ),
-    note: model.note,
-    error: model.error,
-    ...stale,
-  };
 }
 
 function shownOf(switched) {
@@ -251,9 +103,9 @@ async function run() {
   steps.push(page.observe("tags list newest first"));
 
   const back = selector.setKind("branch");
-  await page.answer(recorded.page);
+  await page.answer(recorded.branches);
   await back;
-  steps.push(page.observe("a list longer than a page says it stops short"));
+  page.observe("back to branches");
 
   const refused = selector.setKind("tag");
   await page.answer(recorded.refused);
@@ -380,7 +232,68 @@ async function run() {
   }
   keys.push(`ArrowDown from -1 in an empty list: ${selectorRuntime.moveRow("ArrowDown", -1, 0)}`);
 
-  return { steps, labels, copies, keys, checkout: await runCheckout() };
+  // Which rows a list draws: those in its view and the overscan on either side, however
+  // many it holds, so a listing of every ref costs the page what its view holds, and the
+  // row that takes Tab wherever it is, since focus may be on it and Tab from the filter
+  // box goes to it. A view 320 px tall over rows 28 px tall, at the top, partway, and at
+  // the end of 10,001 rows, with that row in the window or far from it; a short list;
+  // and a list whose rows have not been measured.
+  const overscan = selectorRuntime.ROWS_OVERSCAN;
+  // Rows with a pull request are taller than the rest, so a row sits at its own offset:
+  // *every* is how often a row has one (0 for none).
+  const rowsOf = (count, every) =>
+    Array.from({ length: count }, (_, at) => ({
+      pulls: every > 0 && at % every === 0 ? [{ number: at + 1 }] : [],
+    }));
+  const windows = [
+    [10001, 28, 28, 0, 0, 320, 0],
+    [10001, 28, 28, 0, 0, 320, 9000],
+    [10001, 28, 28, 0, 28 * 5000 + 10, 320, 0],
+    [10001, 28, 28, 0, 28 * 5000 + 10, 320, 5003],
+    [10001, 28, 28, 0, 28 * 10001 - 320, 320, 10000],
+    [3, 28, 28, 0, 0, 320, 1],
+    [10001, 0, 0, 0, 0, 0, 0],
+    [0, 28, 28, 0, 0, 320, 0],
+    // Every fourth row has a pull request and is 46 px tall: 10,001 rows are 340,034 px.
+    [10001, 28, 46, 4, 0, 320, 0],
+    [10001, 28, 46, 4, 46 * 2500 + 9 * 28 + 12, 320, 0],
+    [10001, 28, 46, 4, 28 * 10001 + 18 * 2501 - 320, 320, 10000],
+    // A list whose only row with a pull request is the first.
+    [10001, 28, 46, 10001, 0, 320, 0],
+  ].map(([count, plain, tall, every, scrollTop, viewHeight, roving]) => {
+    const rows = rowsOf(count, every);
+    const offsets = selectorRuntime.rowOffsets(rows, plain, tall);
+    const { start, end, also } = selectorRuntime.rowWindow(offsets, scrollTop, viewHeight, roving);
+    // The window is the rows that touch the view and the overscan on either side, found
+    // here by looking at every row.
+    if (offsets[count] > 0) {
+      let first = count;
+      let last = -1;
+      for (let at = 0; at < count; at += 1) {
+        if (offsets[at + 1] > scrollTop && at < first) {
+          first = at;
+        }
+        if (offsets[at] < scrollTop + viewHeight) {
+          last = at;
+        }
+      }
+      assert(
+        start === Math.max(0, first - overscan) && end === Math.min(count, last + 1 + overscan),
+        "a window is its view and the overscan",
+      );
+    }
+    assert(start >= 0 && end <= count && start <= end, "a window is inside the list");
+    assert(
+      count === 0 || (start <= roving && roving < end ? also === -1 : also === roving),
+      "the row that takes Tab is drawn, in the window or as well as it",
+    );
+    const beside = also >= 0 ? ` and row ${also}` : "";
+    const tallRows =
+      every > 0 ? ` (every ${every === 10001 ? "10,001st" : `${every}th`} ${tall} px)` : "";
+    return `${count} rows ${plain} px tall${tallRows}, scrolled ${scrollTop} px in ${viewHeight} px, Tab on row ${roving}: rows ${start} to ${end}${beside}`;
+  });
+
+  return { steps, labels, copies, keys, overscan, windows, checkout: await runCheckout() };
 }
 
 // A served checkout: a folder that is a repository's root.
@@ -388,12 +301,15 @@ async function runCheckout() {
   const steps = [];
   const recording = recordedCheckout;
   const onReadme = { view: recording.views.readme };
-  const options = (shown) => ({ shown, checkout: true });
+  // The page names the branch its working tree is on, as server.py writes it on the row
+  // (`data-working-branch`): the fixture checkout's HEAD is on topic.
+  const options = (shown) => ({ shown, checkout: true, workingBranch: "topic" });
 
-  // The folder opens on its working tree, showing README.md.
+  // The folder opens on its working tree, showing README.md: the row says so in words,
+  // then names the branch the files on disk are on.
   let page = createPage(onReadme);
   let selector = selectorRuntime.createSelector(page.deps, options(null));
-  steps.push(page.observe("the button names the working tree"));
+  steps.push(page.observe("the button names the working tree and the branch it is on"));
 
   const opening = selector.open();
   await page.answer(recording.branches);
@@ -425,7 +341,9 @@ async function runCheckout() {
   const onRevisionReadme = { view: recording.views.readme_revision };
   page = createPage(onRevisionReadme);
   selector = selectorRuntime.createSelector(page.deps, options(shownOf(recording.switch_branch)));
-  steps.push(page.observe("the button names the branch shown"));
+  steps.push(
+    page.observe("the button names the branch shown, a revision, and offers the way back"),
+  );
   const reopened = selector.open();
   await page.answer(recording.branches_on_revision);
   await reopened;
@@ -438,16 +356,85 @@ async function runCheckout() {
   steps.push(page.observe("the checked-out branch opens its commit, not the working tree"));
   selector.dispose();
 
+  // The checked-out branch's own revision reads differently from its working tree: the
+  // row says "Revision", and its button goes back, as the list's Working tree row does
+  // (both call `chooseWorkingTree`).
   page = createPage(onRevisionReadme);
   selector = selectorRuntime.createSelector(
     page.deps,
     options(shownOf(recording.switch_checked_out)),
   );
+  steps.push(page.observe("the checked-out branch's revision is not its working tree"));
   const toTree = selector.chooseWorkingTree();
   steps.push(page.observe("the working tree is asked for by name, not by a ref"));
   await page.answer(recording.switch_working_tree);
   await toTree;
   steps.push(page.observe("the page goes to the same file in the folder"));
+  selector.dispose();
+
+  // The same chooser heads the Commits tab, which shows the history of the revision
+  // chosen. A switch made there names no address, and the page reloads on Commits at
+  // the tab's own landing, the newest commit of the history the server now serves.
+  const onCommit = { view: `/commit/${recording.switch_checked_out.body.status.pin}`, tab: "git" };
+  page = createPage(onCommit);
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const fromCommits = selector.choose("refs/heads/feature");
+  steps.push(page.observe("a switch on the Commits tab names no address"));
+  await page.answer(recording.switch_from_commits);
+  await fromCommits;
+  steps.push(page.observe("the page reloads on the Commits tab's own landing"));
+  selector.dispose();
+  page = createPage({ view: "/view/", tab: "git" });
+  selector = selectorRuntime.createSelector(
+    page.deps,
+    options(shownOf(recording.switch_from_commits)),
+  );
+  steps.push(page.observe("the reloaded Commits tab's row names the revision chosen there"));
+  selector.dispose();
+
+  // The way back failed, with the list closed: the server is gone, since one that answers
+  // serves its working tree. The row says so under its button, and opening the list, or
+  // the next try, clears it.
+  page = createPage(onRevisionReadme);
+  selector = selectorRuntime.createSelector(
+    page.deps,
+    options(shownOf(recording.switch_checked_out)),
+  );
+  const failedBack = selector.chooseWorkingTree();
+  await page.fail();
+  await failedBack;
+  steps.push(page.observe("a failed way back says so in the row, with the list closed"));
+  const openedOnRefusal = selector.open();
+  await page.answer(recording.branches_on_revision);
+  await openedOnRefusal;
+  selector.close();
+  steps.push(page.observe("opening and closing the list clears it"));
+  selector.dispose();
+
+  // HEAD moved in a terminal after the page was drawn on feature. The row and its tooltip
+  // name feature until a listing reads HEAD afresh, as the list's "checked out" badge does.
+  page = createPage(onReadme);
+  selector = selectorRuntime.createSelector(page.deps, {
+    shown: null,
+    checkout: true,
+    workingBranch: "feature",
+  });
+  const withTip = (step) => ({
+    ...page.observe(step),
+    tip: selectorRuntime.describe(selector.snapshot()).viewTip,
+  });
+  steps.push(withTip("a page drawn before a switch in a terminal names the branch it was on"));
+  const readsHead = selector.open();
+  await page.answer(recording.branches);
+  await readsHead;
+  selector.close();
+  steps.push(withTip("a listing names the branch HEAD is on now, in the row and its tooltip"));
+  // The listing has no commit for a detached HEAD, so the row names no ref then.
+  const readsDetached = selector.open();
+  await page.answer(recording.branches_detached);
+  await readsDetached;
+  selector.close();
+  steps.push(withTip("a HEAD detached since is the working tree's word alone"));
   selector.dispose();
 
   // Back on the working tree.
@@ -498,7 +485,7 @@ async function runCheckout() {
   const refusedGit = selector.open();
   await page.answer(recording.unsupported_git);
   await refusedGit;
-  steps.push(page.observe("an older Git is refused in the server's words"));
+  steps.push(page.observe("an older Git is refused, and the page says so"));
   selector.dispose();
 
   // A mirror has no working tree to choose, and its freshness row makes that offer.
@@ -512,16 +499,22 @@ async function runCheckout() {
   selector.dispose();
 
   const pin = recording.switch_branch.body.status.pin;
+  // The working tree on a branch, at a detached HEAD, and with a HEAD the server could not
+  // read; then each kind of revision, which offers the way back.
   const labels = [
-    null,
-    { pin, ref: "refs/heads/feature" },
-    { pin, ref: "refs/remotes/origin/feature" },
-    { pin, ref: "refs/tags/v1" },
-    { pin, ref: null },
-  ].map((shown) => {
-    const model = selectorRuntime.describe({ ...emptyState(), shown, checkout: true });
+    [null, { workingBranch: "topic" }],
+    [null, { workingCommit: pin }],
+    [null, {}],
+    [{ pin, ref: "refs/heads/feature" }, {}],
+    [{ pin, ref: "refs/remotes/origin/feature" }, {}],
+    [{ pin, ref: "refs/tags/v1" }, {}],
+    [{ pin, ref: null }, {}],
+  ].map(([shown, head]) => {
+    const model = selectorRuntime.describe({ ...emptyState(), ...head, shown, checkout: true });
     const chip = model.selectedRef === null ? "" : ` (${model.selectedRef.kind} chip)`;
-    return `${model.button}${chip}`;
+    const id = model.commitId === null ? "" : " (commit-ID face)";
+    const back = model.back ? " [← Working tree]" : "";
+    return `${model.button}${chip}${id}${back} | ${model.viewTip}`;
   });
 
   // What each kind of page names on its data requests, so a tab left behind is refused:
@@ -543,20 +536,197 @@ async function runCheckout() {
     "a mirror's pin": named({ pin, ref: "refs/remotes/origin/feature" }, undefined),
     "a plain folder": named(undefined, undefined),
   };
-  return { steps, labels, guard };
+
+  // Where the Working tree row cuts a folder's path, keeping the folder's own name whole:
+  // at the name the server sends, in whatever separator the platform joined the path with,
+  // and nowhere at the home directory, whose path is `~` alone.
+  const folders = Object.fromEntries(
+    [
+      ["under the home directory", "~/src/checkout", "checkout"],
+      ["with the platform's other separator", "~\\src\\checkout", "checkout"],
+      ["the home directory itself", "~", "reader"],
+      ["outside the home directory", "/srv/checkout", "checkout"],
+    ].map(([where, location, name]) => {
+      const listing = {
+        ...recording.branches.body,
+        working_tree: { current: true, head: null, head_name: null, name, location },
+      };
+      const tree = selectorRuntime.describe({
+        ...emptyState(),
+        listing,
+        checkout: true,
+      }).workingTree;
+      return [where, `${tree.directory}[${tree.base}]`];
+    }),
+  );
+  return {
+    steps,
+    labels,
+    guard,
+    folders,
+    hold: await runHold(recording, onReadme, options),
+  };
 }
 
-function emptyState() {
-  return {
-    shown: null,
-    open: false,
-    kind: "branch",
-    query: "",
-    listing: null,
-    loading: false,
-    switching: false,
-    error: null,
+// What the page's own data requests do while it switches (mb-bio7): from the moment the
+// server is asked, it may serve the other subject while the page is still here, and would
+// refuse them. So each waits: it goes at once when the page stays, and is held while the
+// page goes, or until the guard's bound if the page is still there. The guard's own `fetch`
+// wrapper and hold run here, over a network that logs what reaches it, with each hold's
+// bound kept for a step to fire. A request whose signal is aborted is not sent, as `fetch`
+// would not send it.
+async function runHold(recording, onReadme, options) {
+  const pinGuard = loadPinGuard();
+  const timers = [];
+  const hold = pinGuard.createSwitchHold((callback, ms) => timers.push({ callback, ms }));
+  const network = [];
+  let resumePin = null;
+  const guarded = pinGuard.guardFetch(
+    async (input, init) => {
+      if (init?.signal?.aborted) {
+        throw init.signal.reason;
+      }
+      network.push(`${input} ${new Headers(init?.headers).get(pinGuard.PIN_HEADER)}`);
+      if (input === "/api/source/pin") {
+        await new Promise((resume) => {
+          resumePin = resume;
+        });
+      }
+      return { status: 200, headers: new Headers() };
+    },
+    pinGuard.WORKING_TREE_PIN,
+    () => `http://127.0.0.1${onReadme.view}`,
+    () => {},
+    hold.waiting,
+  );
+  // The page refreshing its root's tallies, as app.js does after its first rows.
+  const ask = (init) => guarded("/api/tree?depth=0", init);
+  const observed = [];
+  // *more* is read once the step has settled.
+  const note = async (step, more = () => ({})) => {
+    await settle();
+    observed.push({
+      step,
+      sent: network.splice(0),
+      bounds: timers.map((timer) => timer.ms),
+      ...more(),
+    });
   };
+  // The oldest bound still to come, as its timer would fire it.
+  const fireBound = () => timers.shift().callback();
+  // The bounds of holds already ended, which find nothing left to release.
+  const spendBounds = () => {
+    for (const timer of timers.splice(0)) {
+      timer.callback();
+    }
+  };
+  const switching = () => {
+    const page = createPage(onReadme);
+    page.deps.hold = hold.hold;
+    return { page, selector: selectorRuntime.createSelector(page.deps, options(null)) };
+  };
+
+  // A branch: the page goes, and the reader stops its navigation.
+  let { page, selector } = switching();
+  const toBranch = selector.choose("refs/heads/feature");
+  void ask();
+  await note("a request made while the switch is asked waits for the answer");
+  await page.answer(recording.switch_branch);
+  await toBranch;
+  void ask();
+  await note("a page that goes holds its requests until it is gone");
+  fireBound();
+  await note("a page still there at the bound sends them, to be refused");
+  selector.dispose();
+
+  // The working tree, which the page already shows: nothing changes.
+  ({ page, selector } = switching());
+  const same = selector.chooseWorkingTree();
+  void ask();
+  await page.answer(recording.switch_working_tree_same);
+  await same;
+  await note("choosing what the page shows sends them when it is answered");
+  spendBounds();
+  selector.dispose();
+
+  ({ page, selector } = switching());
+  const missing = selector.choose("refs/heads/gone");
+  void ask();
+  await page.answer(recording.switch_missing);
+  await missing;
+  await note("a switch refused sends them when it is answered");
+  spendBounds();
+  selector.dispose();
+
+  // The page takes its selector away while the switch is asked: it stays where it is.
+  ({ page, selector } = switching());
+  const leftAlone = selector.choose("refs/heads/feature");
+  void ask();
+  selector.dispose();
+  await page.answer(recording.switch_branch);
+  await leftAlone;
+  await note("a selector taken away during its switch sends them when it is answered");
+  spendBounds();
+
+  // A request given up while it is held, as a newer search or a timeout gives one up.
+  ({ page, selector } = switching());
+  const givenUp = selector.choose("refs/heads/gone");
+  const controller = new AbortController();
+  let settled = "pending";
+  ask({ signal: controller.signal }).then(
+    () => {
+      settled = "answered";
+    },
+    (error) => {
+      settled = error.name;
+    },
+  );
+  controller.abort();
+  await note("a request given up while it is held settles at once", () => ({ settled }));
+  await page.answer(recording.switch_missing);
+  await givenUp;
+  await note("and is not sent when the hold ends");
+  spendBounds();
+  selector.dispose();
+
+  // The back/forward cache shows the page again, and it switches once more before the
+  // first switch's bound has fired.
+  ({ page, selector } = switching());
+  const first = selector.choose("refs/heads/feature");
+  await page.answer(recording.switch_branch);
+  await first;
+  void ask();
+  hold.release();
+  await note("a page the back/forward cache shows again sends them at once");
+  selector.dispose();
+  ({ page, selector } = switching());
+  const second = selector.choose("refs/heads/gone");
+  void ask();
+  fireBound();
+  await note("the first switch's bound, firing during a second, sends nothing");
+  await page.answer(recording.switch_missing);
+  await second;
+  await note("and the second sends them when it is answered");
+  spendBounds();
+  selector.dispose();
+  const post = () => guarded("/api/source/pin", { method: "POST" });
+  const selecting = post();
+  const competing = await guarded(
+    new Request("http://127.0.0.1/api/source/pin", { method: "POST" }),
+  );
+  assert(competing.status === 409);
+  const refusal = (await competing.json()).code;
+  assert(refusal === "selection_busy");
+  await note("a second source control cannot post while a ref switch is in flight", () => ({
+    refusal,
+  }));
+  resumePin();
+  await selecting;
+  const retry = post();
+  resumePin();
+  assert((await retry).status === 200);
+  await note("another source control can post after the first settles");
+  return observed;
 }
 
 run()

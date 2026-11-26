@@ -36,6 +36,7 @@ from metabrowser import server
 from metabrowser.builtin_plugins.github.pull_route import image_route
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.records import StoreOperation
+from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.source import reset_source_session
@@ -260,8 +261,10 @@ def test_recording_is_what_the_servers_answer(
     assert recorded["page_at_parent"] == {"pin": ids["first"], "ref": None}
     head = recorded["switch_head"]
     assert (head["status"], head["body"]["view_href"]) == (200, recorded["views"]["new_name"])
-    # Back on the branch's tip by its ID, the server serves the branch again.
+    # Back on the branch's tip by its ID, the server serves the branch again, and the commit
+    # asked for by its ID stays put when the branch moves (mb-cww9).
     assert head["body"]["status"]["ref"] == "refs/remotes/origin/trunk"
+    assert head["body"]["status"]["follows"] is False
     assert recorded["switch_readme"]["body"]["view_href"] == recorded["views"]["readme"]
     # Named under the pull request's head, the same commit is the pull request's.
     on_branch = recorded["switch_on_branch"]
@@ -294,6 +297,8 @@ def test_only_a_pinned_page_asks_for_the_view_file_module() -> None:
     folder, asked, pinned = steps[0], steps[1], steps[2]
     assert folder["step"] == "a served folder's page has no controls"
     assert folder["modules"] == [
+        # The diff's fold bar, which rendered Markdown's folds share (diff-fold.js).
+        "diff-fold.js",
         "diff-intraline.js",
         "diff-model.js",
         "diff-render-model.js",
@@ -323,7 +328,7 @@ def test_a_module_that_does_not_load_is_said_and_logged() -> None:
     steps = {step["step"]: step for step in run_session(SESSION)["steps"]}
     failed = steps["a page whose module does not load says so, and logs the request"]
     assert failed["bars"] == {}
-    assert failed["failure"] == ["Could not load this diff. Refresh the page to try again."]
+    assert failed["failure"] == ["Could not load this diff. Reload the page to try again."]
     assert failed["logged"] == [
         "metabrowser diff: view load failed · diff/view-file"
         " · Failed to fetch dynamically imported module"
@@ -338,7 +343,9 @@ def test_a_module_that_does_not_load_is_said_and_logged() -> None:
     assert folder["bars"] and not any(controls for controls in folder["bars"].values())
 
 
-_LINK = re.compile(r"link (/view/\S+) · Open .* at ([0-9a-f]{12}), ")
+# A link names its commit as every line does (`short_commit`), which Git resolves as it
+# would any abbreviation the fixture's small repository leaves unique.
+_LINK = re.compile(rf"link (/view/\S+) · Open .* at ([0-9a-f]{{{SHORT_COMMIT_CHARS}}}), ")
 _SWITCH = re.compile(r"POST /api/source/pin \[content-type: application/json\] (\{.*\})$")
 
 

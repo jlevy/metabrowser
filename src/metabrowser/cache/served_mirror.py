@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -24,7 +25,12 @@ from metabrowser.cache import acquire
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.atomic import RecordError, read_record
 from metabrowser.cache.locks import LockBusyError, store_fetch_lock
-from metabrowser.cache.paths import store_directory, store_record
+from metabrowser.cache.origin import (
+    REMOTE_PROBE_TIMEOUT_S,
+    ls_remote_branch_args,
+    parse_branch_tip,
+)
+from metabrowser.cache.paths import store_git_directory, store_record
 from metabrowser.cache.providers import repository_context_for
 from metabrowser.cache.records import (
     REPOSITORY_STORE_STATE_CONTRACT_ID,
@@ -32,19 +38,36 @@ from metabrowser.cache.records import (
     StoreLender,
 )
 from metabrowser.cache.repository_store import open_revision
-from metabrowser.cache.resolve import list_mirror_refs, ref_tip, resolve_pin
+from metabrowser.cache.resolve import (
+    ResolvedSelection,
+    UnresolvedSelection,
+    list_mirror_refs,
+    ref_tip,
+    ref_tips,
+    resolve_pin,
+    resolve_selection,
+)
 from metabrowser.cache.update import update_store
-from metabrowser.cache.urls import GitSource
-from metabrowser.git.process import RepositoryStoreTarget, repository_store_target
+from metabrowser.cache.urls import GitSource, RepositorySelection
+from metabrowser.git.process import (
+    ACQUISITION_POLICY,
+    GitError,
+    RepositoryStoreTarget,
+    repository_store_target,
+    run_git,
+)
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.home import PrivateStorageError
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
+    PROBED_REF_PREFIX,
     MirrorDisplay,
     MirrorRef,
+    OriginProbeError,
     RecordedFreshness,
     RefKind,
     RefreshResult,
+    probes_origin,
 )
 from metabrowser.paths_safe import tilde_path
 from metabrowser.repository_context import RepositoryContext
@@ -176,7 +199,7 @@ class StoreMirror:
 
     @property
     def _repository(self) -> Path:
-        return self.home / store_directory(self.store_key) / "repository.git"
+        return self.home / store_git_directory(self.store_key)
 
     def _target(self) -> RepositoryStoreTarget:
         return repository_store_target(git_dir=self._repository)
@@ -223,6 +246,29 @@ class StoreMirror:
             self.home, self.store_key, remote_url=acquire.remote_url_for(self.source)
         )
         return RefreshResult(outcome=update.outcome.value, at=update.at, swept=update.swept)
+
+    async def origin_tip(self, ref: str) -> str | None:
+        """The commit the origin's branch behind *ref* names now, asked of the origin.
+
+        One ``ls-remote`` of that branch, which takes no lock and writes nothing, so it
+        runs beside a fetch. The first-request deadline bounds it, on every transport:
+        nothing waits for a probe longer than that.
+        """
+
+        if not probes_origin(ref):
+            raise OriginProbeError(f"{ref} is not a branch of the origin")
+        branch = ref.removeprefix(PROBED_REF_PREFIX)
+        remote_url = acquire.remote_url_for(self.source)
+        try:
+            printed = await run_git(
+                ls_remote_branch_args(remote_url, branch),
+                target=self._target(),
+                policy=ACQUISITION_POLICY,
+                timeout_s=REMOTE_PROBE_TIMEOUT_S,
+            )
+        except GitError as exc:
+            raise OriginProbeError("the origin did not answer the probe") from exc
+        return parse_branch_tip(printed, branch)
 
     def _default_ref(self) -> str | None:
         try:
@@ -277,8 +323,42 @@ class StoreMirror:
     async def ref_tip(self, ref: str) -> str | None:
         return await ref_tip(self._target(), ref)
 
-    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
-        default_ref = await asyncio.to_thread(self._default_ref) if kind == "branch" else None
+    async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
+        return await ref_tips(self._target(), refs)
+
+    async def default_ref(self) -> str | None:
+        return await asyncio.to_thread(self._default_ref)
+
+    async def resolve_link(
+        self, selection: RepositorySelection
+    ) -> ResolvedSelection | UnresolvedSelection:
+        """What a link's *selection* names in the mirror as it is, as ``metab URL`` reads it.
+
+        ``POST /api/source/link`` asks it for a link into the repository this server
+        already serves (``source_routes.api_source_link``). Reading only: a ref or commit
+        the mirror lacks is :class:`UnresolvedSelection`, whose ``needs_fetch`` says one
+        fetch could change the answer. A selection that reads the default branch and a
+        mirror with no record of one is ``ref_not_found``.
+        """
+
+        default_ref = await asyncio.to_thread(self._default_ref)
+        default_revision = (
+            None if default_ref is None else await ref_tip(self._target(), default_ref)
+        )
+        if default_ref is None or default_revision is None:
+            reads_default = selection.kind in {"repository", "pull_request"} or (
+                selection.kind in {"tree", "blob"} and selection.ref_and_path[:1] == (b"HEAD",)
+            )
+            if reads_default:
+                return UnresolvedSelection("ref_not_found")
+        return await resolve_selection(
+            self._target(),
+            selection,
+            default_ref=default_ref or "",
+            default_revision=default_revision or "",
+        )
+
+    async def list_refs(self, kind: RefKind, *, default_ref: str | None) -> tuple[MirrorRef, ...]:
         return await list_mirror_refs(self._target(), kind, default_ref=default_ref)
 
     def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shlex
 import socket
 import subprocess
@@ -10,6 +11,7 @@ import sys
 import pytest
 
 from metabrowser import server_utils
+from tests.ipv6_loopback import require_ipv6_loopback
 
 
 class _lingering_connection_on_a_port:
@@ -60,6 +62,81 @@ def test_port_search_range_stops_at_maximum_tcp_port(monkeypatch) -> None:
     assert attempted == [server_utils.MAX_TCP_PORT]
 
 
+def test_a_port_a_server_listens_on_is_held_against_the_next_search() -> None:
+    """Two servers that search from one port take two ports, in either order of startup.
+
+    The first socket is held and never accepted on, as a server's is while its
+    application starts. The second search, and a probe, must both see the port taken.
+    """
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        start = int(probe.getsockname()[1])
+    ports = server_utils.port_search_range(start)
+    with server_utils.listen_on_available_local_port("127.0.0.1", ports) as first:
+        held = int(first.getsockname()[1])
+        assert not server_utils.local_port_is_free("127.0.0.1", held)
+        with server_utils.listen_on_available_local_port("127.0.0.1", ports) as second:
+            assert int(second.getsockname()[1]) > held
+        # A connection made before the server accepts waits for it, and is not refused.
+        with socket.create_connection(("127.0.0.1", held), timeout=5):
+            pass
+
+
+def test_an_adopted_listener_preserves_tcp_nodelay_on_accepted_connections() -> None:
+    """The adopted listener should match asyncio's ordinary host/port bind."""
+
+    async def read_nodelay(listener: socket.socket | None = None) -> int:
+        nodelay: asyncio.Future[int] = asyncio.get_running_loop().create_future()
+
+        def connected(_reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            try:
+                accepted = writer.get_extra_info("socket")
+                nodelay.set_result(accepted.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY))
+            finally:
+                writer.close()
+
+        if listener is None:
+            server = await asyncio.start_server(connected, "127.0.0.1", 0)
+        else:
+            server = await asyncio.start_server(connected, sock=listener)
+        async with server:
+            port = int(server.sockets[0].getsockname()[1])
+            _reader, client = await asyncio.open_connection("127.0.0.1", port)
+            try:
+                return await asyncio.wait_for(nodelay, timeout=5)
+            finally:
+                client.close()
+                await client.wait_closed()
+
+    async def compare_bindings() -> None:
+        ordinary = await read_nodelay()
+        if sys.platform == "linux":
+            assert ordinary == 1
+        with server_utils.listen_on_available_local_port("127.0.0.1", (0,)) as listener:
+            assert await read_nodelay(listener) == ordinary
+
+    asyncio.run(compare_bindings())
+
+
+def test_a_listener_takes_a_port_held_only_by_a_lingering_connection() -> None:
+    """As ``local_port_is_free`` answers, for the reason its test below gives."""
+
+    with _lingering_connection_on_a_port() as port:
+        ports = server_utils.port_search_range(port)
+        with server_utils.listen_on_available_local_port("127.0.0.1", ports) as listener:
+            assert int(listener.getsockname()[1]) == port
+
+
+def test_a_listener_search_names_the_range_it_exhausted() -> None:
+    with server_utils.listen_on_available_local_port(
+        "127.0.0.1", server_utils.port_search_range(server_utils.MAX_TCP_PORT - 40)
+    ) as held:
+        port = int(held.getsockname()[1])
+        with pytest.raises(RuntimeError, match=rf"range {port}\.\.{port}"):
+            server_utils.listen_on_available_local_port("127.0.0.1", range(port, port + 1))
+
+
 def test_remote_port_probe_script_stops_at_maximum_tcp_port() -> None:
     script = server_utils.remote_port_probe_script(server_utils.MAX_TCP_PORT)
 
@@ -104,4 +181,120 @@ def test_the_remote_port_probe_also_rebinds_a_port_a_connection_still_holds() ->
             f"the remote probe chose {completed.stdout.strip()!r} rather than the port a "
             "lingering connection holds, so the tunnel would reach a port the remote "
             "server did not take"
+        )
+
+
+def _free_port_on(family: socket.AddressFamily, address: str) -> int:
+    with socket.socket(family, socket.SOCK_STREAM) as probe:
+        probe.bind((address, 0))
+        return int(probe.getsockname()[1])
+
+
+def test_an_ipv4_host_gets_an_ipv4_listener_as_before() -> None:
+    start = _free_port_on(socket.AF_INET, "127.0.0.1")
+    for host in ("127.0.0.1", "0.0.0.0", ""):
+        ports = server_utils.port_search_range(start)
+        with server_utils.listen_on_available_local_port(host, ports) as listener:
+            assert listener.family == socket.AF_INET, host
+            assert listener.proto == socket.IPPROTO_TCP, host
+            assert listener.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR), host
+            assert server_utils.url_host(host, listener) == "127.0.0.1", host
+
+
+def test_localhost_keeps_its_ipv4_address_where_it_also_names_ipv6(monkeypatch) -> None:
+    """One server holds one address, so a name of both families must not straddle them."""
+
+    def _both(*_arguments: object, **_options: object) -> list[tuple[object, ...]]:
+        return [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::1", 0, 0, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0)),
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _both)
+    ports = server_utils.port_search_range(_free_port_on(socket.AF_INET, "127.0.0.1"))
+    with server_utils.listen_on_available_local_port("localhost", ports) as listener:
+        assert listener.family == socket.AF_INET
+        assert server_utils.url_host("localhost", listener) == "localhost"
+
+
+@pytest.mark.parametrize("host", ["::1", "[::1]"])
+def test_an_ipv6_loopback_host_gets_an_ipv6_listener_that_holds_its_port(host: str) -> None:
+    require_ipv6_loopback()
+    start = _free_port_on(socket.AF_INET6, "::1")
+    ports = server_utils.port_search_range(start)
+    with server_utils.listen_on_available_local_port(host, ports) as first:
+        assert first.family == socket.AF_INET6
+        assert first.proto == socket.IPPROTO_TCP
+        assert first.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR)
+        held = int(first.getsockname()[1])
+        assert server_utils.url_host(host, first) == "[::1]"
+        with server_utils.listen_on_available_local_port(host, ports) as second:
+            assert int(second.getsockname()[1]) > held
+        # Listening at once, as an IPv4 listener is: a connection waits for the server.
+        with socket.create_connection(("::1", held), timeout=5):
+            pass
+
+
+def test_the_ipv6_wildcard_listens_for_both_families() -> None:
+    """``::`` prints ``127.0.0.1``, so an IPv4 client has to reach it."""
+
+    require_ipv6_loopback()
+    ports = server_utils.port_search_range(_free_port_on(socket.AF_INET6, "::"))
+    with server_utils.listen_on_available_local_port("::", ports) as listener:
+        assert listener.family == socket.AF_INET6
+        assert not listener.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+        assert server_utils.url_host("::", listener) == "127.0.0.1"
+        port = int(listener.getsockname()[1])
+        for address in ("127.0.0.1", "::1"):
+            with socket.create_connection((address, port), timeout=5):
+                pass
+
+
+def test_an_ipv6_only_wildcard_listener_is_named_by_the_ipv6_loopback() -> None:
+    """Where a platform keeps ``::`` to IPv6, ``127.0.0.1`` would name nothing."""
+
+    require_ipv6_loopback()
+    with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as listener:
+        listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        assert server_utils.url_host("::", listener) == "[::1]"
+
+
+@pytest.mark.parametrize(
+    ("host", "wildcard"),
+    [
+        ("", True),
+        ("0.0.0.0", True),
+        ("::", True),
+        ("[::]", True),
+        ("0:0:0:0:0:0:0:0", True),
+        ("::1", False),
+        ("127.0.0.1", False),
+        ("localhost", False),
+        ("0.0.0.0:8411", False),
+    ],
+)
+def test_wildcard_hosts_are_the_unspecified_addresses(host: str, wildcard: bool) -> None:
+    assert server_utils.wildcard_host(host) is wildcard
+
+
+def test_a_host_that_names_no_address_is_refused_by_name(monkeypatch) -> None:
+    def _unknown(*_arguments: object, **_options: object) -> list[tuple[object, ...]]:
+        raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+
+    monkeypatch.setattr(socket, "getaddrinfo", _unknown)
+    with pytest.raises(
+        server_utils.UnusableHostError,
+        match=r"Cannot listen on host 'nowhere\.example': it names no address \(Name or",
+    ):
+        server_utils.listen_on_available_local_port(
+            "nowhere.example", server_utils.port_search_range(8411)
+        )
+
+
+def test_an_address_this_machine_lacks_is_refused_by_name_not_as_a_full_range() -> None:
+    """``192.0.2.1`` is in TEST-NET-1 (RFC 5737), which no interface is given."""
+
+    with pytest.raises(server_utils.UnusableHostError, match="has no such address"):
+        server_utils.listen_on_available_local_port(
+            "192.0.2.1", server_utils.port_search_range(8411)
         )

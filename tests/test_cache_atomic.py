@@ -59,7 +59,7 @@ skip_as_root = pytest.mark.skipif(
     reason="root is never denied by modes, so a denial cannot be staged",
 )
 
-STORE_KEY = "c" * 64
+STORE_KEY = "github-com-acme-gamma-ccccccccccc"
 CHILD_TIMEOUT = 50
 
 
@@ -753,23 +753,23 @@ def test_publication_moves_a_staged_entry_under_its_owning_lock(home: Path) -> N
         publish_entry(
             home,
             "staging/acquire-1/store",
-            f"repository-stores/{STORE_KEY}",
+            f"repos/{STORE_KEY}",
             owner=owner,
         )
 
-    assert (home / f"repository-stores/{STORE_KEY}/marker").read_text() == "complete"
+    assert (home / f"repos/{STORE_KEY}/marker").read_text() == "complete"
     assert not (home / "staging/acquire-1/store").exists()
 
 
 def test_publication_refuses_an_existing_target_even_an_empty_one(home: Path) -> None:
     ensure_private_directory(home, "staging/acquire-1/store")
-    ensure_private_directory(home, f"repository-stores/{STORE_KEY}")
+    ensure_private_directory(home, f"repos/{STORE_KEY}")
 
     with repository_store_lock(home, STORE_KEY) as owner, pytest.raises(FileExistsError):
         publish_entry(
             home,
             "staging/acquire-1/store",
-            f"repository-stores/{STORE_KEY}",
+            f"repos/{STORE_KEY}",
             owner=owner,
         )
 
@@ -785,7 +785,7 @@ def test_publication_requires_its_owning_lock_to_be_held(home: Path) -> None:
         publish_entry(
             home,
             "staging/acquire-1/store",
-            f"repository-stores/{STORE_KEY}",
+            f"repos/{STORE_KEY}",
             owner=owner,
         )
 
@@ -801,14 +801,14 @@ def test_a_publication_killed_at_its_rename_leaves_only_reclaimable_staging(home
         staging = locks.staging_entry_lock(home, "acquire-1")
         owner = locks.repository_store_lock(home, {STORE_KEY!r})
         atomic.publish_entry(
-            home, "staging/acquire-1/store", "repository-stores/{STORE_KEY}", owner=owner
+            home, "staging/acquire-1/store", "repos/{STORE_KEY}", owner=owner
         )
         print("rename did not run")
         """,
     )
 
     assert result.returncode == -9, result.stderr
-    assert not (home / f"repository-stores/{STORE_KEY}").exists()
+    assert not (home / f"repos/{STORE_KEY}").exists()
     assert (home / "staging/acquire-1/store").is_dir()
     # The operating system released the killed owner's locks.
     staging_entry_lock(home, "acquire-1").release()
@@ -1038,9 +1038,9 @@ def test_publication_syncs_both_directories_it_changed(
         publish_entry(
             home,
             "staging/acquire-1/store",
-            f"repository-stores/{STORE_KEY}",
+            f"repos/{STORE_KEY}",
             owner=owner,
         )
 
-    assert _identity(home / "repository-stores") in synced
+    assert _identity(home / "repos") in synced
     assert _identity(home / "staging/acquire-1") in synced

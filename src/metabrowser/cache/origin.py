@@ -16,11 +16,11 @@ text, which is only ever logged, into a typed state a user can act on.
 
 from __future__ import annotations
 
-import re
 from typing import Final, Literal
 
 from metabrowser.cache.providers import provider_credential_hint, provider_git_config
 from metabrowser.git.wire import is_full_revision
+from metabrowser.network_cause import NetworkCause, classify
 
 # Every refspec a store fetches. A branch is mirrored under the remote-tracking
 # namespace so no local branch is invented; a tag keeps its own name.
@@ -114,93 +114,30 @@ type RemoteFailureState = Literal[
     "too_large",
 ]
 
-# Git runs with LC_ALL=C, so these are its and curl's untranslated messages. The samples
-# in tests/test_cache_origin.py were captured 2026-09-23 from Git 2.50.1 (Homebrew, curl
-# with OpenSSL) against github.com, an unresolvable host, a closed port, badssl.com's
-# certificate failures, a stalled server, CONNECT proxies that reset, truncate, or
-# demand authentication, and HTTP servers answering 429, 500, and 503. Two reported
-# forms the machine could not produce are included and marked there: OpenSSL on Linux
-# reports a reset as ``SSL_ERROR_SYSCALL, errno 104``, and HTTP/2 as curl 92.
-# Order matters, because one failure prints several lines: a low-speed abort also
-# prints ``early EOF``, so a timeout is decided first; an HTTP status outranks the
-# connection it arrived on; and an interrupted connection outranks the TLS layer it was
-# reported through. Quoted text, which is where Git puts the URL, is removed before
-# matching, so a repository named ``tls-notes`` stays not found.
-_QUOTED = re.compile(r"'[^'\n]*'")
-_SERVER_ERROR = re.compile(r"returned error: 5\d\d\b")
-_PATTERNS: Final[tuple[tuple[RemoteFailureState, tuple[str, ...]], ...]] = (
-    (
-        "timed_out",
-        (
-            "operation too slow",
-            "timed out",
-            "connection timeout",
-            "timeout was reached",
-            "curl 28 ",
-        ),
-    ),
-    (
-        "proxy_auth_required",
-        ("response 407", "received http code 407", "returned error: 407"),
-    ),
-    ("rate_limited", ("returned error: 429",)),
-    (
-        "connection_interrupted",
-        (
-            "connection reset",
-            "ssl_error_syscall",
-            "unexpected eof while reading",
-            "transferred a partial file",
-            "transfer closed with outstanding read data",
-            "curl 18 ",
-            "curl 56 ",
-            "curl 92 ",
-            "was not closed cleanly",
-            "unexpected disconnect",
-            "early eof",
-            "the remote end hung up unexpectedly",
-        ),
-    ),
-    (
-        "tls_failed",
-        (
-            "ssl certificate problem",
-            "ssl: no alternative certificate",
-            "ssl: certificate subject name",
-            "ssl connect error",
-            "tls connect error",
-            "gnutls_handshake",
-            "server certificate verification failed",
-            "certificate verify failed",
-            "schannel",
-        ),
-    ),
-    (
-        "network_unreachable",
-        (
-            "could not resolve host",
-            "could not resolve proxy",
-            "couldn't connect to server",
-            "failed to connect",
-            "network is unreachable",
-            "connection refused",
-            "no route to host",
-        ),
-    ),
-    (
-        "not_found_or_private",
-        (
-            "repository not found",
-            "not found",
-            "could not read username",
-            "could not read password",
-            "authentication failed",
-            "returned error: 401",
-            "returned error: 403",
-            "returned error: 404",
-        ),
-    ),
-)
+# What each cause of a failed clone or fetch means to do, as the states above say it. The
+# cause is read from Git's (curl's) error text by the classifier gh shares
+# (metabrowser.network_cause.classify), so the event log and the app name a failure the
+# same way whichever tool reported it; the samples in tests/test_cache_origin.py, captured
+# 2026-09-23 from Git 2.50.1 with LC_ALL=C, pin each text to its state. A cause Git does
+# not report (``no_answer``, ``not_signed_in``) has no state here.
+_STATE_OF_CAUSE: Final[dict[NetworkCause, RemoteFailureState]] = {
+    "connect_timeout": "timed_out",
+    "stalled": "timed_out",
+    "no_answer": "timed_out",
+    "proxy_auth_required": "proxy_auth_required",
+    "rate_limited": "rate_limited",
+    "server_error": "server_error",
+    "connection_reset": "connection_interrupted",
+    "tls_failed": "tls_failed",
+    "proxy_failed": "network_unreachable",
+    "dns_failed": "network_unreachable",
+    "connect_refused": "network_unreachable",
+    "network_unreachable": "network_unreachable",
+    "connect_failed": "network_unreachable",
+    "auth_refused": "not_found_or_private",
+    "forbidden": "not_found_or_private",
+    "not_found": "not_found_or_private",
+}
 
 # ``not_found_or_private`` makes no claim about credentials. The origin answers the same
 # way for a repository that does not exist, one read with no credentials, and one the
@@ -215,7 +152,7 @@ _STATE_TEXT: Final[dict[RemoteFailureState, str]] = {
     "server_error": "answered with a server error; try again later",
     "rate_limited": "is limiting the rate of requests; try again later",
     "proxy_auth_required": "is behind a proxy that requires authentication",
-    "too_large": "is over the size limit for a first clone",
+    "too_large": "does not fit on the cache's volume for a first clone",
 }
 
 
@@ -231,12 +168,43 @@ def ls_remote_head_args(remote_url: str) -> list[str]:
     return [*origin_git_args(remote_url), "ls-remote", "--symref", "--", remote_url, "HEAD"]
 
 
+def ls_remote_branch_args(remote_url: str, branch: str) -> list[str]:
+    """``ls-remote`` for one branch of the origin, by its full name there.
+
+    Protocol v2, Git's default since 2.26, sends the name as a ``ref-prefix``, so the
+    origin advertises the refs that begin with it and not every ref it has: 57 bytes of
+    answer for ``main`` of a repository whose whole advertisement is 12,068 lines
+    (measured beside ``STORE_PROBE_S`` in ``mirror_refresh.py``). It reads the origin
+    and writes nothing anywhere.
+    """
+
+    return [*origin_git_args(remote_url), "ls-remote", "--", remote_url, f"refs/heads/{branch}"]
+
+
+def parse_branch_tip(stdout: bytes, branch: str) -> str | None:
+    """The commit :func:`ls_remote_branch_args` printed for *branch*, or ``None``.
+
+    ``None`` is an origin without that branch. A pattern also matches a longer ref that
+    ends with it, ``refs/heads/x/refs/heads/main`` for ``refs/heads/main``, so only the
+    line that names the branch itself is read.
+    """
+
+    wanted = f"refs/heads/{branch}".encode()
+    for line in stdout.splitlines():
+        oid, _, name = line.partition(b"\t")
+        if name == wanted:
+            text = oid.decode("ascii", "replace")
+            return text if is_full_revision(text) else None
+    return None
+
+
 def mirror_fetch_args(
     remote_url: str,
     *,
     prune: bool,
     progress: bool = False,
     negotiation: tuple[str, ...] = (),
+    config: tuple[str, ...] = (),
 ) -> list[str]:
     """One fetch of every branch and tag from *remote_url* into the mirror namespaces.
 
@@ -258,7 +226,9 @@ def mirror_fetch_args(
     for the stall bound is said at :data:`HTTP_LOW_SPEED_TIME_S`.
 
     *negotiation* is an overlay store's ``--negotiation-tip`` arguments, which keep the
-    fetch to what the checkout it borrows from lacks.
+    fetch to what the checkout it borrows from lacks, and *config* its ``-c`` options
+    (``OVERLAY_FETCH_CONFIG`` in ``lender.py``), which keep it from touching that
+    checkout's objects.
     """
 
     flags = ["--prune", "--atomic"] if prune else []
@@ -267,6 +237,7 @@ def mirror_fetch_args(
     flags.extend(negotiation)
     return [
         *origin_git_args(remote_url),
+        *config,
         "fetch",
         "--porcelain",
         *flags,
@@ -280,7 +251,9 @@ def fetched_refs(porcelain: bytes) -> dict[str, str]:
     """The refs a ``fetch --porcelain`` wrote, each with the object it wrote, in order.
 
     Each line is ``<flag> <old-oid> <new-oid> <local-ref>``, and the flag may itself be
-    a space. A pruned ref, whose new object ID is all zeros, is gone and not listed.
+    a space. A pruned ref, whose new object ID is all zeros, is gone and not listed. A
+    ref Git refused, flagged ``!``, is listed with the object it would have written; a
+    fetch that refuses one exits non-zero, so only a failed fetch's listing has one.
     """
 
     written: dict[str, str] = {}
@@ -371,13 +344,8 @@ def remote_tracking_ref(head_ref: str | None) -> str | None:
 def classify_remote_failure(stderr_summary: str) -> RemoteFailureState | None:
     """The typed state Git's error text describes, or ``None`` when none matches."""
 
-    text = _QUOTED.sub("''", stderr_summary).lower()
-    for state, needles in _PATTERNS:
-        if any(needle in text for needle in needles):
-            return state
-        if state == "rate_limited" and _SERVER_ERROR.search(text):
-            return "server_error"
-    return None
+    cause = classify(stderr_summary)
+    return None if cause is None else _STATE_OF_CAUSE.get(cause)
 
 
 def describe_remote_failure(state: RemoteFailureState, source_url: str, *, detail: str = "") -> str:
@@ -411,10 +379,12 @@ __all__ = [
     "fetched_ref_names",
     "fetched_refs",
     "pruned_ref_names",
+    "ls_remote_branch_args",
     "ls_remote_head_args",
     "mirror_fetch_args",
     "mirror_prune_args",
     "origin_git_args",
+    "parse_branch_tip",
     "parse_symref_head",
     "remote_tracking_ref",
 ]

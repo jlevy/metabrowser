@@ -24,11 +24,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import typer.rich_utils
 from typer.testing import CliRunner
 
 from metabrowser.cli.main import _app
-from tests.golden_harness import block, check_golden, normalize_console, run_metab
+from tests.golden_harness import (
+    block,
+    check_golden,
+    normalize_console,
+    run_metab,
+    stable_console,
+)
+from tests.held_port import listener_on
 from tests.required_tools import needs_git
 
 FIXED_MTIME = 1_700_000_000
@@ -40,16 +46,9 @@ runner = CliRunner()
 def _stable_console(  # pyright: ignore[reportUnusedFunction]
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[None]:
-    """Pin the rendering environment so goldens are terminal-independent.
-
-    Typer reads FORCE_TERMINAL and MAX_WIDTH from the environment at import
-    (GitHub Actions forces terminal mode, which makes Rich ignore COLUMNS and
-    render 80 wide), so the module globals are pinned rather than the env vars.
-    """
-    monkeypatch.setattr(typer.rich_utils, "FORCE_TERMINAL", None)
-    monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 100)
-    monkeypatch.setenv("COLUMNS", "100")
-    monkeypatch.setenv("TERM", "dumb")
+    """Pin the rendering environment so goldens are terminal-independent
+    (``stable_console`` in the harness)."""
+    stable_console(monkeypatch)
     monkeypatch.delenv("METABROWSER_PLUGINS_DIRS", raising=False)
     monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
     yield
@@ -106,7 +105,9 @@ def test_golden_serve_banner(golden: str, selection: str, tmp_path: Path) -> Non
     root = _make_walk_fixture(tmp_path)
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer"),
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [f"{root}{selection}", "--no-open"])
     rendered = block(

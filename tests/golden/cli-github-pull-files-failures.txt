@@ -70,14 +70,15 @@ cloned https://github.com/octo/demo in 0.0 s
 --- body ---
 {"number": 106}
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=2
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=3
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -154,6 +155,7 @@ Error: the refresh ended with not_logged_in
 --- body ---
 {"number": 106, "retry": true}
 --- gh ---
+gh api user
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 1
@@ -231,6 +233,7 @@ Error: the refresh ended with gh_too_old
 --- body ---
 {"number": 106, "retry": true}
 --- gh ---
+gh api user
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 1
@@ -308,7 +311,7 @@ Error: the refresh ended with not_found_or_private
 --- body ---
 {"number": 106, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 1
@@ -367,7 +370,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "network_error",
-    "message": "gh could not reach api.github.com",
+    "message": "GitHub could not be reached because api.github.com did not resolve (DNS)",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
@@ -386,6 +389,7 @@ Error: the refresh ended with network_error
 --- body ---
 {"number": 106, "retry": true}
 --- gh ---
+gh api user
 gh auth status
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
@@ -411,7 +415,7 @@ status: 202
     "refreshing": true,
     "last_refresh": {
       "outcome": "network_error",
-      "message": "gh could not reach api.github.com",
+      "message": "GitHub could not be reached because api.github.com did not resolve (DNS)",
       "reset_at": null,
       "at": "2026-09-17T12:00:00Z"
     },
@@ -464,7 +468,7 @@ Error: the refresh ended with gh_failed
 --- body ---
 {"number": 106, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 1
@@ -542,11 +546,11 @@ Error: the refresh ended with account_changed
 --- body ---
 {"number": 106, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=2 (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=3 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -694,11 +698,11 @@ Error: the refresh ended with rate_limited
 --- body ---
 {"number": 104, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/104/files?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/104/files?per_page=100&page=2
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/104/files?per_page=100&page=3
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 0
@@ -814,6 +818,6 @@ Error: the refresh ended with cache_unwritable
 --- body ---
 {"number": 105, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)

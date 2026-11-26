@@ -2,7 +2,11 @@
 name = "diff"
 display_name = "Diff"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
+python_requires = ["starlette"]
+# A changed YAML or JSON file's Rendered view is the structured plugin's tree.
+# A binary change to a PDF shows the pdf plugin's card, its first page as an image (diff-view.js).
+requires = ["structured", "pdf"]
 
 # Patch files are the no-repository diff source: the server parses them
 # into File Diff Format and the view renders that document — the same

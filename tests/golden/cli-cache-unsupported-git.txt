@@ -16,7 +16,7 @@ api: /api/cache/layout
 status: 200
 {
   "home": "absent",
-  "supported_format": "f01",
+  "supported_format": "f03",
   "state": "absent",
   "layout": null,
   "config": null,
@@ -62,7 +62,7 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "sources": [
     {
       "slug": "<SLUG-A>",

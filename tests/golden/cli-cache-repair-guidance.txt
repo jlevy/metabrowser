@@ -84,7 +84,7 @@ Error: This Metabrowser configuration directory uses format f02, and this releas
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: This Metabrowser cache directory uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.
+Error: This Metabrowser cache directory uses format f04, and this release reads formats up to f03. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.
 ## Another METABROWSER_CACHE_DIR, as the message suggests, acquires independently.
 # metab <ORIGIN-A> --no-serve
 exit: 0

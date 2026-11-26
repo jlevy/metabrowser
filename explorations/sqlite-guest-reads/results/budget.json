@@ -1,0 +1,52 @@
+{
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.13.18",
+    "sqlite": "3.53.1",
+    "system": "Linux 6.18.44-fc-v726",
+    "uid_is_superuser": false
+  },
+  "results": {
+    "capped_count": {
+      "first": 1000001,
+      "opcodes": 7000021,
+      "rows": 1
+    },
+    "capped_count_with_1000_opcode_budget": {
+      "error": "interrupted",
+      "handler_calls": 1
+    },
+    "count_star": {
+      "first": 1500000,
+      "opcodes": 9,
+      "rows": 1
+    },
+    "count_star_with_1000_opcode_budget": {
+      "handler_calls": 0,
+      "returned": 1500000
+    },
+    "interrupt_stops_one_count_star": {
+      "error": "interrupted",
+      "interrupt_after_ms": 10.0,
+      "rows": 20000000,
+      "stopped_after_ms": 10.3,
+      "uninterrupted_ms": 42.94
+    },
+    "median_ms_of_5": {
+      "capped_count": 25.43,
+      "count_star": 3.09,
+      "max_rowid": 0.0
+    },
+    "page_opcodes_over_200000_rows": {
+      "contains_filter_page": 800023,
+      "indexed_sort_continuation": 1222,
+      "indexed_sort_page": 808,
+      "key_ordered_continuation": 710,
+      "key_ordered_page": 707,
+      "unindexed_sort_continuation": 1904247,
+      "unindexed_sort_page": 1404609
+    }
+  },
+  "seconds": 9,
+  "suite": "budget"
+}

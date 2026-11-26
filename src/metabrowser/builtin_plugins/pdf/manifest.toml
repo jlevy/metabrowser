@@ -1,0 +1,44 @@
+[plugin]
+name = "pdf"
+display_name = "PDF"
+version = "0.0.1"
+sdk_version = "0.8"
+# PDFium renders a first page for the preview card (render_child.py), in a child process.
+python_requires = ["pypdfium2", "starlette"]
+
+# A PDF, by its bytes. The magic rule claims any file that starts with "%PDF-" (the hex
+# below) and sniffs as binary, whatever it is named. A PDF whose first 8 KiB is plain
+# ASCII (no binary comment, uncompressed objects) sniffs as text, and the extension
+# beside the magic claims it then: a `.pdf` that sniffs as text is a PDF only when it
+# starts with "%PDF-". A text file named `.pdf` is text, not a viewer showing an error.
+[[kind]]
+id = "pdf"
+match = { magic = { offset = 0, hex = "255044462d" }, exts = [".pdf"] }
+priority = 0
+
+# The PDF in the host's own viewer, with Open, Download, and Open in new tab as the host
+# supports them (index.js). No `printable`: the viewer prints the PDF itself, and
+# Command-P on the page prints the line saying the view is not printable.
+[[view]]
+kind = "pdf"
+id = "preview"
+label = "PDF"
+default = true
+container_class = "content-body metabrowser-pdf-host"
+render_runtime = "client"
+
+# The first page of a PDF as a PNG, for the card a diff or another view draws in place of
+# a viewer (index.js `mountPdfCard`). Rendered by PDFium in a bounded child process, kept
+# in the cache by content, and for an untrusted source only inside an OS sandbox
+# (preview.py, preview_isolation.py; threat model T7). `?path=<identity>` names a served
+# file, `?oid=<blob>` a blob of the served repository, such as a side of a change.
+[[data_hook]]
+route = "preview"
+sidekick = "metabrowser.builtin_plugins.pdf.sidekick:preview_handler"
+methods = ["GET"]
+
+# A preview's PNG from the cache, by the key the preview route answered: immutable.
+[[data_hook]]
+route = "preview-image"
+sidekick = "metabrowser.builtin_plugins.pdf.sidekick:preview_image_handler"
+methods = ["GET"]

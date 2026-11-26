@@ -1,10 +1,12 @@
 import Foundation
 
-/// One entry of `metab --recent --json`: a root, and the mode it was opened in.
+/// One entry of `metab --recent --json`: a root, the mode it was opened in, and whether a
+/// folder was a Git checkout.
 ///
-/// `metab` keeps the list (`src/metabrowser/recent_targets.py`): every server records
-/// its root as it starts, whoever started it, so the app, a `metab` run in Terminal, and
-/// a restored session all end up in the one list. The app only reads it and draws it,
+/// `metab` keeps the list (`src/metabrowser/recent_targets.py`). The app records each
+/// open itself, once, as it shows it (`metab ROOT --recent-add`, `RecentTargets.Changes`),
+/// and no server it starts records anything; a person's `metab` in Terminal records its
+/// own serve, and no agent's, test's, or tool's does. The app reads the list and draws it,
 /// which is what lets a second shell show the same list.
 public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
     /// How a root was opened, fixed while it is open: `kind` in `GET /api/identity`. No
@@ -24,17 +26,26 @@ public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
     public var root: String
     /// When it was last opened, `2026-11-18T03:14:15Z`.
     public var openedAt: String
+    /// Whether a folder was a Git checkout when it was last opened: it held a `.git` entry,
+    /// which is the `git` kind `GET /api/identity` gives it. `metab --recent --json` lists it
+    /// for every target, so the list is read with it. The app draws the Git
+    /// checkout's mark for it (`RootMark`) without looking at the folder, which could raise
+    /// a privacy prompt, so a folder that became a checkout since reads as a plain one until
+    /// it is opened again. Always false for a mirror.
+    public var git: Bool
 
-    public init(mode: Mode, root: String, openedAt: String) {
+    public init(mode: Mode, root: String, openedAt: String, git: Bool = false) {
         self.mode = mode
         self.root = root
         self.openedAt = openedAt
+        self.git = git
     }
 
     enum CodingKeys: String, CodingKey {
         case mode
         case root
         case openedAt = "opened_at"
+        case git
     }
 
     /// What the app is asked to open for this entry, as a folder dropped on it or a link
@@ -61,11 +72,11 @@ public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
     public func identity(home: String = FileChecks.canonicalPath(NSHomeDirectory())) -> FolderIdentity {
         switch mode {
         case .folder:
-            return .localFolder(URL(filePath: root, directoryHint: .isDirectory), home: home)
+            return .localFolder(URL(filePath: root, directoryHint: .isDirectory), git: git, home: home)
         case .mirror:
             guard let url = URL(string: root) else {
                 return FolderIdentity(
-                    shortName: root, fullName: root, kind: .mirror, kindLabel: "Cached mirror",
+                    shortName: root, fullName: root, kind: .mirror, kindLabel: FolderKind.mirror.label,
                     title: FolderIdentity.title(for: root))
             }
             return .repository(url)
@@ -81,12 +92,18 @@ public nonisolated enum RecentTargets {
     /// The `Info.plist` key, a boolean, of a build that opens a link sent to it. `metab
     /// TARGET --present` reads the same key before it sends one.
     public static let opensURLsKey = "MetabrowserOpensURLs"
-    /// The variable that, set to `0`, keeps a `metab` from recording anything
-    /// (`RECORD_ENV` in `recent_targets.py`). The app sets it for every server that is not
-    /// the first start of something the user just opened (`FolderServer`), and passes its
-    /// own on, so a development run started with it records nothing at all
-    /// (`ChildEnvironment.passedThrough`).
+    /// The variable that tells a `metab` whether to record what it opens (`RECORD_ENV` in
+    /// `recent_targets.py`): `0` keeps it from recording anything, `--recent-add` included,
+    /// and `1` makes a serve record its root; unset, a serve records only at a terminal.
+    /// The app passes its own value on to every `metab` it runs
+    /// (`ChildEnvironment.passedThrough`), so a development run started with `0` records
+    /// nothing at all, and tells every server it starts `serverRecords`.
     public static let recordVariable = "METABROWSER_RECORD_RECENT"
+    /// What every server the app starts is told in `recordVariable`: not to record. The app
+    /// records each open itself, as it shows it, so a restored folder's start, a Retry, and
+    /// a restart, which are not opens, never move the list, and an open records once
+    /// whether or not its server starts (`FolderServer`).
+    public static let serverRecords = "0"
     /// How long one of these commands may take. Each reads or rewrites one small file
     /// and starts no server; `metab --version`, which does less, gets the same
     /// (`RuntimeDiscovery.versionTimeout`).
@@ -97,6 +114,8 @@ public nonisolated enum RecentTargets {
     /// How soon after one answer the next is asked for. A menu asks whenever it opens,
     /// and AppKit can ask a menu to update several times for one click.
     public static let refreshInterval: Duration = .seconds(2)
+    /// The most recent targets shown in a native menu.
+    public static let menuLimit = 16
 
     /// The mode that lists the targets. Setup refuses a `metab` without it
     /// (`RuntimeDiscovery.validate`), so every `metab` the app runs has the four modes.
@@ -104,9 +123,9 @@ public nonisolated enum RecentTargets {
     public static let listArguments = [listFlag, "--json"]
     public static let clearArguments = ["--recent-clear"]
 
-    /// Records `target` as opened, for an open that starts no server. A folder's path is
-    /// absolute and a repository's address starts with its scheme, so neither can read as
-    /// an option.
+    /// Records `target` as opened: the app runs it for each open, as it shows it
+    /// (`changes(showing:because:)`). A folder's path is absolute and a repository's
+    /// address starts with its scheme, so neither can read as an option.
     public static func addArguments(_ target: String) -> [String] { [target, "--recent-add"] }
 
     /// What `metab` is given for `root`: a folder's path, or a repository's address whole.
@@ -116,6 +135,64 @@ public nonisolated enum RecentTargets {
     }
 
     public static func forgetArguments(_ root: String) -> [String] { [root, "--recent-forget"] }
+
+    /// Why the app shows a root, a folder or a repository, which decides whether the list
+    /// changes. The app reports each root it shows (`RecentTargetsMenu.shown`), and only
+    /// the user's open moves it to the front: the owner decided on 2026-11-18 that the
+    /// order changes only when the user opens something.
+    public enum Showing: CaseIterable, Equatable, Sendable {
+        /// The user opened it, whether it was open already or not: File > Open Folder…, a
+        /// drop, Open With, `open -a`, `metab --present`, a GitHub link sent to the app,
+        /// Open URL…, Open Recent, the Dock menu, or the folder chooser or Switch Folder
+        /// panel (`AppDelegate.showOpened`).
+        case opened
+        /// The app opened it for itself: Help > Open Event Log's directory, which the user
+        /// did not choose (`EventLogLocation`).
+        case openedForTheApp
+        /// Put back at launch from the last session (`FolderWindows.restore`).
+        case restored
+        /// Brought forward by a click on the Dock icon with no window on screen.
+        case reopenedFromTheDock
+    }
+
+    /// The changes to the list that showing `root` makes: one `--recent-add` for an open,
+    /// and none for anything else. No server the app starts records (`serverRecords`), so
+    /// this one change is the open's only record.
+    public static func changes(showing root: URL, because showing: Showing) -> [[String]] {
+        showing == .opened ? [addArguments(target(root))] : []
+    }
+
+    /// The commands that change the list, run one at a time in the order they were asked
+    /// for, so that of two opens in quick succession the later is listed first. Each
+    /// `metab` takes the list's lock in turn, and two run at once could take it in either
+    /// order. A change asked for while no `metab` may run waits, and runs once one may
+    /// (`RecentTargetsMenu`).
+    public nonisolated struct Changes: Equatable, Sendable {
+        private var waiting: [[String]] = []
+        private var isRunning = false
+
+        public init() {}
+
+        /// Whether no change runs or waits.
+        public var isIdle: Bool { !isRunning && waiting.isEmpty }
+
+        /// Whether `next()` has a change to give.
+        public var hasNext: Bool { !isRunning && !waiting.isEmpty }
+
+        /// Asks for the change `arguments` make, after every change asked for before it.
+        public mutating func ask(_ arguments: [String]) { waiting.append(arguments) }
+
+        /// The change to run now, which then runs until `finished()`: the oldest waiting,
+        /// or nil while one runs or none waits.
+        public mutating func next() -> [String]? {
+            guard !isRunning, !waiting.isEmpty else { return nil }
+            isRunning = true
+            return waiting.removeFirst()
+        }
+
+        /// The change `next()` gave has ended, whether or not it succeeded.
+        public mutating func finished() { isRunning = false }
+    }
 
     /// `metab` with `arguments`, in the environment the app gives every `metab` it runs.
     public static func spec(_ arguments: [String], with setup: RuntimeSetup, inherited: [String: String]) -> LaunchSpec {
@@ -210,12 +287,12 @@ public nonisolated enum RecentTargets {
         case dock
     }
 
-    /// The lines of `menu` for `count` items. Both menus hold every item, in the list's
-    /// order, so the Dock and File > Open Recent never disagree. Open Recent says when
+    /// The lines of `menu` for `count` items. Both menus show up to `menuLimit` in the
+    /// list's order, so the Dock and File > Open Recent agree. Open Recent says when
     /// there are none and ends with Clear Menu; the Dock's holds the items alone, and
     /// nothing when there are none.
     public static func rows(for menu: Menu, count: Int) -> [Row] {
-        let targets = (0..<count).map(Row.target)
+        let targets = (0..<min(count, menuLimit)).map(Row.target)
         switch menu {
         case .dock: return targets
         case .openRecent: return (targets.isEmpty ? [.empty] : targets) + [.separator, .clear]

@@ -7,8 +7,8 @@ import Foundation
 /// `metab URL --present --dry-run --format json` reports it (`PresentPlan`), never by its
 /// pin: a page can switch the pin while the server runs (View on branch), so a key that
 /// held the pin would stop naming the session. Every link into one repository opens in
-/// its one session, then, which starts its server again on a link that its window does
-/// not show (`FolderSession.open(link:)`).
+/// its one session, then, whose one server is started on the repository and opens each
+/// link where it is (`FolderSession.open(link:)`, `SourceLink`).
 public nonisolated enum SessionRoot: Hashable, Sendable {
     /// A canonical folder, as `OpenTarget` resolves one.
     case folder(URL)
@@ -26,13 +26,19 @@ public nonisolated enum SessionRoot: Hashable, Sendable {
         return false
     }
 
-    /// Its session's key among the open servers (`ServerFleet`): a folder's path, as the
-    /// app has always keyed one, or a repository's URL, which starts with its scheme and
-    /// so is never a path.
+    /// Its session's one key, wherever the app looks an open folder up: among the open
+    /// servers (`ServerFleet`), the open folders (`OpenFolders`), and the restore. A
+    /// folder's is its path without a trailing slash, as `OpenTarget` and the saved session
+    /// spell a root; a repository's is its URL, which starts with its scheme and so is
+    /// never a path.
     public var key: String {
         switch self {
-        case .folder(let url): url.path(percentEncoded: false)
-        case .repository(let url): url.absoluteString
+        case .folder(let url):
+            var path = url.path(percentEncoded: false)
+            while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+            return path
+        case .repository(let url):
+            return url.absoluteString
         }
     }
 

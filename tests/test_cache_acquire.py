@@ -20,23 +20,38 @@ from metabrowser.cache.acquire import (
     ProgressReporter,
     PublishedSource,
     RemoteUnavailableError,
+    StoreDamagedError,
     ValidationFailedError,
     acquire_into_staging,
     acquire_source,
+    cached_source,
 )
-from metabrowser.cache.atomic import read_record
-from metabrowser.cache.identity import source_identity
-from metabrowser.cache.layout import FutureLayoutFormatError
+from metabrowser.cache.atomic import read_record, write_record_atomic
+from metabrowser.cache.identity import (
+    is_store_key,
+    repository_store_id,
+    source_identity,
+    store_key_candidates,
+    store_key_matches_identity,
+)
+from metabrowser.cache.layout import FutureLayoutFormatError, open_cache
 from metabrowser.cache.locks import CacheLock, LockBusyError, LockKind, LockOrder, held_locks
-from metabrowser.cache.paths import source_record
+from metabrowser.cache.paths import source_record, store_directory, store_record
 from metabrowser.cache.reclaim import sweep_staging
-from metabrowser.cache.records import REPOSITORY_SOURCE_STATE_CONTRACT_ID, RepositorySourceState
+from metabrowser.cache.records import (
+    REPOSITORY_SOURCE_STATE_CONTRACT_ID,
+    REPOSITORY_STORE_CONTRACT_ID,
+    RepositorySourceState,
+    RepositoryStore,
+    StoreAcquisition,
+)
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git.process import (
     _REPO_PINNING_GIT_VARS,
     UnsupportedGitVersionError,
     detect_git_version,
 )
+from metabrowser.home import ensure_private_directory
 from tests.admitted_git import require_admitted_git, required_admitted_git
 from tests.required_tools import needs_git, require_git
 
@@ -387,7 +402,7 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
         asyncio.run(acquire_source(_file_source(origin), home=home))
     assert list((home / "staging").iterdir()) == []
     assert list((home / "sources").iterdir()) == []
-    assert list((home / "repository-stores").iterdir()) == []
+    assert list((home / "repos").iterdir()) == []
 
 
 @posix_only
@@ -528,7 +543,7 @@ def test_file_origin_without_filter_support_fetches_a_complete_staging_store(
             for lock in held_locks()
         )
         assert list((home / "sources").iterdir()) == []
-        assert list((home / "repository-stores").iterdir()) == []
+        assert list((home / "repos").iterdir()) == []
         assert _inodes(staged.git_dir).isdisjoint(_inodes(origin))
         leaked = [
             path
@@ -595,7 +610,7 @@ def test_a_partial_clone_source_is_refused_with_a_typed_error(
         asyncio.run(acquire_source(_file_source(partial), home=home))
     assert list((home / "staging").iterdir()) == []
     assert list((home / "sources").iterdir()) == []
-    assert list((home / "repository-stores").iterdir()) == []
+    assert list((home / "repos").iterdir()) == []
 
 
 @posix_only
@@ -661,6 +676,143 @@ def test_a_cache_hit_does_not_open_the_home_for_write(
     assert second.git_dir == first.git_dir
 
 
+def _occupy_store_key(home: Path, key: str, *, store_id: str) -> None:
+    """Publish a store record at *key* that says it is *store_id*, as another store would."""
+
+    ensure_private_directory(home, store_directory(key))
+    write_record_atomic(
+        home,
+        store_record(key, "store.yml"),
+        RepositoryStore(
+            id=store_id,
+            created_at="2026-09-17T12:00:00Z",
+            acquisition=StoreAcquisition(git_version="2.50.1", object_format="sha1"),
+        ),
+        REPOSITORY_STORE_CONTRACT_ID,
+    )
+
+
+@posix_only
+def test_a_store_is_named_for_its_repository_and_the_start_of_its_identity_in_base_36(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    published = asyncio.run(acquire_source(source, home=tmp_path / "home"))
+
+    first = store_key_candidates(source.transport, source.normalized, published.store_id)[0]
+    assert published.store_key == first
+    assert is_store_key(first)
+    assert first.startswith("local-origin-")
+    assert len(first.rpartition("-")[2]) == 11
+    assert store_key_matches_identity(first, published.store_id)
+    assert published.git_dir == published.home / "repos" / first / "repository.git"
+    assert published.store_id.removeprefix("sha256:") not in str(published.git_dir)
+
+
+@posix_only
+def test_a_store_never_shares_a_name_another_store_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first-choice name is taken by a different store, so this one takes the next.
+
+    The odds of that are what ``NAME_SUFFIX_CHARS`` sizes; this is what happens
+    when they are beaten: nothing is shared, the other store is not touched, and the
+    lookup that follows finds this store at the name it took.
+    """
+
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    home = tmp_path / "home"
+    store_id = repository_store_id(source_identity(source.transport, source.normalized), "sha1")
+    first, second, *_ = store_key_candidates(source.transport, source.normalized, store_id)
+    stranger = "sha256:" + "f" * 64
+    open_cache(home)
+    _occupy_store_key(home, first, store_id=stranger)
+    held_before = (home / store_directory(first) / "store.yml").read_bytes()
+
+    published = asyncio.run(acquire_source(source, home=home))
+
+    assert published.store_key == second
+    assert published.store_id == store_id
+    assert (home / store_directory(first) / "store.yml").read_bytes() == held_before
+    assert not (home / store_directory(first) / "repository.git").exists()
+    found = cached_source(source, home)
+    assert found is not None and found.store_key == second
+    again = asyncio.run(acquire_source(source, home=home))
+    assert again.store_key == second and not again.fetched
+
+    # The shorter name is free again, and the store is still found where it took its name.
+    shutil.rmtree(home / store_directory(first))
+    found = cached_source(source, home)
+    assert found is not None and found.store_key == second
+
+
+@posix_only
+def test_an_alias_whose_store_is_at_no_key_is_a_miss_and_the_next_open_publishes_the_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A clone an older release finishes after the migration is named by its whole digest.
+
+    Its alias names the store, and no key holds it. That used to refuse every open of the
+    repository with "the aliased store is missing", with nothing to repair it but editing
+    the cache. It is a miss now, as a source with no store is: the open that follows
+    fetches the repository again, publishes it under its key beside the old directory,
+    and leaves the alias as it is.
+    """
+
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    home = tmp_path / "home"
+    first = asyncio.run(acquire_source(source, home=home))
+    digest = first.store_id.removeprefix("sha256:")
+    stores = home / "repos"
+    (stores / first.store_key).rename(stores / digest)
+    alias = home / source_record(first.slug, "store-alias.yml")
+    alias_before = alias.read_bytes()
+
+    assert cached_source(source, home) is None
+    again = asyncio.run(acquire_source(source, home=home))
+
+    assert again.fetched
+    assert (again.store_key, again.store_id) == (first.store_key, first.store_id)
+    assert (stores / again.store_key / "repository.git").is_dir()
+    assert (stores / digest).is_dir(), "the older release's directory is left for its owner"
+    assert alias.read_bytes() == alias_before
+    found = cached_source(source, home)
+    assert found is not None and found.store_key == first.store_key
+
+
+@posix_only
+def test_an_aliased_store_that_lost_its_state_record_is_still_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    home = tmp_path / "home"
+    first = asyncio.run(acquire_source(source, home=home))
+    (home / store_record(first.store_key, "state.yml")).unlink()
+
+    with pytest.raises(ValidationFailedError, match="no state.yml"):
+        cached_source(source, home)
+
+
+@posix_only
+def test_a_store_directory_that_records_no_store_is_damage_and_not_a_free_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    home = tmp_path / "home"
+    store_id = repository_store_id(source_identity(source.transport, source.normalized), "sha1")
+    open_cache(home)
+    key = store_key_candidates(source.transport, source.normalized, store_id)[0]
+    ensure_private_directory(home, store_directory(key))
+
+    with pytest.raises(StoreDamagedError):
+        asyncio.run(acquire_source(source, home=home))
+
+
 @posix_only
 def test_a_future_home_is_refused_before_opening_the_cache_for_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -677,7 +829,7 @@ def test_a_future_home_is_refused_before_opening_the_cache_for_write(
     source = _file_source(origin)
     asyncio.run(acquire_source(source, home=home))
     layout = home / "layout.yml"
-    layout.write_text(layout.read_text(encoding="utf-8").replace("format: f01", "format: f02", 1))
+    layout.write_text(layout.read_text(encoding="utf-8").replace("format: f03", "format: f04", 1))
 
     def refuse_write(home_path: Path | None = None, *, version: str | None = None) -> object:
         raise AssertionError("a future layout must not open the home for write")

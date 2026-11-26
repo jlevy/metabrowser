@@ -38,7 +38,8 @@ $ metab --help
  or checked at the commit it selects under the untrusted profile; --no-serve
  only acquires it into the cache. Diagnostics: --check-api, --plugins,
  --plugin, --doctor.
- Remote serving: --remote. The macOS app: --present hands it ROOT.
+ Remote serving: --remote. --present opens ROOT in the macOS app or a browser.
+ --event-log opens Metabrowser's own event log.
  Recent targets: --recent, --recent-add, --recent-forget, --recent-clear.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
@@ -81,6 +82,19 @@ $ metab --help
 │                                              repository's root. Applies when │
 │                                              serving and to --api, --show,   │
 │                                              and --check-api.                │
+│ --event-log                                  Open Metabrowser's own event    │
+│                                              log: ROOT is the directory a    │
+│                                              served metab writes it to       │
+│                                              (under METABROWSER_STATE_DIR,   │
+│                                              else                            │
+│                                              XDG_STATE_HOME/metabrowser,     │
+│                                              else                            │
+│                                              ~/.local/state/metabrowser),    │
+│                                              and serving opens its newest    │
+│                                              segment as spans and latencies. │
+│                                              Applies when serving and to     │
+│                                              --api, --show, --walk, and      │
+│                                              --check-api.                    │
 │ --path                     TEXT              Serve and present: relative     │
 │                                              path from ROOT to select on     │
 │                                              launch. Walk: subtree for a     │
@@ -172,8 +186,9 @@ $ metab --help
 │ --plugins                     List every discovered plugin.                  │
 │ --plugin               NAME   Print the full resolved manifest for one       │
 │                               plugin.                                        │
-│ --doctor                      Validate every discovered plugin; exit         │
-│                               non-zero on any problem.                       │
+│ --doctor                      Validate every discovered plugin, exiting      │
+│                               non-zero on any problem, and report GitHub     │
+│                               CLI's path, version, account, and scopes.      │
 │ --present                     Hand ROOT, a folder, a file, or a GitHub URL,  │
 │                               to the Metabrowser macOS app through           │
 │                               LaunchServices and report what was sent.       │
@@ -183,7 +198,8 @@ $ metab --help
 │                               refused it.                                    │
 │ --recent                      List the recent targets: the folders and       │
 │                               repositories opened lately, most recent first. │
-│                               Every serve records its ROOT.                  │
+│                               A serve records its ROOT when run at a         │
+│                               terminal or with METABROWSER_RECORD_RECENT=1.  │
 │ --recent-add                  Record ROOT as a recent target, as serving it  │
 │                               would, without serving.                        │
 │ --recent-forget               Remove ROOT from the recent targets.           │
@@ -286,13 +302,19 @@ $ metab --help
 │ --json          Emit structured JSON (plugin modes and --recent).            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Present (--present) ────────────────────────────────────────────────────────╮
-│ --dry-run                  Resolve ROOT and print what --present would hand  │
-│                            the app, without looking for the app or sending   │
-│                            anything.                                         │
-│ --app-bundle-id        ID  The app to hand ROOT to, by bundle identifier,    │
-│                            instead of the release build and then the         │
-│                            development build. Env:                           │
-│                            METABROWSER_APP_BUNDLE_ID.                        │
+│ --dry-run                     Resolve ROOT and print where --present would   │
+│                               open it and why, looking the app up but        │
+│                               sending nothing and starting no server.        │
+│ --app-bundle-id        ID     The app to hand ROOT to, by bundle identifier, │
+│                               instead of the release build and then the      │
+│                               development build. Env:                        │
+│                               METABROWSER_APP_BUNDLE_ID.                     │
+│ --open-in              WHERE  Where --present opens ROOT: auto (the app when │
+│                               an installed build takes it, otherwise a       │
+│                               browser on a metab server started for it), app │
+│                               (the app or nowhere), or browser. Env:         │
+│                               METABROWSER_OPEN_IN; otherwise open_in in      │
+│                               config.yml; default auto.                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
  Examples:
@@ -306,6 +328,7 @@ $ metab --help
  metab file:///path/to/repo.git --no-serve
  metab --remote example-host --path /srv/shared-files
  metab ./notes/report.md --present
+ metab --event-log
  metab --plugins
  Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md
 ? 0

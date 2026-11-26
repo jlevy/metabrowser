@@ -1,13 +1,13 @@
 """The freshness session runs production browser code on what a served mirror answers.
 
 ``tests/dom/source-freshness-session.js`` drives ``static/source-freshness.js`` -- the
-polling, the stale label, the newer-revision offer, pin switching, and opening a commit
+polling, the stale label, following a branch, pin switching, and opening a commit
 the mirror lacks -- and the history panel's ``classifyPageFailure`` through a scripted
 conversation, and ``tests/golden/cli-ui-source-freshness.tryscript.md`` pins its
 transcript. So that the conversation is the real server's and not envelopes a test wrote
 by hand, its responses come from ``tests/fixtures/source-freshness-responses.json``:
 what the in-process application answered while a mirror went stale, refreshed, gained a
-newer commit, switched its pin, lost its origin, invalidated an open all-branch history
+newer commit that the server followed, switched its pin, lost its origin, invalidated an open all-branch history
 cursor, and was asked for commits it did not have.
 The first test here replays that story against a real store and fails when the
 recording no longer matches.
@@ -28,7 +28,7 @@ import shutil
 import subprocess
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -46,9 +46,16 @@ from metabrowser.cache.records import (
     StoreOperation,
 )
 from metabrowser.cache.served_mirror import StoreMirror
+from metabrowser.cache.update import update_store
 from metabrowser.cache.urls import LineSelection, RepositorySelection
 from metabrowser.cli.selection import pending_selection_opener
-from metabrowser.mirror_refresh import MAX_PULL_JOBS, mirror_session, serve_mirror
+from metabrowser.mirror_refresh import (
+    FRESHNESS_WINDOW_S,
+    MAX_PULL_JOBS,
+    STORE_PROBE_S,
+    mirror_session,
+    serve_mirror,
+)
 from metabrowser.source import reset_source_session
 from tests.golden_harness import (
     JSON_BODY,
@@ -225,6 +232,10 @@ def _commit_fetch(client: TestClient, *, retry: bool = False) -> Any:
     return client.post("/api/source/refresh", json=body, headers=JSON_BODY)
 
 
+def _page_ask(client: TestClient) -> Any:
+    return client.post("/api/source/refresh", json={"for": "page"}, headers=JSON_BODY)
+
+
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
@@ -245,9 +256,29 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             started = client.post("/api/source/refresh", json={}, headers=JSON_BODY)
             assert started.status_code == 202
             recorded["refresh_started"] = started.json()
+            # The refresh moved the served branch, and the server followed it.
             recorded["refreshed"] = _settle(client)
+            # A page still drawn for the commit before asks for the branch at its address,
+            # which changes nothing now and says where the page is on the new commit.
+            followed = client.post(
+                "/api/source/pin",
+                json={"ref": recorded["refreshed"]["ref"], "view": "/view/"},
+                headers=JSON_BODY,
+            )
+            assert followed.status_code == 200
+            recorded["followed"] = followed.json()
+            # One on a file the new commit lacks lands at the root.
+            gone = "/view/g1-R09ORS5tZA"  # GONE.md, which no commit here has
+            elsewhere = client.post(
+                "/api/source/pin",
+                json={"ref": recorded["refreshed"]["ref"], "view": gone},
+                headers=JSON_BODY,
+            )
+            assert elsewhere.status_code == 200
+            recorded["followed_elsewhere"] = {"view": gone, "answer": elsewhere.json()}
             history = client.get("/api/git/log", params={"limit": "1", "scope": "all"}).json()
-            _git(origin, "branch", "side", recorded["refreshed"]["pin"])
+            # A branch at the commit before, which the next refresh brings.
+            _git(origin, "branch", "side", recorded["stale"]["pin"])
             assert client.post("/api/source/refresh", json={}, headers=JSON_BODY).status_code == 202
             _settle(client)
             stale_cursor = client.get(
@@ -255,9 +286,9 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             )
             assert stale_cursor.status_code == 409
             recorded["history_stale"] = {"status": 409, "body": stale_cursor.json()}
-            switched = client.post(
-                "/api/source/pin", json={"ref": recorded["refreshed"]["ref"]}, headers=JSON_BODY
-            )
+            # Another tab switches to another branch, at another commit: a page still on
+            # the first is refused and offered a reload.
+            switched = client.post("/api/source/pin", json={"ref": "side"}, headers=JSON_BODY)
             assert switched.status_code == 200
             recorded["switched"] = switched.json()
             recorded["after_switch"] = client.get("/api/source/status").json()
@@ -425,6 +456,54 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 time.sleep(0.02)
             still = client.get(f"/api/git/commit/{_ABSENT_COMMIT}")
             recorded["commit_unqueued_after"] = {"oid": _ABSENT_COMMIT, **answer(still)}
+        # A visible page on a branch makes its own ask every few seconds. The server asks
+        # the origin where the branch is: where the mirror has it, so nothing is fetched;
+        # then, after a push, somewhere else, so the fetch starts at once and the served
+        # branch follows. A page on a commit is told to send no such ask, and one sent
+        # all the same asks the origin nothing.
+        probe_clock = [1000.0]
+        monkeypatch.setattr("metabrowser.mirror_refresh._monotonic", lambda: probe_clock[0])
+        serve_mirror(StoreMirror.from_published(published), serving=True)
+        with TestClient(server.app) as client:
+            assert client.post("/api/source/refresh", json={}, headers=JSON_BODY).status_code == 202
+            recorded["probe_page"] = _settle(client)
+            recorded["probe_unchanged"] = answer(_page_ask(client))
+            _commit_on_topic(origin)
+            probe_clock[0] += STORE_PROBE_S
+            recorded["probe_moved"] = answer(_page_ask(client))
+            recorded["probe_followed"] = _settle(client)
+            # Once a window the ask fetches the whole mirror, which nobody pressed for:
+            # the status calls that fetch quiet. The clock is ahead only while it is asked.
+            later = datetime.now(UTC) + timedelta(seconds=FRESHNESS_WINDOW_S + 5)
+            probe_clock[0] += STORE_PROBE_S
+            with monkeypatch.context() as aged:
+                aged.setattr("metabrowser.mirror_refresh._now_utc", lambda: later)
+                recorded["window_fetch"] = answer(_page_ask(client))
+            recorded["window_fetched"] = _settle(client)
+            pinned = client.post(
+                "/api/source/pin", json={"oid": recorded["probe_page"]["pin"]}, headers=JSON_BODY
+            )
+            assert pinned.status_code == 200
+            recorded["commit_pin"] = pinned.json()["status"]
+            probe_clock[0] += STORE_PROBE_S
+            recorded["commit_pin_ask"] = answer(_page_ask(client))
+            # The server's own fetch, which its timer starts while no page asks, held
+            # here until the status has been read: quiet too.
+            fetching = threading.Event()
+            real_update = update_store
+
+            async def held_update(home: Path, store_key: str, *, remote_url: str) -> Any:
+                await held_until(fetching, 30)
+                return await real_update(home, store_key, remote_url=remote_url)
+
+            session = mirror_session(server.app)
+            assert session is not None and client.portal is not None
+            with monkeypatch.context() as held:
+                held.setattr("metabrowser.cache.served_mirror.update_store", held_update)
+                assert client.portal.call(session.request_idle_refresh) == "started"
+                recorded["idle_fetch"] = client.get("/api/source/status").json()
+                fetching.set()
+                _settle(client)
         # A mirror whose last refresh found the repository gone or private, inside the
         # window: the row says so in the words the command line uses.
         _write_state(
@@ -458,8 +537,18 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["stale"]["stale"] is True and recorded["stale"]["refreshing"] is False
     assert recorded["refresh_started"]["status"]["refreshing"] is True
     refreshed = recorded["refreshed"]
-    assert refreshed["latest"] != refreshed["pin"], "the refresh must bring a newer commit"
-    assert recorded["after_switch"]["generation"] == refreshed["generation"] + 1
+    stale = recorded["stale"]
+    assert refreshed["pin"] != stale["pin"], "the refresh must bring a newer commit"
+    # The server followed the branch: the new tip is served, under the same ref.
+    assert (refreshed["ref"], refreshed["follows"]) == (stale["ref"], True)
+    assert refreshed["latest"] == refreshed["pin"]
+    assert refreshed["generation"] == stale["generation"] + 1
+    assert recorded["followed"]["changed"] is False
+    assert recorded["followed"]["view_href"] == "/view/"
+    assert recorded["followed_elsewhere"]["answer"]["view_href"] == "/view/"
+    after_switch = recorded["after_switch"]
+    assert (after_switch["ref"], after_switch["pin"]) != (refreshed["ref"], refreshed["pin"])
+    assert after_switch["pin"] == stale["pin"]
     assert recorded["history_stale"]["body"]["code"] == "history_stale"
     assert recorded["failed"]["last_outcome"]["outcome"] == "origin_unavailable"
     assert recorded["unreachable"]["stale"] is True
@@ -494,9 +583,9 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["commit_found"]["status"] == 200
     assert recorded["commit_found"]["commit"] == recorded["commit_missing"]["oid"]
     # Outside the window a page's own request fetches, and here the fetch cannot run.
-    stale = recorded["commit_stale_started"]
-    assert (stale["status"], stale["body"]["refresh"]) == (202, "started")
-    assert stale["body"]["status"]["stale"] is True
+    stale_commit = recorded["commit_stale_started"]
+    assert (stale_commit["status"], stale_commit["body"]["refresh"]) == (202, "started")
+    assert stale_commit["body"]["status"]["stale"] is True
     assert recorded["commit_stale_unfetched"]["last_outcome"]["outcome"] == "origin_unavailable"
     shown = recorded["origin_not_shown"]
     assert (shown["stale"], shown["last_outcome"]["outcome"]) == (False, "not_found_or_private")
@@ -521,29 +610,190 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["commit_retry_started"]["body"]["pull_refresh"] == "joined"
     assert recorded["commit_fresh"]["body"]["pull_refresh"] is None
     assert recorded["folder"]["pin"] is None
+    # A page's own ask: a probe that found the branch where the mirror has it fetched
+    # nothing, and one that found a push started the fetch the served branch followed.
+    probe_page = recorded["probe_page"]
+    assert (probe_page["probe_every_s"], probe_page["stale"]) == (STORE_PROBE_S, False)
+    unchanged = recorded["probe_unchanged"]
+    assert (unchanged["status"], unchanged["body"]["refresh"]) == (200, "probed")
+    assert unchanged["body"]["status"] == probe_page
+    moved = recorded["probe_moved"]
+    assert (moved["status"], moved["body"]["refresh"]) == (202, "started")
+    assert moved["body"]["status"]["refreshing"] is True
+    followed = recorded["probe_followed"]
+    assert followed["pin"] != probe_page["pin"] and followed["latest"] == followed["pin"]
+    assert recorded["commit_pin"]["probe_every_s"] is None
+    window = recorded["window_fetch"]
+    assert (window["status"], window["body"]["refresh"]) == (202, "started")
+    quiet = window["body"]["status"]
+    assert (quiet["refreshing"], quiet["refresh_quiet"]) == (True, True)
+    assert moved["body"]["status"]["refresh_quiet"] is False, "the page asked for that one"
+    assert recorded["window_fetched"]["refreshing"] is False
+    idle = recorded["idle_fetch"]
+    assert (idle["refreshing"], idle["refresh_quiet"], idle["ref"]) == (True, True, None)
+    unasked = recorded["commit_pin_ask"]
+    assert (unasked["status"], unasked["body"]["refresh"]) == (200, "not_due")
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
+
+
+def test_a_folders_row_names_its_store_of_the_origin_on_every_page() -> None:
+    """The row on a repository folder's pages, its working tree's among them: a store
+    grown old is fetched once by the page's own quiet ask, since the page shows nothing
+    of it, and only the reader's Refresh says "Refreshing…"; the row says what was
+    fetched is Metabrowser's store, and leaves the reload offer to the ref selector."""
+
+    folder = run_session("source-freshness-session.js", "folder")
+    by_name = {step["step"]: step for step in folder["steps"]}
+    stale = by_name["the working tree's page, its origin's store grown old, asks quietly, once"]
+    assert stale["requests"] == [
+        "GET /api/source/status",
+        'POST /api/source/refresh {"for":"page"}',
+    ]
+    assert stale["paint"]["label"].startswith("Origin fetched ")
+    assert stale["paint"]["tone"] == "quiet"
+    pressed = by_name["the reader's own Refresh says so while it runs"]
+    assert pressed["requests"] == ["POST /api/source/refresh {}"]
+    assert pressed["paint"]["label"] == "Refreshing…"
+    fetched = by_name["the store was fetched; the row says when, and nothing reloads"]
+    assert fetched["paint"]["label"].startswith("Origin fetched ")
+    assert "without changing the checkout" in fetched["paint"]["detail"]
+    failed = by_name["a fetch that failed says the checkout is unchanged"]
+    assert failed["paint"]["label"].startswith("Refresh failed · origin fetched ")
+    for step in folder["steps"]:
+        assert "mirror" not in json.dumps(step["paint"]), step["step"]
+        assert step["paint"]["offer"] is None and step.get("reloads", 0) == 0, step["step"]
+
+
+def test_a_folders_page_follows_its_checkouts_own_branch() -> None:
+    """A page on one of the checkout's own branches asks as often as its status says, and
+    goes with the branch when the reader's commit moved it, with a store and without."""
+
+    part = run_session("source-freshness-session.js", "checkout-branch")
+    by_name = {step["step"]: step for step in part["steps"]}
+    ask = 'POST /api/source/refresh {"for":"page"}'
+    opened = by_name["a page on the checkout's own branch asks where the branch is"]
+    assert opened["requests"] == ["GET /api/source/status", ask]
+    assert opened["timer"] == "ask"
+    unmoved = by_name["the branch is where it was: nothing repaints, and it asks again"]
+    assert (unmoved["requests"], unmoved["repaints"], unmoved["reloads"]) == ([ask], 0, 0)
+    followed = by_name["the reader committed on the branch; the page follows it"]
+    assert followed["requests"][0] == ask
+    assert followed["requests"][1].startswith('POST /api/source/pin {"ref":"refs/heads/trunk"')
+    assert (followed["reloads"], followed["paint"]["label"]) == (1, "Updating to trunk…")
+    # With no store nothing is refreshable, so there is no row, and the page asks all the same.
+    plain = by_name["with no store of an origin there is no row, and the page still asks"]
+    assert (plain["requests"], plain["timer"], plain["paint"]) == (
+        ["GET /api/source/status", ask],
+        "ask",
+        None,
+    )
+    refused = by_name["a follow the server refused says the branch moved, and why"]
+    assert (refused["reloads"], refused["paint"]["label"]) == (0, "trunk moved")
+    assert refused["paint"]["error"] == "Could not follow trunk to its new commit."
+    pressed = by_name["pressed, the page asks again and follows"]
+    assert len(pressed["requests"]) == 1 and pressed["requests"][0].startswith(
+        'POST /api/source/pin {"ref":"refs/heads/trunk"'
+    )
+    assert pressed["reloads"] == 1
+    hidden = by_name["a hidden page asks nothing"]
+    assert (hidden["requests"], hidden["timer"]) == ([], None)
+    # A branch the reader deleted keeps its last commit shown, and a quiet row says so,
+    # the store's row too when the folder keeps one.
+    gone = by_name["the reader deleted the branch: the row says its last commit stays"]
+    assert (gone["reloads"], gone["paint"]["tone"]) == (0, "quiet")
+    assert gone["paint"]["label"] == "topic no longer exists"
+    assert gone["paint"]["detail"].startswith("topic no longer exists in this checkout;")
+    stored = by_name["with a store, the store's row says the branch is gone"]["paint"]
+    assert stored["label"].startswith("trunk no longer exists · origin fetched ")
 
 
 def test_the_session_runs_on_the_recording() -> None:
     transcript = run_session("source-freshness-session.js")
+    asks = run_session("source-freshness-session.js", "asks")
     recording = read_recording(RECORDING)
-    by_name = {step["step"]: step for step in transcript["steps"]}
+    by_name = {step["step"]: step for step in (*transcript["steps"], *asks["steps"])}
     assert by_name["open a stale page"]["requests"] == [
         "GET /api/source/status",
         "POST /api/source/refresh {}",
     ]
-    offer = by_name["the refresh brought a newer commit"]["paint"]["offer"]
-    assert offer.endswith("[Switch] → refs/remotes/origin/topic")
-    assert by_name["accept the offer"]["reloads"] == 1
-    assert by_name["a refused switch says why and does not reload"]["reloads"] == 0
+    # The refresh moved the branch; the page goes with it, with nothing offered.
+    followed = by_name["the refresh moved the branch; the page follows it"]
+    assert followed["requests"][-1] == (
+        'POST /api/source/pin {"ref":"refs/remotes/origin/topic","view":"/view/"}'
+    )
+    assert (followed["reloads"], followed["paint"]["offer"]) == (1, None)
+    assert followed["paint"]["label"] == "Updating to topic…"
+    elsewhere = by_name["a page on a file the new commit lacks goes to the root"]
+    assert (elsewhere["navigated"], elsewhere["reloads"]) == (["/view/"], 0)
+    refused_follow = by_name["a refused follow says why and offers a reload"]
+    assert refused_follow["reloads"] == 0
+    assert refused_follow["paint"]["error"].startswith("Could not follow topic")
+    assert refused_follow["paint"]["offer"].endswith("[Reload page]")
+    again = by_name["a refused follow is not asked again on the next poll"]
+    assert not any(request.startswith("POST /api/source/pin") for request in again["requests"])
+    assert again["paint"]["error"] == refused_follow["paint"]["error"]
+    assert by_name["the reload a refused follow offers"]["reloads"] == 1
+    # The page's own ask, every probe_every_s while it is visible, stands in for the poll.
+    page_ask = 'POST /api/source/refresh {"for":"page"}'
+    opened = by_name["a page on a branch asks with its first status"]
+    assert opened["requests"] == ["GET /api/source/status", page_ask]
+    assert opened["timer"] == "ask"
+    unchanged = by_name["an unchanged branch: the ask is the poll, and nothing repaints"]
+    assert (unchanged["requests"], unchanged["repaints"]) == ([page_ask], 0)
+    hidden = by_name["a hidden page asks nothing"]
+    assert (hidden["requests"], hidden["timer"]) == ([], None)
+    assert by_name["shown again, the page asks at once"]["requests"][-1] == page_ask
+    pushed = by_name["the origin moved the branch: the fetch starts at once"]
+    assert (pushed["requests"], pushed["timer"]) == ([page_ask], "fast")
+    assert pushed["paint"]["tone"] == "refreshing"
+    arrived_push = by_name["the fetch brought the push; the page follows its branch"]
+    assert arrived_push["requests"][-1].startswith("POST /api/source/pin ")
+    assert arrived_push["reloads"] == 1
+    refused_ask = by_name["a refused ask says nothing, and the page polls instead"]
+    assert (refused_ask["timer"], refused_ask["paint"]["error"]) == ("slow", None)
+    after_refusal = by_name["the poll after a refused ask"]["requests"]
+    assert len(after_refusal) == 1 and after_refusal[0].startswith("GET /api/source/status")
+    silent = by_name["the server stopped answering the page's asks"]
+    assert (silent["timer"], silent["paint"]["error"]) == ("slow", "The server did not answer.")
+    # A fetch nobody asked for changes nothing the row says: no repaint, so nothing is
+    # announced and no button is disabled, and no quick poll (review A2 of #721).
+    for name, timer in (
+        ("once a window the mirror is fetched, and the row says nothing", "ask"),
+        ("the quiet fetch ended, and the row still says nothing new", "ask"),
+        ("the server's own fetch says nothing on a page that is open", "slow"),
+    ):
+        quiet = by_name[name]
+        assert (quiet["repaints"], quiet["timer"]) == (0, timer), name
+        assert quiet["paint"]["tone"] == "quiet" and quiet["paint"]["label"].startswith("Fetched")
+    # The commit view does not wait for the page's first ask (review A4 of #721).
+    unheld = by_name["a missing commit does not wait for the page's first ask"]
+    assert unheld["answeredBeforeTheAsk"] is True
+    assert unheld["requests"] == ["GET /api/source/status", page_ask]
+    assert unheld["commit"]["state"] == "not_found"
+    assert by_name["the page's first ask is answered afterwards"]["timer"] == "ask"
+    on_commit = by_name["a page on a commit sends no ask of its own"]
+    assert (on_commit["requests"], on_commit["timer"]) == (["GET /api/source/status"], "slow")
+    assert all(
+        request.startswith("GET ")
+        for request in by_name["a page on a commit polls slowly"]["requests"]
+    )
+    # The page asks for a refresh by itself once per visible period, and the server
+    # holds its own asks while a fetch has just failed, so neither is repeated per poll.
     polls = by_name["a stale page whose refresh fails asks once"]["requests"]
-    assert len(polls) == 2 and all(request.startswith("GET ") for request in polls)
+    assert "POST /api/source/refresh {}" not in polls
     history = {row["failure"]: row["means"] for row in transcript["history"]}
     assert history["a refresh moved the refs"] == "stale"
+    # A page whose revision another tab switched keeps its rows: the walk would be refused
+    # again, and the freshness row offers the reload.
+    assert history["another tab switched the revision"] == "failed"
+    assert history["the session expired"] == "recover"
     assert by_name["an unchanged status is a 304"]["repaints"] == 0
-    assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload]")
+    assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload page]")
     guard = transcript["guard"]
-    assert [row["pin"] for row in guard["sent"]] == [guard["page"], None, None, guard["page"]]
+    page = guard["page"]
+    # The status route, another origin, and the event log's routes name no pin; a route
+    # whose name only begins like the event log's does.
+    assert [row["pin"] for row in guard["sent"]] == [page, None, None, None, None, page, page]
     assert guard["answered"][-1] == 409
     assert guard["reported"] == [recording["after_switch"]["pin"]]
     # A page opened while its URL selection waited goes to the selection once, anchor kept.
@@ -562,7 +812,7 @@ def test_the_session_runs_on_the_recording() -> None:
     inside = by_name["inside the freshness window a missing commit starts no fetch"]
     assert inside["requests"] == []
     assert inside["commit"]["state"] == "not_found" and inside["commit"]["offer"] == "[Retry]"
-    assert "as fetched" in inside["commit"]["detail"]
+    assert "as last fetched" in inside["commit"]["detail"]
     retried = by_name["retry fetches for the commit"]
     assert retried["requests"] == ['POST /api/source/refresh {"for":"commit","retry":true}']
     assert retried["commit"]["state"] == "pending" and retried["commit"]["offer"] is None
@@ -573,10 +823,11 @@ def test_the_session_runs_on_the_recording() -> None:
     # Only a fetch of the mirror that ran lets the view say the origin lacks the commit.
     absent = by_name["the fetch ran and did not bring the commit"]["commit"]
     assert (
-        absent["state"] == "not_found" and "no branch or tag there reaches it" in absent["detail"]
+        absent["state"] == "not_found"
+        and absent["detail"] == "No branch or tag on the origin has this commit."
     )
     beside = by_name["no fetch of the mirror ran, and the view does not say one did"]["commit"]
-    assert beside["state"] == "not_found" and "as fetched" in beside["detail"]
+    assert beside["state"] == "not_found" and "as last fetched" in beside["detail"]
     assert "did not bring it" not in beside["detail"]
     # A re-ask that failed is a load failure, not an answer about the commit.
     refused = by_name["asking again failed; the view does not say not found"]["commit"]
@@ -586,7 +837,7 @@ def test_the_session_runs_on_the_recording() -> None:
     assert outside["requests"] == ['POST /api/source/refresh {"for":"commit"}']
     unfetched = by_name["the commit could not be fetched"]["commit"]
     assert unfetched["state"] == "fetch_failed" and unfetched["offer"] == "[Retry]"
-    assert "The origin could not be read." in unfetched["detail"]
+    assert unfetched["detail"] == "The origin could not be read."
     left = by_name["the reader left before the fetch ended"]
     assert left["requests"] == ["GET /api/source/status"] and left["commit"]["repaints"] == 0
     joined = by_name["a fetch of the mirror already running is joined"]
@@ -594,20 +845,21 @@ def test_the_session_runs_on_the_recording() -> None:
     # A server that stops answering is not polled every second, nor waited for.
     stopped = by_name["the server stopped answering while the fetch ran"]
     assert stopped["timer"] == "slow" and stopped["commit"]["state"] == "fetch_failed"
-    assert "The server did not answer." in stopped["commit"]["detail"]
+    assert stopped["commit"]["detail"] == "This commit could not be fetched."
     # A fetch that ran while a full queue refused the pull request's refresh does not let
     # the view say the origin lacks the commit.
     unqueued = by_name["the queue had no room for the pull request's refresh"]["commit"]
     assert unqueued["state"] == "fetch_failed" and unqueued["offer"] == "[Retry]"
-    assert "was not queued" in unqueued["detail"]
-    assert "no branch or tag there reaches it" not in unqueued["detail"]
+    assert "while others are being fetched" in unqueued["detail"]
+    assert "No branch or tag" not in unqueued["detail"]
     # A refusal of the page's own refresh says nothing; the reader's press says why.
     own = by_name["a page's own refresh with no room in the queue says nothing"]
     assert own["requests"] == ["GET /api/source/status", "POST /api/source/refresh {}"]
     assert (own["paint"]["tone"], own["paint"]["error"]) == ("stale", None)
     pressed = by_name["a press with no room in the queue says why"]
     assert pressed["requests"] == ["POST /api/source/refresh {}"]
-    refusal = recording["queue_full_refresh"]["body"]["error"]
-    assert pressed["paint"]["error"] == f"Refresh refused: {refusal}"
+    # The answer's own words are the agent's; its code says waiting would help.
+    assert recording["queue_full_refresh"]["body"]["code"] == "too_many"
+    assert pressed["paint"]["error"] == "Other refreshes are running. Try again shortly."
     shown = by_name["the origin no longer shows the repository"]["paint"]["detail"]
     assert shown.startswith("The repository was not found, or it is private and could not be read.")

@@ -28,6 +28,7 @@ from metabrowser.builtin_plugins.github import (
     pull_list,
     pull_list_refresh,
     pull_list_route,
+    pull_prefetch,
 )
 from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, read_list, utc_stamp
@@ -64,6 +65,7 @@ from metabrowser.builtin_plugins.github.pull_list_route import (
     refresh_wanted,
     search_query,
 )
+from metabrowser.builtin_plugins.github.pull_prefetch import Item
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_REFRESH_MESSAGE_CHARS,
     clear_pulls,
@@ -167,7 +169,7 @@ def test_backfill_all_beyond_old_cap_with_small_indexed_windows(
         (_path(repository).parent / f"list-{name}.json").exists()
         for name in ("all", "open", "closed")
     )
-    assert not list((repository.home / "repository-stores").iterdir())
+    assert not list((repository.home / "repos").iterdir())
     calls.clear()
     assert not refresh_wanted(ListView(repository, None, False), RefreshRequest("open", 2000))
     assert asyncio.run(refresh_pull_list(repository, "open", target=2000)).cached == state.cached
@@ -268,6 +270,90 @@ def test_backfill_past_the_prefix_pauses_below_the_budget_floor_and_resumes(
         "open": 120,
         "closed": 1085,
     }
+
+
+def test_the_backfill_is_speculative_work_and_pauses_once_that_works_share_is_spent(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A1 of review A on #737: a reader's pages are not counted toward the share."""
+
+    calls = _provider(monkeypatch, _mostly_closed(450))
+    graphql = pull_list_refresh.gh_graphql
+
+    async def counted(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        gh_budget.spent(1, now=FETCHED_AT)
+        return await graphql(*args, **kwargs)
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", counted)
+    state = asyncio.run(refresh_pull_list(repository, "open", target=45))
+    assert calls == ["graphql:open:start"] + [
+        f"graphql:all:{'start' if not n else f'all-{n}'}" for n in range(0, 500, 100)
+    ]
+    assert state.done["all"]
+    # The reader's prefix is what is on screen; the five pages past it are speculative,
+    # and none is the cores walk's.
+    assert gh_budget.automatic_spent(FETCHED_AT) == 6
+    assert gh_budget.speculative_spent(FETCHED_AT) == 5
+    assert gh_budget.walk_spent(FETCHED_AT) == 0
+
+
+class _Served:
+    """A served repository's stand-in, for the prefetch lane it keys."""
+
+
+def test_a_prefetch_with_work_holds_the_cores_walk_and_not_the_backfill(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 and D2 of review D on #737: the backfill stopped at the 8 points an hour it shared
+    with the cores walk, so a cold catalog of 1,300 rows read 8 of its 13 backfill pages and
+    Quick Search across every state stayed incomplete, and no test reached that order
+    through ``refresh_pull_list``. The backfill reserves nothing for the prefetch: with a
+    lane that has work, whose reserve holds the walk, it reads to the oldest row."""
+
+    calls = _provider(monkeypatch, _mostly_closed(1300))
+    graphql = pull_list_refresh.gh_graphql
+
+    async def counted(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        gh_budget.spent(1, now=FETCHED_AT)
+        return await graphql(*args, **kwargs)
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", counted)
+    share = gh_budget.SPECULATIVE_CORE_PER_HOUR
+    served = _Served()
+    lane = pull_prefetch.lane_of(served)  # pyright: ignore[reportArgumentType]
+    lane.queue.append(Item("record", 1))
+    try:
+        reserve = pull_prefetch.reserved(FETCHED_AT)
+        # What the prefetch spent earlier in the hour leaves the share less than its caps.
+        with gh_budget.speculative():
+            gh_budget.spent(share - reserve, now=FETCHED_AT)
+        assert gh_budget.admission(
+            ("graphql",), now=FETCHED_AT, speculative=True, reserved=reserve
+        ) == gh_budget.Admission(False, "self_ceiling"), "the walk is held"
+        state = asyncio.run(refresh_pull_list(repository, "open", target=45))
+    finally:
+        lane.queue.clear()
+    assert calls == ["graphql:open:start"] + [
+        f"graphql:all:{'start' if not n else f'all-{n}'}" for n in range(0, 1300, 100)
+    ]
+    assert state.done["all"] and state.cached["all"] == 1300
+    assert catalog_search(repository, "#3")["complete"]
+    assert gh_budget.speculative_spent(FETCHED_AT) == share - reserve + 13
+    assert gh_budget.walk_spent(FETCHED_AT) == 0
+
+
+def test_a_spent_share_pauses_the_backfill_and_not_the_readers_prefix(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _provider(monkeypatch, _mostly_closed(450))
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=FETCHED_AT)
+    assert not gh_budget.over_ceiling(FETCHED_AT)
+    held = asyncio.run(refresh_pull_list(repository, "open", target=45))
+    assert calls == ["graphql:open:start"]
+    assert (held.cached["open"], held.done["all"]) == (45, False)
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.outcome == "succeeded", "a pause is not a failure"
 
 
 def test_a_rate_hold_pauses_the_backfill_without_a_refusal_of_its_own(
@@ -418,9 +504,13 @@ def test_actual_gh_transport_keeps_only_lightweight_metadata(
         json.loads(line)["args"]
         for line in (tmp_path / "fake-gh-log.jsonl").read_text().splitlines()
     ]
-    assert [args[:2] for args in log if args[0] == "api"] == [["api", "graphql"]]
+    # The account check, then the one catalog page: no REST read of a pull request.
+    assert [args[-1] if args[-1] == "user" else args[1] for args in log if args[0] == "api"] == [
+        "user",
+        "graphql",
+    ]
     assert any("avatar_url:avatarUrl(size:40)" in arg for args in log for arg in args)
-    assert not list((repository.home / "repository-stores").iterdir())
+    assert not list((repository.home / "repos").iterdir())
 
 
 def test_append_generation_counts_and_stale_backfill_guard(repository: ListedRepository) -> None:
@@ -1164,7 +1254,7 @@ def test_clearing_removes_only_the_plugins_cache_and_never_follows_a_link(
     assert read_list_refresh(repository.home, repository.slug, "all") is None
     assert clear_pulls(repository.home, repository.slug) == 0
 
-    unclaimed = repository.home / "sources/github-com--octo--other--000000000000"
+    unclaimed = repository.home / "sources/github-com-octo-other-00000000000"
     assert clear_pulls(repository.home, unclaimed.name) == 0
     assert not unclaimed.exists()
 

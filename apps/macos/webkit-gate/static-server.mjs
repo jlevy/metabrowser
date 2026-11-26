@@ -22,6 +22,7 @@ import { pipeline } from "node:stream";
 export const BENCHMARK_ASSETS = Object.freeze([
   "explorations/diff-intraline/benchmark.html",
   "explorations/diff-layout/benchmark.html",
+  "src/metabrowser/builtin_plugins/diff/diff-fold.js",
   "src/metabrowser/builtin_plugins/diff/diff-intraline.js",
   "src/metabrowser/builtin_plugins/diff/diff-model.js",
   "src/metabrowser/builtin_plugins/diff/diff-render-model.js",

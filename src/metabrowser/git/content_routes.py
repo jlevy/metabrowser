@@ -28,7 +28,8 @@ read it rather than fall back to a GitPath wire. They omit compressed identity
 because blobs are stored bytes with no gzip smudge.
 Markdown blob envelopes include parsed YAML ``frontmatter`` and
 ``frontmatter_error`` the way filesystem ``/api/file`` does; KPress on a pin
-uses that parse rather than an empty mapping.
+uses that parse of the blob's own bytes rather than an empty mapping, also when
+the page sends prepared text to render in the blob's place.
 Text blobs use the same first-window and highlight bound as filesystem
 listings, and advertise ``bytes_read`` plus preview limits so Load more and
 ``fetchText`` can continue a truncated Git envelope.
@@ -43,7 +44,9 @@ Listings still show the symlink node. Absolute, dangling, and cyclic
 targets 404.
 ``logical_ext`` is only the inner extension of a compressed name.
 ``include_ignored=0`` is a no-op because ignore is absent.
-The SPA hides Modified within because recency still has no honest mtime.
+A revision's file times are the committer times of the last commits that changed them
+(``git/file_ages.py``): where the Git can read them the SPA offers Modified within and By age,
+and where it cannot it hides both, because recency has no honest mtime.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented mtime or ignore. Omitted mtime leaves
 SPA age chrome empty rather than pending. A direct-child README blob sets
@@ -70,11 +73,17 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import heapq
 import logging
 import mimetypes
+import time
+from array import array
+from bisect import bisect_left, bisect_right
 from collections import Counter
-from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, replace
+from collections.abc import Awaitable, Callable, Iterator
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
+from itertools import compress
 from pathlib import Path
 from typing import Any, Literal
 
@@ -84,7 +93,12 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from metabrowser import kpress_adapter
 from metabrowser.capabilities import UNTRUSTED_CAPABILITIES
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
-from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
+from metabrowser.content_sniff import (
+    SNIFF_PREFIX_BYTES,
+    ContentClass,
+    classify_prefix,
+    media_type_from_prefix,
+)
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
     InertRenderRefused,
@@ -100,9 +114,18 @@ from metabrowser.file_extensions import (
 from metabrowser.file_kinds import classify_by_ext
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.file_type_legend import build_file_type_legend
+from metabrowser.file_type_match import name_matches_types, semantic_extension_tokens, type_tally
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.folder_discovery import choose_readme_name
+from metabrowser.frontmatter_yaml import frontmatter_error_fields
 from metabrowser.fs_paths import derive_ext
+from metabrowser.git.file_ages import (
+    UNDATED,
+    RevisionAges,
+    file_ages_availability,
+    file_ages_version_label,
+)
+from metabrowser.git.file_ages_service import AgesStatus, file_ages_service
 from metabrowser.git.process import GitError, GitTimeoutError, failure_detail
 from metabrowser.git.tree_source import (
     GitBlobIndex,
@@ -130,6 +153,7 @@ from metabrowser.plugin_loader.classify import CONTENT_PREDICATE_MAX_BYTES
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_MAX_FILES,
+    RECENT_WINDOW_SECONDS,
     SYNTAX_HIGHLIGHT_MAX_BYTES,
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
@@ -137,15 +161,22 @@ from metabrowser.settings import (
 from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, UnsupportedSourceCapabilityError
 from metabrowser.tree import _tree_depth_from_query
 from metabrowser.tree_filter import TreeFilter
-from metabrowser.tree_groups import GroupBy, group_row, groups_for, groups_payload
+from metabrowser.tree_groups import (
+    UNDATED_GROUP_ID,
+    GroupBy,
+    age_band,
+    age_group_index,
+    age_windows,
+    group_row,
+    groups_for,
+    groups_payload,
+)
 from metabrowser.view_routes import decode_view_logical_path
 
 log = logging.getLogger(__name__)
 
 _NOT_FOUND = {"error": "Not found"}
 _PATCH_EXTS = (".patch", ".diff")
-# Same cap as ``PythonInventoryStore.navigation_tallies``.
-_GIT_FILTER_TALLY_LIMIT = 200
 
 
 def _git_path_from_query(request: Request) -> GitPath:
@@ -202,8 +233,17 @@ def _nav_tree_node(
     tally: GitTreeTally | None = None,
     children: list[dict[str, Any]] | None = None,
     loaded: bool = False,
+    ages: RevisionAges | None = None,
+    kept_time: tuple[int | None] | None = None,
 ) -> dict[str, Any]:
-    """SPA nav node. Omit inventory aggregates rather than invent zeros."""
+    """SPA nav node. Omit inventory aggregates rather than invent zeros.
+
+    With *ages*, a file carries ``mtime``, its last commit's time in seconds, and a
+    directory the newest of its files'; a name the answer leaves undated carries none.
+    *kept_time* is a directory's newest time among only the files a time filter kept under
+    it, which is what puts it in its group (``(None,)`` when none has one): a grouped or
+    windowed answer dates a folder by those, as it counts them.
+    """
 
     node: dict[str, Any] = {
         "name": _display_basename(entry.path),
@@ -237,9 +277,26 @@ def _nav_tree_node(
                 compression = artifact.compression
                 if compression is not None:
                     node["compression"] = compression
+    if ages is not None:
+        stamp = kept_time[0] if kept_time is not None and entry.is_tree else _age_of(entry, ages)
+        if stamp is not None:
+            node["mtime"] = stamp
     if entry.size is not None:
         node["size"] = entry.size
     return node
+
+
+def _age_of(entry: GitTreeEntry, ages: RevisionAges) -> int | None:
+    """*entry*'s time in the revision's answer: a file's own, a directory's newest, in
+    seconds, or ``None`` when the answer leaves it undated. A gitlink is not a name the
+    answer dates."""
+
+    if entry.is_gitlink:
+        return None
+    name = b"/".join(entry.path.segments)
+    if entry.is_tree:
+        return ages.newest_under(name)
+    return ages.time_of(name)
 
 
 def _identity_fields(entry: GitTreeEntry, *, path: GitPath | None = None) -> dict[str, Any]:
@@ -267,15 +324,6 @@ def _filter_tail_ext(path: GitPath) -> str:
     return derive_ext(_display_basename(path))
 
 
-def _semantic_extension_tokens(types: tuple[str, ...]) -> frozenset[str]:
-    registry = load_file_type_registry()
-    return frozenset(
-        token
-        for token in types
-        if token.startswith(".") and registry.classify("", token).family_id is not None
-    )
-
-
 def _plugin_kind_for_git_path(
     path: GitPath,
     *,
@@ -283,6 +331,7 @@ def _plugin_kind_for_git_path(
     json_top_level: dict[str, Any] | None = None,
     yaml_top_level: dict[str, Any] | None = None,
     frontmatter: dict[str, Any] | None = None,
+    prefix: bytes | None = None,
 ) -> str | None:
     from metabrowser.plugin_loader.classify import classify_identity
     from metabrowser.server import _PLUGIN_KIND_RULES
@@ -295,7 +344,44 @@ def _plugin_kind_for_git_path(
         json_top_level=json_top_level,
         yaml_top_level=yaml_top_level,
         frontmatter=frontmatter,
+        prefix=prefix,
     )
+
+
+async def _blob_container_kind(subject: GitRevisionSubject, entry: GitTreeEntry) -> str | None:
+    """The container kind a blob is by its magic number, such as a SQLite database's
+    whatever its name, or None for a blob no container kind claims."""
+
+    from metabrowser.server import _container_kinds
+
+    head, _size = await subject.tree_source.read_blob_window(
+        entry.oid, offset=0, max_bytes=SNIFF_PREFIX_BYTES
+    )
+    if classify_prefix(head) is not ContentClass.BINARY:
+        return None
+    kind = plugin_magic_kind(head)
+    return kind if kind in _container_kinds() else None
+
+
+def plugin_magic_kind(prefix: bytes) -> str:
+    """The kind of a blob whose bytes sniff as binary: a plugin kind whose ``magic``
+    bytes *prefix* holds, or ``binary``. A stored blob is never decompressed, so its
+    bytes are the ones a magic number is checked against."""
+
+    from metabrowser.plugin_loader.classify import classify_magic
+    from metabrowser.server import _PLUGIN_KIND_RULES
+
+    return classify_magic(_PLUGIN_KIND_RULES, prefix) or "binary"
+
+
+def plugin_kind_for_git_wire(wire: str) -> str | None:
+    """The plugin kind a blob's GitPath wire matches by extension and basename alone."""
+
+    try:
+        path = GitPath.from_wire(wire)
+    except GitPathError:
+        return None
+    return _plugin_kind_for_git_path(path)
 
 
 def _git_blob_content_predicates(
@@ -341,9 +427,7 @@ def _git_frontmatter_envelope(
     fields: dict[str, Any] = {}
     if mapping is not None:
         fields["frontmatter"] = mapping
-    if error is not None:
-        fields["frontmatter_error"] = error
-    return fields
+    return fields | frontmatter_error_fields(error)
 
 
 # A pinned revision is never trusted, whatever the process's block: every route here was
@@ -352,11 +436,26 @@ def _git_frontmatter_envelope(
 _PIN_CAPABILITIES = UNTRUSTED_CAPABILITIES
 
 
-def _views_for_kind(kind: str) -> list[dict[str, Any]]:
+def _views_for_kind(kind: str, *, prefix: tuple[bytes, str] | None = None) -> list[dict[str, Any]]:
     # Plugin kinds such as diff live in manifests, not VIEW_REGISTRY.
     from metabrowser.server import _views_for_kind as merged_views_for_kind
 
-    return merged_views_for_kind(kind, active_content=_PIN_CAPABILITIES.active_content)
+    return merged_views_for_kind(
+        kind, prefix=prefix, active_content=_PIN_CAPABILITIES.active_content
+    )
+
+
+async def _text_views_off_loop(kind: str, ext: str, body: bytes) -> list[dict[str, Any]]:
+    """A text blob's views, its kind's offered views decided from its leading bytes on a
+    worker thread, since an offer may parse a bounded prefix; a kind with none is listed
+    on the loop."""
+
+    from metabrowser.server import _FILE_OFFER_KINDS
+
+    prefix = (body[:_PREDICATE_PREFIX_BYTES], ext)
+    if kind not in _FILE_OFFER_KINDS:
+        return _views_for_kind(kind, prefix=prefix)
+    return await asyncio.to_thread(_views_for_kind, kind, prefix=prefix)
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
@@ -367,29 +466,179 @@ def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
     return entry.size is not None and entry.size >= floor
 
 
-def _matches_types(
-    path: GitPath,
-    types: tuple[str, ...],
-    *,
-    semantic: frozenset[str] | None = None,
-) -> bool:
-    """Match like the SPA type filter: dotted tokens are logical extensions."""
-
-    name = ascii_casefold(_display_basename(path))
-    ext = _filter_tail_ext(path)
-    semantic_tokens = semantic if semantic is not None else _semantic_extension_tokens(types)
-    for token in types:
-        folded = ascii_casefold(token)
-        if folded.startswith("."):
-            if ext and (ext == folded or (folded in semantic_tokens and ext.endswith(folded))):
-                return True
-        elif name == folded:
-            return True
-    return False
-
-
 def _git_filter_active(tree_filter: TreeFilter) -> bool:
-    return bool(tree_filter.types or tree_filter.min_size or tree_filter.group is not None)
+    return bool(
+        tree_filter.types
+        or tree_filter.min_size
+        or tree_filter.group is not None
+        or tree_filter.recency_seconds
+    )
+
+
+# What a file is when a request asks "which time is it in": a number a request's bands and
+# windows decide once per file and every group of the answer then reads (`_GitTimes`). A band
+# is the index of an age group, from `age_group_index`; the last two values name no group.
+_BUCKET_OUTSIDE = 254  # dated outside the recency window, or undated while a window is set
+_BUCKET_UNDATED = 255  # no time known, and no window asks for one
+
+
+@dataclass(frozen=True, slots=True)
+class _GitTimes:
+    """What one request knows of a revision's file times: the answer, when there is one, the
+    instant its windows and bands are cut at, and which of those it keeps.
+
+    A file the answer does not date (no answer yet, a shallow boundary, a cut read) is in no
+    window and no band: it is in Undated, and nowhere else. Every group of a grouped answer
+    shares one instance's memo, so the file times are looked up once and each file is
+    bucketed once, and the groups partition the times because they cut one bucketing.
+
+    Measured 2026-11-20 on a synthetic index of 40,000 files whose times spread over a year
+    (the seven groups' matches and tallies, no other filter, load average 21 to 23, one run
+    of five after a warm-up): 296 ms when each group looked up and compared every file's
+    time and summed every size in Python, and 32 ms with one bucketing and the sums done at
+    C speed. The cost follows the files: 200,000 took 166 ms. Review A of #652 measured
+    246 of a 322 ms response in those passes on 40,000 files.
+    """
+
+    ages: RevisionAges | None
+    as_of: float
+    recency: int
+    wanted: frozenset[int] | None
+    """The buckets that are members, or ``None`` when no time filter is set."""
+    cutoffs: tuple[float, ...]
+    """The instants the age windows begin at, ascending: a time at or after the Nth latest
+    is no older than the Nth window."""
+    memo: dict[object, Any] = field(default_factory=dict, compare=False)
+
+    @property
+    def active(self) -> bool:
+        return self.wanted is not None
+
+    def bucket(self, stamp: int | None) -> int:
+        """The bucket of one time: the age group it is in, or one of the two that name none."""
+
+        if stamp is None:
+            return _BUCKET_OUTSIDE if self.recency else _BUCKET_UNDATED
+        if self.recency and stamp < self.as_of - self.recency:
+            return _BUCKET_OUTSIDE
+        return len(self.cutoffs) - bisect_right(self.cutoffs, stamp)
+
+    def keeps(self, full: bytes) -> bool:
+        """Whether the file at *full*, its path from the revision's root, is a member."""
+
+        if self.wanted is None:
+            return True
+        stamp = self.ages.time_of(full) if self.ages is not None else None
+        return self.bucket(stamp) in self.wanted
+
+    def stamps(self, index: GitBlobIndex, prefix: bytes = b"") -> array[int]:
+        """Each of *index*'s blobs' times, in index order (`UNDATED` for none). *prefix* is the
+        listed path, which the index's names are relative to."""
+
+        key = ("stamps", id(index), prefix)
+        found = self.memo.get(key)
+        if found is None:
+            found = self.memo[key] = _blob_stamps(index, self.ages, prefix)
+        return found
+
+    def buckets(self, index: GitBlobIndex, prefix: bytes = b"") -> bytes:
+        """Each of *index*'s blobs' bucket, in index order: the one definition `bucket` gives,
+        for every file at once."""
+
+        key = ("buckets", id(index), prefix)
+        found = self.memo.get(key)
+        if found is None:
+            found = self.memo[key] = self._bucket_all(self.stamps(index, prefix))
+        return found
+
+    def mask(self, index: GitBlobIndex, prefix: bytes = b"") -> bytes:
+        """One byte per blob of *index*: 1 for a member of this request's time filter."""
+
+        assert self.wanted is not None
+        key = ("mask", id(index), prefix, self.wanted)
+        found = self.memo.get(key)
+        if found is None:
+            table = bytes(int(value in self.wanted) for value in range(256))
+            found = self.memo[key] = self.buckets(index, prefix).translate(table)
+        return found
+
+    def _bucket_all(self, stamps: array[int]) -> bytes:
+        cutoffs = self.cutoffs
+        windows = len(cutoffs)
+        outside = self.as_of - self.recency if self.recency else None
+        absent = _BUCKET_OUTSIDE if self.recency else _BUCKET_UNDATED
+        buckets = bytearray(len(stamps))
+        for position, stamp in enumerate(stamps):
+            if stamp == UNDATED:
+                buckets[position] = absent
+            elif outside is not None and stamp < outside:
+                buckets[position] = _BUCKET_OUTSIDE
+            else:
+                buckets[position] = windows - bisect_right(cutoffs, stamp)
+        return bytes(buckets)
+
+
+def _blob_stamps(index: GitBlobIndex, ages: RevisionAges | None, prefix: bytes) -> array[int]:
+    """The times of *index*'s blobs, aligned to them: a slice of the answer's own when it names
+    the same files in the same order (a revision's root index, always, and a folder's, which
+    is that run of its names), and a lookup of each otherwise."""
+
+    count = len(index.blobs)
+    if ages is None:
+        return array("q", [UNDATED]) * count
+    if prefix:
+        start = bisect_left(ages.names, prefix + b"/")
+        stop = bisect_left(ages.names, prefix + b"0")
+        cut = len(prefix) + 1
+    else:
+        start, stop, cut = 0, len(ages.names), 0
+    if stop - start == count:
+        named = ages.names[start:stop]
+        if cut:
+            named = tuple(name[cut:] for name in named)
+        if named == tuple(rel for rel, _oid in index.blobs):
+            return ages.times[start:stop]
+    base = prefix + b"/" if prefix else b""
+    stamps = array("q", [UNDATED]) * count
+    for position, (rel, _oid) in enumerate(index.blobs):
+        found = ages.time_of(base + rel)
+        if found is not None:
+            stamps[position] = found
+    return stamps
+
+
+def _git_times(
+    ages: RevisionAges | None,
+    tree_filter: TreeFilter,
+    as_of: float,
+    memo: dict[object, Any] | None = None,
+) -> _GitTimes:
+    """The time filter *tree_filter* asks of a revision at the instant *as_of*, and the memo
+    its groups share (a fresh one when a request is one group)."""
+
+    group = tree_filter.group
+    windows = age_windows()
+    wanted: frozenset[int] | None = None
+    if group is not None and group.by == "age":
+        wanted = frozenset(
+            {_BUCKET_UNDATED if group.id == UNDATED_GROUP_ID else age_group_index(group)}
+        )
+    elif tree_filter.recency_seconds:
+        wanted = frozenset(range(len(windows) + 1))
+    return _GitTimes(
+        ages=ages,
+        as_of=as_of,
+        recency=tree_filter.recency_seconds,
+        wanted=wanted,
+        cutoffs=tuple(sorted(as_of - seconds for seconds in windows)),
+        memo={} if memo is None else memo,
+    )
+
+
+def _request_instant() -> float:
+    """The instant a request cuts its age windows at; tests fix it."""
+
+    return time.time()
 
 
 def _git_type_group(name: str, ext: str, by_extension: dict[str, str]) -> str:
@@ -407,13 +656,13 @@ def _git_type_group(name: str, ext: str, by_extension: dict[str, str]) -> str:
 
 
 def _git_group_keeps(name: str, ext: str, tree_filter: TreeFilter, memo: dict[str, str]) -> bool:
-    """Whether a blob is a member of the filter's Group by group. A Git revision has no
-    mtime, so only type groups reach here (`require_filter_capabilities`)."""
+    """Whether a blob is a member of the filter's File type group. An age group is decided
+    by the file's time (`_GitTimes`), not its name."""
 
     group = tree_filter.group
-    if group is None:
+    if group is None or group.by != "type":
         return True
-    return group.by == "type" and _git_type_group(name, ext, memo) == group.id
+    return _git_type_group(name, ext, memo) == group.id
 
 
 def _blob_display_name(rel: bytes) -> str:
@@ -435,20 +684,41 @@ def _git_blob_exts(index: GitBlobIndex) -> tuple[str, ...]:
     return tuple(exts)
 
 
-def _git_filter_tallies(
+def _both(first: bytes | bytearray, second: bytes | bytearray) -> bytearray:
+    """The bytes (each 0 or 1) that are 1 in both, as one integer AND."""
+
+    size = len(first)
+    return bytearray(
+        (int.from_bytes(first, "little") & int.from_bytes(second, "little")).to_bytes(
+            size, "little"
+        )
+    )
+
+
+def _git_base_matches(
     index: GitBlobIndex,
     exts: tuple[str, ...],
     tree_filter: TreeFilter,
     semantic: frozenset[str],
-) -> GitBlobTallies:
-    """Running totals of the blobs *tree_filter* keeps. Same rules as ``_matches_types``."""
+) -> bytearray:
+    """Which of the index's blobs the filter's types, File type group, and size floor keep,
+    one byte each in index order. Same rules as ``file_type_match.name_matches_types``;
+    the time filter is `_git_filter_matches`'s.
+
+    A name is decoded only for what reads it: a type token that names a file, or a File type
+    group. An age group, a window, and a size floor read none.
+    """
 
     folded_types = tuple(ascii_casefold(token) for token in tree_filter.types)
+    group = tree_filter.group
+    type_group = group if group is not None and group.by == "type" else None
+    floor = tree_filter.min_size
+    if not folded_types and type_group is None and not floor:
+        return bytearray(b"\x01") * len(index.blobs)
     ext_tokens = frozenset(token for token in folded_types if token.startswith("."))
     name_tokens = frozenset(token for token in folded_types if not token.startswith("."))
     suffix_tokens = tuple(token for token in ext_tokens if token in semantic)
     ext_verdicts: dict[str, bool] = {}
-    floor = tree_filter.min_size
     group_memo: dict[str, str] = {}
     matches = bytearray(len(index.blobs))
     for position, ((rel, oid), ext) in enumerate(zip(index.blobs, exts, strict=True)):
@@ -463,24 +733,95 @@ def _git_filter_tallies(
             keep = verdict or (
                 bool(name_tokens) and ascii_casefold(_blob_display_name(rel)) in name_tokens
             )
-        if keep and tree_filter.group is not None:
+        if keep and type_group is not None:
             keep = _git_group_keeps(_blob_display_name(rel), ext, tree_filter, group_memo)
         if keep and floor:
             size = index.sizes.get(oid)
             keep = size is not None and size >= floor
         matches[position] = keep
-    return GitBlobTallies(index.blobs, index.sizes, matches)
+    return matches
+
+
+def _git_filter_matches(
+    index: GitBlobIndex,
+    exts: tuple[str, ...],
+    tree_filter: TreeFilter,
+    semantic: frozenset[str],
+    times: _GitTimes | None = None,
+    prefix: bytes = b"",
+) -> bytearray:
+    """Which of the index's blobs *tree_filter* keeps, one byte each in index order.
+
+    *prefix* is the listed path, which the index's names are relative to, so a file's time
+    is looked up under its whole path. The time filter is one lookup in *times*, whose memo
+    the groups of a grouped answer share, and the types and size floor are read once for all
+    of them.
+    """
+
+    if times is None:
+        return _git_base_matches(index, exts, tree_filter, semantic)
+    key = ("base", id(index), tree_filter.types, tree_filter.min_size, _group_key(tree_filter))
+    base = times.memo.get(key)
+    if base is None:
+        base = times.memo[key] = _git_base_matches(index, exts, tree_filter, semantic)
+    if not times.active:
+        return bytearray(base)
+    return _both(base, times.mask(index, prefix))
+
+
+def _group_key(tree_filter: TreeFilter) -> str | None:
+    """The part of a group that the types and size floor depend on: a File type group's key,
+    and nothing for an age group, whose members the time filter decides."""
+
+    group = tree_filter.group
+    return group.key if group is not None and group.by == "type" else None
+
+
+def _git_filter_tallies(
+    index: GitBlobIndex,
+    exts: tuple[str, ...],
+    tree_filter: TreeFilter,
+    semantic: frozenset[str],
+    times: _GitTimes | None = None,
+    prefix: bytes = b"",
+) -> GitBlobTallies:
+    """Running totals of the blobs *tree_filter* keeps (`_git_filter_matches`)."""
+
+    return index.tallies.select(
+        _git_filter_matches(index, exts, tree_filter, semantic, times, prefix)
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class _GitTallyView:
-    """Subtree totals for one request: the whole index, or one filter's matches."""
+    """Subtree totals for one request: the whole index, or one filter's matches.
+
+    A request that filters by time also keeps the blobs' times and which of them it kept, so
+    a folder row can be dated by the files that put it in the group (`newest`).
+    """
 
     index: GitBlobIndex
     tallies: GitBlobTallies
+    stamps: array[int] | None = None
+    matches: bytearray | None = None
 
     def tally(self, prefix: bytes = b"") -> GitTreeTally:
         return self.tallies.tally(self.index.prefix_spans(prefix))
+
+    def newest(self, prefix: bytes) -> int | None:
+        """The newest time among the files kept under *prefix*, or ``None`` when this view
+        has none, or only files without a time."""
+
+        if self.stamps is None or self.matches is None:
+            return None
+        newest = max(
+            (
+                max(compress(self.stamps[start:stop], self.matches[start:stop]), default=UNDATED)
+                for start, stop in self.index.prefix_spans(prefix)
+            ),
+            default=UNDATED,
+        )
+        return None if newest == UNDATED else newest
 
 
 async def _git_tally_view(
@@ -490,14 +831,27 @@ async def _git_tally_view(
     tree_oid: str,
     tree_filter: TreeFilter,
     semantic: frozenset[str],
+    times: _GitTimes | None = None,
+    prefix: bytes = b"",
 ) -> _GitTallyView | None:
-    """Totals for the tree at *tree_oid*. A filter's matches are memoized per filter."""
+    """Totals for the tree at *tree_oid*. A filter's matches are memoized per filter, except
+    one that reads file times, which depend on the instant of the request: its groups share
+    the request's memo instead."""
 
     if index is None:
         return None
     if not _git_filter_active(tree_filter):
         return _GitTallyView(index, index.tallies)
     exts = await source.derived(("blob-exts", tree_oid), lambda: _git_blob_exts(index))
+    if times is not None and times.active:
+
+        def timed() -> _GitTallyView:
+            matches = _git_filter_matches(index, exts, tree_filter, semantic, times, prefix)
+            return _GitTallyView(
+                index, index.tallies.select(matches), times.stamps(index, prefix), matches
+            )
+
+        return await asyncio.to_thread(timed)
     tallies = await source.derived(
         (
             "filter-tallies",
@@ -518,6 +872,7 @@ def _git_entry_visible(
     *,
     index_prefix: bytes = b"",
     semantic: frozenset[str] | None = None,
+    times: _GitTimes | None = None,
 ) -> bool:
     """Keep trees that have a matching descendant; drop empty filter dirs."""
 
@@ -528,11 +883,15 @@ def _git_entry_visible(
             return True
         prefix = _join_git_prefix(index_prefix, entry.path.segments[-1])
         return view.tally(prefix).total_files > 0
-    if tree_filter.types and not _matches_types(entry.path, tree_filter.types, semantic=semantic):
+    if tree_filter.types and not name_matches_types(
+        _display_basename(entry.path), tree_filter.types, semantic=semantic
+    ):
         return False
     if not _git_group_keeps(
         _display_basename(entry.path), _filter_tail_ext(entry.path), tree_filter, {}
     ):
+        return False
+    if times is not None and times.active and not times.keeps(b"/".join(entry.path.segments)):
         return False
     if tree_filter.min_size:
         return _passes_min_size(entry, tree_filter.min_size)
@@ -546,6 +905,7 @@ def _git_visible_entries(
     *,
     index_prefix: bytes,
     semantic: frozenset[str] | None,
+    times: _GitTimes | None = None,
 ) -> tuple[GitTreeEntry, ...]:
     if not _git_filter_active(tree_filter):
         return entries
@@ -553,7 +913,7 @@ def _git_visible_entries(
         entry
         for entry in entries
         if _git_entry_visible(
-            entry, tree_filter, view, index_prefix=index_prefix, semantic=semantic
+            entry, tree_filter, view, index_prefix=index_prefix, semantic=semantic, times=times
         )
     )
 
@@ -589,6 +949,8 @@ async def _git_nav_tree(
     index_prefix: bytes,
     semantic: frozenset[str] | None,
     budget: _NavNodeBudget,
+    ages: RevisionAges | None = None,
+    times: _GitTimes | None = None,
 ) -> list[dict[str, Any]]:
     """SPA ``tree`` nodes. Nest while depth and the node budget allow; else a lazy sentinel."""
 
@@ -601,14 +963,19 @@ async def _git_nav_tree(
     for entry in sorted(entries, key=lambda item: not item.is_tree):
         prefix = _join_git_prefix(index_prefix, entry.path.segments[-1]) if entry.is_tree else b""
         tally = view.tally(prefix) if entry.is_tree and view is not None else None
+        kept = (
+            (view.newest(prefix),)
+            if entry.is_tree and view is not None and view.stamps is not None
+            else None
+        )
         if entry.is_tree and nest and budget.remaining > 0:
             try:
                 nested = await subject.tree_source.list_tree_entry(entry)
             except GitObjectUnavailableError:
-                nodes.append(_nav_tree_node(entry, tally=tally))
+                nodes.append(_nav_tree_node(entry, tally=tally, ages=ages, kept_time=kept))
                 continue
             nested = _git_visible_entries(
-                nested, tree_filter, view, index_prefix=prefix, semantic=semantic
+                nested, tree_filter, view, index_prefix=prefix, semantic=semantic, times=times
             )
             if len(nested) <= budget.remaining:
                 budget.remaining -= len(nested)
@@ -621,10 +988,21 @@ async def _git_nav_tree(
                     index_prefix=prefix,
                     semantic=semantic,
                     budget=budget,
+                    ages=ages,
+                    times=times,
                 )
-                nodes.append(_nav_tree_node(entry, tally=tally, children=children, loaded=True))
+                nodes.append(
+                    _nav_tree_node(
+                        entry,
+                        tally=tally,
+                        children=children,
+                        loaded=True,
+                        ages=ages,
+                        kept_time=kept,
+                    )
+                )
                 continue
-        nodes.append(_nav_tree_node(entry, tally=tally))
+        nodes.append(_nav_tree_node(entry, tally=tally, ages=ages, kept_time=kept))
     return nodes
 
 
@@ -656,11 +1034,25 @@ def _query_int(request: Request, name: str, default: int) -> int:
 
 
 def _with_requested_path(
-    payload: dict[str, Any], entry: GitTreeEntry, requested: GitPath
+    payload: dict[str, Any],
+    entry: GitTreeEntry,
+    requested: GitPath,
+    ages: RevisionAges | None,
 ) -> dict[str, Any]:
+    """Name the envelope by the path that was asked for, and date it from *ages*, the answer
+    for the revision when one is already kept (a file read starts none)."""
+
     payload.update(_identity_fields(entry, path=requested))
-    if payload.get("type") == "folder":
+    folder = payload.get("type") == "folder"
+    if folder:
         payload["name"] = _display_basename(requested)
+    if ages is not None and not entry.is_gitlink:
+        # The time of the last commit that changed it, as the tree's rows say, so the
+        # preview header shows the age beside the name; none when it is not known.
+        name = b"/".join(requested.segments)
+        stamp = ages.newest_under(name) if folder else ages.time_of(name)
+        if stamp is not None:
+            payload["mtime"] = stamp
     return payload
 
 
@@ -713,7 +1105,8 @@ def _git_text_fields(offset: int, limit: int, window: bytes, size: int) -> dict[
 
 def _blob_too_large_payload(exc: GitBlobTooLargeError) -> dict[str, Any]:
     return {
-        "error": str(exc),
+        "error": exc.reader_message,
+        "detail": str(exc),
         "code": exc.code,
         "oid": exc.oid,
         "size": exc.size,
@@ -724,7 +1117,7 @@ def _blob_too_large_payload(exc: GitBlobTooLargeError) -> dict[str, Any]:
 def _object_unavailable_payload(
     exc: GitObjectUnavailableError | GitObjectCorruptError,
 ) -> dict[str, Any]:
-    return {"error": str(exc), "code": exc.code, "oid": exc.oid}
+    return {"error": exc.reader_message, "detail": str(exc), "code": exc.code, "oid": exc.oid}
 
 
 def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
@@ -744,8 +1137,14 @@ def git_content_failure_response(exc: GitError) -> JSONResponse:
     if isinstance(exc, GitBlobTooLargeError):
         return _json(_blob_too_large_payload(exc), status_code=413)
     if isinstance(exc, GitTimeoutError):
-        return _json({"error": "git command timed out", "code": "git_timeout"}, status_code=504)
-    return _json({"error": "git command failed", "code": "git_failed"}, status_code=500)
+        return _json(
+            {"error": exc.reader_message, "detail": "git command timed out", "code": "git_timeout"},
+            status_code=504,
+        )
+    return _json(
+        {"error": exc.reader_message, "detail": "git command failed", "code": "git_failed"},
+        status_code=500,
+    )
 
 
 def _typed_git_failures[**P, R: Response](
@@ -1023,11 +1422,6 @@ def _git_extension_counts(exts: tuple[str, ...]) -> Counter[str]:
     return counts
 
 
-def _ranked_tally_rows(counts: Mapping[str, int]) -> list[list[object]]:
-    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    return [[key, count, 0] for key, count in ranked[:_GIT_FILTER_TALLY_LIMIT]]
-
-
 def _git_tree_summary(index: GitBlobIndex | None) -> dict[str, int] | None:
     """Whole-tree tracked/ignored split. Omit when sizes are incomplete."""
 
@@ -1067,43 +1461,12 @@ def _git_tree_index_chrome(
     payload["type_presets"] = preset_rows
     if index is None:
         return payload
-    registry = load_file_type_registry()
-    extension_counts: Counter[str] = Counter()
-    canonical_counts: Counter[str] = Counter()
-    family_counts: Counter[str] = Counter()
-    preset_counts: Counter[str] = Counter({preset["id"]: 0 for preset in FILTER_TYPE_PRESETS})
-    normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
-    for preset in FILTER_TYPE_PRESETS:
-        extensions: set[str] = set()
-        names: set[str] = set()
-        for value in preset["values"]:
-            normalized = ascii_casefold(value)
-            (extensions if normalized.startswith(".") else names).add(normalized)
-        normalized_presets.append((preset["id"], frozenset(extensions), frozenset(names)))
-    for (rel, _oid), ext in zip(index.blobs, exts, strict=True):
-        name = ascii_casefold(_blob_display_name(rel))
-        classification = registry.classify(name, ext)
-        if ext:
-            extension_counts[ext] += 1
-            canonical_counts[classification.canonical_extension or ext] += 1
-            if classification.family_id is not None:
-                family_counts[classification.family_id] += 1
-        semantic_category = classification.group_id
-        for preset_id, preset_extensions, preset_names in normalized_presets:
-            if preset_id == semantic_category or ext in preset_extensions or name in preset_names:
-                preset_counts[preset_id] += 1
-    payload["extensions"] = _ranked_tally_rows(extension_counts)
-    payload["canonical_extensions"] = _ranked_tally_rows(canonical_counts)
-    payload["type_families"] = [
-        [family_id, count, 0]
-        for family_id, count in sorted(
-            family_counts.items(),
-            key=lambda item: (-item[1], item[0]),
+    payload.update(
+        type_tally(
+            ((_blob_display_name(rel), ext),)
+            for (rel, _oid), ext in zip(index.blobs, exts, strict=True)
         )
-    ]
-    payload["type_presets"] = [
-        [preset["id"], preset_counts[preset["id"]], 0] for preset in FILTER_TYPE_PRESETS
-    ]
+    )
     return payload
 
 
@@ -1141,15 +1504,47 @@ def _git_index_common(facts: _GitIndexFacts) -> dict[str, Any]:
     }
 
 
+async def _git_ages_status(subject: GitRevisionSubject) -> AgesStatus:
+    """The revision's file ages, asking for them when nothing has: never waits on Git.
+
+    The service reads them in the background; a page shows what is here and asks again
+    (`/api/index/progress`) until the state is no longer `dating`.
+    """
+
+    source = subject.tree_source
+
+    async def names() -> tuple[bytes, ...] | None:
+        index = await source.blob_index()
+        if index is None:
+            return None
+        return await source.derived(
+            ("ages-names", subject.tree_oid), lambda: tuple(rel for rel, _oid in index.blobs)
+        )
+
+    return file_ages_service().request(subject.command_target, subject.commit_oid, names)
+
+
 @_typed_git_failures
-async def git_revision_index_progress(subject: GitRevisionSubject) -> JSONResponse:
-    """Terminal crawl footer for a pin. There is no walker."""
+async def git_revision_index_progress(
+    subject: GitRevisionSubject, *, ages: bool = True
+) -> JSONResponse:
+    """Terminal crawl footer for a pin. There is no walker.
+
+    It also asks for the revision's file ages and says how that stands, which is what a
+    page polls; `ages=0` leaves them alone, for a command that only waits for the index
+    (`wait_for_index`) and would otherwise start a read of a large history it never prints.
+    """
 
     try:
         facts = await _git_index_facts(subject)
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
-    return _json({**_git_index_common(facts), "active": False})
+    payload = {**_git_index_common(facts), "active": False}
+    if ages:
+        status = await _git_ages_status(subject)
+        if status.state != "unavailable":
+            payload["ages"] = status.wire(files=facts.indexed_files)
+    return _json(payload)
 
 
 @_typed_git_failures
@@ -1167,6 +1562,18 @@ async def git_revision_index_meta(subject: GitRevisionSubject) -> JSONResponse:
             "suffixes": [{"ext": ext, "count": count} for ext, count in facts.suffixes],
         }
     )
+
+
+def _file_ages_capability() -> dict[str, Any]:
+    """Whether this Git can date a revision's files, and the sentence for a page and
+    `metab --doctor` to say when it cannot (`git/file_ages.py`)."""
+
+    availability = file_ages_availability()
+    return {
+        "available": availability.available,
+        "minimum_git": file_ages_version_label(),
+        "hint": availability.hint,
+    }
 
 
 @_typed_git_failures
@@ -1202,7 +1609,128 @@ async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse
                 "contract": _GIT_INDEX_CONTRACT,
             },
             "events": {"stream": "off", "reason": "git-revision-no-watcher"},
+            "file_ages": _file_ages_capability(),
             "capabilities": _PIN_CAPABILITIES.as_wire(),
+        }
+    )
+
+
+def _recent_dir_names(rel: bytes) -> dict[str, list[str]]:
+    """The folders above a Recent row, by name as a person reads them: a row's path is a
+    GitPath wire, whose folders the page draws from this, and not from the wire."""
+
+    folders = rel.split(b"/")[:-1]
+    return {"dir_names": [display_segment(folder) for folder in folders]} if folders else {}
+
+
+@_typed_git_failures
+async def git_revision_recent(
+    subject: GitRevisionSubject,
+    *,
+    window: str,
+    limit: int,
+    types: tuple[str, ...],
+    min_size: int,
+    prefix: str,
+) -> JSONResponse:
+    """`/api/recent` on a Git revision: the files the last commits changed inside *window*,
+    newest first, as a folder's Recent view lists them.
+
+    Only a file with a time can be inside a window, so the answer says how many files that
+    pass the other filters it could not date (`undated`, whatever the window: a window
+    cannot place them, and they may be inside it) and how the read of the times stands
+    (`ages`): a page that gets `dating` asks again when it lands. The same filters a tree
+    takes (`types`, `min_size`) apply, and *prefix* is a directory's GitPath wire.
+    """
+
+    try:
+        prefix_bytes = b"/".join(GitPath.from_wire(prefix).segments) if prefix else b""
+    except GitPathError:
+        return _json(dict(_NOT_FOUND), status_code=404)
+    try:
+        index = await subject.tree_source.blob_index()
+    except GitObjectUnavailableError as exc:
+        return _json(_object_unavailable_payload(exc), status_code=404)
+    status = await _git_ages_status(subject)
+    payload: dict[str, Any] = {
+        "root": "",
+        "gitignored_dirs": [],
+        "window": window,
+        "limit": limit,
+        "tally_cache_status": "truncated" if index is None else "done",
+    }
+    if status.state != "unavailable":
+        payload["ages"] = status.wire(files=len(index.blobs) if index is not None else None)
+    if index is None or status.ages is None:
+        return _json(
+            {
+                **payload,
+                "entries_flat": [],
+                "total_matching": 0,
+                "total_matching_exact": index is not None,
+                "truncated": False,
+                "undated": 0,
+            }
+        )
+    ages = status.ages
+    exts = await subject.tree_source.derived(
+        ("blob-exts", subject.tree_oid), lambda: _git_blob_exts(index)
+    )
+    seconds = RECENT_WINDOW_SECONDS[window]
+    tree_filter = TreeFilter(
+        recency_seconds=int(seconds or 0), types=types, min_size=min_size, include_ignored=True
+    )
+    times = _git_times(ages, tree_filter, _request_instant())
+    semantic = semantic_extension_tokens(types)
+
+    def build() -> tuple[list[dict[str, Any]], int, int]:
+        stamps = times.stamps(index)
+        passing = _git_filter_matches(
+            index, exts, replace(tree_filter, recency_seconds=0), semantic
+        )
+        inside = times.mask(index) if times.active else None
+        spans = index.prefix_spans(prefix_bytes) if prefix_bytes else ((0, len(index.blobs)),)
+        undated = total = 0
+
+        def candidates() -> Iterator[tuple[int, bytes, int]]:
+            nonlocal undated, total
+            for start, stop in spans:
+                for position in range(start, stop):
+                    if not passing[position]:
+                        continue
+                    stamp = stamps[position]
+                    if stamp == UNDATED:
+                        undated += 1
+                    elif inside is None or inside[position]:
+                        total += 1
+                        yield (-stamp, index.blobs[position][0], position)
+
+        # The newest `limit`, not a sort of every match: the same order (newest first, then
+        # by name) at a cost that follows the files and not their number times log.
+        newest = heapq.nsmallest(limit, candidates())
+        rows = [
+            {
+                "name": _blob_display_name(rel),
+                "path": GitPath.from_segments(*rel.split(b"/")).to_wire(),
+                "type": "file",
+                "size": index.sizes.get(index.blobs[position][1]) or 0,
+                "mtime": float(-negated),
+                "ext": exts[position],
+                **_recent_dir_names(rel),
+            }
+            for negated, rel, position in newest
+        ]
+        return rows, total, undated
+
+    rows, total, undated = await asyncio.to_thread(build)
+    return _json(
+        {
+            **payload,
+            "entries_flat": rows,
+            "total_matching": total,
+            "total_matching_exact": True,
+            "truncated": total > len(rows),
+            "undated": undated,
         }
     )
 
@@ -1226,43 +1754,128 @@ async def git_revision_tree_groups(
     tree_filter: TreeFilter,
     group_by: GroupBy,
 ) -> JSONResponse:
-    """`group_by` on a Git revision: each group's tree, as `git_revision_tree` lists it."""
+    """`group_by` on a Git revision: each group's tree, as `git_revision_tree` lists it.
+
+    An age split cuts every band at one instant, so the bands partition the file times, and
+    ends in Undated: the files whose time the answer does not know. Where the answer says
+    why (`older_than`, a shallow boundary or a cut read), the group says so in its name.
+
+    The state of the read of the times is asked once, and every file is bucketed once at that
+    instant (`_GitTimes.memo`), so the groups are cut from one state of one answer and the
+    split costs one pass over the files and not one per group.
+    """
 
     groups: list[dict[str, Any]] = []
     envelope: dict[str, Any] | None = None
-    for group in groups_for(group_by):
-        payload, status = await _git_revision_tree_payload(
-            request, subject, replace(tree_filter, group=group)
+    as_of = _request_instant()
+    status = await _git_ages_status(subject)
+    memo: dict[object, Any] = {}
+    for group in groups_for(group_by, undated=True):
+        if (
+            group.by == "age"
+            and group.id != UNDATED_GROUP_ID
+            and age_band(group, tree_filter.recency_seconds).empty
+        ):
+            continue
+        payload, code = await _git_revision_tree_payload(
+            request,
+            subject,
+            replace(tree_filter, group=group),
+            as_of=as_of,
+            ages_status=status,
+            memo=memo,
+            tallies=False,
         )
-        if status != 200:
-            return _json(payload, status_code=status)
+        if code != 200:
+            return _json(payload, status_code=code)
         envelope = envelope or payload
-        groups.append(group_row(group, payload))
+        row = group_row(group, payload)
+        if group.id == UNDATED_GROUP_ID:
+            row["label"] = _undated_label(payload.get("ages"))
+        groups.append(row)
     grouped = groups_payload(group_by, groups, envelope)
     # A revision has no served root folder; its envelope names the path it lists.
     grouped["root"] = envelope.get("display") if envelope is not None else None
+    if envelope is not None and "ages" in envelope:
+        grouped["ages"] = envelope["ages"]
+    if status.ages is not None:
+        # The Modified within counts, as the ungrouped tree carries them, so a page that
+        # draws the groups when the answer lands has them with the rows.
+        grouped["recency_tallies"] = await _git_recency_tallies(status.ages, as_of)
     return _json(grouped)
+
+
+def _undated_label(ages: object) -> str:
+    """What the Undated group is called: with the time it is known to be older than, when the
+    answer has one (a shallow boundary, or a read cut at the oldest commit it reached)."""
+
+    state = ages.get("state") if isinstance(ages, dict) else None
+    if state == "dating":
+        return "Undated, reading file ages…"
+    if state == "failed":
+        return "Undated, file ages could not be read"
+    older_than = ages.get("older_than") if isinstance(ages, dict) else None
+    if not isinstance(older_than, int):
+        return "Undated"
+    day = datetime.fromtimestamp(older_than, tz=UTC).strftime("%Y-%m-%d")
+    return f"Undated, older than {day}"
+
+
+async def _git_recency_tallies(ages: RevisionAges, as_of: float) -> list[list[object]]:
+    """``[window, files, 0]`` for each recency window, as the Modified within menu counts: how
+    many dated files changed inside it. Ignore is absent, so the second count is 0.
+
+    The sorted times belong to the answer (`RevisionAges.sorted_times`), so a replaced answer
+    is counted afresh."""
+
+    ordered = await asyncio.to_thread(ages.sorted_times)
+    rows: list[list[object]] = []
+    for key, seconds in RECENT_WINDOW_SECONDS.items():
+        if not seconds:
+            continue
+        inside = len(ordered) - bisect_left(ordered, as_of - seconds)
+        rows.append([key, inside, 0])
+    return rows
 
 
 async def _git_revision_tree_payload(
     request: Request,
     subject: GitRevisionSubject,
     tree_filter: TreeFilter,
+    *,
+    as_of: float | None = None,
+    ages_status: AgesStatus | None = None,
+    memo: dict[object, Any] | None = None,
+    tallies: bool = True,
 ) -> tuple[dict[str, Any], int]:
+    """One tree's payload. A grouped answer passes the *as_of* instant, the *ages_status* it
+    asked once, and the *memo* its groups share, and leaves the Modified within *tallies* to
+    itself."""
+
     remaining_depth = _tree_depth_from_query(request.query_params.get("depth", ""))
     try:
         path = _git_path_from_query(request)
     except GitPathError:
         return dict(_NOT_FOUND), 404
+    instant = _request_instant() if as_of is None else as_of
     try:
         located = await subject.tree_source.resolve_path(path)
         if located is None or not located.is_tree:
             return dict(_NOT_FOUND), 404
         source = subject.tree_source
         index = await source.blob_index(path)
-        semantic = _semantic_extension_tokens(tree_filter.types)
+        semantic = semantic_extension_tokens(tree_filter.types)
+        if ages_status is None:
+            ages_status = await _git_ages_status(subject)
+        times = _git_times(ages_status.ages, tree_filter, instant, memo)
         view = await _git_tally_view(
-            source, index, tree_oid=located.oid, tree_filter=tree_filter, semantic=semantic
+            source,
+            index,
+            tree_oid=located.oid,
+            tree_filter=tree_filter,
+            semantic=semantic,
+            times=times,
+            prefix=b"/".join(path.segments),
         )
         if remaining_depth <= 0:
             entries: tuple[GitTreeEntry, ...] = ()
@@ -1270,7 +1883,7 @@ async def _git_revision_tree_payload(
         else:
             entries = await source.list_tree(path)
             entries = _git_visible_entries(
-                entries, tree_filter, view, index_prefix=b"", semantic=semantic
+                entries, tree_filter, view, index_prefix=b"", semantic=semantic, times=times
             )
             tree_nodes = await _git_nav_tree(
                 subject,
@@ -1281,6 +1894,8 @@ async def _git_revision_tree_payload(
                 index_prefix=b"",
                 semantic=semantic,
                 budget=_NavNodeBudget(GIT_NAV_TREE_MAX_NODES - len(entries)),
+                ages=ages_status.ages,
+                times=times,
             )
         root_index = index if not path.segments else await source.blob_index()
     except GitObjectUnavailableError as exc:
@@ -1298,6 +1913,14 @@ async def _git_revision_tree_payload(
         "tree": tree_nodes,
         **chrome,
     }
+    if ages_status.state != "unavailable":
+        # Where the Git cannot read file ages the key is absent and nothing else changes;
+        # `/api/capabilities` says why.
+        payload["ages"] = ages_status.wire(
+            files=len(root_index.blobs) if root_index is not None else None
+        )
+    if tallies and ages_status.ages is not None:
+        payload["recency_tallies"] = await _git_recency_tallies(ages_status.ages, instant)
     if filtered is None and tree_filter.group is not None:
         # A group's answer always says what it holds: its files when blob sizes are
         # incomplete, and nothing it cannot count when the index is truncated, so the
@@ -1430,13 +2053,8 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
     if content_class is ContentClass.BINARY or (
         ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
     ):
-        payload.update(
-            {
-                "type": "binary",
-                "kind": "binary",
-                "views": _views_for_kind("binary"),
-            }
-        )
+        kind = plugin_magic_kind(body[:SNIFF_PREFIX_BYTES])
+        payload.update({"type": "binary", "kind": kind, "views": _views_for_kind(kind)})
         return payload
     if ext == ".jsonl":
         from metabrowser.jsonl_view import parse_jsonl_bytes
@@ -1464,12 +2082,13 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
         json_top_level=json_top,
         yaml_top_level=yaml_top,
         frontmatter=frontmatter,
+        prefix=body[:SNIFF_PREFIX_BYTES],
     ) or (classify_by_ext(ext) if ext else "text")
     payload.update(
         {
             "type": "text",
             "kind": kind,
-            "views": _views_for_kind(kind),
+            "views": await _text_views_off_loop(kind, ext, body),
             **_git_text_preview_fields(request, entry, ext, body),
             **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }
@@ -1492,6 +2111,7 @@ async def _windowed_blob_file_response(
     *,
     requested: GitPath,
     wire: str,
+    ages: RevisionAges | None,
 ) -> JSONResponse:
     """``/api/file`` for a blob larger than the pin reads whole.
 
@@ -1510,7 +2130,7 @@ async def _windowed_blob_file_response(
         payload["ext"] = ext
     if ext in BROWSER_IMAGE_EXTS:
         payload.update({"type": "image", "kind": "image", "views": _views_for_kind("image")})
-        return _json(_with_requested_path(payload, entry, requested))
+        return _json(_with_requested_path(payload, entry, requested, ages))
     offset, limit = _git_text_window(request, entry, ext)
     limit = min(limit, source.max_blob_bytes - offset)
     head, _size = await source.read_blob_window(
@@ -1522,16 +2142,18 @@ async def _windowed_blob_file_response(
     if content_class is ContentClass.BINARY or (
         ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
     ):
-        payload.update({"type": "binary", "kind": "binary", "views": _views_for_kind("binary")})
-        return _json(_with_requested_path(payload, entry, requested))
+        kind = plugin_magic_kind(head[:SNIFF_PREFIX_BYTES])
+        payload.update({"type": "binary", "kind": kind, "views": _views_for_kind(kind)})
+        return _json(_with_requested_path(payload, entry, requested, ages))
     if ext == ".jsonl":
-        return await _windowed_jsonl_response(source, entry, size, payload, requested, wire)
+        return await _windowed_jsonl_response(source, entry, size, payload, requested, wire, ages)
     if limit <= 0:
         return _json(
             {
                 "type": "error",
                 "path": wire,
-                "error": "Requested preview window exceeds the stream budget for this blob",
+                "error": "This part of the file is past what can be shown here.",
+                "detail": "Requested preview window exceeds the stream budget for this blob",
                 "max_offset": source.max_blob_bytes,
             },
             status_code=416,
@@ -1544,17 +2166,18 @@ async def _windowed_blob_file_response(
         json_top_level=json_top,
         yaml_top_level=yaml_top,
         frontmatter=frontmatter,
+        prefix=head[:SNIFF_PREFIX_BYTES],
     ) or (classify_by_ext(ext) if ext else "text")
     payload.update(
         {
             "type": "text",
             "kind": kind,
-            "views": _views_for_kind(kind),
+            "views": await _text_views_off_loop(kind, ext, head),
             **_git_text_fields(offset, limit, head[offset : offset + limit], size),
             **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }
     )
-    return _json(_with_requested_path(payload, entry, requested))
+    return _json(_with_requested_path(payload, entry, requested, ages))
 
 
 async def _windowed_jsonl_response(
@@ -1564,6 +2187,7 @@ async def _windowed_jsonl_response(
     payload: dict[str, Any],
     requested: GitPath,
     wire: str,
+    ages: RevisionAges | None,
 ) -> JSONResponse:
     """Parse a JSONL blob under the filesystem's parser ceiling, or say it is too large."""
 
@@ -1577,7 +2201,8 @@ async def _windowed_jsonl_response(
                 "kind": "error",
                 "views": [],
                 "path": wire,
-                "error": f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes",
+                "error": "This log is too large to show here.",
+                "detail": f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes",
             }
         )
     body, _size = await source.read_blob_window(entry.oid, offset=0, max_bytes=size)
@@ -1588,18 +2213,18 @@ async def _windowed_jsonl_response(
         ".jsonl", adapter_name
     )
     payload.update({"type": "jsonl", "kind": kind, "views": _views_for_kind(kind), **parsed})
-    return _json(_with_requested_path(payload, entry, requested))
+    return _json(_with_requested_path(payload, entry, requested, ages))
 
 
-def _patch_container_payload(
-    entry: GitTreeEntry, *, wire: str, inner: str, path: GitPath
+def _container_child_payload(
+    entry: GitTreeEntry, *, wire: str, inner: str, path: GitPath, kind: str = "diff"
 ) -> dict[str, Any]:
     ext = blob_logical_ext(entry.path)
     return {
         "subject": "git_revision",
         "type": "text",
-        "kind": "diff",
-        "views": _views_for_kind("diff"),
+        "kind": kind,
+        "views": _views_for_kind(kind),
         "path": wire,
         "display": path.display(),
         "container": path.to_wire(),
@@ -1621,8 +2246,12 @@ def _patch_container_payload(
 
 @_typed_git_failures
 async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JSONResponse:
-    """File or folder envelope for one GitPath. No mtime or ignore state."""
+    """File or folder envelope for one GitPath. No ignore state; the time
+    of its last commit when the answer for the revision has it (`_with_requested_path`)."""
 
+    # Only an answer that is already there: a file read starts no read of the history (a
+    # command that prints the time asks `?ages=1`, which makes `--api` wait for one).
+    ages = file_ages_service().peek(subject.command_target, subject.commit_oid)
     wire = request.query_params.get("path", "")
     try:
         path, inner = split_git_container_wire(wire)
@@ -1633,11 +2262,18 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
             return _json(_NOT_FOUND, status_code=404)
         try:
             entry = await resolve_git_blob_entry(subject.tree_source, path)
-            if entry is None or blob_logical_ext(entry.path) not in _PATCH_EXTS:
+            if entry is None:
                 return _json(_NOT_FOUND, status_code=404)
+            kind = (
+                "diff"
+                if blob_logical_ext(entry.path) in _PATCH_EXTS
+                else await _blob_container_kind(subject, entry)
+            )
         except GitObjectUnavailableError:
             return _json(_NOT_FOUND, status_code=404)
-        return _json(_patch_container_payload(entry, wire=wire, inner=inner, path=path))
+        if kind is None:
+            return _json(_NOT_FOUND, status_code=404)
+        return _json(_container_child_payload(entry, wire=wire, inner=inner, path=path, kind=kind))
     try:
         entry = await subject.tree_source.resolve_path(path)
         if entry is None:
@@ -1653,16 +2289,16 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
             payload = _tree_file_payload(
                 entry, children, tally=None if index is None else index.tally()
             )
-            return _json(_with_requested_path(payload, entry, path))
+            return _json(_with_requested_path(payload, entry, path, ages))
         if entry.is_gitlink:
-            return _json(_with_requested_path(_gitlink_file_payload(entry), entry, path))
+            return _json(_with_requested_path(_gitlink_file_payload(entry), entry, path, ages))
         if not entry.is_blob:
             return _json(_NOT_FOUND, status_code=404)
         source = subject.tree_source
         size = entry.size if entry.size is not None else (await source.object_info(entry.oid)).size
         if size > source.max_blob_bytes:
             return await _windowed_blob_file_response(
-                request, source, entry, size, requested=path, wire=wire
+                request, source, entry, size, requested=path, wire=wire, ages=ages
             )
         body = await source.read_blob(entry.path)
     except GitObjectUnavailableError as exc:
@@ -1670,7 +2306,7 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
     except GitBlobTooLargeError as exc:
         return _json(_blob_too_large_payload(exc), status_code=413)
     payload = await _blob_file_payload(entry, body, request)
-    return _json(_with_requested_path(payload, entry, path))
+    return _json(_with_requested_path(payload, entry, path, ages))
 
 
 @_typed_git_failures
@@ -1702,15 +2338,23 @@ async def git_revision_kpress_render(
             entry = followed
         if not entry.is_blob or entry.is_symlink or entry.is_gitlink:
             return _json(_NOT_FOUND, status_code=404)
+        ext = blob_logical_ext(entry.path)
         body = (
             b"" if source_override is not None else await subject.tree_source.read_blob(entry.path)
         )
+        # Front matter is the blob's own, as the filesystem route reads it from the file:
+        # text a page sends in the blob's place is what it renders, prepared for the page
+        # (the wiki preprocessor writes anchors into it), never what the file says.
+        head = body
+        if source_override is not None and ext == ".md":
+            head, _size = await subject.tree_source.read_blob_window(
+                entry.oid, offset=0, max_bytes=_PREDICATE_PREFIX_BYTES
+            )
     except GitObjectUnavailableError:
         return _json(_NOT_FOUND, status_code=404)
     except GitBlobTooLargeError as exc:
         return _json(_blob_too_large_payload(exc), status_code=413)
 
-    ext = blob_logical_ext(entry.path)
     if source_override is not None:
         content = source_override
         logical_size = len(source_override.encode())
@@ -1719,7 +2363,8 @@ async def git_revision_kpress_render(
             return JSONResponse(
                 {
                     "type": "kpress_render_error",
-                    "error": "File is too large for full document rendering",
+                    "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                    "detail": "File is too large for full document rendering",
                     "path": path.to_wire(),
                     "size": len(body),
                     "max_size": max_bytes,
@@ -1731,7 +2376,8 @@ async def git_revision_kpress_render(
             return JSONResponse(
                 {
                     "type": "kpress_render_error",
-                    "error": "KPress render supports text-like files only",
+                    "error": kpress_adapter.RENDER_TEXT_ONLY_MESSAGE,
+                    "detail": "KPress render supports text-like files only",
                     "path": path.to_wire(),
                     "ext": ext,
                     "size": len(body),
@@ -1745,9 +2391,8 @@ async def git_revision_kpress_render(
     frontmatter = None
     frontmatter_error = None
     if ext == ".md":
-        parse_source = source_override.encode() if source_override is not None else body
-        _, _, frontmatter, frontmatter_error = await asyncio.to_thread(
-            _git_blob_content_predicates, ext, parse_source
+        _, _, frontmatter, frontmatter_error = await _blob_predicates_off_loop(
+            ext, head[:_PREDICATE_PREFIX_BYTES]
         )
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     try:
@@ -1792,7 +2437,7 @@ async def git_revision_kpress_render(
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Invalid KPress render request",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": str(exc),
                 "diagnostics": [str(exc)],
             },
@@ -1802,13 +2447,17 @@ async def git_revision_kpress_render(
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "KPress render failed",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": str(exc),
                 "diagnostics": [str(exc)],
             },
             status_code=502,
         )
-    return JSONResponse(rendered, headers={"cache-control": "no-cache"})
+    detail = envelope.get("frontmatter_error_detail")
+    return JSONResponse(
+        {**rendered, **({"frontmatter_error_detail": detail} if detail is not None else {})},
+        headers={"cache-control": "no-cache"},
+    )
 
 
 @_typed_git_failures
@@ -1847,7 +2496,8 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
     media_type, _ = mimetypes.guess_type(_display_basename(entry.path))
     return Response(
         content=body,
-        media_type=media_type or "application/octet-stream",
+        # A name that gives no type: the blob's leading bytes may (media_type_from_prefix).
+        media_type=media_type or media_type_from_prefix(body) or "application/octet-stream",
         headers={"cache-control": "no-store"},
     )
 
@@ -1862,6 +2512,7 @@ __all__ = [
     "git_revision_index_progress",
     "git_revision_kpress_render",
     "git_revision_raw",
+    "git_revision_recent",
     "git_revision_rollup",
     "git_revision_tree",
     "resolve_git_blob_entry",

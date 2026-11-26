@@ -1,0 +1,109 @@
+/* The viewer fills the pane below the bar, as a direct /raw tab would. The preview's
+   first page sits in the same cell, behind it, until the viewer's document paints. */
+.metabrowser-pdf-host {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  min-height: 0;
+}
+
+/* The slim bar of actions above the viewer, the same chrome as the HTML preview's. */
+.metabrowser-pdf-host .pdf-bar {
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: var(--ui-row-height);
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+/* Text actions: muted, then link-coloured and underlined when pointed at or focused. */
+.metabrowser-pdf-host .pdf-action {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: var(--body-font-size);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.metabrowser-pdf-host .pdf-action:hover,
+.metabrowser-pdf-host .pdf-action:focus-visible {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+.metabrowser-pdf-host .pdf-action:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.metabrowser-pdf-host .pdf-viewer {
+  grid-row: 2;
+  grid-column: 1;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+}
+
+.metabrowser-pdf-host .pdf-viewer-backdrop {
+  grid-row: 2;
+  grid-column: 1;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  object-position: top center;
+  background: var(--bg);
+  pointer-events: none;
+}
+
+/* The PDF card (card.js): the first page, the name, and the page count or the reason
+   there is no image. It holds no viewer. */
+.pdf-card {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-document);
+  background: var(--sidebar-bg);
+}
+
+.pdf-card .pdf-card-page:empty {
+  display: none;
+}
+
+.pdf-card .pdf-card-image {
+  display: block;
+  max-width: min(240px, 100%);
+  height: auto;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.pdf-card .pdf-card-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  font-size: var(--body-font-size);
+}
+
+.pdf-card .pdf-card-name {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.pdf-card .pdf-card-facts {
+  color: var(--muted);
+}

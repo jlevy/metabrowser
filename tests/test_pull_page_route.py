@@ -106,13 +106,13 @@ def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
 
         # The shell loads a plugin's assets by the kinds its views consume.
         config = re.search(r"configureAssets\((\{.*?\})\);", shell.text)
-        assert config is not None and '"pull-request": [{"name": "github"' in config.group(1)
+        assert config is not None and '"pull-request": ["github"]' in config.group(1)
         assert client.get("/pull/7/checks").status_code == 200
         # One changed file's address is the same page, and its path is never looked up.
         assert client.get("/pull/7/files/no/such/file.py").status_code == 200
         for refused in ("/pull/0", "/pull/7/commits", "/pull/7/files/src/", "/pull/7/files/%2E%2E"):
             answer = client.get(refused)
-            assert (answer.status_code, answer.text) == (400, "Invalid pull-request route.")
+            assert (answer.status_code, answer.text) == (400, "This address is not a pull request.")
 
 
 def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
@@ -128,17 +128,20 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     assert "inert.sanitizeHtml(" in source
     assert 'shown?.pull?.htmlUrl ?? "https://github.com/"' in source
     assert 'ensureAsset("inert-html")' in source
-    # The route's one list of KPress's stylesheets, and nothing a text could name.
+    # The routes' one list of KPress's stylesheets, loaded in one place, and nothing a text
+    # could name: a description's from the Markdown route, Guided Review's from the guide route.
     assert source.count("mb.loadKpressAssets(") == 1
-    assert "mb.loadKpressAssets(rendered.assets)" in source
+    assert "documentStyles = mb.loadKpressAssets(assets)" in source
+    assert "textStyles(rendered.assets)" in source
     # A failure to load them leaves the text readable under the shell's rules, and is said.
     assert 'console.warn("metabrowser github: the text styles did not load", error);' in source
     # Only shell-owned icon constants are parsed; every use takes an inert copy.
     assert source.count("new DOMParser()") == 1
-    assert source.count("registryIcon(") == 2
-    assert 'registryIcon("toggle")' in source and 'registryIcon("layers")' in source
+    # A review comment's fold draws its own glyph (`.fold-expander`), so the page parses no
+    # chevron.
+    assert source.count("registryIcon(") == 1
+    assert 'registryIcon("layers")' in source and 'registryIcon("toggle")' not in source
     assert 'parseFromString(mb.icons[name] || "", "text/html")' in source
-    assert "document.importNode(chevronSvg, true)" in source
     assert "document.importNode(stackSvg, true)" in source
     assert "insertAdjacentHTML" not in source and "outerHTML" not in source
     assert source.count('rel: "noopener noreferrer"') == 1
@@ -209,23 +212,24 @@ def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> No
     disposal = glue[glue.index("dispose() {") :]
     for released in ("listening.abort();", "heights.disconnect();", "keeper.dispose();"):
         assert released in disposal
-    # Only the page's own tab change is a landing: asking for the tab it shows moves nothing.
-    assert "const changed = controller.snapshot().tab !== next;" in source
+    # Only the page's own tab change is a landing: asking for the tab it shows moves nothing,
+    # and the front page and Guided Review's address show the same tab when there is a guide.
+    assert (
+        "const changed = controller.snapshot().tab !== shownTabFor(next, shown?.pull?.text ?? null);"
+        in source
+    )
     assert "place?.dispose();" in source
 
 
 def test_a_hunks_tints_are_the_diff_views() -> None:
-    """The diff plugin's stylesheet loads only with Files changed, so its tints are restated
-    for the conversation's hunks; a change to one that misses the other fails here."""
+    """A conversation hunk reads the diff view's row tints, which the shell holds on `:root`
+    so they exist without the diff plugin's stylesheet, which loads only with Files changed."""
 
     rules = _style_rules()
-    diff_css = (PAGE_JS.parent.parent / "diff" / "styles.css").read_text(encoding="utf-8")
+    shell_css = (PAGE_JS.parent.parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
     for kind, token in (("add", "--diff-add-row-bg"), ("del", "--diff-del-row-bg")):
-        tint = re.search(rf"{token}:\s*([^;]+);", diff_css)
-        assert tint is not None, token
-        assert (
-            f"background: {tint.group(1)};" in rules[f'.github-pull-hunk-line[data-kind="{kind}"]']
-        )
+        assert re.search(rf"{token}:", shell_css) is not None, token
+        assert f"background: var({token});" in rules[f'.github-pull-hunk-line[data-kind="{kind}"]']
 
 
 def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
@@ -317,9 +321,11 @@ def test_a_text_is_set_in_a_kpress_article_the_page_makes() -> None:
     source = PAGE_JS.read_text(encoding="utf-8")
     assert re.search(
         r'h\("article", \{ class: "kpress kpress-inert" \}, \[\s*'
-        r"inert\.kpressProse\(nodes, document\),?\s*\]\)",
+        r"inertProse\(inert, String\(rendered\.html\)\),?\s*\]\)",
         source,
     )
+    # The one insertion a description and a guide's note share builds KPress's prose element.
+    assert re.search(r"const prose = inert\.kpressProse\(\s*inert\.sanitizeHtml\(", source)
     assert '{ class: "metabrowser-kpress-host" }' in source
     # Nothing but the card's own edges is left to this stylesheet.
     rules = _style_rules()
@@ -369,9 +375,11 @@ def test_a_heading_is_nearer_its_section_than_what_precedes_it() -> None:
     inset = re.search(r"padding:\s*var\((--[\w-]+)\)", padding)
     assert inset is not None, padding
     shell = (PAGE_JS.parents[2] / "static" / "styles.css").read_text(encoding="utf-8")
+    # The pad steps up in wider windows (styles.css, after its root rule), so the narrowest
+    # of its values is the one that must hold.
     token = re.findall(rf"{inset.group(1)}:\s*(\d+)px;", shell)
-    assert len(token) == 1
-    assert int(token[0]) >= max(below.values())
+    assert token
+    assert min(int(value) for value in token) >= max(below.values())
 
 
 def test_a_wide_table_and_a_long_word_stay_reachable_in_a_card() -> None:

@@ -21,6 +21,7 @@ status: 200
 cloning https://github.com/octo/demo into <HOME>
 cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 ## With the snapshot, a stack whose members' lists are not fetched has no change.
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
@@ -52,7 +53,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -73,6 +74,14 @@ status: 200
       "titles": [
         null,
         null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -84,6 +93,12 @@ status: 200
       ],
       "titles": [
         null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
+        null
       ]
     }
   ]
@@ -91,9 +106,9 @@ status: 200
 --- stderr ---
 --- gh ---
 gh stack --version
-gh auth status
+gh api user
 gh api repos/octo/demo/stacks?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api '/api/plugin/github/stack-change?number=70'
 exit: 0
 --- stdout ---
@@ -122,7 +137,7 @@ status: 200
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -131,14 +146,14 @@ pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/8
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data lists/files-8.json
 exit: 0
 --- stdout ---
@@ -234,7 +249,7 @@ status: 200
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -243,14 +258,14 @@ pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/10
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data lists/files-10.json
 exit: 0
 --- stdout ---

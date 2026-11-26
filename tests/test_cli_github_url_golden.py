@@ -27,6 +27,7 @@ for one; its test says what is substituted.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -215,7 +216,9 @@ def test_golden_github_urls_open_through_a_local_stand_in(
     pull = by_command[f"{REPO}/pull/7 --api /api/git/repo"]
     assert "pull_request: 7 (not opened: " in pull.stderr and FIRST_COMMIT in pull.stdout
     assert "(gh_failed); the pin is the default branch)" in pull.stderr
+    # The Commits tab's routes walk the revision the address names, as the files are.
     pinned = by_command[f"{REPO}/tree/release/v1 --api /api/git/repo"]
+    assert f"pin: {SECOND_COMMIT} (branch release/v1)\n" in pinned.stderr
     assert f'"revision": "{SECOND_COMMIT}"' in pinned.stdout
 
     head = by_command[f"{REPO}/blob/HEAD/docs/guide.md --no-serve"].stdout
@@ -315,6 +318,86 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
     )
     assert str(tmp_path) not in rendered and str(home) not in rendered
     check_golden("cli-github-url-waits.txt", rendered)
+
+
+def test_golden_a_link_opens_in_the_mirror_that_serves_its_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``POST /api/source/link``: a link into the served repository, opened where it is.
+
+    The macOS app starts one server per repository, on the repository itself, and sends
+    each link into it to this route (``arch-macos-app.md``, GitHub Links). The server is
+    the repository's, started on its bare URL, so every answer below is what a window of
+    the repository's mirror does with the link: a pull request or a commit is a page of
+    its own and switches nothing; a branch, a folder, a file, and the repository itself
+    serve the revision the link names, at its address. ``"fetch": false`` leaves out the
+    refresh every link starts, so the answers here are the mirror's as it is, except the
+    one that waits for that refresh: ``later``, pushed after the clone, is pending while
+    the refresh runs and is served when it is asked for again. A link into another
+    repository, and text that is no link, are refused.
+    """
+
+    sandbox = isolate_cli(tmp_path, monkeypatch)
+    home = sandbox.home
+    origin = github_origin(tmp_path)
+    _stand_in(monkeypatch, origin)
+    assert run_metab([REPO, "--no-serve"]).exit_code == 0
+    _add_branch(origin, "later", SECOND_COMMIT)
+
+    def ask(name: str, body: dict[str, Any]) -> tuple[list[str], Invocation]:
+        data = tmp_path / f"{name}.json"
+        data.write_text(json.dumps(body) + "\n", encoding="utf-8")
+        sandbox.clock.advance(10)
+        return [REPO, "--api", "/api/source/link", "--data", data.name], run_metab(
+            [REPO, "--api", "/api/source/link", "--data", str(data)]
+        )
+
+    asked = [
+        ask("link-pull", {"link": f"{REPO}/pull/7", "fetch": False}),
+        ask("link-pull-files", {"link": f"{REPO}/pull/7/files", "fetch": False}),
+        ask("link-commit", {"link": f"{REPO}/commit/523F476", "fetch": False}),
+        ask("link-tree", {"link": f"{REPO}/tree/release/v1/docs", "fetch": False}),
+        ask("link-blob", {"link": f"{REPO}/blob/topic/README.md#L3-L4", "fetch": False}),
+        ask("link-repository", {"link": REPO, "fetch": False}),
+        ask("link-missing", {"link": f"{REPO}/tree/never/docs", "fetch": False}),
+        ask("link-later", {"link": f"{REPO}/tree/later/docs"}),
+        ask("link-later-again", {"link": f"{REPO}/tree/later/docs", "fetch": False}),
+        ask("link-elsewhere", {"link": "https://github.com/octo/other/pull/1", "fetch": False}),
+        ask("link-not-a-link", {"link": "docs/v1.md", "fetch": False}),
+    ]
+    by_name = {args[-1]: result for args, result in asked}
+    answers = {
+        name: json.loads(result.stdout[result.stdout.index("{") :])
+        for name, result in by_name.items()
+    }
+
+    def wire(path: str) -> str:
+        return GitPath.from_display(path).to_wire()
+
+    pull = answers["link-pull.json"]
+    assert (pull["href"], pull["kind"], pull["changed"]) == ("/pull/7", "pull_request", False)
+    assert pull["refresh"] is None and pull["status"]["pin"] == FIRST_COMMIT
+    assert answers["link-pull-files.json"]["href"] == "/pull/7/files"
+    commit = answers["link-commit.json"]
+    assert (commit["href"], commit["changed"]) == (f"/commit/{FIRST_COMMIT}", False)
+    tree = answers["link-tree.json"]
+    assert (tree["href"], tree["changed"]) == (f"/view/{wire('docs')}/", True)
+    assert tree["status"]["pin"] == SECOND_COMMIT and tree["status"]["ref_name"] == "release/v1"
+    blob = answers["link-blob.json"]
+    assert blob["href"] == f"/view/{wire('README.md')}#L3-L4" and blob["changed"] is False
+    assert answers["link-repository.json"]["href"] == "/view/"
+    assert answers["link-missing.json"]["code"] == "ref_not_found"
+    assert by_name["link-missing.json"].exit_code == 1
+    later = answers["link-later.json"]
+    assert (later["code"], later["refresh"]) == ("selection_pending", "started")
+    again = answers["link-later-again.json"]
+    assert again["href"] == f"/view/{wire('docs')}/" and again["status"]["ref_name"] == "later"
+    assert answers["link-elsewhere.json"]["code"] == "other_repository"
+    assert answers["link-not-a-link.json"]["code"] == "invalid_link"
+
+    rendered = label_home("".join(_block(args, result) for args, result in asked), home)
+    assert str(tmp_path) not in rendered and str(home) not in rendered
+    check_golden("cli-api-source-link.txt", rendered)
 
 
 # What Git 2.50.1 printed with LC_ALL=C when an origin did not show a repository;

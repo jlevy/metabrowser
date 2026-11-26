@@ -38,6 +38,22 @@ class FakeClassList {
     this.owner.className = [...set].join(" ");
   }
 
+  add(...names) {
+    const set = this._set();
+    for (const name of names) {
+      set.add(name);
+    }
+    this._write(set);
+  }
+
+  remove(...names) {
+    const set = this._set();
+    for (const name of names) {
+      set.delete(name);
+    }
+    this._write(set);
+  }
+
   toggle(name, force) {
     const set = this._set();
     const want = force === undefined ? !set.has(name) : force;
@@ -90,6 +106,16 @@ class FakeElement {
     this.children = [];
     this.textContent = "";
     this.append(...nodes);
+  }
+
+  get previousElementSibling() {
+    const siblings = this.parentNode?.children ?? [];
+    return siblings[siblings.indexOf(this) - 1] ?? null;
+  }
+
+  get nextElementSibling() {
+    const siblings = this.parentNode?.children ?? [];
+    return siblings[siblings.indexOf(this) + 1] ?? null;
   }
 
   remove() {
@@ -186,6 +212,13 @@ class FakeElement {
     return this.find(selector.slice(1)).find((node) => node !== this) ?? null;
   }
 
+  /** Descendants of one class; markup set as `innerHTML` is not parsed, so it has none. */
+  querySelectorAll(selector) {
+    return selector.startsWith(".")
+      ? this.find(selector.slice(1)).filter((node) => node !== this)
+      : [];
+  }
+
   text() {
     return [...this.walk()]
       .map((node) => node.textContent)
@@ -205,6 +238,20 @@ function check(label, condition, detail = "") {
   if (!condition) {
     failures.push(`${label}${detail ? `: ${detail}` : ""}`);
   }
+}
+
+/**
+ * What a toolbar holds, in order: each part's class, and the choosers' end group as the list of
+ * what it holds.
+ */
+function toolbarHolds(toolbar) {
+  return (
+    toolbar?.children.map((child) =>
+      child.classList.contains("diff-toolbar-end")
+        ? child.children.map((part) => part.className)
+        : child.className,
+    ) ?? null
+  );
 }
 
 function tokenLines(source, className) {
@@ -449,10 +496,16 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
       "the summary starts collapsed",
       header.getAttribute("aria-expanded") === "false" && header.classList.contains("collapsed"),
     );
+    // Its chevron comes after its words, as on every toggle that expands a diff summary,
+    // where a folder's toggle and a stack's lead with theirs (docs/design-system.md, "Diff
+    // Summary").
+    const lastPart = header.children.filter((child) => typeof child === "object").at(-1);
     check(
-      "the header is a disclosure toggle with the registry's chevron box",
+      "the header is a disclosure toggle with the registry's chevron box, after its words",
       header.classList.contains("disclosure-toggle") &&
-        header.find("diff-summary-chevron").length === 1,
+        header.find("diff-summary-chevron").length === 1 &&
+        lastPart?.className === "diff-summary-chevron",
+      lastPart?.className ?? "",
     );
     check(
       "nothing of the tree is mounted until it is opened",
@@ -509,8 +562,8 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     );
     const folder = rows().find((row) => row.dataset.id === "src/deep/");
     check(
-      "a folder row carries its rolled-up counts",
-      folder?.text().includes("+1,200") && folder.text().includes("−0"),
+      "a folder row carries its rolled-up counts, a zero total left out (mb-ox6a)",
+      folder?.text().includes("+1,200") && !folder.text().includes("−0"),
       folder?.text() ?? "",
     );
     const list = body.children[0];
@@ -622,7 +675,7 @@ async function repeatedPathChecks(mountDiffView, twoFiles) {
       "a path listed twice is one row, with both changes' counts",
       rows.length === 1 &&
         rows[0].dataset.id === "a.py" &&
-        rows[0].getAttribute("aria-label") === "a.py, modified, 2 added, 2 deleted",
+        rows[0].getAttribute("aria-label") === "a.py, modified, 2 lines added, 2 deleted",
       rows.map((row) => row.getAttribute("aria-label")).join(" | "),
     );
     rows[0].click();
@@ -699,6 +752,7 @@ async function windowedSummaryChecks(repoRoot) {
       files,
       id: "summary",
       formatCount: (count) => String(count),
+      changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
       chevron: () => null,
       jump: (path) => jumps.push(path),
     });
@@ -811,6 +865,12 @@ async function headLinkChecks(mountDiffView, byName) {
     before(...nodes) {
       this.#insert(0, nodes);
     }
+    prepend(...nodes) {
+      for (const node of nodes) {
+        node.parentNode = this;
+      }
+      this.children.unshift(...nodes);
+    }
     #insert(offset, nodes) {
       const siblings = this.parentNode.children;
       const at = siblings.indexOf(this) + offset;
@@ -833,6 +893,136 @@ async function headLinkChecks(mountDiffView, byName) {
       return [...this.walk()].filter((node) => node !== this && wanted(node));
     }
   }
+  // A rendered file's Source is drawn only while it shows and once it is reached: on a pull
+  // request's Docs, a 17,177-line document's Source, drawn at load behind its rendered view,
+  // was 72,000 nodes and 4 s of main-thread work (mb-qzgs). Here a 2,000-line Markdown file
+  // drawn as Docs draws it, every fold open.
+  async function heldSourceChecks(viewFile) {
+    const book = structuredClone(byName.get("added-text-file"));
+    const lines = Array.from({ length: 2000 }, (_, index) => ({
+      op: "add",
+      text: `Line ${index}.`,
+    }));
+    book.manifest.files[0].additions = lines.length;
+    book.patches.f1.hunks = [
+      { lines, new_count: lines.length, new_start: 1, old_count: 0, old_start: 0 },
+    ];
+    const turns = async (count = 40) => {
+      for (let turn = 0; turn < count; turn += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    };
+    /**
+     * Mount the book, with *answer* for its rendered view, and report each observer's
+     * sections as *near* or not: the diff's own hydration lookahead (240 px) apart from the
+     * rendered views'.
+     */
+    const mount = async ({ answer, holdMs, near }) => {
+      const first = observers.length;
+      const host = new MarkupElement("div");
+      const handle = mountDiffView(
+        host,
+        book,
+        {
+          filterControls: { groupHtml: () => "", bind: () => () => {} },
+          ensureAsset: async () => {},
+        },
+        {
+          viewFile,
+          markdownViews,
+          renderMarkdown: answer,
+          markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+          markdownHoldMs: holdMs,
+          unfold: true,
+        },
+      );
+      const hydration = observers
+        .slice(first)
+        .find((observer) => observer.options.rootMargin === "0px 0px 240px 0px");
+      const report = (observer, isIntersecting) =>
+        observer.callback(
+          [...observer.targets].map((target) => ({ target, isIntersecting })),
+          observer,
+        );
+      for (const observer of observers.slice(first)) {
+        report(observer, observer === hydration ? near.hydration : near.rendered);
+      }
+      await turns();
+      const [body] = host.find("diff-file-body");
+      return {
+        handle,
+        body,
+        rows: () => host.find("diff-line").length,
+        nodes: () => [...host.walk()].length,
+        reach: async () => {
+          report(hydration, true);
+          await turns();
+        },
+      };
+    };
+    const pending = () => new Promise(() => {});
+
+    // Far from the screen, its rendered view not asked for yet: Source shows, and keeps its
+    // place, but is not drawn until it is reached.
+    const far = await mount({
+      answer: pending,
+      holdMs: 0,
+      near: { hydration: false, rendered: false },
+    });
+    check(
+      "a far rendered file shows Source and draws none of its rows before they are reached",
+      far.body.hidden !== true && far.rows() === 0 && far.nodes() < 100,
+      JSON.stringify({ hidden: far.body.hidden, rows: far.rows(), nodes: far.nodes() }),
+    );
+    await far.reach();
+    check(
+      "a far rendered file's Source is drawn once it is reached",
+      far.rows() > 1000,
+      String(far.rows()),
+    );
+    far.handle.dispose();
+
+    // On the first screen, waiting for its rendered view: Source is hidden while it waits,
+    // so none of it is drawn, though it is reached.
+    const waiting = await mount({
+      answer: pending,
+      holdMs: 60_000,
+      near: { hydration: true, rendered: true },
+    });
+    check(
+      "a rendered file waiting for its rendered view draws none of its hidden Source",
+      waiting.body.hidden === true && waiting.rows() === 0 && waiting.nodes() < 100,
+      JSON.stringify({ hidden: waiting.body.hidden, rows: waiting.rows(), nodes: waiting.nodes() }),
+    );
+    waiting.handle.dispose();
+
+    // Its rendered view answered: Source stays undrawn.
+    const answered = await mount({
+      answer: async () => structuredClone(recording.answers.f1["view=prefer-full"]),
+      holdMs: 60_000,
+      near: { hydration: true, rendered: true },
+    });
+    check(
+      "a rendered file whose rendered view is shown never draws its Source",
+      answered.body.hidden === true && answered.rows() === 0,
+      JSON.stringify({ hidden: answered.body.hidden, rows: answered.rows() }),
+    );
+    answered.handle.dispose();
+
+    // Past the loading delay with no answer, the first screen shows Source, drawn there.
+    const late = await mount({
+      answer: pending,
+      holdMs: 0,
+      near: { hydration: true, rendered: true },
+    });
+    check(
+      "a first-screen file past its loading delay shows Source and draws it",
+      late.body.hidden !== true && late.rows() > 1000,
+      JSON.stringify({ hidden: late.body.hidden, rows: late.rows() }),
+    );
+    late.handle.dispose();
+  }
+
   const markupText = (value) => {
     const node = new MarkupElement("#text");
     node.textContent = String(value);
@@ -882,8 +1072,9 @@ async function headLinkChecks(mountDiffView, byName) {
   };
   const observers = [];
   global.IntersectionObserver = class IntersectionObserver {
-    constructor(callback) {
+    constructor(callback, options = {}) {
       this.callback = callback;
+      this.options = options;
       this.targets = new Set();
       observers.push(this);
     }
@@ -959,7 +1150,7 @@ async function headLinkChecks(mountDiffView, byName) {
         markdownViews,
         renderMarkdown: async (fileId) => {
           requested.push(fileId);
-          return structuredClone(recording.answers.f1);
+          return structuredClone(recording.answers.f1["view=concise"]);
         },
         markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
         markdownHoldMs: 0,
@@ -974,6 +1165,25 @@ async function headLinkChecks(mountDiffView, byName) {
     for (let turn = 0; turn < 20; turn += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    // The bar the production view builds for a rendered file: the name's group, the
+    // disclosure, its copy control, and its stats, then the group at the bar's end, the chooser
+    // behind its progress mark. This document offers no View file control, which would
+    // sit between the two groups (tests/dom/diff-view-file-session.js).
+    const [fileBar] = container.find("diff-file-bar");
+    const groups = fileBar.children.map((group) =>
+      group.children.map((child) => String(child.className).split(" ").at(-1)),
+    );
+    check(
+      "a rendered file's bar puts copy beside the name and the chooser at its end",
+      JSON.stringify(fileBar.children.map((group) => group.className)) ===
+        JSON.stringify(["diff-file-lead", "diff-file-end"]) &&
+        JSON.stringify(groups) ===
+          JSON.stringify([
+            ["expanded", "diff-file-copy", "diff-file-facts"],
+            ["diff-markdown-progress", "diff-markdown-control"],
+          ]),
+      JSON.stringify(groups),
+    );
     const drawn = () =>
       container.querySelectorAll("a").filter((link) => link.closest(".diff-markdown") !== null);
     const toHead = drawn().filter((link) => (link.getAttribute("href") ?? "").startsWith("/view/"));
@@ -992,6 +1202,72 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     handle.dispose();
     check("disposal lets the page's pin-change news go", pinChanged === null);
+
+    // A Markdown file whose changes did not load has the chooser too: Source is chosen,
+    // Full and Concise are unavailable for the reason the file's body gives, and no
+    // projection is asked for it (mb-rm40).
+    const unread = structuredClone(byName.get("added-text-file"));
+    unread.manifest.files[0].availability = "too_large";
+    unread.patches = {};
+    const choosers = [];
+    const asked = requested.length;
+    const unreadContainer = new MarkupElement("div");
+    const unreadHandle = mountDiffView(
+      unreadContainer,
+      unread,
+      {
+        filterControls: {
+          groupHtml(spec) {
+            if (String(spec.label).endsWith(" diff format")) {
+              choosers.push(spec);
+            }
+            return "";
+          },
+          bind: () => () => {},
+        },
+        ensureAsset: async () => {},
+      },
+      {
+        viewFile,
+        markdownViews,
+        renderMarkdown: async (fileId) => {
+          requested.push(fileId);
+          return null;
+        },
+        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const chooser = choosers.at(-1);
+    const said = unreadContainer
+      .querySelectorAll("div")
+      .filter((node) => node.className === "diff-availability")
+      .map((node) => node.textContent);
+    check(
+      "a Markdown file whose changes did not load keeps its chooser, its views unavailable for the reason its body gives",
+      chooser?.value === "source" &&
+        JSON.stringify(chooser.options.map((option) => option.value)) ===
+          JSON.stringify(["full", "concise", "source"]) &&
+        chooser.options
+          .slice(0, 2)
+          .every((option) => option.tip === "This change is too large to show inline.") &&
+        chooser.options[2].tip === undefined &&
+        said.includes("This change is too large to show inline.") &&
+        requested.length === asked,
+      JSON.stringify({ choosers, said, requested }),
+    );
+    unreadHandle.dispose();
+
+    await heldSourceChecks(viewFile);
   } finally {
     global.document = saved.document;
     global.window = saved.window;
@@ -1048,9 +1324,16 @@ async function main() {
   };
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
   const {
+    anchorRow,
     composeTextRuns,
+    currentAbsence,
+    hunkGaps,
     mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
+    mountFilePatch,
+    patchRowCounts,
+    projectCurrentHunk,
+    reservedRows,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
   // A count summary and a brief change line are painted by the shell's painters, as the
@@ -1113,6 +1396,208 @@ async function main() {
   const firstNumbers = lines[0].find("diff-line-number").map((cell) => cell.textContent);
   check("context rows carry both numbers", JSON.stringify(firstNumbers) === '["3","3"]');
   check("hunk heading renders", container.text().includes("def f():"));
+
+  // Current's rows, by the rules that draw and reserve them: the new file's lines alone,
+  // a hunk with none of them left out, and a file with no new version said in a sentence.
+  const opsHunk = (...ops) => ({ lines: ops.map((op) => ({ op })) });
+  check(
+    "Current draws a hunk's context and added lines, in order, and no removed one",
+    JSON.stringify(
+      projectCurrentHunk({
+        lines: ["context", "del", "add", "context"].map((op, at) => ({ op, at })),
+      }).map((line) => line.at),
+    ) === "[0,2,3]",
+  );
+  check(
+    "a held patch counts in Current the rows Current draws",
+    JSON.stringify(
+      patchRowCounts(
+        { hunks: [opsHunk("context", "del", "del", "add", "context"), opsHunk("del")] },
+        "current",
+      ),
+    ) === JSON.stringify({ lines: 3, headers: 1, folds: 0, notices: 0 }),
+  );
+  check(
+    "a long removal folds in Diff and draws nothing in Current",
+    patchRowCounts({ hunks: [opsHunk("context", ...Array(50).fill("del"))] }, "current").folds ===
+      0 &&
+      patchRowCounts({ hunks: [opsHunk("context", ...Array(50).fill("del"))] }, "unified").folds ===
+        1,
+  );
+  check(
+    "a deferred file reserves its added lines and context in Current",
+    reservedRows({ additions: 10, deletions: 5 }, "current") === 17 &&
+      reservedRows({ additions: 10, deletions: 5 }, "unified") === 22,
+  );
+  check(
+    "a deleted file and an emptied one say why Current shows no lines",
+    currentAbsence({ kind: "deleted" }, []) ===
+      "This file was deleted, so it has no current version." &&
+      currentAbsence({ kind: "modified" }, [{ newStart: 0, newCount: 0 }]) ===
+        "This file is empty now." &&
+      currentAbsence({ kind: "modified" }, [{ newStart: 4, newCount: 0 }]) === null,
+  );
+  // A held patch of a file with no current version is counted as the one sentence Current
+  // draws for it, as its drawing is, and not as its hunks.
+  const emptiedPatch = {
+    hunks: [{ ...opsHunk("del", "del"), new_start: 0, new_count: 0 }],
+  };
+  check(
+    "a held deleted or emptied file counts in Current as the sentence that says why",
+    JSON.stringify(patchRowCounts(emptiedPatch, "current", { kind: "deleted" })) ===
+      JSON.stringify({ lines: 0, headers: 0, folds: 0, notices: 1 }) &&
+      JSON.stringify(patchRowCounts(emptiedPatch, "current", { kind: "modified" })) ===
+        JSON.stringify({ lines: 0, headers: 0, folds: 0, notices: 1 }) &&
+      JSON.stringify(patchRowCounts(emptiedPatch, "unified", { kind: "modified" })) ===
+        JSON.stringify({ lines: 2, headers: 1, folds: 0, notices: 0 }),
+    JSON.stringify([
+      patchRowCounts(emptiedPatch, "current", { kind: "deleted" }),
+      patchRowCounts(emptiedPatch, "current", { kind: "modified" }),
+      patchRowCounts(emptiedPatch, "unified", { kind: "modified" }),
+    ]),
+  );
+
+  // The unchanged lines a file's hunks leave out (`hunkGaps`): above each hunk, by the new
+  // side's numbers, with what an old number adds, and below the last, which is open until an
+  // answer says where the file ends. A hunk's line records need only their op here.
+  const span = (oldStart, oldCount, newStart, newCount, ...ops) => ({
+    oldStart,
+    oldCount,
+    newStart,
+    newCount,
+    lines: ops.map((op) => ({ op, noNewline: false })),
+  });
+  const twoHunks = [
+    span(2, 7, 2, 7, ...Array(3).fill("context"), "del", "add", ...Array(3).fill("context")),
+    span(27, 7, 27, 8, ...Array(3).fill("context"), "add", ...Array(4).fill("context")),
+  ];
+  check(
+    "a file's gaps lie before, between, and after its hunks, at the new side's numbers",
+    JSON.stringify(hunkGaps(twoHunks, 3)) ===
+      JSON.stringify([
+        { start: 1, end: 2, offset: 0 },
+        { start: 9, end: 27, offset: 0 },
+        { start: 35, end: null, offset: -1 },
+      ]),
+    JSON.stringify(hunkGaps(twoHunks, 3)),
+  );
+  check(
+    "an answer that says where the file ends closes the last gap there, or leaves none",
+    JSON.stringify(hunkGaps(twoHunks, 3, 40).at(-1)) ===
+      JSON.stringify({ start: 35, end: 41, offset: -1 }) &&
+      hunkGaps(twoHunks, 3, 34).at(-1) === null,
+  );
+  check(
+    "a hunk at the file's first line has no gap above it",
+    hunkGaps([span(1, 4, 1, 4, "del", "add", "context", "context", "context")], 3)[0] === null,
+  );
+  check(
+    "a last hunk ending in fewer context lines than Git writes ends the file",
+    hunkGaps([span(10, 4, 10, 4, ...Array(3).fill("context"), "add")], 3).at(-1) === null &&
+      hunkGaps([span(10, 3, 10, 4, ...Array(3).fill("context"), "add", "context")], 3).at(-1) ===
+        null,
+  );
+  const endsUnended = span(
+    10,
+    6,
+    10,
+    7,
+    ...Array(3).fill("context"),
+    "add",
+    ...Array(3).fill("context"),
+  );
+  endsUnended.lines.at(-1).noNewline = true;
+  check(
+    "a last line with no newline after it ends the file, so no gap follows it",
+    hunkGaps([endsUnended], 3).at(-1) === null,
+  );
+  check(
+    "a side with no lines in a hunk starts after the line it names",
+    JSON.stringify(hunkGaps([span(3, 0, 4, 2, "add", "add")], 0)[0]) ===
+      JSON.stringify({ start: 1, end: 4, offset: 0 }),
+    JSON.stringify(hunkGaps([span(3, 0, 4, 2, "add", "add")], 0)),
+  );
+  check(
+    "gaps whose old and new spans disagree are left out, and no hunks have no gaps",
+    hunkGaps([span(5, 1, 9, 1, "context")], 3)[0] === null && hunkGaps([], 3).length === 0,
+  );
+  // A held patch, where its diff reads gaps, counts each gap's bar in place of its hunk's
+  // header, and the bar below its last hunk.
+  const gapPatch = {
+    hunks: [
+      {
+        ...opsHunk(...Array(3).fill("context"), "add", ...Array(3).fill("context")),
+        old_start: 1,
+        old_count: 6,
+        new_start: 1,
+        new_count: 7,
+      },
+      {
+        ...opsHunk(...Array(3).fill("context"), "add", ...Array(3).fill("context")),
+        old_start: 20,
+        old_count: 6,
+        new_start: 21,
+        new_count: 7,
+      },
+    ],
+  };
+  const textChange = { new: { entry_type: "file" } };
+  check(
+    "a held patch whose diff reads gaps counts their bars as folds in place of headers",
+    JSON.stringify(patchRowCounts(gapPatch, "unified", textChange, 3)) ===
+      JSON.stringify({ lines: 14, headers: 1, folds: 2, notices: 0 }) &&
+      JSON.stringify(patchRowCounts(gapPatch, "unified", textChange)) ===
+        JSON.stringify({ lines: 14, headers: 2, folds: 0, notices: 0 }) &&
+      JSON.stringify(patchRowCounts(gapPatch, "unified", { binary: true, ...textChange }, 3)) ===
+        JSON.stringify({ lines: 14, headers: 2, folds: 0, notices: 0 }),
+    JSON.stringify(patchRowCounts(gapPatch, "unified", textChange, 3)),
+  );
+  // The row a Diff | Current choice keeps: rows 20 px tall from 5 px, in a pane from 100 to
+  // 700 px, so row 4 (85 to 105 px) is at its top.
+  const rowsOf = (count, kept = () => true) => {
+    const asked = [];
+    const rowAt = (index) => {
+      asked.push(index);
+      return { top: 5 + index * 20, bottom: 25 + index * 20, kept: kept(index) };
+    };
+    return { count, rowAt, asked };
+  };
+  const keep = ({ count, rowAt }) => anchorRow(count, rowAt, 100, 700);
+  check(
+    "the row at the pane's top keeps its offset, a part of it above the top",
+    JSON.stringify(keep(rowsOf(50))) === JSON.stringify({ index: 4, offset: -15 }),
+    JSON.stringify(keep(rowsOf(50))),
+  );
+  check(
+    "a row the choice leaves out gives its place to the next row it draws, on the screen",
+    JSON.stringify(keep(rowsOf(50, (index) => index !== 4 && index !== 5))) ===
+      JSON.stringify({ index: 6, offset: 25 }),
+    JSON.stringify(keep(rowsOf(50, (index) => index !== 4 && index !== 5))),
+  );
+  check(
+    "where it leaves out the rest of the screen, the last row above goes just above the top",
+    JSON.stringify(keep(rowsOf(50, (index) => index < 4 || index > 40))) ===
+      JSON.stringify({ index: 3, offset: -20 }),
+    JSON.stringify(keep(rowsOf(50, (index) => index < 4 || index > 40))),
+  );
+  check(
+    "with none above, the first row below goes to the top",
+    JSON.stringify(keep(rowsOf(50, (index) => index === 45))) ===
+      JSON.stringify({ index: 45, offset: 0 }),
+    JSON.stringify(keep(rowsOf(50, (index) => index === 45))),
+  );
+  check(
+    "a file with no row the choice draws, or no row at all, keeps its own top",
+    keep(rowsOf(50, () => false)) === null && keep(rowsOf(0)) === null,
+  );
+  const long = rowsOf(100000);
+  const longKept = keep(long);
+  check(
+    "a long file's row at the top is found by bisection, measuring few rows",
+    JSON.stringify(longKept) === JSON.stringify({ index: 4, offset: -15 }) &&
+      new Set(long.asked).size <= 20,
+    JSON.stringify({ longKept, measured: new Set(long.asked).size }),
+  );
 
   // Unified syntax is progressive: complete plain text mounts before
   // the asynchronous helper can settle, then only the existing text
@@ -1271,7 +1756,12 @@ async function main() {
   // supplies the exclusive joined-group contract and reprojects on the
   // reported value without fetching or lexing again.
   const defaultLayout = new FakeElement("div");
-  mountDiffViewImpl(defaultLayout, byName.get("modified-with-heading"));
+  // No preference store at all, under the host's other fields: the shell's painters, which
+  // say each file bar's lines, as every page has them.
+  mountDiffViewImpl(defaultLayout, byName.get("modified-with-heading"), {
+    ...defaultTestApi,
+    prefs: undefined,
+  });
   check(
     "missing layout preference defaults to split",
     defaultLayout.find("diff-root")[0].dataset.layout === "split",
@@ -1282,6 +1772,9 @@ async function main() {
   const preferenceWrites = [];
   const layoutSpecs = [];
   let unbound = 0;
+  // The toolbar's Diff | Current chooser is bound apart from the layout control.
+  let showBinds = 0;
+  let showUnbound = 0;
   const layoutApi = {
     highlightSyntax: async (source) => {
       layoutSyntaxCalls += 1;
@@ -1299,10 +1792,18 @@ async function main() {
     },
     filterControls: {
       groupHtml: (spec) => {
-        layoutSpecs.push(spec);
+        if (spec.key === "diff-layout") {
+          layoutSpecs.push(spec);
+        }
         return `<span role="radiogroup" data-select="${spec.select}" data-layout="${spec.layout}">${spec.options.map((option) => option.label).join("/")}</span>`;
       },
-      bind: (_root, handlers) => {
+      bind: (root, handlers) => {
+        if (!root.classList.contains("diff-layout-control")) {
+          showBinds += 1;
+          return () => {
+            showUnbound += 1;
+          };
+        }
         layoutChange = handlers.onChange;
         return () => {
           unbound += 1;
@@ -1473,6 +1974,231 @@ async function main() {
         row.find("diff-split-old")[0].classList.contains("diff-split-empty"),
       ),
   );
+  // Diff | Current is in the diff's toolbar, beside the layout control: one choice for the
+  // diff, which draws the new file's lines in one column whatever the layout, while the
+  // layout control keeps its place, says why it is unavailable, and changes nothing.
+  let showChange = null;
+  let currentLayoutChange = null;
+  const showSpecs = [];
+  const currentApi = {
+    ...layoutApi,
+    filterControls: {
+      groupHtml: (spec) => {
+        showSpecs.push(spec);
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-layout-control")) {
+          currentLayoutChange = handlers.onChange;
+        } else {
+          showChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  };
+  const currentHost = new FakeElement("div");
+  const currentHandle = mountDiffView(currentHost, byName.get("modified-with-heading"), currentApi);
+  const codeBar = currentHost.find("diff-file-bar")[0];
+  const showSpec = showSpecs.find((spec) => spec.key === "diff-show");
+  const currentToolbar = currentHost.find("diff-toolbar")[0];
+  check(
+    "the toolbar ends with one group, Diff | Current, then Split | Unified",
+    JSON.stringify(toolbarHolds(currentToolbar)) ===
+      JSON.stringify([["diff-show-control", "diff-layout-control"]]),
+    JSON.stringify(toolbarHolds(currentToolbar)),
+  );
+  check(
+    "a code file's bar holds no chooser and does not wrap",
+    codeBar.find("diff-file-end")[0].children.length === 0 &&
+      currentHost.find("diff-show-control").length === 1 &&
+      !codeBar.classList.contains("diff-file-bar-markdown"),
+  );
+  check(
+    "the chooser is one joined, exclusive group named for what it chooses",
+    showSpec?.label === "Diff or current version" &&
+      showSpec.layout === "joined" &&
+      showSpec.select === "one" &&
+      showSpec.value === "diff" &&
+      JSON.stringify(showSpec.options.map((option) => [option.label, option.tip])) ===
+        JSON.stringify([
+          ["Diff", "Show what changed, removals included"],
+          ["Current", "Show the new version alone, its changes marked"],
+        ]),
+    JSON.stringify(showSpec),
+  );
+  const writesBefore = preferenceWrites.length;
+  showChange(showSpec.key, "current", "one");
+  await Promise.resolve();
+  const currentRoot = currentHost.find("diff-root")[0];
+  const currentLines = currentHost.find("diff-line");
+  check(
+    "Current draws the new file's lines in one column, in place of Split",
+    currentRoot.dataset.show === "current" &&
+      currentHost.find("diff-split-row").length === 0 &&
+      currentHost.find("diff-hunk-current").length === 1 &&
+      JSON.stringify(currentLines.map((row) => row.find("diff-line-marker")[0].textContent)) ===
+        JSON.stringify([" ", "+", " "]) &&
+      currentLines.every((row) => row.find("diff-line-number").length === 1),
+    `${currentHost.find("diff-split-row").length} split rows, ${currentLines.length} lines`,
+  );
+  check(
+    "its hunk header names the new side's range alone",
+    currentHost.find("diff-hunk-header")[0].textContent.startsWith("@@ +3,"),
+    currentHost.find("diff-hunk-header")[0].textContent,
+  );
+  const layoutInCurrent = showSpecs.filter((spec) => spec.key === "diff-layout").at(-1);
+  check(
+    "the layout control keeps the stored layout and says why neither chip can be chosen",
+    layoutInCurrent.value === "split" &&
+      layoutInCurrent.options.every(
+        (option) =>
+          option.tip ===
+          "Current shows the new version in one column; choose Diff for Split or Unified.",
+      ),
+    JSON.stringify(layoutInCurrent),
+  );
+  check(
+    "the choice is stored as diff.show, which every surface but Docs shares",
+    JSON.stringify(preferenceWrites.slice(writesBefore)) ===
+      JSON.stringify([{ key: "diff.show", value: "current" }]),
+    JSON.stringify(preferenceWrites.slice(writesBefore)),
+  );
+  const writesInCurrent = preferenceWrites.length;
+  currentLayoutChange("diff-layout", "unified", "one");
+  check(
+    "choosing a layout in Current changes nothing and stores nothing",
+    currentRoot.dataset.layout === "split" &&
+      currentHost.find("diff-hunk-current").length === 1 &&
+      preferenceWrites.length === writesInCurrent,
+  );
+  showChange(showSpec.key, "diff", "one");
+  await Promise.resolve();
+  check(
+    "Diff draws the stored layout again",
+    currentRoot.dataset.show === "diff" &&
+      currentHost.find("diff-split-row").length === 3 &&
+      showSpecs.filter((spec) => spec.key === "diff-layout").at(-1).options[1].tip === undefined,
+  );
+  currentHandle.dispose();
+  const deletedCurrent = new FakeElement("div");
+  let deletedShow = null;
+  const deletedHandle = mountDiffView(deletedCurrent, byName.get("deleted-file"), {
+    ...currentApi,
+    filterControls: {
+      groupHtml: (spec) => {
+        if (spec.key === "diff-show") {
+          deletedShow = spec.key;
+        }
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (!root.classList.contains("diff-layout-control")) {
+          showChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  });
+  showChange(deletedShow, "current", "one");
+  await Promise.resolve();
+  check(
+    "a deleted file says in Current that it has no current version",
+    deletedCurrent.text().includes("This file was deleted, so it has no current version.") &&
+      deletedCurrent.find("diff-line").length === 0,
+  );
+  deletedHandle.dispose();
+
+  // A host that fixes the layout and opens on Current, as a pull request's Docs tab does:
+  // its toolbar holds Diff | Current alone, it opens in Current with nothing stored, and it
+  // reads and writes its own preference, never `diff.show`, so a choice on Changes does not
+  // move it, nor its own Changes. A stored value that is not a choice reads as its default.
+  const docsReads = [];
+  const docsWrites = [];
+  const docsStored = new Map([["diff.show", "diff"]]);
+  let docsChange = null;
+  const docsSpecs = [];
+  const docsApi = {
+    ...layoutApi,
+    prefs: {
+      get: (key, fallback) => {
+        docsReads.push(key);
+        return docsStored.has(key) ? docsStored.get(key) : fallback;
+      },
+      set: (key, value) => {
+        docsWrites.push({ key, value });
+        docsStored.set(key, value);
+        return true;
+      },
+    },
+    filterControls: {
+      groupHtml: (spec) => {
+        docsSpecs.push(spec);
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-show-control")) {
+          docsChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  };
+  const docsOptions = { layout: "unified", show: "current", showPreference: "github.docs.show" };
+  const docsHost = new FakeElement("div");
+  const docsHandle = mountDiffView(
+    docsHost,
+    byName.get("modified-with-heading"),
+    docsApi,
+    docsOptions,
+  );
+  const docsToolbar = docsHost.find("diff-toolbar")[0];
+  check(
+    "a fixed layout's toolbar is drawn for Diff | Current alone",
+    JSON.stringify(toolbarHolds(docsToolbar)) === JSON.stringify([["diff-show-control"]]) &&
+      docsSpecs.every((spec) => spec.key === "diff-show"),
+    JSON.stringify(toolbarHolds(docsToolbar)),
+  );
+  check(
+    "a surface that opens on Current does so with nothing stored, reading its own preference",
+    docsHost.find("diff-root")[0].dataset.show === "current" &&
+      docsHost.find("diff-hunk-current").length === 1 &&
+      docsSpecs.at(-1).value === "current" &&
+      JSON.stringify(docsReads) === JSON.stringify(["github.docs.show"]),
+    JSON.stringify({ reads: docsReads, value: docsSpecs.at(-1)?.value }),
+  );
+  docsChange("diff-show", "diff", "one");
+  check(
+    "its choice is stored as its own preference, and diff.show is untouched",
+    JSON.stringify(docsWrites) === JSON.stringify([{ key: "github.docs.show", value: "diff" }]) &&
+      docsStored.get("diff.show") === "diff" &&
+      docsHost.find("diff-root")[0].dataset.show === "diff",
+    JSON.stringify(docsWrites),
+  );
+  docsHandle.dispose();
+  docsStored.set("github.docs.show", "both");
+  const oddDocs = new FakeElement("div");
+  const oddDocsHandle = mountDiffView(
+    oddDocs,
+    byName.get("modified-with-heading"),
+    docsApi,
+    docsOptions,
+  );
+  check(
+    "a stored value that is not a choice reads as the surface's own default",
+    oddDocs.find("diff-root")[0].dataset.show === "current",
+  );
+  oddDocsHandle.dispose();
+  docsStored.set("diff.show", "current");
+  const changesHost = new FakeElement("div");
+  const changesHandle = mountDiffView(changesHost, byName.get("modified-with-heading"), docsApi);
+  check(
+    "a surface with no default of its own opens on what diff.show holds",
+    changesHost.find("diff-root")[0].dataset.show === "current" && docsReads.at(-1) === "diff.show",
+    JSON.stringify(docsReads),
+  );
+  changesHandle.dispose();
+
   const pureDelete = new FakeElement("div");
   mountDiffView(pureDelete, byName.get("deleted-file"), layoutApi);
   const pureDeleteRows = pureDelete.find("diff-split-change");
@@ -1486,6 +2212,11 @@ async function main() {
   const pointerUpListeners = documentListeners.get("pointerup")?.length ?? 0;
   splitHandle.dispose();
   check("layout control binding disposes with the view", unbound === 1, String(unbound));
+  check(
+    "the Diff | Current binding is one per diff and disposes with it",
+    showBinds > 0 && showUnbound === 1,
+    `${showBinds} bound, ${showUnbound} unbound`,
+  );
   check(
     "selection gate listeners dispose with the view",
     (documentListeners.get("pointerup")?.length ?? 0) === pointerUpListeners - 1,
@@ -1511,8 +2242,10 @@ async function main() {
     ...layoutApi,
     filterControls: {
       ...layoutApi.filterControls,
-      bind: (_root, handlers) => {
-        boundedLayoutChange = handlers.onChange;
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-layout-control")) {
+          boundedLayoutChange = handlers.onChange;
+        }
         return () => {};
       },
     },
@@ -1563,21 +2296,52 @@ async function main() {
     copy.getAttribute("data-mb-copy-text") === "a.py",
   );
   check("copy control is an icon button", copy.classList.contains("icon-btn"));
+  // The bar is two groups: what names the file, the disclosure with the copy control
+  // right after it and then the change's stats, and the controls at its end, here none.
+  const bar = container.find("diff-file-bar")[0];
+  const [lead, end] = bar.children;
   check(
-    "stats sit beside the filename",
-    toggle.children[2].classList.contains("diff-file-path") &&
-      toggle.children[3].classList.contains("diff-file-stats"),
+    "the bar leads with the name's group and ends with its controls' group",
+    bar.children.length === 2 &&
+      lead.classList.contains("diff-file-lead") &&
+      end.classList.contains("diff-file-end"),
+    JSON.stringify(bar.children.map((child) => child.className)),
   );
-  const stats = container.find("diff-file-stats")[0];
+  const facts = lead.children[2];
   check(
-    "stat pair renders add then del",
-    stats.children[0].classList.contains("diff-stat-add") &&
-      stats.children[1].classList.contains("diff-stat-del"),
+    "copy control sits right after the disclosure, beside the name, before its stats",
+    lead.children.length === 3 &&
+      lead.children[0] === toggle &&
+      lead.children[1] === copy &&
+      facts.classList.contains("diff-file-facts"),
+    JSON.stringify(lead.children.map((child) => child.className)),
+  );
+  check("a bar with nowhere to go ends with no control", end.children.length === 0);
+  check(
+    "the name ends the disclosure, and the stats follow the copy control",
+    toggle.children.length === 3 &&
+      toggle.children[2].classList.contains("diff-file-path") &&
+      facts.children[0]?.classList.contains("diff-file-stats") === true,
+    JSON.stringify(toggle.children.map((child) => child.className)),
+  );
+  check(
+    "the stats describe the disclosure they left",
+    typeof facts.getAttribute("id") === "string" &&
+      toggle.getAttribute("aria-describedby") === facts.getAttribute("id"),
+  );
+  // The bar's lines are the shell's brief change line of its totals alone (mb-ox6a).
+  const stats = container.find("diff-file-stats")[0];
+  const pair = stats.find("change-line-stats")[0];
+  check(
+    "stat pair renders add then del, as the shell's brief change line",
+    stats.children.length === 1 &&
+      stats.children[0].classList.contains("change-line") &&
+      pair?.children[0]?.classList.contains("diff-stat-add") === true &&
+      pair.children[1]?.classList.contains("diff-stat-del") === true,
   );
 
   // The whole bar is one activation surface: bar clicks toggle, the
   // button's own (bubbled) click toggles, the copy control does not.
-  const bar = container.find("diff-file-bar")[0];
   bar.click();
   check("bar click collapses the body", body.classList.contains("diff-file-body-collapsed"));
   check("collapse flips aria-expanded", toggle.getAttribute("aria-expanded") === "false");
@@ -1598,6 +2362,13 @@ async function main() {
     !body.classList.contains("diff-file-body-collapsed") &&
       toggle.getAttribute("aria-expanded") === "true",
   );
+  stats.click();
+  check(
+    "a click on the stats toggles, as anywhere else on the bar",
+    body.classList.contains("diff-file-body-collapsed") &&
+      toggle.getAttribute("aria-expanded") === "false",
+  );
+  toggle.click();
 
   // Disposal removes everything the mount added.
   handle.dispose();
@@ -1691,6 +2462,48 @@ async function main() {
     hosted.find("diff-summary").length === 0,
   );
   check("revision-hosted change sets keep their toolbar", hosted.find("diff-toolbar").length === 1);
+  // A layout the host fixes has no layout control, and leaves the toolbar what else it holds:
+  // a change set's totals and Diff | Current, here; Diff | Current alone, as on a pull
+  // request's Docs tab. A toolbar with nothing in it, where the chip family is not loaded,
+  // is not drawn, and the files follow at once.
+  const fixedApi = { filterControls: { groupHtml: () => "", bind: () => () => {} } };
+  const fixedTotals = new FakeElement("div");
+  mountDiffView(fixedTotals, twoFiles, fixedApi, { layout: "unified" });
+  check(
+    "a fixed layout keeps the toolbar for the totals, without the layout control",
+    fixedTotals.find("diff-toolbar").length === 1 &&
+      fixedTotals.find("diff-summary").length === 1 &&
+      fixedTotals.find("diff-layout-control").length === 0 &&
+      fixedTotals.find("diff-show-control").length === 1 &&
+      fixedTotals.find("diff-root")[0]?.dataset.layout === "unified",
+  );
+  const fixedBare = new FakeElement("div");
+  mountDiffView(fixedBare, twoFiles, fixedApi, { showSummary: false, layout: "unified" });
+  const fixedToolbar = fixedBare.find("diff-toolbar")[0];
+  check(
+    "a fixed layout with nothing else for the toolbar draws it for Diff | Current alone",
+    JSON.stringify(toolbarHolds(fixedToolbar)) === JSON.stringify([["diff-show-control"]]),
+    JSON.stringify(toolbarHolds(fixedToolbar)),
+  );
+  const fixedBare2 = new FakeElement("div");
+  mountDiffView(
+    fixedBare2,
+    twoFiles,
+    { filterControls: undefined },
+    {
+      showSummary: false,
+      layout: "unified",
+    },
+  );
+  const fixedRoot = fixedBare2.find("diff-root")[0];
+  check(
+    "a fixed layout with nothing at all for the toolbar draws none",
+    fixedBare2.find("diff-toolbar").length === 0 &&
+      fixedBare2.find("diff-layout-control").length === 0 &&
+      fixedRoot?.children[0]?.classList.contains("diff-hydration-failure") === true &&
+      fixedRoot.children[1]?.classList.contains("diff-file") === true,
+    JSON.stringify(fixedRoot?.children.map((child) => child.className) ?? null),
+  );
   const singleSummarized = new FakeElement("div");
   mountDiffView(singleSummarized, byName.get("modified-with-heading"), undefined, {
     changedFiles: sharedTree,
@@ -1730,10 +2543,11 @@ async function main() {
   );
   const drawn = slot.children[0];
   check(
-    "a page draws a Diff summary on its own from the document",
+    "a page draws a Diff summary on its own from the document, its file count on the size line",
     slot.children.length === 1 &&
       drawn.classList.contains("diff-summary-toggle") &&
-      drawn.reads().includes("2 files changed"),
+      drawn.reads().includes("2 M") &&
+      !drawn.reads().includes("files changed"),
     drawn?.reads() ?? "",
   );
   standalone.dispose();
@@ -1755,8 +2569,8 @@ async function main() {
   const cutHeader = cutPlace.find("diff-summary-toggle")[0];
   check(
     "a list cut short says the page's whole totals and how many it lists",
-    cutHeader?.reads().includes("5 files changed") &&
-      cutHeader.reads().includes("+15") &&
+    !cutHeader?.reads().includes("files changed") &&
+      cutHeader?.reads().includes("+15") &&
       cutHeader.reads().includes("−3") &&
       cutHeader.reads().includes("(2 listed)") &&
       cutHeader.find("change-line-statuses").length === 0,
@@ -1777,8 +2591,7 @@ async function main() {
   );
   check(
     "and names them for a screen reader",
-    cutHeader?.getAttribute("aria-label") ===
-      "5 files changed; 15 lines added, 3 deleted; 2 listed",
+    cutHeader?.getAttribute("aria-label") === "15 lines added, 3 deleted; 2 listed",
     cutHeader?.getAttribute("aria-label") ?? "",
   );
   const cutPlain = new FakeElement("div");
@@ -1788,7 +2601,9 @@ async function main() {
   });
   check(
     "a list cut short says them without the shared tree too",
-    cutPlain.reads().includes("5 files changed") && cutPlain.reads().includes("(2 listed)"),
+    !cutPlain.reads().includes("files changed") &&
+      cutPlain.reads().includes("+15") &&
+      cutPlain.reads().includes("(2 listed)"),
     cutPlain.reads(),
   );
   check(
@@ -1804,7 +2619,7 @@ async function main() {
   });
   check(
     "a whole list says its own totals",
-    wholePlace.reads().includes("2 files changed") && !wholePlace.reads().includes("listed"),
+    wholePlace.reads().includes("2 M") && !wholePlace.reads().includes("listed"),
     wholePlace.reads(),
   );
   await diffSummaryChecks(mountDiffView, twoFiles);
@@ -1829,7 +2644,7 @@ async function main() {
   tipHeader.dispatch("pointerenter");
   check(
     "a breakdown cut short gives its header's whole words",
-    tipHeader.dataset.tipText === "2 files changed \u00b7 2 M \u00b7 +1 \u22121",
+    tipHeader.dataset.tipText === "2 M \u00b7 +1 \u22121",
     tipHeader.dataset.tipText ?? "",
   );
   tipBreakdown.scrollWidth = 60;
@@ -1932,6 +2747,25 @@ async function main() {
   check(
     "restored split fold stays visible",
     !switchingFold.find("diff-fold-group")[0].classList.contains("diff-fold-collapsed"),
+  );
+
+  // Unfolded, as a pull request's Docs tab draws, a long run is drawn open; one the reader
+  // closes stays closed when a layout change draws the file again.
+  const unfolded = new FakeElement("div");
+  mountDiffView(unfolded, longDoc, layoutApi, { unfold: true });
+  await nextTask();
+  check(
+    "an unfolded diff draws its long run open",
+    unfolded.find("diff-fold-control")[0].getAttribute("aria-expanded") === "true",
+  );
+  unfolded.find("diff-fold-control")[0].click();
+  await nextTask();
+  layoutChange("diff-layout", "unified", "one");
+  layoutChange("diff-layout", "split", "one");
+  await nextTask();
+  check(
+    "a fold the reader closed stays closed when the file is drawn again",
+    unfolded.find("diff-fold-control")[0].getAttribute("aria-expanded") === "false",
   );
 
   // Deferred data and syntax share one mount lifetime. Layout changes
@@ -2106,6 +2940,117 @@ async function main() {
   const unwarned = new FakeElement("div");
   mountDiffView(unwarned, byName.get("modified-with-heading"));
   check("no warning, no notice", unwarned.find("diff-warning").length === 0);
+
+  // mountFilePatch, the export Guided Review draws a step's files with, is Changes' body of
+  // one file: its rows and fold bars at once, changed-run pairs and syntax after first
+  // paint, and a disposal that stops what is still to come (B6 of review B on #677).
+  const filePatch = (() => {
+    const lines = [
+      { op: "context", text: "keep" },
+      { op: "del", text: "value = 1" },
+      { op: "add", text: "value = 2" },
+      { op: "context", text: "sep" },
+      ...Array.from({ length: 60 }, (_, index) => ({ op: "add", text: `line ${index}` })),
+    ];
+    const hunk = { old_start: 1, old_count: 3, new_start: 1, new_count: 63, heading: null, lines };
+    return { file_id: "f1", hunks: [hunk], truncated: false };
+  })();
+  const fileChange = byName.get("modified-with-heading").manifest.files[0];
+  let patchLexes = 0;
+  const patchApi = {
+    ...defaultTestApi,
+    highlightSyntax: async (source) => {
+      patchLexes += 1;
+      return source.split("\n").map((line) => [{ classes: ["hljs-string"], text: line }]);
+    },
+    isLargeTextPreview: () => false,
+    langForPath: () => "python",
+  };
+  const intraline = (body) => body.find("diff-intraline-change").length;
+  const tokens = (body) => body.find("hljs-string").length;
+  const patchBody = new FakeElement("div");
+  const patchHandle = mountFilePatch(patchBody, fileChange, filePatch, patchApi);
+  check(
+    "a file patch draws its rows at once, its long run behind a fold bar",
+    patchBody.find("diff-line").length === 24 &&
+      patchBody.find("diff-fold-control").length === 1 &&
+      patchBody.find("diff-fold-control")[0].text().includes("40 more changed lines"),
+    `${patchBody.find("diff-line").length} rows`,
+  );
+  check(
+    "a file patch's first paint is plain text",
+    intraline(patchBody) === 0 && tokens(patchBody) === 0 && patchLexes === 0,
+  );
+  const patchFold = patchBody.find("diff-fold-control")[0];
+  const patchGroup = patchBody.find("diff-fold-group")[0];
+  patchFold.click();
+  await nextTask();
+  check(
+    "a file patch's fold bar expands its run",
+    !patchGroup.classList.contains("diff-fold-collapsed") &&
+      patchGroup.find("diff-line").length === 40,
+  );
+  for (let turn = 0; turn < 4; turn += 1) {
+    await nextSyntaxUnit();
+  }
+  check(
+    "a file patch pairs its changed run and highlights its rows after first paint",
+    intraline(patchBody) > 0 && tokens(patchBody) > 0 && patchLexes > 0,
+    `${intraline(patchBody)} intraline, ${tokens(patchBody)} tokens, ${patchLexes} lexes`,
+  );
+  patchHandle.dispose();
+
+  // Disposed before its enhancement runs, a file patch stays as first painted, and a fold
+  // still materializing stops.
+  const lexedBefore = patchLexes;
+  const earlyBody = new FakeElement("div");
+  const earlyHandle = mountFilePatch(earlyBody, fileChange, filePatch, patchApi);
+  const earlyGroup = earlyBody.find("diff-fold-group")[0];
+  earlyBody.find("diff-fold-control")[0].click();
+  earlyHandle.dispose();
+  for (let turn = 0; turn < 4; turn += 1) {
+    await nextSyntaxUnit();
+  }
+  check(
+    "a file patch disposed before its enhancement writes nothing later",
+    intraline(earlyBody) === 0 &&
+      tokens(earlyBody) === 0 &&
+      patchLexes === lexedBefore &&
+      earlyGroup.find("diff-line").length === 0,
+    `${intraline(earlyBody)} intraline, ${tokens(earlyBody)} tokens, ${earlyGroup.find("diff-line").length} folded rows`,
+  );
+
+  // Disposed while its syntax is on its way, a file patch keeps the rows it has.
+  const heldLexes = [];
+  const heldApi = {
+    ...patchApi,
+    highlightSyntax: (source) =>
+      new Promise((resolve) => {
+        heldLexes.push(() =>
+          resolve(source.split("\n").map((line) => [{ classes: ["hljs-string"], text: line }])),
+        );
+      }),
+  };
+  const lateBody = new FakeElement("div");
+  const lateHandle = mountFilePatch(lateBody, fileChange, filePatch, heldApi);
+  for (let turn = 0; turn < 4; turn += 1) {
+    await nextSyntaxUnit();
+  }
+  const pairedBefore = intraline(lateBody);
+  const heldAtDisposal = heldLexes.length;
+  lateHandle.dispose();
+  // Each side's lexer call follows the one before it, so each is answered as it comes.
+  for (let turn = 0; turn < 4; turn += 1) {
+    for (const release of heldLexes.splice(0)) {
+      release();
+    }
+    await nextSyntaxUnit();
+  }
+  check(
+    "a file patch disposed while its syntax is on its way paints none of it",
+    pairedBefore > 0 && heldAtDisposal > 0 && tokens(lateBody) === 0,
+    `${pairedBefore} intraline, ${heldAtDisposal} lexes held, ${tokens(lateBody)} tokens`,
+  );
 
   // Routine hydration is quiet, including when a file has a documented size limit.
   const partialDoc = JSON.parse(JSON.stringify(byName.get("deferred-manifest-only")));

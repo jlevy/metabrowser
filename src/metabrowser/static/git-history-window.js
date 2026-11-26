@@ -371,6 +371,11 @@
    * `recover`: the server session expired or no longer matches the cursor, with
    * nothing changed, so rebuilding the walk restores the same rows.
    * `failed`: anything else, and any failure of the first page, retried in place.
+   * That includes the guard's `pin_changed`: another tab switched the served
+   * revision, or a followed branch moved, so the page's revision is no longer
+   * served. The rows on screen stay, and the page's freshness row offers the
+   * reload (static/source-pin-guard.js); rebuilding the walk would be refused the
+   * same way, and the rows were gone.
    *
    * @param {{status: number, code: string | null, initial: boolean}} failure
    * @returns {"stale" | "recover" | "failed"}
@@ -381,6 +386,9 @@
     }
     if (failure.status === 409 && failure.code === "history_stale") {
       return "stale";
+    }
+    if (failure.status === 409 && failure.code === "pin_changed") {
+      return "failed";
     }
     if (failure.status === 400 || failure.status === 409 || failure.status === 410) {
       return "recover";

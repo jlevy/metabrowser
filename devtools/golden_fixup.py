@@ -12,6 +12,7 @@ restores them so `make golden-update` is a single reviewable step:
   reports, and `[STORE_KEY]` for the store's key in it when the origin is a sandbox
   address, from which the key is derived
 * `[BUILTIN]` for the absolute checkout prefix of builtin plugin paths
+* `[FAKE_GH]` for the stand-in gh that the GitHub status goldens put on PATH
 * `[VERSION]` for the installed package version
 * the second copy of the KPress asset manifest in the shell transcript
 * the KPress icon sprite at the head of a rendered document, which is tens of
@@ -74,10 +75,10 @@ class UnexpectedTime(ValueError):
 FIXUPS: list[tuple[str, str]] = [
     # PR comparison addresses name the editable build and sandbox store, neither pinned.
     (r"(&build=)[0-9a-f]{12}(&store=)[0-9a-f]{16}", r"\1[BUILD]\2[STORE]"),
-    # Its image and rendered-Markdown addresses name the sandbox store after the
+    # Its image, rendered-Markdown, and size addresses name the sandbox store after the
     # endpoints.
     (
-        r"(/api/plugin/github/pull-(?:image|rendered-diff)\?number=\d+"
+        r"(/api/plugin/github/pull-(?:image|rendered-diff|size)\?number=\d+"
         r"&left=[0-9a-f]{40,64}&right=[0-9a-f]{40,64}&store=)[0-9a-f]{16}",
         r"\1[STORE]",
     ),
@@ -89,7 +90,7 @@ FIXUPS: list[tuple[str, str]] = [
     # the sandbox's `home`. Its own pattern, ahead of the sandbox rule: what follows it
     # is the layout under the home, which stays literal.
     (
-        r'("location": ")[^\s"]*/tryscript-[A-Za-z0-9]+/home(/repository-stores/)',
+        r'("location": ")[^\s"]*/tryscript-[A-Za-z0-9]+/home(/repos/)',
         r"\1[APP_HOME]\2",
     ),
     # The recent-targets transcript's folders, under the sandbox's `roots`: ahead of the
@@ -109,11 +110,14 @@ FIXUPS: list[tuple[str, str]] = [
     # address of the sandbox: the key is derived from the address, so no fixture can
     # pin it. A hosted origin's key is the same on every machine and stays literal.
     (
-        r'("origin": "file://\[CWD\][^"\n]*",\n\s*"location": "[^"\n]*/repository-stores/)'
-        r'[0-9a-f]{64}(/repository\.git")',
+        r'("origin": "file://\[CWD\][^"\n]*",\n\s*"location": "[^"\n]*/repos/)'
+        r'[a-z0-9-]+-[0-9a-z]{11}(/repository\.git")',
         r"\1[STORE_KEY]\2",
     ),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),
+    # The stand-in gh the GitHub status goldens put first on PATH, by its absolute
+    # checkout path; quoted in a JSON envelope too, so not \S*.
+    (r'/[^\s"]*/tests/fixtures/github-status/gh', "[FAKE_GH]"),
     # The trailing group is the build annotation a checkout adds; see
     # metabrowser.build_version. It varies per commit, so it elides with the
     # version rather than beside it.

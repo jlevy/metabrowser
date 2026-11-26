@@ -11,7 +11,10 @@
 # and describes its quarantine attribute, for information only. With EXPECTED_VERSION
 # and EXPECTED_COMMIT (a full SHA), which scripts/check-release.sh sets from the tag, the
 # app must also be the release variant, that version, and built from that commit with
-# nothing uncommitted.
+# nothing uncommitted. With EXPECTED_ARCHES, which scripts/release.sh and
+# scripts/check-release.sh set, the app's executable must have exactly those slices and
+# the image the name its variant, version, and slices give it; without it the slices are
+# reported, and a name that differs is noted, since a download may have been renamed.
 #
 #   scripts/check-dmg.sh build/Metabrowser-0.1.0-arm64.dmg
 #   NOTARIZE=1 EXPECTED_TEAM_ID=TEAMID scripts/check-dmg.sh ~/Downloads/Metabrowser-0.1.0-arm64.dmg
@@ -77,6 +80,17 @@ flags="$(xattr -px com.apple.FinderInfo "$mounted" 2>/dev/null | tr -d ' \n' | c
 ((0x${flags:-00} & 0x04)) || die "the volume root does not show its custom icon"
 ok "contents: $name, Applications -> /Applications, and the volume icon"
 
+# A tagged release must carry the notice from that commit.
+expected_notice="../../$app_glyph_license"
+if [[ -n "${EXPECTED_COMMIT:-}" ]]; then
+  expected_notice="$work/glyph-license.txt"
+  git cat-file blob "$EXPECTED_COMMIT:$app_glyph_license" >"$expected_notice" ||
+    die "could not read the glyph notice at $EXPECTED_COMMIT; check out the release commit"
+fi
+cmp -s "$expected_notice" "$app/Contents/Resources/${app_glyph_license##*/}" ||
+  die "$name is missing the Lucide source kind glyph notice, or its contents differ"
+ok "$name includes the Lucide source kind glyph notice"
+
 plutil -lint -s "$app/Contents/Info.plist"
 codesign --verify --deep --strict "$app"
 require_no_entitlements "$app"
@@ -92,6 +106,19 @@ if [[ -n "${EXPECTED_VERSION:-}${EXPECTED_COMMIT:-}" ]]; then
     "$EXPECTED_VERSION" "$EXPECTED_COMMIT")"
   [[ -z "$problems" ]] || die "$name is not the release it is checked as:"$'\n'"$problems"
   ok "$name is the release variant, version $EXPECTED_VERSION, built from $EXPECTED_COMMIT"
+fi
+# The slices, and the image's name, which says what they are: a cask and a downloader
+# choose the image by it.
+image_executable="$app/Contents/MacOS/$(plutil -extract CFBundleExecutable raw -o - "$plist")"
+image_slices="$(slices_of "$image_executable")"
+problems="$(image_arch_problems "$(basename "$dmg")" "$(plutil -extract CFBundleIdentifier raw -o - "$plist")" \
+  "$(plutil -extract CFBundleShortVersionString raw -o - "$plist")" "$image_slices" "${EXPECTED_ARCHES:-}")"
+if [[ -z "$problems" ]]; then
+  ok "$name has the slices '$image_slices'${EXPECTED_ARCHES:+, as EXPECTED_ARCHES says}, and the image is named for them"
+elif [[ -n "${EXPECTED_ARCHES:-}" ]]; then
+  die "$(basename "$dmg") is not the image it is checked as:"$'\n'"$problems"
+else
+  note "$name has the slices '$image_slices'; $problems"
 fi
 # The canary icon marks development builds and never ships in a release, and a release
 # carries the published icon. The icons compared are this checkout's, so check an image

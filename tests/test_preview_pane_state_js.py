@@ -31,8 +31,10 @@ SDK_SANDBOX = Path(__file__).resolve().parent / "dom" / "sdk-sandbox.js"
 SELECT_A_FILE = "Select a file to preview."
 PULL_PAGE_FAILED = (
     "preview-empty preview-error: Could not load the pull-request page. "
-    "Refresh the page to try again."
+    "Reload the page to try again."
 )
+from tests.shell_request import shell_request
+
 NO_PULL_PLUGIN = "preview-empty: No plugin renders pull-request pages here."
 
 
@@ -45,16 +47,7 @@ def _function_source(js: str, name: str) -> str:
 
 
 def _render_index_html() -> str:
-    class _FakeQuery:
-        def get(self, key: str, default: str = "") -> str:
-            return default
-
-    class _FakeReq:
-        def __init__(self) -> None:
-            self.query_params = _FakeQuery()
-            self.headers: dict[str, str] = {}
-
-    response = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
+    response = asyncio.run(proc_browser.index(shell_request()))
     body = response.body
     return body.decode() if isinstance(body, (bytes, bytearray)) else str(body)
 
@@ -248,9 +241,9 @@ def test_pull_request_routes_load_only_for_a_pull_request_address(
 ) -> None:
     pull = session["shell"]["pullRouteLoadsOnDemand"]
     # A folder's page and its files never ask for the routes; what they ask for is the
-    # compositor and the view helpers, once, when the first file opens.
+    # compositor, the view helpers, and the view header, once, when the first file opens.
     assert pull["folderAddresses"] == {
-        "scriptRequests": ["view-composition.js", "plugin-sdk-views.js"],
+        "scriptRequests": ["view-composition.js", "plugin-sdk-views.js", "view-header.js"],
         "hostCreated": False,
     }
     # A page that loads at a pull-request address has the routes with its shell, so it
@@ -277,7 +270,11 @@ def test_a_cold_anchored_address_waits_for_the_module_that_reads_it(
     # The line anchors are no startup script, and the address still opens the Source
     # view: applying it waits for the bundle that brings them.
     assert cold["lineAnchorsAtStartup"] == "undefined"
-    assert cold["scriptRequests"] == ["view-composition.js", "plugin-sdk-views.js"]
+    assert cold["scriptRequests"] == [
+        "view-composition.js",
+        "plugin-sdk-views.js",
+        "view-header.js",
+    ]
     assert cold["renderedViews"] == ["a.py: source"]
     # That fetch overlaps revealing the row; a plain address asks for nothing first.
     revealing = cold["whileTheRowIsRevealed"]
@@ -302,8 +299,8 @@ def test_on_demand_code_that_does_not_arrive_is_said_and_asked_for_again(
     file = refused["viewHelpersOpeningAFile"]
     assert file["failed"]["pane"]["phase"] == "error"
     assert file["failed"]["pane"]["shows"] == (
-        "preview-empty preview-error: Could not open this file. "
-        "Failed to load asset: /static/plugin-sdk-views.js"
+        # The asset that failed is the console's (docs/design-system-messages.md).
+        "preview-empty preview-error: Could not open this file. Reload the page to try again."
     )
     assert file["reopened"]["scriptRequests"] == ["plugin-sdk-views.js"]
     assert file["reopened"]["pane"]["phase"] == "content"

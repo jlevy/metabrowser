@@ -3,10 +3,8 @@ import ShellCore
 import WebKit
 
 /// A window's content: the web view, the status view that covers it until the page
-/// commits, and the slot for the find bar.
-///
-/// `WKWebView` is not inside an `NSScrollView`, so `NSTextFinder` needs this container
-/// to hold its bar (the pattern from the macOS WebView shell guideline).
+/// commits, and the slot above the page for the find bar (`FindBar`), which keeps the
+/// shape of an `NSTextFinderBarContainer`.
 public final class WebContainerView: NSView, NSTextFinderBarContainer {
     public private(set) var webView: WKWebView
     private let statusView: NSView
@@ -31,7 +29,7 @@ public final class WebContainerView: NSView, NSTextFinderBarContainer {
         }
     }
 
-    /// Swaps in the view of a tab that gave up its page, hidden like the old one would be.
+    /// Swaps in the web view of a page that gave up its last one, hidden like the old one would be.
     public func replaceWebView(_ replacement: WKWebView) {
         webView.removeFromSuperview()
         webView = replacement
@@ -77,7 +75,7 @@ public final class WebContainerView: NSView, NSTextFinderBarContainer {
 }
 
 /// Hands files and folders dropped on the page to the app (`FileDrop`), which opens a
-/// folder in its own window or tab and a file at its page. Anything else falls through
+/// folder in its own window and a file at its page. Anything else falls through
 /// to WebKit's ordinary drag and drop.
 public final class DropAwareWebView: WKWebView {
     public var onFileDrop: (([URL]) -> Bool)?

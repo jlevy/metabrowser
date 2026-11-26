@@ -24,6 +24,14 @@
 // shared model. Which folders start expanded is a file count the panel measures in a real
 // browser and passes in.
 
+import {
+  rateLimitText,
+  refreshFailureText,
+  refreshRefusedText,
+  setupHelp,
+  unavailableText,
+} from "./copy.js";
+
 /**
  * One row of the route's answer, as the shared tree takes it.
  *
@@ -189,9 +197,10 @@ export function holdFileList(number) {
 /**
  * @param {number} count
  * @param {string} one
+ * @param {(count: number) => string} formatCount
  */
-function plural(count, one) {
-  return `${count.toLocaleString("en-US")} ${one}${count === 1 ? "" : "s"}`;
+function plural(count, one, formatCount) {
+  return `${formatCount(count)} ${one}${count === 1 ? "" : "s"}`;
 }
 
 /**
@@ -204,8 +213,9 @@ function plural(count, one) {
  * did not succeed, for the panel to word as it words a list's.
  *
  * @param {FilesEnvelope} envelope
+ * @param {(count: number) => string} formatCount
  */
-export function describeFileList(envelope) {
+export function describeFileList(envelope, formatCount) {
   const failed =
     envelope.last_refresh !== null &&
     envelope.last_refresh.outcome !== "succeeded" &&
@@ -222,7 +232,7 @@ export function describeFileList(envelope) {
       failure: failed,
     };
   }
-  const files = plural(envelope.fetched, "file");
+  const files = plural(envelope.fetched, "file", formatCount);
   const pagesRead =
     envelope.last_page !== null ? `, ${envelope.pages} of ${envelope.last_page} pages` : "";
   /** @type {string} */
@@ -278,19 +288,16 @@ export const FILES_OPEN_HOLD_MS = 150;
 // inside it still moves the rows below, as the reader's own click.
 export const LATE_ROWS_MS = 500;
 
-/** What a failed listing says to a reader, in what they can do about it. */
-/** @type {Readonly<Record<string, string>>} */
+/**
+ * What a failed listing says to a reader where the tree words it itself, beside copy.js's
+ * shared words, and for any other outcome: one sentence each, beside the notice's Retry.
+ * @type {Readonly<Record<string, string>>}
+ */
 const FILE_FAILURES = Object.freeze({
-  gh_missing:
-    "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
-  gh_too_old:
-    "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
-  not_logged_in:
-    "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
-  network_error: "Offline, or GitHub could not be reached. The files are as they were last listed.",
   not_found_or_private:
     "The pull request was not found, or the signed-in account cannot read its files.",
 });
+const LISTING_FAILED = "Could not list the changed files.";
 
 export const LISTING_FILES = "Listing changed files…";
 
@@ -301,38 +308,25 @@ export const LISTING_FILES = "Listing changed files…";
  *
  * @param {FilesEnvelope} envelope
  * @param {(iso: string) => string} formatTime
+ * @param {(count: number) => string} formatCount
  * @returns {{text: string, retry: boolean, help?: "install" | "update"} | null}
  */
-export function fileListFailure(envelope, formatTime) {
-  const last = describeFileList(envelope).failure;
+export function fileListFailure(envelope, formatTime, formatCount) {
+  const last = describeFileList(envelope, formatCount).failure;
   if (last === null) {
     return null;
   }
   if (last.outcome === "rate_limited") {
     return {
-      text:
-        last.reset_at === null
-          ? "GitHub's rate limit was reached. No automatic attempt runs until it lifts."
-          : `GitHub's rate limit lifts at ${formatTime(last.reset_at)}. No automatic attempt runs before then.`,
+      text: rateLimitText(last.reset_at === null ? null : formatTime(last.reset_at)),
       retry: false,
     };
   }
-  // What the job recorded is a clause; here it stands as a sentence of its own.
-  const setup = ["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome);
-  const said = setup
-    ? (last.message ?? FILE_FAILURES[last.outcome])
-    : (FILE_FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " "));
-  const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
-  const help =
-    last.outcome === "gh_missing"
-      ? "install"
-      : last.outcome === "gh_too_old"
-        ? "update"
-        : undefined;
-  const message = sentence.endsWith(".") ? sentence : `${sentence}.`;
+  // The job's own message stays in the envelope's `last_refresh` for agents; the tree says
+  // the outcome's fixed sentence.
+  const help = setupHelp(last.outcome);
   return {
-    text:
-      message + (setup ? " You can still browse local files and any cached pull requests." : ""),
+    text: refreshFailureText(last.outcome, FILE_FAILURES, LISTING_FAILED),
     retry: true,
     ...(help === undefined ? {} : { help }),
   };
@@ -394,6 +388,7 @@ export function fileListFailure(envelope, formatTime) {
  *   recentMissing?: boolean,
  *   error: string | null,
  *   formatTime: (iso: string) => string,
+ *   formatCount: (count: number) => string,
  *   opening?: boolean,
  *   withheld?: number,
  *   listed?: boolean,
@@ -433,10 +428,10 @@ export function describeFileTree(envelope, held) {
     const more = withheld - drawn;
     model.offer =
       more > 0
-        ? `Show ${plural(more, "more file")}`
-        : `Show the updated list of ${plural(withheld, "file")}`;
+        ? `Show ${plural(more, "more file", held.formatCount)}`
+        : `Show the updated list of ${plural(withheld, "file", held.formatCount)}`;
     model.offerFloats = held.floats === true;
-    model.live = model.notice?.text ?? `${plural(withheld, "file")} listed`;
+    model.live = model.notice?.text ?? `${plural(withheld, "file", held.formatCount)} listed`;
   }
   return model;
 }
@@ -473,8 +468,8 @@ function describeDrawnTree(envelope, held) {
     model.live = model.notice?.text ?? LISTING_FILES;
     return model;
   }
-  const said = describeFileList(envelope);
-  const failure = fileListFailure(envelope, held.formatTime);
+  const said = describeFileList(envelope, held.formatCount);
+  const failure = fileListFailure(envelope, held.formatTime, held.formatCount);
   if (said.count !== null) {
     model.label = `${model.label}: ${said.count}`;
   }
@@ -599,6 +594,7 @@ function isFilesEnvelope(value) {
  *   now(): number,
  *   isVisible(): boolean,
  *   formatTime(iso: string): string,
+ *   formatCount(count: number): string,
  *   render(model: FileTreeModel): void,
  *   markAnchor(previous: string | null, next: string | null, focus: boolean): void,
  *   markCurrent(previous: string | null, next: string | null): void,
@@ -714,6 +710,7 @@ export function createFileTreeController(deps, options) {
       recentMissing: recentMissing(),
       error,
       formatTime: deps.formatTime,
+      formatCount: deps.formatCount,
       opening,
       ...(withheld
         ? {
@@ -894,7 +891,7 @@ export function createFileTreeController(deps, options) {
       askedAt !== null &&
       deps.now() - askedAt < envelope.fresh_for_s * 1000 &&
       error === null &&
-      describeFileList(envelope).failure === null
+      describeFileList(envelope, deps.formatCount).failure === null
     );
   }
 
@@ -1003,7 +1000,7 @@ export function createFileTreeController(deps, options) {
           again = true;
         }
       } else {
-        error = `The list of files is unavailable (HTTP ${response.status}).`;
+        error = unavailableText("The list of files");
       }
     } catch {
       if (inflight !== controller || controller.signal.aborted || !live()) {
@@ -1047,7 +1044,7 @@ export function createFileTreeController(deps, options) {
       if (mine !== generation || !live()) {
         return;
       }
-      const answer = /** @type {{files?: unknown, error?: unknown} | null} */ (response.body);
+      const answer = /** @type {{files?: unknown, code?: unknown} | null} */ (response.body);
       if (
         (response.status === 202 || response.status === 200) &&
         answer !== null &&
@@ -1064,8 +1061,8 @@ export function createFileTreeController(deps, options) {
           envelope.listed_from === null && !envelope.refreshing && envelope.state !== "pending";
         error = null;
       } else {
-        const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
-        error = `The list of files was not asked for (${said ?? `HTTP ${response.status}`}).`;
+        const code = answer !== null && typeof answer.code === "string" ? answer.code : null;
+        error = refreshRefusedText("The refresh of the list of files", code);
       }
     } catch {
       if (mine !== generation || !live()) {

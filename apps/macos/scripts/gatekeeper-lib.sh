@@ -101,11 +101,35 @@ describe_quarantine() {
   echo "flags 0x$flags, set $when, by ${agent:-no agent}${event:+, event $event}"
 }
 
+# Prints, one per line, what is wrong with an image's architectures: the image named
+# "$1" holds an app with the bundle identifier "$2", the version "$3", and the slices
+# "$4" (slices_of). The slices must be exactly "$5", the architectures asked for, when
+# that is not empty, and the image must have the name its variant, version, and slices
+# give it (dmg_path), so no image is published under a name that says other slices.
+image_arch_problems() {
+  local name="$1" id="$2" version="$3" slices="$4" wanted="$5" variant label expected
+  if [[ -n "$wanted" ]]; then
+    wanted="$(normalize_arches "$wanted" EXPECTED_ARCHES)" || exit 1
+    [[ "$slices" == "$wanted" ]] || echo "the app has the slices '$slices', not '$wanted', the architectures asked for"
+  fi
+  variant="$(variant_of_bundle_id "$id")"
+  if [[ -z "$variant" ]]; then
+    echo "the app is $id, which is neither variant, so its image has no name"
+    return 0
+  fi
+  label="$(arch_label_for "$slices")" || exit 1
+  expected="$(basename "$(dmg_path "$variant" "$version" "$label")")"
+  [[ "$name" == "$expected" ]] ||
+    echo "the image is named $name, and the $variant variant, version $version, with the slices '$slices' is named $expected"
+  return 0
+}
+
 # Prints, one per line, what is wrong with an app's identity for a release: it must be
 # the release variant ("$1" is its bundle identifier), the version "$4" ("$2" is its
 # CFBundleShortVersionString), and built from the commit "$5", the tag's full SHA, with
-# nothing uncommitted ("$3" is its MetabrowserSourceCommit, a short hash that
-# scripts/build-app.sh records, with -dirty for uncommitted changes).
+# nothing uncommitted ("$3" is its MetabrowserSourceCommit, the full SHA that
+# scripts/build-app.sh records, with -dirty for uncommitted changes). The two are
+# compared whole: a shared prefix is not the same commit.
 release_identity_problems() {
   local id="$1" version="$2" commit="$3" want_version="$4" want_commit="$5"
   [[ "$(variant_of_bundle_id "$id")" == release ]] || echo "the app is $id, not the release variant"
@@ -114,7 +138,7 @@ release_identity_problems() {
     echo "the app records no source commit (MetabrowserSourceCommit)"
   elif [[ "$commit" == *-dirty ]]; then
     echo "the app was built from $commit, with uncommitted changes"
-  elif ((${#commit} < 7)) || [[ "$want_commit" != "$commit"* ]]; then
+  elif [[ "$commit" != "$want_commit" ]]; then
     echo "the app was built from $commit, not from $want_commit, the tag's commit"
   fi
   return 0

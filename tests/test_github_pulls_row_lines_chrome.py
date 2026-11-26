@@ -1,16 +1,20 @@
-"""Each Pulls row's third line, its brief change line, laid out by headless Chrome.
+"""Each Pulls row's run and last line laid out by headless Chrome.
 
-What a row's third line shows, and when, and what a press and each key do, is browserless
+What a row's toggle shows, and when, and what a press and each key do, is browserless
 (``tests/dom/github-pulls-row-lines-session.js``); what only a browser can tell is held here
-(``tests/dom/github-pulls-row-lines-chrome.mjs``): that a row is three lines, the state icon on
-the first and the chevron on the third, in the first icon slot; that nothing moves when the line
-arrives; that the line stays one line at every pane width from 420 px to the 180 px minimum in
-both themes, whole, its totals alone with its statuses never cut short, or out of view; that its inks and weights are the
-component's; that the open row's highlight carries onto it, and that it hovers and takes the
-focus ring on its own; and that a real press on a title expands nothing while one on the chevron
-or the line opens and closes the files under it. ``METABROWSER_ROW_LINES_MEASURED`` names a file
-for what it measured, and ``METABROWSER_ROW_LINES_SHOTS`` a directory for a screenshot of each
-width and theme, waiting and shown.
+(``tests/dom/github-pulls-row-lines-chrome.mjs``): that a row is its run, the state icon, the
+title, the number, and the lines with the chevron after them, every line of it in the text
+column past the icon and never cut short, and its last line, the author with the age at its end
+(mb-pw8t); that a closed row is ``ROW_ESTIMATE_PX`` tall with a run of three lines; that nothing
+but the chevron moves when the lines arrive, at every pane width from 420 px to the 180 px
+minimum in both themes, the lines whole and in the row; that their inks and weights are the
+component's; that a row is one item (mb-1z7j), which carries the open row's highlight, hovers as
+one wherever the pointer is on it, and takes the focus ring round it, while the toggle, the lines
+and the chevron, adds its chevron's own hover and is no stop; and that a real press on the
+title, the number, or the author opens the pull request and expands nothing while one on the
+chevron or the lines opens and closes the files under it. ``METABROWSER_ROW_LINES_MEASURED``
+names a file for what it measured, and ``METABROWSER_ROW_LINES_SHOTS`` a directory for a
+screenshot of each width and theme, waiting and shown.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
@@ -40,7 +44,7 @@ LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
-def test_a_rows_change_line_arrives_in_place_in_chrome(
+def test_a_rows_lines_arrive_in_its_run_in_place_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     chrome = require_chrome()

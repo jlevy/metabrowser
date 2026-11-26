@@ -78,6 +78,7 @@ from metabrowser.builtin_plugins.github.pull_labels import (
     labels_job_key,
 )
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.pull_list_probe import checked_at
 from metabrowser.builtin_plugins.github.pull_list_route import catalog_job_key
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
@@ -85,6 +86,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     read_pull_record,
 )
 from metabrowser.builtin_plugins.github.served_pull import (
+    ATTENDED_PROBE_S,
     PullCorePreview,
     PullRefreshOutcome,
     ServedPull,
@@ -109,7 +111,7 @@ from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
 _REFRESH_FIELDS: Final = frozenset(
-    {"number", "retry", "comparison", "recovery", "wait_core", "prepare_comparison"}
+    {"number", "retry", "comparison", "recovery", "wait_core", "prepare_comparison", "held"}
 )
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
@@ -138,6 +140,10 @@ class PullEnvelope(TypedDict):
     checks_pending: bool
     record_revision: str | None
     fresh_for_s: float
+    # How often a visible page asks while it shows a record: the server then probes it
+    # (:data:`~.served_pull.ATTENDED_PROBE_S`) or reads it in full when that is due, and
+    # answers ``not_due`` otherwise. ``None`` with no record to probe.
+    probe_every_s: float | None
     refreshing: bool
     preparing_comparison: NotRequired[Literal[True]]
     # The server has no Git store to compare in, as a checkout has none until a reader's
@@ -148,6 +154,8 @@ class PullEnvelope(TypedDict):
     comparison_route: str | None
     image_route: str | None
     rendered_route: str | None
+    # The size the comparison pushes, for the page's size line (:mod:`.pull_size`).
+    size_route: str | None
     record: dict[str, Any] | None
     core_preview: PullCorePreview | None
     # The repository's label set's entries for the labels the record or core names without
@@ -201,6 +209,7 @@ def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
 
 IMAGE_ROUTE: Final = "/api/plugin/github/pull-image"
 RENDERED_ROUTE: Final = "/api/plugin/github/pull-rendered-diff"
+SIZE_ROUTE: Final = "/api/plugin/github/pull-size"
 
 
 def image_route(number: int, base: str, head: str, *, store: str) -> str:
@@ -224,6 +233,13 @@ def rendered_route(number: int, base: str, head: str, *, store: str) -> str:
 
     query = urlencode({"number": number, "left": base, "right": head, "store": store})
     return f"{RENDERED_ROUTE}?{query}"
+
+
+def size_route(number: int, base: str, head: str, *, store: str) -> str:
+    """The route of the size a comparison pushes, measured against its merge base."""
+
+    query = urlencode({"number": number, "left": base, "right": head, "store": store})
+    return f"{SIZE_ROUTE}?{query}"
 
 
 def comparison_route(record: PullRecord, *, store: str) -> str | None:
@@ -253,7 +269,7 @@ class _Parsed:
 # unchanged file is answered without reading or parsing it again.
 _PARSED: dict[tuple[str, str, int], _Parsed] = {}
 _PARSED_LOCK: Final = threading.Lock()
-_MAX_PARSED: Final = 16
+MAX_PARSED_RECORDS: Final = 16
 
 
 def _file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | None:
@@ -289,7 +305,7 @@ def cached_pull_record(
                 item["timeline_id"] = str(item["id"])
     if stamp is not None:
         with _PARSED_LOCK:
-            if key not in _PARSED and len(_PARSED) >= _MAX_PARSED:
+            if key not in _PARSED and len(_PARSED) >= MAX_PARSED_RECORDS:
                 _PARSED.pop(next(iter(_PARSED)))
             _PARSED[key] = _Parsed(stamp, record, dumped, revision)
     return record, dumped, revision
@@ -317,6 +333,9 @@ class PullHost:
     # The store's turn for the prefetch's own fetch, held as background work; its argument
     # is called when a reader's job starts waiting for the turn.
     store_turn: Callable[[Callable[[], object]], AbstractAsyncContextManager[None]] | None = None
+    # On a mirror: told the head a record read from disk names, so a pin on that pull
+    # request's head follows one another process fetched (:func:`follow_adopted_head`).
+    observe_head: Callable[[int, str], None] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -358,6 +377,7 @@ def pull_host(app: Any) -> PullHost | None:
         start_background=partial(session.request_pull_refresh, background=True),
         job_key=served.key,
         store_turn=session.background_store_turn,
+        observe_head=session.observe_pull_head,
     )
 
 
@@ -381,6 +401,8 @@ class PullView:
     core_admission: CoreAdmission | None = None
     preparing_comparison: bool = False
     catalog_scanning: bool = False
+    # When a list probe last found the catalog unchanged (:mod:`.pull_list_probe`).
+    catalog_checked_at: str | None = None
     labels_running: bool = False
 
 
@@ -392,6 +414,12 @@ def catalog_scanning(host: PullHost | None) -> bool:
         and host.coordinator is not None
         and host.coordinator.running(catalog_job_key(host.pulls.source))
     )
+
+
+def catalog_checked_at(host: PullHost | None) -> str | None:
+    """When a list probe last found the repository's catalog unchanged, with no read."""
+
+    return None if host is None else checked_at(host.coordinator, host.pulls.source)
 
 
 def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
@@ -421,6 +449,7 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         and host.preparing is not None
         and host.preparing(number),
         catalog_scanning=catalog_scanning(host),
+        catalog_checked_at=catalog_checked_at(host),
         labels_running=host is not None
         and host.coordinator is not None
         and host.coordinator.running(labels_job_key(host.pulls.source)),
@@ -456,11 +485,13 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             checks_pending=False,
             record_revision=None,
             fresh_for_s=FRESHNESS_WINDOW_S,
+            probe_every_s=None,
             refreshing=False,
             last_refresh=None,
             comparison_route=None,
             image_route=None,
             rendered_route=None,
+            size_route=None,
             record=None,
             core_preview=None,
             repository_labels=[],
@@ -478,6 +509,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             *catalog_member(served.home, served.slug, view.number),
             now=now,
             scanning=view.catalog_scanning,
+            checked_at=view.catalog_checked_at,
         )
         if isinstance(record, PullRecord)
         else None
@@ -485,10 +517,17 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     state, absence = pull_state(
         record, now=now, refreshing=view.refreshing, has_store=has_store, freshness=freshness
     )
+    verified_at = freshness.verified_at if freshness is not None else None
+    verified_by: VerifiedBy | None = freshness.verified_by if freshness is not None else None
+    probed = probed_at(view, record, now=now, has_store=has_store, freshness=freshness)
+    if probed is not None:
+        state = "current"
+        if verified_at is None or probed > verified_at:
+            verified_at, verified_by = probed, "probe"
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
-    route = images = rendered = None
+    route = images = rendered = sized = None
     if isinstance(record, PullRecord) and served.git_dir is not None:
         store = store_tag(served.git_dir)
         route = comparison_route(record, store=store)
@@ -496,6 +535,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             ends = (record.number, record.comparison.base, record.comparison.head)
             images = image_route(*ends, store=store)
             rendered = rendered_route(*ends, store=store)
+            sized = size_route(*ends, store=store)
     preview = view.core_preview
     if view.core_admission is not None and not view.core_admission.catalog_matches(view.number):
         preview = None
@@ -525,12 +565,13 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         pin=view.pin,
         pin_ref=view.pin_ref,
         fetched_at=record.fetched_at if isinstance(record, PullRecord) else None,
-        verified_at=freshness.verified_at if freshness is not None else None,
-        verified_by=freshness.verified_by if freshness is not None else None,
+        verified_at=verified_at,
+        verified_by=verified_by,
         head_moved=freshness is not None and freshness.head_moved,
         checks_pending=freshness is not None and freshness.checks_pending,
         record_revision=revision,
         fresh_for_s=FRESHNESS_WINDOW_S,
+        probe_every_s=ATTENDED_PROBE_S if isinstance(record, PullRecord) else None,
         refreshing=view.refreshing,
         last_refresh=(
             view.kept.outcome() if view.kept is not None else served.last_refresh(view.number)
@@ -538,6 +579,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         comparison_route=route,
         image_route=images,
         rendered_route=rendered,
+        size_route=sized,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
         repository_labels=lookup.entries,
@@ -550,19 +592,58 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     return envelope, freshness
 
 
+def probed_at(
+    view: PullView,
+    record: PullRecord | RecordAbsence,
+    *,
+    now: datetime,
+    has_store: bool,
+    freshness: RecordFreshness | None,
+) -> str | None:
+    """When a probe last found *record* unchanged, if that makes it current at *now*.
+
+    That is a probe of this very record within a freshness window, of a record read in full
+    within :data:`~.served_pull.FULL_REFRESH_S` (:meth:`.ServedPull.full_read_overdue`),
+    which the catalog does not say GitHub changed since and which needs no store this
+    server has. Otherwise ``None``, and the record's state is the catalog's or the
+    clock's (:func:`pull_state`).
+
+    Below the background floor (:meth:`.ServedPull.below_floor`) the overdue full read
+    waits, and the probe goes on vouching: it is all that reads the record then, and a
+    page asks every ``probe_every_s`` only for a record it is told is current, so one
+    marked stale would be probed once a window and a change found that much later.
+    """
+
+    kept = view.kept
+    if (
+        kept is None
+        or not isinstance(record, PullRecord)
+        or kept.fetched_at != record.fetched_at
+        or not kept.probe_vouches(now)
+        or (kept.full_read_overdue(now) and not kept.below_floor(now))
+        or (freshness is not None and freshness.verdict == "changed")
+        or (has_store and written_without_store(record))
+    ):
+        return None
+    return kept.probed_at
+
+
 def record_and_freshness(
-    served: ServedPulls, number: int, *, scanning: bool = False
+    served: ServedPulls, number: int, *, scanning: bool = False, checked_at: str | None = None
 ) -> tuple[PullRecord | None, RecordFreshness | None]:
     """The cached record of *number* and the catalog's verdict on it. Blocking and bounded.
 
-    *scanning* is :func:`catalog_scanning`, read on the event loop before the call.
+    *scanning* is :func:`catalog_scanning` and *checked_at* :func:`catalog_checked_at`,
+    read on the event loop before the call.
     """
 
     record, _dumped, _revision = cached_pull_record(served.home, served.slug, number)
     if not isinstance(record, PullRecord):
         return None, None
     member = catalog_member(served.home, served.slug, number)
-    return record, record_freshness(record, *member, now=pulls.utc_now(), scanning=scanning)
+    return record, record_freshness(
+        record, *member, now=pulls.utc_now(), scanning=scanning, checked_at=checked_at
+    )
 
 
 def note_full_record(view: PullView) -> None:
@@ -574,6 +655,26 @@ def note_full_record(view: PullView) -> None:
         and window.previews is not None
     ):
         window.previews.pop(view.number, None)
+
+
+def follow_adopted_head(view: PullView, envelope: PullEnvelope) -> None:
+    """Tell the server the head *envelope*'s record names, when its pin is not at it.
+
+    A pin served under this pull request's head follows the head. This server's own
+    refresh sees to that when it ends; a record another process published reaches this
+    one only here, where the route read it (A7 of review A on #745). Reads nothing.
+    """
+
+    host, record = view.host, envelope["record"]
+    if host is None or host.observe_head is None or record is None or view.refreshing:
+        return
+    head = record["pull"]["head"]["sha"]
+    if (
+        view.pin_ref == f"refs/pull/{view.number}/head"
+        and isinstance(head, str)
+        and head != view.pin
+    ):
+        host.observe_head(view.number, head)
 
 
 def core_preview_current(view: PullView, preview: PullCorePreview | None) -> bool:
@@ -685,7 +786,9 @@ class RefreshRequest:
     """What a ``POST`` asks for.
 
     *retry* is a reader's own action, or the one comparison request a page on Changes
-    sends by itself for a record without a store.
+    sends by itself for a record without a store. *held* is the ``record_revision`` of
+    the record the asker already has, which the answer then leaves out
+    (:func:`refresh_answer_pull`).
     """
 
     number: int
@@ -694,6 +797,7 @@ class RefreshRequest:
     recovery: tuple[str, str] | None = None
     wait_core: bool = False
     prepare_comparison: str | None = None
+    held: str | None = None
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
@@ -702,7 +806,7 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     if set(body) - _REFRESH_FIELDS:
         raise PullRequestError(
             'a refresh request names only "number", "retry", "comparison", "recovery", '
-            '"wait_core", and "prepare_comparison"'
+            '"wait_core", "prepare_comparison", and "held"'
         )
     number = body.get("number")
     if (
@@ -757,7 +861,46 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
         ):
             raise PullRequestError('"prepare_comparison" is a record revision and stands alone')
         preparation = revision
-    return RefreshRequest(number, retry, comparison, pair, wait_core, preparation)
+    held = None
+    if "held" in body:
+        held = body["held"]
+        if (
+            not isinstance(held, str)
+            or len(held) != 64
+            or not is_full_revision(held)
+            or preparation is not None
+        ):
+            raise PullRequestError('"held" is a record revision, and not for "prepare_comparison"')
+    return RefreshRequest(number, retry, comparison, pair, wait_core, preparation, held)
+
+
+def refresh_answer_pull(envelope: PullEnvelope, held: str | None) -> dict[str, Any]:
+    """The ``pull`` a refresh answers: *envelope*, without a record the asker holds.
+
+    When *held* is the envelope's ``record_revision``, the answer names ``record_held``
+    in place of ``record``, and the asker keeps the record it has: every other field is
+    sent, so the verdict, the state, and the job's outcome still arrive. Otherwise it is
+    the whole envelope, as for an asker that names no *held*.
+
+    A visible page asks every ``probe_every_s``, and nearly every answer carries a record
+    it already shows. Measured 2026-11-23 on the two largest records in a local cache,
+    as the median of 200 renders of the answer in ``JSONResponse``, which serializes on
+    the event loop, three runs at a load average near 380:
+
+    - a 344 KiB record: 351,924 bytes and 1.70 to 1.72 ms whole, 733 bytes and 0.006 ms
+      held, so 4.2 MB a minute for one visible page became 9 KB;
+    - a 290 KiB record: 296,962 bytes and 1.31 ms whole, 733 bytes and 0.006 ms held.
+
+    The revision is the record's as cached, before a server without a store drops its
+    comparison (``no_store``), so the asker also compares ``no_store`` with its own
+    envelope's and reads the route again when either differs.
+    """
+
+    answer: dict[str, Any] = dict(envelope)
+    if held is not None and envelope["record"] is not None and envelope["record_revision"] == held:
+        del answer["record"]
+        answer["record_held"] = True
+    return answer
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
@@ -872,13 +1015,28 @@ async def _start_refresh(
         if served.fetched_at is None:
             return "not_cached"
         held, freshness = await asyncio.to_thread(
-            partial(record_and_freshness, host.pulls, ask.number, scanning=catalog_scanning(host))
+            partial(
+                record_and_freshness,
+                host.pulls,
+                ask.number,
+                scanning=catalog_scanning(host),
+                checked_at=catalog_checked_at(host),
+            )
         )
         if held is not None:
             served.saw_record(
                 held.fetched_at, without_store=written_without_store(held), freshness=freshness
             )
-        if not served.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
+        due = served.automatic_due(pulls.utc_now())
+        if due == "probe" and held is not None and held.fetched_at == served.fetched_at:
+            # A visible page asks every ATTENDED_PROBE_S; most asks end here, in a free
+            # conditional read that finds nothing new (:meth:`ServedPull.probe`).
+            try:
+                await served.probe(held, coordinator=host.coordinator)
+            except TimeoutError:
+                return "not_due"
+            due = served.automatic_due(pulls.utc_now())
+        if due != "full":
             return "not_due"
     if adopt is not None:
         window, preview = adopt
@@ -924,6 +1082,7 @@ __all__ = [
     "PullView",
     "RefreshRequest",
     "cached_pull_record",
+    "catalog_checked_at",
     "catalog_scanning",
     "comparison_route",
     "envelope_etag",
@@ -934,9 +1093,11 @@ __all__ = [
     "pull_state",
     "pull_view",
     "record_and_freshness",
+    "refresh_answer_pull",
     "record_stamp",
     "refresh_request",
     "rendered_route",
+    "size_route",
     "requested_number",
     "start_refresh",
     "status_route",

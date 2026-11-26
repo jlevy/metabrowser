@@ -63,6 +63,20 @@ class RowElement {
   querySelector(selector) {
     return selector === ".log-event-raw" ? this.raw : null;
   }
+  /** Where an opened payload's tree is drawn. */
+  appendChild(child) {
+    this.children = [...(this.children ?? []), child];
+    child.parentElement = this;
+    return child;
+  }
+  remove() {
+    const parent = this.parentElement;
+    if (parent) {
+      parent.children = (parent.children ?? []).filter((child) => child !== this);
+      this.parentElement = null;
+    }
+  }
+  addEventListener() {}
 }
 
 /** The page's preview pane: the listeners on it, and the markup written into it. */
@@ -113,7 +127,7 @@ function rowsIn(pane) {
 const document = {
   addEventListener() {},
   body: { append() {} },
-  createElement: () => ({ appendChild() {}, addEventListener() {}, setAttribute() {} }),
+  createElement: (tagName) => new RowElement({ tag: tagName }),
   documentElement: {},
   head: { append() {} },
   querySelector: () => null,
@@ -144,11 +158,21 @@ for (const relative of [
   "static/navigation.js",
   "static/plugin-sdk.js",
   "static/filter-controls.js",
+  "static/menus.js",
   "static/icons.js",
-  "builtin_plugins/agent_log/index.js",
-  "builtin_plugins/unknown_jsonl/index.js",
 ]) {
   const filename = path.join(sourceRoot, relative);
+  vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
+}
+// The agents plugin's index.js and its agent-log renderers are ES modules, which this realm
+// evaluates; they reach the page only through `window`, which is the sandbox's. The
+// renderers register their views over index.js's stubs, and their exports are what the
+// plugin's `loadLogRenderers` answers the shell's live tail.
+globalThis.window = sandbox;
+require(path.join(sourceRoot, "builtin_plugins/agents/index.js"));
+const agentLog = require(path.join(sourceRoot, "builtin_plugins/agents/agent-log.js"));
+{
+  const filename = path.join(sourceRoot, "builtin_plugins/unknown_jsonl/index.js");
   vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
 }
 const toggleEvent = appSource.match(/\nfunction toggleEvent\(header\) \{[\s\S]*?\n\}/);
@@ -157,6 +181,42 @@ vm.runInContext(toggleEvent[0], sandbox, { filename: "app.js (lifted)" });
 
 const mb = sandbox.metabrowser;
 mb.ensureKindAssets = async () => {};
+// The declared providers: the agents plugin, whose agent-log renderers generic JSONL draws
+// with (its `loadLogRenderers` answers them, without the stylesheet a page loads), and the
+// structured plugin, whose tree an opened payload is. The session records each tree it
+// is asked to draw rather than drawing it, and answers the structured load as
+// `structuredLoad` says, so a step can hold the load open or fail it.
+const treeCalls = [];
+const structured = {
+  renderInlineTree(container, data) {
+    treeCalls.push({ container, data });
+  },
+};
+let structuredLoad = () => Promise.resolve(structured);
+let structuredLoads = 0;
+mb.plugins = {
+  load(name) {
+    if (name === "agents") {
+      return Promise.resolve({ loadLogRenderers: () => Promise.resolve(agentLog) });
+    }
+    assert(name === "structured", `plugins.load asked for ${name}`);
+    structuredLoads += 1;
+    return structuredLoad();
+  },
+};
+
+/** A load the step settles itself. */
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const LOG = {
   raw: {
@@ -259,7 +319,7 @@ function dispatch(pane, type, target, keys = {}) {
 
     // A row the live tail appends is the same control.
     assert(
-      mb.builtins.agentLog
+      agentLog
         .renderLogEvent(pane, LOG.raw.events[0], 2)
         .includes('role="button" tabindex="0" aria-expanded="false"'),
       `${kind}: an appended row is not a control`,
@@ -269,6 +329,95 @@ function dispatch(pane, type, target, keys = {}) {
     assert(pane.listeners.keydown.size === 0, `${kind}: disposal left a key listener`);
     assert(pane.listeners.click.size === 0, `${kind}: disposal left a click listener`);
     transcript[kind] = steps;
+  }
+
+  // An opened payload (agents/agent-log.js mountLogEventRaw): an object is the structured
+  // tree, drawn once the load settles; a failed load leaves the flat JSON block and no
+  // empty wrapper; a string is the flat block at once; and closing and reopening a row
+  // while the load is in flight draws it once.
+  {
+    const view = mb.getRegisteredView("agent-log", "log");
+    const payloads = {
+      raw: {
+        events: [
+          { kind: "text", raw: { tree: 1 }, summary: "[text] a tree" },
+          { kind: "text", raw: { tree: 2 }, summary: "[text] a failed load" },
+          { kind: "text", raw: "a string payload", summary: "[text] a string" },
+          { kind: "text", raw: { tree: 4 }, summary: "[text] toggled while loading" },
+        ],
+        summary: {},
+      },
+    };
+    const pane = createPane(document);
+    await view.render(pane, payloads);
+    const [object, failed, string, toggled] = rowsIn(pane);
+    const mountRaw = sandbox.metabrowserAgentLog.mountLogEventRaw;
+    const steps = {};
+    const flatBlock = (row) =>
+      (row.raw.innerHTML.match(/<pre><code class="language-json">/g) ?? []).length;
+
+    let load = deferred();
+    structuredLoad = () => load.promise;
+    treeCalls.length = 0;
+    mountRaw(object.raw);
+    const beforeSettle = treeCalls.length;
+    load.resolve(structured);
+    await settle();
+    steps["an object payload is drawn as the tree once the load settles"] = {
+      treesBeforeTheLoadSettled: beforeSettle,
+      trees: treeCalls.length,
+      drawnInTheWrapper: treeCalls[0]?.container === object.raw.children?.[0],
+      payload: treeCalls[0]?.data,
+      flatBlocks: flatBlock(object),
+    };
+    assert(beforeSettle === 0 && treeCalls.length === 1, "an object payload was not drawn once");
+    assert(treeCalls[0].container === object.raw.children[0], "the tree is not in its wrapper");
+    assert(treeCalls[0].data === payloads.raw.events[0].raw, "the tree is not the payload");
+
+    load = deferred();
+    treeCalls.length = 0;
+    const warn = console.warn;
+    console.warn = () => {};
+    mountRaw(failed.raw);
+    load.reject(new Error("the structured plugin did not load"));
+    await settle();
+    console.warn = warn;
+    steps["a failed load leaves the flat block and no wrapper"] = {
+      trees: treeCalls.length,
+      wrappers: failed.raw.children?.length ?? 0,
+      flatBlocks: flatBlock(failed),
+    };
+    assert(treeCalls.length === 0, "a failed load drew a tree");
+    assert((failed.raw.children?.length ?? 0) === 0, "a failed load left its empty wrapper");
+    assert(flatBlock(failed) === 1, "a failed load did not leave one flat block");
+
+    const loadsBefore = structuredLoads;
+    mountRaw(string.raw);
+    steps["a string payload is the flat block at once"] = {
+      structuredLoads: structuredLoads - loadsBefore,
+      flatBlocks: flatBlock(string),
+    };
+    assert(structuredLoads === loadsBefore, "a string payload loaded the structured plugin");
+    assert(flatBlock(string) === 1, "a string payload was not mounted at once");
+
+    load = deferred();
+    treeCalls.length = 0;
+    dispatch(pane, "click", toggled.summary);
+    dispatch(pane, "click", toggled.summary);
+    dispatch(pane, "click", toggled.summary);
+    load.resolve(structured);
+    await settle();
+    steps["closing and reopening while the load is in flight draws once"] = {
+      expanded: toggled.classList.contains("expanded"),
+      trees: treeCalls.length,
+      wrappers: toggled.raw.children?.length ?? 0,
+    };
+    assert(toggled.classList.contains("expanded"), "the row did not end open");
+    assert(treeCalls.length === 1, `the toggled row drew ${treeCalls.length} trees`);
+    assert(toggled.raw.children.length === 1, "the toggled row mounted twice");
+
+    view.dispose(pane);
+    transcript["opened payloads"] = steps;
   }
 
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);

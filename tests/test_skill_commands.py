@@ -21,21 +21,24 @@ commit, the build the skill is written for:
    captured with ``$(…)``, or written to a file, and every ``--api`` command, asks for
    ``--format json`` or ``yaml``, or ``--json`` in a plugin mode, so standard output is
    one document.
-4. **Recipes run.** Each recipe under "From a Pull-Request URL" that reads JSON with
-   ``jq`` is a run of consecutive commands of
-   ``tests/golden/cli-skill-recipes.tryscript.md`` joined with ``&&``, with the
-   placeholders that transcript names filled in, so the golden runs the skill's own
-   text. The refresh beside a checkout cannot run offline there:
+4. **Recipes run.** Each recipe under "From a Pull-Request URL", "Publish and Confirm
+   It", and "Refresh It After a Push" that reads JSON with ``jq`` is a run of
+   consecutive commands of ``tests/golden/cli-skill-recipes.tryscript.md`` joined with
+   ``&&``, with the placeholders that transcript names filled in, so the golden runs the
+   skill's own text. The refresh beside a checkout cannot run offline there:
    ``tests/test_cli_github_checkout_golden.py`` posts its body, :func:`refresh_body`, and
    :func:`refresh_findings` holds every field its filter reads to the answer that test
-   pins.
+   pins. Nor do the recipes under "Publish and Confirm a Stack Guide" run there, since
+   that transcript's stand-in has no stack: checks 1 to 3, 5, and 9 hold them, and
+   ``tests/test_cli_github_stack_golden.py`` pins the answers of the routes they read.
 5. **Names.** A code span of prose that is a field path, such as
    ``.last_refresh.outcome``, or a name with an underscore, such as
    ``not_found_or_private``, names only words of the source under ``src/``: a key, a
    field, or a value the code spells. A word the code also uses elsewhere passes, so
    this catches a misspelling and not a name moved to another meaning.
-6. **Presenting.** Each ``--present`` recipe under "Present It in the App" is a command
-   of ``tests/golden/cli-present-delivery.txt``, with the placeholders
+6. **Presenting.** Each ``--present`` recipe under "Present It in the App" and "When a
+   Sandbox Blocks It" is a command of ``tests/golden/cli-present-delivery.txt``, with the
+   placeholders
    :data:`PRESENT_SPELLING` names filled in. That transcript runs the production CLI
    with a stand-in LaunchServices and ``open``, never a real app, and runs the skill's
    shape of command for each status the skill tells apart; every field path the
@@ -43,35 +46,78 @@ commit, the build the skill is written for:
    for each status a delivery code ends with, exactly the codes ``DELIVERY_EXIT_CODES``
    in ``cli/present.py`` maps to it, so a new code fails here until the skill says what
    to do about it, and every other status it restates is the constant behind its row:
-   a refusal's, a usage error's, and an ``Error:`` line's.
+   a refusal's, a usage error's, and an ``Error:`` line's. Each rerun outside the
+   sandbox carries ``--open-in app``: without it, the default ``auto`` falls back to a
+   browser when no app takes the target, and starts a server outside the sandbox.
+7. **Guide values.** A one-word code span under "Write a Guided Review", "Write a Stack
+   Guide", and their subsections, such as ``ready`` or ``side``, is a string
+   ``guided_review.py``, ``pull_stack.py``, or ``pull_stacks.py`` spells, a state a route
+   answers or a value it compares, or a field of the block's models, so a state renamed in
+   prose fails here though check 5 leaves one-word values alone.
+8. **The block skeletons.** Each block under "Write the Block", its commit IDs filled
+   in, is a guide ``parse_guide`` reads, with a quoted title holding ``: `` and a note
+   whose list keeps its lines, so its Markdown renders as a list, the two YAML rules the
+   section states. The first is flat, as a short guide is, and the second puts its steps
+   in groups, as a longer one does. The block under "Write the Stack’s Block" is a stack
+   guide ``parse_stack_guide`` reads, in groups, with the same two YAML rules and a step
+   that cites every layer as a ``{pull}``.
+9. **Filters without a golden.** Each ``jq`` filter under "Publish and Confirm a Stack
+   Guide" that reads the list of stacks or a stack's answer runs over the answer
+   ``tests/golden/cli-github-stacks.txt`` or ``cli-github-stack.txt`` pins, a stack of
+   two layers, and prints something and no ``null``, its nulls read as
+   :data:`NULL_STAND_IN`, so a renamed field fails here. Each field path the section's
+   prose names, such as ``.members[-1].number``, is a field of one of the answers it
+   reads, as the stack goldens, ``cli-github-pull-refresh.txt``, and
+   ``cli-github-stack-guide.txt`` pin them. The two range recipes under "From a
+   Pull-Request URL" number the lines of, and test ranges against, an answer of two
+   hunks with a deleted line, which the transcript of check 4 lacks.
+10. **Page addresses.** Each address of a pull request's or a stack's page, such as
+    ``/pull/<n>/files`` or ``/stack/<s>/guided``, names a tab ``PULL_ROUTE_TABS`` or
+    ``STACK_ROUTE_TABS`` in ``view_routes.py`` lists, so a tab renamed or removed fails
+    here.
+11. **Frontmatter.** The skill's ``name``, ``description``, and ``compatibility`` keep to
+    the lengths the Agent Skills specification allows, :data:`FRONTMATTER_BOUNDS`.
 
+The reader ends a logical line with its block. A block of commands, any but a
+skeleton's Markdown or YAML, whose last line a quote or parenthesis leaves open has lost
+one, so it fails here, since no check could read that line.
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
-2, 3, and 5 read it too. Outside every check: the names of query parameters, page
-addresses such as ``/pull/<n>/files``, package names, and one-word values such as
-``stale``.
+2, 3, 5, and 10 read it too. Outside every check: the names of query parameters, package
+names, and one-word values such as ``stale`` outside the guided-review sections.
 
 Each check is proven by a mutation of the skill it must fail.
 """
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import shlex
+import subprocess
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final
 
 import pytest
 import typer
 import typer.main
+import yaml
 
 from devtools import tryscript_blocks
+from metabrowser.builtin_plugins.github import guided_review, pull_stack, pull_stacks
+from metabrowser.builtin_plugins.github.guided_review import (
+    GuideError,
+    parse_guide,
+    parse_stack_guide,
+)
 from metabrowser.cli import main as cli_main
 from metabrowser.cli.exit_codes import PRESENT_REFUSED_EXIT_CODE
 from metabrowser.cli.present import DELIVERY_EXIT_CODES
 from metabrowser.errors import CLIError
+from metabrowser.view_routes import PULL_ROUTE_TABS, STACK_ROUTE_TABS
 from tests.golden_harness import run_metab
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
@@ -104,8 +150,13 @@ _POSTED: Final = re.compile(r"\bPOST (/api/[^\s`'\"?),]+)")
 _SPAN: Final = re.compile(r"`([^`]+)`")
 _HEADING: Final = re.compile(r"^#{2,6} (.+)$")
 # A fence opens a block at any indentation, under a list item too, with backticks or
-# tildes; the block ends at a line of the same character at least as long.
-_FENCE: Final = re.compile(r"^\s*(`{3,}|~{3,})")
+# tildes, and its info string names the block's language; the block ends at a line of
+# the same character at least as long.
+_FENCE: Final = re.compile(r"^\s*(`{3,}|~{3,})\s*([^\s`]*)")
+# The languages of a block that holds prose or data, not commands, so an apostrophe in it
+# is a word and not a shell quote, and its last line may leave a quote open: a skeleton's
+# Markdown and YAML. Any other block that ends with a line open has lost a quote.
+_PROSE_FENCES: Final = frozenset({"markdown", "yaml"})
 # A line that the next one continues: a backslash, or an operator that needs more.
 _CONTINUED: Final = re.compile(r"(?:\\|\||&&)\s*$")
 _FORMATS: Final = frozenset({"json", "yaml"})
@@ -113,17 +164,145 @@ _PLUGIN_MODES: Final = frozenset({"--plugins", "--plugin", "--doctor"})
 # A field path such as `.last_refresh.outcome`, or a name such as `not_cached`.
 _NAME: Final = re.compile(r"\.?[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*")
 
-# The section whose recipes the golden runs, and how it spells their placeholders.
+# The sections whose recipes the golden runs, and how it spells their placeholders.
 GOLDEN_SECTION: Final = "From a Pull-Request URL"
+GUIDE_CONFIRM_SECTION: Final = "Publish and Confirm It"
+GUIDE_REFRESH_SECTION: Final = "Refresh It After a Push"
+GOLDEN_SECTIONS: Final = (GOLDEN_SECTION, GUIDE_CONFIRM_SECTION, GUIDE_REFRESH_SECTION)
 GOLDEN_SPELLING: Final = {
     "<invocation>": (
         "METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab"
     ),
     "<url>": "https://github.com/octo/demo/pull/7",
     "<n>": "7",
+    "<k>": "1",
     "<path>": "src/app.txt",
+    # The range test's side and lines: the new side of the file's one hunk.
+    "<side>": "new",
+    "<start>": "1",
+    "<end>": "2",
     "<tmp>": "tmp",
 }
+
+# The section on writing a guided review and its subsections, whose one-word code spans
+# check 7 holds to the guided-review module, and the subsection with the block skeletons.
+GUIDE_SECTIONS: Final = frozenset(
+    {
+        "Write a Guided Review",
+        "Write the Block",
+        GUIDE_CONFIRM_SECTION,
+        GUIDE_REFRESH_SECTION,
+        "Write a Stack Guide",
+        "Write the Stack’s Block",
+        "Publish and Confirm a Stack Guide",
+    }
+)
+SKELETON_SECTION: Final = "Write the Block"
+# The subsection with the stack guide's skeleton, one `stack-review` block in groups, and
+# the full commit IDs for its placeholders: the stack route's two commits.
+STACK_SKELETON_SECTION: Final = "Write the Stack’s Block"
+STACK_SKELETON_SPELLING: Final = {
+    "<full ID of the stack's base>": "3" * 40,
+    "<full ID of the top layer's head>": "4" * 40,
+}
+# The section of the stack guide's recipes, and for each file its filters read, the
+# golden, route, and state of the pinned answer that stands in for it, the first answer to
+# that route in that state: the list of stacks once a refresh succeeds, and stack 70 once
+# both its layers are read, so `.members` holds two layers, bottom up, and its top layer
+# carries the guide. `<n>` there is a layer's number, read as 8, a layer of stack 70 in
+# both goldens, whose stand-ins differ otherwise.
+STACK_CONFIRM_SECTION: Final = "Publish and Confirm a Stack Guide"
+STACK_ANSWERS: Final = {
+    "<tmp>/stacks.json": (
+        REPO_ROOT / "tests" / "golden" / "cli-github-stacks.txt",
+        "/api/plugin/github/stacks",
+        "current",
+    ),
+    "<tmp>/stack.json": (
+        REPO_ROOT / "tests" / "golden" / "cli-github-stack.txt",
+        "/api/plugin/github/stack?number=70",
+        "current",
+    ),
+}
+STACK_LAYER: Final = "8"
+# The other answers whose fields the section's prose names, pinned the same way: a layer's
+# record, and a stack guide's outline that reads as stale, which names its changed steps.
+STACK_PROSE_ANSWERS: Final = (
+    (
+        REPO_ROOT / "tests" / "golden" / "cli-github-pull-refresh.txt",
+        "/api/plugin/github/pull?number=7",
+        "current",
+    ),
+    (
+        REPO_ROOT / "tests" / "golden" / "cli-github-stack-guide.txt",
+        "/api/plugin/github/guided-review?stack=73",
+        "stale",
+    ),
+)
+# What a filter of the section reads for a null of a pinned answer, so a `null` it prints
+# is a field the answer lacks.
+NULL_STAND_IN: Final = "∅"
+# A field path of prose, with a list's items, `[]`, or one of them, `[-1]`.
+_FIELD_PATH: Final = re.compile(r"(?:\.[a-z][a-z0-9_]*(?:\[-?\d*\])?)+")
+_FIELD_STEP: Final = re.compile(r"\.([a-z][a-z0-9_]*)|\[(-?\d*)\]")
+# A page of the app, a pull request's or a stack's, with its tab when it names one, and not
+# a pull request's address on GitHub, `<repo>/pull/<n>`, or a ref, `refs/pull/<n>/head`.
+_PAGE: Final = re.compile(r"(?<![\w/.-])(?<!<repo>)/(pull|stack)/(?:<[a-z]+>|\d+)(?:/([a-z]+))?")
+PAGE_TABS: Final = {"pull": PULL_ROUTE_TABS, "stack": STACK_ROUTE_TABS}
+# The Agent Skills specification's bounds on the frontmatter's fields, in characters
+# (https://agentskills.io/specification), which a strict loader enforces by refusing the
+# skill.
+FRONTMATTER_BOUNDS: Final = {"name": 64, "description": 1024, "compatibility": 500}
+# A file's answer of two hunks, the second with a deleted line, for the two range recipes
+# of "From a Pull-Request URL", and the new side's lines as the first numbers them.
+RANGE_ANSWER: Final = {
+    "patches": {
+        "f1": {
+            "hunks": [
+                {
+                    "old_start": 1,
+                    "old_count": 1,
+                    "new_start": 1,
+                    "new_count": 2,
+                    "lines": [
+                        {"op": "context", "text": "one", "no_newline": False},
+                        {"op": "add", "text": "two", "no_newline": False},
+                    ],
+                },
+                {
+                    "old_start": 9,
+                    "old_count": 3,
+                    "new_start": 10,
+                    "new_count": 2,
+                    "lines": [
+                        {"op": "context", "text": "nine", "no_newline": False},
+                        {"op": "del", "text": "ten", "no_newline": False},
+                        {"op": "context", "text": "eleven", "no_newline": False},
+                    ],
+                },
+            ]
+        }
+    }
+}
+RANGE_NUMBERED: Final = "--\n1   one\n2 + two\n--\n10   nine\n11   eleven\n"
+# What the range test says for a side and lines of that answer: inside one hunk, or not.
+RANGE_VERDICTS: Final = {
+    ("new", 1, 2): "inside",
+    ("new", 10, 11): "inside",
+    ("new", 2, 10): "outside",
+    ("old", 9, 11): "inside",
+    ("old", 11, 12): "outside",
+}
+# A skeleton is the guide's own Markdown inside a four-backtick `markdown` fence, as the
+# format reference shows it, so the `guided-review` fence is part of what an agent copies.
+# The section has two, a flat guide and one in groups, in that order.
+_SKELETON: Final = re.compile(r"^````markdown\n(.*?)^````$", re.MULTILINE | re.DOTALL)
+# Full commit IDs for a skeleton's placeholders, which a pin must be.
+SKELETON_SPELLING: Final = {
+    "<full merge-base commit ID>": "1" * 40,
+    "<full head commit ID>": "2" * 40,
+}
+_WORD: Final = re.compile(r"[a-z][a-z0-9_]*")
 # The section of the refresh a checkout's folder server needs before it reads a pull
 # request; its `"comparison": true` acquires a store from GitHub, so the golden cannot
 # run it, and `tests/test_cli_github_checkout_golden.py` posts its body instead.
@@ -133,6 +312,8 @@ REFRESH_ROUTE: Final = "/api/plugin/github/pull-refresh"
 # The section of the `--present` recipes, the transcript that runs them against a
 # stand-in app, and how that transcript spells their placeholders.
 PRESENT_SECTION: Final = "Present It in the App"
+# The section of the rerun outside the sandbox, whose recipes the transcript runs too.
+RERUN_SECTION: Final = "When a Sandbox Blocks It"
 PRESENT_GOLDEN: Final = REPO_ROOT / "tests" / "golden" / "cli-present-delivery.txt"
 PRESENT_SPELLING: Final = {
     "<invocation>": "metab",
@@ -216,10 +397,18 @@ def _closes(line: str, fence: str) -> bool:
 def code_pieces(text: str) -> list[Code]:
     """Every logical line of a fenced block, and every code span of the prose."""
 
+    return _read(text)[0]
+
+
+def _read(text: str) -> tuple[list[Code], list[Code]]:
+    """What :func:`code_pieces` returns, and each line a block of commands ends open."""
+
     lines, offset = _body(text)
     pieces: list[Code] = []
+    unfinished: list[Code] = []
     section = ""
     fence: str | None = None
+    language = ""
     pending: list[str] = []
     pending_line = 0
     paragraph: list[tuple[int, str]] = []
@@ -235,7 +424,16 @@ def code_pieces(text: str) -> list[Code]:
         number = index + 1 + offset
         if fence is not None:
             if _closes(line, fence):
+                # A logical line ends with its block. Without this, an apostrophe in the
+                # stack skeleton's YAML left a quote open, and every block after it joined
+                # that one unfinished line, so no check read them. A block of commands
+                # that ends with a line open has lost a quote, which no check reads past,
+                # so it is kept for :func:`unfinished_findings`.
+                if pending and language not in _PROSE_FENCES:
+                    joined = " ".join(part.strip().removesuffix("\\") for part in pending)
+                    unfinished.append(Code(pending_line, " ".join(joined.split()), True, section))
                 fence = None
+                pending.clear()
                 continue
             if not pending:
                 pending_line = number
@@ -248,7 +446,7 @@ def code_pieces(text: str) -> list[Code]:
         opened = _FENCE.match(line)
         if opened is not None:
             spans()
-            fence = opened.group(1)
+            fence, language = opened.group(1), opened.group(2)
             continue
         heading = _HEADING.match(line)
         if heading is not None:
@@ -260,7 +458,17 @@ def code_pieces(text: str) -> list[Code]:
         else:
             paragraph.append((number, line))
     spans()
-    return pieces
+    return pieces, unfinished
+
+
+def unfinished_findings(text: str, name: str = "SKILL.md") -> list[str]:
+    """Lines of a block of commands that a quote or parenthesis leaves open at its end."""
+
+    return [
+        f"{name}:{piece.line}: the block ends with this line open, a quote or parenthesis "
+        f"lost: {piece.text!r}"
+        for piece in _read(text)[1]
+    ]
 
 
 def _tokens(text: str) -> list[str]:
@@ -355,12 +563,12 @@ def _value(args: tuple[str, ...], option: str) -> str | None:
 
 
 def _recipes(text: str) -> list[Code]:
-    """The recipes of :data:`GOLDEN_SECTION` that read JSON with ``jq``."""
+    """The recipes of :data:`GOLDEN_SECTIONS` that read JSON with ``jq``."""
 
     return [
         piece
         for piece in code_pieces(text)
-        if piece.block and piece.section == GOLDEN_SECTION and "jq" in _tokens(piece.text)
+        if piece.block and piece.section in GOLDEN_SECTIONS and "jq" in _tokens(piece.text)
     ]
 
 
@@ -388,13 +596,33 @@ def refresh_body(number: int, text: str | None = None) -> dict[str, Any]:
 
 
 def present_recipes(text: str) -> list[Code]:
-    """The commands of :data:`PRESENT_SECTION`'s blocks that present a target."""
+    """The commands of :data:`PRESENT_SECTION`'s and :data:`RERUN_SECTION`'s blocks that
+    present a target."""
 
     return [
         piece
         for piece in code_pieces(text)
-        if piece.block and piece.section == PRESENT_SECTION and "--present" in _tokens(piece.text)
+        if piece.block
+        and piece.section in (PRESENT_SECTION, RERUN_SECTION)
+        and "--present" in _tokens(piece.text)
     ]
+
+
+def rerun_findings(text: str) -> list[str]:
+    """Reruns outside the sandbox that lack ``--open-in app``, which keeps them to the app."""
+
+    reruns = [piece for piece in present_recipes(text) if piece.section == RERUN_SECTION]
+    if not reruns:
+        return [f"SKILL.md has no --present rerun under {RERUN_SECTION!r}"]
+    found: list[str] = []
+    for piece in reruns:
+        tokens = _tokens(piece.text)
+        if ("--open-in", "app") not in pairwise(tokens):
+            found.append(
+                f"SKILL.md:{piece.line}: {piece.text!r} reruns outside the sandbox without "
+                "--open-in app, so under auto it can start a server there"
+            )
+    return found
 
 
 def _section(text: str, heading: str) -> str:
@@ -606,13 +834,15 @@ def _runs(golden: str) -> set[str]:
 
 
 def recipe_findings(text: str, golden: str) -> list[str]:
-    """Recipes of :data:`GOLDEN_SECTION` that read JSON and the golden does not run."""
+    """Recipes of :data:`GOLDEN_SECTIONS` that read JSON and the golden does not run."""
 
     recipes = _recipes(text)
-    if not recipes:
-        return [f"SKILL.md has no recipe that reads JSON under {GOLDEN_SECTION!r}"]
+    found: list[str] = [
+        f"SKILL.md has no recipe that reads JSON under {section!r}"
+        for section in GOLDEN_SECTIONS
+        if not any(piece.section == section for piece in recipes)
+    ]
     runs = _runs(golden)
-    found: list[str] = []
     for piece in recipes:
         spelled = piece.text
         for placeholder, value in GOLDEN_SPELLING.items():
@@ -644,11 +874,23 @@ def refresh_findings(text: str, answer: Mapping[str, Any]) -> list[str]:
 
 
 def _has_field(node: Any, path: str) -> bool:
-    for key in path.removeprefix(".").split("."):
-        if not isinstance(node, Mapping) or key not in node:
-            return False
-        node = node[key]
-    return True
+    """Whether *node* holds the field *path*, such as ``.members[-1].number``: each key is
+    present, each ``[i]`` is an item of a list, and each ``[]`` is a list with items that
+    all hold the rest of the path."""
+
+    step = _FIELD_STEP.match(path)
+    if step is None:
+        return not path
+    key, index = step.groups()
+    rest = path[step.end() :]
+    if key is not None:
+        return isinstance(node, Mapping) and key in node and _has_field(node[key], rest)
+    if not isinstance(node, list) or not node:
+        return False
+    if not index:
+        return all(_has_field(item, rest) for item in node)
+    position = int(index)
+    return -len(node) <= position < len(node) and _has_field(node[position], rest)
 
 
 def present_findings(text: str, transcript: str) -> list[str]:
@@ -762,6 +1004,274 @@ def name_findings(text: str, words: frozenset[str], name: str = "SKILL.md") -> l
     return found
 
 
+def guide_values() -> frozenset[str]:
+    """Every string ``guided_review.py``, ``pull_stack.py``, and ``pull_stacks.py`` spell,
+    and every field of the block's models.
+
+    The strings are the states the guide's route, the stack's answer, and the list of
+    stacks answer, the reasons a reference is not ready, a stack cannot be shown, or a
+    refresh of the list ended, and the values they compare, such as a reference's
+    ``side``; the fields are the keys a block holds below ``collection``.
+    """
+
+    strings = {
+        node.value
+        for source in (guided_review.__file__, pull_stack.__file__, pull_stacks.__file__)
+        for node in ast.walk(ast.parse(Path(source).read_text(encoding="utf-8")))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    models = (
+        guided_review.Collection,
+        guided_review.CollectionComparison,
+        guided_review.CollectionGroup,
+        guided_review.CollectionItem,
+        guided_review.CollectionReference,
+    )
+    return frozenset(strings | {name for model in models for name in model.model_fields})
+
+
+def guide_value_findings(text: str, values: frozenset[str]) -> list[str]:
+    """One-word code spans of :data:`GUIDE_SECTIONS` that are not among *values*."""
+
+    return [
+        f"SKILL.md:{piece.line}: `{piece.text}` is not a value or field of guided_review.py"
+        " or pull_stack.py"
+        for piece in code_pieces(text)
+        if not piece.block
+        and piece.section in GUIDE_SECTIONS
+        and _WORD.fullmatch(piece.text)
+        and piece.text not in values
+    ]
+
+
+# What each skeleton under SKELETON_SECTION shows, in order: whether its steps are grouped.
+SKELETONS: Final = {"flat": False, "grouped": True}
+
+
+def skeletons(text: str) -> list[str]:
+    """The descriptions the block skeletons of :data:`SKELETON_SECTION` make, IDs filled in."""
+
+    found = _SKELETON.findall(_section(text, SKELETON_SECTION))
+    assert len(found) == len(SKELETONS), (
+        f"SKILL.md has {len(found)} block skeletons under {SKELETON_SECTION!r}, "
+        f"not {len(SKELETONS)}"
+    )
+    bodies: list[str] = []
+    for body in found:
+        for placeholder, value in SKELETON_SPELLING.items():
+            assert placeholder in body, f"a skeleton has no {placeholder}"
+            body = body.replace(placeholder, value)
+        bodies.append(body)
+    return bodies
+
+
+def skeleton_findings(text: str) -> list[str]:
+    """Why a skeleton is not a guide the page reads, or does not show the rules it states."""
+
+    found: list[str] = []
+    for (name, grouped), body in zip(SKELETONS.items(), skeletons(text), strict=True):
+        try:
+            guide = parse_guide(body)
+        except GuideError as refusal:
+            found.append(f"the page refuses the {name} skeleton: {refusal}")
+            continue
+        if guide is None:
+            found.append(f"the {name} skeleton has no guided-review block the page reads")
+            continue
+        pins = (guide.comparison.merge_base, guide.comparison.head)
+        if pins != tuple(SKELETON_SPELLING.values()):
+            found.append(f"the {name} skeleton's pins read as {pins}, not its placeholders")
+        steps = guide.flat_items()
+        if not any(": " in step.title for step in steps):
+            found.append(
+                f"no title of the {name} skeleton holds ': ', so it hides the quoting rule"
+            )
+        if not any("\n- " in step.note for step in steps):
+            found.append(f"no note of the {name} skeleton keeps a list's lines")
+        if (steps != guide.items) != grouped:
+            found.append(f"the {name} skeleton {'has no' if grouped else 'has a'} group")
+    return found
+
+
+def stack_skeleton(text: str) -> str:
+    """The description the skeleton of :data:`STACK_SKELETON_SECTION` makes, IDs filled in."""
+
+    found = _SKELETON.findall(_section(text, STACK_SKELETON_SECTION))
+    assert len(found) == 1, (
+        f"SKILL.md has {len(found)} block skeletons under {STACK_SKELETON_SECTION!r}, not 1"
+    )
+    body = found[0]
+    for placeholder, value in STACK_SKELETON_SPELLING.items():
+        assert placeholder in body, f"the stack skeleton has no {placeholder}"
+        body = body.replace(placeholder, value)
+    return body
+
+
+def stack_skeleton_findings(text: str) -> list[str]:
+    """Why the stack skeleton is not a stack guide the page reads, or hides a rule it states."""
+
+    body = stack_skeleton(text)
+    try:
+        guide = parse_stack_guide(body)
+    except GuideError as refusal:
+        return [f"the page refuses the stack skeleton: {refusal}"]
+    if guide is None:
+        return ["the stack skeleton has no stack-review block the page reads"]
+    found: list[str] = []
+    pins = (guide.comparison.merge_base, guide.comparison.head)
+    if pins != tuple(STACK_SKELETON_SPELLING.values()):
+        found.append(f"the stack skeleton's pins read as {pins}, not its placeholders")
+    steps = guide.flat_items()
+    if not any(": " in step.title for step in steps):
+        found.append("no title of the stack skeleton holds ': ', so it hides the quoting rule")
+    if not any("\n- " in step.note for step in steps):
+        found.append("no note of the stack skeleton keeps a list's lines")
+    if steps == guide.items:
+        found.append("the stack skeleton has no group")
+    if not any(
+        len(step.references) > 1 and all(reference.kind == "pull" for reference in step.references)
+        for step in steps
+    ):
+        found.append("no step of the stack skeleton cites its layers as {pull}")
+    return found
+
+
+def pinned_answer(transcript: str, route: str, state: str) -> Any:
+    """The first answer to ``--api`` *route* in an in-process golden that reads as *state*."""
+
+    for command, _status, stdout in transcript_blocks(transcript):
+        if command.endswith((f"--api {route}", f"--api '{route}'")) and "{" in stdout:
+            answer, _end = json.JSONDecoder().raw_decode(stdout, stdout.index("{"))
+            if answer.get("state") == state:
+                return answer
+    raise AssertionError(f"the transcript has no {state} answer to {route}")
+
+
+def _null_stood_in(node: Any) -> Any:
+    """*node* with each null read as :data:`NULL_STAND_IN`."""
+
+    if node is None:
+        return NULL_STAND_IN
+    if isinstance(node, Mapping):
+        return {key: _null_stood_in(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_null_stood_in(item) for item in node]
+    return node
+
+
+def _jq(words: list[str], answer: Any) -> subprocess.CompletedProcess[str]:
+    """``jq`` with *words*, its arguments without the file, reading *answer*."""
+
+    return subprocess.run(
+        ["jq", *words], input=json.dumps(answer), capture_output=True, text=True, check=False
+    )
+
+
+def stack_filter_findings(text: str) -> tuple[list[str], list[str]]:
+    """Filters of :data:`STACK_CONFIRM_SECTION` that fail, print nothing, or print a
+    ``null``, a field the answer lacks, on the answers the stack goldens pin, with ``<n>``
+    read as :data:`STACK_LAYER`, and what each printed.
+    """
+
+    answers = {
+        path: _null_stood_in(pinned_answer(golden.read_text(encoding="utf-8"), route, state))
+        for path, (golden, route, state) in STACK_ANSWERS.items()
+    }
+    found: list[str] = []
+    printed: list[str] = []
+    for piece in code_pieces(text):
+        if not piece.block or piece.section != STACK_CONFIRM_SECTION:
+            continue
+        for words, _read in _segments(_tokens(piece.text)):
+            if words[0] != "jq" or words[-1] not in answers:
+                continue
+            ran = _jq(
+                [word.replace("<n>", STACK_LAYER) for word in words[1:-1]], answers[words[-1]]
+            )
+            printed.append(ran.stdout.strip())
+            if ran.returncode != 0 or not ran.stdout.strip():
+                found.append(
+                    f"SKILL.md:{piece.line}: {' '.join(words)} prints nothing from the pinned "
+                    f"answer: {ran.stderr.strip()}"
+                )
+            elif re.search(r"\bnull\b", ran.stdout):
+                found.append(
+                    f"SKILL.md:{piece.line}: {' '.join(words)} prints null, a field the pinned "
+                    f"answer lacks: {ran.stdout.strip()!r}"
+                )
+    return found, printed
+
+
+def stack_field_findings(text: str) -> tuple[list[str], list[str]]:
+    """Field paths the prose of :data:`STACK_CONFIRM_SECTION` names that no answer the
+    section reads holds, and the paths it names."""
+
+    answers = [
+        pinned_answer(golden.read_text(encoding="utf-8"), route, state)
+        for golden, route, state in (*STACK_ANSWERS.values(), *STACK_PROSE_ANSWERS)
+    ]
+    paths = list(
+        dict.fromkeys(
+            piece.text
+            for piece in code_pieces(text)
+            if not piece.block
+            and piece.section == STACK_CONFIRM_SECTION
+            and _FIELD_PATH.fullmatch(piece.text)
+        )
+    )
+    found = [
+        f"no answer {STACK_CONFIRM_SECTION!r} reads has {path}, which SKILL.md names"
+        for path in paths
+        if not any(_has_field(answer, path) for answer in answers)
+    ]
+    return found, paths
+
+
+def range_recipe(text: str, needle: str) -> list[str]:
+    """The arguments, without the file, of the one ``jq`` recipe of :data:`GOLDEN_SECTION`
+    that holds *needle*."""
+
+    found = [
+        words[1:-1]
+        for piece in code_pieces(text)
+        if piece.block and piece.section == GOLDEN_SECTION and needle in piece.text
+        for words, _read in _segments(_tokens(piece.text))
+        if words[0] == "jq"
+    ]
+    assert len(found) == 1, f"SKILL.md has {len(found)} recipes with {needle!r}"
+    return found[0]
+
+
+def page_findings(text: str, name: str = "SKILL.md") -> tuple[list[str], list[str]]:
+    """Page addresses in *text* whose tab the app's routes lack, and every address."""
+
+    found: list[str] = []
+    pages: list[str] = []
+    for match in _PAGE.finditer(text):
+        kind, tab = match.group(1), match.group(2) or ""
+        pages.append(match.group(0))
+        if tab not in PAGE_TABS[kind]:
+            line = text.count("\n", 0, match.start()) + 1
+            found.append(
+                f"{name}:{line}: {match.group(0)} names a tab the {kind} page lacks; its tabs "
+                f"are {sorted(PAGE_TABS[kind])}"
+            )
+    return found, pages
+
+
+def frontmatter_findings(text: str) -> list[str]:
+    """Fields of the skill's frontmatter longer than :data:`FRONTMATTER_BOUNDS` allows."""
+
+    _lines, end = _body(text)
+    fields = yaml.safe_load("\n".join(text.split("\n")[1 : end - 1]))
+    return [
+        f"the frontmatter's {field} is {len(fields[field])} characters, past the {bound} the "
+        "Agent Skills specification allows"
+        for field, bound in FRONTMATTER_BOUNDS.items()
+        if len(fields[field]) > bound
+    ]
+
+
 # ── The skill as it is ──────────────────────────────────────────────
 
 
@@ -794,7 +1304,19 @@ def source() -> frozenset[str]:
 # The routes the recipes read with `jq`, and the others the skill names in prose, which
 # the reader must find for the checks to mean anything.
 RECIPE_ROUTES: Final = frozenset(
-    {"/api/plugin/github/pull?number=<n>", "$ROUTE", "/api/source/status", REFRESH_ROUTE}
+    {
+        "/api/plugin/github/pull?number=<n>",
+        "$ROUTE",
+        "$ROUTE&file=<path>",
+        "/api/source/status",
+        REFRESH_ROUTE,
+        "/api/plugin/github/guided-review?number=<n>&step=<k>",
+        "/api/plugin/github/guided-review?number=<n>",
+        # The stack guide's, which come after the stack skeleton, so the reader must read
+        # past its YAML.
+        "/api/plugin/github/stack?number=<s>",
+        "/api/plugin/github/guided-review?stack=<s>&step=<k>",
+    }
 )
 PROSE_ROUTES: Final = frozenset({"/api/routes", "/api/file?path=<log>", "/api/git/log?limit=<n>"})
 
@@ -812,8 +1334,8 @@ def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     named = {_value(command.args, "--api") for command in found if command.whole}
     assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
-    assert len(_recipes(skill)) == 3
-    assert len(present_recipes(skill)) == 2
+    assert len(_recipes(skill)) == 10
+    assert len(present_recipes(skill)) == 4
     assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 
 
@@ -863,6 +1385,74 @@ def test_the_present_table_gives_each_status_its_codes(skill: str) -> None:
     assert status_code_findings(skill) == []
 
 
+def test_every_rerun_outside_the_sandbox_is_kept_to_the_app(skill: str) -> None:
+    assert rerun_findings(skill) == []
+
+
+def test_every_guide_value_is_one_the_module_spells(skill: str) -> None:
+    assert guide_value_findings(skill, guide_values()) == []
+
+
+def test_the_block_skeletons_are_guides_the_page_reads(skill: str) -> None:
+    assert skeleton_findings(skill) == []
+
+
+def test_the_stack_skeleton_is_a_stack_guide_the_page_reads(skill: str) -> None:
+    assert stack_skeleton_findings(skill) == []
+
+
+# The prose field paths of "Publish and Confirm a Stack Guide" that the stack's and the
+# list's answers hold, which check 9 must find there.
+STACK_PROSE_FIELDS: Final = frozenset(
+    {
+        ".guide.number",
+        ".members[-1].number",
+        ".truncated",
+        ".last_refresh.outcome",
+        ".comparison.left",
+        ".comparison.right",
+    }
+)
+
+
+def test_the_stack_filters_read_the_pinned_stack_answers(skill: str) -> None:
+    findings, printed = stack_filter_findings(skill)
+    assert findings == []
+    # The stack layer 8 is in, its layers bottom up, and each changed file with the layers
+    # that change it.
+    layers = "1 8 merged Say more in the guide\n2 10 draft WIP: draft the next page"
+    assert "70" in printed and "docs/draft.md → 10" in printed, printed
+    assert any(output.endswith(layers) for output in printed), printed
+    fields, paths = stack_field_findings(skill)
+    assert fields == [] and set(paths) >= STACK_PROSE_FIELDS, (fields, paths)
+
+
+def test_no_block_of_commands_ends_with_a_line_open(skill: str, guide: str) -> None:
+    assert unfinished_findings(skill) == []
+    assert unfinished_findings(guide, GUIDE.name) == []
+
+
+def test_every_page_address_names_a_tab_of_its_page(skill: str, guide: str) -> None:
+    for text, name in ((skill, SKILL.name), (guide, GUIDE.name)):
+        found, pages = page_findings(text, name)
+        assert found == []
+        assert {page.split("/")[1] for page in pages} == {"pull", "stack"}, pages
+
+
+def test_the_frontmatter_keeps_to_the_specification(skill: str) -> None:
+    assert frontmatter_findings(skill) == []
+
+
+def test_the_range_recipes_number_lines_and_test_ranges(skill: str) -> None:
+    numbering = range_recipe(skill, "reduce .lines[]")
+    assert _jq(numbering, RANGE_ANSWER).stdout == RANGE_NUMBERED
+    test = range_recipe(skill, "--argjson start_line")
+    for (side, start, end), verdict in RANGE_VERDICTS.items():
+        spelled = {"<side>": side, "<start>": str(start), "<end>": str(end)}
+        words = [spelled.get(word, word) for word in test]
+        assert _jq(words, RANGE_ANSWER).stdout == f"{verdict}\n", (side, start, end)
+
+
 # ── Each check fails its mutation ───────────────────────────────────
 
 
@@ -872,6 +1462,13 @@ def _mutated(skill: str, old: str, new: str) -> str:
 
 
 DETECT: Final = "--api '/api/plugin/github/pull?number=<n>' --format json > <tmp>/pull.json"
+
+
+def test_a_rerun_without_open_in_app_fails(skill: str) -> None:
+    rerun = "<invocation> --present <target> --open-in app --format json"
+    mutated = _mutated(skill, rerun, rerun.replace(" --open-in app", ""))
+    findings = rerun_findings(mutated)
+    assert len(findings) == 1 and "without --open-in app" in findings[0]
 
 
 def test_a_recipe_without_format_json_fails(skill: str) -> None:
@@ -997,6 +1594,170 @@ def test_a_name_the_source_does_not_use_fails(skill: str, source: frozenset[str]
     ]
 
 
+GUIDE_STEP_ROUTE: Final = "/api/plugin/github/guided-review?number=<n>&step=<k>"
+
+
+def test_a_wrong_guide_route_fails(skill: str, routes: RouteTable) -> None:
+    mutated = _mutated(skill, GUIDE_STEP_ROUTE, GUIDE_STEP_ROUTE.replace("review?", "reviews?"))
+    line = _line(mutated, "guided-reviews?")
+    assert route_findings(mutated, routes) == [
+        f"SKILL.md:{line}: /api/plugin/github/guided-reviews is not a registered route"
+    ]
+    findings = recipe_findings(mutated, GOLDEN.read_text(encoding="utf-8"))
+    assert len(findings) == 1 and findings[0].startswith(f"SKILL.md:{line}: ")
+
+
+def test_a_guide_state_the_route_never_answers_fails(skill: str, source: frozenset[str]) -> None:
+    """A renamed state passes check 5, which leaves one-word values alone, and fails check 7."""
+
+    mutated = _mutated(skill, "`.state` is `ready` when", "`.state` is `done` when")
+    assert name_findings(mutated, source) == []
+    assert guide_value_findings(mutated, guide_values()) == [
+        f"SKILL.md:{_line(mutated, '`done`')}: `done` is not a value or field of guided_review.py"
+        " or pull_stack.py"
+    ]
+    field = _mutated(skill, "with a `side`,", "with a `sides`,")
+    assert [found.split(": ", 1)[1] for found in guide_value_findings(field, guide_values())] == [
+        "`sides` is not a value or field of guided_review.py or pull_stack.py"
+    ]
+
+
+def test_a_guide_recipe_the_golden_does_not_run_fails(skill: str) -> None:
+    golden = GOLDEN.read_text(encoding="utf-8")
+    filtered = _mutated(skill, ".stale.changed_steps, .stale", ".stale.steps, .stale")
+    findings = recipe_findings(filtered, golden)
+    assert len(findings) == 1 and ".stale.steps" in findings[0]
+    # A renamed heading takes its recipe out of the golden's reach, which is reported.
+    renamed = _mutated(skill, "### Publish and Confirm It\n", "### Publish It\n")
+    assert recipe_findings(renamed, golden) == [
+        f"SKILL.md has no recipe that reads JSON under {GUIDE_CONFIRM_SECTION!r}"
+    ]
+
+
+SKELETON_TITLE: Final = '"Keystone: the snapshot is served before the worker ends"'
+# The grouped skeleton's two group heads, which a mutation takes out to leave its steps
+# ungrouped.
+SKELETON_DECISIONS_GROUP: Final = "    - title: Decisions\n      items:\n"
+SKELETON_TESTING_GROUP: Final = "    - title: Testing\n      items:\n"
+# The testing step's list note and its reference, at the flat skeleton's indent; the grouped
+# skeleton's lines are these with four more spaces. Each begins at a line's start, so a
+# mutation of the flat one cannot match inside the grouped one.
+SKELETON_LIST_NOTE: Final = "\n      note: |-\n"
+SKELETON_TESTING_REFERENCE: Final = "\n      references:\n        - {path: tests/test_cache.py}\n"
+
+
+def _indented(lines: str) -> str:
+    """*lines*, each that holds text four spaces deeper, as the grouped skeleton has them."""
+    return "\n".join(f"    {line}" if line else line for line in lines.split("\n"))
+
+
+def test_a_skeleton_the_page_refuses_fails(skill: str) -> None:
+    # The flat skeleton comes first, so a mutation applied once reaches it.
+    unquoted = _mutated(skill, SKELETON_TITLE, SKELETON_TITLE.strip('"'))
+    assert skeleton_findings(unquoted) == [
+        "the page refuses the flat skeleton: The guided-review block contains invalid YAML."
+    ]
+    for name, note in (("flat", SKELETON_LIST_NOTE), ("grouped", _indented(SKELETON_LIST_NOTE))):
+        folded = _mutated(skill, note, note.replace("|-", ">-"))
+        assert skeleton_findings(folded) == [f"no note of the {name} skeleton keeps a list's lines"]
+    for name, at in (("flat", "items.1."), ("grouped", "items.1.items.0.")):
+        reference = SKELETON_TESTING_REFERENCE
+        bare = _mutated(skill, reference if name == "flat" else _indented(reference), "\n")
+        assert skeleton_findings(bare) == [
+            f"the page refuses the {name} skeleton: The guided-review block does not satisfy "
+            f"the v1 SoftSchema at {at}"
+        ]
+    # Without their groups' heads, the steps are one list, which YAML reads at any indent.
+    ungrouped = _mutated(skill, SKELETON_TESTING_GROUP, "")
+    ungrouped = _mutated(ungrouped, SKELETON_DECISIONS_GROUP, "")
+    assert skeleton_findings(ungrouped) == ["the grouped skeleton has no group"]
+    # The grouped skeleton in the flat one's place shows no flat guide.
+    flat, grouped = _SKELETON.findall(_section(skill, SKELETON_SECTION))
+    assert skeleton_findings(_mutated(skill, flat, grouped)) == ["the flat skeleton has a group"]
+
+
+# The stack skeleton's fence, and its layers step's last reference.
+STACK_SKELETON_FENCE: Final = "```stack-review\n"
+STACK_SKELETON_LAYER: Final = "            - {pull: 813}\n"
+
+
+def test_a_stack_skeleton_the_page_does_not_read_fails(skill: str) -> None:
+    renamed = _mutated(skill, STACK_SKELETON_FENCE, "```guided-review\n")
+    assert stack_skeleton_findings(renamed) == [
+        "the stack skeleton has no stack-review block the page reads"
+    ]
+    cited = _mutated(skill, STACK_SKELETON_LAYER, "            - {path: docs/cache-plan.md}\n")
+    assert stack_skeleton_findings(cited) == [
+        "no step of the stack skeleton cites its layers as {pull}"
+    ]
+    doubled = _mutated(
+        skill, STACK_SKELETON_FENCE, f"{STACK_SKELETON_FENCE}```\n{STACK_SKELETON_FENCE}"
+    )
+    assert stack_skeleton_findings(doubled)[0].startswith("the page refuses the stack skeleton")
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (".pulls | index", ".pull | index"),
+        (".layers[].number", ".layer[].number"),
+        # Fields that print `null` when renamed, rather than nothing.
+        (".comparison.left, .comparison.right", ".comparison.lft, .comparison.right"),
+        ("[.place, .number, .state, .title]", "[.place, .num, .state, .title]"),
+    ],
+)
+def test_a_stack_filter_the_answer_does_not_hold_fails(skill: str, old: str, new: str) -> None:
+    findings, _printed = stack_filter_findings(_mutated(skill, old, new))
+    assert len(findings) == 1 and new in findings[0], findings
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("`.guide.number`", "`.guide.layer`"),
+        ("`.members[-1].number`", "`.members[-1].id`"),
+        ("`.truncated`", "`.clipped`"),
+        ("`.carrier`", "`.holder`"),
+    ],
+)
+def test_a_stack_field_no_answer_holds_fails(skill: str, old: str, new: str) -> None:
+    findings, _paths = stack_field_findings(_mutated(skill, old, new))
+    assert len(findings) == 1 and new.strip("`") in findings[0], findings
+
+
+def test_a_block_that_loses_a_quote_fails(skill: str) -> None:
+    # The documents recipe, its jq filter's closing quote lost and a flag misspelled: the
+    # flag check cannot see the flag, so this check must see the line.
+    mutated = _mutated(
+        _mutated(skill, ".path)\"' <tmp>/docs.json", '.path)" <tmp>/docs.json'),
+        '&group=type:docs" --format json',
+        '&group=type:docs" --formt json',
+    )
+    findings = unfinished_findings(mutated)
+    assert len(findings) == 1 and "--formt json" in findings[0], findings
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [("`/pull/<n>/checks`", "`/pull/<n>/check`"), ("`/stack/<s>/docs`", "`/stack/<s>/doc`")],
+)
+def test_a_page_tab_the_app_lacks_fails(skill: str, guide: str, old: str, new: str) -> None:
+    for text, name in ((skill, SKILL.name), (guide, GUIDE.name)):
+        found, _pages = page_findings(_mutated(text, old, new), name)
+        assert len(found) == 1 and new.strip("`") in found[0], found
+
+
+def test_a_frontmatter_field_past_its_bound_fails(skill: str) -> None:
+    longer = _mutated(skill, "compatibility: >-\n", "compatibility: >-\n  " + "x" * 500 + "\n")
+    findings = frontmatter_findings(longer)
+    assert len(findings) == 1 and "compatibility is" in findings[0], findings
+
+
+def test_a_range_recipe_that_numbers_deleted_lines_fails(skill: str) -> None:
+    mutated = _mutated(skill, 'if $l.op == "del" then .', 'if $l.op == "add" then .')
+    assert _jq(range_recipe(mutated, "reduce .lines[]"), RANGE_ANSWER).stdout != RANGE_NUMBERED
+
+
 PRESENT: Final = "<invocation> --present <target> --format json\n"
 
 
@@ -1015,7 +1776,7 @@ def test_a_present_recipe_the_delivery_golden_does_not_run_fails(skill: str) -> 
 def test_a_report_field_the_golden_lacks_fails(skill: str) -> None:
     mutated = _mutated(skill, "`.target.page`, the address", "`.target.address`, the address")
     assert present_findings(mutated, PRESENT_GOLDEN.read_text(encoding="utf-8")) == [
-        "the report of status [0, 3, 4, 5] has no .target.address, which SKILL.md reads"
+        "the report of status [0, 1, 3, 4, 5] has no .target.address, which SKILL.md reads"
     ]
 
 

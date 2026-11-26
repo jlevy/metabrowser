@@ -45,6 +45,49 @@ trust bypass, and a link sent to the macOS app that runs, clones, or reaches any
 its [trust boundary](docs/project/architecture/arch-macos-app.md#the-trust-boundary)
 does not allow.
 
+## What Metabrowser Defends Against
+
+The [threat model](docs/project/architecture/arch-threat-model.md) lists every threat
+with the policy that answers it, the test that holds the policy, and the risk that
+remains. In short, Metabrowser defends:
+
+- **Against the author of what you browse.** A file in a folder, a repository opened
+  from its URL, or a pull request cannot run script in Metabrowser’s page, reach its
+  `/api`, read files outside the served root, or make Git run a program.
+  Every repository from a URL is untrusted, and `--untrusted` makes a folder so.
+- **Against websites.** Another site cannot read Metabrowser’s answers or change its
+  state through your browser, even by pointing its own domain at your machine.
+- **Against slow or hostile files.** Every read is bounded, and the parsers that can run
+  long run in processes Metabrowser can stop.
+- **Against other accounts on your machine.** Its cache and state refuse directories
+  another account could write.
+
+It does not defend against code you install: a plugin runs in the page and, if installed
+as a package, in the server.
+And it is not a network service: anyone who can reach a server you bound to another
+interface can read every file under its root.
+
+### Accepted Risks
+
+- **A trusted folder is yours.** Its Markdown renders richly and an HTML file’s preview
+  runs its scripts, in a sandbox that keeps them from Metabrowser’s page and API. Serve
+  a folder you did not write with `--untrusted`.
+- **PDFs open in your browser’s viewer.** A PDF’s own page shows it in the browser’s
+  viewer, from every source, so the browser’s PDF engine reads the file when you open
+  that page, as it would for any PDF link.
+  Nothing else embeds one: a diff, an overview, or a Markdown document never starts a
+  viewer.
+- **Metabrowser draws a PDF’s first page itself.** For the preview behind a PDF’s viewer
+  and the card a diff shows, the server renders the first page with PDFium in a child
+  process with a deadline and resource limits.
+  For a source you did not mark as yours (an `--untrusted` folder, a repository, a pull
+  request) that child runs only inside the operating system’s sandbox, macOS’s today;
+  without one, such a PDF’s card has no image.
+  A trusted folder’s PDFs are drawn without a sandbox where there is none.
+- **The macOS app opens files in their default app.** Open hands a PDF, image, or media
+  file to the app macOS assigns its type; a copy from a repository or pull request is
+  quarantined and read-only first, so Gatekeeper still judges it.
+
 ## Trust Settings
 
 **Host names.** Every request’s `Host` header is checked against an allowlist, which
@@ -61,6 +104,24 @@ A flag outranks its environment variable, so `--untrusted` stays conservative wh
 the environment says.
 The command-line guide owns the [trust flags](docs/command-line.md#content-trust) and
 every [environment variable](docs/command-line.md#environment-variables).
+
+**Images from the web.** Untrusted Markdown, a repository opened from its URL, a pull
+request’s text, or a folder served with `--untrusted`, shows its images from the web
+over `https`, as github.com does: the page’s Content-Security-Policy admits `https:`
+images, the allowlist keeps only an address written in full over `https`, and each is
+fetched with no referrer: the image says so, and so does the page’s
+`Referrer-Policy: no-referrer`, which covers an image a Mermaid diagram names.
+An image runs no script and reads nothing of the page, but its host learns that your
+browser fetched it, and from what address of yours, and the browser requests whatever
+address the document names, including an `https` address on your own machine or network,
+as it would for any web page.
+**Block remote images**, in the Metabrowser menu and off unless you tick it, shows every
+such image as its alt text and narrows the policy to this origin, so the browser sends
+no request for one
+([the policy](docs/project/architecture/arch-server-and-content.md#the-untrusted-page-policy)).
+On a trusted folder’s page, which has no policy to narrow, the box affects a pull
+request’s text, a commit’s, and a Markdown diff, through the allowlist alone; the
+folder’s own Markdown is the reader’s and is not changed.
 
 **`.env` files.** Metabrowser reads `.env` and `.env.local` from the working directory
 and its parents, so running `metab` inside a cloned repository reads that repository’s

@@ -13,8 +13,10 @@
 #   SIGN_KEYCHAIN  the keychain any SIGN_IDENTITY but "-" is found in, and only there
 #                  (default: release_keychain in common.sh), whatever kind it is.
 #   BUILD          CFBundleVersion (default: the commit count of HEAD).
-#   ARCHES         space-separated architectures (default arm64); "arm64 x86_64" builds
-#                  each slice and merges them with lipo.
+#   ARCHES         architectures separated by whitespace (default_arches in common.sh
+#                  when unset or empty); "arm64 x86_64" builds each slice and merges them
+#                  with lipo. normalize_arches in common.sh reads it: order, repeats,
+#                  and stray whitespace do not matter, and any other name is refused.
 #   ICON           0 skips the icon.
 #
 # CFBundleShortVersionString is the VERSION file, and nothing overrides it.
@@ -27,7 +29,6 @@ variant_settings "${VARIANT:-dev}"
 build="$(build_number)"
 identity="${SIGN_IDENTITY:--}"
 executable="Metabrowser"  # the SwiftPM product, and CFBundleExecutable in both variants
-arches="${ARCHES:-arm64}"
 if [[ "${ICON:-1}" != 0 && ! -f "$icon_source" ]]; then
   die "$icon_source does not exist; scripts/build-icon.sh builds it"
 fi
@@ -44,6 +45,8 @@ lipo -create "${slices[@]}" -output "$app/Contents/MacOS/$executable"
 # Local symbols: about 0.5 MB. strip warns that it invalidates the linker's ad hoc
 # signature, which is replaced below.
 quietly strip -x "$app/Contents/MacOS/$executable"
+# The slices built are the slices asked for, which the image's name is predicted from.
+require_slices "$app/Contents/MacOS/$executable" "$arches"
 
 plist="$app/Contents/Info.plist"
 cp Resources/Info.plist "$plist"
@@ -56,12 +59,24 @@ plutil -replace CFBundleVersion -string "$build" "$plist"
 # these (AppIdentity in ShellCore).
 plutil -replace MetabrowserBuildVariant -string "$variant" "$plist"
 commit="$(source_commit)"
+if [[ "$variant" == release && "${NOTARIZE:-0}" == 1 ]]; then
+  [[ -n "$commit" && "$commit" != *-dirty ]] ||
+    die "the app bundle inputs must match a Git commit for an official release"
+fi
 [[ -z "$commit" ]] || plutil -replace MetabrowserSourceCommit -string "$commit" "$plist"
 [[ -z "$scheme_suffix" ]] || suffix_url_schemes "$plist" "$scheme_suffix" "$bundle_id"
 printf 'APPL????' >"$app/Contents/PkgInfo"
 
 # The variant's icon: the canary icon for dev, the published icon for release.
 [[ "${ICON:-1}" == 0 ]] || cp "$icon_source" "$app/Contents/Resources/AppIcon.icns"
+
+# A clean build ships the notice at its stamped commit. A development build can
+# ship a local edit with the -dirty stamp.
+if [[ -n "$commit" && "$commit" != *-dirty ]]; then
+  git cat-file blob "$commit:$app_glyph_license" >"$app/Contents/Resources/${app_glyph_license##*/}"
+else
+  cp "../../$app_glyph_license" "$app/Contents/Resources/"
+fi
 
 plutil -lint "$plist"
 

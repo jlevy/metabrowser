@@ -1,0 +1,205 @@
+$defs:
+  CollectionComparison:
+    additionalProperties: false
+    description: |-
+      The change a collection's references resolve against: a merge base and a head.
+
+      A guided review needs it, since its description is not versioned with the code it
+      describes. v1 requires it of every collection; a carrier without a change, such as a
+      repository file, makes it optional, which is not a break.
+    properties:
+      head:
+        $ref: '#/$defs/Sha'
+      merge_base:
+        $ref: '#/$defs/Sha'
+    required:
+    - head
+    - merge_base
+    title: CollectionComparison
+    type: object
+  CollectionEntry:
+    else:
+      $ref: '#/$defs/CollectionItem'
+    if:
+      required:
+      - items
+    then:
+      $ref: '#/$defs/CollectionGroup'
+  CollectionGroup:
+    additionalProperties: false
+    description: |-
+      A titled run of items, read in its place: a title, an optional note, and its items.
+
+      A group's items are items, never groups, so a collection nests one level. A group is
+      an entry of the collection as each of its items is.
+    properties:
+      items:
+        items:
+          $ref: '#/$defs/CollectionItem'
+        maxItems: 39
+        minItems: 1
+        title: Items
+        type: array
+      note:
+        anyOf:
+        - $ref: '#/$defs/Prose'
+        - type: 'null'
+        default: null
+      title:
+        $ref: '#/$defs/Prose'
+    required:
+    - items
+    - title
+    title: CollectionGroup
+    type: object
+  CollectionItem:
+    additionalProperties: false
+    properties:
+      note:
+        $ref: '#/$defs/Prose'
+      references:
+        items:
+          $ref: '#/$defs/CollectionReference'
+        maxItems: 8
+        minItems: 1
+        title: References
+        type: array
+      title:
+        $ref: '#/$defs/Prose'
+    required:
+    - note
+    - references
+    - title
+    title: CollectionItem
+    type: object
+  CollectionReference:
+    additionalProperties: false
+    description: |-
+      What an item is about, one of four kinds, each spelled one way.
+
+      - `{path}`, a file of the carrier's comparison, whole, or with a `side` and an
+        inclusive line range;
+      - `{pull, path}`, a file as pull request `pull` changes it, whole, in that pull
+        request's current comparison, which the collection does not pin, so a range into it
+        would come to point at other lines;
+      - `{pull}`, a pull request;
+      - `{commit}`, a commit, by its full ID.
+
+      Every kind is valid in every carrier, and a carrier resolves each from what it has
+      cached, fetching nothing.
+    else:
+      else:
+        required:
+        - path
+      if:
+        properties:
+          pull:
+            not:
+              type: 'null'
+        required:
+        - pull
+      then:
+        properties:
+          end_line:
+            type: 'null'
+          side:
+            type: 'null'
+          start_line:
+            type: 'null'
+    if:
+      properties:
+        commit:
+          not:
+            type: 'null'
+      required:
+      - commit
+    properties:
+      commit:
+        anyOf:
+        - $ref: '#/$defs/Sha'
+        - type: 'null'
+        default: null
+      end_line:
+        anyOf:
+        - $ref: '#/$defs/LineNumber'
+        - type: 'null'
+        default: null
+      path:
+        anyOf:
+        - $ref: '#/$defs/Prose'
+        - type: 'null'
+        default: null
+      pull:
+        anyOf:
+        - $ref: '#/$defs/PullNumber'
+        - type: 'null'
+        default: null
+      side:
+        anyOf:
+        - enum:
+          - old
+          - new
+          type: string
+        - type: 'null'
+        default: null
+        title: Side
+      start_line:
+        anyOf:
+        - $ref: '#/$defs/LineNumber'
+        - type: 'null'
+        default: null
+    then:
+      properties:
+        end_line:
+          type: 'null'
+        path:
+          type: 'null'
+        pull:
+          type: 'null'
+        side:
+          type: 'null'
+        start_line:
+          type: 'null'
+    title: CollectionReference
+    type: object
+  LineNumber:
+    minimum: 1
+    type: integer
+  Prose:
+    minLength: 1
+    type: string
+  PullNumber:
+    maximum: 9999999999
+    minimum: 1
+    type: integer
+  Sha:
+    pattern: ^[0-9a-f]{40}(?:[0-9a-f]{24})?$
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: |-
+  Ordered annotated items, each a title, a note, and the references it is about, which
+  may be gathered in titled groups.
+
+  The format is general: a guided review is one use, a collection carried in a
+  `guided-review` fence and pinned to a comparison. A collection has no prose of its own:
+  the document that carries it introduces it, as a pull request's description introduces
+  its guide.
+properties:
+  comparison:
+    $ref: '#/$defs/CollectionComparison'
+  items:
+    items:
+      $ref: '#/$defs/CollectionEntry'
+    maxItems: 40
+    minItems: 1
+    title: Items
+    type: array
+required:
+- comparison
+- items
+title: Collection
+type: object
+x-softschema:
+  contract: metabrowser.collection:Collection/v1
+  schema_sha256: 44e19fc732cee0b9087dfc1f7f8c5698143dfb0900088121dc445f67118bc7f4

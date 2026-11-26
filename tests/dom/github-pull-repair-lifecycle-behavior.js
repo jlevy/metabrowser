@@ -4,7 +4,7 @@ const optionalStacks = require("../fixtures/github-stacks-responses.json");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
 
-async function story({ delaySecondMount = false } = {}) {
+async function story({ delaySecondMount = false, counts = undefined } = {}) {
   const timers = new Map();
   globalThis.document = {
     visibilityState: "visible",
@@ -36,6 +36,11 @@ async function story({ delaySecondMount = false } = {}) {
     disposed = 0,
     reads = 0;
   const mounted = [];
+  // Each mount's File type group (Docs asks for `type:docs`), and each jump, by that group.
+  const groups = [];
+  // Each mount's layout, which Docs fixes at Unified and Changes leaves to the reader.
+  const layouts = [];
+  const jumps = [];
   globalThis.fetch = async (route, options = {}) => {
     if (route === "/api/plugin/github/stacks") {
       return {
@@ -66,15 +71,27 @@ async function story({ delaySecondMount = false } = {}) {
       whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       getRegisteredView: () => ({
+        // The comparison's File type counts, when the story gives them (`askDocs`).
+        ...(counts === undefined ? {} : { typeCounts: async () => counts }),
         render: async (host, context) => {
           mounted.push(context.comparison);
+          const group = context.group ?? null;
+          groups.push(group);
+          layouts.push(context.layout ?? null);
           if (delaySecondMount && mounted.length === 2) {
             await new Promise((resolve) => {
               releaseMount = resolve;
             });
           }
           host.textContent = "Displayed changes";
+          // A Docs diff holds the documents alone, as the diff plugin narrowed by group does.
+          const holds = (path) => group === null || path.endsWith(".md");
           return {
+            fileForPath: (path) => ({ kind: holds(path) ? "file" : "not_in_comparison", path }),
+            scrollToFile(path) {
+              jumps.push([group, path]);
+              return { kind: holds(path) ? "jumped" : "not_in_comparison", path };
+            },
             dispose() {
               disposed += 1;
             },
@@ -82,7 +99,10 @@ async function story({ delaySecondMount = false } = {}) {
         },
       }),
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "age",
+      })),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/" },
       sourceKind: () => "git_revision",
@@ -102,7 +122,12 @@ async function story({ delaySecondMount = false } = {}) {
   return {
     handle,
     container,
+    docsLink: () =>
+      [...container.descendants()].find((item) => item.tag === "a" && item.textContent === "Docs"),
     mounted,
+    groups,
+    layouts,
+    jumps,
     button,
     reads: () => reads,
     disposed: () => disposed,
@@ -116,12 +141,14 @@ async function story({ delaySecondMount = false } = {}) {
       route.searchParams.set("right", current.record.comparison.head);
       current.comparison_route = route.pathname + route.search;
     },
+    // The Pulls tab's Refresh runs the page's `refresh`: the page has none of its own
+    // (mb-ablv).
     async refresh() {
-      button("Refresh").events.get("click")();
+      handle.refresh();
       await settle();
     },
     async land(tab) {
-      window.location.pathname = `/pull/7${tab === "files" ? "/files" : ""}`;
+      window.location.pathname = `/pull/7${tab === "" ? "" : `/${tab}`}`;
       handle.land({ tab });
       await settle();
     },
@@ -196,7 +223,17 @@ async function history() {
       await run.handle.whenFilesReady();
     }
     assert.ok(run.container.textContent.includes("Displayed changes"));
-    assert.deepEqual(run.mounted[1], original, "route return retains the repaired selection");
+    if (outcome === "pending") {
+      assert.deepEqual(run.mounted[1], original, "route return retains the repaired selection");
+    } else {
+      // The refresh found another head while the reader was away: Changes follows it, and
+      // says which diff it showed before, with the way back.
+      assert.equal(run.mounted[1].right, "e".repeat(40), "route return follows the newer head");
+      assert.match(
+        run.container.textContent,
+        /Changes now show this pull request’s newer commits\. Show the earlier changes/,
+      );
+    }
     if (outcome === "pending") {
       await run.acknowledge(true);
       await run.tick();
@@ -209,14 +246,32 @@ async function history() {
     run.handle.dispose();
   }
 
+  // A head that advances under Changes is followed, and the way back is the reader's choice:
+  // the earlier diff then stays through a repair and offers the newer one, which a route
+  // return shows again.
   const run = await story();
+  const earlier = run.mounted[0];
   run.advanceHead();
   await run.tick();
+  await run.handle.whenFilesReady();
+  assert.equal(run.mounted.length, 2, "one poll follows the head once");
+  assert.equal(run.mounted[1].right, "e".repeat(40), "Changes follows a newer head");
+  await run.tick();
+  assert.equal(run.mounted.length, 2, "a later poll keeps the followed diff");
+  run.button("Show the earlier changes").events.get("click")();
+  await settle();
+  await run.handle.whenFilesReady();
+  assert.equal(run.mounted.at(-1).right, earlier.right, "the way back shows the earlier diff");
+  assert.equal(run.mounted.at(-1).route, earlier.route);
+  await run.tick();
+  assert.equal(run.mounted.length, 3, "the reader's earlier diff is not followed away");
+  assert.ok(!run.container.textContent.includes("Show the earlier changes"));
   await run.refresh();
   run.button("Show the newer changes").events.get("click")();
   await settle();
   await run.handle.whenFilesReady();
   assert.equal(run.mounted.at(-1).right, "e".repeat(40));
+  run.button("Show the earlier changes");
   await run.land("");
   await run.acknowledge(false);
   await run.land("files");
@@ -245,6 +300,58 @@ async function pollOrder() {
   run.handle.dispose();
 }
 
+// Changes and Docs are two drawings of one comparison: a Refresh under way still draws the
+// tab the reader moved to, and a file shown from Docs lands on Changes, not in Docs' list.
+async function docs() {
+  const run = await story();
+  await run.refresh();
+  await run.acknowledge(true);
+  await run.land("docs");
+  await run.handle.whenFilesReady();
+  assert.deepEqual(run.groups, [null, "type:docs"], "Docs is drawn while the refresh runs");
+  await run.land("files");
+  await run.handle.whenFilesReady();
+  assert.deepEqual(run.groups, [null, "type:docs", null], "and Changes again, whole");
+  // Docs asks the diff for Unified, with no layout control (mb-0ze2); Changes asks for no
+  // layout, so the reader's stored choice and its control stand.
+  assert.deepEqual(run.layouts, [null, "unified", null], "Docs alone fixes the layout");
+  await run.land("docs");
+  await run.handle.whenFilesReady();
+  assert.equal(
+    run.handle.fileForPath("src/app.py").kind,
+    "no_diff",
+    "Docs does not say a file outside its group is outside the comparison",
+  );
+  run.handle.showFile("src/app.py");
+  await settle();
+  await run.handle.whenFilesReady();
+  assert.equal(run.groups.at(-1), null, "showing a file moves to Changes");
+  assert.deepEqual(run.jumps, [[null, "src/app.py"]], "and lands on it there, not in Docs");
+  run.handle.dispose();
+}
+
+// Docs is offered only where the comparison changes a document: hidden once its counts
+// say none changed, shown again while the reader is on it, and shown where one changed.
+async function docsOffered() {
+  const none = await story({ counts: { type_presets: [["docs", 0, 0]], truncated: false } });
+  await settle();
+  assert.equal(none.docsLink().hidden, true, "no document changed: Docs is hidden");
+  await none.land("docs");
+  await none.handle.whenFilesReady();
+  assert.equal(none.docsLink().hidden, false, "an address on Docs keeps it, empty state and all");
+  await none.land("files");
+  assert.equal(none.docsLink().hidden, true, "and leaving it hides it again");
+  none.handle.dispose();
+  const some = await story({ counts: { type_presets: [["docs", 2, 0]], truncated: false } });
+  await settle();
+  assert.equal(some.docsLink().hidden, false, "a changed document: Docs is offered");
+  some.handle.dispose();
+  const cut = await story({ counts: { type_presets: [["docs", 0, 0]], truncated: true } });
+  await settle();
+  assert.equal(cut.docsLink().hidden, false, "a list cut short may hold one: Docs stays");
+  cut.handle.dispose();
+}
+
 const selected = process.argv.includes("--case") ? process.argv.at(-1) : "all";
 (async () => {
   if (selected === "all" || selected === "history") {
@@ -252,6 +359,12 @@ const selected = process.argv.includes("--case") ? process.argv.at(-1) : "all";
   }
   if (selected === "all" || selected === "poll-order") {
     await pollOrder();
+  }
+  if (selected === "all" || selected === "docs") {
+    await docs();
+  }
+  if (selected === "all" || selected === "docs-offered") {
+    await docsOffered();
   }
   process.stdout.write(`${JSON.stringify({ case: selected, passed: true })}\n`);
 })().catch((error) => {

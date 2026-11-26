@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Final
 
 from devtools import run_goldens, tryscript_blocks
+from metabrowser.commit_ids import short_commit
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 # The name that stands for the working tree where a commit is expected.
@@ -319,6 +320,16 @@ def _seconds(stamp: str) -> float:
     return datetime.fromisoformat(whole + "+00:00").timestamp() + float(f"0.{fraction or 0}")
 
 
+def log_lines(text: str) -> list[str]:
+    """Each line of a log as the command printed it: no job, step, timestamp, or colour."""
+
+    return [
+        _ANSI.sub("", match["text"]).rstrip()
+        for line in text.splitlines()
+        if (match := _LOG_LINE.match(line))
+    ]
+
+
 def parse_log(text: str, *, job: str = "") -> Run:
     """Read one job of a log: the one named, or the first that ran pytest."""
 
@@ -422,15 +433,21 @@ def render_run(run: Run, *, top: int) -> str:
 
 
 def describe(ref: str, root: Path = REPO_ROOT) -> str:
-    """The commit a column was measured at, so the numbers can be traced to it."""
+    """The commit a column was measured at, so the numbers can be traced to it.
 
-    commit = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD" if ref == WORKING_TREE else ref],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    Named by its short commit ID, cut from the full one as every line names a commit
+    (docs/design-system.md, "Short Commit IDs").
+    """
+
+    commit = short_commit(
+        subprocess.run(
+            ["git", "rev-parse", "HEAD" if ref == WORKING_TREE else ref],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    )
     if ref == WORKING_TREE:
         return f"working tree on {commit}"
     return commit if commit.startswith(ref) or ref.startswith(commit) else f"{ref} ({commit})"

@@ -11,6 +11,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from metabrowser import server
 from metabrowser.http_caching import BUILD_TAG
 from metabrowser.inventory_engine.contract import (
@@ -26,10 +28,11 @@ from metabrowser.inventory_engine.contract import (
 )
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostCursor, HostVersion
 from metabrowser.inventory_engine.runtime import default_inventory_config
-from metabrowser.settings import ROLLUP_MAX_TOP
+from metabrowser.settings import ROLLUP_DEFAULT_NODES, ROLLUP_MAX_DEPTH, ROLLUP_MAX_TOP
 from metabrowser.wire_models import validate_rollup_envelope, validate_rollup_node
 from tests.inventory_harness import InventoryHarness, inventory_harness
 from tests.loop_gate import held_until
+from tests.test_inventory_rollup import _by_path, _decode_compact, _walk, _without_ignored
 
 # Tests that compare validators across requests hold the inventory version still.
 # A live watcher can move it at any moment -- even a verified refresh of an
@@ -226,6 +229,28 @@ def test_rollup_route_clamps_params(tmp_path: Path) -> None:
     assert remaining["others"]["omitted_distinct_values"] == 5
 
 
+def test_rollup_route_resolves_max_to_the_bounds(tmp_path: Path) -> None:
+    folder = tmp_path
+    for level in range(ROLLUP_MAX_DEPTH + 2):
+        folder = folder / f"d{level}"
+        folder.mkdir()
+        (folder / "f.py").write_text("x")
+    server._set_root_dir(tmp_path)
+
+    async def run(query: dict[str, str]) -> dict[str, Any]:
+        async with inventory_harness(tmp_path) as harness:
+            return await _body(harness, {"path": "", **query})
+
+    def deepest(node: dict[str, Any], level: int = 0) -> int:
+        dirs = [child for child in node.get("children") or [] if child["type"] == "dir"]
+        return max([level, *(deepest(child, level + 1) for child in dirs)])
+
+    asked_max = asyncio.run(run({"depth": "max", "top": "max"}))
+    asked_bound = asyncio.run(run({"depth": str(ROLLUP_MAX_DEPTH), "top": str(ROLLUP_MAX_TOP)}))
+    assert deepest(asked_max["node"]) == ROLLUP_MAX_DEPTH
+    assert asked_max["node"] == asked_bound["node"]
+
+
 def test_rollup_route_supports_summary_only_dual_rank(tmp_path: Path) -> None:
     for index in range(20):
         (tmp_path / f"tiny-{index}.txt").write_text("x")
@@ -255,7 +280,194 @@ def test_rollup_route_rejects_unknown_rank(tmp_path: Path) -> None:
     app = SimpleNamespace(state=SimpleNamespace())
     response = asyncio.run(server.api_rollup(_request(app, {"path": "", "ext_rank": "popularity"})))
     assert response.status_code == 400
-    assert json.loads(bytes(response.body)) == {"error": "Unknown ext_rank: 'popularity'"}
+    assert json.loads(bytes(response.body)) == {
+        "error": "This folder summary could not be made.",
+        "detail": "Unknown ext_rank: 'popularity'",
+    }
+
+
+def test_rollup_route_rejects_unknown_ignored_and_encoding(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    app = SimpleNamespace(state=SimpleNamespace())
+    for name, value in (("ignored", "only"), ("encoding", "msgpack")):
+        response = asyncio.run(server.api_rollup(_request(app, {"path": "", name: value})))
+        assert response.status_code == 400
+        assert json.loads(bytes(response.body)) == {
+            "error": "This folder summary could not be made.",
+            "detail": f"Unknown {name}: {value!r}",
+        }
+
+
+def test_rollup_route_node_budget_defaults_clamps_and_resolves_max(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``nodes`` is the budget a request names, clamped to 1 and ROLLUP_MAX_NODES.
+
+    The bounds are lowered here so a small folder shows each of them: an unnamed budget
+    is ROLLUP_DEFAULT_NODES, ``0`` is one node (the root, unexpanded), and a budget past
+    the bound or ``max`` is the bound.
+    """
+
+    for index in range(12):
+        (tmp_path / f"f{index:02d}.py").write_text("x" * (index + 1))
+    server._set_root_dir(tmp_path)
+    monkeypatch.setattr(server, "ROLLUP_DEFAULT_NODES", 4)
+    monkeypatch.setattr(server, "ROLLUP_MAX_NODES", 9)
+
+    def emitted(node: dict[str, Any]) -> int:
+        return 1 + sum(emitted(child) for child in node.get("children") or [])
+
+    async def run() -> dict[str, int]:
+        async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            counts: dict[str, int] = {}
+            for nodes in ("", "0", "6", "999999", "max"):
+                body = await _body(harness, {"path": "", **({"nodes": nodes} if nodes else {})})
+                validate_rollup_envelope(body)
+                counts[nodes] = emitted(body["node"])
+            return counts
+
+    assert asyncio.run(run()) == {"": 4, "0": 1, "6": 6, "999999": 9, "max": 9}
+
+
+def test_rollup_route_validator_names_the_budget_scope_and_encoding(tmp_path: Path) -> None:
+    """Each of ``nodes``, ``ignored``, and ``encoding`` names a different body, and the
+    defaults asked for by name are the body asked for without them."""
+
+    (tmp_path / "a.py").write_text("x" * 8)
+    server._set_root_dir(tmp_path)
+
+    async def run() -> list[str]:
+        async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            tags: list[str] = []
+            for params in (
+                {},
+                {"nodes": str(ROLLUP_DEFAULT_NODES), "ignored": "include", "encoding": "json"},
+                {"nodes": "5"},
+                {"ignored": "exclude"},
+                {"encoding": "compact"},
+            ):
+                response = await _response(harness, {"path": "", **params})
+                tags.append(response.headers["etag"])
+            return tags
+
+    tags = asyncio.run(run())
+    assert tags[0] == tags[1]
+    assert len({tags[0], *tags[2:]}) == 4
+
+
+def _dense_fixture(root: Path) -> None:
+    """Gitignored folders and files beside unignored ones, with names a path must keep."""
+
+    (root / ".git").mkdir()
+    (root / ".gitignore").write_text("build/\n*.log\n")
+    for relative, size in {
+        "build/out.bin": 5_000,
+        "build/deep/map.txt": 90,
+        "app.log": 700,
+        "top.md": 32,
+        "src/main.py": 640,
+        "src/notes v2.md": 16,
+        "src/#hash.txt": 8,
+        "src/a'b\"c.py": 2,
+        "src/run.log": 60,
+        "src/ü dir/雪 snow.txt": 4,
+        "src/ü dir/Makefile": 40,
+        "src/mixed/a.py": 10,
+        "src/mixed/huge.log": 3_000,
+    }.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x" * size)
+
+
+def test_rollup_route_exclude_is_the_same_envelope_less_the_ignored_nodes(
+    tmp_path: Path,
+) -> None:
+    """``ignored=exclude`` leaves out the ignored nodes and changes nothing else.
+
+    The fully ignored ``build/`` is not among the children, and the tallies, breakdown,
+    legend, index status, and every remaining folder's totals and ``dominant_ext`` are the
+    included body's. ``src/mixed`` keeps ``.log`` as its dominant extension: it ranks every
+    file beneath the folder, ignored ones too.
+    """
+
+    _dense_fixture(tmp_path)
+    server._set_root_dir(tmp_path)
+    query = {"path": "", "depth": "max", "top": "max", "nodes": "max"}
+
+    async def run() -> tuple[dict[str, Any], dict[str, Any]]:
+        async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            included = await _body(harness, query)
+            excluded = await _body(harness, {**query, "ignored": "exclude"})
+            return included, excluded
+
+    included, excluded = asyncio.run(run())
+    validate_rollup_envelope(excluded)
+    assert {k: v for k, v in excluded.items() if k != "node"} == {
+        k: v for k, v in included.items() if k != "node"
+    }
+    assert _by_path(excluded["node"]) == _by_path(_without_ignored(included["node"]))
+    assert "build" not in {child["path"] for child in excluded["node"]["children"]}
+    assert "build" in {child["path"] for child in included["node"]["children"]}
+    src = next(child for child in excluded["node"]["children"] if child["path"] == "src")
+    mixed = next(child for child in src["children"] if child["path"] == "src/mixed")
+    assert (mixed["dominant_ext"], mixed["total_files"], mixed["unignored_files"]) == (".log", 2, 1)
+
+
+def test_rollup_route_compact_decodes_to_the_json_body(tmp_path: Path) -> None:
+    """A compact body is the JSON body with each folder's files written as entries.
+
+    Its file paths, derived as the folder's path, a `/`, and the name, are the paths the
+    walker gave the files, names with spaces, quotes, ``#``, and non-ASCII letters among
+    them; at the root and below it, with and without the ignored nodes. Only the compact
+    envelope says ``"encoding": "compact"``.
+    """
+
+    _dense_fixture(tmp_path)
+    server._set_root_dir(tmp_path)
+
+    async def run() -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+            for path in ("", "src"):
+                for ignored in ("include", "exclude"):
+                    query = {"path": path, "depth": "max", "top": "max", "ignored": ignored}
+                    json_body = await _body(harness, query)
+                    compact_body = await _body(harness, {**query, "encoding": "compact"})
+                    pairs.append((json_body, compact_body))
+            return pairs
+
+    decoded_names: set[str] = set()
+    for json_body, compact_body in asyncio.run(run()):
+        validate_rollup_envelope(json_body)
+        validate_rollup_envelope(compact_body)
+        assert "encoding" not in json_body
+        assert compact_body.pop("encoding") == "compact"
+        assert {k: v for k, v in compact_body.items() if k != "node"} == {
+            k: v for k, v in json_body.items() if k != "node"
+        }
+        decoded = _decode_compact(compact_body["node"])
+        assert decoded == _by_path(json_body["node"])
+        decoded_names.update(node["path"] for node in _walk(decoded))
+    assert {"src/ü dir/雪 snow.txt", "src/a'b\"c.py", "src/notes v2.md"} <= decoded_names
+
+
+def test_rollup_body_cache_evicts_by_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The oldest bodies go until the bytes fit, and a body past the bound is not kept."""
+
+    monkeypatch.setattr(server, "ROLLUP_BODY_CACHE_BYTES", 100)
+    monkeypatch.setattr(server, "ROLLUP_BODY_CACHE_ENTRIES", 8)
+    server.reset_response_caches_for_tests()
+    try:
+        for etag in ("a", "b", "c"):
+            server._remember_rollup_body(etag, b"x" * 40)
+        assert list(server._ROLLUP_BODY_CACHE) == ["b", "c"]
+        server._remember_rollup_body("oversized", b"x" * 101)
+        assert list(server._ROLLUP_BODY_CACHE) == ["b", "c"]
+        server._remember_rollup_body("full", memoryview(b"x" * 100))
+        assert list(server._ROLLUP_BODY_CACHE) == ["full"]
+    finally:
+        server.reset_response_caches_for_tests()
 
 
 def test_rollup_route_cold_index_is_coherent(tmp_path: Path) -> None:

@@ -11,10 +11,11 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "<ORIGIN>",
-  "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+  "location": "<HOME>/repos/<STORE_KEY>/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -24,7 +25,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -47,10 +50,11 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "<ORIGIN>",
-    "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -60,7 +64,9 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": true,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -70,16 +76,17 @@ after: /api/source/status
 status: 200
 {
   "subject": "git_revision",
-  "generation": 1,
-  "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "generation": 2,
+  "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref": "refs/remotes/origin/topic",
   "ref_name": "topic",
   "name": "origin",
   "origin": "<ORIGIN>",
-  "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+  "location": "<HOME>/repos/<STORE_KEY>/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:10Z",
@@ -89,7 +96,9 @@ status: 200
     "at": "2026-09-17T12:00:10Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -108,10 +117,11 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "<ORIGIN>",
-  "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+  "location": "<HOME>/repos/<STORE_KEY>/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:10Z",
@@ -121,7 +131,9 @@ status: 200
     "at": "2026-09-17T12:00:10Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -143,10 +155,11 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "<ORIGIN>",
-    "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:10Z",
@@ -156,7 +169,9 @@ status: 200
       "at": "2026-09-17T12:00:10Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -179,10 +194,11 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "<ORIGIN>",
-    "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:10Z",
@@ -192,7 +208,9 @@ status: 202
       "at": "2026-09-17T12:00:10Z"
     },
     "refreshing": true,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -208,10 +226,11 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "<ORIGIN>",
-  "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+  "location": "<HOME>/repos/<STORE_KEY>/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:20Z",
@@ -221,7 +240,116 @@ status: 200
     "at": "2026-09-17T12:00:20Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": 5.0,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/refresh --data page-ask.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 200
+{
+  "refresh": "probed",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "<ORIGIN>",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:20Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:20Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/refresh --data page-ask.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "<ORIGIN>",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:20Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:20Z"
+    },
+    "refreshing": true,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 2,
+  "pin": "068bbf9a35d154be815bba0c214de4578b49a276",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "name": "origin",
+  "origin": "<ORIGIN>",
+  "location": "<HOME>/repos/<STORE_KEY>/repository.git",
+  "borrows": null,
+  "shallow": false,
+  "refreshable": true,
+  "follows": true,
+  "latest": "068bbf9a35d154be815bba0c214de4578b49a276",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:30Z",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:30Z"
+  },
+  "refreshing": false,
+  "refresh_quiet": false,
+  "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -242,20 +370,23 @@ status: 200
     "ref_name": null,
     "name": "origin",
     "origin": "<ORIGIN>",
-    "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
-    "last_fetch_at": "2026-09-17T12:00:20Z",
+    "last_fetch_at": "2026-09-17T12:00:30Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "2026-09-17T12:00:20Z"
+      "at": "2026-09-17T12:00:30Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -277,20 +408,23 @@ status: 200
     "ref_name": "v2",
     "name": "origin",
     "origin": "<ORIGIN>",
-    "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
     "ref_on_origin": true,
-    "last_fetch_at": "2026-09-17T12:00:20Z",
+    "last_fetch_at": "2026-09-17T12:00:30Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "2026-09-17T12:00:20Z"
+      "at": "2026-09-17T12:00:30Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -323,20 +457,23 @@ status: 200
     "ref_name": null,
     "name": "origin",
     "origin": "<ORIGIN>",
-    "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
-    "last_fetch_at": "2026-09-17T12:00:20Z",
+    "last_fetch_at": "2026-09-17T12:00:30Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "2026-09-17T12:00:20Z"
+      "at": "2026-09-17T12:00:30Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -353,25 +490,28 @@ status: 202
   "status": {
     "subject": "git_revision",
     "generation": 1,
-    "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "pin": "068bbf9a35d154be815bba0c214de4578b49a276",
     "ref": "refs/remotes/origin/topic",
     "ref_name": "topic",
     "name": "origin",
     "origin": "<ORIGIN>",
-    "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+    "location": "<HOME>/repos/<STORE_KEY>/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
-    "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "follows": true,
+    "latest": "068bbf9a35d154be815bba0c214de4578b49a276",
     "ref_on_origin": true,
-    "last_fetch_at": "2026-09-17T12:00:20Z",
+    "last_fetch_at": "2026-09-17T12:00:30Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "2026-09-17T12:00:20Z"
+      "at": "2026-09-17T12:00:30Z"
     },
     "refreshing": true,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -382,25 +522,28 @@ status: 200
 {
   "subject": "git_revision",
   "generation": 1,
-  "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "pin": "068bbf9a35d154be815bba0c214de4578b49a276",
   "ref": "refs/remotes/origin/topic",
   "ref_name": "topic",
   "name": "origin",
   "origin": "<ORIGIN>",
-  "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+  "location": "<HOME>/repos/<STORE_KEY>/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
-  "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "follows": true,
+  "latest": "068bbf9a35d154be815bba0c214de4578b49a276",
   "ref_on_origin": true,
-  "last_fetch_at": "2026-09-17T12:00:20Z",
+  "last_fetch_at": "2026-09-17T12:00:30Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "origin_unavailable",
-    "at": "2026-09-17T12:00:30Z"
+    "at": "2026-09-17T12:00:40Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -415,25 +558,28 @@ status: 200
 {
   "subject": "git_revision",
   "generation": 1,
-  "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "pin": "068bbf9a35d154be815bba0c214de4578b49a276",
   "ref": "refs/remotes/origin/topic",
   "ref_name": "topic",
   "name": "origin",
   "origin": "<ORIGIN>",
-  "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+  "location": "<HOME>/repos/<STORE_KEY>/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
-  "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "follows": true,
+  "latest": "068bbf9a35d154be815bba0c214de4578b49a276",
   "ref_on_origin": true,
-  "last_fetch_at": "2026-09-17T12:00:20Z",
+  "last_fetch_at": "2026-09-17T12:00:30Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "origin_unavailable",
-    "at": "2026-09-17T12:00:30Z"
+    "at": "2026-09-17T12:00:40Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null

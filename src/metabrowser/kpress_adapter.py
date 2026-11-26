@@ -33,7 +33,7 @@ from html import escape
 from importlib.metadata import version as distribution_version
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 from urllib.parse import quote
 
 from metabrowser.asset_stamps import StampedTree
@@ -123,6 +123,14 @@ class KPressAssetNotFoundError(FileNotFoundError):
     """Raised when a KPress package asset path is missing or unsafe."""
 
 
+# The `error` of a `kpress_render_error` answer, on a folder and a pin alike: what the
+# Document view says (docs/design-system-messages.md). The route's `detail`, `max_size`,
+# and `diagnostics` say which bound or which part of the request it was.
+RENDER_FAILED_MESSAGE: Final = "This document could not be rendered."
+RENDER_TOO_LARGE_MESSAGE: Final = "This document is too large to render."
+RENDER_TEXT_ONLY_MESSAGE: Final = "Only a text file can be rendered as a document."
+
+
 __all__ = [
     "KPressAssetNotFoundError",
     "KPressInvalidRequestError",
@@ -141,6 +149,20 @@ __all__ = [
     "render_kpress_view",
     "set_kpress_static_root_for_tests",
 ]
+
+
+# The KPress modules that draw Mermaid diagrams: the renderer and its controls, and the
+# modules they import by relative URL. The page imports the first two as module bundles
+# (server.py, `kpress-diagrams` and `kpress-diagram-controls`), and an untrusted page's
+# policy admits exactly these (capabilities.untrusted_shell_csp). KPress publishes the
+# list as `kpress.contract.PUBLIC_DIAGRAM_SCRIPT_MODULES`; a shell page names it without
+# importing KPress, so tests/test_kpress_dependency_contract.py pins the copy.
+DIAGRAM_MODULES: Final = (
+    "js/diagrams.js",
+    "js/diagram-controls.js",
+    "js/runtime.js",
+    "js/icons.js",
+)
 
 
 def kpress_static_url(rel_path: str, *, prefix: str | None = None) -> str:
@@ -285,6 +307,9 @@ def render_kpress_view(
         show_doc_header=False,
         include_toc=include_toc,
         toc_collapse_depth=_TOC_COLLAPSE_DEPTH,
+        # Mermaid fences draw as diagrams and ```svg fences stay highlighted code, as
+        # GitHub shows both, so a page reads here as it does there.
+        diagrams="mermaid",
     )
     plain = _PLAIN_CODE.set(plain_code)
     try:
@@ -393,15 +418,24 @@ def export_kpress_document(request: KPressExportRequest) -> dict[str, object]:
 # of the prose, where nothing the document wrote can be: titles in it are escaped.
 _KPRESS_PROSE = '<div class="kpress-prose'
 _KPRESS_TOC = re.compile(r"<button\b[^>]*\bdata-kpress-toc-toggle\b.*?</nav>", re.DOTALL)
+# KPress's front-matter error notice, ahead of the layout: the sentence the server handed
+# it, escaped. The allowlist drops its box and keeps its title and sentence, run together
+# with no space between them ahead of the prose, so the page draws the notice from the
+# render's `frontmatter_error` diagnostic instead (builtin_plugins/markdown/inert-render.js).
+_KPRESS_FRONTMATTER_ERROR = re.compile(
+    r'<aside class="kpress-frontmatter-error"[^>]*>.*?</aside>', re.DOTALL
+)
 
 
 def _without_kpress_toc(html: str) -> tuple[str, bool]:
-    """*html* without KPress's table of contents, and whether it had one."""
+    """*html* without KPress's table of contents or front-matter error notice, and whether
+    it had a table of contents."""
 
     prose = html.find(_KPRESS_PROSE)
     if prose < 0:
         return html, False
     chrome, found = _KPRESS_TOC.subn("", html[:prose], count=1)
+    chrome = _KPRESS_FRONTMATTER_ERROR.sub("", chrome, count=1)
     return chrome + html[prose:], found > 0
 
 
@@ -476,7 +510,9 @@ def inert_render(
 
     KPress's table of contents leaves the HTML too, since its script cannot run; ``toc``
     says whether KPress drew one, and the model's ``headings`` -- its entries -- point at
-    the headings' ``user-content-`` anchors, for the page to draw its own from them.
+    the headings' ``user-content-`` anchors, for the page to draw its own from them. So
+    does its front-matter error notice, whose box the allowlist cannot keep; the page draws
+    it from the ``frontmatter_error`` diagnostic, which stays.
 
     *rewrite_local* is passed to :func:`~metabrowser.inert_html.harden_document`: a page
     that shows a document from outside the served tree, such as a pull request's rendered

@@ -17,12 +17,15 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": false,
+  "follows": false,
   "latest": null,
   "ref_on_origin": null,
   "last_fetch_at": null,
   "last_outcome": null,
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": null,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -39,7 +42,6 @@ status: 200
 {
   "kind": "branch",
   "query": "",
-  "limit": 100,
   "pin": null,
   "ref": null,
   "kinds": [
@@ -50,31 +52,36 @@ status: 200
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
-    "head_name": "topic"
+    "head_name": "topic",
+    "name": "checkout",
+    "location": "<ROOT>"
   },
-  "total": 3,
-  "truncated": false,
+  "origin": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "topic",
       "ref": "refs/heads/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "committed_at": 1767229200.0,
       "default": false,
       "checked_out": true,
-      "current": false
-    },
-    {
-      "name": "feature",
-      "ref": "refs/heads/feature",
-      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
-      "default": false,
-      "checked_out": false,
       "current": false
     },
     {
       "name": "local-work",
       "ref": "refs/heads/local-work",
       "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+      "committed_at": 1769904000.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    },
+    {
+      "name": "feature",
+      "ref": "refs/heads/feature",
+      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -93,7 +100,6 @@ status: 200
 {
   "kind": "remote",
   "query": "",
-  "limit": 100,
   "pin": null,
   "ref": null,
   "kinds": [
@@ -104,15 +110,18 @@ status: 200
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
-    "head_name": "topic"
+    "head_name": "topic",
+    "name": "checkout",
+    "location": "<ROOT>"
   },
-  "total": 2,
-  "truncated": false,
+  "origin": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "origin/feature",
       "ref": "refs/remotes/origin/feature",
       "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -121,6 +130,7 @@ status: 200
       "name": "origin/topic",
       "ref": "refs/remotes/origin/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "committed_at": 1767229200.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -137,7 +147,6 @@ status: 200
 {
   "kind": "tag",
   "query": "",
-  "limit": 100,
   "pin": null,
   "ref": null,
   "kinds": [
@@ -148,15 +157,18 @@ status: 200
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
-    "head_name": "topic"
+    "head_name": "topic",
+    "name": "checkout",
+    "location": "<ROOT>"
   },
-  "total": 2,
-  "truncated": false,
+  "origin": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "local-tag",
       "ref": "refs/tags/local-tag",
       "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -165,6 +177,7 @@ status: 200
       "name": "v1",
       "ref": "refs/tags/v1",
       "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+      "committed_at": 1767225600.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -194,16 +207,20 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
-    "latest": null,
+    "follows": true,
+    "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": null,
     "last_fetch_at": null,
     "last_outcome": null,
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 2.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
   },
+  "read_from": "checkout",
   "view_href": "/view/g1-UkVBRE1FLm1k"
 }
 --- stderr ---
@@ -229,16 +246,20 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
-    "latest": null,
+    "follows": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": null,
     "last_fetch_at": null,
     "last_outcome": null,
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 2.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
   },
+  "read_from": "checkout",
   "view_href": "/view/"
 }
 --- stderr ---
@@ -264,16 +285,20 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
-    "latest": null,
+    "follows": true,
+    "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": null,
     "last_fetch_at": null,
     "last_outcome": null,
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 2.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": "checkout"
 }
 --- stderr ---
 
@@ -296,16 +321,20 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
-    "latest": null,
+    "follows": true,
+    "latest": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
     "ref_on_origin": null,
     "last_fetch_at": null,
     "last_outcome": null,
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 2.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": "checkout"
 }
 --- stderr ---
 
@@ -330,16 +359,20 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": null,
     "last_outcome": null,
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": null
 }
 --- stderr ---
 
@@ -400,17 +433,85 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": false,
-  "latest": null,
+  "follows": true,
+  "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
   "ref_on_origin": null,
   "last_fetch_at": null,
   "last_outcome": null,
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": 2.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
 }
 --- stderr ---
+
+== A revision of one of the checkout's own branches follows that branch: follows is true, latest is the branch's commit as last read in the checkout, and probe_every_s is how often a visible page asks where the branch is. That ask is the page's own; for it the server reads the checkout's refs, fetches nothing, and answers probed. A commit opened by its ID and the working tree never move, so the ask is refused there as a folder's refresh is.
+
+# metab checkout --ref feature --api /api/source/refresh --data page-ask.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 200
+{
+  "refresh": "probed",
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "ref": "refs/heads/feature",
+    "ref_name": "feature",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "follows": true,
+    "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": 2.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+
+# metab checkout --ref fcb9d63c3c85 --api /api/source/refresh --data page-ask.json
+exit: 1
+--- stdout ---
+api: /api/source/refresh
+status: 409
+{
+  "error": "This is not available here.",
+  "detail": "source does not support refresh",
+  "code": "unsupported_for_subject",
+  "capability": "refresh"
+}
+--- stderr ---
+Error: /api/source/refresh returned HTTP 409
+
+# metab checkout --api /api/source/refresh --data page-ask.json
+exit: 1
+--- stdout ---
+api: /api/source/refresh
+status: 409
+{
+  "error": "This is not available here.",
+  "detail": "source does not support refresh",
+  "code": "unsupported_for_subject",
+  "capability": "refresh"
+}
+--- stderr ---
+Error: /api/source/refresh returned HTTP 409
 
 == A revision's files are read by the routes a page reads them by. feature has FEATURE.md and the committed README.md, and none of the working tree's edited, staged, or untracked files. The catalog is every file of the revision, each named by its GitPath wire (p), as on a mirror.
 
@@ -448,6 +549,107 @@ views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 --- stderr ---
 
+== The Commits tab shows the revision the Files tab shows: on feature, HEAD is feature's commit, detached, and the history is that commit's, from feature back to first, where the working tree's starts at the checked-out topic.
+
+# metab checkout --ref feature --api /api/git/repo
+exit: 0
+--- stdout ---
+api: /api/git/repo
+status: 200
+{
+  "is_repo": true,
+  "root": "",
+  "head": {
+    "ref": null,
+    "revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "detached": true,
+    "unborn": false
+  }
+}
+--- stderr ---
+
+# metab checkout --ref feature --api '/api/git/log?limit=2'
+exit: 0
+--- stdout ---
+api: /api/git/log?limit=2
+status: 200
+{
+  "is_repo": true,
+  "commits": [
+    {
+      "id": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "short_id": "c7ae2a3",
+      "parent_ids": [
+        "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
+      ],
+      "author": {
+        "name": "Mirror",
+        "email": "mirror@example.invalid"
+      },
+      "authored_at": 1767232800.0,
+      "committed_at": 1767232800.0,
+      "subject": "feature",
+      "refs": [
+        {
+          "id": "refs/heads/feature",
+          "name": "feature",
+          "kind": "branch",
+          "revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
+        },
+        {
+          "id": "refs/remotes/origin/feature",
+          "name": "origin/feature",
+          "kind": "remote",
+          "revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "remote": "origin"
+        },
+        {
+          "id": "refs/tags/local-tag",
+          "name": "local-tag",
+          "kind": "tag",
+          "revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
+        }
+      ]
+    },
+    {
+      "id": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+      "short_id": "fcb9d63",
+      "parent_ids": [],
+      "author": {
+        "name": "Mirror",
+        "email": "mirror@example.invalid"
+      },
+      "authored_at": 1767225600.0,
+      "committed_at": 1767225600.0,
+      "subject": "first",
+      "refs": [
+        {
+          "id": "refs/tags/v1",
+          "name": "v1",
+          "kind": "tag",
+          "revision": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
+        }
+      ]
+    }
+  ],
+  "cursor": null,
+  "has_more": false,
+  "page": 0,
+  "page_cursor": "<CURSOR>",
+  "previous_cursor": null,
+  "scope": "default",
+  "scope_refs": [],
+  "scope_fingerprint": "8babf87cfe78ef7afbd5e55558a35a29ae97d9cb4478b282154a97b5e7ef58a2",
+  "graph_checkpoint": {
+    "version": 1,
+    "prior_swimlanes": [],
+    "color_index": -1,
+    "head_revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "scope_fingerprint": "8babf87cfe78ef7afbd5e55558a35a29ae97d9cb4478b282154a97b5e7ef58a2"
+  }
+}
+--- stderr ---
+
 == --ref takes a tag, a remote-tracking branch, and a commit ID. A window of a revision is still called by its folder, and its full name adds what is shown. The two identities run with HOME at the sandbox, so the folder is named from ~.
 
 # metab checkout --ref v1 --api /api/identity
@@ -458,9 +660,11 @@ status: 200
 {
   "short_name": "checkout",
   "full_name": "~/checkout@v1",
-  "kind": "folder",
-  "kind_label": "Local folder",
-  "title": "checkout • Metabrowser"
+  "kind": "git",
+  "kind_label": "Local Git checkout",
+  "title": "checkout • Metabrowser",
+  "kind_tip": "Local Git checkout",
+  "repository": null
 }
 --- stderr ---
 
@@ -472,9 +676,11 @@ status: 200
 {
   "short_name": "checkout",
   "full_name": "~/checkout@origin/feature",
-  "kind": "folder",
-  "kind_label": "Local folder",
-  "title": "checkout • Metabrowser"
+  "kind": "git",
+  "kind_label": "Local Git checkout",
+  "title": "checkout • Metabrowser",
+  "kind_tip": "Local Git checkout",
+  "repository": null
 }
 --- stderr ---
 
@@ -540,9 +746,11 @@ status: 200
 {
   "short_name": "checkout",
   "full_name": "<ROOT>",
-  "kind": "folder",
-  "kind_label": "Local folder",
-  "title": "checkout • Metabrowser"
+  "kind": "git",
+  "kind_label": "Local Git checkout",
+  "title": "checkout • Metabrowser",
+  "kind_tip": "Local Git checkout",
+  "repository": null
 }
 --- stderr ---
 
@@ -552,7 +760,8 @@ exit: 1
 api: /api/source/refs
 status: 409
 {
-  "error": "source does not support refs",
+  "error": "This is not available here.",
+  "detail": "source does not support refs",
   "code": "unsupported_for_subject",
   "capability": "refs"
 }

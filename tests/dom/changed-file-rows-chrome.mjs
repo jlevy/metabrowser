@@ -31,10 +31,11 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>changed fi
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/github/styles.css">
 <link rel="stylesheet" href="/diff/styles.css">
+<script src="/static/formatters.js"></script>
 <script src="/static/changed-files-tree.js"></script>
 <style>body { display: flex; gap: 24px; margin: 0; } .host { width: 360px; }</style>
 </head><body>
-<div class="host github-pulls"><div class="tree-content" id="pulls-scroll"><ul><li id="pulls-item"><a id="pulls-owner" aria-level="1" href="#">#7</a></li></ul></div></div>
+<div class="host github-pulls"><div class="tree-content" id="pulls-scroll"><ul><li id="pulls-item"><a id="pulls-owner" aria-level="1" href="#">#7</a><div id="pulls-line"></div></li></ul></div></div>
 <div class="host metabrowser-diff-host" id="diff-host"></div>
 </body></html>`;
 const TYPES = { ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml" };
@@ -70,6 +71,8 @@ const MOUNT = `(async () => {
     { path: "src/logo.png", display: "src/logo.png", previous_path: null, previous_display: null, status: "modified", additions: null, deletions: null },
   ];
   const formatCount = (count) => count.toLocaleString("en-US");
+  // The one painter of a file's lines, as the SDK hands it plugins (formatters.js).
+  const changeLineNodes = (line, options) => window.MetabrowserFormatters.changeLineNodes(document, line, options);
   const chevron = () => {
     const box = document.createElement("span");
     box.innerHTML = '<svg class="toggle-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6"/></svg>';
@@ -89,17 +92,23 @@ const MOUNT = `(async () => {
     number: 7, autoExpandFiles: 3000, current: null, shown: true,
     scrollRoot: document.getElementById("pulls-scroll"),
     chevron, href: (file) => "#" + file,
+    changeLineNodes,
     request: async () => ({ status: 200, etag: null, body: listing }),
     formatTime: (value) => value,
     decorateExternalLink: (anchor) => anchor,
     page: () => null, open() {}, leave() {}, focusedIn() {},
     tree, formatCount,
   });
-  pulls.attach(document.getElementById("pulls-item"), document.getElementById("pulls-owner"));
+  // A pull request's item: its row owns the tree, and its change line controls it (mb-1z7j).
+  pulls.attach(
+    document.getElementById("pulls-item"),
+    document.getElementById("pulls-owner"),
+    document.getElementById("pulls-line"),
+  );
   pulls.controller.expand();
   // The Diff summary's tree, as diff-view.js mounts it under its header.
   const { mountSummaryTree } = await import("/diff/diff-summary.js");
-  const summary = mountSummaryTree({ tree, files, id: "summary-tree", formatCount, chevron, jump() {} });
+  const summary = mountSummaryTree({ tree, files, id: "summary-tree", formatCount, changeLineNodes, chevron, jump() {} });
   document.getElementById("diff-host").append(summary.body);
   summary.setOpen(true);
   const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -118,10 +127,10 @@ const ROWS = `(() => {
   const round = (value) => Math.round(value * 100) / 100;
   // Each plugin's depth indent, the formula it gives its rows.
   const DEPTH = {
-    // One level under the change line's chevron, which is under the state icon (mb-3vil).
+    // One level under the row's state icon (mb-3vil).
     pulls: "calc(var(--github-pulls-indent, 0px) + var(--github-pull-file-depth, 1) * var(--tree-indent))",
     summary:
-      "calc((var(--diff-summary-depth, 0) + 1) * var(--tree-indent) + var(--diff-summary-header-inset) - var(--diff-summary-toggle-pull) - var(--pane-header-padding-x))",
+      "calc((var(--diff-summary-depth, 0) + 1) * var(--tree-indent) + var(--diff-summary-header-inset) - var(--pane-header-padding-x))",
   };
   const indentOf = (row, tree) => {
     const probe = document.createElement("span");

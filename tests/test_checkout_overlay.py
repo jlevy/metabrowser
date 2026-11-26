@@ -30,7 +30,7 @@ from metabrowser.builtin_plugins.diff import sidekick
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
 from metabrowser.cache import pull_refs
 from metabrowser.cache.acquire import acquire_source
-from metabrowser.cache.identity import repository_store_id, source_identity, store_key
+from metabrowser.cache.identity import repository_store_id, source_identity, store_key_candidates
 from metabrowser.cache.lender import (
     CheckoutRefusedError,
     Lender,
@@ -38,6 +38,7 @@ from metabrowser.cache.lender import (
     check_lender,
     negotiation_tips,
     own_boundary,
+    redact_userinfo,
     suggested_checkout,
 )
 from metabrowser.cache.paths import store_directory
@@ -93,7 +94,8 @@ class _Stand:
     @property
     def store(self) -> Path:
         identity = repository_store_id(source_identity("https", CANONICAL), "sha1")
-        return self.home / store_directory(store_key(identity)) / "repository.git"
+        key = store_key_candidates("https", CANONICAL, identity)[0]
+        return self.home / store_directory(key) / "repository.git"
 
     def store_git(self, *args: str) -> str:
         return pinned_git(self.store, *args)
@@ -947,8 +949,13 @@ def test_a_head_the_checkout_lacks_is_fetched_into_the_store_alone(linear: _Stan
     assert linear.store_git("cat-file", "-t", replica["H1"]) == "commit"
     assert pinned_git(checkout, "cat-file", "-t", replica["M5"]) == "commit"
     assert fingerprint(checkout) == before
-    objects = linear.store_git("count-objects")
-    assert objects != "0 objects, 0 kilobytes"
+    # What it fetched is its own, and kept as the pack it arrived in: a fetch that
+    # unpacked could touch the checkout's objects (``OVERLAY_FETCH_CONFIG``).
+    counted = dict(
+        line.split(": ", 1) for line in linear.store_git("count-objects", "-v").splitlines()
+    )
+    assert (counted["count"], counted["packs"]) == ("0", "1")
+    assert int(counted["in-pack"]) > 0
 
 
 def test_the_store_says_what_it_borrows_and_a_full_store_says_nothing(linear: _Stand) -> None:
@@ -1301,7 +1308,10 @@ def test_a_served_overlay_names_its_checkout_only_where_it_names_its_location(
     with TestClient(server.app) as client:
         assert client.get(STATUS).json()["borrows"] == path
         shell = client.get("/view/")
-        assert f"borrowing objects from {path}:" in shell.text
+        assert 'data-mirror-tip="Bare Git mirror that shares objects with a local checkout."' in (
+            shell.text
+        )
+        assert path not in shell.text
         assert "content-security-policy" in shell.headers
         assert client.get("/api/capabilities").json()["capabilities"] == {
             "active_content": False,
@@ -1345,7 +1355,7 @@ def test_a_running_server_answers_by_name_when_the_checkout_goes(linear: _Stand)
         assert status["last_outcome"]["outcome"] == "lender_missing"
 
 
-def test_the_tooltip_names_the_checkout_beside_the_location(linear: _Stand) -> None:
+def test_the_source_tip_explains_that_the_mirror_shares_objects(linear: _Stand) -> None:
     from metabrowser.server import (
         _mirror_tip,  # pyright: ignore[reportPrivateUsage]
     )
@@ -1353,8 +1363,8 @@ def test_the_tooltip_names_the_checkout_beside_the_location(linear: _Stand) -> N
     checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
     status = ok([PULL, "--checkout", str(checkout), "--api", STATUS]).payload()
     tip = _mirror_tip(status)
-    assert tip is not None
-    assert f"stored in {status['location']}, borrowing objects from {checkout.resolve()}:" in tip
+    assert status["borrows"] == str(checkout.resolve())
+    assert tip == "Bare Git mirror that shares objects with a local checkout."
 
 
 # ── A boundary commit's own diff ────────────────────────────────────
@@ -1814,8 +1824,10 @@ def test_a_path_that_is_no_checkout_is_refused_the_same_way_on_every_hit(
         "GHP_SUPERSECRET_TOKEN@example.com:a/b.git",
         "https://GHP_SUPERSECRET_TOKEN@github.com/a/b.git",
         "git://GHP_SUPERSECRET_TOKEN:x@example.com/a/b.git",
+        # A raw ``@`` in the userinfo: everything to the last one before the host goes.
+        "https://me@example.com:GHP_SUPERSECRET_TOKEN@example.org/a/b.git",
     ],
-    ids=["ssh-password", "scp-user", "https-user", "git-userinfo"],
+    ids=["ssh-password", "scp-user", "https-user", "git-userinfo", "https-at-user"],
 )
 def test_a_refusal_never_prints_a_remotes_credentials(linear: _Stand, spelling: str) -> None:
     checkout = clone_checkout(linear.replica, linear.tmp_path / "other")
@@ -1824,6 +1836,29 @@ def test_a_refusal_never_prints_a_remotes_credentials(linear: _Stand, spelling: 
     assert "is not a checkout of https://github.com/octo/demo" in result.error
     assert "GHP_SUPERSECRET_TOKEN" not in result.stderr + result.stdout
     assert "a/b" in result.error
+
+
+@pytest.mark.parametrize(
+    ("spelled", "shown"),
+    [
+        ("https://user:token@example.org/a/b.git", "https://example.org/a/b.git"),
+        ("user:token@example.com:a/b.git", "example.com:a/b.git"),
+        # Review C1 on #740: the userinfo runs to the last ``@`` before the host, through
+        # any ``@``, ``?``, or ``#`` a token holds raw.
+        ("https://me@example.com:token@example.org/a/b.git", "https://example.org/a/b.git"),
+        ("http://user:pa?ss@example.org/a/b.git", "http://example.org/a/b.git"),
+        ("git://user:s3cr#t@example.org/a/b.git", "git://example.org/a/b.git"),
+        ("me@token@example.com:a/b.git", "example.com:a/b.git"),
+        # An ``@`` past the host is the path's or the query's, and stays.
+        ("example.com:a@b/c.git", "example.com:a@b/c.git"),
+        ("git@example.com:a@b/c.git", "example.com:a@b/c.git"),
+        ("http://example.org/a.git?u=a@b", "http://example.org/a.git?u=a@b"),
+    ],
+)
+def test_a_remotes_userinfo_is_removed_to_the_last_at_before_its_host(
+    spelled: str, shown: str
+) -> None:
+    assert redact_userinfo(spelled) == shown
 
 
 def test_an_ssh_spelling_keeps_its_user_for_the_match(linear: _Stand) -> None:

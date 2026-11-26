@@ -32,8 +32,8 @@
 }
 
 .folder-overview-panel-toggle:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Clipped, for the collapse, without becoming a scroll container: one would hold a
@@ -97,8 +97,6 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 12px;
-  color: var(--muted);
 }
 
 /* Every panel shares the README card's edges inside the outer pane gutter.
@@ -177,10 +175,88 @@
     .folder-overview-host {
       --folder-overview-column-inset: 2.5rem;
     }
+
+    /* The Overview is a reading column, which the shell centers while the navigation pane
+       is hidden (`--reading-unit`, static/styles.css): the panels' card and, beside it, the
+       table of contents rail of an expanded README, as in an opened document (markdown.css). */
+    .preview-pane:has(> .folder-overview-host[data-active-view="true"]) > * {
+      --reading-unit: calc(var(--doc-measure) + 2 * 2.5rem);
+    }
+
+    .preview-pane:has(
+        > .folder-overview-host[data-active-view="true"]
+          .folder-overview-panel-document:not(.folder-overview-panel-collapsed)
+          > .folder-overview-panel-body
+          > .kpress-doc
+          > .kpress-doc-layout
+          > .kpress-toc
+      )
+      > *,
+    .preview-pane:has(
+        > .folder-overview-host[data-active-view="true"]
+          .folder-overview-panel:not(.folder-overview-panel-collapsed)
+          > .file-overview-body
+          .file-type-summary-legend:not([hidden])
+      )
+      > * {
+      --reading-unit: calc(var(--doc-measure) + 2 * 2.5rem + 3rem + 15rem);
+    }
+
+    /* File Overview's type legend leaves the flow below the bars for a rail beside the
+       section, where an expanded README's table of contents sits: KPress's 3rem gap past
+       the card's edge and its 15rem track (markdown.css), from the top of the section, its
+       entries one to a line. The body stays the card's width, so the bars, Details, and
+       the map below keep the measure they have in every band. The legend is positioned on
+       the body, which clips only vertically, for the collapse, so the rail shows past its
+       edge; the reading unit above counts the rail, as it does a README's. */
+    .file-overview-body {
+      position: relative;
+      overflow-x: visible;
+    }
+
+    /* Inside that track the rail takes the table of contents' own inset, KPress's
+       `.kpress-toc` padding (components.css: 1.2rem at the start, 0.7rem at the end), so a
+       README's contents and this legend read as one column: each swatch sits on the line of
+       the contents' entry marks, and each share ends where the entries do. A copied value,
+       so tests/test_kpress_dependency_contract.py pins KPress's padding and this rule. */
+    .file-overview-body .file-type-summary-share {
+      position: absolute;
+      inset-block-start: 0;
+      inset-inline-start: calc(100% + 3rem);
+      box-sizing: border-box;
+      width: 15rem;
+      padding-inline: 1.2rem 0.7rem;
+    }
+
+    /* Each type's name starts where a level-1 entry's text does: past KPress's 2px entry
+       mark (`.kpress-toc a`) and its 0.75rem level-1 inset (`.kpress-toc-level-1 > a`),
+       less the swatch before it. In rem, so it holds at any root font size. */
+    .file-overview-body .file-type-summary-legend-item {
+      gap: calc(2px + 0.75rem - var(--mb-distribution-track-height));
+    }
+
+    .file-overview-body .file-type-summary-legend {
+      flex-direction: column;
+      flex-wrap: nowrap;
+    }
+
+    .file-overview-body .file-type-summary-legend-percent {
+      margin-inline-start: auto;
+    }
   }
 }
 
 @media print {
+  /* No container on paper, as the pane has none (static/styles.css, "Print adapter"):
+     WebKit applies no break rule inside one, and the README is a document that needs
+     them. */
+  .folder-overview-host {
+    container-type: normal;
+  }
+
+  /* The README's panel prints the document alone, as its own Document view does: its
+     heading, "README", is the page's label for it, not part of it. */
+  .folder-overview-panel-document > .folder-overview-panel-heading,
   .folder-overview-panel-surface,
   .folder-overview-panel-error,
   .folder-overview-loading {

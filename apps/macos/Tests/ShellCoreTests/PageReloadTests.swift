@@ -4,7 +4,7 @@ import Testing
 /// View > Reload Page, Command-R, in every state a folder window can be in (mb-i1wy).
 ///
 /// It was enabled only while the page was on screen, so while the status view covered
-/// it (the server starting, failed, or waiting, a discarded tab loading its page again,
+/// it (the server starting, failed, or waiting, a discarded page loading again,
 /// a page that did not load) Command-R did nothing, and where it was enabled it always
 /// asked WebKit to reload, which does nothing in a web view without a committed page.
 @Suite struct PageReloadTests {
@@ -68,14 +68,14 @@ import Testing
     }
 
     /// A ready server and no page to reload: a load still on its way before its commit,
-    /// a discarded tab loading its page again, or a window WebKit opened whose first load
+    /// a discarded page loading again, or a window WebKit opened whose first load
     /// has not committed. WebKit's reload would do nothing, so the window loads its page
     /// again.
     @Test func aReadyServerWithoutAPageLoadsThePageAgain() {
         #expect(route(.starting, showsPage: false, serverReady: true) == .loadPage)
         #expect(route(.reloading, showsPage: false, serverReady: true) == .loadPage)
         #expect(route(.starting, showsPage: true, hasPage: false, serverReady: true) == .loadPage)
-        // A discarded tab's fresh view never had a page; the status view covers it.
+        // A discarded page's fresh view never had a page; the status view covers it.
         #expect(route(.reloading, showsPage: false, hasPage: false, serverReady: true) == .loadPage)
     }
 
@@ -100,9 +100,9 @@ import Testing
     }
 
     /// Only the page failed, while the server is still ready: a provisional load failure, or
-    /// a content process that kept dying. Command-R loads this tab's page again, after the
-    /// health check, and restarts nothing under the folder's other tabs (review A6 on #433).
-    /// A server that no longer answers the check fails, every tab says so, and the next
+    /// a content process that kept dying. Command-R loads this window's page again, after the
+    /// health check, and restarts nothing under the folder's other windows (review A6 on #433).
+    /// A server that no longer answers the check fails, every window says so, and the next
     /// Command-R restarts it.
     @Test func aPageFailureLoadsThePageAgain() {
         for hasPage in [false, true] {
@@ -118,8 +118,8 @@ import Testing
         }
     }
 
-    /// A restored folder in a protected location starts when its tab is selected: Command-R
-    /// in that tab does what selecting it does, which starts it through the restore as the
+    /// A restored folder in a protected location starts when its window is brought forward:
+    /// Command-R in that window does what bringing it forward does, which starts it through the restore as the
     /// user's choice (`RestoreRun.select`).
     @Test func aFolderWaitingForItsTabStartsAsIfSelected() {
         for serverReady in [false, true] {

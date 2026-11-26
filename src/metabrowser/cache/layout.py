@@ -1,4 +1,4 @@
-"""The ``f01`` home format: its record, history, migrations, and future-format refusal.
+"""The ``f03`` home format: its record, history, migrations, and future-format refusal.
 
 ``layout.yml`` names the directory semantics of the whole application home. This
 module owns the current format, the ordered history of formats a release has written,
@@ -36,6 +36,7 @@ from metabrowser.cache.contracts import parse_application_config
 from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.locks import application_cache_lock
 from metabrowser.cache.paths import (
+    CONFIG_MAX_BYTES,
     CONFIG_RECORD,
     LAYOUT_RECORD,
     REPOSITORY_STORES,
@@ -50,6 +51,11 @@ from metabrowser.cache.records import (
     ApplicationConfig,
     CacheLayout,
 )
+from metabrowser.cache.store_rename import (
+    LEGACY_REPOSITORY_STORES,
+    OlderReleaseBusyError,
+    rename_legacy_names,
+)
 from metabrowser.home import (
     SharedEntryPolicy,
     application_cache,
@@ -60,35 +66,29 @@ from metabrowser.home import (
     write_private_file_atomic,
 )
 
-LAYOUT_FORMAT: Final = "f01"
+LAYOUT_FORMAT: Final = "f03"
 CONFIG_FORMAT: Final = "f01"
 CONFIG_FORMAT_HISTORY: Final[tuple[str, ...]] = (CONFIG_FORMAT,)
 # Every format a released Metabrowser has written, oldest first, ending with the current
 # one. Adding a format appends it here and adds the migration from its predecessor.
-FORMAT_HISTORY: Final[tuple[str, ...]] = ("f01",)
+# ``f02`` names each repository store by a readable key where ``f01`` spelled the whole
+# digest of its identity, and ``f03`` shortens that key, and a source's slug, to single-dash
+# words and a base-36 suffix where ``f02`` joined them with ``--`` and spelled the suffix
+# in hexadecimal, and moves the stores from ``repository-stores`` to ``repos``
+# (``store_rename``).
+FORMAT_HISTORY: Final[tuple[str, ...]] = ("f01", "f02", "f03")
 
 type Migration = Callable[[Path], None]
 # The migration from each historical format to the next one in FORMAT_HISTORY.
-MIGRATIONS: Final[Mapping[str, Migration]] = {}
+#
+# One function does both renames, because an entry named as ``f01`` or as ``f02`` is renamed
+# straight to its ``f03`` name. The step from ``f02`` of a home that was ``f01`` finds
+# nothing left to rename.
+MIGRATIONS: Final[Mapping[str, Migration]] = {
+    "f01": rename_legacy_names,
+    "f02": rename_legacy_names,
+}
 
-# Every /api/cache/layout request reads and validates the whole config on a shared
-# thread, so this bound is a claim about that cost. Measured on macOS arm64 and Python
-# 3.14 by filling config.yml to each candidate bound and timing the route, five rounds
-# each, on a machine also running unrelated work; maxima ran about 20% above the medians
-# below:
-#
-# - Unknown settings, the most expensive shape: 25 ms at 4 KiB, 87 ms at 16 KiB, 181 ms
-#   at 32 KiB, 341 ms at 64 KiB, and 1.33 s at 256 KiB. Cost is linear in the file, about
-#   5 ms per KiB, almost all of it portable YAML parsing.
-# - Upgrade entries: 22 ms, 70 ms, 136 ms, 274 ms, and 1.06 s at those sizes.
-# - Deeply nested flow sequences are refused by the parser at about 220 ms whatever the
-#   bound is, so no bound governs that shape.
-#
-# 16 KiB puts the worst shape beside what an ordinary cache page costs, which the
-# measurements above DEFAULT_PAGE_LIMIT in projection.py record. It holds about 300
-# upgrade entries beside the 179-byte config this release writes, far more than a home
-# accumulates, and no released Metabrowser has written a larger one.
-_MAX_CONFIG_BYTES: Final = 16 * 1024
 _CONFIG_METADATA: Final = {
     "contract": CONFIG_CONTRACT_ID,
     "envelope": "config",
@@ -238,9 +238,7 @@ def read_config(
 
     path = home / CONFIG_RECORD
     try:
-        payload = read_bytes_bounded(
-            home, CONFIG_RECORD, max_bytes=_MAX_CONFIG_BYTES, shared=shared
-        )
+        payload = read_bytes_bounded(home, CONFIG_RECORD, max_bytes=CONFIG_MAX_BYTES, shared=shared)
     except FileNotFoundError:
         return None
     except RecordError as error:
@@ -333,7 +331,8 @@ def _has_durable_entries(home: Path) -> bool:
     home. ``keep`` leaves an over-shared directory to the repairing writes that follow.
     """
 
-    for directory in (SOURCES, REPOSITORY_STORES):
+    # A home whose stores are still in the directory ``f01`` and ``f02`` named has data too.
+    for directory in (SOURCES, REPOSITORY_STORES, LEGACY_REPOSITORY_STORES):
         try:
             if list_private_directory(home, directory, max_entries=0, shared="keep"):
                 return True
@@ -417,7 +416,11 @@ def migrate_layout(
             migration = migrations.get(source)
             if migration is None:
                 raise RuntimeError(f"no migration from layout format {source} to {target}")
-            migration(home)
+            try:
+                migration(home)
+            except OlderReleaseBusyError as error:
+                # Nothing was renamed and the layout is as it was, so the next open retries.
+                raise LayoutError(str(error), home / "locks/stores") from error
             layout = CacheLayout(format=target, created_by=layout.created_by)
             write_record_atomic(home, LAYOUT_RECORD, layout, CACHE_LAYOUT_CONTRACT_ID)
             migrated.append(target)

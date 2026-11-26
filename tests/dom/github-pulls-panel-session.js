@@ -106,6 +106,7 @@ function createPage() {
   const log = [];
   const waiting = [];
   const timers = new Map();
+  const probeTimers = new Map();
   let nextTimer = 1;
   const clock = { now: Date.parse("2026-09-17T12:00:30Z") };
   let visible = true;
@@ -141,18 +142,21 @@ function createPage() {
         });
       });
     },
-    schedule(callback, delayMs) {
+    schedule(callback, delayMs, what) {
       const handle = nextTimer;
       nextTimer += 1;
-      timers.set(handle, { callback, delayMs });
+      // The probe ask's timer is kept apart: a step fires the poll's, or names this one.
+      (what === "probe" ? probeTimers : timers).set(handle, { callback, delayMs });
       return handle;
     },
     cancel(handle) {
       timers.delete(handle);
+      probeTimers.delete(handle);
     },
     now: () => clock.now,
     isVisible: () => visible,
     formatTime: (iso) => new Date(iso).toISOString(),
+    formatCount: (count) => count.toLocaleString("en-US"),
     render(next) {
       model = next;
       paints += 1;
@@ -245,6 +249,8 @@ function createPage() {
       await settle();
     },
     waitingCount: () => waiting.length,
+    /** The title of the first row the panel would paint, or null. */
+    firstTitle: () => model?.rows[0]?.title ?? null,
     rowsVersion: () => model?.rowsVersion,
     filterTotals: () => model?.filterTotals,
     /** Run the timer with this delay, or the only one. */
@@ -259,6 +265,17 @@ function createPage() {
       await settle();
     },
     timerDelays: () => [...timers.values()].map((timer) => timer.delayMs),
+    /** The delay of the timer that waits to send the list's next probe ask, or null. */
+    probeDelay: () => [...probeTimers.values()].map((timer) => timer.delayMs)[0] ?? null,
+    /** Run the probe ask's timer, after moving the clock on by its delay. */
+    async fireProbe() {
+      assert(probeTimers.size === 1, `expected one probe timer, found ${probeTimers.size}`);
+      const [[handle, timer]] = [...probeTimers.entries()];
+      probeTimers.delete(handle);
+      clock.now += timer.delayMs;
+      timer.callback();
+      await settle();
+    },
     /** What one step did, and everything it left behind. */
     observe(step, controller, options = {}) {
       const snapshot = controller.snapshot();
@@ -515,6 +532,7 @@ async function run() {
       rowsVersion: 1,
       nowMs: Date.parse(answer.body.fetched_at) + 30_000,
       formatTime: (iso) => new Date(iso).toISOString(),
+      formatCount: (count) => count.toLocaleString("en-US"),
       more: false,
       error: null,
     });
@@ -567,10 +585,86 @@ async function run() {
     provider_calls: recorded.provider_calls,
     failures,
     hostile,
+    probes: await probeStory(panel),
     reader: await readerStory(),
     paint: await paintStory(panel),
     numbers: await numberStory(panel),
   };
+}
+
+/**
+ * The asks of a shown list the server probes (`probe_every_s`): one every interval on a timer
+ * of its own, current or stale, with no read of the list unless an ask started a scan; none
+ * while the page is hidden or the tab is not shown; and one at once when it shows again.
+ */
+async function probeStory(panel) {
+  const page = createPage();
+  page.clock.now = Date.parse(recorded.refreshed.body.fetched_at) + 5_000;
+  const controller = panel.createPullsController(page.deps, { filter: "all", current: null });
+  const story = [];
+  const look = (step) => {
+    const snapshot = controller.snapshot();
+    story.push({
+      step,
+      requests: page.requests(),
+      poll: snapshot.timer,
+      probeInMs: page.probeDelay(),
+      firstRow: page.firstTitle(),
+    });
+  };
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.refreshed);
+  await page.answer(recorded.more_window);
+  look("a current list is shown: its first probe ask is due at once");
+  await page.fireProbe();
+  look("the ask is sent");
+  await page.answer(recorded.probe_unchanged);
+  look("GitHub has nothing new: nothing is read, and the next ask waits an interval");
+  await page.fireProbe();
+  await page.answer(recorded.probe_changed);
+  look("the next ask finds a change, and its scan starts: the poll turns fast");
+  await page.fireProbe();
+  look("an ask due while that scan runs is not sent, and the next waits an interval");
+  await page.fire(1000);
+  await page.answer(recorded.probe_scanned);
+  await page.answer(recorded.probe_scanned_more);
+  look("the scan's rows are read");
+  page.setVisible(false);
+  controller.onVisibilityChange();
+  await settle();
+  look("hidden: no timer waits to ask");
+  page.clock.now += 60_000;
+  page.setVisible(true);
+  controller.onVisibilityChange();
+  await settle();
+  await page.poll(recorded.probe_scanned);
+  look("visible again a minute later: the list is read, and a probe ask is due at once");
+  controller.setShown(false);
+  await settle();
+  look("the tab is not shown: no timer waits to ask");
+  controller.dispose();
+  // Pausing or disposing the panel clears an ask that waits (review A12 of #737).
+  for (const stop of ["pause", "dispose"]) {
+    const other = createPage();
+    other.clock.now = page.clock.now;
+    const stopped = panel.createPullsController(other.deps, { filter: "all", current: null });
+    void stopped.start({ shown: true });
+    await settle();
+    await other.answer(recorded.refreshed);
+    await other.answer(recorded.more_window);
+    await other.fireProbe();
+    await other.answer(recorded.probe_unchanged);
+    const waited = other.probeDelay();
+    stopped[stop]();
+    await settle();
+    story.push({
+      step: `${stop} while the next ask waits ${waited} ms: no timer waits to ask`,
+      probeInMs: other.probeDelay(),
+    });
+    stopped.dispose();
+  }
+  return story;
 }
 
 /**
@@ -685,10 +779,12 @@ async function readerStory() {
     { fetchAfterMs: 0, initial: null },
     { pull: absent, refresh: tooMany },
   );
+  // A current record is probed at once (`probe_every_s`): GitHub answers the server's
+  // conditional read unchanged, so nothing is fetched.
   await opened(
-    "a row with a record fetches nothing",
+    "a row with a current record is probed at once, and an unchanged probe fetches nothing",
     { fetchAfterMs: 0, initial: { etag: current.etag, body: current.body } },
-    { pull: { status: 304, etag: current.etag, body: null } },
+    { pull: { status: 304, etag: current.etag, body: null }, refresh: pageRecorded.probed },
   );
   // A stale record is shown at once and refreshed behind it, with nothing to press: a click
   // asks at once, a key that stops on the row after the same wait as a fetch, and a key still
@@ -848,6 +944,7 @@ async function paintStory(panel, selection = false) {
     await settle();
   }
   try {
+    const ages = require("./sdk-ref-fixture.js").ageHelpers(document, () => now);
     const mb = {
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
@@ -858,12 +955,14 @@ async function paintStory(panel, selection = false) {
         },
         bind: () => () => {},
       },
-      formatAge(seconds) {
+      // The shell's one age builder, as of the session's clock, counting each age it tells.
+      ageLabel(...args) {
         aged += 1;
-        const minutes = Math.round((now / 1000 - seconds) / 60);
-        return minutes < 60
-          ? { label: `${minutes}m`, className: "age-min" }
-          : { label: `${Math.round(minutes / 60)}h`, className: "age-hour" };
+        return ages.ageLabel(...args);
+      },
+      retellAge(...args) {
+        aged += 1;
+        return ages.retellAge(...args);
       },
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
     };
@@ -919,11 +1018,11 @@ async function paintStory(panel, selection = false) {
     const controlsRow = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-filters"),
     );
-    const reload = controlsRow.childNodes.at(-1);
-    assert(reload.classList.contains("github-pulls-reload"), "Reload follows the state filters");
+    const refresh = controlsRow.childNodes.at(-1);
+    assert(refresh.classList.contains("github-pulls-refresh"), "Refresh follows the state filters");
     assert(
-      reload.getAttribute("aria-checked") === null && reload.tabIndex !== -1,
-      "Reload remains a normal keyboard action rather than a filter chip",
+      refresh.getAttribute("aria-checked") === null && refresh.tabIndex !== -1,
+      "Refresh remains a normal keyboard action rather than a filter chip",
     );
     const [spinner, message] = connectionText.childNodes;
     assert(
@@ -951,8 +1050,8 @@ async function paintStory(panel, selection = false) {
       "one shared spinner and delay for the first loading message",
     );
     assert(
-      reload.textContent === "Reload" && reload.getAttribute("aria-disabled") === "true",
-      "the same reload control waits while loading",
+      refresh.textContent === "Refresh" && refresh.getAttribute("aria-disabled") === "true",
+      "the same refresh control waits while loading",
     );
     const live = container.childNodes.filter((node) => node.getAttribute("aria-live") === "polite");
     assert(live.length === 1 && live[0].textContent === message.textContent, "one announcement");
@@ -985,8 +1084,9 @@ async function paintStory(panel, selection = false) {
     await answer(first);
     assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
     assert(
-      controlsRow.childNodes.at(-1) === reload && reload.getAttribute("aria-disabled") === "false",
-      "the stable Reload becomes available when settled",
+      controlsRow.childNodes.at(-1) === refresh &&
+        refresh.getAttribute("aria-disabled") === "false",
+      "the stable Refresh becomes available when settled",
     );
     assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
     const filterTallies = filterChips.map((chip) => chip.textContent);
@@ -1000,24 +1100,39 @@ async function paintStory(panel, selection = false) {
     );
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
-    const row = (item) => item.firstElementChild;
-    // A row's third line, its change line, the row's one child, which owns its files.
-    const change = (item) =>
-      item.childNodes.find((node) => node.classList?.contains("github-pulls-change-group"))
-        .firstElementChild;
+    // A pull request is one zone, its item's first child (mb-1z7j): the row, the link and the
+    // tree's item, which owns its files, whose run ends with the author, and whose last line is
+    // their toggle, its lines and the chevron after them, and the age at the row's end (mb-pw8t,
+    // mb-rb3n).
+    const row = (item) => item.firstElementChild.firstElementChild;
+    /** The first element under *node*, at any depth, with the class *name*. */
+    const deep = (node, name) => {
+      for (const part of node.childNodes ?? []) {
+        if (part.classList?.contains(name)) {
+          return part;
+        }
+        const found = deep(part, name);
+        if (found !== undefined) {
+          return found;
+        }
+      }
+      return undefined;
+    };
+    const change = (item) => deep(row(item), "github-pulls-change");
     const fileWindow = () => answers.findIndex((request) => request.route.includes("/pull-files?"));
-    const previewDisclosure = change(shown).getAttribute("aria-expanded");
+    // The row says whether its files are open: its change line is hidden from assistive
+    // technology, and only turns its chevron (mb-1z7j).
+    const previewDisclosure = row(shown).getAttribute("aria-expanded");
     if (!selection) {
       assert(previewDisclosure === "false", "a PR preview stays collapsed");
       assert(fileWindow() === -1, "a PR preview reads no changed-file metadata");
-      // Right goes to the row's change line and opens nothing; Right again opens its files.
-      mounted.expand();
-      assert(
-        document.activeElement === change(shown) && fileWindow() === -1,
-        "Right on a row goes to its change line, and reads no files",
-      );
+      // Right on a row opens its files, as on a folder's (mb-1z7j).
       mounted.expand();
       await settle();
+      assert(
+        document.activeElement !== change(shown),
+        "Right on a row leaves the focus off its toggle, which is no stop",
+      );
       const group = shown.childNodes.find((node) => node.classList?.contains("github-pull-files"));
       const [progress] = group.firstElementChild.childNodes;
       assert(!progress.hidden && progress.firstElementChild.classList.contains("spinner"));
@@ -1076,6 +1191,24 @@ async function paintStory(panel, selection = false) {
               listener(path === null ? null : { path });
             }
           },
+          // What the Pulls tab's Refresh reads and runs of the page beside it (mb-ablv).
+          refreshes: 0,
+          offered: false,
+          refreshListeners: new Set(),
+          canRefresh: () => handle.offered,
+          refresh() {
+            handle.refreshes += 1;
+          },
+          onRefreshChange(listener) {
+            handle.refreshListeners.add(listener);
+            return () => handle.refreshListeners.delete(listener);
+          },
+          offer(offered) {
+            handle.offered = offered;
+            for (const listener of handle.refreshListeners) {
+              listener();
+            }
+          },
           fileForPath: (path) => ({ kind: "file", path }),
           scrollToFile: (path) => ({ kind: "file", path }),
           // A jump may report later; its explicit address must win while unavailable.
@@ -1129,8 +1262,7 @@ async function paintStory(panel, selection = false) {
           .map((node) => node.getAttribute("href"));
       assert(selected(current).length === 1, "initial page observation selects its actual file");
       list.listeners.get("focusin")({ target: row(shown) });
-      // Right to the change line, then Right into its files.
-      mounted.expand();
+      // Right on the row, whose files the address opened: into its files, as on a folder's.
       mounted.expand();
       const oldAnchor = walk(container).find(
         (node) =>
@@ -1157,7 +1289,7 @@ async function paintStory(panel, selection = false) {
       await settle();
       observations.leaving = selected(current);
       assert(
-        change(shown).getAttribute("aria-expanded") === "true",
+        row(shown).getAttribute("aria-expanded") === "true",
         "reader-expanded old tree remains open",
       );
       assert(oldAnchor.getAttribute("tabindex") === "0", "leaving keeps the old roving anchor");
@@ -1200,6 +1332,46 @@ async function paintStory(panel, selection = false) {
       observations.history = selected(current);
       handles.get(other).emit("src/app.txt");
       observations.lateAfterHistory = selected(other);
+      // The one Refresh (mb-ablv): the tab's Refresh refreshes the page beside it, when the
+      // page has something to refresh, and then the list; it follows what the page offers,
+      // and waits only while neither can refresh.
+      const beside = handles.get(current);
+      const listRefreshes = () =>
+        answers.filter((request) => request.route === "/api/plugin/github/pulls-refresh").length;
+      const listBefore = listRefreshes();
+      beside.offer(true);
+      assert(
+        refresh.getAttribute("aria-disabled") === "false",
+        "Refresh is offered while the page beside it can refresh",
+      );
+      refresh.listeners.get("click")();
+      await settle();
+      assert(
+        beside.refreshes === 1 && listRefreshes() === listBefore + 1,
+        "one press refreshes the page beside the tab and then the list",
+      );
+      beside.offer(false);
+      assert(
+        refresh.getAttribute("aria-disabled") === "true",
+        "Refresh waits while neither the page nor the list, its refresh asked, can refresh",
+      );
+      refresh.listeners.get("click")();
+      await settle();
+      assert(
+        beside.refreshes === 1 && listRefreshes() === listBefore + 1,
+        "a waiting Refresh asks nothing of the page or the list",
+      );
+      beside.offer(true);
+      assert(
+        refresh.getAttribute("aria-disabled") === "false",
+        "the page offering a refresh again offers Refresh again",
+      );
+      refresh.listeners.get("click")();
+      await settle();
+      assert(
+        beside.refreshes === 2 && listRefreshes() === listBefore + 1,
+        "a press while the list's refresh is on its way refreshes the page alone",
+      );
       mounted.dispose();
       handles.get(current).emit("docs/new.md");
       pageHost.dispose();
@@ -1231,67 +1403,111 @@ async function paintStory(panel, selection = false) {
       };
     }
 
-    const metadata = row(hostile).childNodes.find((node) =>
-      node.classList?.contains("github-pulls-meta"),
-    );
     /** @param {any} parent @param {string} name */
     const child = (parent, name) =>
       parent.childNodes.find((node) => node.classList?.contains(name));
-    // The line wraps: the author carries the separator before it, so it moves to the next
-    // line whole. A row names no branches; the pull request's page does.
-    const line = child(metadata, "github-pulls-line");
-    const id = child(line, "github-pulls-id");
-    const numberLabel = child(id, "github-pulls-number");
-    const by = child(line, "github-pulls-by");
-    // The stylesheet lays the row out as three lines (mb-lkkt, mb-3cbf, mb-d0a3): the icon,
-    // the number's line, where a stack member's place comes before the number (mb-dzsi), and
-    // the age; then the title alone, so it has the room; then the change line, with the
-    // chevron. tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
+    // The row's run holds the title, a stack member's place, the number, and the author; its
+    // last line, the lines changed with the chevron after them, and the age at its end
+    // (mb-rb3n). A row names no branches; the pull request's page does.
+    const heading = child(row(hostile), "github-pulls-heading");
+    const numberLabel = child(heading, "github-pulls-number");
+    const by = child(heading, "github-pulls-by");
+    const tail = child(row(hostile), "github-pulls-tail");
+    // The stylesheet lays the run out as one flow (mb-85op, mb-pw8t, mb-rb3n): the state icon,
+    // then the title, the place, the number, and the author, a dot before each part after the
+    // title, every line of it in the text column; then the last line, the toggle and the age.
+    // tests/dom/github-pulls-row-lines-chrome.mjs lays these rows out in Chrome.
     const classesOf = (node) =>
       node.childNodes
         .filter((child) => typeof child.className === "string")
-        .map((child) => child.className.split(" ").find((name) => name.startsWith("github-pull")));
-    const order = classesOf(row(hostile));
+        .map(
+          (child) =>
+            child.className.split(" ").find((name) => name.startsWith("github-pull")) ??
+            child.className,
+        );
+    assert(
+      JSON.stringify(classesOf(row(hostile))) ===
+        JSON.stringify(["github-pulls-heading", "github-pulls-tail", "sr-only"]),
+      `the row's link is its run, its last line, and its number, author, and age in words: ${classesOf(row(hostile))}`,
+    );
+    const order = classesOf(heading);
     assert(
       JSON.stringify(order) ===
         JSON.stringify([
           "github-pull-state-icon",
           "github-pulls-title",
-          "github-pulls-age",
-          "github-pulls-meta",
+          "github-pulls-place",
+          "github-pulls-sep",
+          "github-pulls-number",
+          "github-pulls-sep",
+          "github-pulls-by",
         ]),
-      `the row's link is the state icon, the title, the age, and the muted line: ${order}`,
+      `the run is the state icon, the title, the place, a dot and the number, and a dot and the author: ${order}`,
+    );
+    // The author is its identity alone, hidden, since the link's name says it.
+    assert(
+      JSON.stringify(classesOf(by)) === JSON.stringify(["github-pull-identity"]) &&
+        by.getAttribute("aria-hidden") === "true",
+      `the author is its identity: ${classesOf(by)}`,
+    );
+    // The number holds its text alone, and the last line is the toggle, the lines, then the
+    // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), and the age
+    // at the row's end, hidden, since the link's name says it (mb-rb3n).
+    const toggle = child(tail, "github-pulls-change");
+    const tailAge = child(tail, "github-pulls-age");
+    assert(
+      classesOf(numberLabel).length === 0 &&
+        JSON.stringify(classesOf(tail)) ===
+          JSON.stringify(["github-pulls-change", "github-pulls-age"]) &&
+        tailAge.getAttribute("aria-hidden") === "true" &&
+        JSON.stringify(classesOf(toggle)) ===
+          JSON.stringify([
+            "github-pulls-change-line",
+            "github-pulls-toggle",
+            "github-pulls-change-words",
+          ]),
+      `the number is its text, and the toggle is the lines, the chevron, and their words: ${classesOf(toggle)}`,
     );
     assert(
-      JSON.stringify(classesOf(hostile).slice(0, 2)) ===
-        JSON.stringify(["github-pulls-row", "github-pulls-change-group"]) &&
+      JSON.stringify(classesOf(hostile).slice(0, 1)) === JSON.stringify(["github-pulls-entry"]) &&
+        JSON.stringify(classesOf(hostile.firstElementChild)) ===
+          JSON.stringify(["github-pulls-row"]) &&
         JSON.stringify(classesOf(change(hostile))) ===
-          JSON.stringify(["github-pulls-toggle", "github-pulls-change-line"]),
-      "under the link, the change line: the chevron, then the line",
+          JSON.stringify([
+            "github-pulls-change-line",
+            "github-pulls-toggle",
+            "github-pulls-change-words",
+          ]),
+      "one zone, the link: its run ends with the author, and its last line is the toggle, the lines, the chevron after them, and their words, which describe the row, and the age",
     );
     assert(
-      id.childNodes[0].classList.contains("github-pulls-place") &&
-        id.childNodes[0].hidden &&
-        id.childNodes[0].textContent === "",
-      "the line starts with the stack place, with the number, empty and hidden while no stack holds it",
+      heading.childNodes[2].hidden && heading.childNodes[2].textContent === "",
+      "the place, after the title, is empty and hidden while no stack holds the row",
     );
     assert(
-      metadata.textContent === `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
-      "the line reads number, then author, and names no branches",
+      numberLabel.firstChild.textContent === `#${first.body.rows[0].number}` &&
+        by.textContent.includes(first.body.rows[0].author),
+      "the run shows the number and the author, and names no branch",
     );
     assert(
-      !metadata.childNodes.some((node) => node.textContent.includes("→")) &&
-        line.childNodes.length === 2,
-      "the line has the place and number, and the author, and no merge",
+      !heading.textContent.includes("→") && !tail.textContent.includes("→"),
+      "the row names no merge",
     );
     assert(
-      by.firstChild.classList.contains("github-pulls-sep") && by.firstChild.textContent === " · ",
-      "a part that may wrap carries its own separator",
+      child(row(hostile), "sr-only").textContent.startsWith(
+        `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
+      ),
+      "the link says the number, the author, and the age, which its run shows hidden",
+    );
+    assert(
+      heading.childNodes[3].classList.contains("github-pulls-sep") &&
+        heading.childNodes[3].textContent === "\u00a0· ",
+      "a part after the title carries the dot before it, kept to the part before by a no-break space",
     );
     const identity = child(by, "github-pull-identity");
     const authorLabel = child(identity, "github-pulls-author");
     assert(
-      numberLabel.textContent === `#${first.body.rows[0].number}`,
+      numberLabel.firstChild.textContent === `#${first.body.rows[0].number}`,
       "number has its normal-size span",
     );
     assert(authorLabel.localName === "strong", "username is semantically bold");
@@ -1323,7 +1539,7 @@ async function paintStory(panel, selection = false) {
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
       "loading status": loading,
-      "ready action": reload.textContent,
+      "ready action": refresh.textContent,
       landing: pane.textContent,
       "filter tallies": filterTallies,
       "only the repository name is bold": total.childNodes.map((node) => ({
@@ -1334,19 +1550,25 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
-      // The stylesheet draws the title first and the number's line under it (mb-lkkt); the
-      // DOM keeps the title the row's first text too. This reads the text, not the accessible
-      // name, which gives the state icon's label first and then the title.
+      // The title is the row's first text, after the state icon and a stack member's place
+      // (mb-vkhd). This reads the text, not the accessible name, which gives the state icon's
+      // label first and then the title.
       "its text leads with its title": row(shown)
         .textContent.trim()
-        .startsWith(row(shown).childNodes[1].textContent),
+        .startsWith(
+          child(child(row(shown), "github-pulls-heading"), "github-pulls-title").textContent,
+        ),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
-      "Right to its change line, and Right again, opens its cached changed files": filesRead,
-      "they hang under it as a group it owns": shown.childNodes.map(described),
-      "its change line, the row's child, owns them": described(change(shown)),
-      "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
-        (node) => ({ node: node.nodeName, data: node.data }),
-      ),
+      "Right on its row opens its cached changed files": filesRead,
+      "they hang under its item as a group": shown.childNodes.map(described),
+      "its row owns them, and its toggle, hidden, only turns its chevron": [
+        described(row(shown)),
+        described(change(shown)),
+      ],
+      "a title written as markup is one text node": child(
+        heading,
+        "github-pulls-title",
+      ).childNodes.map((node) => ({ node: node.nodeName, data: node.data })),
       "rows built for the first window": built,
     };
     // The end of the list comes into view: the next window is appended, and only its rows are
@@ -1375,9 +1597,7 @@ async function paintStory(panel, selection = false) {
     story["rows held"] = list.childNodes.length;
     // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
     // row's age, in place.
-    const age = () =>
-      row(shown).childNodes.find((node) => node.className?.includes("github-pulls-age"))
-        .textContent;
+    const age = () => deep(row(shown), "github-pulls-age").textContent;
     story["an age, before"] = age();
     built = 0;
     now += 2 * 60 * 60 * 1000;
@@ -1402,7 +1622,7 @@ async function paintStory(panel, selection = false) {
     };
     await answer({ status: 200, etag: null, body: outage });
     assert(answers[0].init.method === "POST", "watch starts a passive retry");
-    const retryMessage = "GitHub could not be reached. Showing cached pull requests.";
+    const retryMessage = "Could not reach GitHub. Showing the pull requests last loaded.";
     const assertRetry = () => {
       assert(message.textContent === retryMessage, "the outage text stays visible");
       assert(live[0].textContent === retryMessage, "the polite announcement stays steady");
@@ -1413,9 +1633,9 @@ async function paintStory(panel, selection = false) {
           message.classList.contains("mb-refreshing-muted") &&
           connectionText.getAttribute("aria-busy") === "true" &&
           connection.getAttribute("aria-busy") === null,
-        "the outage breathes, muted, and its text, not the row's Reload, is busy",
+        "the outage breathes, muted, and its text, not the row's Refresh, is busy",
       );
-      assert(reload.getAttribute("aria-disabled") === "true", "Reload waits for the retry");
+      assert(refresh.getAttribute("aria-disabled") === "true", "Refresh waits for the retry");
     };
     assertRetry();
     await answer({
@@ -1431,7 +1651,7 @@ async function paintStory(panel, selection = false) {
     const many = list.childNodes
       .filter((item) => Number(row(item).dataset.number) !== current)
       .slice(0, 12);
-    // A press on a row's change line toggles its files; a press on the row opens it.
+    // A press on a row's toggle toggles its files; a press elsewhere on the row opens it.
     const click = (item) =>
       list.listeners.get("click")({ target: change(item), preventDefault() {} });
     const retained = () =>
@@ -1455,12 +1675,12 @@ async function paintStory(panel, selection = false) {
     const afterClosingAll = retained();
     assert(afterClosingAll === panel.MAX_HELD_TREES + 1, "closed trees must be bounded on close");
     assert(
-      change(many[0]).getAttribute("aria-owns") === null,
+      row(many[0]).getAttribute("aria-owns") === null,
       "the longest-closed tree must go first",
     );
-    assert(change(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
+    assert(row(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
     assert(
-      change(many.at(-1)).getAttribute("aria-owns") !== null,
+      row(many.at(-1)).getAttribute("aria-owns") !== null,
       "the most recently closed tree must remain",
     );
     story["closing twelve expanded trees enforces retention immediately"] = {
@@ -1506,6 +1726,59 @@ async function paintStory(panel, selection = false) {
     );
     inSlot.dispose();
     assert(slot.childNodes.length === 0, "a disposed list leaves the toolbar");
+    // With the band under the toolbar too, as the shell draws it (server.py), the count and
+    // connection lines are the band's, outside the scroller that holds the list, so their rule
+    // runs the pane's width and they stay in view while the list scrolls (mb-vgx3); a
+    // disposed list leaves the band as it leaves the slot.
+    const bandSlot = new FakeElement("div");
+    const band = new FakeElement("div");
+    const banded = new FakeElement("div");
+    const inBand = panel.mountPullsPanel(
+      banded,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          toolbar: bandSlot,
+          metadata: band,
+          scrollRoot: null,
+          open() {},
+          file: null,
+          fileHref: () => null,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      mb,
+    );
+    await settle();
+    const firstClass = (node) => node.className.split(" ")[0];
+    story["with the host's toolbar and band: what each holds"] = {
+      toolbar: bandSlot.childNodes.map(firstClass),
+      band: band.childNodes.map(firstClass),
+      tab: banded.childNodes.slice(0, 2).map(firstClass),
+    };
+    assert(
+      band.childNodes.length === 2 &&
+        band.childNodes[0].classList.contains("github-pulls-status") &&
+        band.childNodes[1].classList.contains("github-pulls-connection"),
+      "the count and connection lines fill the host's band",
+    );
+    assert(
+      !banded.childNodes.some((node) => node.classList?.contains("nav-metadata")),
+      "the list's container holds no metadata line",
+    );
+    inBand.dispose();
+    story["with the host's toolbar and band: what each holds once disposed"] = {
+      toolbar: bandSlot.childNodes.length,
+      band: band.childNodes.length,
+      tab: banded.childNodes.length,
+    };
+    assert(band.childNodes.length === 0, "a disposed list leaves the band");
     return story;
   } finally {
     Date.now = realNow;
@@ -1521,14 +1794,14 @@ async function paintStory(panel, selection = false) {
 
 // ── The numbers ────────────────────────────────────────────────
 //
-// The state chips and Reload are situational, so each takes a number from its place on screen
+// The state chips and Refresh are situational, so each takes a number from its place on screen
 // through the SDK's shortcut surface (docs/design-system.md, "Keyboard Shortcuts"). The
 // shortcut stand-in is the production registry and plugin facade, static/keyboard-shortcuts.js
 // and static/plugin-shortcuts.js, loaded whole into a realm of their own as `shell-tools` loads
 // them, and the panel's `mb.shortcuts.attach` is the facade's. Around the panel is a page
 // shaped as the shell's: the navigation pane, with the Files tab's filter bar, whose triggers
 // the shell numbers through `attachNumbered()`, and the Pulls tab, before the main pane, with a
-// pull request header's View on GitHub. Switching tabs hides the other with `display: none`, as
+// pull request header's Browse code. Switching tabs hides the other with `display: none`, as
 // main-tabs.js does. The elements answer what the registry reads of one in a browser:
 // connection, `hidden` and `display: none` up the tree, `inert`, and document order.
 
@@ -1687,9 +1960,9 @@ async function numberStory(panel) {
     const pullsTab = new NumberedElement("div");
     const navigation = new NumberedElement("div");
     navigation.append(filterBar, filesTab, pullsTab);
-    const onGitHub = element("a", "View on GitHub");
+    const browseCode = element("a", "Browse code");
     const main = new NumberedElement("div");
-    main.append(onGitHub);
+    main.append(browseCode);
     body.append(navigation, main);
     const show = (tab) => {
       filterBar.style.display = tab === "files" ? "" : "none";
@@ -1702,9 +1975,9 @@ async function numberStory(panel) {
     for (const trigger of [recency, types]) {
       registry.attachNumbered(trigger, { activate: () => ran.push(name(trigger)) });
     }
-    facade.attachShortcut(onGitHub, {
-      activate: () => ran.push(name(onGitHub)),
-      id: "github.pull.header.github",
+    facade.attachShortcut(browseCode, {
+      activate: () => ran.push(name(browseCode)),
+      id: "github.pull.header.browse",
       numbered: true,
     });
     const heard = [];
@@ -1722,7 +1995,6 @@ async function numberStory(panel) {
           return () => {};
         },
       },
-      formatAge: () => ({ label: "1m", className: "age-min" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       shortcuts: { attach: facade.attachShortcut },
     };
@@ -1753,8 +2025,8 @@ async function numberStory(panel) {
     );
     const chips = filters.childNodes.filter((node) => node.dataset.chipValue !== undefined);
     const chip = (value) => chips.find((node) => node.dataset.chipValue === value);
-    const reload = filters.childNodes.at(-1);
-    assert(reload.classList.contains("github-pulls-reload"), "Reload ends the filter row");
+    const refresh = filters.childNodes.at(-1);
+    assert(refresh.classList.contains("github-pulls-refresh"), "Refresh ends the filter row");
     const numbers = () => registry.liveNumbers().map((node, at) => `${at + 1} ${name(node)}`);
     /** What one act asked of the server and the list, what else ran, and where it moved focus. */
     async function acted(what, act) {
@@ -1798,14 +2070,14 @@ async function numberStory(panel) {
         return event.defaultPrevented;
       });
     // A click on a segment, as static/filter-controls.js reports one: nothing for the chip
-    // already chosen, else the group's change. A click on Reload is its own listener.
+    // already chosen, else the group's change. A click on Refresh is its own listener.
     const clickChip = (value) =>
       acted(`click ${name(chip(value))}`, () => {
         if (chip(value).getAttribute("aria-checked") !== "true") {
           chipChange("github-pulls-filter", value, "one");
         }
       });
-    const clickReload = () => acted("click Reload", () => reload.listeners.get("click")());
+    const clickRefresh = () => acted("click Refresh", () => refresh.listeners.get("click")());
     /** Answer the oldest request waiting on *route* with a recorded answer. */
     async function answer(route, recording) {
       const at = answers.findIndex((waiting) => waiting.route.split("?")[0] === route);
@@ -1823,24 +2095,24 @@ async function numberStory(panel) {
     // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
     story["the Pulls tab, loading"] = numbers();
     assert(
-      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 View on GitHub",
-      "the chips and Reload take 1 to 4 in reading order, before the page's link",
+      numbers().join() === "1 Open,2 Closed,3 All,4 Refresh,5 Browse code",
+      "the chips and Refresh take 1 to 4 in reading order, before the page's link",
     );
     assert(
-      reload.getAttribute("aria-disabled") === "true",
-      "positive control: Reload waits while the list loads",
+      refresh.getAttribute("aria-disabled") === "true",
+      "positive control: Refresh waits while the list loads",
     );
-    story["Reload waits"] = [await press("4"), await clickReload()];
+    story["Refresh waits"] = [await press("4"), await clickRefresh()];
     await answer("/api/plugin/github/pulls", recorded.more_done);
-    assert(reload.getAttribute("aria-disabled") === "false", "the settled Reload is available");
+    assert(refresh.getAttribute("aria-disabled") === "false", "the settled Refresh is available");
     story["the Pulls tab, settled"] = numbers();
     const byKey = await press("4");
     await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
-    const byClick = await clickReload();
-    story.Reload = [byKey, byClick];
+    const byClick = await clickRefresh();
+    story.Refresh = [byKey, byClick];
     assert(
       byKey.asked.length === 1 && JSON.stringify(byKey.asked) === JSON.stringify(byClick.asked),
-      "Reload's number asks for what its click asks for",
+      "Refresh's number asks for what its click asks for",
     );
     // Each chip's number, then each chip's click, from the same list: the same asks in the
     // same order. Then the chip already chosen: its number, like its click, asks for nothing.
@@ -1883,7 +2155,7 @@ async function numberStory(panel) {
     );
     // Holding Shift shows each live number on its control.
     registry.setRevealed(true);
-    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, onGitHub]
+    story["the keycaps while Shift is held"] = [...chips, refresh, recency, types, browseCode]
       .map((node) => {
         const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
         return `${name(node)} ${badge?.textContent ?? "none"}`;
@@ -1894,7 +2166,7 @@ async function numberStory(panel) {
     show("files");
     story["the Files tab"] = numbers();
     assert(
-      numbers().join() === "1 Modified within,2 File type,3 View on GitHub",
+      numbers().join() === "1 Modified within,2 File type,3 Browse code",
       "the hidden panel's controls hold no number",
     );
     story["on the Files tab"] = [await press("1"), await press("3"), await press("4")];
@@ -1906,8 +2178,8 @@ async function numberStory(panel) {
     story["the Pulls tab, disposed"] = numbers();
     pullsTab.append(filters);
     assert(
-      numbers().join() === "1 View on GitHub",
-      "a disposed panel's chips and Reload hold no number",
+      numbers().join() === "1 Browse code",
+      "a disposed panel's chips and Refresh hold no number",
     );
     filters.remove();
     story["after disposal"] = [await press("1"), await press("2")];

@@ -45,8 +45,8 @@ from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
 
-STORE_A = "a" * 64
-SLUG_A = "github-com--acme--alpha--0123456789ab"
+STORE_A = "github-com-acme-alpha-aaaaaaaaaaa"
+SLUG_A = "github-com-acme-alpha-01234567890"
 CHILD_TIMEOUT = 30.0
 HOLD_AT_MOST = 10.0
 TICK_S = 0.01
@@ -345,7 +345,7 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
     finally:
         holder.close()
     assert held_locks() == ()
-    assert (home / "repository-stores" / store_key).is_dir()
+    assert (home / "repos" / store_key).is_dir()
     assert list((home / "staging").iterdir()) == []
 
 

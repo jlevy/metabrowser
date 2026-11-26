@@ -13,7 +13,9 @@ would show, restricted to that group's members:
   Past hour, Past day, Past week, and Past month, each holding only what the windows
   before it do not, and then Older for the rest. A band intersected with the recency
   filter keeps its lower edge and takes the nearer of the two upper edges; a band that
-  ends up empty is not offered.
+  ends up empty is not offered. A Git revision's files have the time of their last commit
+  when Git can say it, and adds one group a folder never has: Undated, the files whose
+  time is not known (a shallow boundary, a read cut by its budget, or one still running).
 
 The order is the presentation order (``FILE_TYPE_GROUP_DISPLAY_ORDER``), Documentation
 first, which the type filter shares. ``/api/tree?group_by=`` serves the groups that hold
@@ -44,6 +46,7 @@ _AGE_LABELS: dict[str, str] = {
     "30d": "Past month",
 }
 OLDER_GROUP_ID = "older"
+UNDATED_GROUP_ID = "undated"
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +56,9 @@ class TreeGroup:
     by: GroupBy
     id: str
     label: str
+    icon: str | None = None
+    """A type group's representative icon (``FileTypeCategory.icon``), which its heading
+    draws beside its name; an age group has none."""
 
     @property
     def key(self) -> str:
@@ -79,9 +85,14 @@ class AgeBand:
 
 
 def _type_groups() -> tuple[TreeGroup, ...]:
-    labels = {category.id: category.label for category in FILE_TYPE_CATEGORIES}
+    categories = {category.id: category for category in FILE_TYPE_CATEGORIES}
     return tuple(
-        TreeGroup(by="type", id=group_id, label=labels[group_id])
+        TreeGroup(
+            by="type",
+            id=group_id,
+            label=categories[group_id].label,
+            icon=categories[group_id].icon,
+        )
         for group_id in FILE_TYPE_GROUP_DISPLAY_ORDER
     )
 
@@ -100,12 +111,17 @@ def _age_groups() -> tuple[TreeGroup, ...]:
     )
 
 
+UNDATED_GROUP = TreeGroup(by="age", id=UNDATED_GROUP_ID, label="Undated")
 _GROUPS: dict[GroupBy, tuple[TreeGroup, ...]] = {"type": _type_groups(), "age": _age_groups()}
 
 
-def groups_for(by: GroupBy) -> tuple[TreeGroup, ...]:
-    """Every group *by* can split a tree into, in display order."""
+def groups_for(by: GroupBy, *, undated: bool = False) -> tuple[TreeGroup, ...]:
+    """Every group *by* can split a tree into, in display order. With *undated*, an age
+    split ends in Undated, which a source whose files have no times of its own (a Git
+    revision) needs and a folder never does."""
 
+    if undated and by == "age":
+        return (*_GROUPS[by], UNDATED_GROUP)
     return _GROUPS[by]
 
 
@@ -125,6 +141,8 @@ def parse_group(raw: str) -> TreeGroup | None:
     by = parse_group_by(by_raw)
     if by is None:
         return None
+    if by == "age" and group_id == UNDATED_GROUP_ID:
+        return UNDATED_GROUP
     return next((group for group in _GROUPS[by] if group.id == group_id), None)
 
 
@@ -137,8 +155,8 @@ def age_band(group: TreeGroup, recency_seconds: int) -> AgeBand:
     Past hour holds what is newer than an hour and not newer than the Live window.
     """
 
-    if group.by != "age":
-        raise ValueError(f"{group.key} is not an age group")
+    if group.by != "age" or group.id == UNDATED_GROUP_ID:
+        raise ValueError(f"{group.key} is not an age band")
     windows = _windows()
     keys = [key for key, _seconds in windows]
     if group.id == OLDER_GROUP_ID:
@@ -151,6 +169,24 @@ def age_band(group: TreeGroup, recency_seconds: int) -> AgeBand:
     if recency_seconds:
         within = float(recency_seconds) if within is None else min(within, recency_seconds)
     return AgeBand(within_seconds=within, older_than_seconds=older_than)
+
+
+def age_windows() -> tuple[float, ...]:
+    """The bounded recency windows in seconds, shortest first: the edges between the age
+    groups. A file whose age is no more than the first is in the first group, one no more
+    than the second (and more than the first) in the second, and one older than the last in
+    Older, so the group of an age is the number of windows it is more than."""
+
+    return tuple(seconds for _key, seconds in _windows())
+
+
+def age_group_index(group: TreeGroup) -> int:
+    """Where *group* is among the age groups other than Undated, in display order: the number
+    `age_windows` gives an age in it."""
+
+    if group.by != "age" or group.id == UNDATED_GROUP_ID:
+        raise ValueError(f"{group.key} is not an age band")
+    return next(at for at, member in enumerate(_GROUPS["age"]) if member.id == group.id)
 
 
 def inventory_group_filter(group: TreeGroup) -> TreeGroupFilter:
@@ -169,9 +205,11 @@ def inventory_group_filter(group: TreeGroup) -> TreeGroupFilter:
 
 
 def group_row(group: TreeGroup, payload: Mapping[str, Any]) -> dict[str, Any]:
-    """One group of a grouped answer: its name, what it holds, and its tree.
+    """One group of a grouped answer: its name, its icon, what it holds, and its tree.
 
-    The counts come from the group's filtered totals. A source that cannot count a group
+    A type group's icon is its category's representative icon, by name in the shared icon
+    registry (static/icons.js); an age group's is None. The counts come from the group's
+    filtered totals. A source that cannot count a group
     (a Git revision whose blob index is truncated) gives them as None, and a source that
     counts files but not bytes gives `size` as None.
     """
@@ -180,6 +218,7 @@ def group_row(group: TreeGroup, payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "id": group.id,
         "label": group.label,
+        "icon": group.icon,
         "files": filtered.get("files", 0),
         "size": filtered.get("size", 0),
         "entries": filtered.get("entries", 0),
@@ -214,10 +253,14 @@ def groups_payload(
 __all__ = [
     "GROUP_BY_VALUES",
     "OLDER_GROUP_ID",
+    "UNDATED_GROUP",
+    "UNDATED_GROUP_ID",
     "AgeBand",
     "GroupBy",
     "TreeGroup",
     "age_band",
+    "age_group_index",
+    "age_windows",
     "group_row",
     "groups_for",
     "groups_payload",

@@ -229,6 +229,7 @@ function familyRow() {
     metricClasses,
     fileTypeIcon,
     createDistributionHover(),
+    (name) => `<svg data-category-icon="${name}"></svg>`,
   );
   const originalBody = handle.body;
   const originalPyRow = handle.rows.get(".py").tr;
@@ -328,8 +329,9 @@ function familyRow() {
   );
   check(
     "breakdown values use the selected metric emphasis",
-    handle.rows.get(".py").metricValue.className === "file-type-summary-value count count-large" &&
-      handle.rows.get(".md").metricValue.className === "file-type-summary-value count",
+    handle.rows.get(".py").metricValue.className ===
+      "file-type-summary-value data-num count count-large" &&
+      handle.rows.get(".md").metricValue.className === "file-type-summary-value data-num count",
   );
   check(
     "Files values have no unconditional bold override",
@@ -364,8 +366,9 @@ function familyRow() {
   check("row Files bar scaled", handle.rows.get(".py").metricFill.style.width === "75%");
   check(
     "live updates replace metric emphasis classes",
-    handle.rows.get(".md").metricValue.className === "file-type-summary-value count" &&
-      handle.rows.get(".py").metricValue.className === "file-type-summary-value count count-large",
+    handle.rows.get(".md").metricValue.className === "file-type-summary-value data-num count" &&
+      handle.rows.get(".py").metricValue.className ===
+        "file-type-summary-value data-num count count-large",
   );
   const filesColorClass = handle.rows.get(".py").metricFill.className;
   view.updateDistributionView(handle, {
@@ -378,7 +381,7 @@ function familyRow() {
     handle.rows.get(".py").metricFill === originalPyMetricFill &&
       handle.rows.get(".py").metricValue.textContent === "25 B" &&
       handle.rows.get(".py").metricFill.style.width === "25%" &&
-      handle.rows.get(".py").metricValue.className === "file-type-summary-value size" &&
+      handle.rows.get(".py").metricValue.className === "file-type-summary-value data-num size" &&
       handle.metricHeader.textContent === "Bytes" &&
       handle.rows.get(".py").metricFill.className === filesColorClass,
   );
@@ -765,15 +768,25 @@ function familyRow() {
   view.updateDistributionView(handle, {
     ...updated,
     groups: [
-      { id: "media", label: "Media" },
-      { id: "other", label: "Other" },
+      { id: "media", label: "Media", icon: "monitor" },
+      { id: "other", label: "Other", icon: null },
     ],
     rows: [singleton, noExtension, remainingTypes],
   });
+  const groupHeading = (id) => handle.groups.get(id).body.children[0].children[0];
   check(
     "registry group order and labels drive the table",
     [...handle.groups.keys()].join(",") === "media,other" &&
-      handle.groups.get("media").body.children[0].children[0].textContent === "Media",
+      groupHeading("media").children.at(-1).textContent === "Media",
+  );
+  // A group's heading leads with its category's icon, from the shell's registry, and a
+  // group that names none draws none (docs/design-system.md, "File-Type Category Icons").
+  check(
+    "a group's heading leads with its category icon",
+    groupHeading("media").innerHTML === '<svg data-category-icon="monitor"></svg>' &&
+      groupHeading("other").innerHTML === "" &&
+      groupHeading("other").children.at(-1).textContent === "Other",
+    `${groupHeading("media").innerHTML} | ${groupHeading("other").innerHTML}`,
   );
   const imageFamily = handle.rows.get("family:images");
   check(
@@ -840,7 +853,7 @@ function familyRow() {
   check(
     "failed index has terminal status copy",
     handle.status.textContent ===
-      "Indexing failed; percentages cover files indexed before the failure.",
+      "Could not finish scanning this folder; percentages cover the files found before it stopped.",
     handle.status.textContent,
   );
 
@@ -849,6 +862,7 @@ function familyRow() {
     indexFailed: false,
     scanning: true,
     indexedFiles: 1234,
+    indexedFilesText: "1,234",
   });
   check(
     "a running scan shows the nav panel's spinner and count, not a sentence",
@@ -888,7 +902,8 @@ function familyRow() {
   });
   check(
     "failed index without totals replaces the loading skeleton",
-    handle.body.children[0].textContent === "Indexing failed; no file summary is available.",
+    handle.body.children[0].textContent ===
+      "Could not scan this folder; no file summary is available.",
   );
 
   view.updateDistributionView(handle, {

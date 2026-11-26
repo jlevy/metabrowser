@@ -202,6 +202,7 @@ function recoverySession(filtered = false) {
     renderServedRootHeading() {},
     rootTallyFromTopLevel: () => ({ files: 1, size: 10, newestMtime: 1 }),
     treeSummaryHtml: () => "",
+    paintTreeSummary() {},
     // The Files totals' reducer, the real one from navigation.js (createRootTotals).
     rootTotals() {
       context._rootTotals ??= context.MetabrowserNavigationRoute.createRootTotals({
@@ -212,6 +213,7 @@ function recoverySession(filtered = false) {
     },
     _rootTotals: null,
     updateFilterTallies: () => false,
+    observeFileAges() {},
     _rootTreeRequestsInFlight: 0,
     _inlineTreeBaseline: null,
     reconcileMountedTree: () => calls.push("authoritative root reconciled"),

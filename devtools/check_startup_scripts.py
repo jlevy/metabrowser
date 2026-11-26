@@ -47,7 +47,12 @@ here from the same folder server, whose answer at such an address is the page th
 it serves no GitHub repository) and a pinned revision's page (``git-path.js``, which the
 server names in ``PIN_STARTUP_SCRIPTS``; ``tests/test_serve_pin.py`` holds a real pin's
 shell to that list). The session runs on the pull-request shell too, so a
-script-initiated request there fails the check as well.
+script-initiated request there fails the check as well. A checkout whose ``origin`` is on
+github.com carries more in its HTML than a plain folder's, rather than as scripts it
+requests, so the gate's count never sees it. The summary reports how much more the
+application sends for that checkout's shell than for a plain folder's beside the budget
+too: the repository context, the Git tabs, and the larger bundle manifest they need, all
+of which a browser receives before it can paint.
 
 **The limits** are read from the budget file. There is no second copy here to drift.
 
@@ -162,12 +167,25 @@ def startup_script_paths(html: str) -> list[str]:
     return [path for path in paths if not path.startswith(VENDOR_PREFIX)]
 
 
-def render_shells(*addresses: str) -> list[str]:
+def _github_checkout(folder: Path) -> None:
+    """Make *folder* a checkout whose ``origin`` is on github.com, as the server reads one."""
+
+    git = folder / ".git"
+    (git / "refs" / "heads").mkdir(parents=True)
+    (git / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/octo/demo.git\n', encoding="utf-8"
+    )
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git / "refs" / "heads" / "main").write_text(f"{'0' * 40}\n", encoding="utf-8")
+
+
+def render_shells(*addresses: str, github: bool = False) -> list[str]:
     """The shell a folder's server answers each of *addresses* with.
 
     The folder is an empty one of this function's own, so the answer does not depend on
     what the process happened to be serving, and the request goes through the
-    application's routes and middleware as a browser's does.
+    application's routes and middleware as a browser's does. With *github*, the folder is
+    a checkout whose ``origin`` is on github.com.
     """
 
     from metabrowser import server
@@ -184,8 +202,21 @@ def render_shells(*addresses: str) -> list[str]:
         return shells
 
     with tempfile.TemporaryDirectory(prefix="metabrowser-startup-scripts-") as folder:
+        if github:
+            _github_checkout(Path(folder))
         server._set_root_dir(Path(folder).resolve())  # pyright: ignore[reportPrivateUsage]
         return asyncio.run(answer())
+
+
+def shell_growth_bytes(html: str, beside: str) -> int:
+    """How many more bytes the application sends for the shell *html* than for *beside*.
+
+    Each is the whole page as sent, compressed as the middleware compresses it. The check
+    renders each shell for a temporary folder whose name is random, so between runs the
+    figure can move by a byte or two (measured 2026-11-18: 3,132 to 3,135 in six runs).
+    """
+
+    return sent_body_bytes(html.encode("utf-8")) - sent_body_bytes(beside.encode("utf-8"))
 
 
 def render_folder_shell() -> str:
@@ -405,6 +436,15 @@ def main() -> int:
             f"{sum(script.transfer_bytes for script in others):,} bytes "
             f"({beside_budget(others, limits)}; not gated)"
         )
+    # A github.com checkout's shell carries more in its HTML than a plain folder's.
+    github_html = render_shells(FOLDER_ADDRESS, github=True)[0]
+    growth = shell_growth_bytes(github_html, folder_html)
+    spare = limits.transfer_bytes - total - growth
+    print(
+        f"  a github.com checkout's shell is {growth:,} bytes larger as sent: "
+        f"{total + growth:,} bytes "
+        f"({f'{spare:,} bytes under' if spare >= 0 else f'{-spare:,} bytes over'}; not gated)"
+    )
     if not found:
         return 0
     print("Startup-script budget exceeded:", file=sys.stderr)

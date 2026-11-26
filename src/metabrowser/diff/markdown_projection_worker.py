@@ -1,9 +1,13 @@
 """Run Markdown off the server's interpreter, in one long-lived child process.
 
-The child does two jobs. It projects Markdown diffs, and it renders the Markdown
-documents an untrusted author wrote that a page asks the server for: a pinned mirror's
-files, a folder served with ``--untrusted``, and a pull request's texts
-(:meth:`ProjectionWorker.render_inert`).
+The child does two jobs. It projects the diffs a changed file's Rendered view draws,
+Markdown (:mod:`metabrowser.diff.markdown_projection`) and YAML or JSON
+(:mod:`metabrowser.diff.structured_projection`, a request whose ``op`` is
+``structured``), and it renders the Markdown documents an untrusted author wrote that a
+page asks the server for: a pinned mirror's files, a folder served with ``--untrusted``,
+and a pull request's texts (:meth:`ProjectionWorker.render_inert`). Parsing YAML and
+JSONC is pure Python as well, so a structured projection holds the GIL as a Markdown
+projection does, and takes the same path.
 
 **Projections.** A projection is pure Python. In a thread it holds the GIL, and every
 other request on the server waits up to the interpreter's switch interval at each of its
@@ -16,8 +20,11 @@ unrelated request's delay (``inventory_engine/providers/python_inventory.py``), 
 request with more wake-ups pays the switch interval at each. A projection starts the
 child at the second one an event loop asks for, or when :meth:`ProjectionWorker.start`
 is called (a page's ``prefetch=1`` request), and until it has imported the renderer each
-projection runs in a thread, so the first screen of a Changes tab never waits for it. A
-build without the GIL, or a platform where the child cannot start, keeps the thread.
+projection a reader waits for runs in a thread, so the first screen of a Changes tab
+never waits for it. A prefetch has no reader waiting, so the route lets it wait for the
+child (``pull_rendered_diff``): the first screen's projections then run under the
+child's deadline rather than on the server's interpreter. A build without the GIL, or a
+platform where the child cannot start, keeps the thread.
 
 **Inert renders.** KPress's cost depends on what a document contains, not only on its
 size, and a document's author can choose it: the review of mb-273l timed 23.1 s for
@@ -115,11 +122,12 @@ from metabrowser.diff.format import FilePatch
 
 if TYPE_CHECKING:
     from metabrowser.diff.markdown_projection import MarkdownDiffProjection, PreparedMarkdownDiff
+    from metabrowser.diff.structured_projection import Format, StructuredDiffProjection
 
 LOG = logging.getLogger(__name__)
 
-# A request frame larger than this is a protocol fault. A projection is at most 48 KiB
-# of blobs and their patch; a render is the route's text, at most
+# A request frame larger than this is a protocol fault. A projection is at most 128 KiB
+# of blobs and their patch (``STRUCTURED_DIFF_MAX_BYTES``, for strict JSON); a render is the route's text, at most
 # ``settings.TEXT_PREVIEW_REQUEST_MAX_BYTES`` (16 MiB) of UTF-8, base64-encoded to a
 # third more, beside its front matter: the loader's value, within
 # ``FRONTMATTER_MAX_EXPANDED_SIZE`` (``frontmatter_yaml.py``), at most twelve bytes of
@@ -137,9 +145,11 @@ _MAX_ANSWER_FRAME: Final = 256 * 1024 * 1024
 # The child was ready 0.57 s after it started at load average 4 (review C of #349 saw
 # about 2 s under heavier load); it is given far longer before it counts as failed.
 _START_TIMEOUT_S = 30.0
-# A projection answers within its budgets in well under a second (the slowest input
-# measured inside every budget took 222-268 ms); a child that has not after this is
-# stopped.
+# A projection answers within its budgets in well under a second: the slowest Markdown
+# input measured inside every budget took 222-268 ms, front matter adds at most what
+# ``markdown_projection._FRONTMATTER_MAX_NODES`` records, and the slowest structured
+# shapes, recorded beside the budgets in ``structured_projection.py``, take about as long
+# as the slowest Markdown input. A child that has not answered after this is stopped.
 _PROJECTION_TIMEOUT_S = 10.0
 # The longest one untrusted document's render may run in the child before the child is
 # stopped and the document refused. Measured 2026-11-17 on an Apple M1 Pro
@@ -173,11 +183,31 @@ def _deadline_from_environment() -> float:
 
 
 _RENDER_DEADLINE_S = _deadline_from_environment()
-# How long an inert render waits for the child to start: as long as a render may run,
-# whatever the environment sets the deadline to. A start, both jobs warmed, took 1.36 s
-# at load average 16 (2026-11-17; the projection alone 0.23 to 0.57 s at load average 4
-# in #349); past this the render is refused as unavailable, and that refusal is not kept.
-_START_WAIT_S = INERT_RENDER_DEADLINE_MS / 1000
+# How long an inert render waits for the child to start before it is refused as
+# unavailable, a refusal that is not kept. A start is not a render: it costs the
+# interpreter's start and the imports and warm-up of both jobs, the same for every
+# document, and it grows with the machine's load, not with what an author wrote. So the
+# wait is its own measured bound, and METABROWSER_INERT_RENDER_DEADLINE_MS does not move
+# it in either direction: a deadline shortened to refuse a slow document must not refuse
+# every document whose child starts cold (a one-shot `--api` command's always does), and
+# one lengthened for a large document says nothing of starts.
+#
+# Measured on an Apple M1 Pro (MacBookPro18,1, 10 cores), macOS 26.5.2, Python 3.14.7,
+# from `ProjectionWorker.start(renders=True)` to the ready frame, both jobs warmed:
+#
+# - 1.36 s at a load average of 16 (2026-11-17); the projection alone 0.23 to 0.57 s at
+#   a load average of 4 (#349).
+# - 2.71 to 6.81 s over twelve starts in a row at a load average of 356 to 372
+#   (2026-11-22): median 3.9 s, two of the twelve past 5 s (6.70 and 6.81 s).
+# - Under the same kind of load, at 300 to 400, renders were refused as unavailable 5.1
+#   to 8.3 s after they were asked (mb-xmte), when this wait was the render deadline's
+#   default of 5 s.
+#
+# Fifteen seconds is about twice the slowest start seen, and half of _START_TIMEOUT_S,
+# after which a start counts as failed. A start that fails ends the wait at once, so
+# only a child that is slow or hung costs a reader the whole of it, and the start goes
+# on after a refusal: a reload finds the child ready or still starting.
+_START_WAIT_S = 15.0
 # Starts in a row that did not become ready before the worker stops trying for
 # _START_COOL_OFF_S: projections stay in their thread, and inert renders are refused as
 # unavailable, until the cool-off passes, a start succeeds, or a stop counts again.
@@ -187,7 +217,7 @@ _MAX_STARTS = 3
 # import (0.2 to 0.3 s), so a broken installation costs at most three of either per
 # cool-off while reloads continue; what makes a start fail and then pass (a full process
 # table, an interpreter replaced mid-upgrade) passes in seconds, so the notice's "Reload
-# to try again" holds a few seconds later.
+# the page to try again" holds a few seconds later.
 _START_COOL_OFF_S = 10.0
 # Distinct inert renders in flight at once, the one in the child among them; past it a
 # render is refused renderer_busy, not kept. A page reaches the server over at most six
@@ -198,10 +228,11 @@ _START_COOL_OFF_S = 10.0
 # page's first renders. A document holds the child for one exchange and a restart, or,
 # when its first child ends before answering, for a second exchange on a fresh child too
 # (the retry in _render_flight): at most two deadlines and two starts. So a render
-# admitted behind a full queue of hostile documents waits at most seven of those, about
-# 90 s at the default (5 s deadlines, starts of up to 1.4 s measured under load), and
-# about 37 s when they only run long; past that the reader's reload is the better retry,
-# as pull_rendered_diff's _Slot reasons for diffs.
+# admitted behind a full queue of hostile documents waits at most seven of those: about
+# 90 s at the default with starts of 1.4 s (load average 16), about 165 s with the
+# 6.8 s starts measured at a load average near 370, and about 37 s when they only run
+# long. A start that hangs costs up to _START_WAIT_S instead. Past that the reader's
+# reload is the better retry, as pull_rendered_diff's _Slot reasons for diffs.
 _MAX_RENDERS: Final = 8
 # When the deadline fires, an answer the loop has already read, or reads in its next turn,
 # is taken, however late the deadline ran (review E of #527, E3). A deadline that fired
@@ -240,6 +271,11 @@ _MAX_VERDICTS: Final = 1024
 # child's time each ten minutes (5 s in 600 s, under 1% of it), and a document refused at
 # a moment of heavy load renders again ten minutes later, the child's own idle period.
 _VERDICT_TTL_S = 600.0
+# The same two bounds, for a route that keeps the refusal of a projection this worker
+# stopped at its deadline (``pull_rendered_diff``): the worker keeps no verdict for a
+# projection, whose identity is the route's.
+STOPPED_TTL_S: Final = _VERDICT_TTL_S
+MAX_STOPPED: Final = _MAX_VERDICTS
 # How often the child looks whether the server that started it is still there, so it
 # ends with the server even while it renders a document that would take minutes.
 _PARENT_POLL_S = 1.0
@@ -383,19 +419,28 @@ def _frame(payload: object) -> bytes:
     return len(data).to_bytes(4, "big") + data
 
 
+def _blob(data: bytes | None) -> str | None:
+    return None if data is None else base64.b64encode(data).decode()
+
+
+def _unblob(value: object) -> bytes | None:
+    return None if value is None else base64.b64decode(str(value), validate=True)
+
+
 def _encode(
     old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
 ) -> dict[str, Any]:
-    def blob(data: bytes | None) -> str | None:
-        return None if data is None else base64.b64encode(data).decode()
-
     return {
         "op": "project",
-        "old": blob(old),
-        "new": blob(new),
+        "old": _blob(old),
+        "new": _blob(new),
         "patch": patch.model_dump(mode="json"),
         "namespace": namespace,
     }
+
+
+def _encode_structured(old: bytes | None, new: bytes | None, fmt: Format) -> dict[str, Any]:
+    return {"op": "structured", "format": fmt, "old": _blob(old), "new": _blob(new)}
 
 
 def _encode_render(request: InertRender, asset_url_prefix: str) -> dict[str, Any]:
@@ -418,6 +463,8 @@ def _encode_render(request: InertRender, asset_url_prefix: str) -> dict[str, Any
 
 
 def _decode(answer: dict[str, Any]) -> PreparedMarkdownDiff:
+    """A Markdown projection's answer."""
+
     from metabrowser.diff.markdown_projection import LocalReference, PreparedMarkdownDiff
 
     projection = cast("MarkdownDiffProjection", answer["projection"])
@@ -428,17 +475,23 @@ def _decode(answer: dict[str, Any]) -> PreparedMarkdownDiff:
     return PreparedMarkdownDiff(projection, references)
 
 
+def _decode_structured(answer: dict[str, Any]) -> StructuredDiffProjection:
+    """A YAML or JSON projection's answer."""
+
+    return cast("StructuredDiffProjection", answer["structured"])
+
+
 def _project(request: dict[str, Any]) -> dict[str, Any]:
     from metabrowser.diff.markdown_projection import prepare_markdown_diff
 
-    def blob(value: object) -> bytes | None:
-        return None if value is None else base64.b64decode(str(value), validate=True)
-
+    # The server stops this child at its deadline, so the input budgets of a projection
+    # nothing stops do not apply here.
     prepared = prepare_markdown_diff(
-        old=blob(request["old"]),
-        new=blob(request["new"]),
+        old=_unblob(request["old"]),
+        new=_unblob(request["new"]),
         patch=FilePatch.model_validate(request["patch"]),
         namespace=str(request["namespace"]),
+        stoppable=True,
     )
     return {
         "projection": prepared.projection,
@@ -486,16 +539,37 @@ def _render(request: dict[str, Any]) -> dict[str, Any]:
     return {"rendered": inert}
 
 
+def _project_structured(request: dict[str, Any]) -> dict[str, Any]:
+    from metabrowser.diff.structured_projection import project_structured_diff
+
+    return {
+        "structured": project_structured_diff(
+            old=_unblob(request["old"]),
+            new=_unblob(request["new"]),
+            fmt=cast("Format", request["format"]),
+        )
+    }
+
+
 def _answer(request: dict[str, Any]) -> dict[str, Any]:
-    return _render(request) if request.get("op") == "render" else _project(request)
+    op = request.get("op")
+    if op == "render":
+        return _render(request)
+    if op == "structured":
+        return _project_structured(request)
+    return _project(request)
 
 
 def _warm() -> None:
     """Import and exercise both jobs once, as the child's first work."""
 
     from metabrowser.diff.markdown_projection import warm_markdown_projection
+    from metabrowser.diff.structured_projection import warm_structured_projection
 
     warm_markdown_projection()
+    # The YAML loader and json5 cost the first file that reads them 26-29 ms otherwise
+    # (mb-8274 review C9).
+    warm_structured_projection()
     _render(
         _encode_render(
             InertRender(
@@ -740,6 +814,13 @@ class _Failed:
 type _Outcome = dict[str, Any] | _Failed
 
 
+@dataclass(frozen=True, slots=True)
+class _Answered[T]:
+    """A projection's decoded answer from the child."""
+
+    value: T
+
+
 @dataclass(slots=True)
 class _Flight:
     """One render and the requests waiting for it."""
@@ -793,6 +874,22 @@ class ProjectionWorker:
 
         if self._starting is not None:
             await asyncio.shield(self._starting)
+        return self.ready
+
+    async def settle(self) -> bool:
+        """Wait for a start in progress, at most as long as an inert render waits for one
+        (:data:`_START_WAIT_S`); whether the child is now ready.
+
+        A request no reader waits on, a page's prefetch, waits here, so its projection
+        runs in the child under :data:`_PROJECTION_TIMEOUT_S` rather than in a thread that
+        nothing stops (mb-8274 review C2: the first screen's four files were answered from
+        threads by 150-207 ms, and the child was ready at 312-488 ms).
+        """
+
+        if self._starting is not None:
+            with contextlib.suppress(TimeoutError):
+                async with asyncio.timeout(_START_WAIT_S):
+                    await asyncio.shield(self._starting)
         return self.ready
 
     def _bind(self, loop: asyncio.AbstractEventLoop) -> _ChildLock:
@@ -957,7 +1054,12 @@ class ProjectionWorker:
     async def aclose(self) -> None:
         """End this loop's renders, stop the child, and wait at most :data:`_REAP_S` for
         every child this loop stopped to exit, so none is reaped after the loop closes and
-        none starts after it. A server's lifespan ends with this."""
+        none starts after it. A server's lifespan ends with this, and so must any other loop
+        that used the worker: a loop that ends without it leaves ``asyncio.run`` to cancel a
+        start still spawning (a render's :meth:`_replace` begins one as it answers) together
+        with the task connecting its pipes, and on CPython 3.12 and 3.13 that start then
+        waits for ever for pipes that were never connected (mb-4g7f). Cancelled here, alone,
+        it finishes."""
 
         loop = _running_loop()
         if self._loop is loop:
@@ -967,26 +1069,89 @@ class ProjectionWorker:
                 task.cancel()
             if flights:
                 await asyncio.gather(*flights, return_exceptions=True)
+        starting = self._starting if self._loop is loop else None
         self.stop()
         dying = [each for each, at in self._dying.items() if at is loop and each.returncode is None]
         self._dying = {}
         self._tails = {}
-        if dying:
+        if starting is not None or dying:
             with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(_REAP_S):
-                    await asyncio.gather(*(each.wait() for each in dying))
+                    if starting is not None:
+                        # asyncio may have spawned the child without returning its Process
+                        # yet. Let the cancelled start finish reaping it on this loop.
+                        await asyncio.wait((starting,))
+                    if dying:
+                        await asyncio.gather(*(each.wait() for each in dying))
 
     async def prepare(
         self, *, old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
     ) -> PreparedMarkdownDiff:
         """*patch*'s projection: in the child when it is ready and free of inert renders,
         and in a thread otherwise. A failure that is not this input's doing is answered
-        from the thread, so no caller keeps it as the input's answer."""
+        from the thread, so no caller keeps it as the input's answer.
+
+        A thread projects within the input budgets beside ``MARKDOWN_DIFF_MAX_BYTES``,
+        since nothing stops it, and no raw HTML (``_Limits`` in ``markdown_projection.py``).
+        A pair past them, or that holds raw HTML, is the child's alone, which this waits
+        for, on every build: there :data:`_PROJECTION_TIMEOUT_S` is its bound, whatever
+        its size. Only where no child can be had does the thread's refusal stand."""
 
         from metabrowser.diff.markdown_projection import (
+            MARKDOWN_DIFF_MAX_BYTES,
             prepare_markdown_diff,
             unavailable_markdown_diff,
         )
+
+        def past_a_thread(prepared: PreparedMarkdownDiff) -> bool:
+            # A budget's refusal names no cause; nesting's does, and the child's is the same.
+            projection = prepared.projection
+            return projection["status"] == "too_large" and "reason" not in projection
+
+        return await self._projection(
+            lambda: _frame(_encode(old, new, patch, namespace)),
+            _decode,
+            unavailable_markdown_diff,
+            lambda: prepare_markdown_diff(old=old, new=new, patch=patch, namespace=namespace),
+            heavy=len(old or b"") + len(new or b"") > MARKDOWN_DIFF_MAX_BYTES,
+            past_a_thread=past_a_thread,
+        )
+
+    async def project_structured(
+        self, *, old: bytes | None, new: bytes | None, fmt: Format
+    ) -> StructuredDiffProjection:
+        """A YAML or JSON file's projection
+        (:func:`~metabrowser.diff.structured_projection.project_structured_diff`), where
+        and as :meth:`prepare` runs a Markdown one."""
+
+        from metabrowser.diff.structured_projection import (
+            project_structured_diff,
+            unavailable_structured_diff,
+        )
+
+        return await self._projection(
+            lambda: _frame(_encode_structured(old, new, fmt)),
+            _decode_structured,
+            unavailable_structured_diff,
+            lambda: project_structured_diff(old=old, new=new, fmt=fmt),
+        )
+
+    async def _projection[T](
+        self,
+        frame: Callable[[], bytes],
+        decode: Callable[[dict[str, Any]], T],
+        refused: Callable[[Literal["unsupported", "too_large"], Literal["deadline"] | None], T],
+        local: Callable[[], T],
+        *,
+        heavy: bool = False,
+        past_a_thread: Callable[[T], bool] | None = None,
+    ) -> T:
+        """One projection, in the child or in a thread (:meth:`prepare`).
+
+        *heavy* says the request is past what the event loop may frame itself, so a thread
+        frames it. *past_a_thread* says whether a thread's answer refuses the input only
+        for being past a thread's budgets; such an input waits for the child.
+        """
 
         loop = asyncio.get_running_loop()
         if self._counted is not loop:
@@ -998,60 +1163,97 @@ class ProjectionWorker:
             # A one-request command never pays for a child it would not use.
             self.start()
         lock = self._lock if self._loop is loop else None
+        request: bytes | None = None
         if self._processes and self.ready and lock is not None and not lock.rendering:
-            frame = _frame(_encode(old, new, patch, namespace))
-            async with lock.hold("projection"):
-                for attempt in (1, 2):
-                    if attempt == 1:
-                        process = self._process
-                        if not self.ready or process is None:
-                            # Stopped or replaced while this waited: not this input's doing.
-                            break
-                        if process.returncode is not None:
-                            # Gone while idle, also not this input's doing; the next
-                            # request starts another child.
-                            self._kill(process)
-                            break
-                    else:
-                        process = await self._ready_child()
-                        if process is None:
-                            break
-                    outcome = await self._exchange_projection(process, frame)
-                    if not isinstance(outcome, str):
-                        return outcome
-                    if outcome == "timeout":
-                        self._kill(process)
-                        return unavailable_markdown_diff("too_large")
-                    if self._process is not process:
-                        # Stopped from here, by a new loop or the server's end.
-                        break
-                    self._kill(process)
-                    if outcome == "died" and attempt == 2:
-                        # Twice on two children: the input may be what stops it, so it is
-                        # not run in this process.
-                        return unavailable_markdown_diff("unsupported")
-                    # Gone before the request reached it, or dead on arrival or killed from
-                    # outside as easily as by this input: once more, on a fresh child.
-        return await asyncio.to_thread(
-            prepare_markdown_diff, old=old, new=new, patch=patch, namespace=namespace
-        )
+            request = await asyncio.to_thread(frame) if heavy else frame()
+            answered = await self._ask_child(lock, request, decode, refused, wait=False)
+            if answered is not None:
+                return answered.value
+        answer = await asyncio.to_thread(local)
+        if past_a_thread is None or not past_a_thread(answer):
+            return answer
+        # Past what a thread may project, and no child answered it above: a child is
+        # started on any build, as for an inert render, and waited for, behind a render
+        # that holds it. No child, or one that is not this input's doing, leaves the
+        # thread's refusal.
+        if request is None:
+            request = await asyncio.to_thread(frame)
+        if len(request) - 4 > _MAX_REQUEST_FRAME:
+            return answer
+        answered = await self._ask_child(self._bind(loop), request, decode, refused, wait=True)
+        return answer if answered is None else answered.value
 
-    async def _exchange_projection(
-        self, process: asyncio.subprocess.Process, frame: bytes
-    ) -> PreparedMarkdownDiff | Literal["unreached", "died", "timeout"]:
+    async def _ask_child[T](
+        self,
+        lock: _ChildLock,
+        request: bytes,
+        decode: Callable[[dict[str, Any]], T],
+        refused: Callable[[Literal["unsupported", "too_large"], Literal["deadline"] | None], T],
+        *,
+        wait: bool,
+    ) -> _Answered[T] | None:
+        """The child's answer to one projection, or its refusal of an input it ran past
+        the deadline on or died of twice; ``None`` when no child answered and that is not
+        the input's doing. *wait* starts a child and waits for it when none is ready."""
+
+        async with lock.hold("projection"):
+            for attempt in (1, 2):
+                if attempt == 1 and not wait:
+                    process = self._process
+                    if not self.ready or process is None:
+                        # Stopped or replaced while this waited: not this input's doing.
+                        break
+                    if process.returncode is not None:
+                        # Gone while idle, also not this input's doing; the next
+                        # request starts another child.
+                        self._kill(process)
+                        break
+                else:
+                    process = await self._ready_child()
+                    if process is None:
+                        break
+                outcome = await self._exchange_projection(process, request, decode)
+                if isinstance(outcome, _Answered):
+                    return outcome
+                if outcome == "timeout":
+                    self._kill(process)
+                    return _Answered(refused("too_large", "deadline"))
+                if self._process is not process:
+                    # Stopped from here, by a new loop or the server's end.
+                    break
+                self._kill(process)
+                if outcome == "died" and attempt == 2:
+                    # Twice on two children: the input may be what stops it, so it is
+                    # not run in this process.
+                    return _Answered(refused("unsupported", None))
+                # Gone before the request reached it, or dead on arrival or killed from
+                # outside as easily as by this input: once more, on a fresh child.
+        return None
+
+    async def _exchange_projection[T](
+        self,
+        process: asyncio.subprocess.Process,
+        frame: bytes,
+        decode: Callable[[dict[str, Any]], T],
+    ) -> _Answered[T] | Literal["unreached", "died", "timeout"]:
         assert process.stdin is not None and process.stdout is not None
         self._touch()
         try:
-            process.stdin.write(frame)
-            await process.stdin.drain()
-        except ConnectionError:
+            # A child that does not take the whole request within the deadline is not
+            # reading it, whatever the pair holds, as for a render: a frame longer than
+            # the pipe holds would wait on such a child for ever, with the child's lock.
+            async with asyncio.timeout(_PROJECTION_TIMEOUT_S):
+                process.stdin.write(frame)
+                await process.stdin.drain()
+        except (TimeoutError, ConnectionError):
             return "unreached"
         except BaseException:
             # A request cut off part-way leaves the child's input out of step.
             self._kill(process)
             raise
         try:
-            answer = _decode(await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S))
+            # Counted from when the child has the request, as a render's deadline is.
+            answer = decode(await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S))
         except TimeoutError:
             return "timeout"
         except (ConnectionError, asyncio.IncompleteReadError, ValueError, KeyError, TypeError):
@@ -1061,7 +1263,7 @@ class ProjectionWorker:
             self._kill(process)
             raise
         self._touch()
-        return answer
+        return _Answered(answer)
 
     def refusal(self, request: InertRender) -> InertRenderRefused | None:
         """The kept refusal of *request*'s document, if an earlier render was refused

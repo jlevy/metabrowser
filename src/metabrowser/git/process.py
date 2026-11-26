@@ -51,13 +51,14 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
-from metabrowser import server_timing
+from metabrowser import event_log, network_cause, server_timing
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.children import child_pids, executable, prepare_child_listing
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
 
 if TYPE_CHECKING:
     from metabrowser.git.progress import GitProgress
+    from metabrowser.tool_install import Remedy
 
 log = logging.getLogger(__name__)
 
@@ -139,10 +140,27 @@ GIT_NO_HOOK_ARGS: Final[tuple[str, ...]] = (
 # :attr:`GitLocation.diff_driver_args`.
 GIT_NO_DRIVER_ARGS: Final[tuple[str, ...]] = ("--no-textconv", "--no-ext-diff")
 
-# Acquisition has no measured low-speed stall bound yet.
-# This wall-clock cap is only so a forgotten child cannot live forever; user
-# cancellation is the product guard. The 900s value is the measurement-harness
-# timeout in explorations/repository-cache/measure.py.
+# The wall-clock deadline of every Git process under ACQUISITION_POLICY: a first clone,
+# and the fetches that update a store. A transfer that stalls once its connection is up
+# is ended sooner, by the measured low-speed bound in cache/origin.py
+# (HTTP_LOW_SPEED_TIME_S). This deadline ends what that bound cannot: an origin that
+# holds a connection open by sending a little every half minute, and a child that would
+# otherwise live forever. It also stops a first clone that is still making progress,
+# and nothing refuses a clone for being too large to finish inside it: the free-space
+# check (cache/free_space.py) refuses only what would not fit on the cache's volume.
+# The 900 s value is the measurement-harness timeout in
+# explorations/repository-cache/measure.py.
+#
+# First-clone throughput, full fetches of every branch and tag, in GitHub-reported
+# kilobytes per second of wall clock. Measured 2026-09-23 on one macOS machine (Git
+# 2.50.1, load average 36 to 103): flask 4,010, requests 5,160, mypy 3,500, and django
+# 4,120 and 14,200 on two runs; the first 290 MB of torvalds/linux arrived at 1,820 KB/s
+# of pack data. Measured 2026-11-02 on a home network (Git 2.50.1, load average 3 to 4):
+# a 1.2 GB private repository, 1,222,854 KB reported, cloned in 185 s, which is
+# 6,610 KB/s. With a pack 1.1 times its reported size (PACK_PER_REPORTED, beside those
+# packs' measurements in cache/free_space.py), a first clone at the slowest rate reaches
+# this deadline at about 1,489,000 KB reported; at the rate of 2026-11-02, whose pack
+# was 1.0 times its size, at about 5,950,000 KB.
 GIT_ACQUISITION_TIMEOUT_S: Final[float] = 900.0
 
 # Acquisition security floor, frozen in git-version-gates.json. A version on a
@@ -426,6 +444,7 @@ class GitError(ContentReadError):
 
     code = "git_failed"
     http_status = 500
+    reader_message = "Could not read this from Git."
 
 
 class GitUnavailableError(GitError):
@@ -435,6 +454,8 @@ class GitUnavailableError(GitError):
     exactly as it is outside a repository.
     """
 
+    reader_message = "Git is not available on this machine."
+
 
 class GitCommandError(GitError):
     """``git`` exited non-zero.
@@ -442,13 +463,21 @@ class GitCommandError(GitError):
     ``stderr_summary`` is retained for logging only. It is never placed in
     a response body: git error text routinely contains absolute local
     paths.
+
+    ``stdout`` is what the command printed before it exited, within its output cap:
+    a command can fail after a listing its caller still reads, as ``fetch
+    --porcelain`` lists a ref it refused (``_refuse_case_collisions`` in
+    ``cache/acquire.py``).
     """
 
-    def __init__(self, args: Sequence[str], returncode: int, stderr_summary: str) -> None:
+    def __init__(
+        self, args: Sequence[str], returncode: int, stderr_summary: str, stdout: bytes = b""
+    ) -> None:
         super().__init__(f"git {' '.join(args)} exited {returncode}")
         self.args_used: tuple[str, ...] = tuple(args)
         self.returncode: int = returncode
         self.stderr_summary: str = stderr_summary
+        self.stdout: bytes = stdout
 
 
 class GitTimeoutError(GitError):
@@ -460,6 +489,7 @@ class GitTimeoutError(GitError):
 
     code = "git_timeout"
     http_status = 504
+    reader_message = "Git took too long to answer. Try again."
 
     def __init__(self, message: str = "git command timed out") -> None:
         super().__init__(message)
@@ -467,6 +497,8 @@ class GitTimeoutError(GitError):
 
 class GitOutputTooLargeError(GitError):
     """``git`` produced more than :data:`GIT_SUBPROCESS_MAX_BYTES` on stdout."""
+
+    reader_message = "This is too large to read from Git."
 
 
 class GitOutputCutError(GitOutputTooLargeError):
@@ -487,6 +519,8 @@ class UnsupportedGitVersionError(GitError):
     usable, and ``None`` when no ``git`` is on ``PATH``: that has no version to blame,
     so it says what is missing and which release to install.
     """
+
+    reader_message = "Git on this machine is too old for this."
 
     def __init__(self, detected: str | None, required: str) -> None:
         super().__init__(
@@ -598,9 +632,14 @@ _STORE_READ_COMMANDS: Final = frozenset(
         "diff",
         "for-each-ref",
         "hash-object",
+        "last-modified",
         "log",
         "ls-tree",
         "merge-base",
+        # Only as ``--stdout``, which writes the pack to the reader and nothing to the
+        # store: a change's pushed size (metabrowser.git.change_size). It runs no program
+        # its configuration names, and lazy fetch is off at every store spawn.
+        "pack-objects",
         "rev-list",
         "rev-parse",
         "show",
@@ -671,6 +710,9 @@ def _configured_program_refusal(args: Sequence[str], policy: GitProcessPolicy) -
         after = after[: after.index("--")]
     if policy.name != ACQUISITION_POLICY.name and command not in _STORE_READ_COMMANDS:
         return f"git {command} is not a read of a repository store"
+    if command == "pack-objects" and "--stdout" not in after:
+        # Without it, pack-objects writes a pack file into the store.
+        return "git pack-objects at a repository store must pass --stdout"
     if command in _DIFF_COMMANDS:
         if not all(option in after for option in GIT_NO_DRIVER_ARGS):
             return f"git {command} at a repository store must pass {' '.join(GIT_NO_DRIVER_ARGS)}"
@@ -1320,21 +1362,82 @@ async def run_git(
     enough), or :class:`GitCommandError`.
 
     The time it takes is the request's ``git`` phase in ``Server-Timing``
-    (:mod:`metabrowser.server_timing`).
+    (:mod:`metabrowser.server_timing`), and a ``subprocess`` span in the event log
+    (:mod:`metabrowser.event_log`): the command without its ``-c`` settings, its
+    deadline, and how it ended, with stderr's last lines on a failure and the last
+    progress Git reported on a timeout.
     """
-    with server_timing.phase("git"):
-        return await _run_git(
-            args,
-            cwd=cwd,
-            target=target,
-            policy=policy,
-            timeout_s=timeout_s,
-            max_bytes=max_bytes,
-            pass_fds=pass_fds,
-            stdin_bytes=stdin_bytes,
-            on_progress=on_progress,
-            stop_when=stop_when,
-        )
+    with (
+        server_timing.phase("git"),
+        event_log.span(
+            "subprocess", f"git {_subcommand(args) or ''}".rstrip(), attrs=_loggable(args, policy)
+        ) as span,
+    ):
+        if on_progress is not None and span is not event_log.NULL_SPAN:
+            on_progress = _remembering_progress(on_progress, span)
+        try:
+            return await _run_git(
+                args,
+                cwd=cwd,
+                target=target,
+                policy=policy,
+                timeout_s=timeout_s,
+                max_bytes=max_bytes,
+                pass_fds=pass_fds,
+                stdin_bytes=stdin_bytes,
+                on_progress=on_progress,
+                stop_when=stop_when,
+            )
+        except GitTimeoutError as exc:
+            span.end("timeout", error=event_log.describe_error(exc))
+            raise
+        except GitCommandError as exc:
+            # The cause Git's error names, in the vocabulary gh shares
+            # (metabrowser.network_cause): a fetch that could not reach its origin says how.
+            # An HTTP refusal counts only when Git says it came from the origin, so a local
+            # command's "not found" is not taken for GitHub's.
+            cause = network_cause.classify(exc.stderr_summary)
+            remote = "unable to access" in exc.stderr_summary or "remote:" in exc.stderr_summary
+            if cause not in network_cause.TRANSPORT_CAUSES and not remote:
+                cause = None
+            # The host it failed to reach, so a count of GitHub's failures counts only
+            # those (network_cause.is_github_host); only the host, never the URL.
+            host = network_cause.named_host(exc.stderr_summary) if cause is not None else None
+            span.end(
+                "failed",
+                exit=exc.returncode,
+                stderr_tail=event_log.redact(exc.stderr_summary),
+                **({"cause": cause} if cause is not None else {}),
+                **({"host": host} if host is not None else {}),
+            )
+            raise
+
+
+def _loggable(args: Sequence[str], policy: GitProcessPolicy | None) -> dict[str, object]:
+    """A Git command line as the event log records it: from the command on, redacted."""
+
+    index = _command_index(args)
+    words = [event_log.redact(arg, limit=200) for arg in args[(index or 0) :]]
+    if len(words) > event_log.MAX_LOGGED_ARGS:
+        words = [*words[: event_log.MAX_LOGGED_ARGS], "…"]
+    attrs: dict[str, object] = {"args": words}
+    if policy is not None:
+        attrs["timeout_s"] = policy.timeout_s
+    return attrs
+
+
+def _remembering_progress(
+    on_progress: Callable[[GitProgress], None], span: event_log.Span
+) -> Callable[[GitProgress], None]:
+    """*on_progress*, also keeping the latest record on *span*: where a timeout stalled."""
+
+    def remember(progress: GitProgress) -> None:
+        stage = getattr(progress.stage, "value", progress.stage)
+        total = "" if progress.total is None else f"/{progress.total}"
+        span.set(progress=f"{stage} {progress.done}{total}")
+        on_progress(progress)
+
+    return remember
 
 
 async def _run_git(
@@ -1433,7 +1536,7 @@ async def _run_git(
         # not a repository. Callers that treat a failure as a failure log it
         # themselves, with :func:`failure_detail` for this same text.
         log.debug("git %s exited %s: %s", " ".join(args), returncode, loggable(stderr_summary))
-        raise GitCommandError(args, returncode, stderr_summary)
+        raise GitCommandError(args, returncode, stderr_summary, stdout)
 
     return stdout
 
@@ -1532,11 +1635,17 @@ async def spawn_git_process(
         # spawn, then kill the whole group before the cancellation continues.
         await kill_when_spawned(spawning)
         raise
+    except ProcessGroupsStoppedError as exc:
+        # Not a failed spawn: none was tried, and the words are this module's own.
+        raise GitUnavailableError(f"could not run git: {exc}") from exc
     except OSError as exc:
         # Spawn itself failed — a missing cwd, a permissions problem, or
         # process-table exhaustion. Nothing downstream can distinguish
-        # these usefully, so they collapse into one typed failure.
-        raise GitUnavailableError(f"could not run git: {exc}") from exc
+        # these usefully, so they collapse into one typed failure. The
+        # operating system's words can name the working directory, so they
+        # reach the log and the cause, never the error's text.
+        log.warning("could not run git: %s", exc)
+        raise GitUnavailableError("could not run git") from exc
 
 
 async def kill_when_spawned(spawn: asyncio.Future[asyncio.subprocess.Process]) -> None:
@@ -1742,6 +1851,41 @@ def required_acquisition_version_label() -> str:
     return f"{major}.{minor}.{patch} or a patched release at least {newest} on a newer track"
 
 
+# Where to get a Git that meets the floors, for a Git that no package manager this module
+# recognizes installed.
+GIT_DOWNLOAD_PAGE: Final = "https://git-scm.com/downloads"
+
+
+def git_upgrade_remedy(executable: str | None) -> Remedy:
+    """The step that brings the Git at *executable* up to the floors, or installs one.
+
+    Homebrew and MacPorts upgrade their own. Apple's Git, ``/usr/bin/git`` from the
+    Command Line Tools or Xcode, changes only with them and can trail Git's security
+    releases (Xcode 26.6 had 2.50.1, Apple Git-155, on 2026-11-18), so the step installs
+    Homebrew's, which a login shell with Homebrew's ``bin`` first on ``PATH`` finds first.
+    """
+
+    from metabrowser.tool_install import Remedy, install_method
+
+    if executable is None:
+        return Remedy("Install Git.", url=GIT_DOWNLOAD_PAGE)
+    method = install_method(executable)
+    if method == "homebrew":
+        return Remedy("Upgrade Homebrew's Git.", command="brew upgrade git")
+    if method == "macports":
+        return Remedy("Upgrade MacPorts' Git.", command="sudo port upgrade git")
+    if method == "apple":
+        return Remedy(
+            "Apple's Git changes only with the Command Line Tools or Xcode: install Git with "
+            "Homebrew, and keep Homebrew's bin before /usr/bin on PATH.",
+            command="brew install git",
+        )
+    return Remedy(
+        "Update Git with the package manager that installed it, or from Git's downloads.",
+        url=GIT_DOWNLOAD_PAGE,
+    )
+
+
 @cache
 def detect_git_version() -> tuple[tuple[int, int, int] | None, str]:
     """Return ``(parsed, first line)`` from the installed ``git version``."""
@@ -1799,6 +1943,7 @@ __all__ = [
     "READ_POLICY",
     "SPAWN_WAIT_S",
     "STORE_READ_POLICY",
+    "GIT_DOWNLOAD_PAGE",
     "UnsupportedGitVersionError",
     "acquisition_allowed",
     "acquisition_gate_as_fixture",
@@ -1809,6 +1954,7 @@ __all__ = [
     "failure_detail",
     "git_environment",
     "git_executable",
+    "git_upgrade_remedy",
     "forget_process_group",
     "kill_live_process_groups",
     "kill_when_spawned",

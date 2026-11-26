@@ -73,6 +73,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -83,6 +84,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -408,6 +410,210 @@ status: 200
 ? 0
 ```
 
+## Test: Files changed narrowed to one file type
+
+`types` passes through the GitHub route as `base_policy` does: the diff view’s File type
+chooser asks this route for a pull request’s files of the chosen types.
+`.md` keeps `docs/new.md` and leaves out `src/app.txt`.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&types=.md'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&types=.md
+status: 200
+{
+  "schema": "file-diff-v1",
+  "schema_version": 1,
+  "resolved": {
+    "comparison_id": "git:9479019c56eedd23",
+    "source": {
+      "name": "git"
+    },
+    "kind": "content",
+    "base_policy": "merge_base",
+    "left": {
+      "kind": "commit",
+      "id": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "symbolic": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b"
+    },
+    "right": {
+      "kind": "commit",
+      "id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "symbolic": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+    },
+    "options": {
+      "context": 3,
+      "rename_detection": true,
+      "rename_similarity": 50
+    },
+    "warnings": []
+  },
+  "manifest": {
+    "files": [
+      {
+        "id": "f1",
+        "kind": "added",
+        "new": {
+          "path": "docs/new.md",
+          "entry_type": "file",
+          "mode": "100644",
+          "content": {
+            "kind": "git_object",
+            "oid": "e65f941eafc191b1242e9ef5170ab3426ef3c42b"
+          }
+        },
+        "binary": false,
+        "availability": "ready",
+        "additions": 1,
+        "deletions": 0
+      }
+    ],
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false
+  },
+  "patches": {
+    "f1": {
+      "file_id": "f1",
+      "hunks": [
+        {
+          "old_start": 0,
+          "old_count": 0,
+          "new_start": 1,
+          "new_count": 1,
+          "lines": [
+            {
+              "op": "add",
+              "text": "# New",
+              "no_newline": false
+            }
+          ]
+        }
+      ],
+      "truncated": false
+    }
+  }
+}
+? 0
+```
+
+## Test: a pull request’s File type counts
+
+`view` passes through as `types` does, so the Changes tab’s File type menu counts a pull
+request’s files from the same route its diff comes from.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&view=types'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&view=types
+status: 200
+{
+  "comparison_id": "git:9479019c56eedd23",
+  "files": 2,
+  "truncated": false,
+  "extensions": [
+    [
+      ".md",
+      1,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".md",
+      1,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "markdown",
+      1,
+      0
+    ],
+    [
+      "plain-text",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "docs",
+      2,
+      0
+    ],
+    [
+      "code",
+      0,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      0,
+      0
+    ]
+  ]
+}
+? 0
+```
+
+## Test: a pull request’s unchanged lines
+
+`view=lines` passes through too, so a separator in a pull request’s diff opens to the
+lines around its hunk from the same comparison
+(tests/golden/cli-api-diff-lines.tryscript.md).
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&file=src/app.txt&view=lines&start=1&count=5'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&file=src/app.txt&view=lines&start=1&count=5
+status: 200
+{
+  "comparison_id": "git:9479019c56eedd23",
+  "file_id": "f2",
+  "path": "src/app.txt",
+  "start": 1,
+  "lines": [
+    "one",
+    "two"
+  ],
+  "line_count": 2,
+  "ends_with_newline": true
+}
+? 0
+```
+
 ## Test: a merged pull request compares from its base.sha
 
 ```console
@@ -542,6 +748,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -552,6 +759,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]",
   "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
+  "size_route": "/api/plugin/github/pull-size?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -719,11 +927,13 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -783,11 +993,13 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -829,11 +1041,13 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -876,6 +1090,18 @@ model: pull envelope; state=absent reason=not_github tab=conversation
 ? 0
 ```
 
+A native stack’s page is in the same address space, and a folder has no stack either.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab plain --show /stack/70
+show: /stack/70
+route: /stack/70
+kind: pull-stack
+views: pull-stack (default)
+model: stack envelope; state=absent reason=not_github tab=changes
+? 0
+```
+
 ## Test: a pull request with no usable record answers why
 
 Nothing is cached for 14; 12 holds a record from another schema; 13 holds something that
@@ -903,6 +1129,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -913,6 +1140,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -942,6 +1170,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -952,6 +1181,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -981,6 +1211,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -991,6 +1222,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -1022,10 +1254,11 @@ status: 200
   "ref_name": "refs/pull/7/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[APP_HOME]/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,
   "last_fetch_at": "[TIMESTAMP]",
@@ -1035,7 +1268,9 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 7,
   "selection_state": null,
   "selection_href": null
@@ -1056,10 +1291,11 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
   "ref_name": "refs/pull/7/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[APP_HOME]/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,
   "last_fetch_at": "[TIMESTAMP]",
@@ -1069,7 +1305,9 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 7,
   "selection_state": null,
   "selection_href": null
@@ -1096,8 +1334,10 @@ status: 200
   "short_name": "demo #7",
   "full_name": "github.com/octo/demo#7",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
-  "title": "demo #7 • Metabrowser"
+  "kind_label": "Cloud mirror",
+  "title": "demo #7 • Metabrowser",
+  "kind_tip": "Cloud mirror of octo/demo",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -1112,8 +1352,10 @@ status: 200
   "short_name": "demo",
   "full_name": "github.com/octo/demo@topic",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
-  "title": "demo • Metabrowser"
+  "kind_label": "Cloud mirror",
+  "title": "demo • Metabrowser",
+  "kind_tip": "Cloud mirror of octo/demo",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -1128,8 +1370,10 @@ status: 200
   "short_name": "demo",
   "full_name": "github.com/octo/demo@wip",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
-  "title": "demo • Metabrowser"
+  "kind_label": "Cloud mirror",
+  "title": "demo • Metabrowser",
+  "kind_tip": "Cloud mirror of octo/demo",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -1145,10 +1389,12 @@ api: /api/identity
 status: 200
 {
   "short_name": "demo",
-  "full_name": "github.com/octo/demo@07b55f07793d",
+  "full_name": "github.com/octo/demo@07b55f0",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
-  "title": "demo • Metabrowser"
+  "kind_label": "Cloud mirror",
+  "title": "demo • Metabrowser",
+  "kind_tip": "Cloud mirror of octo/demo",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -1188,6 +1434,7 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_failed",
@@ -1198,6 +1445,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -1221,6 +1469,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1231,6 +1480,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -1263,6 +1513,7 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_failed",
@@ -1273,6 +1524,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -1296,6 +1548,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1306,6 +1559,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -1339,6 +1593,7 @@ status: 200
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": false,
     "last_refresh": {
       "outcome": "gh_failed",
@@ -1349,6 +1604,7 @@ status: 200
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -1536,7 +1792,7 @@ pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: g
 api: /api/plugin/github/pull-markdown?number=14&part=body
 status: 404
 {
-  "error": "no record of this pull request is cached",
+  "error": "This pull request has not been loaded.",
   "code": "not_cached"
 }
 Error: /api/plugin/github/pull-markdown?number=14&part=body returned HTTP 404

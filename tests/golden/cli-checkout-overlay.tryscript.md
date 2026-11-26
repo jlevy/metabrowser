@@ -47,10 +47,11 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[APP_HOME]/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "[CWD]/checkout",
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -60,7 +61,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 1,
   "selection_state": null,
   "selection_href": null
@@ -79,7 +82,6 @@ status: 200
 {
   "kind": "branch",
   "query": "",
-  "limit": 100,
   "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
   "ref": "refs/remotes/origin/trunk",
   "kinds": [
@@ -87,13 +89,18 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 1,
-  "truncated": false,
+  "origin": null,
+  "pull_requests": {
+    "state": "absent",
+    "complete": false,
+    "refreshing": false
+  },
   "refs": [
     {
       "name": "trunk",
       "ref": "refs/remotes/origin/trunk",
       "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+      "committed_at": 1577836800.0,
       "default": true,
       "checked_out": false,
       "current": true
@@ -124,9 +131,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "stores": [
     {
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "overlay",
@@ -151,7 +159,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],
@@ -184,9 +192,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "stores": [
     {
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "overlay",
@@ -211,7 +220,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],
@@ -243,10 +252,11 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-moved/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-moved/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -256,7 +266,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 1,
   "selection_state": null,
   "selection_href": null
@@ -279,10 +291,11 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-moved/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-moved/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -292,7 +305,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 1,
   "selection_state": null,
   "selection_href": null
@@ -329,6 +344,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "a619ab340be40ab8fd05eb4905d2177ec7594b9a4aa6c3806baa7d70b397ea4a",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -339,6 +355,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -535,10 +552,11 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-shallow/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-shallow/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "[CWD]/shallow",
   "shallow": true,
   "refreshable": true,
+  "follows": true,
   "latest": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -548,7 +566,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 1,
   "selection_state": null,
   "selection_href": null
@@ -570,9 +590,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "stores": [
     {
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "damaged",
       "mode": "overlay",
@@ -603,7 +624,7 @@ status: 200
       ],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],

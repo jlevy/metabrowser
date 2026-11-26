@@ -22,6 +22,7 @@ import re
 import string
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -58,8 +59,17 @@ def test_every_kind_keeps_its_view_keys_clear_of_each_other_and_the_shell() -> N
         assert [key for key, count in taken.items() if count > 1] == [], kind
         assert check_view_keys(kind, _declared_views(kind)).problems == [], kind
 
+        # A view a plugin offers is served only where its predicate accepts the folder or
+        # the file, so a request with neither in hand does not list it.
+        offered = [
+            str(view["key"])
+            for view in _declared_views(kind)
+            if "key" in view and _is_offered(kind, view)
+        ]
         served = [view.get("key") for view in server._views_for_kind(kind)]
-        assert [key for key in served if key is not None] == declared, kind
+        assert [key for key in served if key is not None] == [
+            key for key in declared if key not in offered
+        ], kind
 
 
 def test_every_view_of_a_multi_view_kind_declares_a_key() -> None:
@@ -239,8 +249,10 @@ def _builtin_plugin_letters() -> dict[str, str]:
     """Each letter a built-in plugin gives a control through ``shortcuts.attach()``.
 
     The pull request page attaches its tabs' letters from ``PULL_TABS`` in
-    ``github/pull-page.js``, and the diff view its layout key in ``renderDiffToolbar`` in
-    ``diff/diff-view.js``. Each letter maps to where it is declared.
+    ``github/pull-page.js``, the diff view its layout key in ``renderDiffToolbar`` and its
+    Diff | Current key in ``attachShowKey``, both in ``diff/diff-view.js``, and a diff's
+    File type filter its key in ``diff/diff-type-filter.js``. Each letter maps to where it
+    is declared.
     """
     pull_page = (_BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")
     tabs = re.search(r"\nconst PULL_TABS = Object\.freeze\(\[(.*?)\n\]\);", pull_page, re.S)
@@ -251,6 +263,14 @@ def _builtin_plugin_letters() -> dict[str, str]:
     layout = re.search(r'\n      id: "diff\.layout",\n      key: "([^"]*)",', toolbar)
     assert layout, "diff/diff-view.js renderDiffToolbar attaches diff.layout"
     letters[layout[1]] = "diff/diff-view.js renderDiffToolbar"
+    attach = diff_view[diff_view.index("\nfunction attachShowKey(") :]
+    show = re.search(r'\n    id: "diff\.show",\n    key: "([^"]*)",', attach)
+    assert show, "diff/diff-view.js attachShowKey attaches diff.show"
+    letters[show[1]] = "diff/diff-view.js attachShowKey"
+    type_filter = (_BUILTIN_PLUGINS / "diff" / "diff-type-filter.js").read_text(encoding="utf-8")
+    types = re.search(r'\n        id: "diff\.type-filter",\n        key: "([^"]*)",', type_filter)
+    assert types, "diff/diff-type-filter.js attaches diff.type-filter"
+    letters[types[1]] = "diff/diff-type-filter.js createTypeFilterControl"
     return letters
 
 
@@ -270,8 +290,10 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
         for _ in re.finditer(r"\bshortcuts\.attach\(", path.read_text(encoding="utf-8"))
     )
     # The pull request page attaches its tabs' letters and numbers its header's controls,
-    # and the Pulls panel numbers its state chips and its Reload: numbers, so no letter.
+    # and the Pulls panel numbers its state chips and its Refresh: numbers, so no letter.
     assert calls == [
+        "diff/diff-type-filter.js",
+        "diff/diff-view.js",
         "diff/diff-view.js",
         "github/pull-page.js",
         "github/pull-page.js",
@@ -281,7 +303,7 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
     panel = (_BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(encoding="utf-8")
     assert panel.count("numbered: true,") == 2, "the Pulls panel's two calls take no letter"
     letters = _builtin_plugin_letters()
-    assert set(letters) == {"c", "g", "e", "l"}
+    assert set(letters) == {"c", "d", "g", "e", "l", "n", "r", "y"}
     served = serialize_reserved_shell_keys()
     assert {key: source for key, source in letters.items() if key in served} == {}
     assert not set(letters) & reserved_keys_for("pull-request")
@@ -291,9 +313,10 @@ def test_letters_never_collide_on_one_screen() -> None:
     """Within one screen a letter reaches one control.
 
     A file's tab bar shares the screen with the shell's letters, and a pull request page
-    shares it with its own tab letters, the diff's layout key on its Changes tab, and the
-    shell's letters. Two keys on one screen never share a letter; screens never shown
-    together may, as Charts and Conversation share ``C``.
+    shares it with its own tab letters, the diff's layout and Diff | Current keys on its
+    Changes tab and Diff | Current's on its Docs tab, and the shell's letters. Two keys on
+    one screen never share a letter;
+    screens never shown together may, as Charts and Conversation share ``C``.
     """
     shell = {key for key in RESERVED_SHELL_KEYS if key.isalpha()}
     for kind in _served_kinds():
@@ -333,17 +356,28 @@ def _manifest_views() -> list[tuple[str, str, str]]:
         for view in server._views_for_kind(kind):
             if "key" in view:
                 views.append((kind, str(view["label"]), str(view["key"])))
+        # The views a plugin offers on some folders or files are bound there, so they
+        # have rows too.
+        for view in _declared_views(kind):
+            if "key" in view and _is_offered(kind, view):
+                views.append((kind, str(view["label"]), str(view["key"])))
     return views
+
+
+def _is_offered(kind: str, view: dict[str, Any]) -> bool:
+    if kind == "folder":
+        return view["id"] in server._FOLDER_OFFERS
+    return (kind, view["id"]) in server._FILE_OFFERS
 
 
 def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:
     """The documented table and the bound keys are one set, and each row names its targets.
 
     Every reserved shell letter, every manifest view key, and every letter a built-in plugin
-    attaches has a row; every row's letter is one of those, ``?``, or ``/``; each Control
-    chord the registry allows has a row; a view's or a plugin control's row names its label;
-    the numbers are one row, ``1`` to ``9``, never a fixed digit; and ``0``, the one digit
-    with a fixed meaning, is Home's row.
+    attaches has a row. The shell also binds punctuation, including ``#`` for pull request
+    search. Each Control chord the registry allows has a row, and a view's or a plugin
+    control's row names its label. The digits ``1`` to ``9`` share a row. Home has the
+    fixed key ``0``, and ``\\`` hides the navigation pane.
     """
     rows = _documented_keymap()
     documented = {key for keys, _meaning in rows for key in keys if len(key) == 1}
@@ -353,13 +387,16 @@ def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:
     views = _manifest_views()
     plugins = _builtin_plugin_letters()
     bound = shell | {key for _kind, _label, key in views} | set(plugins)
-    assert documented - {"?", "/"} == bound
+    assert documented - {"?", "/", "#", "\\"} == bound
+    assert any(keys == ["#"] and "pull request" in meaning for keys, meaning in rows)
+    assert ["\\"] in [keys for keys, _meaning in rows], "the navigation pane's key has its row"
     for _kind, label, key in views:
         assert any(key in keys and label in meaning for keys, meaning in rows), (key, label)
     pull_page = (_BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")
     for label, key in re.findall(r'label: "([^"]+)", key: "([a-z])"', pull_page):
         assert any(key in keys and label in meaning for keys, meaning in rows), (key, label)
     assert any("l" in keys and "Diff layout" in meaning for keys, meaning in rows)
+    assert any("y" in keys and "File type" in meaning for keys, meaning in rows)
     digits = [keys for keys, _meaning in rows if any(re.search(r"\d", key) for key in keys)]
     assert digits == [["0"], ["1–9"]], "Home's 0, then the numbers as one positional row"
     assert any(keys == ["0"] and meaning.startswith("Home") for keys, meaning in rows)

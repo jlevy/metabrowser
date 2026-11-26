@@ -13,7 +13,7 @@ renderer rewrite when ``ruamel.yaml`` round-trip-with-comments lands.
 
 from __future__ import annotations
 
-import io
+import dataclasses
 import json
 import logging
 import os
@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from cachetools import LRUCache
+
+from metabrowser.structured_text import collapse_yaml_documents, decode_text
 
 LOG = logging.getLogger(__name__)
 
@@ -51,6 +53,12 @@ class StructuredPayload:
     max_depth: int
     parse_error: str | None
     truncated: bool
+    # The bytes the parse read, which the record-list table source counts what a parse
+    # holds by (records.py); 0 when nothing was parsed.
+    source_bytes: int = 0
+    # False for a parse made without `pretty_yaml` (`serialize=False`), which
+    # `serialize_structured_payload` writes when the Tree view first asks for it.
+    serialized: bool = True
 
 
 def _count_nodes_and_depth(value: Any, depth: int = 0) -> tuple[int, int]:
@@ -164,23 +172,7 @@ def _parse_text(text: str, ext: str) -> Any:
         import yaml as pyyaml  # type: ignore[import-not-found]
 
         docs = list(pyyaml.safe_load_all(text))
-    return _collapse_yaml_documents(docs)
-
-
-def _collapse_yaml_documents(docs: list[Any]) -> Any:
-    """Reduce a YAML document stream to a single tree-renderable value.
-
-    A lone document renders as itself. A multi-document stream renders as a
-    list, after dropping empty (``None``) documents — these are usually a
-    trailing ``---`` followed only by comments. If exactly one real document
-    remains it renders bare, not as a one-element list.
-    """
-    if len(docs) <= 1:
-        return docs[0] if docs else None
-    meaningful = [doc for doc in docs if doc is not None]
-    if len(meaningful) == 1:
-        return meaningful[0]
-    return meaningful or None
+    return collapse_yaml_documents(docs)
 
 
 _PAYLOAD_CACHE: LRUCache[tuple[str, str, str], StructuredPayload] = LRUCache(
@@ -227,16 +219,22 @@ def truncated_payload() -> StructuredPayload:
     )
 
 
-def _payload_from_parsed(parsed: Any, *, label: str) -> StructuredPayload:
+def _pretty_yaml(parsed: Any, label: str) -> str:
     try:
-        pretty_yaml = _serialize_to_yaml(parsed)
+        return _serialize_to_yaml(parsed)
     except Exception as exc:
         # Parsing succeeded but serialization failed — uncommon (the
         # output is just structured data the YAML serializer should
         # handle), so log loudly and ship the parsed tree with an
         # empty pretty_yaml. The client still gets the tree view.
         LOG.warning("structured: failed to serialize %s to YAML: %s", label, exc, exc_info=True)
-        pretty_yaml = ""
+        return ""
+
+
+def _payload_from_parsed(
+    parsed: Any, *, label: str, source_bytes: int, serialize: bool
+) -> StructuredPayload:
+    pretty_yaml = _pretty_yaml(parsed, label) if serialize else ""
     node_count, max_depth = _count_nodes_and_depth(parsed)
     return StructuredPayload(
         parsed=parsed,
@@ -245,6 +243,18 @@ def _payload_from_parsed(parsed: Any, *, label: str) -> StructuredPayload:
         max_depth=max_depth,
         parse_error=None,
         truncated=False,
+        source_bytes=source_bytes,
+        serialized=serialize,
+    )
+
+
+def serialize_structured_payload(payload: StructuredPayload) -> StructuredPayload:
+    """*payload* with its canonical YAML written, from its own parse."""
+
+    if payload.serialized:
+        return payload
+    return dataclasses.replace(
+        payload, pretty_yaml=_pretty_yaml(payload.parsed, "cached parse"), serialized=True
     )
 
 
@@ -261,21 +271,12 @@ def error_payload(exc: Exception) -> StructuredPayload:
     )
 
 
-def decode_text(data: bytes) -> str:
-    """*data* as the text a file opened in text mode reads as.
-
-    That is how 0.11.0 read a file, and what its answers depend on: a byte that is
-    not UTF-8 becomes U+FFFD and the rest still parses, so a Latin-1 file opens as a
-    tree; and CRLF and a lone CR read as LF, so a parse error counts lines and columns
-    as an editor does. Decoding strictly turned the first into a `UnicodeDecodeError`
-    and a Source view. A leading byte order mark is kept, as it was.
-    """
-
-    return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="replace").read()
-
-
-def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
+def parse_structured_bytes(data: bytes, ext: str, *, serialize: bool = True) -> StructuredPayload:
     """Parse JSON/YAML bytes. The only parse entry point; bounds are the caller's.
+
+    ``serialize=False`` leaves ``pretty_yaml`` empty: the canonical YAML is the Tree
+    view's, and writing it is most of a large file's cost, so the record-list table
+    source, which never draws it, asks for the parse alone (``load_structured_payload``).
 
     The caller reads through the bounded content reader, so the bytes that
     arrive here are already capped. The length check keeps that a fact rather
@@ -288,4 +289,4 @@ def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
         parsed = _parse_text(decode_text(data), ext)
     except Exception as exc:
         return error_payload(exc)
-    return _payload_from_parsed(parsed, label="bytes")
+    return _payload_from_parsed(parsed, label="bytes", source_bytes=len(data), serialize=serialize)

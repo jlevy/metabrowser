@@ -160,6 +160,78 @@ def _resolve_sidekick(spec: str) -> Callable[[Request], Awaitable[Response] | Re
     return cast(Callable[[Request], Awaitable[Response] | Response], fn)
 
 
+FolderOffer = Callable[[Path], bool]
+# A file kind's offered view: the file's leading logical bytes, at most
+# `CONTENT_PREDICATE_MAX_BYTES` + 1 of them, and its logical extension.
+FileOffer = Callable[[bytes, str], bool]
+
+
+def resolve_folder_offers(plugins: list[LoadedPlugin]) -> dict[str, FolderOffer | None]:
+    """Each offered folder view's predicate, by view id; ``None`` where it never applies.
+
+    A view whose predicate cannot be imported, or that an operator directory's
+    JavaScript-only plugin declares, maps to ``None``: the server then never offers it,
+    rather than offering it everywhere, and the log says why.
+    """
+
+    return {
+        view_id: cast(FolderOffer | None, predicate)
+        for (kind, view_id), predicate in _resolve_offers(plugins).items()
+        if kind == "folder"
+    }
+
+
+def resolve_file_offers(plugins: list[LoadedPlugin]) -> dict[tuple[str, str], FileOffer | None]:
+    """Each offered file view's predicate, by kind and view id; ``None`` where it never
+    applies, for the same reasons as :func:`resolve_folder_offers`. A view id is unique
+    only within its kind: the delimited, SQLite, and structured kinds each have a
+    ``table`` view."""
+
+    return {
+        key: cast(FileOffer | None, predicate)
+        for key, predicate in _resolve_offers(plugins).items()
+        if key[0] != "folder"
+    }
+
+
+def _resolve_offers(
+    plugins: list[LoadedPlugin],
+) -> dict[tuple[str, str], Callable[..., bool] | None]:
+    offers: dict[tuple[str, str], Callable[..., bool] | None] = {}
+    for plugin in plugins:
+        for view in plugin.manifest.view:
+            if view.offer is None:
+                continue
+            key = (view.kind, view.id)
+            if plugin.source.startswith("local:"):
+                LOG.warning(
+                    "metabrowser local plugin '%s' offers %s view %s through Python; "
+                    "operator-directory plugins are JavaScript-only, so it is never offered",
+                    plugin.name,
+                    view.kind,
+                    view.id,
+                )
+                offers[key] = None
+                continue
+            module_name, _, attr = view.offer.partition(":")
+            try:
+                predicate = getattr(importlib.import_module(module_name), attr)
+                if not callable(predicate):
+                    raise TypeError(f"{view.offer} is not callable")
+            except (ImportError, AttributeError, TypeError) as exc:
+                LOG.warning(
+                    "metabrowser plugin '%s' %s view %s is never offered: %s",
+                    plugin.name,
+                    view.kind,
+                    view.id,
+                    exc,
+                )
+                offers[key] = None
+                continue
+            offers[key] = cast(Callable[..., bool], predicate)
+    return offers
+
+
 def _make_data_hook_handler(
     plugin: LoadedPlugin,
     route: str,
@@ -172,12 +244,14 @@ def _make_data_hook_handler(
     sidekick = _resolve_sidekick(spec.sidekick)
 
     def _plugin_error_response(detail: str) -> JSONResponse:
+        # `error` is what the view says (plugin-sdk.js fetchPluginData); `detail`, which
+        # may name an exception's type, is the agent's (docs/design-system-messages.md).
         return JSONResponse(
             {
                 "type": "plugin_error",
                 "plugin": plugin.name,
                 "route": route,
-                "error": "Plugin data hook failed",
+                "error": "Could not load this view's data.",
                 "detail": detail,
                 "warning": (
                     "Metabrowser returned a degraded plugin warning instead "

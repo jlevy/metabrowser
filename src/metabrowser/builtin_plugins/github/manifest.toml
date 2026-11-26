@@ -2,7 +2,11 @@
 name = "github"
 display_name = "GitHub"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
+python_requires = ["markdown-it-py", "pydantic", "softschema", "starlette"]
+# A text's Mermaid diagrams are drawn by the Markdown plugin's diagram host, and Guided Review's
+# excerpts by the diff plugin's file renderer (`mountFilePatch`).
+requires = ["markdown", "diff"]
 
 # GitHub support: the URL reducer, the gh credential helper, and pull-request records
 # reach core through metabrowser.cache.providers, not this manifest. The manifest mounts
@@ -46,6 +50,12 @@ route = "pull-rendered-diff"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_rendered_diff_handler"
 methods = ["GET"]
 
+# The size an admitted comparison pushes, and its patch's, for the page's size line.
+[[data_hook]]
+route = "pull-size"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_size_handler"
+methods = ["GET"]
+
 # A selected PR's bounded Conversation projection, held separately from discussion.
 [[data_hook]]
 route = "pull-timeline"
@@ -57,6 +67,12 @@ methods = ["POST"]
 [[data_hook]]
 route = "pull-markdown"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_markdown_handler"
+methods = ["GET"]
+
+# A cached PR description's Guided Review artifact and one step of its pinned comparison.
+[[data_hook]]
+route = "guided-review"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:guided_review_handler"
 methods = ["GET"]
 
 # A filtered window of the repository's shared PR catalog (open, closed, or all), with
@@ -91,6 +107,20 @@ methods = ["POST"]
 [[data_hook]]
 route = "stack-change"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:stack_change_handler"
+methods = ["GET"]
+
+# A native stack's page at /stack/<n>: its members, the comparison from its bottom's merge
+# base to its top's head restricted to the files its layers change, the members the top
+# lacks, and each file's layers. Reads never contact GitHub or fetch.
+[[data_hook]]
+route = "stack"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stack_handler"
+methods = ["GET"]
+
+# That comparison as a diff document, immutable at the address the stack route names.
+[[data_hook]]
+route = "stack-comparison"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stack_comparison_handler"
 methods = ["GET"]
 
 # The repository's whole label set, cached, which colors a label a record names alone.
@@ -143,12 +173,30 @@ route = "cache-clear"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:cache_clear_handler"
 methods = ["POST"]
 
+# The GitHub status check: gh's path and version, the signed-in account, its scopes, and
+# one state with the step that fixes it, as metab --doctor reports it. It runs gh, so it
+# is a POST; {"fresh": true} runs it again rather than reuse a recent answer.
+[[data_hook]]
+route = "status"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:status_handler"
+methods = ["POST"]
+
 # A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.
 [[view]]
 kind = "pull-request"
 id = "pull-request"
 label = "Pull request"
+default = true
+container_class = "content-body github-pull-host"
+render_runtime = "client"
+
+# A native stack's page at /stack/<n>[/files|/docs|/changes[/<path>]]. No file is ever this
+# kind: the shell selects it for the stack route and mounts this view there.
+[[view]]
+kind = "pull-stack"
+id = "pull-stack"
+label = "Stack"
 default = true
 container_class = "content-body github-pull-host"
 render_runtime = "client"

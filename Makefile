@@ -20,6 +20,9 @@ UV_RUN := $(UV) run --frozen
 FLOWMARK_VERSION := 0.3.2
 FLOWMARK_EXCEPTION := 2026-07-16T00:00:00Z
 FLOWMARK := $(UVX) --exclude-newer-package 'flowmark-rs=$(FLOWMARK_EXCEPTION)' flowmark-rs@$(FLOWMARK_VERSION)
+# The lint targets fail a branch that adds an entry to CHANGELOG.md's Unreleased section
+# since its merge base with this ref; entries go in changelog.d/ (devtools/changelog.py).
+CHANGELOG_BASE ?= origin/main
 
 # Some managed agent environments export pnpm-style npm variables that npm 11
 # treats as unknown configuration. Repository policy lives in .npmrc, so prevent
@@ -30,7 +33,7 @@ unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
 # npm 11. Repository installs must use the reviewed .npmrc policy instead.
 unexport NPM_CONFIG_BEFORE
 
-.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit lock upgrade build verify clean
+.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-parallel test-serial test-chrome test-chrome-fast test-goldens test-admitted-git audit lock upgrade build verify clean
 
 default: install format lint test
 
@@ -52,7 +55,7 @@ browser-types:
 	npx --no-install tsc --noEmit -p apps/macos/webkit-gate/tsconfig.json
 
 # A CI job calls each test tier's target directly, so each installs first, as `test` does.
-format lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit build: | install
+format lint lint-check test test-parallel test-serial test-chrome test-chrome-fast test-goldens test-admitted-git audit build: | install
 
 lint:
 	$(UV_RUN) python -m devtools.lint
@@ -63,7 +66,10 @@ lint:
 	$(UV_RUN) python -m devtools.check_ci
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
+	$(UV_RUN) python -m devtools.check_plugin_deps
+	$(UV_RUN) python -m devtools.check_app_contract check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_goldens
+	$(UV_RUN) python -m devtools.changelog check --against $(CHANGELOG_BASE)
 
 format:
 	$(MAKE) format-markdown
@@ -92,7 +98,10 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_ci
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
+	$(UV_RUN) python -m devtools.check_plugin_deps
+	$(UV_RUN) python -m devtools.check_app_contract check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_goldens
+	$(UV_RUN) python -m devtools.changelog check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_startup_scripts
 	$(FLOWMARK) --auto --check .
 
@@ -105,10 +114,15 @@ lint-check:
 # line. It is a wall-clock measurement and not behavior, so the threshold is put past
 # tryscript's own 30 s command timeout, where it cannot fire before the command fails.
 #
-# `env` sets both, so the same words work as a shell command and as the command
+# A golden that serves writes no event log into the state directory of whoever runs it
+# (METABROWSER_EVENT_LOG=0, as tests/conftest.py sets for pytest); one that reads the log
+# names its own directory. Nor does a stand-in gh that fails make it probe the network
+# (METABROWSER_NETWORK_PROBE=0, as tests/conftest.py also sets).
+#
+# `env` sets them all, so the same words work as a shell command and as the command
 # devtools/run_goldens.py runs once for each golden.
-TRYSCRIPT := env PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
-	npx --no-install tryscript
+TRYSCRIPT := env -u METABROWSER_CACHE_RESERVE_MB PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
+	METABROWSER_EVENT_LOG=0 METABROWSER_NETWORK_PROBE=0 npx --no-install tryscript
 GOLDENS := tests/golden/*.tryscript.md
 # How many golden files devtools/run_goldens.py runs at a time: one per processor of a CI
 # runner, which has four. tryscript runs a file's commands one after another, each in a
@@ -130,15 +144,22 @@ STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 # (a shared 4-processor machine) and four (CI's runners), as the fast CI plan's Phase 1
 # Measurements record; a machine with more processors may want a cap.
 PYTEST_WORKERS ?= logical
-# `SHARD=I/N` runs the Ith of N disjoint parts of a pytest tier (tests/suite_tiers.py);
-# empty runs the whole tier.
+# `SHARD=I/N` runs the Ith of N disjoint parts of a pytest tier (tests/suite_tiers.py) or
+# of the goldens (devtools/run_goldens.py); empty runs the whole tier. The parts are dealt
+# by the seconds CI measured (devtools/shard_weights.py), which `make shard-weights`
+# refreshes.
 SHARD ?=
 # -rs names every skipped test with its reason, so a skip is read rather than counted,
-# and --durations and --file-durations list the slowest tests and test files
-# (tests/suite_timing.py), so a run says where its time went. A missing Node or Git
-# stops the run; see tests/required_tools.py.
-PYTEST := $(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25 --file-durations=25 \
+# and --durations and --file-durations list the slowest tests and every test file
+# (tests/suite_timing.py), so a run says where its time went. `make shard-weights` reads
+# both from CI's logs to weigh the shards (devtools/refresh_shard_weights.py), which is
+# why every file is listed, some 230 lines in a unit job's log, and why the serial and
+# Chrome tiers, which are dealt by test, list every test (EVERY_TEST): a part of either
+# holds few tests, but more than 25 once the heavy tests fill another part. A missing
+# Node or Git stops the run; see tests/required_tools.py.
+PYTEST := $(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25 --file-durations=0 \
 	$(if $(SHARD),--shard=$(SHARD))
+EVERY_TEST := --durations=0
 # The tiers' -m expressions, which tests/suite_tiers.py defines as TIERS: together they
 # hold every test once, whatever is marked.
 PARALLEL_TIER := not serial and not chrome
@@ -162,13 +183,19 @@ test-parallel:
 	$(PYTEST) -m "$(PARALLEL_TIER)" -n $(PYTEST_WORKERS) --dist loadfile --shard-by=file
 
 test-serial:
-	$(PYTEST) -m "$(SERIAL_TIER)"
+	$(PYTEST) $(EVERY_TEST) -m "$(SERIAL_TIER)"
 
 test-chrome:
-	$(PYTEST) -m "$(CHROME_TIER)"
+	$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)"
+
+# The Chrome tier without the tests measured at SLOW_TEST_S or more (tests/suite_tiers.py),
+# which is what a pull request runs while main is green; `make test` and every push to
+# main run test-chrome, the whole tier (devtools/ci_plan.sh).
+test-chrome-fast:
+	$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)" --skip-slow
 
 test-goldens:
-	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) '$(GOLDENS)' -- $(TRYSCRIPT)
+	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) $(if $(SHARD),--shard $(SHARD)) '$(GOLDENS)' -- $(TRYSCRIPT)
 
 # The size of the suite by area, at the working tree or at the commits in REFS, and with
 # LOG the time each test file and golden took in that CI job log:
@@ -188,6 +215,16 @@ test-report:
 .PHONY: ci-report
 ci-report:
 	$(UV_RUN) python -m devtools.ci_report $(CI_REPORT_FLAGS)
+
+# Rewrite devtools/shard_weights.json, the seconds SHARD's parts are dealt by, from the
+# newest green CI run on main as gh reads its job logs; SHARD_WEIGHTS_FLAGS passes
+# devtools/refresh_shard_weights.py its options:
+#   make shard-weights
+#   make shard-weights SHARD_WEIGHTS_FLAGS="--run 45062416967"
+# docs/e2e-testing.md ("Time limits and shards") says when to.
+.PHONY: shard-weights
+shard-weights:
+	$(UV_RUN) python -m devtools.refresh_shard_weights $(SHARD_WEIGHTS_FLAGS)
 
 # The baseline scale benchmark that docs/scale-benchmark.md records: one run of
 # devtools/bench_serving.py per size on its synthetic corpus under .bench/, then one
@@ -214,10 +251,13 @@ benchmark: | install
 # beside other workers, like the parallel tier, so the same gates fail a serial or chrome
 # test in it.
 ADMITTED_GIT_TESTS := \
+	tests/test_git_file_ages.py \
+	tests/test_git_revision_ages_routes.py \
 	tests/test_git_full_clone_acceptance.py \
 	tests/test_cli_live_acquire_golden.py \
 	tests/test_cache_acquire.py \
 	tests/test_cache_publish.py \
+	tests/test_cache_store_rename.py \
 	tests/test_cli_acquire.py \
 	tests/test_cli_cache_acquire_golden.py \
 	tests/test_cli_git_pin_golden.py \
@@ -237,25 +277,34 @@ ADMITTED_GIT_TESTS := \
 	tests/test_acquire_stall_and_hangup.py \
 	tests/test_acquire_phases.py \
 	tests/test_github_pulls.py \
+	tests/test_guided_review_route.py \
 	tests/test_github_pull_list.py \
 	tests/test_pulls_nav.py \
 	tests/test_checkout_overlay.py \
 	tests/test_checkout_revisions.py \
+	tests/test_checkout_store.py \
+	tests/test_source_ref_selector_origin_session.py \
 	tests/test_cli_source_checkout_golden.py \
+	tests/test_cli_checkout_store_golden.py \
 	tests/test_github_checkout.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cli_github_pull_image_golden.py \
+	tests/test_cli_github_pull_size_golden.py \
 	tests/test_cli_github_pull_rendered_golden.py \
+	tests/test_cli_github_pull_rendered_views_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
 	tests/test_cli_github_stack_change_golden.py \
+	tests/test_cli_github_stack_golden.py \
 	tests/test_github_stack_change.py \
 	tests/test_cli_github_labels_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
+	tests/test_github_ref_pulls.py \
+	tests/test_cli_github_ref_pulls_golden.py \
 	tests/test_github_pull_files.py \
 	tests/test_github_pull_files_summary.py \
 	tests/test_github_drawn_from_disk.py \
@@ -277,13 +326,15 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_pull_manifests.py \
 	tests/test_github_pull_record_swap.py \
 	tests/test_github_comparison_recovery.py \
+	tests/test_github_pull_route_probe.py \
 	tests/test_github_pull_snapshot.py \
 	tests/test_github_pull_publication.py \
+	tests/test_app_contract_golden.py \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
 	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --file-durations=25 -n $(PYTEST_WORKERS) --dist loadfile \
-		$(ADMITTED_GIT_TESTS)
+		$(if $(SHARD),--shard=$(SHARD) --shard-by=file) $(ADMITTED_GIT_TESTS)
 
 # The outer tiers nothing in CI runs. docs/e2e-testing.md ("Test Tiers") says what each
 # covers and when to run it.
@@ -316,13 +367,23 @@ GOLDEN_RECORDERS := \
 	tests/test_mirror_heading_session.py \
 	tests/test_source_freshness_session.py \
 	tests/test_source_ref_selector_session.py \
+	tests/test_source_ref_selector_origin_session.py \
 	tests/test_key_reveal_session.py \
+	tests/test_event_log_view_session.py \
+	tests/test_table_view_session.py \
+	tests/test_fsqlite_info_session.py \
+	tests/test_fsqlite_tables_session.py \
+	tests/test_sqlite_info_session.py \
+	tests/test_sqlite_tables_session.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_diff_markdown_session.py \
+	tests/test_diff_structured_session.py \
+	tests/test_pdf_surfaces_session.py \
 	tests/test_github_pull_page_session.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \
 	tests/test_github_stack_change.py \
+	tests/test_cli_github_stack_golden.py \
 	tests/test_github_pull_files_summary.py \
 	tests/test_github_pull_files_tree_session.py \
 	tests/test_inert_toc.py \
@@ -338,19 +399,26 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_url_golden.py \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cli_github_pull_image_golden.py \
+	tests/test_cli_github_pull_size_golden.py \
 	tests/test_cli_github_pull_rendered_golden.py \
+	tests/test_cli_github_pull_rendered_views_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
 	tests/test_cli_github_stack_change_golden.py \
+	tests/test_cli_github_stack_golden.py \
 	tests/test_cli_github_labels_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
+	tests/test_cli_github_ref_pulls_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_source_checkout_golden.py \
+	tests/test_cli_checkout_store_golden.py \
 	tests/test_cli_present_golden.py \
-	tests/test_diff_comparison_cache.py
+	tests/test_app_contract_golden.py \
+	tests/test_diff_comparison_cache.py \
+	tests/test_agents_mapping_golden.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)

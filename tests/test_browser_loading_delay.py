@@ -29,8 +29,9 @@ def test_every_fast_renderer_uses_the_delayed_loading_utility() -> None:
         "shell": STATIC_ROOT / "app.js",
         "Markdown": PLUGIN_ROOT / "markdown" / "rendered.js",
         "folder Overview": PLUGIN_ROOT / "folder" / "overview.js",
-        "Treemap": PLUGIN_ROOT / "folder" / "treemap.js",
-        "agent-log charts": PLUGIN_ROOT / "agent_log" / "index.js",
+        # The Treemap view and the Overview's compact map share TREEMAP_LOADING_HTML.
+        "Treemap": PLUGIN_ROOT / "folder" / "treemap-map.js",
+        "agent-log charts": PLUGIN_ROOT / "agents" / "agent-log.js",
         # A pull request's changed files: the spinner on the loading line an expanded tree
         # shows until its first rows come.
         "Pulls changed-files tree": PLUGIN_ROOT / "github" / "pull-files-view.js",
@@ -106,9 +107,10 @@ def test_spinners_carry_no_visible_loading_label() -> None:
         "shell": STATIC_ROOT / "app.js",
         "server shell": REPO_ROOT / "src" / "metabrowser" / "server.py",
         "Markdown": PLUGIN_ROOT / "markdown" / "rendered.js",
-        "agent-log charts": PLUGIN_ROOT / "agent_log" / "index.js",
+        "agent-log charts": PLUGIN_ROOT / "agents" / "agent-log.js",
         "folder totals": PLUGIN_ROOT / "folder" / "folder-totals.js",
-        "Treemap": PLUGIN_ROOT / "folder" / "treemap.js",
+        # The Treemap view and the Overview's compact map share TREEMAP_LOADING_HTML.
+        "Treemap": PLUGIN_ROOT / "folder" / "treemap-map.js",
         "file types": PLUGIN_ROOT / "folder" / "distribution-view.js",
     }
     # "Still scanning this folder…" and the tooltip's "Loading size…" are not
@@ -240,7 +242,8 @@ def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None
         "preview.replaceChildren(...replacementNodes)"
     )
     assert "preview.innerHTML = html" not in file_render
-    assert "animatePreviewContentArrival(arrivalContent)" in file_render
+    # The view in front at the commit, which a tab chosen during the hold may have changed.
+    assert "animatePreviewContentArrival(arrived)" in file_render
     assert "preview.animate(" not in file_render
 
     stage = app[app.index("function createFilePreviewStage") :][:1_000]

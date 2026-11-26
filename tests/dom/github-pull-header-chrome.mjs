@@ -16,9 +16,9 @@
 // `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
 // the run badge (`badges`), the label chips' colors in both themes (`labels`), the Diff
 // summary's row while its comparison is read, as it arrives, as it fails, and as the same
-// pull request is opened again in the document (`summary-wait`), and a page mounted with no
-// record in hand as its record lands (`cold-landing`). With no
-// part it runs every one. Each part writes how long
+// pull request is opened again in the document (`summary-wait`), a page mounted with no
+// record in hand as its record lands (`cold-landing`), and the View on GitHub button in the
+// header's corner (`corner`). With no part it runs every one. Each part writes how long
 // each of its steps took to stderr.
 //
 // KPRESS_STATIC holds KPress's style-tokens.css and the faces it names, which
@@ -30,7 +30,7 @@
 // every tab, row by row, and the tab bar under it starts at one place; a record with no
 // labels has no labels row, and lays out to that height less the row and its gap (mb-2u08).
 // The status line is there only while it has something to say, here an offer, and is then
-// a metadata line, as tall as the row of ages above it, one line and one gap more; a rate
+// a metadata line, as tall as the author's row above it, one line and one gap more; a rate
 // limit's hold is said in the freshness note's place and adds none (mb-ne91). The note is
 // whole beside the author's sentence or out of view, and the sentence whole while it shows;
 // a hold is never out of view, cut short instead. That is layout, which no browserless DOM
@@ -44,8 +44,13 @@
 // header as a run's status badge changes its label in place (RUN_BADGE below).
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+
+// The SDK's age builder over the ages a fake plays (sdk-ref-fixture.js), its source
+// interpolated into a page script, so a page draws the labels the session chose.
+const { agesFrom } = createRequire(import.meta.url)("./sdk-ref-fixture.js");
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -62,6 +67,15 @@ const check = (label, ok, detail = "") => {
     failures.push(`${label}${detail ? `: ${detail}` : ""}`);
   }
 };
+// A record's title is as tall as its own lines, one or two, and the cold header's holds two
+// (mb-wcbc, github/styles.css): how much shorter a header is than the cold one for its
+// title, and whether that is nothing or the one line a one-line title gives back.
+const titleGivesBack = (shape, cold) => {
+  const title = (measured) =>
+    measured.rows.find((row) => row.row === "title")?.height ?? Number.NaN;
+  const delta = Math.round((title(shape) - title(cold)) * 100) / 100;
+  return { delta, title: title(shape), ok: delta === 0 || delta === -title(cold) / 2 };
+};
 
 // The scripts the SDK's ref helpers need, in the order tests/dom/sdk-sandbox.js loads them.
 const SDK = [
@@ -72,6 +86,10 @@ const SDK = [
   "view-state.js",
   "navigation.js",
   "plugin-sdk.js",
+  // `metabrowser.menus`, the closing every menu has, which the stack menu and the
+  // views' menus use, and the shell tool it forwards to.
+  "filter-controls.js",
+  "menus.js",
   "plugin-sdk-views.js",
 ];
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>pull header</title>
@@ -157,7 +175,7 @@ const SUMMARY_INDENT = `async (place) => {
   return {
     step: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
     chevron: left(toggle.querySelector(".diff-summary-chevron")),
-    words: left(toggle.querySelector(".diff-summary-files")),
+    words: left(toggle.querySelector(".change-line")),
     rows: [...place.querySelectorAll('.diff-summary-body [role="treeitem"]')].map((row) => ({
       id: row.dataset.id,
       level: Number(row.getAttribute("aria-level")),
@@ -166,14 +184,18 @@ const SUMMARY_INDENT = `async (place) => {
     })),
   };
 }`;
-/** The rows of a measured tree that do not start one step per level in from its header. */
+/**
+ * The rows of a measured tree that do not start one step per level in from its header: a
+ * row's leading glyph, a folder's chevron or a file's letter, is a level's step past the
+ * header's words, which start the header, its chevron after them (mb-hi4l, mb-f0pz).
+ */
 const offStep = (indent) =>
   indent === null
     ? ["not measured"]
     : indent.rows.filter(
         (row) =>
-          Math.abs(row.lead - indent.chevron - indent.step * row.level) > 0.5 ||
-          Math.abs(row.name - indent.words - indent.step * row.level) > 0.5,
+          Math.abs(row.lead - indent.words - indent.step * row.level) > 0.5 ||
+          indent.chevron <= indent.words,
       );
 
 // In the page: mount one record on one tab in a pane of one width and read the header's
@@ -188,11 +210,6 @@ const MEASURE = `async (name, change, tab, width) => {
     if (holder !== undefined) {
       envelope.record = structuredClone(recorded[holder].body.record);
     }
-  }
-  // A pin behind the pull request's head draws the offer to switch to it.
-  if (change.pinBehind) {
-    body.pin = "1".repeat(40);
-    body.pin_ref = "refs/pull/" + body.number + "/head";
   }
   // A checkout, which has no pin, at the pull request's head draws the offer to browse it.
   if (change.checkoutAtHead) {
@@ -252,23 +269,28 @@ const MEASURE = `async (name, change, tab, width) => {
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
-      mountRefCopies: mb.mountRefCopies,
+      mountRefMenus: mb.mountRefMenus,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       // Ages of the lengths a record's have, one per time in the order the page asks, so no
       // two read the same and the row of ages is as long as a real one: "now" for all of them
       // made a 275 px row, whole to 480 px, that never reached the links (B4 of review B on
       // #506).
-      formatAge: (() => {
-        const labels = ["12d ago", "5h ago", "3d ago"];
-        const given = new Map();
-        return (seconds) => {
-          if (!given.has(seconds)) given.set(seconds, labels[given.size % labels.length]);
-          return { label: given.get(seconds), className: "age" };
-        };
-      })(),
+      ...(${agesFrom})(
+        document,
+        (() => {
+          const labels = ["12d ago", "5h ago", "3d ago"];
+          const given = new Map();
+          return (seconds) => {
+            if (!given.has(seconds)) given.set(seconds, labels[given.size % labels.length]);
+            return { label: given.get(seconds), className: "age" };
+          };
+        })(),
+      ),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       repository: change.checkoutAtHead ? { revision: body.record?.pull?.head?.sha } : undefined,
@@ -315,9 +337,10 @@ const MEASURE = `async (name, change, tab, width) => {
         ),
       )
     : null;
-  // Where the state row's parts and the labels are, and every row's height.
+  // Where the rows' parts and the labels are, and every row's height: the row of ages' badge,
+  // ages, and Browse code, the author's sentence, and the branches.
   const places = () => ({
-    parts: [".github-pull-badge", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
+    parts: [".github-pull-badge", ".github-pull-ages", ".github-pull-ages-links", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
       [...header.querySelectorAll(selector)].map((node) => [selector, Math.round(box(node).left * 100) / 100, Math.round(box(node).width * 100) / 100]),
     ),
     rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
@@ -325,8 +348,10 @@ const MEASURE = `async (name, change, tab, width) => {
   });
   // The pull request's Diff summary arrives with its comparison, in the header's last row,
   // held from first paint (mb-pb35). It is drawn by the diff plugin's own mountDiffSummary,
-  // on a change set whose breakdown names three statuses, "35 files changed · 2 A, 3 D, 30 M
-  // · +1,234 −3,423": it moves nothing, keeps its row's height, and starts on the header's
+  // on a change set whose breakdown names five statuses, "2 A, 3 D, 30 M, 12 R, 12 C ·
+  // +1,234 −3,423", its file count on the size line above ("Change Size Line"), so its
+  // breakdown is cut short at the narrowest width: it moves nothing, keeps its row's height,
+  // and starts on the header's
   // content edge. While its breakdown is cut short, its header's tooltip is its whole words,
   // and while it is whole there is none (A7 of review A on #470). It is measured on every
   // tab, by a flag of its own (A11 of review A on #470).
@@ -340,17 +365,21 @@ const MEASURE = `async (name, change, tab, width) => {
       ...Array(2).fill("added"),
       ...Array(3).fill("deleted"),
       ...Array(30).fill("modified"),
+      ...Array(12).fill("renamed"),
+      ...Array(12).fill("copied"),
     ];
     const files = kinds.map((kind, at) => ({
       kind,
-      ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
+      ...(kind === "added"
+        ? {}
+        : { old: { path: (kind === "renamed" || kind === "copied" ? "old/f" : "src/f") + at + ".py" } }),
       ...(kind === "deleted" ? {} : { new: { path: "src/f" + at + ".py" } }),
       additions: 30,
       deletions: 90,
     }));
     const summary = diff.mountDiffSummary(
       slot,
-      { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } },
+      { manifest: { totals: { files: 59, additions: 1234, deletions: 3423, exact: true }, files } },
       mb,
       { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} },
     );
@@ -387,11 +416,12 @@ const MEASURE = `async (name, change, tab, width) => {
     }
   }
   // A stack's chip arrives late, from its own answer, through the page's own builder, at
-  // the right end of the author's row (mb-cf0l): one stack, "⧉2/3", or two, "⧉286 4/4" and
-  // "⧉300 2/2", each named by its stack, as the page names a chip in more than one stack.
-  // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
-  // The strut that holds the author's row at a chip's height, read before a chip replaces it.
-  const heldBy = header.querySelector(".github-pull-meta .github-pull-stack-strut");
+  // the right end of the row of ages, ending it at the content edge, under the end of the
+  // title's number where the title leaves the corner no room (mb-646g, mb-dwha, mb-ablv): one stack, "⧉2/3", or two, "⧉286 4/4" and "⧉300 2/2", each named by its
+  // stack, as the page names a chip in more than one stack. Its Layers glyph is a bare svg at
+  // the glyph's size, so the chip is as wide as the page's. The strut that holds the row of
+  // ages at a chip's height, read before a chip replaces it.
+  const heldBy = header.querySelector(".github-pull-opened > .github-pull-stacks > .github-pull-stack-strut");
   const strutHeight = heldBy ? Math.round(box(heldBy).height * 100) / 100 : null;
   let chipMoves = null;
   if (change.stackChip && group) {
@@ -411,7 +441,9 @@ const MEASURE = `async (name, change, tab, width) => {
         currentTitle: "",
         named: change.stackChip === 2,
         titleNodes: mb.titleNodes,
+        shortCommit: mb.shortCommit,
         onOpen() {},
+        menus: mb.menus,
       }),
     );
     const column = header.querySelector(".github-pull-stacks");
@@ -419,35 +451,63 @@ const MEASURE = `async (name, change, tab, width) => {
     await frames();
     const after = places();
     // Nothing moves: every part keeps its start, every row its height, the tab bar its place.
-    // The sentence alone, the author then the action, may give up width at its end where the
-    // row has none left: the action is cut first, to nothing, and then the author, so the
-    // sentence keeps its start and only the action's start, past a shorter name, moves.
-    const sentence = new Set([".github-pull-action", ".github-pull-identity"]);
+    // The ages alone may give up width at their end where the row has none left, and Browse
+    // code after them, kept whole while any age shows (B4 of review B on #506), follows their
+    // end, as the action followed a shorter author on the author's row (mb-cf0l).
+    const follows = new Set([".github-pull-ages-links"]);
     const kept = (shape) => ({
       parts: shape.parts.map(([selector, left, width]) => [
         selector,
-        selector === ".github-pull-action" ? null : left,
-        sentence.has(selector) ? null : width,
+        follows.has(selector) ? null : left,
+        selector === ".github-pull-ages" ? null : width,
       ]),
       rows: shape.rows,
       tabBar: shape.tabBar,
     });
-    const details = header.querySelector(".github-pull-meta-details");
-    const contentRight = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+    const agesWidth = (shape) =>
+      shape.parts.find(([selector]) => selector === ".github-pull-ages")?.[2] ?? 0;
+    const row = header.querySelector(".github-pull-opened");
+    const quiet = row.querySelector(":scope > .github-pull-quiet");
+    const ages = quiet.querySelector(".github-pull-ages");
+    const links = quiet.querySelector(".github-pull-ages-links");
+    const r = (value) => Math.round(value * 100) / 100;
+    // Where the chip's end is against the title's number's and the header's content edge
+    // (mb-dwha): nothing follows it on the row, since the page has no Refresh (mb-ablv).
+    const numberRange = document.createRange();
+    numberRange.selectNodeContents(header.querySelector(".github-pull-title-with-state .github-pull-number"));
+    const numberEnd = numberRange.getBoundingClientRect().right;
+    const contentEnd = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+    const titleRoom = parseFloat(getComputedStyle(header.querySelector(".github-pull-title")).paddingInlineEnd);
+    const chipEnd = () => Math.max(...menus.map((menu) => box(menu.element).right));
+    const ends = { number: r(chipEnd() - numberEnd), content: r(chipEnd() - contentEnd) };
     chipMoves = {
       chips: stacks.length,
       moved: JSON.stringify(kept(before)) === JSON.stringify(kept(after)) ? null : { before, after },
-      cut:
-        Math.round(
-          before.parts
-            .filter(([selector]) => sentence.has(selector))
-            .reduce((sum, [, , width], at) => sum + width - after.parts.filter(([s]) => sentence.has(s))[at][2], 0) *
-            100,
-        ) / 100,
+      // How much of the ages' width the chip took.
+      cut: r(agesWidth(before) - agesWidth(after)),
       chipShown: Math.min(...menus.map((menu) => shown(menu.element))),
-      overlap: Math.round((box(details).right - box(column).left) * 100) / 100,
-      rightEdge: Math.round((box(column).right - contentRight) * 100) / 100,
-      chipWidth: Math.round(box(column).width * 100) / 100,
+      // The slot is the row of ages' own, ending the row, and the chip sits on that row's
+      // line.
+      onAgesRow:
+        column.parentElement === row &&
+        column === row.lastElementChild &&
+        menus.every((menu) => {
+          const chip = box(menu.element);
+          return chip.top >= box(row).top - 0.5 && chip.bottom <= box(row).bottom + 0.5;
+        }),
+      overlap: r(box(quiet).right - box(column).left),
+      rowGap: parseFloat(getComputedStyle(row).columnGap),
+      titleRoom: r(titleRoom),
+      contentEnd: r(contentEnd),
+      ends,
+      chipWidth: r(box(column).width),
+      // A chip's position cut short, and whether the ages and Browse code had any width left
+      // when it was.
+      positionCut: menus.some((menu) => {
+        const position = menu.element.querySelector(".github-pull-stack-trigger > .github-pull-stack-position");
+        return position !== null && position.scrollWidth > position.clientWidth;
+      }),
+      textLeft: r(box(ages).width) >= 1 || (links !== null && shown(links) > 0.01),
     };
     // Its member menu heads its rows with the host's menu group, whose heading starts
     // on the rows' inset (docs/design-system.md, "Groups in a Menu"). A second menu of
@@ -457,7 +517,7 @@ const MEASURE = `async (name, change, tab, width) => {
     const probe = page.createStackMenu(
       { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
       body.number,
-      { link: () => document.createElement("a"), icon: null, currentTitle: "", titleNodes: mb.titleNodes, onOpen() {} },
+      { link: () => document.createElement("a"), icon: null, currentTitle: "", titleNodes: mb.titleNodes, onOpen() {}, menus: mb.menus },
     );
     const holder = document.createElement("div");
     holder.className = "github-pull-stacks";
@@ -490,7 +550,10 @@ const MEASURE = `async (name, change, tab, width) => {
     probe.dispose();
     holder.remove();
   }
-  const rows = [...header.children].map((row) => ({
+  // The header's rows: its children but the corner, the View on GitHub button's, which is
+  // placed in the page's upper right out of their flow (mb-4wqh).
+  const headerRows = [...header.children].filter((row) => !row.matches(".view-header-end"));
+  const rows = headerRows.map((row) => ({
     row: row.tagName === "H1" ? "title" : [...row.classList].find((c) => c.startsWith("github-pull-")).slice(12),
     height: Math.round(box(row).height * 100) / 100,
   }));
@@ -500,7 +563,8 @@ const MEASURE = `async (name, change, tab, width) => {
   const badge = opened?.querySelector(".github-pull-badge");
   const centre = (r) => r.top + r.height / 2;
   // The title's icon and text start at the header's left edge and its number ends on the
-  // right one, over the stack's slot that ends the author's row (mb-z416).
+  // right one, over the end of the row of ages, which the stack's chip ends (mb-z416,
+  // mb-646g, mb-ablv).
   const heading = header.querySelector(".github-pull-title-with-state");
   const edges = (() => {
     if (!heading) return null;
@@ -513,22 +577,25 @@ const MEASURE = `async (name, change, tab, width) => {
     const numberRange = document.createRange();
     numberRange.selectNodeContents(heading.querySelector(".github-pull-number"));
     const number = numberRange.getBoundingClientRect();
-    const slot = header.querySelector(".github-pull-meta .github-pull-stacks");
     const r = (v) => Math.round(v * 100) / 100;
+    // The room the title leaves the corner's button where the reading column reaches it
+    // (github/styles.css), which its number ends short of.
+    const room = parseFloat(getComputedStyle(heading).paddingInlineEnd);
     return {
       iconLeft: r(icon.left - left),
       textAfterIcon: r(text.left - icon.right),
       gap: r(parseFloat(getComputedStyle(heading).columnGap)),
-      numberRight: r(number.right - right),
-      numberOverSlot: slot ? r(number.right - box(slot).right) : null,
+      room: r(room),
+      numberRight: r(number.right + room - right),
+      numberOverRow: opened ? r(number.right + room - box(opened).right) : null,
       numberBelowText: r(number.bottom - text.bottom),
     };
   })();
   // Where each row shown starts and ends, from the header's top, and the header's one gap
   // between rows: the status line, while it has something to say, is one of the metadata
-  // lines under the title, as tall as the row of ages and one gap under the row before it,
+  // lines under the title, as tall as the author's row and one gap under the row before it,
   // with no empty labels row between (mb-2u08); with nothing to say it is not there (mb-ne91).
-  const lines = [...header.children]
+  const lines = headerRows
     .map((row, at) => ({
       row: rows[at].row,
       shown: !row.hidden,
@@ -538,9 +605,8 @@ const MEASURE = `async (name, change, tab, width) => {
     .filter((each) => each.shown)
     .map(({ shown, ...each }) => each);
   const r2 = (value) => Math.round(value * 100) / 100;
-  // Refresh's slot ends the row of ages, after View on GitHub and Browse code, so it is
-  // numbered after them (A1 of review A on #506).
-  const refresh = header.querySelector(".github-pull-opened > .github-pull-refresh");
+  // The status line's remedy, Retry or Fetch, first among its offers, a line tall (mb-ablv).
+  const remedy = header.querySelector(".github-pull-status-end > .github-pull-remedy");
   const contentEdge = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
   // The freshness note ends the author's row's lead (mb-ne91). Its slot is as wide as its
   // widest age, so the age ticking from "just now" to "59 min ago" changes its width not at
@@ -605,16 +671,18 @@ const MEASURE = `async (name, change, tab, width) => {
     login: login ? { width: r2(box(login).width), natural: natural(login) } : null,
     action: action ? { width: r2(box(action).width), natural: natural(action) } : null,
   };
-  // The row of ages: its ages give way first, and View on GitHub and Browse code after them
-  // stay whole (B4 of review B on #506). How much of the links shows, and how wide the ages
-  // are drawn against their own width.
+  // The row of ages: its ages give way first, and Browse code after them stays whole (B4 of
+  // review B on #506). How much of the link shows, all of it where there is none, and how
+  // wide the ages are drawn against their own width.
   const agesText = header.querySelector(".github-pull-opened .github-pull-ages");
   const agesLinks = header.querySelector(".github-pull-opened .github-pull-ages-links");
   const agesRow = agesText === null
     ? null
     : {
-        linksShown: Math.round(shown(agesLinks) * 1000) / 1000,
-        links: [...agesLinks.querySelectorAll("a, button")].map((node) => node.textContent.trim()),
+        linksShown: agesLinks === null ? 1 : Math.round(shown(agesLinks) * 1000) / 1000,
+        links: agesLinks === null
+          ? []
+          : [...agesLinks.querySelectorAll("a, button")].map((node) => node.textContent.trim()),
         agesWidth: r2(box(agesText).width),
         agesNatural: r2(agesText.scrollWidth),
         text: agesText.textContent,
@@ -627,15 +695,32 @@ const MEASURE = `async (name, change, tab, width) => {
     rows,
     lines,
     rowGap: parseFloat(getComputedStyle(header).rowGap),
+    bottomPadding: parseFloat(getComputedStyle(header).paddingBottom),
+    contentPadding: parseFloat(getComputedStyle(header).getPropertyValue("--content-padding-y")),
+    // The page's one gap under a title, before its first metadata line (mb-wcbc).
+    titleGap: parseFloat(getComputedStyle(header).getPropertyValue("--page-title-gap")),
     // How many labels the record names, or null while there is no record.
     recordLabels: body.record ? body.record.pull.labels.length : null,
-    refresh: refresh
-      ? { shown: !refresh.hidden, height: r2(box(refresh).height), rightEdge: r2(box(refresh).right - contentEdge) }
+    // No Refresh of the page's own on the row of ages or anywhere in the header (mb-ablv).
+    pageRefresh: header.querySelector(".github-pull-refresh") !== null,
+    remedy: remedy
+      ? {
+          label: remedy.textContent,
+          height: r2(box(remedy).height),
+          first: remedy === remedy.parentElement.firstElementChild,
+          // Whole, and inside the content edge.
+          whole: remedy.scrollWidth <= remedy.clientWidth + 0.5,
+          rightEdge: r2(box(remedy).right - contentEdge),
+          statusHeight: r2(box(remedy.closest(".github-pull-status")).height),
+        }
       : null,
     ageWidens,
     lead: leadShape,
     statusShown: !header.querySelector(".github-pull-status").hidden,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
+    // The author's row is its lead alone, a line tall (mb-646g).
+    metaLead: lead ? Math.round(box(lead).height * 100) / 100 : null,
+    agesRowHeight: opened ? Math.round(box(opened).height * 100) / 100 : null,
     strut: strutHeight,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
     // The offers drawn where a reader sees them: laid out, with some of each in view.
@@ -669,8 +754,18 @@ const MEASURE = `async (name, change, tab, width) => {
     paneScrolls: pane.scrollWidth > pane.clientWidth,
     // Each label chip's computed colors and box, and the neutral chip's tokens in this
     // theme: --muted and --border, read from a probe that is painted with them.
+    branchChipHeights: [...header.querySelectorAll(".merge-refs .git-ref")].map(
+      (chip) => box(chip).height,
+    ),
+    statusBadgeHeight: badge ? box(badge).height : null,
     labels: [...header.querySelectorAll(".github-pull-label")].map((chip) => {
       const style = getComputedStyle(chip);
+      // A baseline-aligned marker measures the capital band independently of its line box.
+      const cap = document.createElement("span");
+      cap.style.cssText = "display:inline-block;width:0;height:1cap;vertical-align:baseline";
+      chip.append(cap);
+      const capOffset = centre(box(cap)) - centre(box(chip));
+      cap.remove();
       return {
         name: chip.textContent,
         color: chip.dataset.color ?? null,
@@ -683,6 +778,8 @@ const MEASURE = `async (name, change, tab, width) => {
           style.fontSize, style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft,
           style.borderTopWidth, style.borderTopLeftRadius, Math.round(box(chip).height * 100) / 100,
         ].join(" "),
+        height: box(chip).height,
+        capOffset,
         left: Math.round(box(chip).left * 100) / 100,
         width: Math.round(box(chip).width * 100) / 100,
       };
@@ -721,8 +818,7 @@ const RECORDS = [
   ["closed", {}],
   ["stale", {}],
   ["on_head", {}],
-  ["behind_head", {}],
-  ["current", { pinBehind: true }],
+  ["followed_head", {}],
   ["on_head", { checkoutAtHead: true }],
   ["current", { lastRefresh: RATE_LIMITED }],
   ["current", { lastRefresh: RATE_LIMITED, liftSoon: true }],
@@ -873,15 +969,17 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
-      mountRefCopies: mb.mountRefCopies,
+      mountRefMenus: mb.mountRefMenus,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       changeLine: mb.changeLine,
       changeLineNodes: mb.changeLineNodes,
       formatInteger: mb.formatInteger,
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
@@ -915,8 +1013,9 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   await new Promise((resolve) => setTimeout(resolve, delay * 2));
   await frames();
   const contentLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+  // The header's rows, but not the corner, which is out of their flow (mb-4wqh).
   const places = () => ({
-    rows: [...header.children].map((child) => [
+    rows: [...header.children].filter((child) => !child.matches(".view-header-end")).map((child) => [
       child.tagName === "H1" ? "title" : [...child.classList].find((c) => c.startsWith("github-pull-")).slice(12),
       round(box(child).top - box(header).top),
       round(box(child).height),
@@ -943,7 +1042,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
     places: places(),
     brief: (() => {
       const line = row.querySelector(".github-pull-summary-brief");
-      const words = line?.querySelector(".diff-summary-files");
+      const words = line?.querySelector(".change-line");
       if (!line || !words) return null;
       const range = document.createRange();
       range.selectNodeContents(line);
@@ -970,7 +1069,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   await frames();
   const summary = row.querySelector(".diff-summary");
   const chevron = row.querySelector(".diff-summary-chevron svg, .diff-summary-chevron");
-  const words = row.querySelector(".diff-summary-files");
+  const words = row.querySelector(".change-line");
   const arrived = {
     placeholder: row.querySelector(".tally-pending") !== null,
     summary: summary !== null,
@@ -1002,8 +1101,8 @@ const ONE_STATUS = [
   { kinds: [["modified", 1]], lines: [3, 1] },
   { kinds: [["modified", 8]], lines: [120, 30] },
 ];
-// The placeholder's width in em of its type, as its rule sets it, `min(100%, 14.5em)`.
-const PENDING_EM = 14.5;
+// The placeholder's width in em of its type, as its rule sets it, `min(100%, 7em)`.
+const PENDING_EM = 7;
 
 // In the page: a pull request page mounted with no record in hand, as a direct load or a
 // reload mounts it, whose pull read the session answers (docs/design-system.md, "Layout").
@@ -1013,10 +1112,14 @@ const PENDING_EM = 14.5;
 // its record. Every frame from the mount to the landing is read: whether the header and the
 // tab column show, the cold header or the record's, where the tab bar is against the same
 // record mounted in hand, and what the Diff summary's row holds. Its placeholder's own
-// reveal, the same quiet period's (`.mb-delayed-loading`), ends with it.
-const COLD_LANDING = `async (width, labelled, outcome) => {
+// reveal, the same quiet period's (`.mb-delayed-loading`), ends with it. A `seeded` page
+// has the Pulls tab's row for its pull request in hand, as the list notes it
+// (`noteListed`), so its cold header is titled as the record will be; the note outlives the
+// mount, so the seeded landings run last.
+const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
   const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
   const page = window.__page ??= await import("/github/pull-page.js");
+  const states = window.__states ??= await import("/github/pull-state.js");
   const body = structuredClone(recorded.current.body);
   const holder = body.record?.same_as;
   if (holder !== undefined) {
@@ -1024,6 +1127,12 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   }
   if (!labelled) {
     body.record.pull.labels = [];
+  }
+  if (seeded) {
+    const pull = body.record.pull;
+    states.noteListed("https://github.com/octo/demo", "all", [
+      { number: body.number, state: states.displayState(pull), updatedAt: pull.updated_at, title: pull.title },
+    ]);
   }
   const realFetch = window.__realFetch ??= window.fetch;
   const pane = document.getElementById("preview-pane");
@@ -1040,12 +1149,14 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     refChip: mb.refChip,
     refChipHtml: mb.refChipHtml,
     mergeRefs: mb.mergeRefs,
-    mountRefCopies: mb.mountRefCopies,
+    mountRefMenus: mb.mountRefMenus,
     actorIdentity: mb.actorIdentity,
     titleNodes: mb.titleNodes,
+    shortCommit: mb.shortCommit,
     countPartsNodes: mb.countPartsNodes,
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+    formatInteger: (value) => Number(value).toLocaleString("en-US"),
     navigation: { href: () => "/view/" },
     sourceKind: () => "filesystem",
     icons: { toggle: "" },
@@ -1063,6 +1174,7 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   await document.fonts.ready;
   await frames();
   const landsAt = tabBarOf(inHand);
+  const inHandTitle = round(inHand.querySelector(".github-pull-header > h1").getBoundingClientRect().height);
   opened.dispose();
   document.documentElement.style.setProperty("--loading-state-delay", "60s");
   let answer = null;
@@ -1092,7 +1204,10 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
       step,
       header: getComputedStyle(header).opacity,
       column: tabColumn ? getComputedStyle(tabColumn).opacity : null,
-      cold: (header.querySelector("h1")?.textContent ?? "").startsWith("Pull request #"),
+      cold: header.classList.contains("github-pull-cold"),
+      // The cold title the Pulls tab's row titles, the record's shape, or "Pull request #7".
+      seeded: header.querySelector("h1")?.classList.contains("github-pull-title-with-state") ?? false,
+      title: round(header.querySelector("h1")?.getBoundingClientRect().height ?? 0),
       tabBar: tabColumn ? tabBarOf(container) : null,
       live: tabColumn ? [...tabColumn.querySelectorAll(".tab-btn")].map((link) => link.checkVisibility({ visibilityProperty: true }) && !link.closest("[inert]")) : [],
       // The Diff summary's row: its pending placeholder from first paint (mb-30dz), and
@@ -1143,11 +1258,15 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   // A held landing's conversation is still out of sight, waiting for its Markdown.
   const bodyHeld =
     container.querySelector(".github-pull-body")?.classList.contains("github-pull-body-holding") ?? null;
+  // Whether the record's title keeps the cold title's two lines (the held class).
+  const held = header.classList.contains("github-pull-title-held");
   handle.dispose();
   document.documentElement.style.removeProperty("--loading-state-delay");
   window.fetch = realFetch;
   return {
     landsAt,
+    inHandTitle,
+    held,
     before,
     shownCold,
     landed,
@@ -1157,19 +1276,212 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     tabBarsShown: [...new Set(seen.filter((state) => Number(state.header) > 0).map((state) => state.tabBar))],
   };
 }`;
-// Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
-// github-pulls-panel-session.js pins: the row's link, the state icon, the title, the age,
-// and the number's line, which the stylesheet lays out as two lines (mb-lkkt): the icon in
-// the row's one slot and the title alone, from the text column to the row's end; then the
-// number's line, where a stack member's place comes before its number (mb-dzsi), and the
-// age. Under the link is the row's third line, its change line (mb-d0a3), which holds the
-// chevron in the same slot, under the icon (mb-3vil), here with no line yet. Each row is a
-// member, a level in under its stack's row.
-// The age, the chevron, the icon, and the title are read, from the row's top, before and
-// after each row's place arrives, the title's width with them: the place is on the number's
-// line, which stays one line, so nothing else moves, the link keeps its two lines (`grew`),
-// and the row its three (`itemGrew`).
+// The baselines of the title's first line and of the corner's button label, which the
+// corner sets on one line (mb-tatf; docs/design-system.md, "View on GitHub"): a probe of no
+// size before each one's first text rests on its first line's baseline. The title's text
+// is a clamped box and the label a flex item, so each text is wrapped in an inline span
+// with its probe for the read, and put back.
+const CORNER_BASELINE = `(title, label) => {
+  const first = (node) => {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+      acceptNode: (text) => (text.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    });
+    const text = walker.nextNode();
+    if (!text) return null;
+    const probe = document.createElement("span");
+    probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+    const wrap = document.createElement("span");
+    text.parentNode.insertBefore(wrap, text);
+    wrap.append(probe, text);
+    const y = probe.getBoundingClientRect().top;
+    wrap.replaceWith(text);
+    return Math.round(y * 100) / 100;
+  };
+  return { title: first(title), label: label ? first(label) : null };
+}`;
+
+// The View on GitHub button in the pull request header's corner (mb-4wqh;
+// docs/design-system.md, "View on GitHub"), drawn by the SDK's `mountCounterpart` from what
+// `GET /api/counterpart` answers, here a stand-in answer for the page's address, which
+// tests/golden/cli-api-counterpart.tryscript.md pins. Read: where the button is in the page,
+// its label's baseline and the title's first one (CORNER_BASELINE), its size, where the
+// title's text and number end, the title's room for it, and the inks and fills of its parts
+// and frame, beside the tokens each should resolve to in this theme, read from a probe
+// painted with them. The reading column is the width the server gives a page by
+// default, *maxChars* characters (`--doc-max-chars`), so a wide pane's column ends short of
+// the button. The page stays mounted, in `window.__corner`, so the pointer can be put on the
+// chevron; CORNER_HOVERED reads it there and CORNER_DONE unmounts it.
+const CORNER = `async (width, theme, longTitle, maxChars) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const body = structuredClone(recorded.current.body);
+  const holder = body.record?.same_as;
+  if (holder !== undefined) {
+    body.record = structuredClone(recorded[holder].body.record);
+  }
+  // A title of two lines and more, cut short at two.
+  if (longTitle) {
+    body.record.pull.title = "Decide every region's box at first paint, so nothing that arrives later moves the tab bar, a stack, a label, or a Refresh";
+  }
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.setProperty("--doc-max-chars", String(maxChars));
+  const url = "https://github.com/octo/demo/pull/" + body.number;
+  window.fetch = async (address) =>
+    String(address).startsWith("/api/counterpart?")
+      ? Response.json({
+          page: "/pull/" + body.number,
+          counterpart: { provider: "github", label: "View on GitHub", url },
+          reason: null,
+        })
+      : new Response(null, { status: 304 });
+  history.replaceState(null, "", "/pull/" + body.number);
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const mb = window.metabrowser;
+  const handle = page.mountPullPage(
+    container,
+    { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+    {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      ensureAsset: async () => {},
+      whenIdle: mb.whenIdle,
+      ensureKindAssets: async () => {},
+      loadChangedFilesTree: async () => {},
+      getRegisteredView: () => null,
+      decorateExternalLink: mb.decorateExternalLink,
+      refChip: mb.refChip,
+      refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
+      mountRefMenus: mb.mountRefMenus,
+      actorIdentity: mb.actorIdentity,
+      titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
+      countPartsNodes: mb.countPartsNodes,
+      ...(${agesFrom})(document, () => ({ label: "now", className: "age" })),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+      mountCounterpart: mb.mountCounterpart,
+    },
+  );
+  window.__corner = handle;
+  await document.fonts.ready;
+  const header = container.querySelector(".github-pull-header");
+  const corner = header.querySelector(":scope > .view-header-end");
+  for (let frame = 0; frame < 20 && !corner?.querySelector(".counterpart"); frame += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const round = (value) => Math.round(value * 100) / 100;
+  const box = (node) => node.getBoundingClientRect();
+  const button = corner?.querySelector(":scope > .counterpart") ?? null;
+  if (button === null) {
+    return { button: null, corner: corner !== null, marked: corner?.hasAttribute("data-counterpart") ?? false };
+  }
+  // A token as the engine resolves it: a length as a probe's width, a color as its ink.
+  const resolved = (property, value) => {
+    const probe = document.createElement("span");
+    probe.style.position = "absolute";
+    probe.style[property] = value;
+    container.append(probe);
+    const out = property === "width" ? round(box(probe).width) : getComputedStyle(probe)[property];
+    probe.remove();
+    return out;
+  };
+  const paint = (node) => {
+    const style = getComputedStyle(node);
+    return { ink: style.color, fill: style.backgroundColor };
+  };
+  const title = header.querySelector(".github-pull-title");
+  const group = button.querySelector(".counterpart-group");
+  const open = button.querySelector('[data-web-view="open"]');
+  const external = button.querySelector('[data-web-view="external"]');
+  const more = button.querySelector(".counterpart-more");
+  const frame = getComputedStyle(group);
+  const at = box(container);
+  const placed = box(group);
+  const chevron = box(more);
+  return {
+    button: {
+      top: round(placed.top - at.top),
+      end: round(at.right - placed.right),
+      start: round(placed.left),
+      height: round(placed.height),
+      width: round(placed.width),
+    },
+    afterTitle: corner.previousElementSibling === title,
+    baselines: (${CORNER_BASELINE})(title.querySelector(".github-pull-title-text"), button.querySelector(".counterpart-label")),
+    marked: corner.hasAttribute("data-counterpart"),
+    hooks: {
+      root: button.hasAttribute("data-view-on-github"),
+      open: open?.getAttribute("href") ?? null,
+      openTarget: open?.getAttribute("target") ?? null,
+      external: external?.getAttribute("href") ?? null,
+      externalTarget: external?.getAttribute("target") ?? null,
+      externalRel: external?.getAttribute("rel") ?? null,
+    },
+    label: open.textContent,
+    textEnd: round(box(title.querySelector(".github-pull-title-text")).right),
+    numberEnd: round(box(title.querySelector(".github-pull-number")).right),
+    titleRoom: round(Number.parseFloat(getComputedStyle(title).paddingInlineEnd)),
+    column: round(box(header).width),
+    page: round(at.width),
+    paneScrolls: pane.scrollWidth > pane.clientWidth,
+    tokens: {
+      insetTop: resolved("width", "var(--view-header-corner-inset-top)"),
+      insetEnd: resolved("width", "var(--view-header-corner-inset-end)"),
+      height: resolved("width", "var(--view-header-corner-height)"),
+      room: resolved("width", "var(--view-header-corner-room)"),
+    },
+    states: {
+      open: paint(open),
+      more: paint(more),
+      frame: { border: frame.borderTopColor, ground: frame.backgroundColor, radius: frame.borderTopLeftRadius },
+    },
+    want: {
+      muted: resolved("color", "var(--muted)"),
+      text: resolved("color", "var(--text)"),
+      hover: resolved("backgroundColor", "var(--hover-bg)"),
+      border: resolved("borderTopColor", "var(--viz-border)"),
+      surface: resolved("backgroundColor", "var(--viz-surface)"),
+      radius: resolved("borderTopLeftRadius", "var(--radius-pill)"),
+    },
+    url,
+    chevron: { x: chevron.left + chevron.width / 2, y: chevron.top + chevron.height / 2 },
+  };
+}`;
+// The chevron's ink and fill once every transition on it has ended.
+const CORNER_HOVERED = `(async () => {
+  const more = document.querySelector("#preview-pane .github-pull-header .counterpart-more");
+  await Promise.all(more.getAnimations().map((motion) => motion.finished));
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const style = getComputedStyle(more);
+  return { ink: style.color, fill: style.backgroundColor, hovered: more.matches(":hover") };
+})()`;
+const CORNER_DONE = `(() => {
+  window.__corner?.dispose();
+  window.__corner = null;
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.removeProperty("--doc-max-chars");
+  return true;
+})()`;
+
+// Pulls rows built as pulls-panel.js#buildRow builds them, whose order
+// github-pulls-panel-session.js pins (mb-pw8t, mb-rb3n): the row's link, its run, one flow of
+// the state icon in the row's one slot, the title, a stack member's place after a dot, the
+// number after a dot, and the author after a dot, every line of it in the text column; then
+// its last line, the lines and the chevron in the text column, here with no lines yet, and the
+// age at the row's end. Each row is a member, a level in under its stack's row.
+// The icon and the title's first box are read, from the row's top, before and after each
+// row's place arrives: the place is after the title, so nothing before it moves, and the
+// number and the toggle after it move along the run, to a next line where it takes one, which
+// the row grows by (`grew`), and the item by that alone (`itemGrew`).
 const PULLS_ROWS = `async (rows, width) => {
+  const mb = window.metabrowser;
   const page = window.__page ??= await import("/github/pull-page.js");
   const state = window.__state ??= await import("/github/pull-state.js");
   const h = (tag, attributes = {}, children = []) => {
@@ -1185,8 +1497,16 @@ const PULLS_ROWS = `async (rows, width) => {
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   nav.append(list);
   document.getElementById("preview-pane").replaceChildren(nav);
+  // The run's dot, as pulls-panel.js#separator draws it: kept to the part before it, and a
+  // break after it.
+  const separator = () =>
+    h("span", { class: "github-pulls-sep", "aria-hidden": "true" }, [
+      "\u00a0",
+      h("span", { class: "github-pull-stack-dot" }, ["·"]),
+      " ",
+    ]);
   const built = rows.map((row) => {
-    const identity = page.authorLabel(window.metabrowser, row.author, null, "github-pulls-author", {
+    const identity = page.authorLabel(mb, row.author, null, "github-pulls-author", {
       placeholder: false,
     });
     if (row.avatar) {
@@ -1197,48 +1517,58 @@ const PULLS_ROWS = `async (rows, width) => {
         ]),
       );
     }
-    const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
+    const icon = state.pullStateIcon("open");
+    const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
     const place = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
-    const number = h("span", { class: "github-pulls-number" }, ["#" + row.number]);
-    const title = h("span", { class: "github-pulls-title" }, [row.title]);
-    const age = h("span", { class: "github-pulls-age" }, ["12mo"]);
+    const number = h("span", { class: "github-pulls-number", "aria-hidden": "true" }, ["#" + row.number]);
     // The registry's chevron is the shell's .toggle-chevron, which sizes it; its drawing is
     // not read here.
     const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     chevron.setAttribute("class", "toggle-chevron");
     chevron.setAttribute("viewBox", "0 0 24 24");
-    const anchor = h("a", { class: "github-pulls-row", href: "#", role: "treeitem", "aria-expanded": "true" }, [
-      state.pullStateIcon("open"),
-      title,
-      age,
-      h("span", { class: "github-pulls-meta" }, [
-        h("span", { class: "github-pulls-line" }, [
-          h("span", { class: "github-pulls-id" }, [place, number]),
-          h("span", { class: "github-pulls-by" }, [separator(), identity]),
-        ]),
-      ]),
-    ]);
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron]);
-    const line = h("span", { class: "github-pulls-change-line" });
-    const change = h("div", { class: "github-pulls-change disclosure-toggle collapsed", role: "treeitem", "aria-expanded": "false" }, [toggle, line]);
+    const change = h("span", { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" }, [
+      h("span", { class: "github-pulls-change-line" }),
+      toggle,
+      h("span", { class: "github-pulls-change-words", hidden: "" }),
+    ]);
+    const age = h("span", { class: "github-pulls-age", "aria-hidden": "true" }, ["12mo"]);
+    const tail = h("span", { class: "github-pulls-tail" }, [change, age]);
+    const by = h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [identity]);
+    const heading = h("span", { class: "github-pulls-heading" }, [
+      icon,
+      title,
+      place,
+      separator(),
+      number,
+      separator(),
+      by,
+    ]);
+    // As pulls-panel.js#buildRow draws a pull request's item, its run and its last line in
+    // its link (mb-1z7j, mb-pw8t, mb-rb3n).
+    const anchor = h("a", { class: "github-pulls-row", href: "#", role: "treeitem", "aria-expanded": "false" }, [
+      heading,
+      tail,
+      h("span", { class: "sr-only" }, ["#" + row.number + " · " + row.author + " · 12mo"]),
+    ]);
     const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [
-      anchor,
-      h("div", { class: "github-pulls-change-group", role: "group" }, [change]),
+      h("div", { class: "github-pulls-entry" }, [anchor]),
     ]);
     list.append(item);
-    return { item, anchor, change, toggle, line, place, number, title, age, row };
+    return { item, anchor, heading, toggle, change, icon, by, place, number, title, tail, age, row };
   });
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
-  // Each row's age and title line, the title's width with them, read from its row's top.
-  const titleLine = built.map(({ anchor, toggle, title, age }) => [toggle, anchor.querySelector(".github-pull-state-icon"), title, age]);
+  const round = (value) => Math.round(value * 100) / 100;
+  // What comes before the place, read from its row's top: the icon, and the title's first box.
+  const firstBox = (node) => node.getClientRects()[0] ?? node.getBoundingClientRect();
   const read = () =>
-    titleLine.map((nodes, at) => {
-      const top = built[at].item.getBoundingClientRect().top;
-      return nodes.map((node) => {
-        const r = node.getBoundingClientRect();
-        return [r.left, r.top - top, r.width, r.height].map((value) => Math.round(value * 100) / 100);
+    built.map(({ item, icon, title }) => {
+      const top = item.getBoundingClientRect().top;
+      return [icon, title].map((node) => {
+        const r = firstBox(node);
+        return [r.left, r.top - top, r.width, r.height].map(round);
       });
     });
   const before = read();
@@ -1246,9 +1576,13 @@ const PULLS_ROWS = `async (rows, width) => {
   const itemHeights = built.map(({ item }) => item.getBoundingClientRect().height);
   for (const { place, row } of built) {
     place.hidden = false;
-    // As pulls-panel.js#paintPlace draws it: another stack is the Layers glyph before its
-    // number, written here as "#N", and a separator ends the place.
+    // As pulls-panel.js#paintPlace draws it: the stack menu's dot, after a no-break space,
+    // then the position; another stack is the Layers glyph before its number, written here
+    // as "#N".
     place.append(
+      "\u00a0",
+      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
+      " ",
       h(
         "span",
         { class: "github-pull-stack-position" },
@@ -1265,89 +1599,103 @@ const PULLS_ROWS = `async (rows, width) => {
           ];
         }),
       ),
-      h("span", { class: "github-pulls-sep" }, [" · "]),
     );
   }
   await frames();
   const after = read();
-  return built.map(({ item, anchor, change, toggle, line, place, number, title, age, row }, at) => {
-    const moved = titleLine[at].flatMap((node, index) =>
+  return built.map(({ item, anchor, heading, toggle, change, icon, by, place, number, title, tail, age, row }, at) => {
+    const moved = ["icon", "title"].flatMap((name, index) =>
       JSON.stringify(before[at][index]) === JSON.stringify(after[at][index])
         ? []
-        : [[node.className.baseVal ?? node.className, before[at][index], after[at][index]]],
+        : [[name, before[at][index], after[at][index]]],
     );
-    const position = place.querySelector(".github-pull-stack-position");
-    const p = position.getBoundingClientRect();
+    const p = place.querySelector(".github-pull-stack-position").getBoundingClientRect();
+    const dot = place.querySelector(".github-pull-stack-dot").getBoundingClientRect();
     const n = number.getBoundingClientRect();
     const box = anchor.getBoundingClientRect();
     const end = box.right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5;
-    const metaBox = anchor.querySelector(".github-pulls-meta");
-    const meta = metaBox.getBoundingClientRect();
-    const by = anchor.querySelector(".github-pulls-by");
-    const b = by.getBoundingClientRect();
-    const t = title.getBoundingClientRect();
+    const hd = heading.getBoundingClientRect();
+    const runStyle = getComputedStyle(heading);
+    const lh = parseFloat(runStyle.lineHeight);
+    const column = hd.left + parseFloat(runStyle.paddingInlineStart);
     const style = getComputedStyle(anchor);
     const inset = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
-    const icon = anchor.querySelector(".github-pull-state-icon").getBoundingClientRect();
-    const chevron = toggle.getBoundingClientRect();
-    const third = change.getBoundingClientRect();
-    const middle = (r) => (r.top + r.bottom) / 2;
-    const round = (value) => Math.round(value * 100) / 100;
-    // The author's floor, from its parts rather than its own min-width, which a flex item
-    // never goes below: the separator, the avatar's size and the identity's gap when it has
-    // one, and 1.75 of its type's em of the name (styles.css, .github-pulls-by).
-    const panel = getComputedStyle(nav);
-    const floor =
-      by.querySelector(".github-pulls-sep").getBoundingClientRect().width +
-      (by.querySelector(".actor-avatar") === null
-        ? 0
-        : parseFloat(panel.getPropertyValue("--actor-avatar-size")) +
-          parseFloat(panel.getPropertyValue("--actor-identity-gap"))) +
-      1.75 * parseFloat(getComputedStyle(by).fontSize);
+    const i = icon.getBoundingClientRect();
+    const t = toggle.getBoundingClientRect();
+    const b = by.getBoundingClientRect();
+    const a = age.getBoundingClientRect();
     const name = by.querySelector(".github-pulls-author").getBoundingClientRect();
+    // The line of the run a box is on, by its middle.
+    const lineOf = (r) => Math.floor((r.top + r.height / 2 - hd.top) / lh);
+    // The run's lines, from its parts' fragments: a line's start is its first fragment's.
+    const lines = [];
+    for (const piece of [title, place, number, by]) {
+      for (const r of piece.getClientRects()) {
+        if (r.width === 0) continue;
+        const k = lineOf(r);
+        lines[k] = lines[k] ? Math.min(lines[k], r.left) : r.left;
+      }
+    }
+    const starts = Array.from(lines, (left) => (left === undefined ? null : round(left - column)));
+    const titleBoxes = [...title.getClientRects()].filter((r) => r.width > 0);
+    const titleEnd = titleBoxes.at(-1) ?? null;
     return {
       number: row.number,
       moved,
-      // Before the number, on its line, in its type: the same top in the same size.
-      before: p.width > 0 && place.getBoundingClientRect().right <= n.left + 0.5 && Math.abs(p.top - n.top) < 0.5,
-      // The number shows whole, inside the muted line's clip.
-      whole: n.left >= meta.left - 0.5 && n.right <= meta.right + 0.5 && number.scrollWidth <= Math.ceil(n.width),
+      // The place follows the title: its dot after the title's last box, on its line or the
+      // next, the position after the dot on its line or, a line breaking after a dot as after
+      // a word, first on the next; and the number follows the place.
+      placeAfter:
+        p.width > 0 &&
+        titleEnd !== null &&
+        (lineOf(dot) > lineOf(titleEnd) || dot.left >= titleEnd.right - 0.5) &&
+        (lineOf(p) === lineOf(dot) ? p.left >= dot.right - 0.5 : lineOf(p) === lineOf(dot) + 1) &&
+        (lineOf(n) > lineOf(p) || n.left >= p.right - 0.5),
+      placeLines: [titleEnd === null ? null : lineOf(titleEnd), lineOf(dot), lineOf(p), lineOf(n)],
+      // Where each line of the run starts, from the text column.
+      starts,
+      columnFrom: round(column - inset),
+      // The number shows whole, inside the row.
+      whole: number.scrollWidth <= Math.ceil(n.width) && n.right <= end,
       // Nothing of the row ends past its padding box, and the pane does not scroll sideways.
-      inside: [age, number, place].every((node) => node.getBoundingClientRect().right <= end) && nav.scrollWidth <= nav.clientWidth,
-      cut: position.scrollWidth > position.clientWidth,
-      grew: Math.round((box.height - heights[at]) * 100) / 100,
-      itemGrew: Math.round((item.getBoundingClientRect().height - itemHeights[at]) * 100) / 100,
-      height: Math.round(box.height * 100) / 100,
-      // The row is three lines: the link's two, and the change line under the number's line.
-      threeLines: Math.abs(item.getBoundingClientRect().height - box.height - third.height) < 0.5 && third.top >= box.bottom - 0.5 && third.top >= meta.bottom - 0.5,
-      // The number's line is one line of the number's type.
-      oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
-      // The title runs to the row's end, over the age and the number's line.
-      titleEnd: Math.abs(t.right - (end - 0.5)) < 0.5 && t.bottom < age.getBoundingClientRect().top + 0.5 && t.bottom < meta.top + 0.5,
-      // The title starts in the text column, after the icon's one slot (mb-3vil).
-      titleFrom: round(t.left - inset),
+      inside:
+        [age, number, tail].every((node) => node.getBoundingClientRect().right <= end) &&
+        hd.right <= end &&
+        nav.scrollWidth <= nav.clientWidth,
+      cut: p.right > hd.right + 0.5,
+      grew: round(box.height - heights[at]),
+      itemGrew: round(item.getBoundingClientRect().height - itemHeights[at]),
+      height: round(box.height),
+      itemHeight: round(item.getBoundingClientRect().height),
+      // The run is as tall as its lines, and ends with the author on its last line; the last
+      // line follows it, the chevron on it and the age at its end, past the chevron, and the
+      // closed item is its link.
+      headingHeight: round(hd.height),
+      lineHeight: round(lh),
+      drawnLines: lines.length,
+      endsWithAuthor: heading.lastElementChild === by && lineOf(b) === lines.length - 1,
+      lastLine:
+        Math.abs(tail.getBoundingClientRect().top - hd.bottom) < 0.5 &&
+        t.top >= hd.bottom - 0.5 &&
+        a.top >= hd.bottom - 0.5 &&
+        Math.abs(a.right - (box.right - parseFloat(getComputedStyle(anchor).paddingRight))) < 0.5 &&
+        t.right <= a.left + 0.5 &&
+        Math.abs(item.getBoundingClientRect().height - box.height) < 0.5,
+      tailFrom: round(change.getBoundingClientRect().left - inset),
       textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
-      // The icon is on the title's line, centered on it, in the slot on the row's inset; the
-      // chevron is on the change line, under the number's line, in the same slot (mb-d0a3), and
-      // the change line's values in the title's column (mb-3vil).
-      iconOff: round(middle(icon) - middle(t)),
-      iconWithTitle: icon.height > 0 && icon.top >= t.top - 0.5 && icon.bottom <= t.bottom + 0.5 && icon.bottom <= meta.top + 0.5,
-      iconFrom: round(icon.left - inset),
-      chevronOnThird: chevron.height > 0 && chevron.top >= third.top - 0.5 && chevron.bottom <= third.bottom + 0.5 && chevron.top >= meta.bottom - 0.5,
-      chevronFrom: round(chevron.left - inset),
-      lineFrom: round(line.getBoundingClientRect().left - inset),
-      // The author on the number's line, at its floor or wider and its name ending inside the
-      // line, or off it, whole.
-      author:
-        b.top < meta.bottom - 0.5
-          ? b.width + 0.5 >= floor && name.right <= meta.right + 0.5
-            ? "shown"
-            : "squeezed"
-          : "off",
-      authorWidth: Math.round(b.width * 10) / 10,
-      authorFloor: round(floor),
-      authorNameEnd: round(name.right - meta.right),
-      title: Math.round(t.width * 10) / 10,
+      // The icon is the run's first line's start, one line tall, on the row's inset (mb-3vil).
+      iconOnFirst: i.height > 0 && Math.abs(i.top - hd.top) < 0.5 && Math.abs(i.height - lh) < 0.5,
+      iconFrom: round(i.left - inset),
+      // The author follows the number, after its dot, and its name, one line, cut short only
+      // where it is wider than a line and never broken after a hyphen, ends the run.
+      byAfter: lineOf(b) > lineOf(n) || b.left >= n.right - 0.5,
+      authorEnds:
+        name.left < name.right &&
+        name.right <= hd.right + 0.5 &&
+        name.height < 1.5 * lh &&
+        lineOf(name) === lines.length - 1,
+      authorAt: { left: round(name.left), right: round(name.right), runRight: round(hd.right), line: lineOf(name), top: round(name.top - hd.top), height: round(name.height) },
+      title: Math.round(titleBoxes.reduce((sum, r) => sum + r.width, 0) * 10) / 10,
     };
   });
 }`;
@@ -1419,21 +1767,24 @@ const PULLS = [
   },
 ];
 const PULLS_WIDTHS = [420, 360, 300, 240, 180];
-// The file header of a run's log: renderBadges, RUN_STATUS_SIZERS, and flagRunEndedBadge
-// are app.js's own, read from the served file and run here with the two names they use.
-// The header is the one renderFile draws around them: the path, the badges, and the size.
-// A live run ends, and a running one turns live, as app.js
+// The file header of a run's log: renderBadges and its RUN_STATUS_SIZERS are the view
+// header's own (view-header.js), read from the served file and made here with the two
+// helpers they use, and flagRunEndedBadge is app.js's own, read from the served file. The
+// header is the one renderFile draws around them: the path, the badges, and the size. A
+// live run ends, and a running one turns live, as app.js
 // changes them in place (flagRunEndedBadge, and _mirrorActiveFromFsEntry's two lines), and
 // every box of the header is read before and after.
 const RUN_BADGE = `async (live, width) => {
   // Read with XMLHttpRequest: the header's measurements stand in for window.fetch.
-  const source = await new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("GET", "/static/app.js");
-    request.onload = () => resolve(request.responseText);
-    request.onerror = reject;
-    request.send();
-  });
+  const served = (file) =>
+    new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("GET", "/static/" + file);
+      request.onload = () => resolve(request.responseText);
+      request.onerror = reject;
+      request.send();
+    });
+  const source = await served("app.js");
   const take = (start, end) => {
     const at = source.indexOf(start);
     if (at < 0) {
@@ -1441,20 +1792,44 @@ const RUN_BADGE = `async (live, width) => {
     }
     return source.slice(at, source.indexOf(end, at) + end.length);
   };
-  const code = [
-    take("const RUN_STATUS_SIZERS = ", '.join("");'),
-    take("function renderBadges(data) {", "\\n}\\n"),
-    take("function flagRunEndedBadge() {", "\\n}\\n"),
-  ].join("\\n");
+  const flagRunEndedBadge = new Function(
+    take("function flagRunEndedBadge() {", "\\n}\\n") + "\\nreturn flagRunEndedBadge;",
+  )();
+  if (!window.MetabrowserViewHeader) {
+    new Function(await served("view-header.js"))();
+  }
   const esc = (text) => String(text).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
   const activeFiles = new Map(live ? [["logs/session.jsonl", {}]] : []);
-  const app = new Function("esc", "activeFiles", code + "\\nreturn { renderBadges, flagRunEndedBadge };")(esc, activeFiles);
+  const notDrawnHere = () => {
+    throw new Error("this header draws only its badges and a size");
+  };
+  const builders = window.MetabrowserViewHeader.create({
+    esc,
+    servedRoot: notDrawnHere,
+    pathBaseName: notDrawnHere,
+    ownedControlAttr: notDrawnHere,
+    mirrorHeading: notDrawnHere,
+    getFileIcon: notDrawnHere,
+    getLogicalName: notDrawnHere,
+    sizeHtml: notDrawnHere,
+    countHtml: notDrawnHere,
+    formatAge: notDrawnHere,
+    activeFiles,
+  });
+  const app = { ...builders, flagRunEndedBadge };
   const pane = document.getElementById("preview-pane");
   pane.style.width = width + "px";
-  pane.innerHTML =
-    '<div class="file-header" data-kbd-badge-anchor><span class="file-header-path folder-breadcrumb">logs/session.jsonl</span>' +
-    app.renderBadges({ type: "jsonl", kind: "agent-log", path: "logs/session.jsonl", summary: { adapter: "claude", is_done: false } }) +
-    '<span class="size file-header-size">1.2 MB</span></div>';
+  // A file's view header, through the view header's own builder (renderFileHeader): the
+  // badges lead its metadata line.
+  pane.innerHTML = app.viewHeaderHtml({
+    eyebrow: "",
+    iconHtml: "",
+    title: "session.jsonl",
+    end: "",
+    line:
+      app.renderBadges({ type: "jsonl", kind: "agent-log", path: "logs/session.jsonl", summary: { adapter: "claude", is_done: false } }) +
+      app.viewHeaderItemsHtml(['<span class="size file-header-size">1.2 MB</span>']),
+  });
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
@@ -1482,12 +1857,9 @@ const RUN_BADGE = `async (live, width) => {
   );
   return { from: labelBefore, to: badge.textContent, width: Math.round(badge.getBoundingClientRect().width * 10) / 10, moved };
 }`;
-// The records whose status row draws an offer: to switch to the head, and to browse it.
-const OFFER_RECORDS = [
-  ["behind_head", {}],
-  ["current", { pinBehind: true }],
-  ["on_head", { checkoutAtHead: true }],
-];
+// The record whose status row draws an offer: to browse the checkout at the head. Code
+// served on the pull request's head follows it, so no record offers a switch to it.
+const OFFER_RECORDS = [["on_head", { checkoutAtHead: true }]];
 // The same records by the labels the header parts give them.
 const OFFERED = new Set(
   OFFER_RECORDS.map(
@@ -1568,6 +1940,7 @@ const PARTS = [
   "labels",
   "summary-wait",
   "cold-landing",
+  "corner",
 ];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
@@ -1636,11 +2009,13 @@ async function main() {
         for (const [name, change] of RECORDS) {
           const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
           for (const tab of TABS) {
-            // The author's row is the same on every tab, so its stack chip arrives on one: one
-            // stack, and two for the records with an avatar, the longest rows.
-            // The Diff summary is the header's last row on every tab, so it is measured on each.
+            // The row of ages is the same on every tab, and its stack chip arrives on each:
+            // one stack, and two for the records with an avatar, the longest rows (mb-646g,
+            // mb-dwha). The Diff
+            // summary is the header's last row on every tab, so it is measured on each.
             const measured = {
-              ...(tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change),
+              ...change,
+              stackChip: change.avatar ? 2 : 1,
               summary: true,
             };
             const shape = await browser.evaluate(
@@ -1677,7 +2052,7 @@ async function main() {
               check(
                 `${where}: the Diff summary's tooltip is its whole words only while cut short`,
                 moves.cut
-                  ? moves.tip === "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423"
+                  ? moves.tip === "2 A, 3 D, 30 M, 12 R, 12 C · +1,234 −3,423"
                   : moves.tip === null,
                 JSON.stringify({ cut: moves.cut, tip: moves.tip }),
               );
@@ -1698,25 +2073,44 @@ async function main() {
               }
             }
             if (shape.chipMoves !== null) {
+              const chip = shape.chipMoves;
               check(
-                `${where}: a late stack chip moves nothing in the header`,
-                shape.chipMoves.moved === null,
-                JSON.stringify(shape.chipMoves.moved),
+                `${where}: a late stack chip moves nothing in the header but the ages' end, and every row keeps its height`,
+                chip.moved === null,
+                JSON.stringify(chip.moved),
+              );
+              // The chip ends on the content column's edge, which is the end of the title's
+              // number less the room the title leaves the corner's button: under the number
+              // where the title leaves it none (mb-dwha, mb-ablv).
+              check(
+                `${where}: the stack chip ends on the content column's edge, the title's room past the title's number`,
+                Math.abs(chip.ends.content) <= 0.5 &&
+                  Math.abs(chip.ends.number - chip.titleRoom) <= 0.5,
+                JSON.stringify({ ends: chip.ends, titleRoom: chip.titleRoom }),
               );
               check(
                 `${where}: a late stack chip shows whole`,
-                shape.chipMoves.chipShown >= 0.99,
-                String(shape.chipMoves.chipShown),
+                chip.chipShown >= 0.99,
+                String(chip.chipShown),
+              );
+              // On the row of ages, at its end (mb-646g, mb-dwha).
+              check(
+                `${where}: the stack chip ends the row of ages`,
+                chip.onAgesRow,
+                JSON.stringify(chip),
               );
               check(
-                `${where}: the stack chip ends on the header's content edge`,
-                Math.abs(shape.chipMoves.rightEdge) <= 0.5,
-                String(shape.chipMoves.rightEdge),
+                `${where}: the stack chip and the ages do not overlap`,
+                chip.overlap <= 0.5,
+                String(chip.overlap),
               );
+              // The ages and Browse code give way before a chip does: its position is cut
+              // short only where they have no width left, as two stacks' named chips at
+              // 320 px are.
               check(
-                `${where}: the stack chip and the sentence do not overlap`,
-                shape.chipMoves.overlap <= 0.5,
-                String(shape.chipMoves.overlap),
+                `${where}: a chip's position is cut short only once the ages and Browse code have no width left`,
+                !chip.positionCut || !chip.textLeft,
+                JSON.stringify(chip),
               );
               check(
                 `${where}: the stack menu's heading starts on its rows' inset`,
@@ -1753,7 +2147,7 @@ async function main() {
               check(
                 `${where}: a rate limit's hold is said in the note's place, in the failure's ink, in view at every width`,
                 lead !== null &&
-                  /^GitHub rate limit · next check at /.test(lead.said) &&
+                  /^GitHub rate limit reached\. Next attempt after /.test(lead.said) &&
                   !/:\d\d:\d\d/.test(lead.said) &&
                   lead.held &&
                   lead.inView &&
@@ -1784,13 +2178,15 @@ async function main() {
               // The ages give way first, cut short at their end, and the links after them stay
               // whole while any of the ages shows (B4 of review B on #506).
               check(
-                `${where}: the ages give way before View on GitHub and Browse code, which show whole while any age does`,
+                `${where}: the ages give way before Browse code, which shows whole while any age does`,
                 shape.agesRow.linksShown >= 0.99 || shape.agesRow.agesWidth < 1,
                 JSON.stringify(shape.agesRow),
               );
-              if (width >= 420) {
+              // Two stacks' named chips, 156.31 px, leave Browse code whole down to 560 px; one
+              // stack's chip, 54.75 px, down to 420 px, as no chip does (mb-646g).
+              if (width >= (shape.chipMoves?.chips === 2 ? 560 : 420)) {
                 check(
-                  `${where}: View on GitHub and Browse code show whole`,
+                  `${where}: Browse code shows whole`,
                   shape.agesRow.linksShown >= 0.99,
                   JSON.stringify(shape.agesRow),
                 );
@@ -1816,24 +2212,34 @@ async function main() {
               );
             }
             if (shape.edges !== null) {
-              const { iconLeft, textAfterIcon, gap, numberRight, numberOverSlot } = shape.edges;
+              const { iconLeft, textAfterIcon, gap, numberRight, numberOverRow } = shape.edges;
               check(
                 `${where}: the title's icon starts on the header's left edge, its text just after it`,
                 Math.abs(iconLeft) <= 0.5 && Math.abs(textAfterIcon - gap) <= 1,
                 JSON.stringify(shape.edges),
               );
               check(
-                `${where}: the title's number ends on the header's right edge, over the stack slot's end`,
+                `${where}: the title's number ends on the header's right edge, over the end of the row of ages, less the room it leaves the corner's button`,
                 Math.abs(numberRight) <= 0.5 &&
-                  numberOverSlot !== null &&
-                  Math.abs(numberOverSlot) <= 0.5,
+                  numberOverRow !== null &&
+                  Math.abs(numberOverRow) <= 0.5,
                 JSON.stringify(shape.edges),
               );
             }
+            // The stack's strut holds the row of ages at a chip's height, so a chip arriving
+            // changes no row's height; the author's row is its lead, a line (mb-646g).
             check(
-              `${where}: the state row is as tall as the stack strut`,
-              shape.strut !== null && Math.abs(shape.meta - shape.strut) <= 0.5,
-              JSON.stringify({ meta: shape.meta, strut: shape.strut }),
+              `${where}: the row of ages is as tall as the stack strut, and the author's row one line`,
+              shape.strut !== null &&
+                Math.abs(shape.agesRowHeight - shape.strut) <= 0.5 &&
+                shape.metaLead !== null &&
+                Math.abs(shape.meta - shape.metaLead) <= 0.5,
+              JSON.stringify({
+                agesRow: shape.agesRowHeight,
+                strut: shape.strut,
+                meta: shape.meta,
+                lead: shape.metaLead,
+              }),
             );
             check(
               `${where}: nothing ends past the header, and the pane does not scroll sideways`,
@@ -1845,19 +2251,19 @@ async function main() {
               }),
             );
             // The status line is one of the header's metadata lines (mb-2u08), there only
-            // while it has something to say: as tall as the row of ages above it, and every
-            // row one gap under the row before it. Refresh, shown or held, ends the row of
-            // ages (A1 of review A on #506), no taller than that row. As a bordered .btn,
+            // while it has something to say: a line tall, as the author's row above it is, and
+            // every row one gap under the row before it. As a bordered .btn, the page's
             // Refresh made its line 26 px against the row of ages' 18, and an empty labels row
-            // stood between them.
+            // stood between them. The row of ages is a chip's height since the stack's slot
+            // came to it (mb-646g), so the line the status line matches is the author's.
             const line = (row) => shape.lines.find((each) => each.row === row);
-            const opened = line("opened");
+            const author = line("meta");
             const statusLine = line("status");
             const tall = (each) => Math.round((each.bottom - each.top) * 100) / 100;
             check(
-              `${where}: the status line, when there, is as tall as the row of ages`,
-              opened !== undefined &&
-                (statusLine === undefined || Math.abs(tall(statusLine) - tall(opened)) <= 0.5),
+              `${where}: the status line, when there, is as tall as the author's row, a line`,
+              author !== undefined &&
+                (statusLine === undefined || Math.abs(tall(statusLine) - tall(author)) <= 0.5),
               JSON.stringify(shape.lines),
             );
             check(
@@ -1865,31 +2271,71 @@ async function main() {
               shape.ageWidens === null || shape.ageWidens <= 0.5,
               JSON.stringify({ ageWidens: shape.ageWidens }),
             );
+            // The page has no Refresh of its own (mb-ablv). Where the status line offers Retry
+            // or Fetch, the remedy is its first offer, whole, inside the content edge, and no
+            // taller than the line.
             check(
-              `${where}: Refresh's slot ends the row of ages at the header's content edge, no taller than it`,
-              shape.refresh !== null &&
-                opened !== undefined &&
-                shape.refresh.height <= tall(opened) + 0.5 &&
-                Math.abs(shape.refresh.rightEdge) <= 0.5,
-              JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
+              `${where}: the page has no Refresh of its own`,
+              shape.pageRefresh === false,
+              String(shape.pageRefresh),
             );
             check(
-              `${where}: each row is the header's one gap under the row before it`,
-              shape.lines.every(
-                (each, at) =>
-                  at === 0 || Math.abs(each.top - shape.lines[at - 1].bottom - shape.rowGap) <= 0.5,
-              ),
-              JSON.stringify({ rowGap: shape.rowGap, lines: shape.lines }),
+              `${where}: the status line's remedy, where offered, is its first offer, whole, and a line tall`,
+              shape.remedy === null ||
+                (shape.remedy.first &&
+                  shape.remedy.whole &&
+                  shape.remedy.rightEdge <= 0.5 &&
+                  statusLine !== undefined &&
+                  Math.abs(shape.remedy.statusHeight - tall(statusLine)) <= 0.5 &&
+                  shape.remedy.height <= tall(statusLine) + 0.5),
+              JSON.stringify({ remedy: shape.remedy, lines: shape.lines }),
+            );
+            // The title has the shared gap; both sides of the size line get an extra
+            // half-gap. The bottom padding gives that space back.
+            const gapBetween = (before, after) =>
+              before.row === "title"
+                ? shape.titleGap
+                : shape.rowGap * (before.row === "size" || after.row === "size" ? 1.5 : 1);
+            check(
+              `${where}: the title, the size line and surrounding rows keep their gaps`,
+              shape.titleGap > shape.rowGap &&
+                shape.lines[0]?.row === "title" &&
+                shape.lines.every(
+                  (each, at) =>
+                    at === 0 ||
+                    Math.abs(
+                      each.top - shape.lines[at - 1].bottom - gapBetween(shape.lines[at - 1], each),
+                    ) <= 0.5,
+                ),
+              JSON.stringify({
+                rowGap: shape.rowGap,
+                titleGap: shape.titleGap,
+                lines: shape.lines,
+              }),
+            );
+            check(
+              `${where}: the state and ages come first, then the author and the branches`,
+              shape.lines
+                .slice(0, 4)
+                .map((row) => row.row)
+                .join(" ") === "title opened meta branches",
+              JSON.stringify(shape.lines),
+            );
+            check(
+              `${where}: the padding below the Diff summary gives the space around the size line back`,
+              Math.abs(shape.bottomPadding - (shape.contentPadding - shape.rowGap)) <= 0.5,
+              JSON.stringify([shape.bottomPadding, shape.contentPadding, shape.rowGap]),
             );
             if (shape.recordLabels === 0) {
-              // The next row shown, the status line or the summary, is one gap under it.
-              const next = shape.lines[shape.lines.findIndex((each) => each.row === "opened") + 1];
+              const branchesAt = shape.lines.findIndex((each) => each.row === "branches");
+              const branches = shape.lines[branchesAt];
+              const next = shape.lines[branchesAt + 1];
               check(
-                `${where}: a pull request with no labels has no labels row, the next row one gap under the row of ages`,
+                `${where}: a pull request with no labels has no labels row or gap after the branches`,
                 line("labels") === undefined &&
-                  opened !== undefined &&
+                  branches !== undefined &&
                   next !== undefined &&
-                  Math.abs(next.top - opened.bottom - shape.rowGap) <= 0.5,
+                  Math.abs(next.top - branches.bottom - gapBetween(branches, next)) <= 0.5,
                 JSON.stringify(shape.lines),
               );
             }
@@ -1908,26 +2354,36 @@ async function main() {
           rows: reference.rows.filter((row) => row.row !== "labels"),
         };
         // The status line is there only while it has something to say (mb-ne91), here an
-        // offer: then it is one metadata line, as tall as the row of ages, and one gap more,
+        // offer: then it is one metadata line, as tall as the author's row, and one gap more,
         // and moves nothing above it. Without one it is not there, a hold included. The
-        // expectation is the empty record's row of ages, never the line measured (A4 of review A
-        // on #506).
-        const agesHeight = reference.rows.find((row) => row.row === "opened").height;
+        // expectation is the empty record's author's row, never the line measured (A4 of
+        // review A on #506); the row of ages is a chip's height, the stack's strut's (mb-646g).
+        const lineHeight = reference.rows.find((row) => row.row === "meta").height;
         for (const [key, shape] of Object.entries(seen)) {
           const none = shape.recordLabels === 0;
           const base = none ? unlabelled : reference;
           const offered = OFFERED.has(shape.label);
-          const extra = offered ? agesHeight + shape.rowGap : 0;
+          const extra = offered ? lineHeight + shape.rowGap : 0;
+          // A record's one-line title gives back the second line the cold title holds, and
+          // moves the rows under it up by that line (mb-wcbc).
+          const title = titleGivesBack(shape, reference);
           const expected = {
-            header: base.header + extra,
-            tabBar: base.tabBar + extra,
-            rows: base.rows.map((row) =>
-              row.row === "status" ? { ...row, height: offered ? agesHeight : 0 } : row,
-            ),
+            header: base.header + extra + title.delta,
+            tabBar: base.tabBar + extra + title.delta,
+            rows: base.rows.map((row) => {
+              if (row.row === "status") {
+                return { ...row, height: offered ? lineHeight : 0 };
+              }
+              if (row.row === "title") {
+                return { ...row, height: title.title };
+              }
+              return row;
+            }),
           };
           check(
-            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}${extra > 0 ? ", with its status line" : ""}, row by row`,
-            Math.abs(shape.header - expected.header) <= (none ? 0.5 : 0) &&
+            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}${title.delta < 0 ? " less its title's second line" : ""}${extra > 0 ? ", with its status line" : ""}, row by row`,
+            title.ok &&
+              Math.abs(shape.header - expected.header) <= (none ? 0.5 : 0) &&
               Math.abs(shape.tabBar - expected.tabBar) <= (none ? 0.5 : 0) &&
               JSON.stringify(shape.rows) === JSON.stringify(expected.rows),
             JSON.stringify({ expected, [key]: shape }),
@@ -2054,8 +2510,8 @@ async function main() {
         process.stderr.write(
           `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
         );
-        // The placeholder is as wide as a summary of one status, "1 file changed · 1 M · +3
-        // −1" to "8 files changed · 8 M · +120 −30", as each arrives in the row: it ends no
+        // The placeholder is as wide as a summary of one status, "1 M · +3 −1" to "8 M · +120
+        // −30", its file count on the size line above, as each arrives in the row: it ends no
         // sooner than the shortest one's text and no later than the longest one's header,
         // from the row's start, in em of the header's type, in both themes (mb-vb51).
         const sizes = [];
@@ -2095,79 +2551,239 @@ async function main() {
       }
       if (runs("cold-landing")) {
         const landings = [];
-        for (const width of [560, 360]) {
-          for (const labelled of [false, true]) {
-            const kind = labelled ? "a labelled pull request" : "an unlabelled pull request";
-            for (const outcome of ["quiet", "held", "slow"]) {
-              const where = `${width} px, ${kind}, ${outcome}`;
-              const run = await browser.evaluate(
-                `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)})`,
-              );
-              landings.push({ where, run });
-              const { before, shownCold, landed } = run;
-              check(
-                `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
-                before.pending === "hidden",
-                JSON.stringify(before),
-              );
-              check(
-                `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
-                before.cold &&
-                  before.header === "0" &&
-                  before.column === "0" &&
-                  before.live.length === 3 &&
-                  before.live.every(Boolean),
-                JSON.stringify(before),
-              );
-              check(
-                `${where}: the record lands where it lands in hand, the header and tab column shown together`,
-                !landed.cold &&
-                  landed.header === "1" &&
-                  landed.column === "1" &&
-                  landed.tabBar === run.landsAt &&
-                  run.halfShown === 0,
-                JSON.stringify({ landsAt: run.landsAt, landed, halfShown: run.halfShown }),
-              );
-              if (outcome === "slow") {
-                // A read slower than the quiet period shows the cold header, rows held: one
-                // with labels lands moving nothing, and one with none moves the tab bar up by
-                // the labels row and its gap as it lands, the one move left (mb-2u08).
+        for (const [seeded, outcomes] of [
+          [false, ["quiet", "held", "slow"]],
+          [true, ["quiet", "slow"]],
+        ]) {
+          for (const width of [560, 360]) {
+            for (const labelled of [false, true]) {
+              const kind = labelled ? "a labelled pull request" : "an unlabelled pull request";
+              for (const outcome of outcomes) {
+                const where = `${width} px, ${kind}, ${outcome}${seeded ? ", its Pulls row in hand" : ""}`;
+                const run = await browser.evaluate(
+                  `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)}, ${seeded})`,
+                );
+                landings.push({ where, run });
+                const { before, shownCold, landed } = run;
                 check(
-                  `${where}: after the quiet period the cold header shows, rows held`,
-                  shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
-                  JSON.stringify(shownCold),
+                  `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
+                  before.pending === "hidden",
+                  JSON.stringify(before),
                 );
                 check(
-                  `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
-                  shownCold.pending === "visible",
-                  JSON.stringify(shownCold),
+                  `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
+                  before.cold &&
+                    before.header === "0" &&
+                    before.column === "0" &&
+                    before.live.length === 4 &&
+                    before.live.every(Boolean),
+                  JSON.stringify(before),
                 );
                 check(
-                  `${where}: ${labelled ? "the record lands moving nothing" : "the record lands moving the tab bar up by the labels row and its gap"}`,
-                  labelled ? shownCold.tabBar === landed.tabBar : shownCold.tabBar > landed.tabBar,
-                  JSON.stringify({ shownCold, landed }),
+                  `${where}: the cold title is ${seeded ? "the Pulls row's, the record's shape" : '"Pull request #", held at two lines'}`,
+                  before.seeded === seeded &&
+                    (seeded ||
+                      before.title === 2 * run.inHandTitle ||
+                      before.title === run.inHandTitle),
+                  JSON.stringify({ before, inHandTitle: run.inHandTitle }),
                 );
-              } else {
+                // A record seen landing on a cold title held at two lines keeps them, so it
+                // lands moving nothing; one that lands unseen, or under its row's title, has its
+                // own lines, where it lands in hand.
+                const keeps = outcome === "slow" && !seeded;
+                const kept = landed.title - run.inHandTitle;
                 check(
-                  `${where}: the cold header never shows, so the tab bar never moves`,
-                  run.coldShown === 0 && run.tabBarsShown.length === 1,
-                  JSON.stringify({ coldShown: run.coldShown, tabBarsShown: run.tabBarsShown }),
+                  `${where}: the record lands where it lands in hand${keeps ? ", but for its title keeping the cold title's two lines" : ""}, the header and tab column shown together`,
+                  !landed.cold &&
+                    landed.header === "1" &&
+                    landed.column === "1" &&
+                    run.held === keeps &&
+                    (keeps ? kept === 0 || kept === run.inHandTitle : kept === 0) &&
+                    landed.tabBar === run.landsAt + kept &&
+                    run.halfShown === 0,
+                  JSON.stringify({
+                    landsAt: run.landsAt,
+                    inHandTitle: run.inHandTitle,
+                    held: run.held,
+                    landed,
+                    halfShown: run.halfShown,
+                  }),
                 );
-              }
-              if (outcome === "held") {
-                check(
-                  `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
-                  !landed.cold && landed.header === "1" && run.bodyHeld === true,
-                  JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
-                );
+                if (outcome === "slow") {
+                  // A read slower than the quiet period shows the cold header, rows held, its
+                  // title the Pulls row's or two lines the record keeps: one with labels lands
+                  // moving nothing, and one with none moves the tab bar up by the labels row
+                  // and its gap (mb-2u08; review A on #608).
+                  check(
+                    `${where}: after the quiet period the cold header shows, rows held`,
+                    shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
+                    JSON.stringify(shownCold),
+                  );
+                  check(
+                    `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
+                    shownCold.pending === "visible",
+                    JSON.stringify(shownCold),
+                  );
+                  check(
+                    `${where}: ${labelled ? "the record lands moving nothing" : "the record lands moving the tab bar up by the labels row and its gap"}`,
+                    labelled
+                      ? shownCold.tabBar === landed.tabBar
+                      : shownCold.tabBar > landed.tabBar,
+                    JSON.stringify({ shownCold, landed }),
+                  );
+                } else {
+                  check(
+                    `${where}: the cold header never shows, so the tab bar never moves`,
+                    run.coldShown === 0 && run.tabBarsShown.length === 1,
+                    JSON.stringify({ coldShown: run.coldShown, tabBarsShown: run.tabBarsShown }),
+                  );
+                }
+                if (outcome === "held") {
+                  check(
+                    `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
+                    !landed.cold && landed.header === "1" && run.bodyHeld === true,
+                    JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
+                  );
+                }
               }
             }
           }
         }
         process.stderr.write(
-          `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, coldShown: run.coldShown })))}\n`,
+          `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, held: run.held, coldShown: run.coldShown })))}\n`,
         );
         lap("the cold landings");
+      }
+      // The View on GitHub button in the header's corner (mb-4wqh): at a pane where the
+      // reading column ends short of the button and two where it reaches it, in both themes,
+      // with a title of one line and one cut short at two. At the middle width the pointer is
+      // put on the chevron, then moved away.
+      if (runs("corner")) {
+        // The server's default reading width, which the caller passes from settings.py.
+        const maxChars = Number(process.env.METABROWSER_DOC_MAX_CHARS_DEFAULT);
+        if (!Number.isFinite(maxChars) || maxChars <= 0) {
+          throw new Error("METABROWSER_DOC_MAX_CHARS_DEFAULT names no reading width");
+        }
+        const tops = new Map();
+        const widths = new Set();
+        for (const theme of ["light", "dark"]) {
+          for (const width of [980, 560, 360]) {
+            for (const longTitle of [false, true]) {
+              const where = `${width} px, ${theme}, a ${longTitle ? "long" : "short"} title`;
+              const read = await browser.evaluate(
+                `(${CORNER})(${width}, ${JSON.stringify(theme)}, ${longTitle}, ${maxChars})`,
+              );
+              const near = (a, b) => Math.abs(a - b) <= 0.5;
+              check(
+                `${where}: the button is drawn in the header's corner, after the title, the corner marked for its room`,
+                read.button !== null && read.afterTitle && read.marked,
+                JSON.stringify(read),
+              );
+              if (read.button === null) {
+                await browser.evaluate(CORNER_DONE);
+                continue;
+              }
+              const { button, tokens, states, want, hooks } = read;
+              check(
+                `${where}: the button links to the pull request's page on GitHub through the app's hooks`,
+                read.label === "View on GitHub" &&
+                  hooks.root &&
+                  hooks.open === read.url &&
+                  hooks.openTarget === "_blank" &&
+                  hooks.external === read.url &&
+                  hooks.externalTarget === "_blank" &&
+                  hooks.externalRel === "noopener",
+                JSON.stringify({ label: read.label, hooks, url: read.url }),
+              );
+              // On the title's first line, at the corner's end inset, its label on the
+              // title's baseline (mb-tatf), as a file's and a folder's is on theirs.
+              check(
+                `${where}: the button is at the corner's end inset, its label on the title's first baseline`,
+                near(button.end, tokens.insetEnd) &&
+                  read.baselines.label !== null &&
+                  read.baselines.label === read.baselines.title,
+                JSON.stringify({ button, tokens, baselines: read.baselines }),
+              );
+              check(
+                `${where}: the button is the corner's height`,
+                near(button.height, tokens.height),
+                JSON.stringify({ button, tokens }),
+              );
+              widths.add(button.width);
+              check(
+                `${where}: the corner's room holds the button and the 8 px gap before it`,
+                button.width + 8 <= tokens.room + 0.5,
+                JSON.stringify({ button, tokens }),
+              );
+              const key = `${width} ${theme}`;
+              if (tops.has(key)) {
+                check(
+                  `${where}: the button is where it is with a title of one line`,
+                  near(button.top, tops.get(key)),
+                  JSON.stringify({ top: button.top, short: tops.get(key) }),
+                );
+              } else {
+                tops.set(key, button.top);
+              }
+              const clear = button.start - 8;
+              check(
+                `${where}: the title's text and number end the gap clear of the button`,
+                read.textEnd <= clear + 0.5 && read.numberEnd <= clear + 0.5,
+                JSON.stringify({ textEnd: read.textEnd, numberEnd: read.numberEnd, clear }),
+              );
+              check(
+                width === 980
+                  ? `${where}: the reading column ends short of the button, so the title keeps its width`
+                  : `${where}: the reading column reaches the button, so the title leaves it its room`,
+                width === 980 ? read.titleRoom === 0 : near(read.titleRoom, tokens.room),
+                JSON.stringify({
+                  titleRoom: read.titleRoom,
+                  room: tokens.room,
+                  column: read.column,
+                  page: read.page,
+                }),
+              );
+              check(`${where}: the pane does not scroll sideways`, !read.paneScrolls);
+              check(
+                `${where}: the link is in the text ink and the chevron muted, neither filled at rest`,
+                states.open.ink === want.text &&
+                  states.more.ink === want.muted &&
+                  states.open.fill === "rgba(0, 0, 0, 0)" &&
+                  states.more.fill === "rgba(0, 0, 0, 0)",
+                JSON.stringify({ states, want }),
+              );
+              check(
+                `${where}: the button has the joined chip group's frame`,
+                states.frame.border === want.border &&
+                  states.frame.ground === want.surface &&
+                  states.frame.radius === want.radius,
+                JSON.stringify({ frame: states.frame, want }),
+              );
+              if (width === 560 && !longTitle) {
+                await browser.send("Input.dispatchMouseEvent", {
+                  type: "mouseMoved",
+                  x: read.chevron.x,
+                  y: read.chevron.y,
+                });
+                const hovered = await browser.evaluate(CORNER_HOVERED);
+                check(
+                  `${where}: the chevron under the pointer is in the text ink on the hover fill`,
+                  hovered.hovered && hovered.ink === want.text && hovered.fill === want.hover,
+                  JSON.stringify({ hovered, want }),
+                );
+                await browser.send("Input.dispatchMouseEvent", {
+                  type: "mouseMoved",
+                  x: 1,
+                  y: 899,
+                });
+              }
+              await browser.evaluate(CORNER_DONE);
+            }
+          }
+        }
+        // The widths the button was drawn at, for the room's token (static/styles.css).
+        process.stderr.write(`corner: the button's widths ${[...widths].join(", ")} px\n`);
+        lap("the corner");
       }
       if (runs("labels")) {
         const github = JSON.parse(fs.readFileSync(LABEL_COLORS, "utf8"));
@@ -2183,6 +2799,24 @@ async function main() {
             JSON.stringify(shape.labels.map((chip) => chip.name)) ===
               JSON.stringify(LABEL_CASES.map((label) => label.name)),
             JSON.stringify(shape.labels),
+          );
+          const chipHeight = shape.branchChipHeights[0];
+          check(
+            `${theme}: branch chips and labels have the same outer height, below the state badge`,
+            shape.branchChipHeights.length === 2 &&
+              shape.branchChipHeights.every((height) => height === chipHeight) &&
+              shape.labels.every((chip) => chip.height === chipHeight) &&
+              shape.statusBadgeHeight > chipHeight,
+            JSON.stringify({
+              branches: shape.branchChipHeights,
+              labels: shape.labels.map((chip) => chip.height),
+              badge: shape.statusBadgeHeight,
+            }),
+          );
+          check(
+            `${theme}: label capitals center inside the compact chip`,
+            shape.labels.every((chip) => Math.abs(chip.capOffset) <= 0.5),
+            JSON.stringify(shape.labels.map(({ name, capOffset }) => ({ name, capOffset }))),
           );
           const neutralBox = shape.labels.find((chip) => chip.name === "no color")?.box;
           for (const chip of shape.labels) {
@@ -2305,12 +2939,21 @@ async function main() {
                 .every((chip) => chip.color === null && chip.tip === null),
             JSON.stringify({ known: paint(known), own: paint(shape) }),
           );
+          // Less the second line the cold title holds, where the record's title is one line
+          // (mb-wcbc).
+          const title = titleGivesBack(shape, empty);
           check(
-            `${theme}: a header with labels of every color lays out to the empty record's height, row by row`,
-            shape.header === empty.header &&
-              shape.tabBar === empty.tabBar &&
-              JSON.stringify(shape.rows) === JSON.stringify(empty.rows),
-            JSON.stringify({ empty: empty.rows, labels: shape.rows }),
+            `${theme}: a header with labels of every color lays out to the empty record's height${title.delta < 0 ? " less its title's second line" : ""}, row by row`,
+            title.ok &&
+              shape.header === empty.header + title.delta &&
+              shape.tabBar === empty.tabBar + title.delta &&
+              JSON.stringify(shape.rows) ===
+                JSON.stringify(
+                  empty.rows.map((row) =>
+                    row.row === "title" ? { ...row, height: title.title } : row,
+                  ),
+                ),
+            JSON.stringify({ empty: empty.rows, labels: shape.rows, title }),
           );
         }
         lap("the labels in both themes");
@@ -2327,19 +2970,27 @@ async function main() {
         const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
         for (const row of rows) {
           const where = `${width} px, Pulls row #${row.number}`;
+          // The place is after the title (mb-pw8t): nothing before it moves when it arrives, and
+          // the number and the toggle after it move along the run, the row growing by whole
+          // lines where the place takes one, and the item by that alone. Before, the place led
+          // the title, which moved after it (mb-vkhd, mb-zuy0).
           check(
-            `${where}: a late stack place moves nothing else in its row: not the age, the chevron, the icon, or the title`,
-            row.moved.length === 0,
-            JSON.stringify(row.moved),
+            `${where}: a late stack place moves nothing before it, and the row grows by whole lines alone`,
+            row.moved.length === 0 &&
+              Math.abs(row.grew / row.lineHeight - Math.round(row.grew / row.lineHeight)) < 0.03 &&
+              row.itemGrew === row.grew,
+            JSON.stringify({ moved: row.moved, grew: row.grew, itemGrew: row.itemGrew }),
           );
+          // The place follows the title, after the stack menu's dot, and the number follows
+          // it, as the stack menu's member line has them (mb-pw8t).
           check(
-            `${where}: the stack place sits before the number, on its line`,
-            row.before,
+            `${where}: the stack place follows the title after its dot, and the number follows it`,
+            row.placeAfter,
             JSON.stringify(row),
           );
           check(`${where}: the number shows whole`, row.whole, JSON.stringify(row));
           check(
-            `${where}: the place, the number, and the age end inside the row, and nothing scrolls sideways`,
+            `${where}: the title, the number, the toggle, and the age end inside the row, and nothing scrolls sideways`,
             row.inside,
             JSON.stringify(row),
           );
@@ -2349,44 +3000,32 @@ async function main() {
             !row.cut || !oneStack,
             JSON.stringify(row),
           );
-          // The number's line is one line at every width, so the link is always two (mb-lkkt):
-          // before, three stacks took a third line at 300 px and one stack at 180 px. The
-          // row's third line is its change line (mb-d0a3), under the number's line.
+          // The run is as tall as its lines, never cut short, every line of it in the text
+          // column, and it ends with the author; the last line follows it, the toggle on it in
+          // the text column and the age at its end (mb-pw8t, mb-rb3n).
           check(
-            `${where}: the number's line stays one line, the link two, and the row three, its change line under the number's line and in the title's column`,
-            row.oneLine &&
-              row.grew === 0 &&
-              row.itemGrew === 0 &&
-              row.threeLines &&
-              Math.abs(row.lineFrom - row.textColumn) < 0.5,
+            `${where}: the run is as tall as its lines, each in the text column, and ends with the author, the last line under it, the toggle and then the age at the row's end`,
+            Math.abs(row.headingHeight - row.drawnLines * row.lineHeight) < 0.5 &&
+              row.starts.every((start) => start !== null && Math.abs(start) < 0.5) &&
+              Math.abs(row.columnFrom - row.textColumn) < 0.5 &&
+              row.endsWithAuthor &&
+              row.lastLine &&
+              Math.abs(row.tailFrom - row.textColumn) < 0.5,
+            JSON.stringify(row),
+          );
+          // The icon leads the run's first line, in its slot, on the row's inset (mb-3vil).
+          check(
+            `${where}: the icon leads the run's first line on the row's inset`,
+            row.iconOnFirst && Math.abs(row.iconFrom) < 0.5,
             JSON.stringify(row),
           );
           check(
-            `${where}: the title runs from the text column to the row's end, over the age`,
-            row.titleEnd && Math.abs(row.titleFrom - row.textColumn) < 0.5,
-            JSON.stringify(row),
-          );
-          // The icon leads the title's line, in its slot, since the title came first (2026-11-17);
-          // from mb-3cbf it led the number's line. A row in no stack is flush on the inset
-          // (mb-3vil). The chevron is on the change line (mb-d0a3), in the same slot, under the
-          // icon, and the line in the title's column; on the number's line it led the link.
-          check(
-            `${where}: the icon sits on the title's line, centered on it, on the row's inset, and the chevron on the change line under it`,
-            row.iconWithTitle &&
-              Math.abs(row.iconOff) < 0.5 &&
-              Math.abs(row.iconFrom) < 0.5 &&
-              row.chevronOnThird &&
-              Math.abs(row.chevronFrom) < 0.5 &&
-              Math.abs(row.lineFrom - row.textColumn) < 0.5,
+            `${where}: the author follows the number, and its name ends the run inside the row`,
+            row.byAfter && row.authorEnds,
             JSON.stringify(row),
           );
           check(
-            `${where}: the author shows at its floor or wider, its name ending inside the line, or leaves the line whole`,
-            row.author !== "squeezed",
-            JSON.stringify(row),
-          );
-          check(
-            `${where}: the title keeps a share of its line`,
+            `${where}: the title keeps a share of its lines`,
             row.title >= 20,
             JSON.stringify(row),
           );
@@ -2410,10 +3049,8 @@ async function main() {
           }
         }
         check(
-          "both offers are drawn by the records that carry them",
-          offersDrawn.has("behind_head") &&
-            offersDrawn.has("current pinBehind") &&
-            offersDrawn.has("on_head checkoutAtHead"),
+          "the offer is drawn by the record that carries it",
+          offersDrawn.has("on_head checkoutAtHead"),
           JSON.stringify([...offersDrawn]),
         );
         lap("the offers");

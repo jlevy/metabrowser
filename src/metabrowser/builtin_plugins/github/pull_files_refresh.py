@@ -6,7 +6,9 @@
   comparison's commits, the record's or one the prefetch computed from a head and base
   branch (``LocalComparison``), so the list is the comparison's manifest, ``git diff --raw`` and
   ``--numstat`` through :class:`GitDiffSource`, with no patch and no network. A manifest
-  cut at ``MAX_MANIFEST_FILES``, or one Git cannot list, falls through to GitHub's.
+  cut at ``MAX_MANIFEST_FILES``, or one Git cannot list, falls through to GitHub's, unless
+  the caller's *fallback* refuses it, as the prefetch's governor may, which ends the job
+  with nothing published (:class:`FallbackRefused`).
 - **GitHub's list**, which runs no Git: the active account, then one ``gh api
   repos/<owner>/<repo>/pulls/<n>/files`` request per hundred files, checking the account
   before each progressive publication and before publishing the complete list.
@@ -32,7 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Final
@@ -40,6 +42,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh_lists import (
@@ -101,6 +104,10 @@ _KIND_STATUS: Final[dict[str, FileStatus]] = {
 }
 
 type Slot = Callable[[], AbstractAsyncContextManager[object]]
+
+
+class FallbackRefused(Exception):
+    """The local comparison gave no list and the caller refused GitHub's: nothing was read."""
 
 
 def _path(value: object) -> str:
@@ -416,14 +423,17 @@ async def refresh_pull_files(
     local: LocalComparison | None,
     slot: Slot,
     known_head: Callable[[], KnownHead] | None = None,
+    fallback: Callable[[], Awaitable[bool]] | None = None,
 ) -> PullFileList:
     """List pull request *number*'s changed files and cache them; see the module.
 
     *local* names the store and commits of a comparison, the record's or the prefetch's,
     when the store holds both. *slot* is one of the coordinator's network slots, held for one ``gh`` request at a
     time. *known_head* reads, blocking, the head and base branch the pull request has as last
-    known, which GitHub's list then names. Raises only :class:`PullDataError`; how it ended
-    is kept beside the list either way.
+    known, which GitHub's list then names. *fallback*, when given, says whether GitHub's list
+    may be read once the local comparison gives none. Raises :class:`PullDataError`, after
+    which how it ended is kept beside the list, or :class:`FallbackRefused`, which keeps
+    nothing: no attempt was made.
     """
 
     reader: str | None = None
@@ -450,12 +460,16 @@ async def refresh_pull_files(
             )
         if listed is not None:
             await _write(repository, listed)
+        elif fallback is not None and not await fallback():
+            raise FallbackRefused
         else:
             async with slot():
                 login = await active_account()
             reader = f"gh:{login}"
             listed = await _from_github(repository, number, login, slot, generation, known_head)
     except PullDataError as exc:
+        # The job that runs this records the failure as its own (metabrowser.event_log).
+        event_log.current().note_failure(exc.state, str(exc))
         if held is not None and exc.state == "rate_limited":
             # This attempt stopped at the already saved hold, before any provider request.
             raise
@@ -486,7 +500,29 @@ async def refresh_pull_files(
     await asyncio.to_thread(
         write_files_refresh, repository.home, repository.slug, number, succeeded
     )
+    if local is not None and listed.listed_from == "comparison":
+        await _measure_size(local)
     return listed
 
 
-__all__ = ["Slot", "refresh_pull_files"]
+async def _measure_size(local: LocalComparison) -> None:
+    """Measure the size the list's comparison pushes, so its row says it with its counts.
+
+    Here, in the store's work that just listed it, since the summary route reads only what
+    is kept (:mod:`.pull_files_summary`). Once measured it is kept beside the store and
+    never measured again (:mod:`metabrowser.git.change_size`); measured 2026-11-20 on this
+    repository, a size took 20 to 70 ms for most pull requests and 374 ms for one whose
+    patch is 6.15 MB. A size that cannot be measured leaves the row without one.
+    """
+
+    from metabrowser.git.change_size import change_size
+    from metabrowser.git.process import GitError, GitLocation, repository_store_target
+
+    try:
+        location = GitLocation.revision(repository_store_target(git_dir=local.git_dir), local.head)
+        await change_size(location, local.base, local.head)
+    except GitError as exc:
+        log.debug("a pull request's size could not be measured: %r", exc)
+
+
+__all__ = ["FallbackRefused", "Slot", "refresh_pull_files"]

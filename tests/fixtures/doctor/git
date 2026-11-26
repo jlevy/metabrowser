@@ -1,0 +1,23 @@
+#!/bin/sh
+# A git that answers only `git version`, as the variant FAKE_GIT_VERSION names, and fails
+# anything else. It is first on PATH in tests/golden/cli-doctor.tryscript.md, so the
+# doctor's Git check reads a version the golden chooses rather than the host's, and the
+# build-version annotation, which asks git about the checkout, falls back to the plain
+# version. Each line has the shape `git version` prints: a Git that meets every floor and
+# reads file ages (2.56.1), the newest patched cloning release before `git last-modified`
+# (2.50.1), Apple's with its suffix, and an admitted release older than a partial clone
+# needs.
+variant="${FAKE_GIT_VERSION:-current}"
+if [ "$1" = "version" ] || [ "$1" = "--version" ]; then
+  case "$variant" in
+    current) echo "git version 2.56.1" ;;
+    before-file-ages) echo "git version 2.50.1" ;;
+    apple-old) echo "git version 2.39.5 (Apple Git-154)" ;;
+    before-partial-clone) echo "git version 2.44.4" ;;
+    unreadable) echo "a build of git that names no version" ;;
+    *) echo "fake git: unknown FAKE_GIT_VERSION $variant" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
+echo "fake git: unexpected arguments" >&2
+exit 2

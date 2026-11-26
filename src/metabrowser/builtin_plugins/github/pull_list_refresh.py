@@ -80,6 +80,7 @@ _COMMIT_ID: Final = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # same cost of 1 (2026-11-11).
 _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
   viewer { login }
+  rateLimit { cost }
   repository(owner:$owner,name:$name) {
     id
     all:pullRequests(first:1) { totalCount }
@@ -299,11 +300,26 @@ def backfill_admitted() -> bool:
     """Whether GitHub's GraphQL budget admits the backfill past every reader's prefix.
 
     That backfill is background work, which :mod:`.gh_budget` admits only above its floor
-    and outside a rate hold. A reader's own pages, its filter's prefix and the scan that
-    keeps the list current, are never asked.
+    and outside a rate hold, and speculative work, which it admits only within its share of
+    the process's ceiling. Unlike the cores walk, it reserves nothing of that share for the
+    prefetch, and the walk waits for it (``pull_cores``): it reads one
+    :data:`~.pull_catalog.PAGE_SIZE` of rows a point, once per catalog epoch, and Quick
+    Search across every state and the ref chooser's pull requests by branch are complete
+    only once it has, where reserving the prefetch's caps held a cold catalog of 800 rows
+    to 8 points an hour with the walk (review D1 of #737). A reader's own pages, its
+    filter's prefix and the scan that keeps the list current, are never asked.
+
+    So a backfill of more pages than the share has left takes it first come until it is
+    done, and the prefetch and the label set's first read get what it leaves: a record not
+    read ahead is read by its page when opened, and a page's label chips wait. In review
+    B2's model of #761, a model and not a measurement, that costs the prefetch little
+    below about 12,000 rows, and from about 15,000 leaves it about two records in each
+    whole hour the backfill runs after the first. Leaving the prefetch a scan's records
+    here too kept it at its cap but left a backfill of 20,000 rows unfinished after six
+    hours.
     """
 
-    return gh_budget.admission(("graphql",), now=pull_list.utc_now()).admitted
+    return gh_budget.admission(("graphql",), now=pull_list.utc_now(), speculative=True).admitted
 
 
 def _next_scan(
@@ -465,9 +481,16 @@ async def refresh_pull_list(
                         return state
                     # A delta scan vouches for what GitHub had when it asked for its first page.
                     asked_at = utc_stamp(pull_list.utc_now())
-                    page = await _read_page(
-                        repository, "all" if updated else scan, cursor, login=login, updated=updated
-                    )
+                    # A backfill page is one no reader asked for: speculative work, counted
+                    # toward its share (:mod:`.gh_budget`).
+                    with gh_budget.speculative() if backfill else contextlib.nullcontext():
+                        page = await _read_page(
+                            repository,
+                            "all" if updated else scan,
+                            cursor,
+                            login=login,
+                            updated=updated,
+                        )
                     # The query's viewer identifies the reader of these rows. A settings
                     # switch after that response cannot relabel it; the next page must
                     # still match this job's reader before it can advance the checkpoint.

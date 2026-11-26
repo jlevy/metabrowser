@@ -1,7 +1,7 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
-import { placeRendered } from "./place-rendered.js";
-import { mountPrintIndicator } from "./print-indicator.js";
+import { drawDiagrams, isFrontmatterError, placeRendered } from "./place-rendered.js";
+import { holdLightPrintTheme, mountPrintIndicator } from "./print-indicator.js";
 import { kpressTocConfig } from "./toc-toggle.js";
 import { transclusionKey } from "./transclusion.js";
 
@@ -57,9 +57,19 @@ export function buildDiagnosticsNode(diagnostics, mb) {
   return temporary.firstElementChild;
 }
 
-/** @param {HTMLElement} container @param {Array<unknown>} diagnostics @param {MetabrowserPublicSdk} mb */
+/**
+ * Gather a placed document's preamble -- KPress's Frontmatter error notice and
+ * Frontmatter disclosure -- with a Diagnostics disclosure of *diagnostics* at the top of
+ * its prose. A front-matter error is left out of the disclosure: the document shows it
+ * as its notice (`isFrontmatterError`).
+ *
+ * @param {HTMLElement} container @param {Array<unknown>} diagnostics @param {MetabrowserPublicSdk} mb
+ */
 export function injectDiagnostics(container, diagnostics, mb) {
-  const node = buildDiagnosticsNode(diagnostics, mb);
+  const node = buildDiagnosticsNode(
+    diagnostics.filter((diagnostic) => !isFrontmatterError(diagnostic)),
+    mb,
+  );
   const article = container.querySelector("article.kpress");
   const layout = article?.querySelector(":scope > .kpress-doc-layout");
   const prose = layout?.querySelector(":scope > .kpress-prose");
@@ -82,7 +92,13 @@ export function injectDiagnostics(container, diagnostics, mb) {
   }
 }
 
-/** @param {unknown} error @param {MetabrowserPublicSdk} mb */
+/**
+ * A failed render's notice: the answer's reader sentence, or the fixed one, and the one
+ * remedy. The answer's `detail`, `diagnostics`, and status, and any exception, go to the
+ * console (docs/design-system-messages.md, "Where the Detail Goes").
+ *
+ * @param {unknown} error @param {MetabrowserPublicSdk} mb
+ */
 export function renderKpressError(error, mb) {
   const value =
     error && typeof error === "object" ? /** @type {Record<string, unknown>} */ (error) : {};
@@ -90,10 +106,12 @@ export function renderKpressError(error, mb) {
     value.payload && typeof value.payload === "object"
       ? /** @type {Record<string, unknown>} */ (value.payload)
       : {};
-  const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
-  const detail = payload.detail || (error instanceof Error ? error.message : "");
-  const message = `${payload.error || "KPress render failed"}${detail ? `: ${detail}` : ""}`;
-  return `<div class="notice metabrowser-kpress-render-error" data-severity="error" role="alert"><strong>Could not render this document.</strong><pre class="metabrowser-kpress-error-detail">${mb.escapeHtml(String(message))}</pre>${renderKpressDiagnosticsHtml(diagnostics, mb.escapeHtml)}</div>`;
+  console.error("metabrowser: the document could not be rendered", error);
+  const said =
+    typeof payload.error === "string" && payload.error.trim()
+      ? payload.error.trim()
+      : "Could not render this document.";
+  return `<div class="notice metabrowser-kpress-render-error" data-severity="error" role="alert"><strong>${mb.escapeHtml(said)}</strong> The Source tab shows its text.</div>`;
 }
 
 /**
@@ -119,13 +137,15 @@ function isRefusal(error) {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", pagePath?: string, printIndicator?: boolean, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", pagePath?: string, printIndicator?: boolean, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner, wrapSource?: (text: string) => string}} [options]
  *   `pagePath` is the path of the page that shows this document as its own, when that is
  *   not the document's: the folder whose Overview shows its README. Its fragments are the
  *   document's headings, so a table-of-contents entry or a link to one of them moves within
  *   that page (link-enhancer.js). `printIndicator: true` puts a print button in the corner
  *   of the document's card (print-indicator.js), for a host whose view prints the document
- *   itself; it is off unless the host asks.
+ *   itself; it is off unless the host asks. `wrapSource` renders the file's text as the
+ *   Markdown it returns, with no wiki preprocessing: a `.mmd` file is one Mermaid fence
+ *   (mermaid-view.js).
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
@@ -147,11 +167,16 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   let disposeLinks = null;
   /** @type {(() => void) | null} */
   let disposePrintIndicator = null;
+  /** @type {{dispose(): void, ready: Promise<void>} | null} */
+  let diagrams = null;
+  // A rendered document prints on light paper, whatever the app's theme.
+  const releasePrintTheme = holdLightPrintTheme();
   const dispose = () => {
     if (disposed) {
       return;
     }
     disposed = true;
+    releasePrintTheme();
     options.signal?.removeEventListener("abort", abort);
     controller.abort();
     if (ownsWorkerClient) {
@@ -163,6 +188,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposeToc = null;
     disposePrintIndicator?.();
     disposePrintIndicator = null;
+    diagrams?.dispose();
+    diagrams = null;
   };
 
   container.classList.add("metabrowser-kpress-host", "metabrowser-markdown-document");
@@ -176,13 +203,13 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
           ? /** @type {Record<string, unknown>} */ (ctx.raw)
           : {};
       let content = typeof raw.content === "string" ? raw.content : null;
-      if (raw.content_truncated === true) {
+      if (raw.content_truncated === true || (options.wrapSource && content === null)) {
         content = await mb.fetchCompleteText(ctx, { signal: controller.signal });
       }
       /** @type {Array<unknown>} */
       const preparationDiagnostics = [];
       let wiki = null;
-      if (content !== null) {
+      if (content !== null && !options.wrapSource) {
         // Wiki preprocessing is an enhancement. If the worker cannot load or
         // fails, render the authored Markdown and say what is missing rather
         // than replacing the whole document with an error.
@@ -208,7 +235,12 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         profile: "document",
         includeToc: options.includeToc,
         signal: controller.signal,
-        sourceText: wiki?.changed ? wiki.source : undefined,
+        sourceText:
+          options.wrapSource && content !== null
+            ? options.wrapSource(content)
+            : wiki?.changed
+              ? wiki.source
+              : undefined,
       });
       if (disposed || controller.signal.aborted) {
         return;
@@ -263,8 +295,17 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
             })
           : mb.kpressInitToc(container, kpressTocConfig(container));
       if (options.printIndicator === true) {
-        disposePrintIndicator = mountPrintIndicator(container, mb);
+        // The button waits for the diagrams before it prints (print-ready.js).
+        disposePrintIndicator = mountPrintIndicator(container, mb, {
+          diagrams: () => diagrams?.ready,
+        });
       }
+      // Not awaited: the view's `ready`, which the shell's stage commit and the folder
+      // Overview await, settles with the prose. Fetching Mermaid and laying out every
+      // diagram follows, each drawing over the source block that already holds its place.
+      // The print button waits for them; Command-P waits on nothing, so a diagram not yet
+      // drawn prints as its source.
+      diagrams = drawDiagrams(container, mb, inertRender ? "image" : "document");
     } catch (error) {
       if (disposed || mb.errors.isAbortError(error)) {
         return;

@@ -74,6 +74,43 @@ def test_a_static_file_without_its_current_stamp_is_revalidated(
     assert answer.headers["cache-control"] == "no-cache"
 
 
+def test_a_mermaid_chunk_is_immutable_at_its_plain_address(client: TestClient) -> None:
+    """Mermaid's entry imports its chunks by relative specifiers, which drop the entry's
+    ``?v=``, and each chunk's name is a hash of its content, so it needs no stamp of ours;
+    revalidating each one on every load was review A of #597, A9."""
+    _shell(client)
+    chunks = server.STATIC_DIR / "vendor" / "mermaid" / "chunks" / "mermaid.esm.min"
+    name = min(path.name for path in chunks.glob("*.mjs"))
+    url = f"/static/vendor/mermaid/chunks/mermaid.esm.min/{name}"
+    answer = client.get(url)
+    assert answer.status_code == 200
+    assert answer.headers["cache-control"] == IMMUTABLE
+    again = client.get(url, headers={"if-none-match": answer.headers["etag"]})
+    assert again.status_code == 304
+    assert again.headers["cache-control"] == IMMUTABLE
+    # The entry's name holds no hash: only its `?v=` address is immutable.
+    entry = client.get("/static/vendor/mermaid/mermaid.esm.min.mjs")
+    assert entry.headers["cache-control"] == "no-cache"
+
+
+def test_a_self_named_file_is_immutable_only_while_the_stamp_holds_it(tmp_path: Path) -> None:
+    from metabrowser.asset_stamps import StampedStaticFiles
+
+    (tmp_path / "chunks").mkdir()
+    chunk = tmp_path / "chunks" / "part-AAAAAAAA.mjs"
+    chunk.write_text("export const part = 1;\n")
+    (tmp_path / "entry.mjs").write_text('import "./chunks/part-AAAAAAAA.mjs";\n')
+    tree = StampedTree(tmp_path, live=True)
+    client = TestClient(StampedStaticFiles(directory=tmp_path, tree=tree, self_named=("chunks/",)))
+    # No page has taken a stamp, so nothing is known to be the file it read.
+    assert client.get("/chunks/part-AAAAAAAA.mjs").headers["cache-control"] == "no-cache"
+    assert tree.stamp() is not None
+    assert client.get("/chunks/part-AAAAAAAA.mjs").headers["cache-control"] == IMMUTABLE
+    assert client.get("/entry.mjs").headers["cache-control"] == "no-cache"
+    chunk.write_text("export const part = 2;\n")  # an edit the vendoring check refuses
+    assert client.get("/chunks/part-AAAAAAAA.mjs").headers["cache-control"] == "no-cache"
+
+
 # ── /plugin-static ─────────────────────────────────────────────
 
 

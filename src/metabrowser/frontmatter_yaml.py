@@ -24,7 +24,8 @@ references.
 
 Every failure, of the bound or of the parse, raises :class:`BoundedYamlError`
 (:class:`FrontmatterError` for front matter), whose text is a reason of at most
-:data:`YAML_ERROR_MAX_CHARS` characters. A refusal while building names a line and the
+:data:`YAML_ERROR_MAX_CHARS` characters, and whose ``over_budget`` says a budget refused
+the document rather than its syntax. A refusal while building names a line and the
 kind of node, never a scalar's text or a tag; a syntax error is ruamel's own message,
 whose quotes of the document are a line each.
 
@@ -150,10 +151,42 @@ YAML_ERROR_MAX_CHARS: Final = 500
 
 
 class BoundedYamlError(ValueError):
-    """YAML that :func:`load_bounded_yaml` does not answer as a value; its text is why."""
+    """YAML that :func:`load_bounded_yaml` does not answer as a value; its text is why.
+
+    *over_budget* is true when a budget refused it (its expansion, its nesting, or the
+    nodes a caller allowed), and false when it does not parse or holds what the loader
+    does not read.
+    """
 
     subject: ClassVar[str] = "YAML"
     parse_failure: ClassVar[str] = "Error parsing YAML"
+
+    def __init__(self, reason: str, *, over_budget: bool = False) -> None:
+        super().__init__(reason)
+        self.over_budget = over_budget
+
+
+class TypedText(str):
+    """A key or scalar a typed load wrote as text, and the type it had in the YAML.
+
+    ``origin`` names that type (``int``, ``date``, ``bytes``, ``float`` and so on), which
+    tells the key ``1`` from the key ``"1"`` and a date from the string that spells it,
+    where the plain value cannot. Everywhere else it is the ``str`` it holds, and it
+    encodes as one.
+    """
+
+    origin: str
+
+    def __new__(cls, text: str, origin: str) -> TypedText:
+        made = super().__new__(cls, text)
+        made.origin = origin
+        return made
+
+
+class TypedList(list[object]):
+    """A ``!!set`` a typed load wrote as its sorted members; its ``origin`` is ``set``."""
+
+    origin: str = "set"
 
 
 class FrontmatterError(BoundedYamlError):
@@ -163,8 +196,32 @@ class FrontmatterError(BoundedYamlError):
     parse_failure: ClassVar[str] = "Error parsing YAML metadata"
 
 
+# What a page says of front matter that is present and not shown: the tooltip of the
+# file header's "Frontmatter error" badge and the notice KPress draws above the document.
+# The reason, a FrontmatterError's text, is the answer's `frontmatter_error_detail`
+# (docs/design-system-messages.md).
+FRONTMATTER_ERROR_MESSAGE: Final = "The frontmatter could not be read."
+
+
+def shown_frontmatter_error(reason: str | None) -> str | None:
+    """The reader's sentence for front matter refused for *reason*, or None for none."""
+    return None if reason is None else FRONTMATTER_ERROR_MESSAGE
+
+
+def frontmatter_error_fields(reason: str | None) -> dict[str, str]:
+    """An answer's fields for front matter refused for *reason*: the reader's sentence as
+    ``frontmatter_error`` and the reason as ``frontmatter_error_detail``, or none."""
+    if reason is None:
+        return {}
+    return {"frontmatter_error": FRONTMATTER_ERROR_MESSAGE, "frontmatter_error_detail": reason}
+
+
 class _ExpansionBudgetError(Exception):
     """The document passed its budget, written out without its aliases."""
+
+
+class _NodeBudgetError(Exception):
+    """The text composed to more nodes than the caller allowed."""
 
 
 class _CycleError(Exception):
@@ -186,20 +243,30 @@ class _NodeError(Exception):
         super().__init__(f"line {node.start_mark.line + 1}: {problem}")
 
 
-def load_frontmatter_yaml(text: str) -> object:
+def load_frontmatter_yaml(
+    text: str, *, max_nodes: int | None = None, typed: bool = False
+) -> object:
     """Parse front-matter YAML into its bounded, JSON-safe value.
 
     Returns ``None`` for YAML that holds no value (empty, or only comments), and the
     converted value otherwise -- a caller decides whether a non-mapping is an error.
     Raises :class:`FrontmatterError` for text longer than :data:`FRONTMATTER_MAX_BYTES`,
-    and for everything :func:`load_bounded_yaml` refuses.
+    and for everything :func:`load_bounded_yaml` refuses. *max_nodes* and *typed* are
+    as :func:`load_bounded_yaml_documents` takes them.
     """
 
     if len(text) > FRONTMATTER_MAX_BYTES:
         raise FrontmatterError(
             f"Front matter not parsed: it is longer than {FRONTMATTER_MAX_BYTES // 1024} KiB"
         )
-    return _load(text, FRONTMATTER_MAX_EXPANDED_SIZE, FrontmatterError, keep_last=False)
+    return _load(
+        text,
+        FRONTMATTER_MAX_EXPANDED_SIZE,
+        FrontmatterError,
+        keep_last=False,
+        max_nodes=max_nodes,
+        typed=typed,
+    )
 
 
 def load_bounded_yaml(
@@ -220,6 +287,45 @@ def load_bounded_yaml(
     return _load(text, max_expanded_size, BoundedYamlError, keep_last=keep_last_duplicate)
 
 
+def load_bounded_yaml_documents(
+    text: str, *, max_expanded_size: int, max_nodes: int | None = None, typed: bool = False
+) -> list[object]:
+    """Parse a YAML 1.2 stream into the bounded, JSON-safe value of each document.
+
+    As :func:`load_bounded_yaml`, with the documents sharing *max_expanded_size*, an empty
+    document read as ``None``, and a repeated key refused. *max_nodes*, when given, bounds
+    the nodes composed from the text, aliases counting one each, so a caller can bound the
+    parse itself: its cost follows the nodes, not the bytes (a flow list of one-digit
+    integers composes a node every three bytes). Past it, the load stops where it is and
+    raises :class:`BoundedYamlError` with ``over_budget``. *typed* writes each key and
+    scalar that is not already a string as :class:`TypedText`, and a set as
+    :class:`TypedList`, so a caller comparing two documents can tell what the plain value
+    writes alike.
+    """
+
+    return _load(
+        text,
+        max_expanded_size,
+        BoundedYamlError,
+        keep_last=False,
+        stream=True,
+        max_nodes=max_nodes,
+        typed=typed,
+    )
+
+
+def json_safe_scalar(value: object) -> object:
+    """*value*, a scalar a YAML or JSON parser built, as the loader writes one into its value.
+
+    A string with an unpaired surrogate has U+FFFD in its place, an integer past the
+    decimal digit limit is its hexadecimal text, a float that is not finite is YAML's
+    text for it, a date or time is ISO-8601, and binary is base64; ``None``, a boolean,
+    and every other string and number are themselves.
+    """
+
+    return _json_scalar(value)[0]
+
+
 def unclosed_frontmatter_error(limit: int = FRONTMATTER_MAX_BYTES) -> FrontmatterError:
     """The reason for an opening fence whose closing one is not within *limit* bytes."""
 
@@ -229,13 +335,29 @@ def unclosed_frontmatter_error(limit: int = FRONTMATTER_MAX_BYTES) -> Frontmatte
     )
 
 
-def _load(text: str, budget: int, error: type[BoundedYamlError], *, keep_last: bool) -> object:
+def _load(
+    text: str,
+    budget: int,
+    error: type[BoundedYamlError],
+    *,
+    keep_last: bool,
+    stream: bool = False,
+    max_nodes: int | None = None,
+    typed: bool = False,
+) -> Any:
     try:
-        parsed: object = _new_yaml(budget, keep_last=keep_last).load(text)
+        yaml = _new_yaml(budget, keep_last=keep_last, max_nodes=max_nodes, typed=typed)
+        parsed: object = list(yaml.load_all(text)) if stream else yaml.load(text)
     except _ExpansionBudgetError as exc:
         raise error(
             f"{error.subject} not parsed: written out without its YAML aliases it is larger "
-            f"than {budget:,} characters"
+            f"than {budget:,} characters",
+            over_budget=True,
+        ) from exc
+    except _NodeBudgetError as exc:
+        raise error(
+            f"{error.subject} not parsed: it holds more than {max_nodes:,} values",
+            over_budget=True,
         ) from exc
     except _CycleError as exc:
         raise error(
@@ -243,7 +365,8 @@ def _load(text: str, budget: int, error: type[BoundedYamlError], *, keep_last: b
         ) from exc
     except (MaxDepthExceededError, _DepthError, RecursionError) as exc:
         raise error(
-            f"{error.subject} not parsed: it nests too deeply (more than {YAML_MAX_DEPTH} levels)"
+            f"{error.subject} not parsed: it nests too deeply (more than {YAML_MAX_DEPTH} levels)",
+            over_budget=True,
         ) from exc
     except _VersionError as exc:
         raise error(
@@ -270,7 +393,9 @@ def _parse_reason(error: type[BoundedYamlError], exc: Exception) -> str:
     return _encodable(reason)
 
 
-def _new_yaml(budget: int, *, keep_last: bool) -> YAML:
+def _new_yaml(
+    budget: int, *, keep_last: bool, max_nodes: int | None = None, typed: bool = False
+) -> YAML:
     # A YAML instance holds the state of one parse, and loads run on worker threads,
     # so each load gets its own; building one takes about 50 us.
     yaml = YAML(typ="safe", pure=True)
@@ -280,15 +405,27 @@ def _new_yaml(budget: int, *, keep_last: bool) -> YAML:
     constructor: _BoundedConstructor = yaml.constructor
     constructor.max_expanded_size = budget
     constructor.keep_last_duplicate = keep_last
+    constructor.typed = typed
+    composer: _Composer = yaml.composer
+    composer.nodes_left = max_nodes
     return yaml
 
 
 class _Composer(Composer):
-    """ruamel's composer, without the warning it writes for each reused anchor name."""
+    """ruamel's composer, without the warning it writes for each reused anchor name, and
+    with the nodes it may compose, when a caller bounds them."""
 
     def __init__(self, loader: Any = None) -> None:
         super().__init__(loader)
         self.warn_double_anchors = False
+        self.nodes_left: int | None = None
+
+    def compose_node(self, parent: Any, index: Any) -> Any:
+        if self.nodes_left is not None:
+            self.nodes_left -= 1
+            if self.nodes_left < 0:
+                raise _NodeBudgetError
+        return super().compose_node(parent, index)
 
 
 class _BoundedConstructor(SafeConstructor):
@@ -296,18 +433,31 @@ class _BoundedConstructor(SafeConstructor):
 
     max_expanded_size: int = FRONTMATTER_MAX_EXPANDED_SIZE
     keep_last_duplicate: bool = False
+    typed: bool = False
 
     def get_single_data(self) -> Any:
         node = self.composer.get_single_node()
+        if node is None:
+            return None
+        return self._bounded(node)
+
+    def get_data(self) -> Any:
+        # One document of a stream (``load_all``); the documents share the budget.
+        return self._bounded(self.composer.get_node())
+
+    def _bounded(self, node: Node | None) -> object:
         if node is None:
             return None
         version = self.resolver.processing_version
         if version != (1, 2):
             raise _VersionError(".".join(str(part) for part in version))
         _written_out_size(node, self.max_expanded_size)
-        return _Builder(self, self.max_expanded_size, keep_last=self.keep_last_duplicate).value(
-            node
+        builder = _Builder(
+            self, self.max_expanded_size, keep_last=self.keep_last_duplicate, typed=self.typed
         )
+        value = builder.value(node)
+        self.max_expanded_size = builder.remaining
+        return value
 
 
 def _written_out_size(root: Node, budget: int) -> int:
@@ -389,12 +539,23 @@ class _Builder:
     so the value shares nothing.
     """
 
-    __slots__ = ("_active", "_constructor", "_keep_last", "_keys", "_remaining", "_scalars")
+    __slots__ = (
+        "_active",
+        "_constructor",
+        "_keep_last",
+        "_keys",
+        "_remaining",
+        "_scalars",
+        "_typed",
+    )
 
-    def __init__(self, constructor: SafeConstructor, budget: int, *, keep_last: bool) -> None:
+    def __init__(
+        self, constructor: SafeConstructor, budget: int, *, keep_last: bool, typed: bool = False
+    ) -> None:
         self._constructor = constructor
         self._remaining = budget
         self._keep_last = keep_last
+        self._typed = typed
         self._scalars: dict[int, tuple[object, int]] = {}
         self._keys: dict[int, str] = {}
         # Collections on the path from the root to the node being built.
@@ -476,7 +637,7 @@ class _Builder:
             # A YAML !!set is unordered; sorting its text makes the value the same on
             # every load.
             members.sort(key=lambda member: json.dumps(member, sort_keys=True))
-            return members
+            return TypedList(members) if self._typed else members
         raise _NodeError(node, "a mapping has a tag the loader does not read")
 
     def _entries(self, node: MappingNode) -> dict[str, _Pair]:
@@ -549,12 +710,16 @@ class _Builder:
         if isinstance(node, ScalarNode):
             converted = self._scalar(node)[0]
             text = converted if isinstance(converted, str) else json.dumps(converted)
+            if self._typed and not isinstance(converted, str):
+                text = TypedText(text, type(converted).__name__)
         elif (
             isinstance(node, SequenceNode)
             and node.tag == _SEQ
             and all(isinstance(item, ScalarNode) for item in node.value)
         ):
             text = json.dumps([self._scalar(item)[0] for item in node.value], ensure_ascii=False)
+            if self._typed:
+                text = TypedText(text, "list")
         else:
             raise _NodeError(node, "a key is a mapping, or a sequence that holds a collection")
         self._keys[id(node)] = text
@@ -582,6 +747,10 @@ class _Builder:
                 # ruamel's messages quote the scalar; this names only its tag.
                 raise _NodeError(node, f"not a valid !!{tag.removeprefix(_TAG)}") from exc
         result = _json_scalar(built)
+        if self._typed and result[0] is not built and isinstance(result[0], str):
+            # Written as text it was not: a date, binary, a number JSON cannot hold, or a
+            # string whose unpaired surrogates were replaced.
+            result = (TypedText(result[0], type(built).__name__), result[1])
         self._scalars[id(node)] = result
         return result
 

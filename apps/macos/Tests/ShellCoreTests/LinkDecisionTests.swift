@@ -9,76 +9,59 @@ nonisolated private let ready = ServerState.ready(ServerEndpoint(
     origin: URL(string: "http://127.0.0.1:8475")!, entryURL: URL(string: "http://127.0.0.1:8475/view/")!))
 nonisolated private let failed = ServerState.failed(ServerFailure(summary: "The server stopped unexpectedly.", recentOutput: []))
 
-/// What a link sent into a repository with a window does to its server: the decision
-/// review C5 on #539 asked to move out of the app target, as a table of states.
+/// What a link sent into a repository's session does (bead mb-30xb): one server per
+/// repository, started on the repository, opens every link into it, so no link starts
+/// it again unless it is down.
 @Suite struct RepositoryLinksTests {
-    /// A server that is not starting starts again on any link, the same one included,
-    /// since its window may have moved to another revision since (View on branch).
-    @Test(arguments: [ready, failed, ServerState.stopped])
-    func aLinkRestartsAServerThatIsNotStarting(_ state: ServerState) {
-        var links = RepositoryLinks(target: pullRequest)
-        #expect(links.receive(mainTree, state: state) == .restart)
-        #expect(links.target == mainTree)
-        #expect(links.receive(mainTree, state: state) == .restart)
-        #expect(links.pending == nil)
+    /// The defect: a second pull request of a repository started its server again on
+    /// that pull request. A ready server opens any link at once, the same one again too.
+    @Test func aReadyServerOpensEveryLinkWithoutStartingAgain() {
+        var links = RepositoryLinks(waiting: pullRequest)
+        #expect(links.serverReady() == pullRequest)
+        #expect(links.receive(mainTree, state: ready) == .open)
+        #expect(links.receive(commit, state: ready) == .open)
+        #expect(links.receive(commit, state: ready) == .open)
+        #expect(links.waiting == nil)
+        #expect(links.serverReady() == nil)
     }
 
-    /// C3: the link a start already runs on, sent again during that start (a second click
-    /// during a first clone), is not held, so the start's end restarts nothing. D2: it
-    /// joins that start, whoever began it, so its window loads the start's entry page.
+    /// A link sent while the server starts, such as during a first clone, waits for it;
+    /// the newest wins, and opens once, when the server is ready.
     @Test(arguments: [ServerState.starting, ServerState.stopping])
-    func theLinkAStartRunsOnStartsNothingMore(_ state: ServerState) {
-        var links = RepositoryLinks(target: pullRequest)
-        #expect(links.receive(pullRequest, state: state) == .join)
-        #expect(links.pending == nil)
-        #expect(links.startEnded() == nil)
-        #expect(links.target == pullRequest)
+    func aLinkWaitsForTheStartAndTheNewestWins(_ state: ServerState) {
+        var links = RepositoryLinks(waiting: pullRequest)
+        #expect(links.receive(mainTree, state: state) == .hold)
+        #expect(links.receive(commit, state: state) == .hold)
+        #expect(links.serverReady() == commit)
+        #expect(links.serverReady() == nil)
     }
 
-    /// Another link waits for the start under way; the newest wins, and the start's end
-    /// restarts on it.
-    @Test func anotherLinkWaitsForTheStartAndTheNewestWins() {
-        var links = RepositoryLinks(target: pullRequest)
-        #expect(links.receive(mainTree, state: .starting) == .hold)
-        #expect(links.receive(commit, state: .stopping) == .hold)
-        #expect(links.startEnded() == commit)
-        #expect(links.target == commit)
-        #expect(links.pending == nil)
-        #expect(links.startEnded() == nil)
+    /// A restart that waits at the launch gate while the old server serves: the link
+    /// waits for the new server rather than opening in the one about to stop.
+    @Test func aLinkWaitsForARestartUnderWay() {
+        var links = RepositoryLinks()
+        #expect(links.receive(mainTree, state: ready, restarting: true) == .hold)
+        #expect(links.serverReady() == mainTree)
     }
 
-    /// C3: a held link followed by the start's own link leaves nothing held: the newest
-    /// link is the one the start runs on.
-    @Test func theStartsOwnLinkCancelsAHeldOne() {
-        var links = RepositoryLinks(target: pullRequest)
-        #expect(links.receive(mainTree, state: .starting) == .hold)
-        #expect(links.receive(pullRequest, state: .starting) == .join)
-        #expect(links.startEnded() == nil)
-        #expect(links.target == pullRequest)
+    /// A failed or stopped server starts again for a link, which opens once it is ready.
+    @Test(arguments: [failed, ServerState.stopped])
+    func aLinkStartsAServerThatIsDown(_ state: ServerState) {
+        var links = RepositoryLinks()
+        #expect(links.receive(pullRequest, state: state) == .start)
+        #expect(links.waiting == pullRequest)
+        #expect(links.serverReady() == pullRequest)
     }
 
-    /// C2 and C3: a restart that waits at the launch gate while the ready server serves
-    /// counts as a start on its target: the same link joins it, and another replaces it.
-    /// D2: the restart need not be a link's: Retry, Restart Server, and an upgrade's
-    /// restart run on the target too, so the same link joins them as well.
-    @Test func aRestartWaitingAtTheGateCountsAsAStart() {
-        var links = RepositoryLinks(target: pullRequest)
-        #expect(links.receive(pullRequest, state: ready, restarting: true) == .join)
-        #expect(links.pending == nil)
-        #expect(links.receive(mainTree, state: ready, restarting: true) == .restart)
-        #expect(links.target == mainTree)
-    }
-
-    /// C12: a link held for a start whose last window then closes starts nothing, and a
+    /// A link waiting for a start whose last window then closes opens nothing, and a
     /// shut-down session takes no more links.
-    @Test func aShutDownSessionStartsNothing() {
-        var links = RepositoryLinks(target: pullRequest)
+    @Test func aShutDownSessionOpensNothing() {
+        var links = RepositoryLinks(waiting: pullRequest)
         #expect(links.receive(mainTree, state: .starting) == .hold)
         links.shutDown()
-        #expect(links.pending == nil)
-        #expect(links.startEnded() == nil)
+        #expect(links.serverReady() == nil)
+        #expect(links.receive(commit, state: ready) == .none)
         #expect(links.receive(commit, state: .stopped) == .none)
-        #expect(links.target == pullRequest)
     }
 }
 
@@ -203,6 +186,60 @@ nonisolated private let failed = ServerState.failed(ServerFailure(summary: "The 
         #expect(questions.arrive(link(4), into: r) == .lookUp)
     }
 
+    @Test func anExplicitOpenSupersedesAnOlderCacheLookup() {
+        var questions = CloneQuestions()
+        #expect(questions.arrive(link(1), into: r) == .lookUp)
+
+        let wasShowing = questions.openedExplicitly(r)
+        #expect(!wasShowing)
+        questions.ask(r)
+        #expect(questions.nextQuestion() == nil)
+
+        // The explicit request does not authorize another link after its session closes.
+        #expect(questions.arrive(link(2), into: r) == .lookUp)
+    }
+
+    @Test func aLateCacheHitDoesNotReopenTheOlderLink() {
+        var questions = CloneQuestions()
+        #expect(questions.arrive(link(1), into: r) == .lookUp)
+        let wasShowing = questions.openedExplicitly(r)
+        #expect(!wasShowing)
+
+        #expect(questions.found(r) == nil)
+        #expect(questions.isIdle)
+    }
+
+    @Test func anExplicitOpenOnlySupersedesTheMatchingQuestion() {
+        var questions = CloneQuestions()
+        _ = questions.arrive(link(1), into: r)
+        _ = questions.arrive(link(1, in: s), into: s)
+        questions.ask(r)
+        questions.ask(s)
+
+        #expect(questions.nextQuestion() == r)
+        let dismissedOtherQuestion = questions.openedExplicitly(s)
+        #expect(!dismissedOtherQuestion)
+        #expect(questions.asking == r)
+        let dismissedActiveQuestion = questions.openedExplicitly(r)
+        #expect(dismissedActiveQuestion)
+        #expect(questions.answer(r, clone: false) == nil)
+        #expect(questions.nextQuestion() == nil)
+        #expect(questions.endBurst().isEmpty)
+    }
+
+    @Test func anExplicitOpenLeavesEarlierExternalDeclinesInTheirBurst() {
+        var questions = CloneQuestions()
+        _ = questions.arrive(link(1), into: r)
+        questions.ask(r)
+        _ = questions.nextQuestion()
+        _ = questions.answer(r, clone: false)
+
+        let wasShowing = questions.openedExplicitly(r)
+        #expect(!wasShowing)
+        #expect(questions.arrive(link(2), into: r) == .declined)
+        #expect(questions.endBurst() == [r: 1])
+    }
+
     /// A decline with no other link into the repository has nothing more to say.
     @Test func aLoneDeclineSaysNothingMore() {
         var questions = CloneQuestions()
@@ -292,95 +329,102 @@ nonisolated private let failed = ServerState.failed(ServerFailure(summary: "The 
         problems.note(one)
         problems.note(LinkAlert.declined("github.com/o/r", count: 2))
         #expect(problems.take()?.message == "Metabrowser could not open 3 links")
-    }
-
-    /// D3: a link whose window shows another revision opened, so it is not counted as one
-    /// that did not, and an alert of only those says what they name was not shown.
-    @Test func aLinkThatOpenedElsewhereIsNotALinkThatDidNotOpen() throws {
-        let link = URL(string: "https://github.com/o/r/tree/no-such")!
-        let missing = try #require(
-            LinkAlert.selectionMissing(.notFound(serving: "main"), link: link, repository: "github.com/o/r"))
-        #expect(missing.links == .openedElsewhere)
-
-        var mixed = LinkProblems()
-        mixed.note(one)
-        mixed.note(missing)
-        #expect(mixed.take()?.message == "Metabrowser could not open 1 link, or show what 1 more names")
-
-        var elsewhere = LinkProblems()
-        elsewhere.note(missing)
-        elsewhere.note(missing)
-        #expect(elsewhere.take()?.message == "Metabrowser could not show what 2 links name")
 
         // Past the problems listed, the links are still counted, and so are those turned away.
         var many = LinkProblems()
-        for _ in 0..<LinkAlert.shownInBatch { many.note(missing) }
+        for _ in 0..<LinkAlert.shownInBatch { many.note(one) }
         many.note(LinkAlert.declined("github.com/o/r", count: 4))
         many.noteTurnedAway(2, .queueFull)
-        #expect(many.take()?.message == "Metabrowser could not open 6 links, or show what \(LinkAlert.shownInBatch) more name")
+        #expect(many.take()?.message == "Metabrowser could not open \(LinkAlert.shownInBatch + 6) links")
     }
 }
 
-/// C1 on #539: a link whose selection the mirror lacks is served from the default branch
-/// while `metab` fetches it, and the app says when the fetch did not find it.
-@Suite struct LinkSelectionTests {
+/// The ready server opens a link (`SourceLink`, `POST /api/source/link`): its page, or,
+/// for what the mirror lacks, the page once the refresh the request started has ended.
+@Suite struct SourceLinkTests {
     private let origin = URL(string: "http://127.0.0.1:8475")!
+    private let link = URL(string: "https://github.com/o/r/tree/release/v1/docs")!
 
-    nonisolated private static func status(_ state: String?, ref: String? = "master") -> Data {
-        let quoted = { (text: String?) in text.map { "\"\($0)\"" } ?? "null" }
-        return Data(#"{"subject": "git_revision", "ref_name": \#(quoted(ref)), "selection_state": \#(quoted(state)), "selection_href": null}"#.utf8)
+    nonisolated private static func json(_ text: String) -> Data { Data(text.utf8) }
+    nonisolated private static let opened = json(#"{"href": "/view/g1-ZG9jcw/", "kind": "tree", "changed": true, "refresh": "started", "status": {}}"#)
+    nonisolated private static let pending = json(#"{"code": "selection_pending", "kind": "tree", "refresh": "started", "status": {}}"#)
+    nonisolated private static func status(refreshing: Bool) -> Data {
+        json(#"{"subject": "git_revision", "refreshing": \#(refreshing)}"#)
     }
 
-    @Test func aPendingSelectionIsWatchedUntilItsFetchEnds() async {
+    @Test func aLinkTheMirrorHasOpensAtItsPageAndAsksForARefresh() async throws {
         let asked = Recorder<URLRequest>()
-        let outcome = await LinkSelection.watch(
-            origin: origin, authorization: .cookie(name: "metab", value: "t"),
+        let outcome = await SourceLink.open(
+            link, origin: origin, authorization: .cookie(name: "metab", value: "t"),
             transport: { request in
                 asked.append(request)
-                return (200, Self.status(asked.count < 3 ? "pending" : "not_found"))
+                return (200, Self.opened)
+            })
+        #expect(outcome == .page(PageAddress(reference: "/view/g1-ZG9jcw/")!))
+        let request = try #require(asked.all.first)
+        #expect(asked.count == 1)
+        #expect(request.url == origin.appending(path: "api/source/link"))
+        #expect(request.httpMethod == "POST")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(request.value(forHTTPHeaderField: "Cookie") == "metab=t")
+        let body = try #require(request.httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+        #expect(body["link"] as? String == link.absoluteString)
+        #expect(body["fetch"] as? Bool == true)
+    }
+
+    /// What the mirror lacks waits for the refresh to end, then is asked for once more
+    /// without another refresh.
+    @Test func aPendingLinkIsAskedForAgainOnceTheRefreshEnds() async throws {
+        let asked = Recorder<URLRequest>()
+        let outcome = await SourceLink.open(
+            link, origin: origin, authorization: .none,
+            transport: { request in
+                asked.append(request)
+                if request.url?.path() == "/api/source/status" {
+                    return (200, Self.status(refreshing: asked.count < 3))
+                }
+                return asked.count == 1 ? (202, Self.pending) : (200, Self.opened)
             },
             interval: .milliseconds(1))
-        #expect(outcome == .notFound(serving: "master"))
-        #expect(asked.count == 3)
-        #expect(asked.all.first?.url == origin.appending(path: "api/source/status"))
-        #expect(asked.all.first?.value(forHTTPHeaderField: "Cookie") == "metab=t")
+        #expect(outcome == .page(PageAddress(reference: "/view/g1-ZG9jcw/")!))
+        #expect(asked.all.map { $0.url?.path() } == [
+            "/api/source/link", "/api/source/status", "/api/source/status", "/api/source/link",
+        ])
+        let last = try #require(asked.all.last?.httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+        #expect(last["fetch"] as? Bool == false)
     }
 
-    @Test(arguments: [
-        (200, "found", LinkSelection.Outcome.shown),
-        (200, "superseded", .shown),
-        (200, nil, .shown),
-        (200, "fetch_failed", .fetchFailed(serving: "master")),
-        (200, "not_found", .notFound(serving: "master")),
-    ] as [(Int, String?, LinkSelection.Outcome)])
-    func whatEachStateSays(_ code: Int, _ state: String?, _ expected: LinkSelection.Outcome) async {
-        let outcome = await LinkSelection.watch(
-            origin: origin, authorization: .none, transport: { _ in (code, Self.status(state)) }, interval: .milliseconds(1))
-        #expect(outcome == expected)
+    @Test func whatTheMirrorLacksAfterTheRefreshIsNotFound() async {
+        let outcome = await SourceLink.open(
+            link, origin: origin, authorization: .none,
+            transport: { request in
+                if request.url?.path() == "/api/source/status" { return (200, Self.status(refreshing: false)) }
+                let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                return body?["fetch"] as? Bool == false
+                    ? (404, Self.json(#"{"error": "no", "code": "ref_not_found"}"#)) : (202, Self.pending)
+            },
+            interval: .milliseconds(1))
+        #expect(outcome == .notFound(code: "ref_not_found"))
+        let alert = LinkAlert.linkNotFound(outcome, link: link, repository: "github.com/o/r")
+        #expect(alert?.message == "github.com/o/r has nothing this link names")
+        #expect(alert?.detail.contains("so its window stays where it was") == true)
+        #expect(alert?.links == .notOpened(1))
     }
 
-    @Test func aStatusThatCannotBeReadOrAFetchThatOutlastsTheWatchSaysNothing() async {
-        let refused = await LinkSelection.watch(origin: origin, authorization: .none, transport: { _ in (500, Data()) })
-        #expect(refused == .unknown("status 500"))
-        let garbled = await LinkSelection.watch(origin: origin, authorization: .none, transport: { _ in (200, Data("<html>".utf8)) })
-        #expect(garbled == .unknown("not a source status"))
-        let slow = await LinkSelection.watch(
-            origin: origin, authorization: .none, transport: { _ in (200, Self.status("pending")) },
+    @Test func anAnswerTheAppCannotReadLeavesTheWindowWhereItWas() async {
+        let refused = await SourceLink.open(link, origin: origin, authorization: .none, transport: { _ in (409, Self.json(#"{"code": "other_repository"}"#)) })
+        #expect(refused == .unknown("status 409: other_repository"))
+        let garbled = await SourceLink.open(link, origin: origin, authorization: .none, transport: { _ in (200, Self.json("<html>")) })
+        #expect(garbled == .unknown("status 200, not a link's answer"))
+        let elsewhere = await SourceLink.open(link, origin: origin, authorization: .none, transport: { _ in (200, Self.json(#"{"href": "https://example.com/"}"#)) })
+        #expect(elsewhere == .unknown("an href that is not a page of the server"))
+        let slow = await SourceLink.open(
+            link, origin: origin, authorization: .none,
+            transport: { request in
+                request.url?.path() == "/api/source/status" ? (200, Self.status(refreshing: true)) : (202, Self.pending)
+            },
             interval: .milliseconds(1), attempts: 3)
         #expect(slow == .unknown("still fetching after 3 answers"))
-        let link = URL(string: "https://github.com/o/r/tree/x")!
-        #expect(LinkAlert.selectionMissing(slow, link: link, repository: "github.com/o/r") == nil)
-        #expect(LinkAlert.selectionMissing(.shown, link: link, repository: "github.com/o/r") == nil)
-    }
-
-    /// The alert names the revision the windows show, and the link without its query.
-    @Test func theAlertNamesWhatTheWindowsShow() {
-        let link = URL(string: "https://github.com/o/r/tree/no-such/branch?tab=readme")!
-        let missing = LinkAlert.selectionMissing(.notFound(serving: "master"), link: link, repository: "github.com/o/r")
-        #expect(missing?.message == "github.com/o/r has nothing this link names")
-        #expect(missing?.detail.contains("so its windows show master instead") == true)
-        #expect(missing?.detail.hasSuffix("https://github.com/o/r/tree/no-such/branch?…") == true)
-        let unfetched = LinkAlert.selectionMissing(.fetchFailed(serving: nil), link: link, repository: "github.com/o/r")
-        #expect(unfetched?.detail.contains("its default branch until a refresh finds it") == true)
+        #expect(LinkAlert.linkNotFound(slow, link: link, repository: "github.com/o/r") == nil)
     }
 }

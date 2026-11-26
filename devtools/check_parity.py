@@ -58,9 +58,11 @@ _INDIRECT_MODES: dict[str, tuple[str, ...]] = {
 # command runs the mode: the model is then reached through `metab` and pinned by a golden
 # as a route is, though `--api` cannot issue it. AGENTS.md prefers a route, so a mode
 # enters this table only where a route would be dishonest: `--present` reads ROOT in a
-# client process that must start no server.
+# client process that must start no server, and `--doctor` checks the setup a server
+# needs, which the app runs when no server can start.
 _MODEL_MODES: dict[str, str] = {
     "--present": "cli/present.py",
+    "--doctor": "cli/doctor.py",
 }
 
 
@@ -181,7 +183,7 @@ def _command_exercises(command: str, surface: str, cli: str) -> bool:
             return True
         if surface == "/api/plugin/diff/comparison" and _route_token_matches(show_value, "/commit"):
             return True
-        if surface in {"/view", "/commit", "/pull", "/pulls"} and _route_token_matches(
+        if surface in {"/view", "/commit", "/pull", "/pulls", "/stack"} and _route_token_matches(
             show_value, surface
         ):
             return True
@@ -236,11 +238,13 @@ def registered_surfaces() -> set[str]:
         # The path may sit on the line after `Route(` when the registration is
         # wrapped, which a pattern anchored to `Route("` misses entirely.
         for route in re.findall(r'Route\(\s*"([^"]+)"', path.read_text(encoding="utf-8")):
-            # Browser routes are surfaces too: `/view/<path>`, `/commit/<rev>`, and `/pull/<n>`
-            # are the addresses a reader lands on, and the four-layer model this
-            # check enforces starts at the route. Enumerating only `/api/` left
-            # them ungoverned even after --show learned to resolve them.
-            if route.startswith(("/api/", "/view", "/commit", "/pull", "/raw", "/_debug")):
+            # Browser routes are surfaces too: `/view/<path>`, `/commit/<rev>`, `/pull/<n>`, and
+            # `/stack/<n>` are the addresses a reader lands on, and the four-layer model this
+            # check enforces starts at the route. Enumerating only `/api/` left them
+            # ungoverned even after --show learned to resolve them.
+            if route.startswith(
+                ("/api/", "/view", "/commit", "/pull", "/stack", "/raw", "/_debug")
+            ):
                 # Route patterns carry placeholders; the table documents the shape.
                 surfaces.add(route.split("{", 1)[0].rstrip("/"))
     for manifest_path in sorted(BUILTIN_PLUGINS.glob("*/manifest.toml")):
@@ -675,8 +679,11 @@ def _check_functional_parity(doc: str) -> list[str]:
         if not row.command or row.command == "—":
             problems.append(f"{row.aspect}: covered behavior needs a CLI command")
             continue
-        command_parts = _command_parts(row.command)
-        if row.tier == "data" and (not command_parts or command_parts[0] != "metab"):
+        # A data command may start with environment assignments, as a transcript's does.
+        command_parts = (
+            _metab_parts(row.command) if row.tier == "data" else _command_parts(row.command)
+        )
+        if row.tier == "data" and not command_parts:
             problems.append(f"{row.aspect}: data semantics must run through metab")
         if model_owned:
             modes = [mode for mode, module in _MODEL_MODES.items() if owners == [module]]

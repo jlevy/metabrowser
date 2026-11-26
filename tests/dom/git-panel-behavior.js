@@ -43,6 +43,17 @@ function assertNotContains(label, haystack, needle) {
 
 // A hover card's change line, as a reader sees it: its markup's text, without the words a
 // screen reader is told in its place.
+/** The hover card's size line as it reads, "32 files changed · 56.9 KB compressed (…)". */
+function sizeLineText(html) {
+  const line = String(html).match(/<div class="git-commit-size-line">(.*?)<\/div>/s);
+  return line === null
+    ? null
+    : line[1]
+        .replace(/<span class="visually-hidden">[^<]*<\/span>/g, "")
+        .replace(/<[^>]*>/g, "")
+        .replaceAll("\u00a0", " ");
+}
+
 function changeLineText(html) {
   const line = String(html).match(
     /<span class="git-commit-change-line" aria-hidden="true">(.*?)<\/div>/s,
@@ -209,10 +220,19 @@ class FakeElement {
     return `<${this.tagName.toLowerCase()}${cls}${attrs}>${this.innerHTML}${this._text}</${this.tagName.toLowerCase()}>`;
   }
 
+  // A real element reflects its class attribute in its className, as the age builder
+  // reads and writes it.
   setAttribute(name, value) {
+    if (name === "class") {
+      this.className = value;
+      return;
+    }
     this.attributes.set(name, String(value));
   }
   getAttribute(name) {
+    if (name === "class") {
+      return this.classNames.size ? this.className : null;
+    }
     return this.attributes.has(name) ? this.attributes.get(name) : null;
   }
   removeAttribute(name) {
@@ -615,9 +635,30 @@ sandbox.metabrowser = {
 const responses = new Map();
 let fetchCount = 0;
 const fetchRequests = [];
+/** The commit sizes asked for, by commit ID, counted apart from the detail work. */
+const sizeRequests = [];
 sandbox.fetch = async (url, options) => {
-  fetchCount += 1;
-  fetchRequests.push({ url, signal: options?.signal });
+  // A commit's size, which a commit's page and its hover card ask for beside its detail
+  // (git/change_size.py): measured, so the panel keeps it, as a real answer is kept.
+  const sized = /^\/api\/git\/commit-size\/([0-9a-f]{40})$/.exec(url);
+  if (sized === null) {
+    fetchCount += 1;
+    fetchRequests.push({ url, signal: options?.signal });
+  } else {
+    sizeRequests.push(sized[1]);
+  }
+  if (sized !== null && !responses.has(url)) {
+    const size = {
+      base: null,
+      head: sized[1],
+      state: "measured",
+      reason: null,
+      commits: 1,
+      pushed_bytes: 58_270,
+      diff_bytes: 198_540,
+    };
+    return { ok: true, status: 200, json: async () => ({ is_repo: true, size }) };
+  }
   for (const [prefix, payload] of responses) {
     if (url.startsWith(prefix)) {
       const value = typeof payload === "function" ? await payload(url, options) : payload;
@@ -779,26 +820,18 @@ async function run() {
     assertContains("badges: head branch is marked", html, "git-ref-head");
     assertContains("badges: remote kind class", html, "git-ref-remote");
     assertContains("badges: tag kind class", html, "git-ref-tag");
-    assertContains("badges: local copy names the branch", html, 'data-ref-copy="main"');
-    assertContains(
-      "badges: remote copy preserves its prefix",
-      html,
-      'data-ref-copy="upstream/trunk"',
-    );
-    assertContains("badges: tag copy names the tag", html, 'data-ref-copy="v1"');
-    assertNotContains(
-      "badges: canonical namespace is not a branch name",
-      html,
-      'data-ref-copy="refs/',
-    );
+    for (const ref of ["refs/heads/main", "refs/remotes/upstream/trunk", "refs/tags/v1"]) {
+      assertContains("badges: menu keeps exact ref", html, `&quot;ref&quot;:&quot;${ref}&quot;`);
+    }
+    assertNotContains("badges: no hover copy", html, "data-mb-copy");
     const longName = `feature/${"long-name-".repeat(30)}←<literal>`;
     const longChip = internals.renderRefBadges([
       { id: `refs/heads/${longName}`, name: longName, kind: "branch" },
     ]);
     assertContains(
-      "badges: visual clipping never truncates the payload",
+      "badges: visual clipping never truncates the name",
       longChip,
-      `data-ref-copy="${longName.replace(/</g, "&lt;").replace(/>/g, "&gt;")}"`,
+      `&quot;name&quot;:&quot;${longName.replace(/</g, "&lt;").replace(/>/g, "&gt;")}&quot;`,
     );
     assertEqual("badges: none renders nothing", internals.renderRefBadges([]), "");
   }
@@ -857,6 +890,13 @@ async function run() {
     });
     // A deleted file has nothing to open at the current revision.
     assertContains("file row: deleted is inert", deleted, "git-commit-file-inert");
+    // Its lines are the brief change line of its totals, the zero one left out (mb-ox6a).
+    assertContains(
+      "file row: a file's lines leave out a zero total",
+      deleted,
+      '<span class="change-line"><span class="change-line-stats"><span class="diff-stat-del">−9</span></span></span>',
+    );
+    assertNotContains("file row: no +0", deleted, "+0");
     assertNotContains("file row: deleted has no data-path", deleted, "data-path");
 
     const binary = internals.renderFileRow({
@@ -916,24 +956,33 @@ async function run() {
         html.indexOf("git-commit-revision", identityStart) < identityEnd &&
         html.indexOf("git-commit-refs", identityStart) < identityEnd,
     );
-    // The hover card says a commit's changes in the Diff summary's words and paint, through
-    // its parts and painter (formatters.js, `changeSummary` and `countPartsHtml`): the
-    // summary's order, A, D, M, the file count bold in the line's ink, each status count,
-    // number and letter, one span that is the status primitive and bold (mb-8iwn), and the
-    // commas and dots muted, each dot one item with the group before it (mb-khm6).
+    // The hover card says a commit's changes as a commit's page does: its size line, the file
+    // count bold in the line's ink (docs/design-system.md, "Change Size Line"), then the
+    // brief change line in the Diff summary's words and paint, through its parts and painter
+    // (formatters.js, `changeSummary` and `countPartsHtml`): the summary's order, A, D, M,
+    // each status count, number and letter, one span that is the status primitive and bold
+    // (mb-8iwn), and the commas and dots muted, each dot one item with the group before it
+    // (mb-khm6).
     const format = sandbox.MetabrowserFormatters.formatInteger;
+    assertEqual(
+      "tooltip: the size line says the file count",
+      sizeLineText(html),
+      "32 files changed",
+    );
+    assertContains(
+      "tooltip: the size line's count is a bold number in the line's ink",
+      html,
+      '<span class="change-size-line"><span class="summary-number">32</span> files changed</span>',
+    );
     assertEqual(
       "tooltip: the change line reads as the Diff summary's header",
       changeLineText(html),
-      `32 files changed·4 A, 28 M·+${format(1921)}−160`,
+      `4 A, 28 M·+${format(1921)}−160`,
     );
     assertContains(
       "tooltip: the change line, painted",
       html,
       '<span class="git-commit-change-line" aria-hidden="true">' +
-        '<span class="git-commit-change-group"><span class="git-commit-change-files">' +
-        '<span class="summary-number">32</span> files changed</span>' +
-        '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
         // The brief change line, the one component for "4 A, 28 M · +1,921 −160" (mb-9ekj).
         '<span class="change-line"><span class="change-line-group"><span class="change-line-statuses">' +
         '<span class="summary-status-count file-change-status" data-file-status="added">' +
@@ -954,7 +1003,7 @@ async function run() {
     assertContains(
       "tooltip: a screen reader is told the change line in words",
       html,
-      `<span class="visually-hidden">32 files changed: 4 added, 28 modified; ${format(1921)} lines added, 160 deleted</span>`,
+      `<span class="visually-hidden">4 added, 28 modified; ${format(1921)} lines added, 160 deleted</span>`,
     );
     // The same counts as the Diff summary says them, from the shared changed-files model.
     const said = sharedTree.describeChanges(
@@ -964,8 +1013,67 @@ async function run() {
     );
     assertEqual(
       "tooltip: the change line is the Diff summary's, word for word",
-      [changeLineText(html), html.includes(`>${said.label}</span>`)],
-      [said.text.replaceAll(" · ", "·").replace(" \u2212", "\u2212"), true],
+      [changeLineText(html), html.includes(`>${said.line.label}</span>`)],
+      [said.line.text.replaceAll(" · ", "·").replace(" \u2212", "\u2212"), true],
+    );
+    // Once the commit's size is known, the size line says it: what Git pushes and the
+    // patch's size, each in the Files navigation's size style with its unit.
+    const sized = internals.renderCommitSummary(detail, {
+      compact: true,
+      size: {
+        base: SHA_B,
+        head: SHA_A,
+        state: "measured",
+        reason: null,
+        commits: 1,
+        pushed_bytes: 58_270,
+        diff_bytes: 198_540,
+      },
+    });
+    assertEqual(
+      "tooltip: a known size is on the size line",
+      sizeLineText(sized),
+      "32 files changed · 56.9 KB compressed (193.9 KB raw diff)",
+    );
+    assertContains(
+      "tooltip: the size's numbers and units use the Files style",
+      sized,
+      '<span class="size">56.9 KB</span> compressed (<span class="size">193.9 KB</span> raw diff)',
+    );
+    assertContains("tooltip: the size says what it is", sized, "what Git pushes for this change");
+    const merged = internals.renderCommitSummary(detail, {
+      compact: true,
+      size: {
+        base: SHA_B,
+        head: SHA_A,
+        state: "measured",
+        reason: null,
+        commits: 3,
+        pushed_bytes: 900,
+        diff_bytes: 1_400,
+      },
+    });
+    assertEqual(
+      "tooltip: a merge says the commits it brings in",
+      sizeLineText(merged),
+      "3 commits · 32 files changed · 900 B compressed (1.4 KB raw diff)",
+    );
+    const unmeasured = internals.renderCommitSummary(detail, {
+      compact: true,
+      size: {
+        base: null,
+        head: SHA_A,
+        state: "unknown",
+        reason: "parent_unavailable",
+        commits: null,
+        pushed_bytes: null,
+        diff_bytes: null,
+      },
+    });
+    assertEqual(
+      "tooltip: a size that cannot be known is left out",
+      sizeLineText(unmeasured),
+      "32 files changed",
     );
     assertNotContains("tooltip: no old per-status tint", html, "git-commit-file-status-");
     assertNotContains("tooltip: no old units", html, "git-commit-stat-unit");
@@ -988,12 +1096,12 @@ async function run() {
     assertEqual(
       "tooltip: unknown counts stay unknown, each family kept",
       changeLineText(unknown),
-      "? files changed·? A, ? D, ? M·+?−?",
+      "? A, ? D, ? M·+?−?",
     );
     assertContains(
       "tooltip: unknown counts are said as unknown",
       unknown,
-      '<span class="visually-hidden">? files changed: ? added, ? deleted, ? modified; line counts unknown</span>',
+      '<span class="visually-hidden">? added, ? deleted, ? modified; line counts unknown</span>',
     );
     const one = internals.renderCommitTooltip({
       ...detail,
@@ -1006,12 +1114,9 @@ async function run() {
         deletions: 1,
       },
     });
-    assertEqual("tooltip: one file", changeLineText(one), "1 file changed·1 D·+0−1");
-    assertContains(
-      "tooltip: one file, in words",
-      one,
-      "1 file changed: 1 deleted; 0 lines added, 1 deleted</span>",
-    );
+    assertEqual("tooltip: one file", changeLineText(one), "1 D·−1");
+    assertEqual("tooltip: one file, its size line", sizeLineText(one), "1 file changed");
+    assertContains("tooltip: one file, in words", one, ">1 deleted; 1 line deleted</span>");
     const empty = internals.renderCommitTooltip({
       ...detail,
       stats: {
@@ -1023,7 +1128,8 @@ async function run() {
         deletions: 0,
       },
     });
-    assertEqual("tooltip: no files", changeLineText(empty), "0 files changed·+0−0");
+    assertEqual("tooltip: no files", changeLineText(empty), "0 lines");
+    assertEqual("tooltip: no files, its size line", sizeLineText(empty), "0 files changed");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
   await internals.renderCommitDetail({
@@ -1094,16 +1200,24 @@ async function run() {
   // on #479); the spaces around the dot are written, so it reads as one line without the
   // diff plugin's stylesheet too (B3 of review B on #479).
   assertContains(
-    "detail: summary holds the Diff summary's place, with the commit's totals",
+    "detail: summary holds the Diff summary's place, with the commit's line totals",
     previewHtml,
     '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">' +
       '<div class="diff-summary">' +
-      '<span class="diff-summary-group"><span class="diff-summary-files">' +
-      '<span class="summary-number">2</span> files changed</span> ' +
-      '<span class="summary-punctuation" aria-hidden="true">·</span>' +
-      '<span class="visually-hidden">, </span></span> ' +
       '<span class="change-line"><span class="change-line-stats"><span class="diff-stat-add">+5</span>' +
       '<span class="diff-stat-del">−1</span></span></span></div></div>',
+  );
+  // The file count is on the page header's size line, above the Diff summary's place
+  // (docs/design-system.md, "Change Size Line"), with the size once it is asked for.
+  assertContains(
+    "detail: the size line above the Diff summary says the file count",
+    previewHtml,
+    '<div class="git-commit-size page-header-line page-header-size"><span class="change-size-line">' +
+      '<span class="summary-number">2</span> files changed',
+  );
+  assertTrue(
+    "detail: the size line is above the Diff summary's place",
+    previewHtml.indexOf("git-commit-size") < previewHtml.indexOf("git-commit-diff-summary"),
   );
   assertNotContains(
     "detail: summary draws no change stats of its own",
@@ -1201,7 +1315,7 @@ async function run() {
       exact: true,
     },
   );
-  assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
+  assertNotContains("detail: no truncation note", previewHtml, "only some of them are shown");
   await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [], "outside commit"),
@@ -1233,7 +1347,7 @@ async function run() {
   });
   // A silently bounded diff reads as a complete one, which is the worse
   // failure — so the bound has to be stated, with the real total.
-  assertContains("detail: truncation is stated", previewHtml, "the diff below is bounded");
+  assertContains("detail: truncation is stated", previewHtml, "only some of them are shown");
   assertContains("detail: truncation names the total", previewHtml, "900");
   // A commit past the diff's bound on files: its summary is handed the whole commit's
   // totals, which the server counts before it caps the list, not the list's own (A3 of
@@ -1244,9 +1358,9 @@ async function run() {
     { files: 900, additions: 1, deletions: 1, exact: true },
   );
   assertContains(
-    "detail: a truncated commit's place says the whole commit's totals",
+    "detail: a truncated commit's size line says the whole commit's file count",
     previewHtml,
-    '<span class="diff-summary-files"><span class="summary-number">900</span> files changed</span>',
+    '<span class="change-size-line"><span class="summary-number">900</span> files changed',
   );
   // A detail with no count of files has no line, and its empty place takes no room.
   await internals.renderCommitDetail({
@@ -1911,11 +2025,14 @@ async function run() {
     assertContains("selection: switches to the newer commit", previewHtml, "second");
     assertTrue("selection: issued a request", fetchCount > before);
 
-    // Re-selecting a cached commit must not hit the network again.
-    const cachedBefore = fetchCount;
+    // Re-selecting a cached commit must not ask for its detail again. Its body's Markdown,
+    // which this stub never answers, is asked for again, as a failed request is.
+    const detailRequests = () =>
+      fetchRequests.filter((request) => request.url.startsWith("/api/git/commit/")).length;
+    const cachedBefore = detailRequests();
     rows[0].dispatch("click");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assertEqual("selection: cache avoids a refetch", fetchCount, cachedBefore);
+    assertEqual("selection: cache avoids a refetch", detailRequests(), cachedBefore);
 
     // A shell navigation owns the preview after it happens. A late Git
     // response must not replace the newer file/navigation surface.
@@ -3177,9 +3294,9 @@ async function run() {
   assertContains(
     "gate: helper failure has an actionable explanation",
     document.getElementById("tab-git").textContent,
-    "Could not load Git view controls. Refresh to try again.",
+    "Could not load Git view controls.",
   );
-  const retry = document.getElementById("tab-git").querySelector(".git-panel-refresh");
+  const retry = document.getElementById("tab-git").querySelector(".git-panel-retry");
   assertTrue("gate: helper failure exposes a real retry button", retry !== null);
   retry.dispatch("click");
   await new Promise(setImmediate);
@@ -3281,7 +3398,7 @@ async function run() {
     renderedDiffRevisions.length,
     renderedBeforeLanding,
   );
-  document.getElementById("tab-git").querySelector(".git-panel-refresh").dispatch("click");
+  document.getElementById("tab-git").querySelector(".git-panel-retry").dispatch("click");
   await new Promise(setImmediate);
   assetWaits.shift().resolve();
   for (
@@ -3353,8 +3470,8 @@ async function run() {
   assertEqual("cursor: rejected cursor is discarded", rejectedCursor.cursor, null);
   assertTrue("cursor: rejected cursor offers recovery", rejectedCursor.failed);
   assertEqual(
-    "cursor: rejected cursor renders refresh",
-    document.getElementById("tab-git").querySelectorAll(".git-panel-refresh").length,
+    "cursor: rejected cursor renders Retry",
+    document.getElementById("tab-git").querySelectorAll(".git-panel-retry").length,
     1,
   );
 
@@ -5215,7 +5332,7 @@ async function run() {
     await recovering;
     serveDetail(at(4));
 
-    // D1: Reload history after the refs moved, and the repository request fails, with a
+    // D1: Refresh after the refs moved, and the repository request fails, with a
     // 500 and with a rejection. The summary shows none of the old session's refs, its
     // diff stays, and the refresh that succeeds confirms the refs.
     for (const failure of ["500", "rejection"]) {
@@ -5228,7 +5345,7 @@ async function run() {
       );
       diffRenders = renderedDiffRevisions.length;
       comparisons = comparisonFetches.length;
-      // The next page says the history changed, which offers Reload history.
+      // The next page says the history changed, which offers Refresh.
       responses.set("/api/git/log", {
         httpStatus: 409,
         body: { error: "git history changed; refresh required", code: "history_stale" },
@@ -5236,8 +5353,8 @@ async function run() {
       await internals.loadNextPage(false);
       const reload = container
         .querySelector(".git-history-stale")
-        ?.querySelector(".git-history-reload");
-      assertTrue(`D1 ${failure}: Reload history is offered`, reload);
+        ?.querySelector(".git-history-refresh");
+      assertTrue(`D1 ${failure}: Refresh is offered`, reload);
       moved = true;
       responses.set(
         "/api/git/repo",
@@ -5264,7 +5381,7 @@ async function run() {
         comparisons,
       );
       serveAll();
-      container.querySelector(".git-panel-refresh")?.dispatch("click");
+      container.querySelector(".git-panel-retry")?.dispatch("click");
       for (let attempt = 0; attempt < 20 && !mountedRefs().includes("b0-now"); attempt += 1) {
         await tick();
       }
@@ -5372,8 +5489,8 @@ async function run() {
       notice?.textContent ?? "",
       "History changed since this list loaded.",
     );
-    const reload = notice?.querySelector(".git-history-reload");
-    assertTrue("stale: the notice offers a reload", reload);
+    const reload = notice?.querySelector(".git-history-refresh");
+    assertTrue("stale: the notice offers Refresh", reload);
     responses.set("/api/git/log", historyPage(0, [commit(SHA_B, [], "reloaded")], 1, SHA_A));
     reload?.dispatch("click");
     for (let tick = 0; tick < 50 && internals.stateForTests().commits.length === 0; tick += 1) {
@@ -5455,11 +5572,6 @@ async function run() {
     const tallyAge = container.querySelector(".git-history-summary-age");
     assertTrue("tally: age value is present", tallyAge !== null);
     assertEqual("tally: age value uses the shared formatter", tallyAge?.textContent, "2y");
-    assertContains(
-      "tally: age value carries the shared freshness tier",
-      tallyAge?.className,
-      "age-old",
-    );
     responses.delete("/api/git/summary");
   }
 
@@ -5481,7 +5593,11 @@ async function run() {
     responses.set(`/api/git/commit/${SHA_MISSING}`, notFound);
     await internals.selectCommit(SHA_MISSING);
     await tick();
-    assertContains("missing commit: a folder names the miss", previewHtml, "Commit not found");
+    assertContains(
+      "missing commit: a folder names the miss",
+      previewHtml,
+      "This commit was not found",
+    );
     assertContains(
       "missing commit: a folder says where it looked",
       previewHtml,
@@ -5619,7 +5735,11 @@ async function run() {
     endFetch(fetched("origin_unavailable"));
     await tick();
     await tick();
-    assertContains("unfetched commit: names the failed fetch", previewHtml, "Commit not fetched");
+    assertContains(
+      "unfetched commit: names the failed fetch",
+      previewHtml,
+      "Could not fetch this commit",
+    );
     assertContains("unfetched commit: says why", previewHtml, "The origin could not be read.");
     assertEqual(
       "unfetched commit: the failure is an alert",
@@ -5681,7 +5801,11 @@ async function run() {
       previewHtml,
       "Could not load this commit.",
     );
-    assertNotContains("refused commit: not called not found", previewHtml, "Commit not found");
+    assertNotContains(
+      "refused commit: not called not found",
+      previewHtml,
+      "This commit was not found",
+    );
     assertEqual("refused commit: state on the element", previewNode.dataset.state, "failed");
 
     // Inside the freshness window the controller asks for nothing: the view says the
@@ -5693,8 +5817,8 @@ async function run() {
     await internals.selectCommit(SHA_INSIDE);
     await tick();
     await tick();
-    assertContains("inside the window: names the miss", previewHtml, "Commit not found");
-    assertContains("inside the window: says what it knows", previewHtml, "as fetched");
+    assertContains("inside the window: names the miss", previewHtml, "This commit was not found");
+    assertContains("inside the window: says what it knows", previewHtml, "as last fetched");
     assertNotContains("inside the window: no fetch is claimed", previewHtml, "did not bring it");
     assertNotContains("inside the window: never said fetching", previewHtml, "Fetching");
     assertEqual("inside the window: the route is asked once", commitRequests(SHA_INSIDE), 1);
@@ -5911,21 +6035,6 @@ async function run() {
     await landing;
     assertEqual("kept: an answer requested before teardown is not kept", kept().entries, 0);
     comparisonResponder = async (revision) => ({ comparison_id: revision });
-  }
-
-  // ── Relative age ───────────────────────────────────────────
-  {
-    const now = Date.now() / 1000;
-    // One age vocabulary everywhere: the same abbreviations the file
-    // tree uses, produced by the same primitive, so a commit's age and a
-    // file's age are never spelled differently.
-    assertEqual("age: sub-minute", internals.relativeAge(now - 10), "<1m");
-    assertEqual("age: minutes", internals.relativeAge(now - 300), "5m");
-    assertEqual("age: hours", internals.relativeAge(now - 7200), "2h");
-    assertEqual("age: days", internals.relativeAge(now - 3 * 86400), "3d");
-    assertEqual("age: carries its freshness class", internals.ageClass(now - 300), "age-min");
-    // A missing or zero timestamp renders nothing rather than "56y ago".
-    assertEqual("age: zero renders empty", internals.relativeAge(0), "");
   }
 
   if (failures.length > 0) {

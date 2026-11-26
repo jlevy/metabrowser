@@ -1,10 +1,12 @@
 """Encoded answers of the Git routes that depend only on a repository's refs.
 
 ``/api/git/refs`` and ``/api/git/summary`` answer from the refs and the commits they reach,
-so two requests made while :func:`~metabrowser.git.ref_state.ref_state` names the same
-state get the same body. This keeps that body, serialized, under a key that names the
-route, the location, the state, and every request input the answer reads, and serves it
-with an entity tag made from the same key. A request whose ``If-None-Match`` names the tag
+and ``/api/source/refs``, the ref selector's listing, from the refs alone
+(``_refs_answer_key`` in ``source_routes.py``), so two requests made while
+:func:`~metabrowser.git.ref_state.ref_state` names the same state get the same body.
+This keeps that body, serialized, under a key that names the route, the location, the
+state, and every request input the answer reads, and serves it with an entity tag made
+from the same key. A request whose ``If-None-Match`` names the tag
 of a body this process keeps is answered 304.
 
 The tag is honored only for a body this process made, kept or just computed, never from
@@ -15,7 +17,11 @@ object that is gone.
 The bound is on both entries and bytes. Measured 2026-11-11 on this repository: the refs
 body is 17.9 KB and the summary 67 bytes. A repository with tens of thousands of refs
 makes a refs body of a few megabytes, which is kept unless it is over
-:data:`MAX_ENTRY_BYTES`.
+:data:`MAX_ENTRY_BYTES`. The selector's listing of 1,301 branches is 291 KB and of
+10,001 is 2.2 MB, so one past about 9,000 branches is served and not kept (measured
+2026-11-19), and about 5,200 where each is the head of a pull request, whose row is 403
+bytes against 245 (measured 2026-11-20); each filter typed into the selector is one small
+entry more.
 """
 
 from __future__ import annotations
@@ -31,8 +37,9 @@ from metabrowser.paths_safe import register_root_callback
 if TYPE_CHECKING:
     from starlette.requests import Request
 
-# Two routes, a handful of scopes and locations, and states that only move forward: a
-# state that moved is never asked for again, so most entries are reclaimed by count.
+# Three routes, a handful of scopes, filters, and locations, and states that only move
+# forward: a state that moved is never asked for again, so most entries are reclaimed by
+# count.
 MAX_ENTRIES = 64
 MAX_BYTES = 8 * 1024 * 1024
 # A body larger than this is served and not kept: one must not push out every other.
@@ -119,12 +126,20 @@ def keep_answer(request: Request, key: tuple[str, ...] | None, payload: dict[str
 
     if key is None:
         return JSONResponse(payload)
+    return keep_body(request, key, bytes(JSONResponse(payload).body))
+
+
+def keep_body(request: Request, key: tuple[str, ...] | None, body: bytes) -> Response:
+    """:func:`keep_answer` for a JSON *body* already encoded, as one encoded off the event
+    loop is: kept under *key* when there is one, on the loop, and answered with."""
+
+    if key is None:
+        return Response(body, media_type="application/json")
     headers = etag_headers(answer_tag(key))
-    response = JSONResponse(payload, headers=headers)
-    GIT_ANSWERS.put(key, bytes(response.body))
+    GIT_ANSWERS.put(key, body)
     if matches_if_none_match(request, headers["ETag"]):
         return Response(status_code=304, headers=headers)
-    return response
+    return Response(body, media_type="application/json", headers=headers)
 
 
 # Another root is another repository; nothing kept for the previous one applies.
@@ -139,5 +154,6 @@ __all__ = [
     "MAX_ENTRY_BYTES",
     "answer_tag",
     "keep_answer",
+    "keep_body",
     "kept_answer",
 ]

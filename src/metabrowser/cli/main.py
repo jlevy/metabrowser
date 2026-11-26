@@ -14,7 +14,7 @@ macOS. Every other operation is a mode flag on the same command:
     metab https://github.com/owner/repo/blob/main/README.md --show README.md
     metab https://github.com/owner/repo/pull/1 --checkout ~/src/repo  # borrow, not clone
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
-    metab ./notes --present            # hand a folder, file, or GitHub URL to the macOS app
+    metab ./notes --present            # open a folder, file, or GitHub URL in the app or a browser
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
     metab --doctor                     # validate all plugins
@@ -56,6 +56,7 @@ from metabrowser.cli.walk_cli import (
     validate_min_size,
 )
 from metabrowser.errors import CLIError
+from metabrowser.open_in import OPEN_IN_CHOICES, OPEN_IN_ENV
 from metabrowser.server_utils import MAX_TCP_PORT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
 
@@ -91,6 +92,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
             "checkout",
             "ref",
+            "open_event_log",
         }
     ),
     "walk": frozenset(
@@ -98,6 +100,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "fmt",
             "stream",
             "path",
+            "open_event_log",
             "detail",
             "max_depth",
             "max_files",
@@ -121,6 +124,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
             "checkout",
             "ref",
+            "open_event_log",
         }
     ),
     "show": frozenset(
@@ -134,6 +138,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
             "checkout",
             "ref",
+            "open_event_log",
         }
     ),
     "check-api": frozenset(
@@ -146,6 +151,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
             "checkout",
             "ref",
+            "open_event_log",
         }
     ),
     "no-serve": frozenset({"log_level", "checkout"}),
@@ -153,7 +159,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
     "doctor": frozenset({"plugins_dir", "as_json"}),
-    "present": frozenset({"path", "fmt", "dry_run", "app_bundle_id"}),
+    "present": frozenset({"path", "fmt", "dry_run", "app_bundle_id", "open_in"}),
     "recent": frozenset({"as_json"}),
     "recent-add": frozenset(),
     "recent-forget": frozenset(),
@@ -213,6 +219,8 @@ _OPTION_LABELS: dict[str, str] = {
     "ref": "--ref",
     "dry_run": "--dry-run",
     "app_bundle_id": "--app-bundle-id",
+    "open_in": "--open-in",
+    "open_event_log": "--event-log",
 }
 
 
@@ -223,6 +231,14 @@ def _version_callback(ctx: typer.Context, value: bool) -> None:
         # See metabrowser.build_version.
         typer.echo(display_version_line(ctx.info_name or "metab", __version__))
         raise typer.Exit()
+
+
+def _validate_open_in(value: str | None) -> str | None:
+    if value is not None and value not in OPEN_IN_CHOICES:
+        raise typer.BadParameter(
+            f"{value!r} is not one of {', '.join(OPEN_IN_CHOICES)}", param_hint="--open-in"
+        )
+    return value
 
 
 def _explicit_params(ctx: typer.Context) -> frozenset[str]:
@@ -362,11 +378,44 @@ def _names_existing_path(value: str) -> bool:
        rather than a refusal that describes a URL.
     3. Everything else is classified by the grammar, so an scp-like address, a
        malformed URL, or remote-helper syntax that names nothing on disk is refused
-       or acquired exactly as the grammar says.
+       or acquired exactly as the grammar says. Before that, a URL typed without its
+       ``https://``, such as ``github.com/octo/demo``, is written in full
+       (:func:`_root_in_full`).
     """
     if value == "" or _EXPLICIT_URL.match(value) is not None:
         return False
     return os.path.lexists(value)
+
+
+# The host that begins an argument with no scheme, such as ``github.com`` in
+# ``github.com/octo/demo``: letters, digits, and hyphens in two or more labels joined by
+# dots, then a ``/`` or the end. No ``@`` or ``:``, so no user name or port is read.
+_LEADING_HOST = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?=/|$)")
+
+
+def _root_in_full(value: str) -> str:
+    """*value*, or the ``https://`` URL it plainly is.
+
+    An argument that names nothing on disk, begins with a host (``_LEADING_HOST``), and
+    that a provider's URL reducer claims once ``https://`` is written before it, such as
+    ``github.com/octo/demo``, is that URL: as a path it could only be "nothing is at".
+    The reducer then accepts or refuses it as it would the full URL. A path that exists
+    is still that path (rule 2 of :func:`_names_existing_path`), so a folder named
+    ``github.com/octo/demo`` in the working directory is served as before. Core names no
+    host: which hosts are a provider's is its reducer's to say.
+
+    Only a host is completed, as the macOS app's Open URL… completes it
+    (``OpenURLEntry.corrected`` in ``apps/macos/Sources/ShellCore/Folders/OpenURLPanel.swift``):
+    ``octo/demo`` is as much a relative path as a repository, so it stays a path.
+    """
+    if _LEADING_HOST.match(value) is None or os.path.lexists(value):
+        return value
+    from metabrowser.cache.providers import url_reducers
+
+    in_full = f"https://{value}"
+    if any(reducer.reduce(in_full) is not None for reducer in url_reducers()):
+        return in_full
+    return value
 
 
 def _local_root(ctx: typer.Context, value: str) -> Path:
@@ -407,6 +456,7 @@ def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | 
     """Return a local path or a classified Git source, or fail the invocation."""
     if root is None:
         _root_required(ctx, mode)
+    root = _root_in_full(root)
     if _is_plain_local_root(root) or _names_existing_path(root):
         return _local_root(ctx, root)
     from metabrowser.cache.providers import url_reducers
@@ -499,6 +549,7 @@ _app = typer.Typer(add_completion=False)
         "metab file:///path/to/repo.git --no-serve\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
         "metab ./notes/report.md --present\n\n"
+        "metab --event-log\n\n"
         "metab --plugins\n\n"
         "Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md"
     ),
@@ -549,6 +600,15 @@ def _metab(
         "serving and to --api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
+    ),
+    open_event_log: bool = typer.Option(
+        False,
+        "--event-log",
+        help="Open Metabrowser's own event log: ROOT is the directory a served metab "
+        "writes it to (under METABROWSER_STATE_DIR, else XDG_STATE_HOME/metabrowser, else "
+        "~/.local/state/metabrowser), and serving opens its newest segment as spans and "
+        "latencies. Applies when serving and to --api, --show, --walk, and --check-api.",
+        rich_help_panel=_PANEL_SHARED,
     ),
     # ── Mode selectors ─────────────────────────────────────────────
     walk: bool = typer.Option(
@@ -641,7 +701,8 @@ def _metab(
     doctor: bool = typer.Option(
         False,
         "--doctor",
-        help="Validate every discovered plugin; exit non-zero on any problem.",
+        help="Validate every discovered plugin, exiting non-zero on any problem, and report "
+        "GitHub CLI's path, version, account, and scopes.",
         rich_help_panel=_PANEL_MODES,
     ),
     present: bool = typer.Option(
@@ -658,7 +719,8 @@ def _metab(
         False,
         "--recent",
         help="List the recent targets: the folders and repositories opened lately, "
-        "most recent first. Every serve records its ROOT.",
+        "most recent first. A serve records its ROOT when run at a terminal or with "
+        "METABROWSER_RECORD_RECENT=1.",
         rich_help_panel=_PANEL_MODES,
     ),
     recent_add: bool = typer.Option(
@@ -904,8 +966,8 @@ def _metab(
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="Resolve ROOT and print what --present would hand the app, without looking "
-        "for the app or sending anything.",
+        help="Resolve ROOT and print where --present would open it and why, looking the "
+        "app up but sending nothing and starting no server.",
         rich_help_panel=_PANEL_PRESENT,
     ),
     app_bundle_id: str | None = typer.Option(
@@ -914,6 +976,18 @@ def _metab(
         metavar="ID",
         help="The app to hand ROOT to, by bundle identifier, instead of the release build "
         "and then the development build. Env: METABROWSER_APP_BUNDLE_ID.",
+        rich_help_panel=_PANEL_PRESENT,
+        show_default=False,
+    ),
+    open_in: str | None = typer.Option(
+        None,
+        "--open-in",
+        metavar="WHERE",
+        callback=_validate_open_in,
+        help="Where --present opens ROOT: auto (the app when an installed build takes it, "
+        "otherwise a browser on a metab server started for it), app (the app or "
+        f"nowhere), or browser. Env: {OPEN_IN_ENV}; otherwise open_in in config.yml; "
+        "default auto.",
         rich_help_panel=_PANEL_PRESENT,
         show_default=False,
     ),
@@ -939,7 +1013,8 @@ def _metab(
     or checked at the commit it selects under the untrusted profile; --no-serve
     only acquires it into the cache. Diagnostics: --check-api, --plugins,
     --plugin, --doctor.
-    Remote serving: --remote. The macOS app: --present hands it ROOT.
+    Remote serving: --remote. --present opens ROOT in the macOS app or a browser.
+    --event-log opens Metabrowser's own event log.
     Recent targets: --recent, --recent-add, --recent-forget, --recent-clear.
     """
     for variable, directory in (
@@ -978,6 +1053,15 @@ def _metab(
     explicit = _explicit_params(ctx)
     _check_option_applicability(ctx, mode, explicit)
     _check_format_applicability(ctx, mode, fmt, explicit)
+    if open_event_log:
+        if root is not None:
+            ctx.fail("--event-log names the folder to open; ROOT is not used with it")
+        from metabrowser.cli.event_log_cli import event_log_directory, newest_segment
+
+        log_directory = event_log_directory()
+        root = str(log_directory)
+        if mode == "serve" and not path:
+            path = newest_segment(log_directory)
 
     if mode == "serve":
         # Only the macOS app's start, held by its stdin, says the client is on this machine;
@@ -1186,10 +1270,16 @@ def _metab(
                 checkout=checkout,
             )
     elif mode == "present":
-        if dry_run and "app_bundle_id" in explicit:
-            ctx.fail("--app-bundle-id not valid with --present --dry-run, which looks for no app")
+        if open_in == "browser" and "app_bundle_id" in explicit:
+            ctx.fail("--app-bundle-id not valid with --open-in browser, which looks for no app")
+        # A sandbox rule for `metab --present` matches whatever follows it, so an option
+        # that chose another configuration directory would let the command it limits lift
+        # `present_browser: false` (`open_in.py` `browser_delivery_allowed`).
+        if "config_dir" in explicit:
+            ctx.fail("--config-dir not valid with --present, so no option lifts present_browser")
         if root is None:
             _root_required(ctx, mode)
+        root = _root_in_full(root)
         from metabrowser.cli.present import run_present
 
         run_present(
@@ -1199,6 +1289,7 @@ def _metab(
             dry_run=dry_run,
             as_json=fmt == "json",
             app_bundle_id=app_bundle_id,
+            open_in=open_in,
         )
     elif remote is not None:
         _reject_root(ctx, root, mode)

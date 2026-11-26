@@ -33,6 +33,11 @@
        tests/test_macos_app_pins.py checks that it is set. -->
   <key>MetabrowserOpensURLs</key>      <true/>
 
+  <!-- The oldest metab this build runs, MetabRequirement.minimumRelease, which
+       tests/test_macos_app_pins.py holds it to. metab's doctor reads it from the app it
+       finds, so Terminal can say whether its metab is new enough for the app. -->
+  <key>MetabrowserMinimumMetab</key>   <string>0.13.0</string>
+
   <!-- Folders dropped on the Dock icon or opened with Open With. Declaring them also lets
        NSDocumentController list them as recents. open -a passes files too, undeclared. -->
   <key>CFBundleDocumentTypes</key>
@@ -45,13 +50,14 @@
     </dict>
   </array>
 
-  <!-- The app is the responsible process for its server, so the server's reads prompt in its name. -->
+  <!-- The app is the responsible process for its server, so the server's reads prompt in its name.
+       The app writes to Downloads itself only for an Open link's file that no app opens (OpenFileSaves). -->
   <key>NSDesktopFolderUsageDescription</key>
   <string>Metabrowser shows the folders you open from your Desktop.</string>
   <key>NSDocumentsFolderUsageDescription</key>
   <string>Metabrowser shows the folders you open from Documents.</string>
   <key>NSDownloadsFolderUsageDescription</key>
-  <string>Metabrowser shows the folders you open from Downloads.</string>
+  <string>Metabrowser shows the folders you open from Downloads, and saves files there that no app on this Mac opens.</string>
   <key>NSRemovableVolumesUsageDescription</key>
   <string>Metabrowser shows folders you open on removable drives.</string>
   <key>NSNetworkVolumesUsageDescription</key>

@@ -449,7 +449,7 @@ try {
   );
 
   // 9. A key that opens an item: Control-N or Control-P walks the stack from #7 to its
-  // neighbour, which the Pulls tab reveals, or, when the list does not hold it, names. #7
+  // neighbour, which the Pulls tab reveals, under All when its filter leaves it out. #7
   // ends its stack, so one of the two goes nowhere. On a page that reached #7 by Forward on
   // a server that had just started, neither chord walked, with or without this change
   // (2026-11-15), so the walk starts from the page's own address. The chords are bound
@@ -485,30 +485,75 @@ try {
   }
   const walked = Number((await evaluate("location.pathname")).split("/")[2]);
   phase("stack walk");
-  const listed = await evaluate(
-    `document.querySelector(${JSON.stringify(pullRow(walked))}) !== null`,
+  // #7's one neighbour in its stack is #8, which the stand-in has merged
+  // (tests/github_pull_fixture.py), and the list opens under Open, which leaves it out: the
+  // list moves to All, which reveals it like any other row, with nothing noted.
+  check("a stack key from #7 walks to merged #8", walked === 8, JSON.stringify({ walked }));
+  await revealed(`a stack key to #${walked}`, pullRow(walked), "pulls");
+  const LIST_FILTER = `document.querySelector("#tab-pulls .github-pulls-list")?.dataset.filter ?? null`;
+  const listFilter = await evaluate(LIST_FILTER);
+  check(
+    `a stack key to #${walked}: the list moves to All`,
+    listFilter === "all",
+    JSON.stringify({ walked, listFilter }),
   );
-  if (listed) {
-    await revealed(`a stack key to #${walked}`, pullRow(walked), "pulls");
-  } else {
-    await waitFor(
-      `[...document.querySelectorAll(".github-pulls-outside")].some((n) => n.textContent.includes("#${walked} "))`,
-      `the Pulls tab names #${walked}`,
-    );
-    const pane = await evaluate(PANE(pullRow(walked)));
-    check(
-      `a stack key to #${walked}: Pulls is in front`,
-      pane.tab === "pulls",
-      JSON.stringify(pane),
-    );
-    check(
-      `a stack key to #${walked}: the list says it does not hold it`,
-      pane.notes.some((note) => note.startsWith(`#${walked} is not`)),
-      JSON.stringify(pane),
-    );
-    check(`a stack key to #${walked}: focus stays`, !pane.focusInNav, JSON.stringify(pane));
-  }
   await shot("control-n");
+
+  // 9b. The same walk from #7's row with focus on it, as J and K leave it. The move to All
+  // draws the list again, so the row that had focus goes; #8's row takes focus in its place,
+  // rather than focus falling to the page's body.
+  await load(`${base}/pull/7`);
+  await revealed("a pull request's address, before a walk from its row", pullRow(7), "pulls");
+  await waitFor(
+    `typeof window.metabrowser?.debug?.pullPage()?.hasStack === "function" && window.metabrowser.debug.pullPage().hasStack()`,
+    "the page knows its stack, for a walk from its row",
+  );
+  const focusSeven = `(() => { const row = document.querySelector(${JSON.stringify(pullRow(7))}); row?.focus(); return row !== null && document.activeElement === row; })()`;
+  const focusedDeadline = Date.now() + STEP_MS;
+  for (let turn = 0; !(await evaluate(walkedAway)); turn += 1) {
+    if (Date.now() > focusedDeadline) {
+      await waitFor(walkedAway, "Control-N or Control-P walks the stack from #7's focused row");
+    }
+    check(`#7's row takes focus before a walk (turn ${turn})`, await evaluate(focusSeven));
+    await press(turn % 2 === 0 ? "n" : "p", {
+      code: turn % 2 === 0 ? "KeyN" : "KeyP",
+      keyCode: turn % 2 === 0 ? 78 : 80,
+      modifiers: 2,
+    });
+    await chrome.waitFor(walkedAway, 1000).catch(() => {});
+  }
+  phase("stack walk from a focused row");
+  const eightFocused = `(() => { const row = document.querySelector(${JSON.stringify(pullRow(8))}); return row !== null && document.activeElement === row; })()`;
+  await chrome.waitFor(eightFocused, STEP_MS).catch(() => {});
+  const fromRow = await evaluate(PANE(pullRow(8)));
+  const fromRowDetail = JSON.stringify({
+    ...fromRow,
+    path: await evaluate("location.pathname"),
+    filter: await evaluate(LIST_FILTER),
+    active: await evaluate(
+      "document.activeElement?.className + ' ' + (document.activeElement?.dataset?.number ?? '')",
+    ),
+  });
+  check(
+    "a stack key from #7's focused row: the list moves to All",
+    (await evaluate(LIST_FILTER)) === "all",
+    fromRowDetail,
+  );
+  check(
+    "a stack key from #7's focused row: #8 is selected and in view",
+    fromRow.row?.selected === true && fromRow.row?.inView === true,
+    fromRowDetail,
+  );
+  check(
+    "a stack key from #7's focused row: #8's row has focus",
+    await evaluate(eightFocused),
+    fromRowDetail,
+  );
+  check(
+    "a stack key from #7's focused row: nothing is noted",
+    fromRow.notes.length === 0,
+    fromRowDetail,
+  );
 
   const STACK = `#tab-pulls .github-pulls-stack-row[data-stack="286"]`;
   const stackState = () =>
@@ -610,13 +655,13 @@ try {
   await load(`${base}/pull/106`);
   await revealed("a pull request with 250 changed files", pullRow(106), "pulls");
   await evaluate(`document.querySelector(${JSON.stringify(pullRow(106))}).focus()`);
-  // Right goes to the row's change line, and Right there opens its changed files (mb-d0a3).
+  // Right on the row opens its changed files, as on a folder's, and focus stays on the row: a
+  // pull request's three lines are one item and one stop (mb-1z7j).
   await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
   await waitFor(
-    `document.activeElement?.matches?.('#tab-pulls .github-pulls-change[data-number="106"]') === true`,
-    "Right goes to #106's change line",
+    `document.querySelector(${JSON.stringify(pullRow(106))})?.getAttribute("aria-expanded") === "true"`,
+    "Right opens #106's changed files",
   );
-  await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
   const FILE_ROW = (name) =>
     `#tab-pulls a.github-pull-file-row[href="/pull/106/files/src/app/plugins/github/${name}"]`;
   const clicked = FILE_ROW("mod_040.py");

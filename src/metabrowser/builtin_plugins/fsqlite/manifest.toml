@@ -1,0 +1,78 @@
+[plugin]
+name = "fsqlite"
+display_name = "fsqlite"
+version = "0.0.1"
+sdk_version = "0.8"
+python_requires = ["starlette"]
+# The views draw with the SQLite plugin's exports (mb.plugins.load("sqlite") in
+# store-view.js and store-tables.js): its Info model and drawing, its overview and Schema
+# views, and through them the table plugin's view of one table. The table plugin's routes
+# serve this plugin's [[table_source]].
+requires = ["sqlite", "table"]
+
+# An fsqlite store (https://github.com/jlevy/fsqlite): a directory holding fsqlite.json,
+# whose `current` file names an immutable snapshot under snapshots/. A directory is not a
+# kind, so the marker is: `folder_marker` badges the store's folder in the tree, and
+# opening the marker opens the store. The JSON predicates keep a file merely named
+# fsqlite.json the structured kind's. The priority claims it ahead of `structured`, which
+# matches every `.json`. Every read is a guest's (store.py): no lease, no lock, and the
+# snapshot read with `immutable=1` in a reader process.
+#
+# A container: its children are the snapshot's tables, each at <marker>/<segment> as a
+# database's are (source.py, the SQLite source over the snapshot). The marker's `.json`
+# extension is not a container extension, which would put a chevron on every JSON file,
+# so the row has its chevron once selected.
+[[kind]]
+id = "sqlite-store"
+match = { folder_marker = "fsqlite.json", json_has_key = "format", json_value_prefix = "fsqlite" }
+priority = 10
+container = { children = "children" }
+
+# The store's overview, its tables by group, or at a table's address the table itself,
+# drawn by the table plugin: as the SQLite kind's Table view.
+[[view]]
+kind = "sqlite-store"
+id = "table"
+label = "Table"
+key = "v"
+default = true
+container_class = "content-body table-view-host"
+printable = true
+print_profile = "table"
+render_runtime = "client"
+
+# The snapshot's DDL, every object's or one table's.
+[[view]]
+kind = "sqlite-store"
+id = "schema"
+label = "Schema"
+key = "s"
+container_class = "content-body sqlite-schema-host"
+render_runtime = "client"
+
+[[view]]
+kind = "sqlite-store"
+id = "info"
+label = "Info"
+key = "i"
+container_class = "content-body sqlite-info-host"
+render_runtime = "client"
+
+[[data_hook]]
+route = "info"
+sidekick = "metabrowser.builtin_plugins.fsqlite.sidekick:info_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "schema"
+sidekick = "metabrowser.builtin_plugins.fsqlite.sidekick:schema_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "children"
+sidekick = "metabrowser.builtin_plugins.fsqlite.sidekick:children_handler"
+methods = ["GET"]
+
+[[table_source]]
+kind = "sqlite-store"
+adapter = "metabrowser.builtin_plugins.fsqlite.source:adapter"

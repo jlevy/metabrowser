@@ -22,13 +22,13 @@ it, may read them, and an installed plugin uses the SDK.
 | Area | Modules |
 | --- | --- |
 | Loading and the SDK | `asset-loader.js`, `plugin-sdk.js`, `plugin-sdk-views.js`, `perf.js` |
-| Navigation and the pane | `navigation.js` (routes and the pane’s claim lifecycle), `view-composition.js`, `view-state.js` |
+| Navigation and the pane | `navigation.js` (routes and the pane’s claim lifecycle), `view-composition.js`, `view-header.js`, `view-state.js`, `nav-collapse.js` (hiding the navigation pane) |
 | Stores | `resource-context.js`, `directory-totals-store.js`, `inventory-scope.js`, `known-file-catalog.js`, `catalog-feed.js` |
 | Tree and filters | `tree-expansion.js`, `tree-keyboard-navigation.js`, `tree-filter-model.js`, `filter-state.js`, `filter-controls.js`, `pending-tally-diagnostics.js` |
 | Main tabs | `main-tabs.js`, `git-panel.js` with `git-graph.js` and `git-history-window.js`, `pulls-nav.js`, `pull-route.js` |
-| Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js` |
+| Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js`, `menus.js` (how every menu closes) |
 | Quick Search | `search-controller.js`, `search-palette.js`, `file-fuzzy-match.js` |
-| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
+| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `revision-ages.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
 | Shared rendering | `formatters.js`, `icons.js`, `charts.js`, `file-type-taxonomy.js`, `inert-html.js`, `source-append.js`, `theme-state.js`, `document-width.js`, `request-error.js`, `contribution-registry.js` |
 
 `types.d.ts` declares the globals and the SDK. `tsconfig.json` type-checks every module
@@ -102,7 +102,17 @@ When the active renderer’s render promise and optional `ready` promise settle,
 moves the staged content and its disposers into the pane in one step.
 If navigation moves on first, the shell runs the staged disposers at once, disposes a
 late handle when it arrives, and never lets that mount regain the pane.
-Nondefault tabs still mount lazily, after installation.
+Nondefault tabs still mount lazily, on their first selection.
+The staged tab bar takes a choice from the moment it is drawn, before the hold: a tab
+chosen during it, by a click on the staged bar or by name (`showPreviewTab`), mounts
+then, and the commit brings it to the front in place of the first view.
+A view asked for by name before the stage exists is the view the render opens in, and a
+tab picked on the bar the reader sees reaches the stage only when the stage is the same
+file’s, as Load more’s render is.
+The tab functions are the compositor’s (`bindTabs`, `selectTab`, `setActiveView` and
+`stagedFile` in `view-composition.js`), which reach a host’s own views only, since a
+stage sits inside the pane.
+`tests/dom/view-tab-hold-session.js` runs these orders against the production functions.
 
 ### Composition and Disposal
 
@@ -114,15 +124,26 @@ list. Replacing the pane disposes that list, and `releaseShortcutsWithin` releas
 plugin key still attached inside the container.
 The same module runs in the browserless sessions in `tests/dom/`.
 
+`view-header.js` builds the header `renderFile` draws above a file’s or a folder’s views
+([View Headers](../../design-system.md#view-headers)) over helpers `app.js` passes it,
+so its sizes, counts, ages, and icons are the tree rows’ own.
+It is an on-demand bundle, not a startup script: `loadViewComposition` fetches it beside
+the compositor and the SDK’s view helpers, and a header is drawn only after that.
+The server comment on its bundle in `server.py` records what it costs.
+
 A retained pull-request page goes through `cancelPending()` first: its subtree turns
 inert while the next view prepares, and `dispose()` follows the actual replacement.
 
 ### Plugin Assets
 
-The server writes `MetabrowserPluginHost.configureAssets` with each kind’s plugin
-descriptors (`_build_plugin_asset_config_block`), so no plugin asset is a startup
-dependency. The first selection of a kind, or a call to `ensureKindAssets`, loads its
-plugins once: styles in parallel, then extra scripts in manifest order, then `index.js`.
+The server writes `MetabrowserPluginHost.configureAssets` with each plugin’s assets by
+name and the plugins each kind’s views come from (`_build_plugin_asset_config_block`),
+so no plugin asset is a startup dependency.
+The first selection of a kind, or a call to `ensureKindAssets`, loads its plugins once:
+styles in parallel, then extra scripts in manifest order, then `index.js`.
+`metabrowser.plugins.load(name)` shares that load and resolves to the plugin’s
+`index.js` exports, which is how a plugin reaches a provider it declares in `requires`,
+and how a plugin with no kind of its own is reached at all.
 [Plugin Authoring](../../plugins.md#plugin-asset-lifecycle) states the guarantees a
 plugin relies on.
 
@@ -130,8 +151,9 @@ plugin relies on.
 
 `window.metabrowser` is defined by `plugin-sdk.js`, eager, and extended by
 `plugin-sdk-views.js` with the view-phase helpers before any plugin code runs, by
-`filter-controls.js` with `filterControls`, and by the built-in folder and Markdown
-plugins with `folderOverview` and `builtins.markdown`.
+`filter-controls.js` with `filterControls`, and by the built-in folder plugin with
+`folderOverview`. A plugin’s helpers for other plugins are its module’s exports, which
+`plugins.load` answers, never a property of this object.
 [Plugin Authoring](../../plugins.md#browser-sdk) documents it.
 It is also the one console entry point, so diagnostics extend it instead of adding
 globals:
@@ -202,14 +224,30 @@ show it.
 - **Eager:** a blocking `<script>` in the shell, for code without which the first render
   is wrong. The shell template in `server.py` lists them, and the list stays small.
   `PIN_STARTUP_SCRIPTS` and `PULL_PAGE_STARTUP_SCRIPTS` add one script each to a pinned
-  revision’s shell and a pull-request address’s shell.
+  revision’s shell and a pull-request address’s shell, which the startup check reports
+  beside the budget without gating.
 - **Prefetched:** fetched after first paint, when the page is idle and before anything
   asks, for code that is small relative to how likely it is to be wanted and visibly
   late otherwise. Mustache, then Highlight.js, start through `whenIdle` with
   `PREFETCH_IDLE_TIMEOUT_MS` as the ceiling; a plugin that needs Mustache sooner demands
   the same `mustache` bundle, so it loads once.
+  A pull request’s page whose description carries a guide prefetches Guided Review’s
+  module, `builtin_plugins/github/guided-review.js`, with the guide’s first step, and a
+  stack’s page with a guide does too (`readGuideAhead` in `pull-page.js` and
+  `stack-page.js`; the cost is in `guide-reads.js`).
 - **On demand:** fetched the first time something needs it, for code that is large,
   narrowly used, or both: the bundles in `on_demand_script_bundles` in `server.py`.
+- **Inline, page-specific:** written into the shell of the pages that use it and of no
+  other, for small code only those pages need before their first paint:
+  `mirror-heading.js` on a served mirror’s page (`_mirror_heading_script` in
+  `server.py`, read from disk once).
+  A plain folder pays nothing for it, but a page that has it pays its bytes in its HTML,
+  outside the startup-script gate’s count of requested scripts.
+  A github.com checkout’s shell also carries more in its HTML than a plain folder’s, its
+  repository context and the Git tabs, so `devtools/check_startup_scripts.py` reports
+  how much more the application sends for it, beside the budget, without gating it.
+  The View on GitHub button is in the on-demand view helpers
+  (`static/plugin-sdk-views.js`), which every page that draws one has loaded by then.
 
 Data follows the same rule: a bulk payload one surface reads is on demand.
 A pull request’s page prepares the initial Changes comparison, which its header’s Diff
@@ -222,6 +260,14 @@ A library that installs a global loads through `asset-loader.js`. The server pub
 the bundles as `METABROWSER_ASSET_BUNDLES`, and `ensureAsset(name)` appends a bundle’s
 scripts in order, since a Chart.js plugin is inert without `Chart`. A loaded set and an
 in-flight map make concurrent callers share one load.
+A bundle can instead be one ES module, `{module: url}`, for a library whose build
+imports its own parts by relative specifiers: `ensureModule(name)` imports it once and
+resolves to its namespace, and the browser fetches only the parts a caller reaches.
+Mermaid is one, and its chunks are fetched unstamped beside the stamped entry, and
+answered immutable all the same, because each one’s name is a hash of its content
+(`_SELF_NAMED_STATIC` in `server.py`). KPress’s diagram renderer and controls are two
+more, `kpress-diagrams` and `kpress-diagram-controls`, published at the stamped URLs a
+render’s manifest names, so they share the document’s one KPress runtime.
 KPress loads through `loadKpressAssets` in `static/plugin-sdk.js` instead: its
 stylesheets first, then the import map the KPress asset manifest carries, when it has
 one, then the manifest’s module and classic entry points as scripts, with its
@@ -279,17 +325,25 @@ them; the note beside the budget says why.
 | --- | --- | --- | --- |
 | Core shell modules | Eager | The shell template’s script tags in `server.py` | The note beside the startup gates in `performance-budgets.toml` |
 | Search, Help, keyboard, Git, and Pulls tools | On demand, once the first tree is usable; Pulls only in a shell that drew the tab | `shell-tools` in `on_demand_script_bundles` | The same note |
+| The event log’s reporter and its Details | On demand, with the shell’s tools once the first tree is usable, or at a page’s first wait or Details before then; requests answered before it loaded are read from Resource Timing | `event-reports`, and the last script of `shell-tools`, in `on_demand_script_bundles` | The comment beside the bundle in `server.py` |
+| How every menu closes | On demand, with the shell’s tools once the first tree is usable, or at the first menu opened before then | `menus.js` in `shell-tools`, and the SDK’s `menus.dismissible` in `filter-controls.js`, which forwards to it | The comment beside `menus_url` in `server.py` |
 | The plugin shortcut queue | Eager, since a plugin can attach a key before the registry exists | `queueShortcut` in `plugin-sdk.js` | The comment beside it |
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| A file’s and a folder’s view header | On demand, beside the view compositor and the SDK view helpers | `view-header` | The comment beside the bundle in `server.py` |
+| A page’s file watches on its event stream | On demand, at a view’s first `metabrowser.watchFile` (a table, or a container whose children the tree read); `app.js` keeps only the stream’s connection and forwards `file.changed` | `file-watches` in `on_demand_script_bundles` | The comment beside the bundle in `server.py`; the startup budget had 295 bytes left when it was written (2026-11-20) |
 | Pull-request routes and page host | Eager at a `/pull/` address; on demand otherwise | `PULL_PAGE_STARTUP_SCRIPTS`, `pull-route` | exp-037 |
+| The watch on a revision’s file ages, and the clause it adds to a filtered count | On demand, the first time a response says the ages are not all in (`dating`, `partial`, `failed`); not offered to a page whose Git cannot read them | `revision-ages` in `on_demand_script_bundles`, when the pin’s Git can date files | The comment beside the bundle in `server.py`: it was a startup script of every pin’s shell, 4,940 bytes (1,896 gzipped) |
 | GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it | `PIN_STARTUP_SCRIPTS` | exp-037 |
 | The pin guard | Inline on a pin’s shell, before any script can fetch. On demand on the working-tree page of a checkout, with the ref selector that can make its server serve a revision, so a folder’s first paint carries none of it | `_SOURCE_PIN_GUARD_SCRIPT`; `source-ref-selector` in `on_demand_script_bundles` | The comment beside the bundle |
 | Chart.js and its plugins | On demand, at the first chart | `chart` | The comment beside it |
+| Mermaid, and KPress’s modules that draw its diagrams | On demand, at the first rendered document or `.mmd` file with a diagram; Mermaid then fetches only the chunks of the diagram types drawn | `mermaid`, `kpress-diagrams`, and `kpress-diagram-controls` (module bundles), and `drawDiagrams` in `builtin_plugins/markdown/place-rendered.js` | The comment beside the bundle in `server.py`, and `TOTAL_CAP_BYTES` in `devtools/vendor_assets.py` |
 | The changed-files tree every diff and the Pulls tab draw with | On demand: a diff asks beside its comparison, a pull request’s page warms it with the diff plugin on every tab, for its header’s Diff summary and for Changes, and the Pulls tab asks as it mounts | `changed-files-tree`, reached through `metabrowser.loadChangedFilesTree()` | The comment beside the bundle in `server.py` |
 | The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | The comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | Inert Markdown render with its table of contents, and the step that places a render | On demand: the first at the first inert render, the second at the first Markdown render | `builtin_plugins/markdown/place-rendered.js` | exp-037 and the comment at its head |
 | A refused Markdown render’s source and notice | On demand, at a Markdown view’s first refused render | `builtin_plugins/markdown/rendered.js` | The comment beside the import |
-| A pull request’s rendered Markdown layer | On demand, beside a comparison that names a rendered route | `markdownLayer` in `builtin_plugins/diff/index.js` | The comment beside it |
+| A pull request’s rendered layer for Markdown, YAML, and JSON | On demand, beside a comparison that names a rendered route; the structured plugin’s tree, through `plugins.load("structured")`, with the first screen’s prefetch and when the first YAML or JSON file is added | `markdownLayer` and `prefetchMarkdown` in `builtin_plugins/diff/index.js`, `ensureStructured` in `builtin_plugins/diff/diff-markdown.js` | The comments beside `markdownLayer` and `ensureStructured` |
+| The table view: the table plugin’s module and stylesheet | On demand, at the first file of a kind with a Table view; the delimited plugin starts the load as its own module is evaluated, ahead of the view’s render, since its kind always opens in the Table view | `loadTable` in `builtin_plugins/delimited/index.js`, through `mb.plugins.load("table")` | 23.6 KB, 10.4 KB, and 2.9 KB compressed (gzip -9) for the view, its model, and its stylesheet (2026-11-20), more than a page that shows no table should carry; the comment at the head of `builtin_plugins/delimited/index.js` |
+| A store’s views: the fsqlite plugin’s modules and the SQLite plugin’s Info, Table, and Schema views with their models and stylesheet | On demand, at the first fsqlite store selected; each of the store’s views asks for the SQLite plugin’s exports as it mounts, and its Table view at a table’s address the table plugin’s, as the SQLite kind’s does | `mountStoreInfo` in `builtin_plugins/fsqlite/store-view.js` and `mountStoreTable` and `mountStoreSchema` in `builtin_plugins/fsqlite/store-tables.js`, through `mb.plugins.load("sqlite")` | 4.7 KB compressed for the fsqlite plugin’s four modules and 9.7 KB for the SQLite plugin’s six files, its stylesheet included (gzip at level 9, 2026-11-20), drawn only for a store or a database |
 
 Measured on 2026-10-01 as compressed bytes saved, these would move next if the budget
 tightens:

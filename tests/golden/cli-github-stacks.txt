@@ -20,6 +20,7 @@ status: 200
 cloning https://github.com/octo/demo into <HOME>
 cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
 exit: 0
@@ -50,7 +51,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -71,6 +72,14 @@ status: 200
       "titles": [
         null,
         null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -81,6 +90,12 @@ status: 200
         9
       ],
       "titles": [
+        null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
         null
       ]
     }
@@ -91,10 +106,10 @@ status: 200
 {}
 --- gh ---
 gh stack --version
-gh auth status
+gh api user
 gh api repos/octo/demo/stacks?per_page=100&page=1
 gh api repos/octo/demo/stacks?per_page=100&page=2
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks
 exit: 0
 --- stdout ---
@@ -106,7 +121,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -127,6 +142,14 @@ status: 200
       "titles": [
         null,
         null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -138,13 +161,19 @@ status: 200
       ],
       "titles": [
         null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
+        null
       ]
     }
   ]
 }
 --- stderr ---
 --- gh ---
-## Cached catalog titles enrich membership without a provider request.
+## Cached catalog titles and authors enrich membership without a provider request.
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks
 exit: 0
 --- stdout ---
@@ -156,7 +185,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -177,6 +206,14 @@ status: 200
       "titles": [
         "Work item 7",
         "Work item 8"
+      ],
+      "authors": [
+        "contributor",
+        "contributor"
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -187,6 +224,12 @@ status: 200
         9
       ],
       "titles": [
+        null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
         null
       ]
     }
@@ -207,7 +250,7 @@ status: 200
     "source": "https://github.com/octo/demo",
     "reader": "gh:octo-reader",
     "fetched_at": "2026-09-17T12:00:00Z",
-    "fresh_for_s": 300.0,
+    "fresh_for_s": 90.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "succeeded",
@@ -228,6 +271,14 @@ status: 200
         "titles": [
           "Work item 7",
           "Work item 8"
+        ],
+        "authors": [
+          "contributor",
+          "contributor"
+        ],
+        "avatars": [
+          null,
+          null
         ]
       },
       {
@@ -238,6 +289,12 @@ status: 200
           9
         ],
         "titles": [
+          null
+        ],
+        "authors": [
+          null
+        ],
+        "avatars": [
           null
         ]
       }
@@ -284,6 +341,14 @@ status: 202
         "titles": [
           "Work item 7",
           "Work item 8"
+        ],
+        "authors": [
+          "contributor",
+          "contributor"
+        ],
+        "avatars": [
+          null,
+          null
         ]
       },
       {
@@ -294,6 +359,12 @@ status: 202
           9
         ],
         "titles": [
+          null
+        ],
+        "authors": [
+          null
+        ],
+        "avatars": [
           null
         ]
       }
@@ -309,7 +380,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:05:01Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -330,6 +401,14 @@ status: 200
       "titles": [
         "Work item 7",
         "Work item 8"
+      ],
+      "authors": [
+        "contributor",
+        "contributor"
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -341,6 +420,12 @@ status: 200
       ],
       "titles": [
         null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
+        null
       ]
     }
   ]
@@ -350,10 +435,10 @@ status: 200
 {}
 --- gh ---
 gh stack --version
-gh auth status
+gh api user
 gh api repos/octo/demo/stacks?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/stacks?per_page=100&page=2 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 ## Removing optional tooling retains known membership and backs off.
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
 exit: 1
@@ -368,7 +453,7 @@ status: 202
     "source": "https://github.com/octo/demo",
     "reader": "gh:octo-reader",
     "fetched_at": "2026-09-17T12:05:01Z",
-    "fresh_for_s": 300.0,
+    "fresh_for_s": 90.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -389,6 +474,14 @@ status: 202
         "titles": [
           "Work item 7",
           "Work item 8"
+        ],
+        "authors": [
+          "contributor",
+          "contributor"
+        ],
+        "avatars": [
+          null,
+          null
         ]
       },
       {
@@ -399,6 +492,12 @@ status: 202
           9
         ],
         "titles": [
+          null
+        ],
+        "authors": [
+          null
+        ],
+        "avatars": [
           null
         ]
       }
@@ -435,6 +534,14 @@ status: 200
       "titles": [
         "Work item 7",
         "Work item 8"
+      ],
+      "authors": [
+        "contributor",
+        "contributor"
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -445,6 +552,12 @@ status: 200
         9
       ],
       "titles": [
+        null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
         null
       ]
     }
@@ -490,6 +603,14 @@ status: 200
         "titles": [
           "Work item 7",
           "Work item 8"
+        ],
+        "authors": [
+          "contributor",
+          "contributor"
+        ],
+        "avatars": [
+          null,
+          null
         ]
       },
       {
@@ -500,6 +621,12 @@ status: 200
           9
         ],
         "titles": [
+          null
+        ],
+        "authors": [
+          null
+        ],
+        "avatars": [
           null
         ]
       }
@@ -543,6 +670,14 @@ status: 200
       "titles": [
         "Work item 7",
         "Work item 8"
+      ],
+      "authors": [
+        "contributor",
+        "contributor"
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -553,6 +688,12 @@ status: 200
         9
       ],
       "titles": [
+        null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
         null
       ]
     }

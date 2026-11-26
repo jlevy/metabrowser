@@ -87,13 +87,16 @@ separate, explicit operation.
 `ignore`, `watcher`, `activity`, and `mutation`. A folder has all of them
 (`FILESYSTEM_CAPABILITIES`, where `mutation` is a source fact, not the content-trust
 setting that keeps writes off).
-A pin has navigation and an index, and nothing else (`GIT_REVISION_CAPABILITIES`).
+A pin has navigation and an index, and nothing else (`GIT_REVISION_CAPABILITIES`). Where
+the Git can date its files, it also has `recency`
+(`GIT_REVISION_CAPABILITIES_WITH_AGES`, [file ages](arch-git.md#file-ages)).
 
 A route that needs an absent capability answers 409 `unsupported_for_subject` with the
 capability’s name, or its view is absent; it never answers a fake zero, an empty event
 stream, or a placeholder timestamp.
-So on a pin `/api/recent`, `/api/activity`, `/api/stream`, recency filters, and editing
-are unavailable, while size and kind rollups answer from the blob index.
+So on a pin `/api/activity`, `/api/stream`, and editing are unavailable, and so are
+`/api/recent` and the recency filters where the Git cannot date its files, while size
+and kind rollups answer from the blob index.
 
 ## The Plugin Content Boundary
 
@@ -160,8 +163,9 @@ The rules they follow:
   nodes, with `cat-file` blob sizes and recursive `total_files` and `total_size`.
   `depth` nests children as on a folder.
   Gitlinks are unsized files.
-  There is no mtime and no ignore state, so `include_ignored=0` is a no-op and the
-  browser hides Modified within.
+  There is no ignore state, so `include_ignored=0` is a no-op.
+  A node has an `mtime` only from [file ages](arch-git.md#file-ages), the last commit
+  that changed it, when the Git can read them and the background read has finished.
 - **The whole-tree index** is complete at once: `/api/catalog`, `/api/rollup`, the type
   rows and `summary` on `/api/tree`, and `/api/index/progress`, `/api/index/meta`, and
   `/api/capabilities` answer from the recursive blob index with no watcher.
@@ -171,8 +175,12 @@ The rules they follow:
   group’s tree from the same blob index, and `group=type:<id>` lists one group’s tree.
   A group’s `size` is null when its blob sizes are incomplete, and its `files` too when
   the index is truncated.
-  `group_by=age` and `group=age:…` answer `unsupported_for_subject` (409), as `recency`
-  does, and the page offers no Age.
+  `group_by=age`, `group=age:…`, and the recency filter read the times of
+  [file ages](arch-git.md#file-ages), cut at one instant per request, and a file with no
+  time is in the `undated` group alone and in no window.
+  Where the Git cannot date a revision, `recency` is false
+  (`GitRevisionSubject.capabilities`) and they answer `unsupported_for_subject` (409),
+  as `/api/recent` does, and the page offers neither.
 - **A tree** answered by `/api/file` is folder chrome with recursive tallies.
   A direct-child README mounts Overview, and a complete size tally mounts the treemap.
 - **A blob** answered by `/api/file` chooses its kind from its name’s last extension, as
@@ -210,6 +218,25 @@ same store, resolved in the mirror alone.
 Given the `/view/` address the page shows, it answers `view_href`, where that page goes
 on the new pin. How a selection is resolved, and what happens when the mirror lacks it,
 is in [mirror acquisition and refresh](arch-mirror-acquisition-and-refresh.md).
+`POST /api/source/link` switches it the same way for a link into the served repository,
+which the macOS app sends for every such link
+([GitHub Links](arch-macos-app.md#github-links)): a branch, folder, file, or the
+repository itself is served at the revision the link names before the window goes to its
+address, and a pull request or a commit, each a page of its own, switches nothing.
+
+`GET /api/source/refs` lists what a switch chooses among, and a branch that is the head
+of a pull request lists it on its row: `pulls`, open first and then newest first, from
+what the repository’s provider has cached (`ref_pulls_for` in `cache/providers.py`), and
+a filter that matches a pull request’s number or title lists its branch too.
+The route never fetches and never waits for the provider’s service.
+Its envelope says, in `pull_requests`, whether the provider’s cache holds the pull
+requests yet and whether a job is filling it, so the page asks again while one is; the
+answer is kept under the cache’s revision as well as the refs’ state, so a page that
+asks on every keystroke runs no Git and reads no row.
+A tag list, and a subject no provider has pull requests for, say `null`. Only a branch
+of the repository itself has a pull request: a fork’s branch of the same name is another
+branch, and a pull request’s `refs/pull/<n>/head` is not a row, being its branch’s pull
+request.
 
 A switch, or a restarted server serving another commit, can leave a tab showing the old
 pin. Reading the new pin’s files into a page labeled with the old one would mix two
@@ -222,17 +249,31 @@ revisions, so every data request from a pin’s page names its commit:
   same-origin `/api/` request outside `/api/source/` carries the commit in
   `x-metabrowser-pin`.
 - `SourcePinGuard` in `source_routes.py` refuses a request that names another commit
-  with 409 `pin_changed` and the served commit in `x-metabrowser-pin-changed`. A request
-  that names no commit, from `curl`, `metab --api`, or a plain folder’s page, is not
-  checked. A repository folder’s working-tree page names the working tree the same way,
-  so a tab left on either view is refused when the other is served
+  with 409 `pin_changed` and the served commit in `x-metabrowser-pin-changed`, except a
+  checkout’s `/api/git/` requests, whose answers no switch changes.
+  A request that names no commit, from `curl`, `metab --api`, or a plain folder’s page,
+  is not checked. A repository folder’s working-tree page names the working tree the same
+  way, so a tab left on either view is refused when the other is served
   ([Open Modes](arch-open-modes.md#views)). Where that page’s guard can arrive after its
   first requests, a checkout’s server also refuses a page’s own request that names
   nothing ([Revisions of a Checkout](#revisions-of-a-checkout)); a mirror’s server
   answers one, as before.
 - The page announces the refusal as a `metabrowser:pin-changed` event, and the freshness
   row offers a reload.
-  Nothing changes under a reader who is looking at the page.
+  A switch made elsewhere changes nothing under a reader who is looking at the page.
+  A pin on a branch or tag that a refresh moved is different: the server follows the
+  ref, and the page goes with it to the same address
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
+- The page that makes a switch is left behind too, from the moment it asks the pin route
+  until it has gone, so its guarded requests wait out the switch (`createSwitchHold` in
+  `source-pin-guard.js`): they go as soon as the switch is refused or changes nothing,
+  and are held while the page goes.
+  A page the back/forward cache shows again sends them at once: they are answered when
+  the server serves that page’s subject again, and otherwise the history guard reloads
+  the page. The hold ends `SWITCH_HOLD_MS` after the ask in any case, for a pin route
+  that does not answer or a navigation the reader stopped; after a stopped navigation
+  the requests are refused and the page offers a reload.
+  A request whose signal aborts while it is held settles at once and is not sent.
 
 The commit is the token rather than the generation, because a generation restarts with
 every server process while a commit names exactly the content the page shows.
@@ -251,7 +292,7 @@ The functional rows `source.stale-pin-guard` and `source.history-landing` in the
 
 **View file and View on branch.** A diff’s file bar opens the file the change makes, its
 new side, in the main UI: **View file** on a commit’s diff, and **View on branch** on a
-pull request’s Changes while the diff shows the pull request’s head.
+pull request’s Changes and Docs while the diff shows the pull request’s head.
 The comparison document says which commit that side is at, so on a pin’s page the
 control is a link to its `/view/` address when the page shows that commit, and otherwise
 a button that switches the pin with `POST /api/source/pin`, naming the address so the
@@ -323,8 +364,17 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   branches are its origin’s under `refs/remotes/origin/`, a checkout’s are
   `refs/heads/`, and its remote-tracking branches are a third list, `kind=remote`.
   `kinds` names the lists a subject has, `working_tree` is null for a mirror and
-  otherwise says whether the working tree is served and which branch `HEAD` is on, and a
-  row’s `checked_out` marks that branch, which lists first.
+  otherwise says whether the working tree is served, which branch `HEAD` is on, and the
+  folder’s `name` and `location`, as the page names the folder, and a row’s
+  `checked_out` marks that branch, which lists first.
+  Every ref is listed, the rest newest first by the committer date each row shows, then
+  by name, as a mirror’s are, and the answer is kept, within the same limits, under the
+  checkout’s ref state and the branch `HEAD` is on, as a mirror’s is under its store’s.
+  Each row has its commit and `committed_at`, the committer date a row’s age is read
+  from: a tag’s is its commit’s, by `for-each-ref`’s `*committerdate`, in the same one
+  process. The page shortens the commit as every line names one (`shortCommit` in
+  `static/formatters.js`), and keeps the folder’s `name` whole at the end of its
+  `location`.
 - **Showing one.** `POST /api/source/pin` resolves a selection in the checkout’s refs
   with the mirror’s resolver, a branch, then a tag, then a remote-tracking branch, then
   a commit ID, never revision syntax, and `replace_owned_subject` attaches a
@@ -333,6 +383,20 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   Nothing is fetched for a selection the checkout lacks.
   The folder’s inventory and watcher are not closed, so they are current when the
   working tree is served again.
+- **The Commits tab shows the revision.** The chooser heads the Files and Commits tabs
+  alike, and the history routes, `/api/git/repo`, `/api/git/refs`, `/api/git/summary`,
+  and `/api/git/log`, read the revision’s store target as a commit’s page and its diffs
+  do (`session_git_location` in `git/routes.py`), under the policies below: its commit’s
+  ancestry, or with `scope=all` every ref of the Git directory the revision is read
+  from, and a detached `HEAD` at the commit.
+  That directory is the checkout’s, except for an origin branch or tag read from the
+  origin’s store (`read_from` `origin`, set in `CheckoutRevisions.switch_pin`, as
+  [Open Modes](arch-open-modes.md) says when one is), whose `scope=all` lists only the
+  store’s refs: the origin’s branches and tags, without the checkout’s own branches.
+  A mirror’s Commits tab walks its pin the same way.
+  Since every one of these answers depends on the revision served, the guard refuses a
+  page’s `/api/git/` requests that name a revision no longer served, as it refuses its
+  tree’s, and the page offers to reload.
 - **Returning.** `{"working_tree": true}` on the same route calls
   `restore_filesystem_subject`, which attaches the folder under a new generation and
   then closes the revision’s batch readers.
@@ -405,10 +469,66 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   The refusal is a checkout’s server’s alone: a mirror has no working-tree page, its
   pages carry the guard inline, and a request there that names nothing, a plugin’s
   worker’s or a preload’s, is answered as it was.
-  A checkout’s page has no freshness row, so its selector makes the offer to reload.
-- **Not yet.** A revision of a checkout has no Pulls tab; a branch that moves while it
-  is shown is not followed; and a revision is read in place, never through a store that
-  borrows the checkout’s objects.
+  A checkout’s page has no freshness row, so its selector makes the offer to reload in
+  one of its own at the foot of the pane, where every tab shows it: the Pulls tab’s
+  requests and a comparison’s are refused as the Files tab’s are, and the selector is in
+  the Files toolbar, which the other tabs hide.
+- **The origin’s branches and tags** are the exception to reading in place: they are
+  listed and served from the store Metabrowser keeps beside the checkout, which borrows
+  the checkout’s objects, and such a pin is fetched and followed as a mirror’s is
+  ([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)).
+  `CheckoutRevisions.serves` answers for a revision of either, so the page of one is
+  still the folder’s.
+- **Revision reads.** The checkout serves a pinned commit of its own directly from its
+  own Git objects.
+- **Following a branch.** A revision served under one of the checkout’s own branches,
+  remote-tracking branches, or tags (`FOLLOWED_CHECKOUT_REFS` in
+  `checkout_revisions.py`) reads that ref, not one commit of it, as a mirror’s pin does
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), so
+  it moves when the reader’s commit or the reader’s own fetch moves the ref.
+  Only a selection that names the ref, as `ref` or as `under`, follows it.
+  A commit opened by its ID alone stays: it is served under no ref, or under the ref
+  last served while it is that ref’s tip, so that the selector names the ref, and then
+  too `follows` is false.
+  Asking for the revision already served the other way changes only that.
+  The working tree is no revision.
+  - **The move is read, never fetched.** A visible page makes its own ask,
+    `POST /api/source/refresh` with `{"for": "page"}`, as often as its status says in
+    `probe_every_s` (`CHECKOUT_REFS_POLL_S`), and `CheckoutRevisions.observe` answers
+    it: it names the checkout’s
+    [ref state](arch-git.md#answers-kept-under-the-refs-state), one `stat` per ref file
+    and no Git process, and reads the ref with Git only when that state is not the one
+    it was last read under.
+    The ask names the state before it takes the locks a switch is made under, and takes
+    them only when the state changed; an ask within `CHECKOUT_REFS_FLOOR_S` of the last
+    reading, another visible page’s, is answered from memory.
+    The measurements of what an ask costs, and the reasoning that chose a poll by the
+    page over a watch of the Git directory, are beside the constant.
+  - **The server follows** with the mirror’s own step, `follow_served_ref` in
+    `mirror_refresh.py`: under the locks a switch is made under, it opens the ref’s new
+    commit and serves it under a new generation.
+    It records the new revision as the checkout’s before attaching it, as a switch does.
+    A ref the reader deleted keeps its last commit served, and `latest` is then null,
+    which the page’s row says: the branch no longer exists in the checkout, and the page
+    shows its last commit.
+  - **The page follows** as a mirror’s does: `static/source-freshness.js` sees the ref
+    it was drawn for served at another commit, asks the pin route for that ref with its
+    own `/view/` address, and goes where `view_href` says, the same file or folder when
+    the new commit has it, or the root.
+    A hidden page asks nothing, so a branch nobody is looking at is read again when its
+    page is shown.
+  - **The status** of such a revision has `follows` true and `latest`, the ref’s commit
+    as last read in the checkout, whether or not the folder keeps a store; `refreshable`
+    and the fetch fields are still the store’s alone, since nothing is fetched into a
+    checkout. A folder that keeps no store answers the ask with `200` and `probed` while
+    such a revision is served, and `409` otherwise, as before.
+    Where it keeps one, the same ask is also the store’s, which fetches a store older
+    than `FRESHNESS_WINDOW_S`, quietly.
+  - **Never written.** `tests/test_checkout_revisions.py` compares every entry under the
+    checkout, `.git` included, across an ask, a follow, and the new commit’s files.
+- **Pull requests.** A GitHub checkout’s Pulls tab and branch list use the same
+  repository catalog on the working tree and its pinned revisions.
+  Opening a pull request leaves the Files pin in place.
 
 ## How a Mirror’s Page Names Itself
 

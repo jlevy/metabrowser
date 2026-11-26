@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import signal
+import socket
 import sys
 import threading
 import webbrowser
@@ -39,7 +40,11 @@ from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.git.process import stop_process_groups
-from metabrowser.server_utils import find_available_local_port, port_search_range
+from metabrowser.server_utils import (
+    listen_on_available_local_port,
+    port_search_range,
+    url_host,
+)
 from metabrowser.source import subject_open_failure
 from metabrowser.view_routes import format_view_href
 
@@ -138,6 +143,11 @@ def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     lands here exits with the status a shell reports for it.
     """
     _write_stopping_notice()
+    # The event log says what was still running when the process stopped. A handler must
+    # not import, so only a log this process opened is closed.
+    event_log = sys.modules.get("metabrowser.event_log")
+    if event_log is not None:
+        event_log.close_from_signal_handler()
     stop_process_groups()
     # The Markdown child leads its own process group too, so the terminal's signal does
     # not reach it. Only a process that imported its module can have started one, and a
@@ -161,8 +171,12 @@ class _QuietForceExitServer(uvicorn.Server):
         super().handle_exit(sig, frame)
 
 
-def _run_until_interrupted(uvicorn_server: _QuietForceExitServer) -> bool:
-    """Serve until the server stops. True when a Ctrl-C stopped it.
+def _run_until_interrupted(uvicorn_server: _QuietForceExitServer, listener: socket.socket) -> bool:
+    """Serve on *listener* until the server stops. True when a Ctrl-C stopped it.
+
+    *listener* is the socket that has held the server's port since the port was
+    chosen (``listen_on_available_local_port``), so Uvicorn accepts on it and binds
+    nothing itself.
 
     ``_stop_now`` is installed for the whole run, so one Ctrl-C ends the
     process at any moment in it. Three windows have to be covered, and
@@ -192,7 +206,7 @@ def _run_until_interrupted(uvicorn_server: _QuietForceExitServer) -> bool:
     previous = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, _stop_now)
     try:
-        uvicorn_server.run()
+        uvicorn_server.run(sockets=[listener])
     finally:
         # This flag is a protocol boolean. Do not treat foreign truthy
         # sentinel values as proof that a signal was observed.
@@ -285,8 +299,12 @@ def run_serve(
 
     def attach_root() -> None:
         from metabrowser import server
+        from metabrowser.checkout_store import serve_checkout_store
 
         server._set_root_dir(resolved)
+        # After the root is chosen, which forgets it: a server keeps the store of its
+        # checkout's origin fresh, where a one-shot command only reads it.
+        serve_checkout_store()
 
     serve_until_interrupted(
         served=str(resolved),
@@ -369,10 +387,50 @@ def serve_until_interrupted(
     # first page.
     server.prepare_asset_stamps()
 
+    # The port is held from here on, so the `Serving` line names a port only this
+    # server can answer on, however long the rest of startup takes.
     try:
-        actual_port = find_available_local_port(host, port_search_range(port))
+        listener = listen_on_available_local_port(host, port_search_range(port))
     except RuntimeError as exc:
         raise CLIError(str(exc)) from exc
+    # Uvicorn closes the socket when it stops serving. This closes it when startup
+    # ends before Uvicorn has it.
+    with listener:
+        _serve_on(
+            listener,
+            served=served,
+            view_href=view_href,
+            host=host,
+            no_open=no_open,
+            attach=attach,
+            mode=mode,
+            place=place,
+            banner=banner,
+            local_client=local_client,
+        )
+
+
+def _serve_on(
+    listener: socket.socket,
+    *,
+    served: str,
+    view_href: str,
+    host: str,
+    no_open: bool,
+    attach: Callable[[], None],
+    mode: Literal["folder", "mirror"],
+    place: Path | None,
+    banner: Sequence[str],
+    local_client: bool,
+) -> None:
+    """Attach the root, print the banner, and serve on *listener* until stopped.
+
+    The rest of ``serve_until_interrupted``, whose arguments these are.
+    """
+
+    from metabrowser import server
+
+    actual_port = int(listener.getsockname()[1])
 
     attach()
 
@@ -380,27 +438,32 @@ def serve_until_interrupted(
     # the Host-validation boundary. Wildcard binds accept every interface,
     # so the printed URL, readiness probe, and auto-open use loopback
     # (which the allowlist always permits) instead of an unroutable
-    # 0.0.0.0-style name.
+    # 0.0.0.0-style name, and an IPv6 literal is bracketed (`url_host`).
     server._register_allowed_host(host)
     delivery.serve_locally(
         local_client and delivery.loopback_host(host) and not delivery.remote_session(os.environ)
     )
-    display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
+    display_host = url_host(host, listener)
     url = f"http://{display_host}:{actual_port}{view_href}"
 
     # Recorded once the root is attached and a port is found, so a root that cannot be
     # served never enters the list, and before the line a shell waits for. It never
     # raises, and waits for another writer for at most `recent_targets.LOCK_WAIT_S`.
+    # Only an open someone asked for records (`recent_targets.serve_records`): one told to,
+    # or a person's at a terminal; an agent's, a test's, or a tool's serve does not, and
+    # neither does one the macOS app starts, as the app records each open itself.
     # Imported here, as the server is: owner-only storage is serve mode's alone.
     from metabrowser import recent_targets
+    from metabrowser.repository_context import is_checkout_root
 
-    if recent_targets.recording_enabled():
+    if recent_targets.serve_records():
         # Asked first, so a server told not to record does not resolve its root either.
         if mode == "folder":
             recent_targets.record_quietly(
                 mode,
                 recent_targets.recorded_path(Path(served)),
                 target=None if place is None else recent_targets.recorded_path(place),
+                git=is_checkout_root(Path(served)),
             )
         else:
             recent_targets.record_quietly(mode, served)
@@ -431,6 +494,17 @@ def serve_until_interrupted(
             daemon=True,
         ).start()
 
+    # The event log (metabrowser.event_log) is serve mode's: a one-shot command writes
+    # none. Opened once the server is about to listen, closed when it stops; a log that
+    # cannot be opened is a warning, never a server that does not start.
+    from metabrowser import __version__, event_log
+
+    event_log.open_log(
+        served=served,
+        version=__version__,
+        served_directory=Path(served) if mode == "folder" else None,
+    )
+
     # Browser tabs hold open SSE streams, so cancel in-flight local requests rather
     # than waiting indefinitely for graceful shutdown after Ctrl-C.
     uvicorn_logger = logging.getLogger("uvicorn.error")
@@ -439,6 +513,7 @@ def serve_until_interrupted(
     uvicorn_logger.addFilter(_subject_open_failure_filter)
     try:
         uvicorn_server = _QuietForceExitServer(
+            # The address is the listener's, which Uvicorn serves on; it binds none.
             uvicorn.Config(
                 server.app,
                 host=host,
@@ -447,7 +522,7 @@ def serve_until_interrupted(
                 timeout_graceful_shutdown=0,
             )
         )
-        if _run_until_interrupted(uvicorn_server):
+        if _run_until_interrupted(uvicorn_server, listener):
             raise typer.Exit(code=INTERRUPTED_EXIT_CODE)
         # Uvicorn returns normally when the application's startup fails, so an
         # unchecked return would report success for a server that never listened.
@@ -462,3 +537,4 @@ def serve_until_interrupted(
         uvicorn_logger.removeFilter(_shutdown_noise_filter)
         uvicorn_logger.removeFilter(_subject_open_failure_filter)
         uvicorn_logger.setLevel(original_uvicorn_log_level)
+        event_log.close_log()

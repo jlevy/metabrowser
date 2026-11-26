@@ -260,7 +260,16 @@ class CompiledKindRule:
 
 
 def _match_one(rule: KindMatch, ctx: FileContext) -> bool:
-    """Evaluate a single declarative match predicate against a FileContext."""
+    """Evaluate a single declarative match predicate against a FileContext.
+
+    A ``magic`` rule claims a file that would otherwise be ``binary`` through
+    :func:`classify_magic`, whatever its name. Here, for a file that sniffs as text, it
+    matches only with ``ext`` or ``exts``: a file with one of those extensions whose
+    leading bytes hold the magic, so an ASCII PDF named ``.pdf`` is a PDF and a text file
+    named ``.pdf`` is not.
+    """
+    if rule.magic is not None:
+        return text_magic_matches(rule, ctx.ext, ctx.head)
     artifact = ArtifactPath(ctx.path)
     logical_path = ctx.path.with_name(artifact.logical_name)
     if rule.ext is not None and ctx.ext != rule.ext:
@@ -329,6 +338,24 @@ def _match_one(rule: KindMatch, ctx: FileContext) -> bool:
 _IDENTITY_ONLY_SKIP_FIELDS: tuple[str, ...] = ("path_glob",)
 
 
+def text_magic_matches(rule: KindMatch, ext: str, prefix: bytes | None) -> bool:
+    """Whether a ``magic`` rule claims a file that sniffs as text: it names the file's
+    extension in ``ext`` or ``exts``, and *prefix*, the file's leading bytes, holds the
+    magic. False for a rule with no extension, which claims only binary files, and for
+    no prefix."""
+
+    magic = rule.magic
+    if magic is None or prefix is None:
+        return False
+    if rule.ext is None and rule.exts is None:
+        return False
+    if rule.ext is not None and ext != rule.ext:
+        return False
+    if rule.exts is not None and ext not in rule.exts:
+        return False
+    return magic.matches(prefix)
+
+
 def classify_identity(
     rules: list[CompiledKindRule],
     *,
@@ -338,8 +365,12 @@ def classify_identity(
     json_top_level: dict[str, Any] | None = None,
     yaml_top_level: dict[str, Any] | None = None,
     frontmatter: dict[str, Any] | None = None,
+    prefix: bytes | None = None,
 ) -> str | None:
     """Match plugin kinds from Git blob identity and optional parsed bytes.
+
+    *prefix* is a text blob's leading bytes, for a ``magic`` rule that names its
+    extension (:func:`text_magic_matches`); with none, magic rules are skipped.
 
     ``path_glob`` rules stay filesystem-only: a Git blob has no served-root
     path. JSON, YAML, and frontmatter predicates match only when the caller
@@ -348,6 +379,10 @@ def classify_identity(
 
     for compiled in sorted(rules, key=lambda item: item.sort_key):
         match = compiled.rule.match
+        if match.magic is not None:
+            if text_magic_matches(match, ext, prefix):
+                return compiled.rule.id
+            continue
         if any(getattr(match, field) is not None for field in _IDENTITY_ONLY_SKIP_FIELDS):
             continue
         if match.ext is not None and ext != match.ext:
@@ -409,6 +444,23 @@ def classify_identity(
         ):
             continue
         return compiled.rule.id
+    return None
+
+
+def classify_magic(rules: list[CompiledKindRule], prefix: bytes) -> str | None:
+    """The kind whose ``magic`` bytes *prefix* holds, or None.
+
+    *prefix* is the leading bytes of a file, on disk, that every other rule left to the
+    ``binary`` fallback: the sniff prefix the caller already read
+    (``SNIFF_PREFIX_BYTES``), never decompressed, so ``x.sqlite.gz`` stays binary. Every
+    magic rule is checked whatever the file's name; its ``ext`` or ``exts`` decide only
+    the tree's chevron. Higher priority wins, then discovery order.
+    """
+
+    for compiled in sorted(rules, key=lambda item: item.sort_key):
+        magic = compiled.rule.match.magic
+        if magic is not None and magic.matches(prefix):
+            return compiled.rule.id
     return None
 
 

@@ -43,9 +43,97 @@ metab https://github.com/owner/repo/pull/123
 ```
 
 Repositories need Git, and pull requests also need a signed-in GitHub CLI (`gh`).
-[Installation](docs/installation.md) covers every requirement, upgrades, the Mac app,
-and the agent skill.
 `metab --help` lists every mode and option.
+
+## Installation
+
+### Command line and web browser
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and open a new
+terminal. On macOS with Homebrew, you can use `brew install uv`. Install Metabrowser and
+check that the command works:
+
+```shell
+uv tool install metabrowser
+metab --version
+metab --doctor
+```
+
+If the shell cannot find `metab`, run `uv tool update-shell` and open a new terminal.
+Use `uv tool dir --bin` to find the executable.
+To update an existing uv installation of Metabrowser, run `uv tool upgrade metabrowser`.
+If you installed it with pipx, run `pipx upgrade metabrowser`. If a Metabrowser
+installation managed by uv is damaged, run `uv tool install --reinstall metabrowser`.
+Use `metab --doctor` again after a repair.
+You can run `uvx metabrowser@latest .` to open the current folder without adding a
+persistent command.
+
+Local file browsing only needs `metab`. Install [Git](https://git-scm.com/install/) for
+repositories and the [GitHub CLI](https://github.com/cli/cli#installation) for pull
+requests or private GitHub repositories.
+On macOS with Homebrew, run `brew install git gh`. Sign in with
+`gh auth login --hostname github.com` and check the active account with
+`gh auth status --hostname github.com`. Run `metab --doctor` for unsupported tool
+versions, sign-in problems, or trouble reading or writing the configuration and cache
+directories.
+
+### Native macOS app
+
+The optional app requires an Apple silicon Mac with macOS 26 or later and uses the
+separately installed `metab` command.
+The public CLI is available from PyPI. The native app is a developer preview.
+When a signed disk image appears on
+[GitHub Releases](https://github.com/jlevy/metabrowser/releases), open it and drag
+Metabrowser to Applications after installing a compatible `metab`.
+
+If the app cannot start a folder, open **Settings → Runtime**. It shows the required
+version and any rejected runtimes.
+After installing or updating `metab`, use **Refresh** or **Choose metab…** to select the
+executable. If your preview requires a newer version than
+[PyPI](https://pypi.org/project/metabrowser/) offers, use the checkout’s `metab` as
+described below. **Help → Check Setup…** checks the tools and paths the app actually
+uses, which can differ from the ones in your terminal.
+Restart an open folder’s server if the app offers to after an upgrade.
+See [Choosing a metab](docs/macos-app.md#choosing-a-metab) for runtime discovery and the
+app’s trust checks.
+
+#### Developer preview
+
+To build the preview, install Xcode 26.6 or later, uv, and
+[the repository’s pinned Node version](docs/development.md#set-up).
+The preview requires `metab` 0.13.0 or later.
+In Terminal:
+
+~~~shell
+git clone https://github.com/jlevy/metabrowser.git
+cd metabrowser
+make install
+make macos-app
+~~~
+
+Open the app at the path printed by the build.
+To use the checkout’s runtime, select its `.venv/bin/metab` in **Settings → Runtime →
+Choose metab…**. If the build fails or the runtime is rejected, check the
+[development prerequisites](docs/development.md#set-up) and
+[preview setup guide](docs/installation.md#the-macos-app) for the checkout and version
+the app expects.
+
+### Plugins and agent skill
+
+Use `metab --plugins` to list discovered plugins with their sources and dependencies, or
+add `--json` to read that report programmatically.
+The Mac app lists the selected runtime’s plugins under **Settings → Plugins**, with any
+discovery errors; `metab --doctor` reports them too.
+Built-in plugins ship with `metab`. For external plugins, see
+[plugin discovery and dependency checks](docs/plugins.md#trust-model-and-discovery).
+
+To give a coding agent the Metabrowser skill, run
+`npx skills add jlevy/metabrowser --skill metabrowser`, then check that the agent can
+run `metab --version`. The skill uses the same CLI installation described here.
+See [Working with agents](docs/working-with-agents.md) for usage.
+
+[Detailed installation and requirements](docs/installation.md) covers version pinning,
+GitHub access, and the developer preview.
 
 ## What You Can Do
 
@@ -81,12 +169,11 @@ and the agent skill.
 
 ## The Mac App
 
-The optional macOS app opens each folder in its own window or tab, with recent items,
-session restore, and folders dropped on its Dock icon.
+The optional macOS app opens each folder in its own window, with recent items, session
+restore, and folders dropped on its Dock icon.
 It runs the `metab` you installed, so it shows the same pages.
-It is an alpha, built from source and not yet a signed release.
-See [the Mac app](docs/macos-app.md) for using it and
-[installation](docs/installation.md) for installing it.
+See [the Mac app guide](docs/macos-app.md) for using it and
+[Installation](#installation) for setup and troubleshooting.
 
 ## Scale
 
@@ -141,7 +228,7 @@ Using Metabrowser:
 - [Browsing history](docs/browsing-history.md): the Commits tab, commits, and diffs
 - [Reviewing pull requests](docs/reviewing-pull-requests.md): the Pulls tab and pages
 - [Working with agents](docs/working-with-agents.md): the skill and agent-log timelines
-- [The Mac app](docs/macos-app.md): windows, tabs, recent items, and restore
+- [The Mac app](docs/macos-app.md): windows, recent items, and restore
 - [Keyboard shortcuts](docs/keyboard-shortcuts.md): every shortcut
 - [Command line](docs/command-line.md): every mode, option, and environment variable
 - [Scale benchmark](docs/scale-benchmark.md): what it measures and how to run it
@@ -152,6 +239,8 @@ Extending it:
 - [Plugin authoring](docs/plugins.md): the manifest, browser SDK, and data hooks
 - [Architecture](docs/architecture.md): the layers and every architecture document
 - [Design system](docs/design-system.md): tokens, components, and interaction design
+- [Reader messages](docs/design-system-messages.md): what notices, empty states, and
+  errors may say
 - [File Rollup Format](docs/project/architecture/file-rollup-format/file-rollup-format.md)
   and [File Diff Format](docs/project/architecture/file-diff-format/file-diff-format.md)
   specifications

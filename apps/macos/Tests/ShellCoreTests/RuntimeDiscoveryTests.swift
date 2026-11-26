@@ -93,11 +93,11 @@ private func loginShellOutput(path: String) -> [String] {
         machine.executables = ["/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/metab"].reduce(into: homebrewTools) {
             $0.insert($1)
         }
-        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.1"]
+        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.13.0"]
         let calls = Recorder<String>()
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
         #expect(report.setup?.runtime == Runtime(
-            executable: "/Volumes/Home/.local/bin/metab", version: "0.12.1", source: .localBin))
+            executable: "/Volumes/Home/.local/bin/metab", version: "0.13.0", source: .localBin))
         #expect(report.setup?.tools == ToolPaths(git: "/opt/homebrew/bin/git", gh: "/opt/homebrew/bin/gh"))
         #expect(!report.consultedLoginShell)
         #expect(calls.all == ["/Volumes/Home/.local/bin/metab --exit-on-eof --present --recent --version"])
@@ -135,13 +135,13 @@ private func loginShellOutput(path: String) -> [String] {
     @Test func loginShellFindsWhatTheCheapLocationsMiss() async {
         var machine = Machine()
         machine.executables = ["/Volumes/Home/bin/metab", "/Volumes/Home/bin/gh", "/usr/bin/git"]
-        machine.versions = ["/Volumes/Home/bin/metab": "metab 0.12.1"]
+        machine.versions = ["/Volumes/Home/bin/metab": "metab 0.13.0"]
         machine.loginOutput = loginShellOutput(path: "/Volumes/Home/bin:/usr/bin:/bin")
         let calls = Recorder<String>()
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
         #expect(report.consultedLoginShell)
         #expect(report.setup?.runtime == Runtime(
-            executable: "/Volumes/Home/bin/metab", version: "0.12.1", source: .loginShell))
+            executable: "/Volumes/Home/bin/metab", version: "0.13.0", source: .loginShell))
         #expect(report.setup?.tools == ToolPaths(git: "/usr/bin/git", gh: "/Volumes/Home/bin/gh"))
         #expect(calls.all.contains { $0.hasPrefix("/bin/zsh -l -i -c ") })
     }
@@ -149,7 +149,7 @@ private func loginShellOutput(path: String) -> [String] {
     @Test func missingGhAloneConsultsTheShellButKeepsTheRuntime() async {
         var machine = Machine()
         machine.executables = ["/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/git"]
-        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.1"]
+        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.13.0"]
         machine.loginOutput = loginShellOutput(path: "/usr/bin:/bin")
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: Recorder()))
         #expect(report.consultedLoginShell)
@@ -220,6 +220,29 @@ private func loginShellOutput(path: String) -> [String] {
         for name in names + names.map({ $0.lowercased() }) {
             #expect(ChildEnvironment.build(inherited: [name: "x"], toolDirectories: [])[name] == "x")
         }
+    }
+
+    @Test func theEventLogsLocationAndOffSwitchPassThrough() {
+        // `metabrowser.event_log` logs under METABROWSER_STATE_DIR, else XDG_STATE_HOME,
+        // and METABROWSER_EVENT_LOG=0 turns it off.
+        let parent = [
+            "METABROWSER_STATE_DIR": "/Volumes/Home/state", "XDG_STATE_HOME": "/Volumes/Home/.state",
+            "METABROWSER_EVENT_LOG": "0",
+        ]
+        let built = ChildEnvironment.build(inherited: parent, toolDirectories: [])
+        for (name, value) in parent {
+            #expect(built[name] == value)
+        }
+    }
+
+    @Test func theConfigurationDirectoryPassesThrough() {
+        // An app started with a scratch METABROWSER_CONFIG_DIR, as the hand checks start a
+        // development build, hands it to every `metab` it runs, so its recent targets stay
+        // out of the user's own list.
+        let parent = ["METABROWSER_CONFIG_DIR": "/Volumes/Scratch/config", "XDG_CONFIG_HOME": "/Volumes/Home/.xdg"]
+        let built = ChildEnvironment.build(inherited: parent, toolDirectories: [])
+        #expect(built["METABROWSER_CONFIG_DIR"] == "/Volumes/Scratch/config")
+        #expect(built["XDG_CONFIG_HOME"] == nil)
     }
 
     @Test func toolDirectoriesComeFirstOnAFixedPath() {
@@ -296,7 +319,7 @@ private func loginShellOutput(path: String) -> [String] {
     @Test func anUninspectableCandidateIsNotRun() async {
         var machine = Machine()
         machine.executables = homebrewTools.union(["/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/metab"])
-        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.1", "/opt/homebrew/bin/metab": "metab 0.12.1"]
+        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.13.0", "/opt/homebrew/bin/metab": "metab 0.13.0"]
         machine.refused = [
             "/Volumes/Home/.local/bin/metab":
                 "/Volumes/Home/.local/bin has an access control list that could not be read (Permission denied)",
@@ -387,10 +410,10 @@ private func loginShellOutput(path: String) -> [String] {
     }
 }
 
-/// Validation ran `metab --version` alone, and `MetabRequirement` counts any 0.12.1
-/// development build as the minimum, so a 0.12.1.dev38 built before `--exit-on-eof`
-/// passed; every window then failed on click's "No such option: --exit-on-eof" with no
-/// remedy (mb-sugi). Validation now runs `metab --exit-on-eof --present --recent
+/// Validation ran `metab --version` alone, and `MetabRequirement` counted any 0.12.1
+/// development build as the minimum, 0.12.1 then, so a 0.12.1.dev38 built before
+/// `--exit-on-eof` passed; every window then failed on click's "No such option:
+/// --exit-on-eof" with no remedy (mb-sugi). Validation now runs `metab --exit-on-eof --present --recent
 /// --version`, and a `metab` that rejects a flag as an unknown option but answers
 /// `--version` alone is too old.
 ///
@@ -398,8 +421,8 @@ private func loginShellOutput(path: String) -> [String] {
 /// (D1), and any failed probe followed by a working `--version` was called too old,
 /// although only an unknown-option rejection of the flag shows that (D2).
 @Suite struct ServeFlagValidationTests {
-    private let current = "metab 0.12.1.dev218+8b0603f7 (+218 commits, 8b0603f78)"
-    private let beforeTheFlag = "metab 0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
+    private let current = "metab 0.13.0.dev218+8b0603f7 (+218 commits, 8b0603f78)"
+    private let beforeTheFlag = "metab 0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
     /// The app's own environment: validation passes on only the minimal one.
     private let inherited = ["HOME": "/Volumes/Home", "PYTHONPATH": "/src", "VIRTUAL_ENV": "/Volumes/Home/.venv"]
 
@@ -445,7 +468,7 @@ private func loginShellOutput(path: String) -> [String] {
         let ran = Recorder<LaunchSpec>()
         let printed = current
         let result = await validate(ran: ran) { _ in CommandResult(status: 0, output: [printed]) }
-        #expect(result == .valid(version: "0.12.1.dev218+8b0603f7 (+218 commits, 8b0603f78)"))
+        #expect(result == .valid(version: "0.13.0.dev218+8b0603f7 (+218 commits, 8b0603f78)"))
         #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--present", "--recent", "--version"]])
         #expect(ran.all.map(\.environment) == [ChildEnvironment.build(inherited: inherited, toolDirectories: [])])
     }
@@ -466,7 +489,7 @@ private func loginShellOutput(path: String) -> [String] {
             arguments.contains("--present")
                 ? CommandResult(status: 2 << 8, output: usage) : CommandResult(status: 0, output: [printed])
         }
-        #expect(result == .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
+        #expect(result == .tooOld(version: "0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
         #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--present", "--recent", "--version"], ["--version"]])
         #expect(MetabRequirement.requiredFlags == ["--exit-on-eof", PresentDryRun.flag, RecentTargets.listFlag])
     }
@@ -476,7 +499,7 @@ private func loginShellOutput(path: String) -> [String] {
     /// too old, with the upgrade it needs, not one whose menu is quietly empty.
     @Test func aDevelopmentBuildFromBeforeTheRecentModeIsTooOld() async {
         let ran = Recorder<[String]>()
-        let version = "0.12.1.dev900+abc1234 (+900 commits, abc1234)"
+        let version = "0.13.0.dev900+abc1234 (+900 commits, abc1234)"
         let run: CommandRunner.Run = { spec, _ in
             ran.append(spec.arguments)
             if spec.arguments.contains(RecentTargets.listFlag) {
@@ -496,13 +519,13 @@ private func loginShellOutput(path: String) -> [String] {
     @Test func aDevelopmentBuildFromBeforeTheFlagIsTooOld() async {
         let ran = Recorder<LaunchSpec>()
         let result = await validate(ran: ran, Self.predatingTheFlag([beforeTheFlag]))
-        #expect(result == .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
+        #expect(result == .tooOld(version: "0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
         #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--present", "--recent", "--version"], ["--version"]])
         // Both runs get the minimal environment a server gets.
         let minimal = ChildEnvironment.build(inherited: inherited, toolDirectories: [])
         #expect(ran.all.map(\.environment) == [minimal, minimal])
         // Its number meets the minimum, so the screens name the flag instead.
-        #expect(MetabRequirement.flagShortfall("0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)")
+        #expect(MetabRequirement.flagShortfall("0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)")
             == "built before --recent")
     }
 
@@ -621,7 +644,7 @@ private func loginShellOutput(path: String) -> [String] {
         let asChosen = await validate(
             ran: chosen, source: .chosen, refusal: { _ in chosen.count > 0 ? shared : nil },
             Self.predatingTheFlag([beforeTheFlag]))
-        #expect(asChosen == .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
+        #expect(asChosen == .tooOld(version: "0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
         #expect(chosen.count == 2)
     }
 
@@ -666,11 +689,11 @@ private func loginShellOutput(path: String) -> [String] {
         let calls = Recorder<String>()
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
         #expect(report.setup?.runtime == Runtime(
-            executable: "/opt/homebrew/bin/metab", version: "0.12.1.dev218+8b0603f7 (+218 commits, 8b0603f78)",
+            executable: "/opt/homebrew/bin/metab", version: "0.13.0.dev218+8b0603f7 (+218 commits, 8b0603f78)",
             source: .homebrew))
         #expect(report.tried.map(\.result) == [
-            .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"),
-            .valid(version: "0.12.1.dev218+8b0603f7 (+218 commits, 8b0603f78)"),
+            .tooOld(version: "0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"),
+            .valid(version: "0.13.0.dev218+8b0603f7 (+218 commits, 8b0603f78)"),
         ])
         #expect(calls.all == [
             local + " --exit-on-eof --present --recent --version", local + " --version",
@@ -681,13 +704,9 @@ private func loginShellOutput(path: String) -> [String] {
         let alone = await RuntimeDiscovery.discover(machine.discovery(calls: Recorder()))
         #expect(alone.setup == nil)
         let guide = SetupGuide(
-            tried: alone.tried, uv: "/Volumes/Home/.local/bin/uv", binDirectory: "/Volumes/Home/.local/bin",
-            home: "/Volumes/Home", loginPath: ["/Volumes/Home/.local/bin"], hasHomebrew: false,
-            minimumIsReleased: false)
-        #expect(guide.steps == [.buildFromCheckout(
-            oldPath: local, oldVersion: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)", inNewTerminal: false)])
-        #expect(guide.steps.first?.title(home: "/Volumes/Home").contains(
-            "~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --recent, and") == true)
+            tried: alone.tried, binDirectory: "/Volumes/Home/.local/bin", home: "/Volumes/Home")
+        #expect(guide.notices.first?.contains(
+            "~/.local/bin/metab is metab 0.13.0.dev38+5f0c2a1. It is incompatible: built before --recent.") == true)
     }
 
     /// Validates a script written to a fresh folder through the app's command runner, and
@@ -727,7 +746,7 @@ private func loginShellOutput(path: String) -> [String] {
             echo "\(beforeTheFlag)"
 
             """)
-        #expect(old == .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
+        #expect(old == .tooOld(version: "0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
         let probe = try #require(oldRuns.first)
         #expect(probe.status.map(ExitStatus.init(waitStatus:)) == .exited(2))
         #expect(probe.output == clickUsageError)
@@ -817,7 +836,7 @@ private func loginShellOutput(path: String) -> [String] {
     /// gets a server's run, every argument intact.
     @Test func theUpgradeWrapperReports0130AndServesThroughTheCheckout() async throws {
         let directory = try install("metab-0.13.0", beside: [
-            "metab-checkout": #"echo "metab 0.12.1.dev1"; for argument in "$@"; do echo "argument $argument"; done"#
+            "metab-checkout": #"echo "metab 0.13.0.dev1"; for argument in "$@"; do echo "argument $argument"; done"#
                 + "\n",
         ])
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -826,7 +845,7 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(ran == [RuntimeDiscovery.probeArguments])
         let server = await serve(directory)
         #expect(server.status.map(ExitStatus.init(waitStatus:)) == .exited(0))
-        #expect(server.output == ["metab 0.12.1.dev1"]
+        #expect(server.output == ["metab 0.13.0.dev1"]
             + CLIServeLaunch().arguments(serving: URL(filePath: "/tmp/notes/")).map { "argument " + $0 })
     }
 }

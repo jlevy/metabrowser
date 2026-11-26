@@ -37,6 +37,7 @@ class _FakeRequest:
     def __init__(self, query: dict[str, str], headers: dict[str, str] | None = None) -> None:
         self.query_params = _FakeQuery(query)
         self.headers = _FakeHeaders(headers or {})
+        self.cookies: dict[str, str] = {}
 
 
 class _FakeQuery:
@@ -74,6 +75,7 @@ _CLAUDE_SAMPLE = (
     )
     + "\n"
 )
+from tests.shell_request import shell_request
 
 
 def test_charts_cache_returns_same_payload_on_repeat(tmp_path: Path) -> None:
@@ -284,6 +286,7 @@ def test_api_file_codex_turn_completed_without_usage_helper_crash(tmp_path: Path
     body = json.loads(bytes(resp.body))
     assert resp.status_code == 200
     assert body["type"] == "jsonl"
+    assert body["kind"] == "agent-log"
     assert body["summary"]["adapter"] == "codex"
     assert any(
         event["summary"] == "[result] DONE input=1686052 output=10890 cached=1465472"
@@ -307,8 +310,10 @@ def test_api_file_internal_error_degrades_to_error_view(tmp_path: Path, monkeypa
     assert body["type"] == "error"
     assert body["kind"] == "error"
     assert body["views"] == []
-    assert "Internal error while rendering this file" in body["error"]
-    assert "RuntimeError: boom" in body["error"]
+    # The page shows `error`; the exception's type and text are the agent's `detail`.
+    assert body["error"] == "An unexpected error stopped this preview."
+    assert "Internal error while rendering this file" in body["detail"]
+    assert "RuntimeError: boom" in body["detail"]
     assert "server 500" in body["warning"]
 
 
@@ -329,7 +334,8 @@ def test_api_file_parse_error_has_a_composable_error_envelope(tmp_path: Path, mo
         "kind": "error",
         "views": [],
         "path": "broken.jsonl",
-        "error": "malformed event",
+        "error": "This log could not be read.",
+        "detail": "malformed event",
     }
 
 
@@ -725,7 +731,7 @@ def test_markdown_plugin_has_no_duplicate_client_renderer() -> None:
 
 
 def test_index_omits_duplicate_markdown_runtime() -> None:
-    html = bytes(asyncio.run(proc_browser.index(cast(Any, _FakeRequest({})))).body).decode()
+    html = bytes(asyncio.run(proc_browser.index(shell_request())).body).decode()
     assert "dompurify" not in html.lower()
     assert "marked.min.js" not in html
 

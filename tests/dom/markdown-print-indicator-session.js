@@ -12,7 +12,11 @@
 //
 // It shows which mounts carry the button, where it goes, what it says, that a click
 // prints once and a document's own copy of its markup prints nothing, that a failed render
-// has none, and that disposing removes it with its listener. Where it lands on the page,
+// has none, and that disposing removes it with its listener. A click prints once the
+// document is ready (print-ready.js): an image not yet loaded is made eager and waited
+// for, a click meanwhile prints nothing more, and a heading before an image is given its
+// size. And a print resolves the page light while a rendered document is mounted, and
+// restores the theme after it. Where it lands on the page,
 // that nothing moves when it arrives, and the table of contents toggle beside it are
 // layout, measured in headless Chrome by tests/dom/document-print-chrome.mjs.
 //
@@ -191,6 +195,17 @@ class Element extends Listeners {
     this.classList = new ClassList(this);
     this.dataset = {};
     this.markup = "";
+    this.textContent = "";
+    // An image's load, which the session completes by hand; other elements have none.
+    this.complete = true;
+    this.naturalWidth = 0;
+    this.naturalHeight = 0;
+    const properties = new Map();
+    this.style = {
+      getPropertyValue: (name) => properties.get(name) ?? "",
+      removeProperty: (name) => properties.delete(name),
+      setProperty: (name, value) => properties.set(name, String(value)),
+    };
     for (const [name, value] of Object.entries(attributes)) {
       this.setAttribute(name, value);
     }
@@ -202,6 +217,15 @@ class Element extends Listeners {
 
   get lastElementChild() {
     return this.children.at(-1) ?? null;
+  }
+
+  get nextElementSibling() {
+    const siblings = this.parentElement?.children ?? [];
+    return siblings[siblings.indexOf(this) + 1] ?? null;
+  }
+
+  matches(selector) {
+    return parseSelector(selector).some((steps) => matchesChain(this, steps, null));
   }
 
   get childElementCount() {
@@ -335,6 +359,7 @@ class Document extends Listeners {
   constructor() {
     super();
     this.implementation = { createHTMLDocument: () => new Document() };
+    this.documentElement = new Element(this, "html");
   }
 
   createElement(tagName) {
@@ -365,6 +390,9 @@ const RENDERS = {
         el(doc, "div", { class: "kpress-prose kpress-long-text" }, [
           el(doc, "h1", { id: "sample-project" }),
           el(doc, "p"),
+          // A screenshot under its heading, below the fold: KPress writes it lazy.
+          el(doc, "h2", { id: "screenshot" }),
+          el(doc, "figure", { class: "kpress-figure" }, [unloadedImage(doc)]),
           el(doc, "div", { class: "metabrowser-wiki-transclusion" }, [
             el(doc, "article", { class: "kpress kpress-doc", "data-kpress-card": "on" }, [
               el(doc, "div", { class: "kpress-doc-layout" }, [
@@ -391,6 +419,19 @@ const RENDERS = {
   // puts in an article and card of its own.
   "inert:readme": (doc) => [el(doc, "h1", { id: "user-content-sample-project" }), el(doc, "p")],
 };
+
+/** A lazy image that has not loaded, as KPress writes one the reader has not scrolled to. */
+function unloadedImage(doc) {
+  const image = el(doc, "img", { src: "/raw?path=shot.png", loading: "lazy" });
+  image.complete = false;
+  return image;
+}
+
+/** Load *image*, 1600 by 1000, as the browser does once it fetches it. */
+function loadImage(image) {
+  Object.assign(image, { complete: true, naturalWidth: 1600, naturalHeight: 1000 });
+  image.dispatchEvent({ type: "load", target: image });
+}
 
 function el(doc, tagName, attributes = {}, children = []) {
   const element = new Element(doc, tagName, attributes);
@@ -433,13 +474,19 @@ async function flush() {
   const PRINTER = '<svg data-icon="printer"></svg>';
   const renders = new Map();
   const registered = new Map();
+  // The Markdown plugin's exports, which the README panel loads as a dependent does.
+  let markdown = null;
   const mb = {
-    builtins: {},
     decorateExternalLink: sdk.metabrowser.decorateExternalLink,
     async ensureAsset(name) {
       check("the inert render loads only its sanitizer", name === "inert-html", name);
     },
-    async ensureKindAssets() {},
+    plugins: {
+      async load(name) {
+        check("the README panel loads only the Markdown plugin", name === "markdown", name);
+        return markdown;
+      },
+    },
     errors: { isAbortError: (error) => error?.name === "AbortError" },
     escapeHtml: (value) => String(value),
     async fetchKpressRender(ctx) {
@@ -475,7 +522,7 @@ async function flush() {
     sanitizeHtml: (html) => build(doc, html).children,
   };
 
-  await import(moduleUrl("markdown/index.js"));
+  markdown = await import(moduleUrl("markdown/index.js"));
   const { createReadmePanel } = await import(moduleUrl("folder/readme-panel.js"));
   const { PRINT_INDICATOR_LABEL } = await import(moduleUrl("markdown/print-indicator.js"));
   // A file's text arrives without its content here, so no mount runs the Markdown Worker.
@@ -553,19 +600,96 @@ async function flush() {
   const note = describe(noteView);
   check("a document opening with a paragraph has it too", note.buttons === 1 && note.lastInCard);
 
-  // A click on the button prints once; a click on the document's own copy prints nothing,
-  // since no document-wide listener reads the class.
+  // A click on the button prints once the document is ready; a click on the document's
+  // own copy prints nothing, since no document-wide listener reads the class.
   fileView.querySelector(".metabrowser-print-indicator")?.click();
+  await flush();
   const documentCopyPrints = prints.length;
-  pageButtons(fileView)[0]?.click();
+  const fileButtonNow = pageButtons(fileView)[0];
+  const shot = card(fileView)?.querySelector(":scope > figure > img");
+  const heading = card(fileView)?.querySelector(":scope > h2");
+  fileButtonNow?.click();
+  await flush();
+  // The screenshot has not loaded: no print yet, and a second click adds none.
+  const waiting = {
+    busy: fileButtonNow?.getAttribute("aria-busy") ?? null,
+    loading: shot?.getAttribute("loading") ?? null,
+    prints: prints.length - documentCopyPrints,
+  };
+  fileButtonNow?.click();
+  await flush();
+  if (shot) {
+    loadImage(shot);
+  }
+  await flush();
   const click = {
     documentCopy: documentCopyPrints,
+    waiting,
     pageButton: prints.length - documentCopyPrints,
+    busyAfter: fileButtonNow?.getAttribute("aria-busy") ?? null,
+    headingImage: {
+      ratio: heading?.style.getPropertyValue("--print-next-image-ratio") ?? null,
+      width: heading?.style.getPropertyValue("--print-next-image-width") ?? null,
+    },
     documentListeners: doc.listenerCount(),
   };
   check("the document's copy of the markup prints nothing", click.documentCopy === 0, click);
+  check(
+    "a click makes an image not yet loaded eager and waits for it",
+    waiting.loading === "eager" && waiting.prints === 0 && waiting.busy === "true",
+    click,
+  );
   check("the page's button prints once, the browser's way", click.pageButton === 1, click);
+  check("the button is not busy once it printed", click.busyAfter === null, click);
+  check(
+    "the heading before the image is given its size for print",
+    click.headingImage.width === "1600px" && click.headingImage.ratio === "0.625",
+    click,
+  );
   check("the button adds no document-wide listener", click.documentListeners === 0, click);
+
+  // A print resolves the page light while a rendered document is mounted, with the theme
+  // crossfade off, and restores the theme after it; a light page is left as it is.
+  const root = doc.documentElement;
+  root.setAttribute("data-theme", "dark");
+  root.setAttribute("data-kpress-resolved-theme", "dark");
+  root.classList.add("theme-anim");
+  const themeOf = () => ({
+    anim: root.classList.contains("theme-anim"),
+    kpress: root.getAttribute("data-kpress-resolved-theme"),
+    theme: root.getAttribute("data-theme"),
+  });
+  windowTarget.dispatchEvent({ type: "beforeprint" });
+  const printingDark = themeOf();
+  windowTarget.dispatchEvent({ type: "afterprint" });
+  const afterDark = themeOf();
+  root.setAttribute("data-theme", "light");
+  root.setAttribute("data-kpress-resolved-theme", "light");
+  windowTarget.dispatchEvent({ type: "beforeprint" });
+  const printingLight = themeOf();
+  windowTarget.dispatchEvent({ type: "afterprint" });
+  const printListeners = () =>
+    ["beforeprint", "afterprint"].reduce(
+      (total, type) => total + (windowTarget.byType.get(type)?.size ?? 0),
+      0,
+    );
+  const theme = { printingDark, afterDark, printingLight, printListeners: printListeners() };
+  check(
+    "a print in the dark theme resolves the page light, crossfade off",
+    printingDark.theme === "light" && printingDark.kpress === "light" && !printingDark.anim,
+    theme,
+  );
+  check(
+    "after the print the dark theme is back, crossfade on",
+    afterDark.theme === "dark" && afterDark.kpress === "dark" && afterDark.anim,
+    theme,
+  );
+  check("a print in the light theme changes nothing", printingLight.theme === "light", theme);
+  check(
+    "the page holds one pair of print listeners, however many documents",
+    theme.printListeners === 2,
+    theme,
+  );
 
   // The README on a folder's Overview: the README panel asks for the button.
   const readmeBody = container();
@@ -577,12 +701,10 @@ async function flush() {
 
   // A host that does not ask, and one that asks for something else.
   const plainView = container();
-  const plainHandle = await mounted(
-    mb.builtins.markdown.mountRendered(plainView, context("README.md")),
-  );
+  const plainHandle = await mounted(markdown.mountRendered(plainView, context("README.md")));
   const offView = container();
   const offHandle = await mounted(
-    mb.builtins.markdown.mountRendered(offView, context("README.md"), { printIndicator: false }),
+    markdown.mountRendered(offView, context("README.md"), { printIndicator: false }),
   );
   const hosts = {
     asked: file.buttons,
@@ -610,9 +732,18 @@ async function flush() {
   // A render that failed draws an error, which has no card and no button.
   renders.set("broken.md", Object.assign(new Error("KPress render failed"), { payload: {} }));
   const brokenView = container();
-  const brokenHandle = await mounted(
-    registered.get("markdown/rendered").render(brokenView, context("broken.md")),
-  );
+  // The failure goes to the console (docs/design-system-messages.md), which this
+  // session does not pin.
+  const consoleError = console.error;
+  console.error = () => {};
+  let brokenHandle;
+  try {
+    brokenHandle = await mounted(
+      registered.get("markdown/rendered").render(brokenView, context("broken.md")),
+    );
+  } finally {
+    console.error = consoleError;
+  }
   const broken = { buttons: describe(brokenView).buttons, card: card(brokenView) !== null };
   check("a failed render has no button", broken.buttons === 0 && !broken.card, broken);
 
@@ -647,6 +778,13 @@ async function flush() {
   ]) {
     handle.dispose();
   }
+  // With the last document gone, so are the print listeners.
+  theme.printListenersAfterAll = printListeners();
+  check(
+    "the last document's disposal removes the print listeners",
+    theme.printListenersAfterAll === 0,
+    theme,
+  );
 
   const transcript = {
     broken,
@@ -658,6 +796,7 @@ async function flush() {
     note: { buttons: note.buttons, lastInCard: note.lastInCard },
     readme: { buttons: readme.buttons, lastInCard: readme.lastInCard },
     replaced,
+    theme,
     failures,
   };
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);

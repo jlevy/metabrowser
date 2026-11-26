@@ -20,7 +20,10 @@
 // the population the shares are of is for screen readers only, so it is not in the text;
 // a step with one prints it apart as `caption`. A hover step prints the segments marked
 // as hovered and the tooltip the shell would show, with the handle it is anchored on, the
-// legend entry or the segment the pointer is on. Exits 1 on a failed invariant.
+// legend entry or the segment the pointer is on. Each step also prints the compact
+// treemap's box under the breakdown, which follows the breakdown's answer: left out, its
+// skeleton, unavailable, or drawn, and whether it has asked for its own deep tree. Exits 1
+// on a failed invariant.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -104,6 +107,11 @@ class FakeElement {
   addEventListener(type, listener) {
     this.listeners[type] = listener;
   }
+  removeEventListener(type, listener) {
+    if (this.listeners[type] === listener) {
+      delete this.listeners[type];
+    }
+  }
   closest() {
     return null;
   }
@@ -183,6 +191,21 @@ const COMPLETE_ROLLUP = {
   indexed_files: 3,
   max_files: 500000,
   truncated: false,
+  // The folder itself, without its tree, as a depth 0 request answers.
+  node: {
+    name: "docs",
+    path: "docs",
+    type: "dir",
+    state: "complete",
+    total_files: 3,
+    total_size: 3000,
+    unignored_files: 2,
+    unignored_size: 2000,
+    mtime: 1700000000.0,
+    gitignored: false,
+    dominant_ext: ".py",
+    children: null,
+  },
   file_type_breakdown: {
     schema: "file-type-breakdown-v1",
     registry: { schema_version: 1, revision: 1, fingerprint: "session" },
@@ -229,12 +252,13 @@ const FILE_TYPES = {
     { id: "other", label: "Other" },
   ],
   // The order the app lists groups in, Documentation first (file_type_filters.py,
-  // FILE_TYPE_GROUP_DISPLAY_ORDER): File Overview's rows and bars follow it.
+  // FILE_TYPE_GROUP_DISPLAY_ORDER): File Overview's rows and bars follow it. Each group's
+  // icon is its category's, which leads its heading in Details (_REPRESENTATIVE_FAMILIES).
   displayGroups: [
-    { id: "docs", label: "Documentation" },
-    { id: "code", label: "Code" },
-    { id: "data", label: "Data" },
-    { id: "other", label: "Other" },
+    { id: "docs", label: "Documentation", icon: "doc" },
+    { id: "code", label: "Code", icon: "alignLeft" },
+    { id: "data", label: "Data", icon: "list" },
+    { id: "other", label: "Other", icon: "file" },
   ],
   families: [
     { id: "typescript", label: "TypeScript", groupId: "code", extensions: [".ts"] },
@@ -284,6 +308,7 @@ const rollupError = (status) =>
   function page(dir, firstAnswer) {
     const answers = { next: firstAnswer };
     let requests = 0;
+    let mapRequests = 0;
     // The page's one tooltip, as the shell keeps it: what it shows and the element it is
     // anchored on, until a hide puts it away. A hide within an element puts away only a
     // tooltip anchored there (docs/design-system.md, "A Surface Puts Away Only Its Own
@@ -304,6 +329,10 @@ const rollupError = (status) =>
       escapeHtml: String,
       fileTypeIcon: () => ({ className: "", svg: "" }),
       fileTypes: FILE_TYPES,
+      // The shell's icon registry, each icon standing in as markup that names it.
+      icons: {
+        withClass: (name, cls) => (name ? `<svg class="${cls}" data-icon="${name}"></svg>` : ""),
+      },
       filterControls: { bind: () => () => {}, checkHtml: () => "", groupHtml: () => "" },
       formatFileCount: (value) => `${value.toLocaleString("en-US")} files`,
       formatInteger: (value) => value.toLocaleString("en-US"),
@@ -324,8 +353,18 @@ const rollupError = (status) =>
         },
       },
       viewState: { isActive: () => true, subscribeActive: () => () => {} },
-      watchRollup: (scope, options, onUpdate) =>
-        window.MetabrowserInventoryScope.createInventoryWatch(
+      // Two requests, told apart by shape. The breakdown asks for no tree (depth 0) and
+      // takes every answer a step gives. The section's compact treemap (treemap-compact.js)
+      // asks for the deepest tree, and only once the breakdown says the index has settled;
+      // its watch is counted and never answers, so the map shows its skeleton wherever it
+      // keeps its box. What the map draws from a tree is treemap-compact-session.js's.
+      watchRollup: (scope, options, onUpdate) => {
+        if (options.depth !== 0) {
+          assert(options.depth === "max", `the map asked for depth ${options.depth}`);
+          mapRequests += 1;
+          return { dispose() {}, refresh: async () => {}, stale: () => false };
+        }
+        return window.MetabrowserInventoryScope.createInventoryWatch(
           scope,
           {
             active: options.active,
@@ -344,7 +383,8 @@ const rollupError = (status) =>
             onError: options.onError,
           },
           onUpdate,
-        ),
+        );
+      },
     };
     const controls = createFolderRollupControls(mb);
     const container = new FakeElement("div");
@@ -362,6 +402,19 @@ const rollupError = (status) =>
     const settle = () => new Promise((resolve) => setImmediate(resolve));
     const totals = () => container.querySelector(".folder-totals");
     const summary = () => container.querySelector(".file-type-summary-body");
+    /** The compact treemap's box: left out, its skeleton, unavailable, or drawn. */
+    const mapState = () => {
+      const box = container.querySelector(".tm-compact");
+      if (!box || box.hidden) {
+        return "left out";
+      }
+      const html = box.querySelector(".tm-viewport")?.html ?? "";
+      return html.includes("tm-loading")
+        ? "skeleton"
+        : html.includes("Treemap unavailable.")
+          ? "unavailable"
+          : "drawn";
+    };
     return {
       answers,
       controls,
@@ -377,7 +430,7 @@ const rollupError = (status) =>
           return { totals: "nothing", distribution: container.textContent, retry: false };
         }
         const caption = summary().querySelector(".file-type-summary-caption");
-        return {
+        const shown = {
           totals: shownTotals.html.includes("folder-totals-loading")
             ? "skeleton"
             : shownTotals.querySelector(".folder-totals-table")
@@ -395,10 +448,41 @@ const rollupError = (status) =>
               }
             : {}),
           retry: summary().html.includes("data-file-types-retry"),
+          map: mapState(),
+          mapAsked: mapRequests > 0,
         };
+        // The map's box is decided by the breakdown's answer: no box where the breakdown
+        // offers Retry or the totals have nothing to say, and no deep request while the
+        // breakdown still waits.
+        if (shown.retry || (shown.totals === "nothing" && shown.distribution !== "skeleton")) {
+          assert(shown.map === "left out", `the map kept its box: ${JSON.stringify(shown)}`);
+        }
+        assert(mapRequests <= 1, `the map asked for its tree ${mapRequests} times`);
+        if (shown.distribution === "skeleton") {
+          assert(shown.map === "skeleton", `the map did not wait: ${JSON.stringify(shown)}`);
+          assert(
+            !shown.mapAsked,
+            `the map asked before the index settled: ${JSON.stringify(shown)}`,
+          );
+        }
+        return shown;
       },
       retry() {
         summary().querySelector("[data-file-types-retry]").listeners.click();
+      },
+      /**
+       * Each group heading in Details, as the icon that leads it, by name, and the
+       * category it names: "doc Documentation".
+       */
+      detailsHeadings() {
+        return container
+          .descendants()
+          .filter((element) => element.className === "file-type-summary-group-row")
+          .map((row) => {
+            const heading = row.children[0];
+            const icon = /data-icon="([^"]*)"/.exec(heading.html)?.[1] ?? "no icon";
+            return `${icon} ${heading.textContent}`;
+          });
       },
       /** The Details toggle the compact summary offers. */
       details() {
@@ -462,8 +546,9 @@ const rollupError = (status) =>
             tooltip.html === null
               ? null
               : tooltip.html
-                  .replace(/<br>/g, " ")
+                  .replace(/<br>|<\/div>/g, " ")
                   .replace(/<[^>]*>/g, "")
+                  .replace(/\s+/g, " ")
                   .trim(),
           anchoredOn:
             tooltip.anchor === null
@@ -578,7 +663,10 @@ const rollupError = (status) =>
     await view.settle();
     const shown = view.read();
     noSkeleton(shown, "a capped index");
-    assert(shown.distribution.includes("Summary is partial"), `capped: ${shown.distribution}`);
+    assert(
+      shown.distribution.includes("Only the first 3 files were scanned"),
+      `capped: ${shown.distribution}`,
+    );
     transcript["a capped index says its summary is partial"] = shown;
     view.panel.dispose();
   }
@@ -758,13 +846,19 @@ const rollupError = (status) =>
     assert(closed.details === "false", "Details starts open");
     assert(
       closed.distribution ===
-        "JSON 24% YAML 17% Markdown 15% TypeScript 6% Python 3.3% Other 34.7% Details" &&
+        "JSON 24% YAML 17% Markdown 15% TypeScript 6% Python 3.3% JavaScript 2.5% Log files 2.1% Other 30.1% Details" &&
         closed.caption === "Share of Total (1,000 files)",
       `the compact summary: ${closed.distribution}`,
     );
     toggle().listeners.click();
-    const opened = state("Details opened");
+    const opened = { ...state("Details opened"), headings: view.detailsHeadings() };
     assert(opened.details === "true", "Details did not open");
+    // Each group's heading leads with its category's icon (docs/design-system.md,
+    // "File-Type Category Icons").
+    assert(
+      opened.headings.join(", ") === "doc Documentation, alignLeft Code, list Data, file Other",
+      `Details' headings: ${opened.headings.join(", ")}`,
+    );
     for (const shown of ["Code", "Documentation", "Data", "Other", "No extension", "Other types"]) {
       assert(opened.distribution.includes(shown), `open Details does not show ${shown}`);
     }
@@ -784,13 +878,13 @@ const rollupError = (status) =>
     }
     assert(
       bySize.distribution.startsWith(
-        "Markdown 30% TypeScript 20% Python 15% JavaScript 12% JSON 10% Other 13% Details",
+        "Markdown 30% TypeScript 20% Python 15% JavaScript 12% JSON 10% YAML 5% Log files 2.5% Other 5.5% Details",
       ) && bySize.caption === "Share of Total (1,000 B)",
       `by bytes: ${bySize.distribution}`,
     );
     assert(
       unignored.distribution.startsWith(
-        "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details",
+        "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Log files 2.7% JSON 2.2% Other 6% Details",
       ) && unignored.caption === "Share of Files (920 B)",
       `Show ignored off: ${unignored.distribution}`,
     );
@@ -806,7 +900,7 @@ const rollupError = (status) =>
     const reclosed = state("Details closed");
     assert(reclosed.details === "false", "Details did not close");
     assert(
-      reclosed.distribution.endsWith("Other 10.9% Details"),
+      reclosed.distribution.endsWith("Other 6% Details"),
       `a closed Details shows its table: ${reclosed.distribution}`,
     );
     toggle().listeners.click();
@@ -889,11 +983,11 @@ const rollupError = (status) =>
     segment.listeners.mouseenter();
     const onSegment = view.hover();
     segment.listeners.mouseleave();
-    // One value, and its family's entry; the name joins the counts on the segment, which
-    // shows none, and the tooltip sits by what the pointer is on.
+    // One value, and its family's entry; the category and the name join the counts on the
+    // segment, which shows neither, and the tooltip sits by what the pointer is on.
     assert(
       same(onSegment.marked, ["Total family:json", "legend family:json"]) &&
-        onSegment.tooltip === `JSON ${entry.tooltip}` &&
+        onSegment.tooltip === `Data JSON ${entry.tooltip}` &&
         onSegment.anchoredOn === "Total family:json",
       `the Total row's JSON segment: ${JSON.stringify(onSegment)}`,
     );
@@ -956,7 +1050,7 @@ const rollupError = (status) =>
     view.segment("Files", "family:markdown").listeners.mouseenter();
     assert(
       same(view.hover().marked, ["Files family:markdown", "legend family:markdown"]) &&
-        view.hover().tooltip === `Markdown ${filesOnly.tooltip}`,
+        view.hover().tooltip === `Documentation Markdown ${filesOnly.tooltip}`,
       "the Files row's segment drew another hover",
     );
     view.segment("Files", "family:markdown").listeners.mouseleave();
@@ -1020,7 +1114,8 @@ const rollupError = (status) =>
   }
 
   // The shell's folder header reads the same envelope: pending aggregates are a skeleton
-  // until they arrive, and a folder the inventory leaves out has no tally to wait for.
+  // until they arrive, and a folder the inventory leaves out has no tally to wait for. The
+  // line is view-header.js's, over app.js's own cell helpers, lifted verbatim.
   {
     const appSource = fs.readFileSync(path.join(sourceRoot, "static/app.js"), "utf8");
     const lift = (name) => {
@@ -1030,16 +1125,36 @@ const rollupError = (status) =>
       assert(match, `${name} not found in app.js`);
       return match[0];
     };
-    const summaryHtml = vm.runInNewContext(
+    const shellPage = {
+      MetabrowserFormatters: { ageLabelHtml: () => '<span class="age">3h</span>' },
+    };
+    shellPage.window = shellPage;
+    vm.createContext(shellPage);
+    vm.runInContext(
+      fs.readFileSync(path.join(sourceRoot, "static/view-header.js"), "utf8"),
+      shellPage,
+    );
+    const summaryHtml = vm.runInContext(
       `function sizeClass() { return ""; }
        function countClass() { return ""; }
        function formatSize(value) { return value + " B"; }
        function formatCount(value) { return value + " files"; }
-       ${["isPendingNumber", "sizeHtml", "countHtml", "formatAge", "folderHeaderSummaryHtml"]
-         .map(lift)
-         .join("\n")}
-       folderHeaderSummaryHtml;`,
-      { window: { MetabrowserFormatters: { age: () => ({ className: "age", label: "3h" }) } } },
+       function notDrawnHere() { throw new Error("the folder line draws only its cells"); }
+       ${["isPendingNumber", "sizeHtml", "countHtml", "formatAge"].map(lift).join("\n")}
+       MetabrowserViewHeader.create({
+         esc: notDrawnHere,
+         servedRoot: notDrawnHere,
+         pathBaseName: notDrawnHere,
+         ownedControlAttr: notDrawnHere,
+         mirrorHeading: notDrawnHere,
+         getFileIcon: notDrawnHere,
+         getLogicalName: notDrawnHere,
+         sizeHtml,
+         countHtml,
+         formatAge,
+         activeFiles: new Map(),
+       }).folderHeaderSummaryHtml;`,
+      shellPage,
     );
     const header = (dir) => {
       const html = summaryHtml(dir);

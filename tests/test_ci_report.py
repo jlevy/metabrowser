@@ -145,9 +145,11 @@ def test_every_job_of_this_repository_s_workflow_has_its_limit_found() -> None:
         "lint",
         "distribution",
         "unit (3.13, 1/2)",
-        "goldens and serial (3.14t)",
+        "goldens and serial (3.14t, 1/3)",
+        "goldens and serial (3.14t, 3/3)",
         "chrome (3.12, 4/4)",
-        "admitted-git (2.50.1)",
+        "unit (3.13, 3/3)",
+        "admitted-git (2.50.1, 1/1)",
         "stack-integration (-k test-goldens test-serial)",
         "ci-ok",
     )

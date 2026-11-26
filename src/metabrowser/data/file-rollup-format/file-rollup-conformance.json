@@ -28,8 +28,8 @@
           "others": null
         },
         "registry": {
-          "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704",
-          "revision": 3,
+          "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24",
+          "revision": 4,
           "schema_version": 5
         },
         "remaining_types": {
@@ -465,8 +465,8 @@
           }
         },
         "registry": {
-          "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704",
-          "revision": 3,
+          "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24",
+          "revision": 4,
           "schema_version": 5
         },
         "remaining_types": {
@@ -2159,6 +2159,62 @@
     },
     {
       "expected": {
+        "canonical_extension": ".sqlite3",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "sqlite",
+        "group_id": "data",
+        "kind_id": "sqlite",
+        "logical_extension": ".sqlite3"
+      },
+      "logical_extension": ".sqlite3",
+      "name": "sample.sqlite3"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".db",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "sqlite",
+        "group_id": "data",
+        "kind_id": "sqlite",
+        "logical_extension": ".db"
+      },
+      "logical_extension": ".db",
+      "name": "sample.db"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".db3",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "sqlite",
+        "group_id": "data",
+        "kind_id": "sqlite",
+        "logical_extension": ".db3"
+      },
+      "logical_extension": ".db3",
+      "name": "sample.db3"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".s3db",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "sqlite",
+        "group_id": "data",
+        "kind_id": "sqlite",
+        "logical_extension": ".s3db"
+      },
+      "logical_extension": ".s3db",
+      "name": "sample.s3db"
+    },
+    {
+      "expected": {
         "canonical_extension": ".log",
         "confidence": "exact",
         "content_family": "prose",
@@ -3125,20 +3181,6 @@
     },
     {
       "expected": {
-        "canonical_extension": ".db",
-        "confidence": "exact",
-        "content_family": "data",
-        "detection_source": "extension",
-        "family_id": null,
-        "group_id": "data",
-        "kind_id": "configuration",
-        "logical_extension": ".db"
-      },
-      "logical_extension": ".db",
-      "name": "sample.db"
-    },
-    {
-      "expected": {
         "canonical_extension": ".map",
         "confidence": "exact",
         "content_family": "data",
@@ -3265,8 +3307,8 @@
     }
   ],
   "registry": {
-    "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704",
-    "revision": 3,
+    "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24",
+    "revision": 4,
     "schema_version": 5
   },
   "schema": "file-type-conformance-v1"

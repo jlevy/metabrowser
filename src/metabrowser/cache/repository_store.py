@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from metabrowser.cache.paths import store_directory
+from metabrowser.cache.paths import store_git_directory
 from metabrowser.git.process import (
     GIT_DISABLE_MAILMAP_ARGS,
     STORE_READ_POLICY,
@@ -39,7 +39,7 @@ from metabrowser.git.tree_source import (
 
 
 def _store_target(home: Path, store_key: str) -> RepositoryStoreTarget:
-    return repository_store_target(git_dir=home / store_directory(store_key) / "repository.git")
+    return repository_store_target(git_dir=home / store_git_directory(store_key))
 
 
 async def open_revision(

@@ -66,22 +66,46 @@ def test_registered_bind_host_is_allowed() -> None:
             server._EXTRA_ALLOWED_HOSTS.discard("devbox.lan")
 
 
+def test_a_registered_ipv6_bind_host_is_allowed_in_brackets() -> None:
+    """A ``Host`` header carries an IPv6 literal in brackets, as its URL does.
+
+    The port-strip heuristic took ``2001:db8::1`` for a name and a port and registered
+    ``2001:db8:``, which no request sends.
+    """
+    spellings = {"[2001:db8::1]", "[2001:db8:0:0:0:0:0:1]"}
+    with TestClient(app) as client:
+        header = {"host": "[2001:db8::1]:8411"}
+        assert client.get("/api/capabilities", headers=header).status_code == 421
+        try:
+            # Given long, and reached by the short spelling a browser rewrites it to.
+            server._register_allowed_host("2001:DB8:0:0:0:0:0:1")
+            assert spellings <= server._EXTRA_ALLOWED_HOSTS
+            for host in ("[2001:db8::1]", "[2001:db8::1]:8411", "[2001:db8:0:0:0:0:0:1]:8411"):
+                resp = client.get("/api/capabilities", headers={"host": host})
+                assert resp.status_code == 200, host
+        finally:
+            server._EXTRA_ALLOWED_HOSTS.difference_update(spellings)
+
+
 def test_wildcard_bind_hosts_are_never_registered() -> None:
     """Wildcard binds must not disable Host validation."""
-    for wildcard in ("", "0.0.0.0", "::", "[::]", "0.0.0.0:8411"):
+    for wildcard in ("", "0.0.0.0", "::", "[::]", "0:0:0:0:0:0:0:0", "0.0.0.0:8411"):
         server._register_allowed_host(wildcard)
     # Other tests may legitimately register concrete hosts; the invariant
     # here is that no wildcard-derived name ever lands in the allowlist.
-    assert not server._EXTRA_ALLOWED_HOSTS & {"", ":", "0.0.0.0", "::", "[::]"}
+    assert not server._EXTRA_ALLOWED_HOSTS & {"", ":", "0.0.0.0", "::", "[::]", "[0:0:0:0:0:0:0:0]"}
     client = TestClient(app)
     assert client.get("/api/capabilities", headers={"host": "0.0.0.0"}).status_code == 421
+    assert client.get("/api/capabilities", headers={"host": "[::]:8411"}).status_code == 421
 
 
-def test_rejection_message_names_the_recovery_options() -> None:
+def test_rejection_message_names_the_recovery() -> None:
+    """One remedy (docs/design-system-messages.md): the setting, which admits a name that a
+    tunnel or proxy reaches the server by, where binding `--host` to it would fail."""
     client = TestClient(app)
     resp = client.get("/api/capabilities", headers={"host": "workstation.example"})
     assert resp.status_code == 421
-    assert "--host workstation.example" in resp.text
+    assert resp.text.startswith("'workstation.example' is not a permitted name")
     assert "METABROWSER_ALLOWED_HOSTS" in resp.text
 
 

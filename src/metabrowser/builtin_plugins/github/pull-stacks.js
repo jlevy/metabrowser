@@ -2,15 +2,19 @@
 // the panel and page; core PR data never waits for it and no row starts a request.
 //
 // Every surface that names a stack names it here, so the page's stack button and menu, a
-// Pulls row's place, and the Pulls tab's stack groups say one thing one way
-// (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N" every heading, menu
-// and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row, and
-// `namedStackPosition` the "300 2/2" of one that names its stack; `stackPositionHint` is
-// the tip that names both; and `stackMenuOrder` is the one member order, top of the stack
-// first. `groupByStack` is the Pulls tab's grouping of its rows.
+// Pulls row's place, a guide's pull request row's place, and the Pulls tab's stack groups
+// say one thing one way (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N"
+// every heading, menu and tip reads; `stackPosition` is the bold "2/4" of a badge and a
+// member row, and `namedStackPosition` the "300 2/2" of a place that names its stack, which
+// `namedStackPositionNodes` draws after the Layers glyph; `stackPositionHint` is the tip
+// that names both, which `stackPlaceHint` writes from a stack's number and length, as the
+// guide's row has them; `stackMenuOrder` is the one member order, top of the stack first;
+// and `stackEntries` is the one order of a stack's rows, its Whole stack row first, then its
+// members, in the stack menu and under an open stack in the Pulls tab alike. `groupByStack`
+// is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
-/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[]}} NativeStack */
+/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[]}} NativeStack */
 /** @typedef {{
  * state: "absent" | "current" | "stale", reason: string | null,
  * source: string | null, reader: string | null, fetched_at: string | null,
@@ -37,6 +41,11 @@ export function stackLabel(number) {
   return `Stack #${number}`;
 }
 
+/** The words of the row that opens a stack's own page, the first of a stack's rows in the
+ * stack menu and under an open stack in the Pulls tab (`stackEntries`; docs/design-system.md,
+ * "Stacks"). */
+export const WHOLE_STACK = "Whole stack";
+
 /** A member's place in its stack, as GitHub numbers it from the base: "2/4".
  * @param {number} at The member's index in `pulls`, base first.
  * @param {number} length
@@ -54,18 +63,59 @@ export function namedStackPosition(position, stack) {
   return stack === null ? position : `${stack} ${position}`;
 }
 
+/** `namedStackPosition` as a row draws it: the position bare, or after the Layers glyph and
+ * the stack's number, the glyph hidden from assistive technology, so the words read as the
+ * text does, "300 2/2".
+ * @param {string} position @param {number | null} stack The stack to name, or null.
+ * @param {() => Node | null} glyph A new copy of the Layers glyph, or null where there is none.
+ * @returns {Array<Node | string>}
+ */
+export function namedStackPositionNodes(position, stack, glyph) {
+  if (stack === null) {
+    return [position];
+  }
+  const mark = document.createElement("span");
+  mark.setAttribute("class", "github-pull-stack-other");
+  mark.setAttribute("aria-hidden", "true");
+  const drawn = glyph();
+  if (drawn !== null) {
+    mark.append(drawn);
+  }
+  return [mark, `${stack} `, position];
+}
+
 /** The tip that names a member's stack and place: "Stack #286, position 2 of 4".
  * @param {NativeStack} stack @param {number} at
  */
 export function stackPositionHint(stack, at) {
-  return `${stackLabel(stack.number)}, position ${at + 1} of ${stack.pulls.length}`;
+  return stackPlaceHint(stack.number, at, stack.pulls.length);
+}
+
+/** The same tip from a stack's number and length alone, for a surface that has a
+ * member's place and not the stack's list, as a guide's pull request row does.
+ * @param {number} number @param {number} at The member's index, base first.
+ * @param {number} length
+ */
+export function stackPlaceHint(number, at, length) {
+  return `${stackLabel(number)}, position ${at + 1} of ${length}`;
 }
 
 /** The order every surface lists a stack's members in: the top of the stack first.
- * @param {NativeStack} stack @returns {number[]}
+ * @param {Pick<NativeStack, "pulls">} stack @returns {number[]}
  */
 export function stackMenuOrder(stack) {
   return stack.pulls.slice().reverse();
+}
+
+/** A stack's rows in the one order every surface that lists them draws: its Whole stack row,
+ * null here, which opens the stack's own page, then *members*. The stack menu and an open
+ * stack's rows in the Pulls tab both take their order from it, so the Whole stack row has one
+ * place in both, and the stack's set counts it (docs/design-system.md, "Stacks").
+ * @param {number[]} members The members to list, in `stackMenuOrder`.
+ * @returns {Array<number | null>}
+ */
+export function stackEntries(members) {
+  return [null, ...members];
 }
 
 /**
@@ -171,6 +221,23 @@ export function stackRowKey(number) {
   return -number;
 }
 
+/** The row key of a stack's Whole stack row in the Pulls list: half a step past its stack's
+ * row's key, so it collides with no stack's row and no pull request's, and it is negative,
+ * as every row that is not a pull request's is (docs/design-system.md, "Stack Groups in the
+ * Pulls Tab").
+ * @param {number} number
+ */
+export function wholeStackRowKey(number) {
+  return -number - 0.5;
+}
+
+/** The stack whose Whole stack row *key* is, or null for any other row's key.
+ * @param {number} key
+ */
+export function wholeStackOfKey(key) {
+  return key < 0 && !Number.isInteger(key) ? -(key + 0.5) : null;
+}
+
 /**
  * @typedef {{
  *   kind: "stack", key: number, stack: NativeStack, label: string, hint: string,
@@ -181,7 +248,11 @@ export function stackRowKey(number) {
  *   kind: "pull", key: number, number: number, level: 1 | 2, stack: number | null,
  *   posinset: number, setsize: number,
  * }} PullGroupRow
- * @typedef {StackGroupRow | PullGroupRow} GroupedRow
+ * @typedef {{
+ *   kind: "whole", key: number, stack: number, level: 2, posinset: number, setsize: number,
+ * }} WholeStackRow A stack's Whole stack row, the first under its open stack, which opens the
+ *   stack's own page.
+ * @typedef {StackGroupRow | PullGroupRow | WholeStackRow} GroupedRow
  */
 
 /**
@@ -195,6 +266,11 @@ export function stackRowKey(number) {
  * A pull request in more than one stack sits once, under the first of them in that order;
  * a stack whose listed pull requests all sit under earlier stacks has no row; their
  * places name it. Pull requests in no stack follow the stacks, in the list's order.
+ *
+ * An open stack's rows under it, at one level, are its Whole stack row and its pull requests,
+ * in `stackEntries`' order, the stack menu's: the Whole stack row, which opens the stack's own
+ * page (`/stack/<n>`, stack-page.js), is one of the stack's rows, so they count it in their
+ * set.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that
@@ -265,16 +341,28 @@ export function groupByStack(numbers, index, identity, options = {}) {
       elsewhere,
     });
     if (expanded) {
-      for (const [place, number] of members.entries()) {
-        rows.push({
-          kind: "pull",
-          key: number,
-          number,
-          level: 2,
-          stack: stack.number,
-          posinset: place + 1,
-          setsize: members.length,
-        });
+      const entries = stackEntries(members);
+      for (const [place, number] of entries.entries()) {
+        rows.push(
+          number === null
+            ? {
+                kind: "whole",
+                key: wholeStackRowKey(stack.number),
+                stack: stack.number,
+                level: 2,
+                posinset: place + 1,
+                setsize: entries.length,
+              }
+            : {
+                kind: "pull",
+                key: number,
+                number,
+                level: 2,
+                stack: stack.number,
+                posinset: place + 1,
+                setsize: entries.length,
+              },
+        );
       }
     }
   }
@@ -358,6 +446,16 @@ function isEnvelope(value) {
         stack.titles.length !== stack.pulls.length ||
         stack.titles.some(
           (title) => title !== null && (typeof title !== "string" || title.length > 2048),
+        ) ||
+        // Each member's author and the author's avatar, from the same cached row as its
+        // title (pull_stacks_route.py), which the page's stack menu draws.
+        ![stack.authors, stack.avatars].every(
+          (values) =>
+            Array.isArray(values) &&
+            values.length === stack.pulls.length &&
+            values.every(
+              (value) => value === null || (typeof value === "string" && value.length <= 2048),
+            ),
         )
       ) {
         return false;

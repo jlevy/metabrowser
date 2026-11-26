@@ -50,18 +50,27 @@ route-backed selections of `cli/show_cli.py` register them.
 
 | Kind | Matches | Views (default first) and keys | Model |
 | --- | --- | --- | --- |
-| `folder` | Directories | Overview `O`, Treemap `M` | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md) |
+| `folder` | Directories | Agents `A`, the default, and Sessions `S` on a folder that is or holds an agent home; Overview `O` and Treemap `M` on every folder | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md); Agents and Sessions read the `agents` catalog routes |
 | `markdown` | `.md` | Document `V`, Source `S` | File envelope; KPress render |
+| `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | The file’s text as one `mermaid` fence through `/api/kpress/render`, drawn as a document’s diagrams are |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
-| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
+| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Table `A` on a file that starts as a list of records (`structured/offer.py`), Source `S` | File envelope and the `structured/parsed` hook; Table reads a top-level list of mappings as one table through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)) |
+| `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
-| `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agent-log/charts` hook |
+| `sqlite` | Any file that would otherwise be binary and starts with SQLite’s magic number, whatever its name (`magic`); `.sqlite`, `.sqlite3`, `.db`, `.db3`, and `.s3db` give the tree its chevron | Table `V`, Schema `S`, Info `I` | A container: the `sqlite/children` hook lists its tables, each at `<database>/<segment>`. Table is the overview at the database’s address, from `table/tables`, and the table plugin’s view at a table’s, through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)); Schema reads `sqlite/schema` and Info `sqlite/info`, each read in a reader process |
+| `sqlite-store` | An `fsqlite.json` whose `format` is `fsqlite`: an [fsqlite](https://github.com/jlevy/fsqlite) store’s marker, whose folder the tree badges (`folder_marker`) | Table `V`, Schema `S`, Info `I` | A container whose tables are the tables of the snapshot its `current` pointer names, each at `<marker>/<segment>` as a database’s are, listed by the `fsqlite/children` hook and read through the `table/*` hooks by the SQLite source over that snapshot (`builtin_plugins/fsqlite/source.py`). Table and Schema are the `sqlite` kind’s, Schema reading `fsqlite/schema`; Info reads `fsqlite/info`: the store’s marker, its version, its pending transaction envelopes, and that snapshot as the `sqlite/info` hook models a database. Every read is a guest’s (`builtin_plugins/fsqlite/store.py`) |
+| `agent-log` | `.jsonl` sniffed as an agent log | Session `E`, Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook; Session reads `agents/session` and `agents/records` |
+| `agent-thread` | A compressed Codex rollout, `sessions/**/rollout-*.jsonl.zst`, claimed by its path | Session `E`, Log `V` | `agents/session` and `agents/records`, by the file’s path; the thread’s history store stands in for the unreadable rollout |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
+| `event-log` | A `.jsonl` file named `events-*.jsonl`, in a served folder (`path_glob`; a Git blob of that name is generic JSONL) | Timeline `V`, Latency `L`, By kind `B`, Errors `E`, Raw JSON `S` | File envelope and the `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors` hooks over one segment of [the event log](../../realtime-debugging.md#event-log) |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
+| `pdf` | A file that starts with `%PDF-` and would otherwise be binary (`magic`), whatever its name, and any `.pdf` | PDF | File envelope; the raw asset in the browser’s own viewer, with Open (in the macOS app), Download, and Open in new tab, and the first page behind it while it loads; a diff’s binary `.pdf` change, and a Markdown document’s embed of a `.pdf`, show the first-page card instead of a viewer, the document’s with a link to the PDF’s view. The first page is a PNG the server draws: `/api/plugin/pdf/preview` (by `path`, or a blob by `oid`) and `/api/plugin/pdf/preview-image` ([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)) |
+| `sqlite` | A file that would be `binary` and starts with `SQLite format 3\0` (a `magic` rule), whatever its name | Info | The `sqlite/info` hook: the database as a reader process read it ([Reading SQLite Databases](arch-plugin-system.md#reading-sqlite-databases)) |
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
 | `comparison` | No file; the Commits tab selects it for `/commit/<rev>[/<inner>]` | The `diff` kind’s views | `diff/comparison` document in File Diff Format |
 | `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>] or /checks]` | Pull request, which draws its own Conversation `C`, Changes `G`, and Checks `E` tabs | `github/pull` envelope and the hooks it names |
+| `pull-stack` | No file; the shell selects it for `/stack/<n>[/guided, /docs, or /changes[/<path>]]` | Stack, which draws its own Diff summary in its header and its own Guided Review, Docs, and Changes tabs | `github/stack` envelope, the `github/stack-comparison` document it names, and the `github/guided-review` answer by `stack` |
 | `pull-request-list` | No file; the Pulls tab mounts it, and the pane at `/pulls` | Pull requests | `github/pulls` envelope |
 
 A view’s key is its manifest `[[view]] key`, written here uppercase as the keyboard
@@ -77,10 +86,18 @@ A rendered view takes `V` and a source view `S`, by the rules in
 consumes has no exact `kind: <id>` line in the output of a successful `--show` command
 in a golden transcript.
 
-Two kinds are also **containers**, folder-like entries whose children are addressable
+The `table` plugin has no kind: it owns the `table/*` hooks, which serve every kind a
+plugin declares a `[[table_source]]` for, and the table view, which a source plugin
+mounts for its kind’s Table view through `mb.plugins.load("table")`
+([Table Sources](arch-plugin-system.md#table-sources)).
+
+Four kinds are also **containers**, folder-like entries whose children are addressable
 ([Plugin System](arch-plugin-system.md)): `folder`, whose children are files and
-folders, and `diff`, whose children are the files a patch changes.
-A kind declares one with `container = { children = "<data_hook route>" }`.
+folders, `diff`, whose children are the files a patch changes, `sqlite`, whose children
+are a database’s tables, views, and virtual tables, and `sqlite-store`, whose children
+are the tables of the snapshot its `current` names (the `fsqlite/children` hook, through
+`builtin_plugins/fsqlite/source.py`). A kind declares one with
+`container = { children = "<data_hook route>" }`.
 
 ### Shared Source Rendering
 
@@ -118,6 +135,8 @@ them. The list of [recent targets](arch-recent-targets.md), `recent-targets.yml`
 configuration directory, is an internal format as well, read only through `metab`.
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact: an internal contract, not a standard.
+The table routes’ envelopes are one such contract, defined in one module,
+`metabrowser.table_source`, for every source.
 [Where diff documents come from](arch-diff-pipeline.md#where-documents-come-from) maps
 the sources that produce diff documents.
 
@@ -143,9 +162,11 @@ the last column names.
 | `/view/<container>/<inner>` | One entry inside a container file | A container’s address, then a path within it | [Plugin System](arch-plugin-system.md) |
 | `/commit/<rev>` | A commit’s change set against its first parent | A full commit ID; the page refuses anything else as `revision_not_full` | [Git](arch-git.md) |
 | `/commit/<rev>/<inner>` | One file’s diff in that change set | A commit ID, then a path; the Commits tab restores the commit, not yet the file | [Git](arch-git.md) |
-| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | A pull request’s Conversation, Changes, or Checks tab | A pull-request number, then a tab | [GitHub Pull Requests](arch-github-pull-requests.md) |
+| `/pull/<n>`, `/pull/<n>/conversation`, `/pull/<n>/docs`, `/pull/<n>/files`, `/pull/<n>/guided`, `/pull/<n>/checks` | A pull request’s front page (Guided Review when its description carries a guide, Conversation otherwise), or its Conversation, Docs, Changes, Guided Review, or Checks tab | A pull-request number, then a tab | [GitHub Pull Requests](arch-github-pull-requests.md) |
 | `/pull/<n>/files/<path>` | Changes, at one changed file | A number, then a path in its comparison, never looked up on disk | [GitHub Pull Requests](arch-github-pull-requests.md) |
 | `/pulls` | A repository’s pull requests, with none selected | None; `?state=` names the filter | [GitHub Pull Requests](arch-github-pull-requests.md) |
+| `/stack/<n>`, `/stack/<n>/guided`, `/stack/<n>/docs`, `/stack/<n>/changes` | A native stack’s front page (Guided Review when a member’s description carries the stack’s guide, Changes otherwise), or its Guided Review, Docs, or Changes tab | GitHub’s stack number, then a tab | [GitHub Pull Requests](arch-github-pull-requests.md#the-stack-page) |
+| `/stack/<n>/changes/<path>` | Changes, at one file of the stack’s comparison | A number, then a path in that comparison, never looked up on disk | [GitHub Pull Requests](arch-github-pull-requests.md#the-stack-page) |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison, `...` for the merge base | Two revisions, then a path | Planned, not built |
 
 A revision is not a path in the served tree, so it gets its own route rather than a
@@ -198,26 +219,110 @@ counts is missing here; the asset routes are not counted.
 | `/_debug/tasks`, `/_debug/inventory` | Task and inventory diagnostics, served only with `METABROWSER_DEBUG=1` | [Server and Content](arch-server-and-content.md) |
 | `/api/tree`, `/api/rollup`, `/api/catalog`, `/api/recent` | Navigation pages, folder rollups, the file universe for Quick Search, and newest-first leaves | [Inventory Provider](arch-inventory-provider.md) |
 | `/api/index/progress`, `/api/index/meta`, `/api/capabilities` | Index progress and metadata, and what the active source supports | [Inventory Provider](arch-inventory-provider.md) |
+| `/api/tree`, `/api/index/progress`, `/api/capabilities` on a pinned revision | A node’s `mtime` and the `ages` state of getting it, and `file_ages` in what the source supports | [File Ages](arch-git.md#file-ages) |
+| `/api/tree` with `recency` or `group_by=age`, `/api/recent`, and `/api/file` on a pinned revision | Modified within, By age with its Undated group, the newest files of a window, and a file’s `mtime` from the answer that is there, from the same times | [File Ages](arch-git.md#file-ages) |
 | `/api/events` | The server-sent inventory snapshot and changes | [Live Delivery](arch-live-delivery.md) |
+| `/api/events/watch` | A file watch registered on one `/api/events` connection, whose changes arrive there as `file.changed` | [Live Delivery](arch-live-delivery.md#file-watches) |
 | `/api/stream`, `/api/activity` | The live tail of a JSONL file, and the files being written now | [Live Delivery](arch-live-delivery.md) |
 | `/api/diagnostics/pending-tallies` | `POST`: a client’s pending-tally warning, matched with server state | [Live Delivery](arch-live-delivery.md) |
-| `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only history for the Commits tab | [Git](arch-git.md) |
-| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
-| `/api/identity` | What the served subject is called, for a window’s title (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
-| `/api/source/refresh` | `POST`: start or join a background refresh of the served mirror | [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md) |
+| `/api/event-log` | Where the structured event log is, its segments, and its records filtered by kind, outcome, cause, span, client (a request’s, or a page’s and every request it sent), and duration, with the spans this process has open (`event_log_route.py`) | [Real-Time Debugging](../../realtime-debugging.md#event-log) |
+| `/api/event-log/failures` | The failures in the event log since a moment, an hour ago by default, grouped by cause, with the addresses that failed, the latest message, links to their records, and the latest failed connectivity probe; a page’s own reports of failure listed apart, under `page_reports` (`event_log_route.py`) | [Real-Time Debugging](../../realtime-debugging.md#github-failures) |
+| `/api/event-log/client` | `POST`: what a page saw, its slow and pending requests, frozen frames, and waits still running at the late threshold, checked, bounded, redacted, and written as `browser` records under the page’s client ID (`event_log_reports.py`, sent by `static/event-reports.js`) | [Real-Time Debugging](../../realtime-debugging.md#what-the-page-reports) |
+| `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>`, `/api/git/commit-markdown/<rev>`, `/api/git/commit-size/<rev>` | Read-only history for the Commits tab, of the revision the Files tab shows: a folder’s working tree’s own, and a checkout revision’s or a mirror pin’s commit’s; a commit’s size as Git pushes it and as a patch (`git/change_size.py`) | [Git](arch-git.md), [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout) |
+| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches, each with its commit’s full ID and committer date, and a checkout’s working tree by its folder, and the pull requests each branch is the head of, as its provider has cached them, which the filter finds a branch by too; for a repository folder that keeps a store of its origin, that store’s state (`origin`) and the origin’s branches and tags from it; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
+| `/api/identity` | What the served subject is called, for a window’s title, which of three kinds of root it is (`folder`, `git`, or `mirror`) and the sentence for the mark that names it, and the GitHub repository it belongs to (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
+| `/api/counterpart` | The github.com page that shows what a page shows, for its View on GitHub control, or why there is none (`counterpart.py`) | [Design System: View on GitHub](../../design-system.md#view-on-github) |
+| `/api/source/refresh` | `POST`: start or join a background refresh of the served mirror, or of the store a repository folder keeps of its origin; with `{"for": "commit"}`, the fetch a commit the mirror lacks waits for; with `{"for": "page"}`, a visible page’s own ask, which probes the served branch at its origin and fetches when it moved | [Refresh Cadence](arch-mirror-acquisition-and-refresh.md#refresh-cadence) |
+| `/api/source/link` | `POST`: open a link into the served mirror’s repository: start a refresh, switch the pin to the revision a branch, folder, or file link names, and answer the page to go to, a pull request’s or a commit’s with no switch | [GitHub Links](arch-macos-app.md#github-links), [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache (`cache/wire.py`) | [Repository Cache](arch-repository-cache.md) |
 | `/api/plugin/<plugin>/<route>` | A plugin’s `[[data_hook]]` | [Plugin System](arch-plugin-system.md) |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
-`diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
-`structured/parsed`, and `agent-log/charts` ([Plugin System](arch-plugin-system.md));
-and `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
-`github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
-`github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
-`github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,
-`github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
-`github/stack-change`, `github/labels`, `github/labels-refresh`, and
-`github/cache-clear` ([GitHub Pull Requests](arch-github-pull-requests.md)).
+`diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `fsqlite/info`,
+`fsqlite/schema`, and `fsqlite/children` (an fsqlite store, above); `binary/chunk`,
+`structured/parsed`, and `agents/charts` ([Plugin System](arch-plugin-system.md));
+`event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors`
+([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)); `agents/catalog`,
+`agents/sessions`, `agents/session`, `agents/records`, and `agents/live`, the catalog of
+Claude Code and Codex sessions under a served folder ([Agent Catalog](#agent-catalog));
+`table/tables`, `table/schema`, `table/rows`, `table/record`, and `table/card`
+([Table Sources](arch-plugin-system.md#table-sources)); `sqlite/info`, `sqlite/schema`,
+and `sqlite/children`, a SQLite database’s Info and Schema views and its tables as
+container children
+([Navigation Containers](arch-plugin-system.md#navigation-containers)); `pdf/preview`
+and `pdf/preview-image`, a PDF’s first page as a PNG the server draws
+([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)); and
+`github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
+`github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff` (a changed
+file’s rendered projection; for Markdown, in Full, in Concise, or a range of its blocks,
+by [Markdown Views](arch-diff-pipeline.md#markdown-views)), `github/pull-size`,
+`github/pull-timeline`, `github/pull-markdown`, `github/guided-review`, `github/pulls`,
+`github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,
+`github/pull-files-refresh`, `github/pull-files-summary`, `github/stacks`,
+`github/stacks-refresh`, `github/stack-change`, `github/stack`,
+`github/stack-comparison`, `github/labels`, `github/labels-refresh`,
+`github/cache-clear`, and `github/status`
+([GitHub Pull Requests](arch-github-pull-requests.md)).
+
+## Agent Catalog
+
+The `agents` plugin keeps a catalog of the Claude Code and Codex sessions under a served
+folder and answers five data hooks from it.
+The
+[operational views plan](../specs/active/plan-2026-11-19-agent-operations-views.md#engines-and-the-catalog)
+gives the design. `builtin_plugins/agents/homes.py` decides which folders hold a home
+(`homes_in`, and `holds_homes` for a view’s `offer`), `catalog.py` keeps the sessions
+current on a worker thread, `store.py` caches each summary, and `routes.py` serves them.
+
+| Route | Parameters | Returns |
+| --- | --- | --- |
+| `catalog` | `folder` | Homes, totals, size-histogram buckets, sessions per day, progress, freshness, cache state, drift, and engines |
+| `sessions` | `folder`; filters `agent`, `origin`, `status`, `project`, `model`, `since`, `until`; `sort`, `order`, `limit`, `offset` | Matching rows, `total`, `next_offset`, and facets over the whole folder |
+| `session` | `agent` and `id`, or `path`, the session’s source file | One row, its parent, its children, and its drift |
+| `records` | the session as above; `kind`, `tool`, `locator`, `limit`, `cursor` | One page of the session’s normalized events, with `next_cursor`, which is null at the end and where the scan bound stopped (`truncated`) |
+| `live` | `folder` | Sessions a pid file, an active turn, or a recent update vouches for |
+
+Paths in `folder` and `path` are served-root-relative and resolve through `plugin_api`;
+every path in a response is relative to the served root, and a project shows the user’s
+home directory as `~`. A refusal is `{"error", "code", "param"}` with status 400 or 404,
+or 503 `catalog_incomplete` (with `progress`) for a session that the first pass of a
+home has not listed yet, which a page asks for again.
+
+A request answers from what the worker has summarized so far and reports `progress` and
+`freshness`; it starts a pass when the last is old, and never waits for a full one.
+`sync=1` waits until the catalog is fully summarized, which is how `metab --api`, tests,
+and goldens get a complete answer.
+One such request waits at a time, for one deadline shared by its homes
+(`SYNC_TIMEOUT_SECONDS`); another answers at once with the progress so far.
+`now` (Unix seconds) replaces the clock of the response and its liveness checks, never
+the catalog’s own pass times.
+Each summary is cached in `plugin_cache_directory("agents")`, keyed by the session’s
+source files, sizes, modification times, and measure-family versions (`session_key`), so
+a change re-reads only that session.
+When no private cache directory can be made, `cache.state` is `unavailable` and the
+routes answer from memory.
+The limits and the measurements that set them are beside their constants, in
+`catalog.py`, `routes.py`, `store.py`, `readers.py`, and `codex.py`.
+
+### Agent Views
+
+The plugin’s surfaces are views of kinds that already exist, so each is reached by
+`metab --show` and reads only the routes above (no plugin can register an address space
+of its own).
+
+| View | Kind | Offered | Reads |
+| --- | --- | --- | --- |
+| Agents (`agents`), the default | `folder` | Where `holds_homes` accepts the folder: a Claude Code or Codex home, or a folder holding `.claude` or `.codex` | `catalog`, `sessions` for the recent rows, `live` |
+| Sessions (`agent-sessions`) | `folder` | The same | `sessions`, one page at a time, with its filters, sort, and page |
+| Session (`session`), the default | `agent-log`, `agent-thread` | Every file of the kind | `session` and `records` by the file’s `path`; a file in no agent home falls back to the Log |
+| Log (`log`) | `agent-thread` | Every file of the kind | `records` by `path` |
+
+The views’ code and stylesheet (`agents-views.css`) are on demand: `index.js` registers
+a stub for each and imports the module the first time its view is shown, because the
+plugin’s own assets load for every folder page.
+What the browser owns is in `session-list-state.js` (filters, sort, and paging),
+`poller.js` (when a page asks again), and `home-model.js` (what the home derives), each
+pinned browserlessly by `tests/dom/agents-views-session.js`.
 
 ## Adding Something
 

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
 
 from metabrowser import server as proc_browser
+from tests.shell_request import shell_request
 
 
 def _app() -> str:
@@ -13,16 +13,7 @@ def _app() -> str:
 
 
 def _index() -> str:
-    class _FakeQuery:
-        def get(self, key: str, default: str = "") -> str:
-            return default
-
-    class _FakeReq:
-        def __init__(self) -> None:
-            self.query_params = _FakeQuery()
-            self.headers: dict[str, str] = {}
-
-    response = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
+    response = asyncio.run(proc_browser.index(shell_request()))
     return (
         response.body.decode()
         if isinstance(response.body, (bytes, bytearray))
@@ -262,7 +253,7 @@ def test_tree_focus_ring_is_token_based_and_preview_has_no_tree_listener() -> No
     css = proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
     start = css.index(".tree-item:focus-visible")
     block = css[start : css.index("}", start)]
-    assert "var(--link)" in block
+    assert "var(--focus-ring-color)" in block
     assert "outline" in block
     assert "#" not in block
 

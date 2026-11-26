@@ -19,6 +19,7 @@ from metabrowser.view_routes import (
     format_inventory_view_href,
     format_view_href,
 )
+from tests.held_port import listener_on
 from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -202,7 +203,7 @@ def test_header_root_link_is_named_home_and_the_folder(tmp_path: Path) -> None:
     anchor = response.text[response.text.index('class="header-path"') :]
     anchor = anchor[: anchor.index(">")]
     assert 'id="header-home"' in anchor
-    assert 'aria-labelledby="header-home-label header-home"' in anchor
+    assert 'aria-labelledby="header-home-label header-home-name"' in anchor
     assert "aria-label=" not in anchor
     assert "aria-describedby=" not in anchor
     assert '<span id="header-home-label" hidden>Home:</span>' in response.text
@@ -216,8 +217,8 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
     The directories above the served root are the same on every row of
     every view, and the column is the narrowest in the app. Nothing is
     lost: ``data-served-root`` is both what the file header reads back to
-    draw its dimmed prefix — so the two headers cannot disagree about the
-    root — and what this heading's own tooltip is built from in app.js.
+    draw the root's address — so the two headers cannot disagree about the
+    root — and what the repository details show.
 
     The heading carries no tooltip attribute of its own, deliberately. It
     has a richer tooltip in app.js, and an element announcing through two
@@ -232,7 +233,8 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
     assert '<span class="path-dir">' not in response.text
     assert f'data-served-root="{root}"' in response.text
     # One tooltip mechanism on this element, and it is app.js's own.
-    header_anchor = response.text[response.text.index('class="header-path"') :][:400]
+    header_anchor = response.text[response.text.index('class="header-path"') :]
+    header_anchor = header_anchor[: header_anchor.index(">")]
     assert "data-tip-text=" not in header_anchor
     assert "title=" not in header_anchor
 
@@ -259,7 +261,9 @@ def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(
             _app,
@@ -294,7 +298,9 @@ def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [str(tmp_path), "--no-open"])
 
@@ -337,20 +343,20 @@ def test_a_root_under_the_home_directory_is_shown_with_a_tilde(
 
 
 def test_the_header_prefix_gives_way_from_its_start_and_reads_at_row_weight() -> None:
-    """Two properties of the dimmed prefix, both about what survives.
+    """Two properties of the root's address, both about what survives.
 
     It truncates from the START, because the end of a path is the half that
     says where you are and the beginning is the same on every page. And it is
-    bold like the crumbs after it: grey already carries "this is context",
-    so the weight does not need to say it a second time, and one address at
-    two weights reads as two things.
+    at the weight of the crumbs after it, because one address at two weights
+    reads as two things. The root's crumb and, on the root's own page, the
+    dimmed directory that holds the root are one rule, so both hold.
     """
 
     css = (Path(server.STATIC_DIR) / "styles.css").read_text()
-    start = css.index(".file-header-root {")
+    start = css.index(".file-header-root,\n.folder-breadcrumb .folder-crumb-root {")
     block = css[start : css.index("}", start)]
     assert "direction: rtl" in block
     assert "text-overflow: ellipsis" in block
     assert "font-weight" not in block, (
-        "the prefix inherits the container's weight rather than setting its own"
+        "the address inherits the container's weight rather than setting its own"
     )

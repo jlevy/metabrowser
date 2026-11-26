@@ -222,6 +222,17 @@ def test_a_recording_named_through_a_constant_is_found(tmp_path: Path) -> None:
     assert check_goldens.recorded_fixtures(root) == [root / "tests/fixtures/answers.json"]
 
 
+def test_a_recorder_that_renders_its_own_recording_is_a_recorder(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    _write(
+        root,
+        "tests/test_recorder.py",
+        'check_recording_text("answers.json", "{}\\n", transcript="cli-ui.tryscript.md")\n',
+    )
+    assert check_goldens.registration_findings(root) == []
+    assert check_goldens.recorded_fixtures(root) == [root / "tests/fixtures/answers.json"]
+
+
 # ── size ────────────────────────────────────────────────────────────
 
 

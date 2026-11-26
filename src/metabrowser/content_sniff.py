@@ -88,6 +88,30 @@ def classify_prefix(prefix: bytes) -> ContentClass:
     return ContentClass.TEXT
 
 
+# The media types a file's leading bytes give when its name gives none, for the formats a
+# browser shows itself and a view links to at /raw whatever the file is named: the `pdf`
+# plugin claims a file that starts with "%PDF-" (its manifest's magic rule), and its view's
+# Open in new tab and inline viewer read /raw. /raw sends `nosniff`, so without this the
+# browser takes such a file as application/octet-stream and downloads it. The signatures
+# are the WHATWG MIME Sniffing Standard's; a row belongs here only when a plugin claims
+# the format by its bytes and draws it from /raw.
+_MEDIA_SIGNATURES: tuple[tuple[bytes, str], ...] = ((b"%PDF-", "application/pdf"),)
+
+# The most bytes a signature above reads.
+MEDIA_SIGNATURE_BYTES = max(len(signature) for signature, _media in _MEDIA_SIGNATURES)
+
+
+def media_type_from_prefix(prefix: bytes) -> str | None:
+    """The media type a file's leading bytes give, or None when no signature matches.
+
+    For a file whose name gives no media type. Pure; performs no I/O.
+    """
+    for signature, media_type in _MEDIA_SIGNATURES:
+        if prefix.startswith(signature):
+            return media_type
+    return None
+
+
 def sniff_artifact(path: Path, *, max_bytes: int = SNIFF_PREFIX_BYTES) -> ContentClass:
     """Classify a file by reading a bounded prefix of its logical bytes.
 
@@ -95,10 +119,22 @@ def sniff_artifact(path: Path, *, max_bytes: int = SNIFF_PREFIX_BYTES) -> Conten
     without a second offloading layer. Returns :attr:`ContentClass.UNKNOWN`
     when the bytes cannot be obtained at all.
     """
+    return sniff_artifact_prefix(path, max_bytes=max_bytes)[0]
+
+
+def sniff_artifact_prefix(
+    path: Path, *, max_bytes: int = SNIFF_PREFIX_BYTES
+) -> tuple[ContentClass, bytes | None]:
+    """:func:`sniff_artifact`, with the bytes on disk it read when they are the file's own.
+
+    The bytes are None for a compressed artifact, whose prefix is decompressed and so
+    is not what a binary format's magic number is checked against, and when nothing
+    could be read.
+    """
     try:
         artifact = ArtifactPath(path)
         with artifact.open_binary(max_output_bytes=max_bytes) as stream:
             prefix = stream.read(max_bytes)
     except (ArtifactCompressionError, OSError):
-        return ContentClass.UNKNOWN
-    return classify_prefix(prefix)
+        return ContentClass.UNKNOWN, None
+    return classify_prefix(prefix), (None if artifact.is_compressed else prefix)

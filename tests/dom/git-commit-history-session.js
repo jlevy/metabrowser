@@ -444,10 +444,14 @@ async function createPage(start, options = {}) {
       }),
       icons: { copy: "" },
       // A row's ref chips' copy controls, which a row of the panel mounts; none has refs.
-      mountRefCopies: () => () => {},
+      mountRefMenus: () => () => {},
       // The commit page's author, the SDK's identity, whose markup this session does not
       // read (tests/dom/git-panel-behavior.js holds it).
       actorIdentityHtml: () => '<span class="actor-identity"></span>',
+      // The commit page's size line, the SDK's, whose markup this session does not read
+      // either (tests/dom/git-panel-behavior.js holds it).
+      changeSizeLine: () => ({ parts: [], sizeParts: [], text: "", label: "", tooltip: null }),
+      changeSizeLineHtml: () => '<span class="change-size-line"></span>',
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
       tooltip: { hide() {}, show() {} },
     },
@@ -558,7 +562,7 @@ async function createPage(start, options = {}) {
         claim,
         revision
           ? `commit ${revision.slice(0, 7)}`
-          : node.children.map((child) => child.textContent).join(": "),
+          : node.children.map((child) => child.textContent).join(" "),
         node,
       );
     },
@@ -886,11 +890,19 @@ async function createPage(start, options = {}) {
   {
     const page = await createPage(`/commit/${ABSENT}`);
     const absent = page.read();
-    assert(absent.pane.startsWith("Commit not found"), `an absent commit: ${absent.pane}`);
+    assert(
+      absent.pane.startsWith("This commit was not found."),
+      `an absent commit: ${absent.pane}`,
+    );
     const short = await createPage(`/commit/${SHORT}`);
     const opened = short.read();
-    assert(opened.pane.startsWith("Full commit ID needed"), `a short ID: ${opened.pane}`);
-    assert(opened.pane.includes(SHORT), "a short ID's state does not name the address");
+    assert(
+      opened.pane.startsWith("This address needs the full commit ID."),
+      `a short ID: ${opened.pane}`,
+    );
+    // The remedy, not the ID: the address bar already shows what was typed
+    // (docs/design-system-messages.md).
+    assert(opened.pane.includes("full lowercase ID"), "a short ID's state does not say what to do");
     await short.open("src/a.py");
     short.read();
     await short.back();
@@ -909,7 +921,10 @@ async function createPage(start, options = {}) {
     // length is refused too, and the sentence has to say why.
     const upper = await createPage(`/commit/${COMMIT_A.toUpperCase()}`);
     const uppercase = upper.read();
-    assert(uppercase.pane.startsWith("Full commit ID needed"), `capitals: ${uppercase.pane}`);
+    assert(
+      uppercase.pane.startsWith("This address needs the full commit ID."),
+      `capitals: ${uppercase.pane}`,
+    );
     assert(uppercase.pane.includes("lowercase"), `capitals, not said: ${uppercase.pane}`);
     transcript["an address the repository cannot answer"] = {
       absent,

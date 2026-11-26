@@ -45,10 +45,11 @@ import contextlib
 import hashlib
 import json
 import logging
+import secrets
 from collections.abc import AsyncIterator, Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -62,6 +63,7 @@ from metabrowser.events import (
     CatalogChange,
     CatalogUpsert,
     EventEnvelope,
+    FileChanged,
     FsChange,
     FsEntry,
     FsRemove,
@@ -72,6 +74,13 @@ from metabrowser.events import (
     StreamEvent,
     encode_heartbeat_comment,
     encode_sse,
+)
+from metabrowser.file_watches import (
+    FILE_WATCH_MAX_BODY_BYTES,
+    FileWatches,
+    TooManyWatchesError,
+    UnknownConnectionError,
+    watch_generation,
 )
 from metabrowser.http_caching import (
     build_scoped_etag,
@@ -305,8 +314,13 @@ class _EventBus:
         self._ring = RingBuffer(capacity=RING_BUFFER_CAPACITY)
         self._connections: dict[asyncio.Queue[EventEnvelope], HostVersion | None] = {}
         self._relay_task: asyncio.Task[None] | None = None
+        self._watch_task: asyncio.Task[None] | None = None
         self._after: HostCursor | None = None
         self._lock = asyncio.Lock()
+        # Each attached connection's id, which its snapshot carries and a file watch names.
+        self._ids: dict[str, asyncio.Queue[EventEnvelope]] = {}
+        self._queue_ids: dict[asyncio.Queue[EventEnvelope], str] = {}
+        self.watches = FileWatches(send=self._send_to_connection)
 
     async def start(self, *, after: HostCursor) -> None:
         """Start once from an explicit captured coordinator cursor."""
@@ -318,17 +332,21 @@ class _EventBus:
             self._relay_task = asyncio.create_task(
                 self._relay_loop(), name="metabrowser-events-bus"
             )
+            self._watch_task = asyncio.create_task(
+                self.watches.run(), name="metabrowser-file-watches"
+            )
 
     async def close(self) -> None:
         """Cancel and join the coordinator relay."""
 
         async with self._lock:
-            task = self._relay_task
+            for task in (self._relay_task, self._watch_task):
+                if task is not None and not task.done():
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
             self._relay_task = None
-            if task is not None and not task.done():
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+            self._watch_task = None
 
     async def _read_snapshot(self, scope: _ScopeType) -> tuple[FsSnapshot, HostVersion]:
         """Assemble one lossless snapshot from version-pinned bounded pages."""
@@ -369,12 +387,44 @@ class _EventBus:
             snapshot, version = await self._read_snapshot(scope)
             queue: asyncio.Queue[EventEnvelope] = asyncio.Queue(maxsize=PER_CONNECTION_QUEUE_SIZE)
             self._connections[queue] = version
-            return snapshot, queue
+            connection = secrets.token_urlsafe(12)
+            self._ids[connection] = queue
+            self._queue_ids[queue] = connection
+            self.watches.open(connection)
+            return replace(snapshot, connection=connection), queue
 
     def publish(self, event: StreamEvent) -> None:
         """Publish a host-owned non-inventory event in the same SSE ordering."""
 
         self._forward_event(event)
+
+    def connection_is_open(self, connection: str) -> bool:
+        """Whether *connection* names an attached connection still receiving events."""
+
+        queue = self._ids.get(connection)
+        return queue is not None and queue in self._connections
+
+    def _drop(self, queue: asyncio.Queue[EventEnvelope]) -> None:
+        """Stop delivering to *queue*: it ended, or it was sent a resync and will end."""
+
+        self._connections.pop(queue, None)
+        connection = self._queue_ids.pop(queue, None)
+        if connection is not None:
+            self._ids.pop(connection, None)
+            self.watches.close(connection)
+
+    def _send_to_connection(self, connection: str, event: FileChanged) -> None:
+        """Queue *event* on one connection only, under the same overflow rule as a fan-out."""
+
+        queue = self._ids.get(connection)
+        if queue is None or queue not in self._connections:
+            return
+        envelope = self._ring.append(event)
+        try:
+            queue.put_nowait(envelope)
+        except asyncio.QueueFull:
+            self._replace_with_resync(queue, envelope, reason="connection_queue_overflow")
+            self._drop(queue)
 
     @staticmethod
     def _replace_with_resync(
@@ -422,6 +472,7 @@ class _EventBus:
         # connection can receive the result.
         if not self._connections:
             return
+        self.watches.nudge(change.dirty_paths, everything=change.reset or change.all_dirty)
         if not any(
             floor is None or not self._change_is_covered(change, floor)
             for floor in self._connections.values()
@@ -554,7 +605,7 @@ class _EventBus:
         if isinstance(event, FsResyncRequired):
             for queue in eligible:
                 self._replace_with_resync(queue, envelope, reason=event.reason)
-                self._connections.pop(queue, None)
+                self._drop(queue)
             LOG.debug(
                 "events bus: requested fresh snapshots reason=%s conns=%d",
                 event.reason,
@@ -573,7 +624,7 @@ class _EventBus:
                 envelope,
                 reason="connection_queue_overflow",
             )
-            self._connections.pop(queue, None)
+            self._drop(queue)
         if dead:
             LOG.warning(
                 "events bus: refreshing %d slow browser connection(s) after queue overflow",
@@ -593,7 +644,7 @@ class _EventBus:
         return q
 
     def detach_connection(self, q: asyncio.Queue[EventEnvelope]) -> None:
-        self._connections.pop(q, None)
+        self._drop(q)
 
     def latest_id(self) -> int:
         return self._ring.latest_id
@@ -778,6 +829,114 @@ async def api_events(request: Request) -> Response:
         "Connection": "keep-alive",
     }
     return StreamingResponse(_stream_events(request), headers=headers)
+
+
+# ── /api/events/watch ────────────────────────────────────────
+
+
+def _watch_error(code: str, error: str, status: int, **details: object) -> JSONResponse:
+    return JSONResponse(
+        {"type": "watch_error", "code": code, "error": error, **details}, status_code=status
+    )
+
+
+async def _watch_body(request: Request) -> dict[str, object] | JSONResponse:
+    """The registration body, read to at most ``FILE_WATCH_MAX_BODY_BYTES``."""
+
+    parts: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > FILE_WATCH_MAX_BODY_BYTES:
+            return _watch_error(
+                "body_too_large",
+                f"a watch registration is at most {FILE_WATCH_MAX_BODY_BYTES} bytes",
+                413,
+            )
+        parts.append(chunk)
+    try:
+        decoded = json.loads(b"".join(parts))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _watch_error("bad_request", "the body is not JSON", 400)
+    if not isinstance(decoded, dict):
+        return _watch_error("bad_request", "the body is not a JSON object", 400)
+    return cast(dict[str, object], decoded)
+
+
+async def api_events_watch(request: Request) -> JSONResponse:
+    """``POST /api/events/watch``: watch a path on one ``/api/events`` connection.
+
+    The body is ``{connection, path, generation, watch}``:
+
+    - With a ``connection`` and ``watch`` true or absent, the path is registered on that
+      connection and the answer carries its generation now, the baseline the watch's
+      polls compare with; ``changed`` says whether it differs from the ``generation``
+      the page holds, so a change between the page's read and its registration is not
+      lost. A ``file.changed`` on that connection reports each later change.
+    - With ``watch: false`` the path is unregistered.
+    - With no ``connection`` nothing is registered: the answer is the generation a watch
+      on the path would compare, which is how ``metab --api`` reads it.
+
+    A connection id the process does not hold, as after a server restart, is refused
+    with ``unknown_connection`` (409), and the page registers again on its next
+    snapshot's id; a connection at ``FILE_WATCH_MAX_PATHS`` is refused with
+    ``too_many_watches`` (409). A Git pin has no watcher and answers
+    ``unsupported_for_subject``, as ``/api/events`` does.
+    """
+
+    require_source_capability("watcher")
+    body = await _watch_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    path = body.get("path")
+    connection = body.get("connection")
+    held = body.get("generation")
+    watch = body.get("watch", True)
+    if not isinstance(path, str):
+        return _watch_error("bad_request", "path is required and must be a string", 400)
+    if connection is not None and not isinstance(connection, str):
+        return _watch_error("bad_request", "connection must be a string", 400)
+    if held is not None and not isinstance(held, str):
+        return _watch_error("bad_request", "generation must be a string or null", 400)
+    if not isinstance(watch, bool):
+        return _watch_error("bad_request", "watch must be true or false", 400)
+    bus = _event_bus_for(request)
+    answer: dict[str, object] = {"type": "file_watch", "connection": connection, "path": path}
+    if connection is None:
+        if not watch:
+            return _watch_error("bad_request", "unregistering needs a connection", 400)
+        generation = await watch_generation(path)
+        return JSONResponse({**answer, "watching": False, "generation": generation})
+    try:
+        if not bus.connection_is_open(connection):
+            raise UnknownConnectionError(connection)
+        if not watch:
+            bus.watches.unregister(connection, path)
+            return JSONResponse({**answer, "watching": False})
+        generation = await bus.watches.register(connection, path)
+    except UnknownConnectionError:
+        return _watch_error(
+            "unknown_connection",
+            "no open event stream has this connection id; register again on the next snapshot's",
+            409,
+            path=path,
+        )
+    except TooManyWatchesError:
+        return _watch_error(
+            "too_many_watches",
+            f"a connection watches at most {bus.watches.max_paths} paths",
+            409,
+            path=path,
+            max_paths=bus.watches.max_paths,
+        )
+    return JSONResponse(
+        {
+            **answer,
+            "watching": True,
+            "generation": generation,
+            "changed": generation != held if "generation" in body else None,
+        }
+    )
 
 
 # ── /api/index/meta ──────────────────────────────────────────
@@ -971,7 +1130,9 @@ async def api_index_progress(request: Request) -> Response:
     if subject is not None:
         from metabrowser.git.content_routes import git_revision_index_progress
 
-        return await git_revision_index_progress(subject)
+        return await git_revision_index_progress(
+            subject, ages=request.query_params.get("ages") != "0"
+        )
 
     require_filesystem_hooks()
     progress, session = await _read_index_progress(_runtime_for(request))
@@ -1482,6 +1643,7 @@ def add_inventory_routes(app: Starlette) -> None:
     app.routes.extend(
         [
             Route("/api/events", api_events),
+            Route("/api/events/watch", api_events_watch, methods=["POST"]),
             Route("/api/catalog", api_catalog),
             Route("/api/index/progress", api_index_progress),
             Route(

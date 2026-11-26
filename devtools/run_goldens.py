@@ -9,6 +9,14 @@ workers:
 
     python -m devtools.run_goldens --jobs 4 'tests/golden/*.tryscript.md' -- <tryscript>
 
+``--shard I/N`` runs the Ith of N disjoint parts of the matched files, so CI can split the
+goldens across runners as it does the pytest tiers (``make test-goldens SHARD=1/2``).
+``devtools/shard_weights.py`` deals them by the seconds CI measured for each file:
+heaviest first, each to the part with the least so far. The same files always make the
+same parts, and every file is in exactly one. Until run 45062416967 a file's size stood
+in for its time, which had tracked it over the 119 files of run 44788663205 and no longer
+did: one part of two held 568 s of the 844 s of golden time.
+
 Everything after ``--`` is the tryscript command. The ``Makefile``'s ``TRYSCRIPT`` holds
 it with its environment, so ``make golden-update`` and this run the same command.
 
@@ -30,11 +38,13 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
+
+from devtools import shard_weights
 
 # The start of the line printed for each file, and of the summary lines.
 PREFIX: Final = "golden:"
@@ -74,6 +84,37 @@ def matched(patterns: Sequence[str]) -> list[str]:
 
     found = {name for pattern in patterns for name in glob.glob(pattern)}
     return sorted(name for name in found if Path(name).is_file())
+
+
+def parse_shard(value: str) -> tuple[int, int]:
+    """The ``(index, count)`` of ``I/N``, such as ``2/3``, with ``1 <= I <= N``."""
+
+    match = re.fullmatch(r"(\d+)/(\d+)", value)
+    if match is None or not 1 <= int(match[1]) <= int(match[2]):
+        raise argparse.ArgumentTypeError(
+            f"--shard takes I/N with 1 <= I <= N, such as 2/3, not {value!r}"
+        )
+    return int(match[1]), int(match[2])
+
+
+def _measured_name(path: str) -> str:
+    """*path* as the weights name it: from the repository's root, if it is under it."""
+
+    try:
+        return Path(path).resolve().relative_to(shard_weights.ROOT).as_posix()
+    except ValueError:
+        return path
+
+
+def dealt(
+    paths: Sequence[str], index: int, count: int, seconds: Mapping[str, float] | None = None
+) -> list[str]:
+    """The files of part *index* of *count*, weighed by *seconds* or else as measured."""
+
+    measured = shard_weights.load(shard_weights.GOLDENS) if seconds is None else seconds
+    names = {path: _measured_name(path) for path in paths}
+    part_of = shard_weights.parts(names.values(), count, measured)
+    return [path for path in paths if part_of[names[path]] == index - 1]
 
 
 def read_output(path: str, output: str) -> tuple[str, int]:
@@ -137,6 +178,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
     split = given.index("--")
     parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("--jobs", type=_jobs, default=1, help="files to run at a time")
+    parser.add_argument(
+        "--shard", type=parse_shard, default=None, help="run part I of N, as 1/2, of the files"
+    )
     parser.add_argument("patterns", nargs="+", help="golden files or glob patterns")
     args = parser.parse_args(given[:split])
     command = given[split + 1 :]
@@ -144,6 +188,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
     if not paths:
         print(f"{PREFIX} no file matches {' '.join(args.patterns)}", file=sys.stderr)
         return 1
+    if args.shard is not None:
+        paths = dealt(paths, *args.shard)
     started = time.monotonic()
     results: list[Result] = []
     for result in run_all(command, paths, args.jobs):

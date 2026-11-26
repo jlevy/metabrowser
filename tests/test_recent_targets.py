@@ -13,11 +13,14 @@ import fcntl
 import json
 import logging
 import os
+import pty
+import signal
 import stat
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from typing import TextIO, cast
 
 import pytest
 import yaml
@@ -47,8 +50,10 @@ from metabrowser.recent_targets import (
     record_quietly,
     recorded_path,
     recording_enabled,
+    serve_records,
 )
 from tests.child_io import read_line
+from tests.test_nav_metadata_chrome import _free_port
 
 _STAMP = "2026-11-18T03:14:15Z"
 
@@ -519,8 +524,9 @@ def test_a_field_this_release_does_not_know_is_kept_until_its_entry_is_opened_ag
             "root": "https://github.com/jlevy/tbd",
             "opened_at": _STAMP,
             "target": "https://github.com/jlevy/tbd/pull/12",
+            "git": False,
         },
-        {"mode": "folder", "root": "/work/a", "opened_at": _STAMP, "target": None},
+        {"mode": "folder", "root": "/work/a", "opened_at": _STAMP, "target": None, "git": False},
     ]
     assert listing.targets[0].extra == later
 
@@ -569,6 +575,90 @@ def test_an_entry_keeps_where_its_open_pointed_and_the_next_open_replaces_it(
     ]
     record("folder", "/work/a", target="/work/a", directory=home)
     assert read(home).targets[0].target is None, "a target that is the root is none"
+
+
+# ── Whether a folder was a checkout ────────────────────────────────
+
+
+def test_an_entry_keeps_whether_its_folder_was_a_checkout_and_the_next_open_replaces_it(
+    home: Path,
+) -> None:
+    """``git`` is not part of the key: it is the latest open's, written only when true.
+
+    A shell draws the list without looking at a listed folder, so what the list holds is
+    the answer from the last time the folder was opened.
+    """
+
+    record("folder", "/work/a", git=True, directory=home)
+    record("folder", "/work/b", directory=home)
+
+    assert [(entry.root, entry.git) for entry in read(home).targets] == [
+        ("/work/b", False),
+        ("/work/a", True),
+    ]
+    stored = yaml.safe_load((home / STORE_FILE).read_text(encoding="utf-8"))["targets"]
+    assert "git" not in stored[0], "an entry that is not a checkout writes no flag"
+    assert stored[1]["git"] is True
+    assert [entry.as_json()["git"] for entry in read(home).targets] == [False, True]
+
+    # The folder stopped being a checkout, or was a checkout all along: the next open says.
+    record("folder", "/work/a", directory=home)
+    assert [(entry.root, entry.git) for entry in read(home).targets] == [
+        ("/work/a", False),
+        ("/work/b", False),
+    ]
+    record("folder", "/work/a", git=True, directory=home)
+    assert read(home).targets[0].git is True
+    assert len(read(home).targets) == 2, "the flag is no part of the key"
+
+
+def test_a_mirror_is_never_recorded_as_a_checkout(home: Path) -> None:
+    entry = record("mirror", "https://github.com/jlevy/tbd", git=True, directory=home)
+
+    assert entry.git is False
+    assert (
+        "git" not in yaml.safe_load((home / STORE_FILE).read_text(encoding="utf-8"))["targets"][0]
+    )
+
+
+def test_an_entry_from_before_the_flag_is_a_plain_folder_until_it_is_opened_again(
+    home: Path,
+) -> None:
+    """The flag is a new field of an entry, which the format allows without a new number."""
+
+    _store(home, "format: mf01\ntargets:\n" + _ENTRY)
+
+    assert [(entry.root, entry.git) for entry in read(home).targets] == [("/work/a", False)]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "- mode: folder\n  root: /work/a\n  opened_at: '{stamp}'\n  git: 'false'\n",
+        "- mode: folder\n  root: /work/a\n  opened_at: '{stamp}'\n  git: 'yes'\n",
+        "- mode: mirror\n  root: https://github.com/jlevy/tbd\n  opened_at: '{stamp}'\n  git: true\n",
+    ],
+    ids=["false-is-never-written", "not-a-boolean", "a-mirror-is-never-a-checkout"],
+)
+def test_a_flag_this_release_does_not_write_is_damage(home: Path, entry: str) -> None:
+    """A file that holds one was not written by this release, so it is damaged."""
+
+    _store(home, "format: mf01\ntargets:\n" + entry.format(stamp=_STAMP))
+
+    listing = read(home)
+    assert listing.targets == ()
+    assert listing.problem is not None and "git flag" in listing.problem
+
+
+def test_a_checkout_flag_survives_a_rewrite_by_another_entrys_open(home: Path) -> None:
+    _store(home, "format: mf01\ntargets:\n" + _ENTRY + "  git: true\n")
+
+    assert read(home).targets[0].git is True
+    record("folder", "/work/b", directory=home)
+    assert [(entry.root, entry.git) for entry in read(home).targets] == [
+        ("/work/b", False),
+        ("/work/a", True),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -639,6 +729,31 @@ def test_recent_add_of_a_file_records_its_folder_and_the_file(
     )
     listed = runner.invoke(_app, ["--recent", "--json"])
     assert '"target": ' + json.dumps(recorded_path(folder / "notes.md")) in listed.output
+
+
+def test_recent_add_records_whether_the_folder_is_a_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The flag is the ``.git`` entry's test the identity route gives the ``git`` kind by."""
+
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "config"))
+    plain, checkout = tmp_path / "plain", tmp_path / "checkout"
+    (checkout / ".git").mkdir(parents=True)
+    plain.mkdir()
+    runner = CliRunner()
+
+    for folder in (plain, checkout):
+        assert runner.invoke(_app, [str(folder), "--recent-add"]).exit_code == 0
+
+    assert [(entry.root, entry.git) for entry in read().targets] == [
+        (recorded_path(checkout), True),
+        (recorded_path(plain), False),
+    ]
+    listed = json.loads(runner.invoke(_app, ["--recent", "--json"]).output)
+    assert [(entry["root"], entry["git"]) for entry in listed["targets"]] == [
+        (recorded_path(checkout), True),
+        (recorded_path(plain), False),
+    ]
 
 
 def test_the_open_root_of_a_path_is_the_folder_or_a_files_folder(tmp_path: Path) -> None:
@@ -775,10 +890,23 @@ _WRITER = textwrap.dedent(
     from metabrowser import recent_targets
 
     home, writer, count = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+    recent_targets.LOCK_WAIT_S = float(sys.argv[4])
     for index in range(count):
         recent_targets.record("folder", f"/work/writer-{writer}/root-{index}", directory=home)
     """
 )
+# How long the writers below wait for the lock, and how long the test waits for each.
+# This test is about what the lock excludes; how long a writer may wait is
+# test_a_writer_gives_up_on_a_lock_held_too_long_and_a_server_starts_anyway's. Its burst
+# is not servers starting at once: each writer here takes the lock five times running,
+# and the one that has just released it takes it again before a waiter's next try (in 27
+# to 32 of the 39 handoffs of each of 8 bursts on 2026-11-18, at load average 300), so
+# the writer served last waits behind nearly every other writer's records, where a
+# server waits behind one record for each server starting with it. That wait passed
+# LOCK_WAIT_S on a loaded free-threaded CI runner (run 44386715486). A writer still gives
+# up before the test stops waiting for it, so a lock never released fails as its error.
+_WRITERS_LOCK_WAIT_S = 30.0
+_WRITERS_TIMEOUT_S = 50
 
 
 def test_writers_at_once_lose_no_entry(home: Path) -> None:
@@ -790,16 +918,17 @@ def test_writers_at_once_lose_no_entry(home: Path) -> None:
 
     writers, each = 8, 5
     assert writers * each <= MAX_RECENT_TARGETS
+    wait = f"{_WRITERS_LOCK_WAIT_S:g}"
     children = [
         subprocess.Popen(
-            [sys.executable, "-c", _WRITER, str(home), str(writer), str(each)],
+            [sys.executable, "-c", _WRITER, str(home), str(writer), str(each), wait],
             stderr=subprocess.PIPE,
             text=True,
         )
         for writer in range(writers)
     ]
     for child in children:
-        _, errors = child.communicate(timeout=50)
+        _, errors = child.communicate(timeout=_WRITERS_TIMEOUT_S)
         assert child.returncode == 0, errors
 
     roots = _roots(home)
@@ -854,14 +983,57 @@ def test_a_root_a_server_cannot_record_does_not_stop_it(
 # ── Opting out ─────────────────────────────────────────────────────
 
 
+class _Stdin:
+    """A standard input that is, or is not, a terminal."""
+
+    def __init__(self, terminal: bool) -> None:
+        self.terminal = terminal
+
+    def isatty(self) -> bool:
+        return self.terminal
+
+
+_TERMINAL = cast("TextIO", _Stdin(True))
+_PIPE = cast("TextIO", _Stdin(False))
+
+
 @pytest.mark.parametrize("value", ["0", "false", "no", "off", "OFF", " 0 "])
 def test_recording_is_off_when_the_variable_says_so(value: str) -> None:
+    """Nothing records, a person's serve at a terminal included."""
+
     assert not recording_enabled({RECORD_ENV: value})
+    assert not serve_records({RECORD_ENV: value}, _TERMINAL)
 
 
 @pytest.mark.parametrize("environ", [{}, {RECORD_ENV: "1"}, {RECORD_ENV: ""}, {RECORD_ENV: "yes"}])
-def test_recording_is_on_otherwise(environ: dict[str, str]) -> None:
+def test_an_explicit_add_records_unless_the_variable_says_no(environ: dict[str, str]) -> None:
+    """``--recent-add`` is itself a request to record, so it needs no terminal."""
+
     assert recording_enabled(environ)
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on", "ON", " 1 "])
+def test_a_serve_told_to_record_records_without_a_terminal(value: str) -> None:
+    """As ``--present`` tells the server it starts for a browser, whose stdin is not a terminal."""
+
+    assert serve_records({RECORD_ENV: value}, _PIPE)
+
+
+@pytest.mark.parametrize("environ", [{}, {RECORD_ENV: ""}, {RECORD_ENV: "2"}])
+def test_a_serve_nobody_told_records_only_at_a_terminal(environ: dict[str, str]) -> None:
+    """A person typed ``metab ROOT``; an agent, a test, a golden, or a tool did not
+    (mb-1q02): their serves made up most of one user's list."""
+
+    assert serve_records(environ, _TERMINAL)
+    assert not serve_records(environ, _PIPE)
+
+
+def test_a_serve_with_no_stdin_or_a_closed_one_is_not_at_a_terminal(tmp_path: Path) -> None:
+    closed = (tmp_path / "stdin").open("w", encoding="utf-8")
+    closed.close()
+
+    assert not serve_records({}, closed)
+    assert not serve_records({}, cast("TextIO", object()))
 
 
 def test_a_server_told_not_to_record_touches_nothing(
@@ -891,9 +1063,9 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
 ) -> None:
     """``metab ROOT`` is in the list by the time its ``Serving`` line can be read.
 
-    That is what the macOS app relies on: the server it starts for a folder records the
-    folder, and ``metab FILE`` records the file's folder, which is what it serves, with
-    the file as where the open pointed.
+    That is what a shell that waits for the line relies on: the serve records the folder,
+    and ``metab FILE`` records the file's folder, which is what it serves, with the file
+    as where the open pointed.
     """
 
     config = tmp_path / "config"
@@ -901,6 +1073,8 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
     served = tmp_path / "served"
     served.mkdir()
     (served / "a.txt").write_text("a")
+    # Served as a checkout, which the entry says too (the `git` kind of the identity route).
+    (served / ".git").mkdir()
     console_script = Path(sys.executable).with_name("metab")
     process = subprocess.Popen(
         [
@@ -908,6 +1082,9 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
             str(served / "a.txt" if root_is_file else served),
             "--no-open",
             "--exit-on-eof",
+            # Not the default port, which parallel workers' servers search from too.
+            "--port",
+            str(_free_port()),
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -918,17 +1095,27 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
     try:
         line = read_line(process)
         assert line.startswith("Serving "), line
-        assert [(entry.mode, entry.root, entry.target) for entry in read(config).targets] == [
+        assert [
+            (entry.mode, entry.root, entry.target, entry.git) for entry in read(config).targets
+        ] == [
             (
                 "folder",
                 recorded_path(served),
                 recorded_path(served / "a.txt") if root_is_file else None,
+                True,
             )
         ]
-        # A server of another folder that is not an open, as one the macOS app restores
-        # is not, serves and leaves the list as it was.
+        # A server of another folder told not to record, as every server the macOS app
+        # starts is, serves and leaves the list as it was.
         quiet = subprocess.Popen(
-            [str(console_script), str(tmp_path), "--no-open", "--exit-on-eof"],
+            [
+                str(console_script),
+                str(tmp_path),
+                "--no-open",
+                "--exit-on-eof",
+                "--port",
+                str(_free_port()),
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -943,6 +1130,72 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
             _stop(quiet)
     finally:
         _stop(process)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX pipes and pseudo-terminals")
+def test_only_a_serve_at_a_terminal_records_without_being_told(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``metab ROOT`` as an agent or a tool runs it, its stdin a pipe and the variable
+    unset, serves and records nothing; as a person runs it, at a terminal, it records.
+
+    This is the rule that keeps agents' and tools' folders out of the user's list without
+    anyone remembering to opt out (mb-1q02).
+    """
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(config))
+    monkeypatch.delenv(RECORD_ENV)
+    console_script = Path(sys.executable).with_name("metab")
+    agents, persons = tmp_path / "agents", tmp_path / "persons"
+    agents.mkdir()
+    persons.mkdir()
+
+    def serve(root: Path, stdin: int) -> subprocess.Popen[str]:
+        # Not the default port, which parallel workers' servers search from too.
+        command = [str(console_script), str(root), "--no-open", "--port", str(_free_port())]
+        return subprocess.Popen(
+            command,
+            stdin=stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+
+    agent = serve(agents, subprocess.PIPE)
+    try:
+        assert read_line(agent).startswith("Serving ")
+        assert read(config).targets == ()
+    finally:
+        _end(agent)
+    controller, terminal = pty.openpty()
+    try:
+        person = serve(persons, terminal)
+        try:
+            assert read_line(person).startswith("Serving ")
+            assert [target.root for target in read(config).targets] == [recorded_path(persons)]
+        finally:
+            _end(person)
+    finally:
+        os.close(terminal)
+        os.close(controller)
+
+
+def _end(process: subprocess.Popen[str]) -> None:
+    """Stop a server without ``--exit-on-eof`` with SIGTERM to its group, within a bound."""
+
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5)
+    except ProcessLookupError:
+        process.wait(timeout=5)
+    for stream in (process.stdin, process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()
 
 
 def _stop(process: subprocess.Popen[str]) -> None:

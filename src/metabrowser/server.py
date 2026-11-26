@@ -68,7 +68,14 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from strif import file_mtime_hash
 
-from metabrowser import __version__, delivery, kpress_adapter, server_timing
+from metabrowser import (
+    __version__,
+    delivery,
+    event_log,
+    event_log_reports,
+    kpress_adapter,
+    server_timing,
+)
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
@@ -81,13 +88,21 @@ from metabrowser.capabilities import (
     raw_sandbox_csp,
     untrusted_shell_csp,
 )
-
-# Cache invalidator: clear_charts_cache is invoked by the root-change
-# handler so chart memos don't stick across served-root swaps.
-from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
+from metabrowser.checkout_store import checkout_store, lifespan_checkout_store
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
-from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.commit_ids import short_commit
+from metabrowser.content_errors import ContentReadError
+from metabrowser.content_sniff import (
+    MEDIA_SIGNATURE_BYTES,
+    SNIFF_PREFIX_BYTES,
+    ContentClass,
+    classify_prefix,
+    media_type_from_prefix,
+    sniff_artifact,
+    sniff_artifact_prefix,
+)
+from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
     InertRenderRefused,
@@ -99,6 +114,7 @@ from metabrowser.diff.markdown_projection_worker import (
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.encoded_assets import EncodedAssetResponse
+from metabrowser.event_log_route import EVENT_LOG_ROUTES
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -115,6 +131,7 @@ from metabrowser.file_kinds import (
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.file_type_legend import build_file_type_legend
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.frontmatter_yaml import frontmatter_error_fields, shown_frontmatter_error
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
@@ -174,8 +191,8 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     assemble_grouped_tree,
     assemble_tree_pages,
 )
-from metabrowser.inventory_rollup import RollupOptions, RollupRank
-from metabrowser.jsonl_view import _parse_jsonl_file
+from metabrowser.inventory_rollup import RollupEncoding, RollupIgnored, RollupOptions, RollupRank
+from metabrowser.jsonl_view import JsonlParseLimitError, _parse_jsonl_file
 from metabrowser.keymap import check_view_keys, live_view_keys
 from metabrowser.mirror_refresh import lifespan_refresh, mirror_session
 
@@ -198,17 +215,30 @@ from metabrowser.recent import (
     WindowKey,
     recent_result_from_projection,
 )
-from metabrowser.repository_context import discover_repository_context
-from metabrowser.root_identity import IDENTITY_ROUTES, root_identity
+from metabrowser.repository_context import (
+    CheckedOutHead,
+    checked_out_head,
+    discover_repository_context,
+    is_checkout_root,
+)
+from metabrowser.root_identity import (
+    IDENTITY_ROUTES,
+    canonical_repository_url,
+    identity_kind_tip,
+    root_identity,
+)
+from metabrowser.server_utils import ipv6_literal, wildcard_host
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_TREE_PAGE_ROWS,
     RECENT_WINDOW_SECONDS,
+    ROLLUP_BODY_CACHE_BYTES,
     ROLLUP_BODY_CACHE_ENTRIES,
     ROLLUP_DEFAULT_DEPTH,
     ROLLUP_DEFAULT_EXT_RANK,
     ROLLUP_DEFAULT_EXT_TOP,
+    ROLLUP_DEFAULT_NODES,
     ROLLUP_DEFAULT_TOP,
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
@@ -221,14 +251,17 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
     VALID_LOG_LEVELS,
+    blocks_remote_images,
     client_settings_dict,
 )
 from metabrowser.source import (
+    ContentRef,
     SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
     get_source_session,
     lifespan_subject,
+    read_content_window,
     require_filesystem_hooks,
     require_filter_capabilities,
     require_source_capability,
@@ -236,6 +269,7 @@ from metabrowser.source import (
     session_filesystem_root,
     unsupported_source_payload,
 )
+from metabrowser.source_kind_marks import source_kind_svg
 from metabrowser.source_routes import (
     SOURCE_ROUTES,
     SourcePinGuard,
@@ -244,6 +278,7 @@ from metabrowser.source_routes import (
     source_status,
 )
 from metabrowser.sse import api_stream
+from metabrowser.table_source import TableSourceDeclaration, install_table_sources
 from metabrowser.tree import (
     _IGNORE_CACHE,
     DEFAULT_TREE_DEPTH,
@@ -268,6 +303,7 @@ from metabrowser.tree_filter import (
     parse_types,
 )
 from metabrowser.tree_groups import (
+    UNDATED_GROUP_ID,
     GroupBy,
     age_band,
     group_row,
@@ -281,12 +317,15 @@ from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
     decode_safe_commit_route,
     decode_safe_pull_route,
+    decode_safe_stack_route,
     decode_safe_view_path,
 )
 
 if TYPE_CHECKING:
     from kpress.models import KPressAsset
     from starlette.requests import Request
+
+    from metabrowser.git.tree_source import GitRevisionSubject
 
 
 # Direct ASGI imports bypass the CLI bootstrap. Load the working tree's
@@ -355,16 +394,26 @@ _INLINE_LANDING_ROWS = 300
 # client that already holds the answer; a second tab opening the same folder,
 # or a reconnect, arrives without one and would otherwise re-aggregate and
 # re-serialize a body the server just produced. Bounded by
-# ``ROLLUP_BODY_CACHE_ENTRIES``: entries from a superseded index revision can
-# never be requested again, so they age out by insertion order.
+# ``ROLLUP_BODY_CACHE_ENTRIES`` and ``ROLLUP_BODY_CACHE_BYTES``: entries from a
+# superseded index revision can never be requested again, so they age out by
+# insertion order.
 _ROLLUP_BODY_CACHE: dict[str, bytes] = {}
 
 
 def _remember_rollup_body(etag: str, body: bytes | memoryview[int]) -> None:
-    """Retain one encoded rollup body for reuse by an identical request."""
+    """Retain one encoded rollup body for reuse by an identical request.
 
-    _ROLLUP_BODY_CACHE[etag] = bytes(body)
-    while len(_ROLLUP_BODY_CACHE) > ROLLUP_BODY_CACHE_ENTRIES:
+    The oldest bodies go first until both bounds hold; a body larger than the byte
+    bound is not retained, since it would evict every other and then itself.
+    """
+
+    retained = bytes(body)
+    if len(retained) > ROLLUP_BODY_CACHE_BYTES:
+        return
+    _ROLLUP_BODY_CACHE[etag] = retained
+    while len(_ROLLUP_BODY_CACHE) > ROLLUP_BODY_CACHE_ENTRIES or (
+        sum(len(cached) for cached in _ROLLUP_BODY_CACHE.values()) > ROLLUP_BODY_CACHE_BYTES
+    ):
         _ROLLUP_BODY_CACHE.pop(next(iter(_ROLLUP_BODY_CACHE)))
 
 
@@ -600,6 +649,14 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 STATIC_DIR: Path = Path(__file__).parent / "static"
 # The stamp `?v=` names: each static file's own bytes (asset_stamps.StampedStaticFiles).
 _STATIC_TREE = StampedTree(STATIC_DIR, live=editable_install("metabrowser"))
+# Mermaid's chunks, which its build names `<name>-<hash>.mjs` by a hash of each one's
+# content and its entry imports by relative specifiers that drop the entry's `?v=`. The
+# name names the bytes, so a chunk the stamp holds is answered immutable at its plain
+# address. Before this, each chunk a page imported, of 105 (5,404,632 bytes), was
+# `no-cache` and asked for again on every load with a conditional request answered 304
+# (measured 2026-11-19). Its bytes change only with its name: `devtools/vendor_assets.py
+# --check` refuses vendored bytes its manifest does not pin.
+_SELF_NAMED_STATIC = ("vendor/mermaid/chunks/",)
 # The reading-width state machine is first-paint configuration and only 1 KiB
 # compressed. Embed its exact tested source once instead of spending a startup
 # request on it; keeping the file authoritative preserves the browserless
@@ -667,6 +724,17 @@ def _prefers_text_body(target: Path) -> bool:
     return sniff_artifact(target) is not ContentClass.BINARY
 
 
+def _sniff_text_body(target: Path) -> tuple[bool, bytes | None]:
+    """:func:`_prefers_text_body`, with the bytes on disk the sniff read.
+
+    The bytes are the file's own leading bytes, which a ``magic`` kind rule is matched
+    against when the file falls to the ``binary`` fallback (:func:`_magic_kind`); they
+    are None for a compressed artifact, whose sniff read decompressed bytes.
+    """
+    content_class, prefix = sniff_artifact_prefix(target)
+    return content_class is not ContentClass.BINARY, prefix
+
+
 # Defaults live in settings.py, which is also what the client reads, so the
 # chunk size cannot drift between the two planes. See
 # docs/large-content-rendering.md for the measurements behind them.
@@ -703,6 +771,9 @@ def _query_bounded_int(
     minimum: int,
     maximum: int,
 ) -> int:
+    # "max" asks for the bound itself, so a client need not know its value.
+    if request.query_params.get(name) == "max":
+        return maximum
     return max(minimum, min(_query_int(request, name, default), maximum))
 
 
@@ -748,16 +819,17 @@ def _clear_browser_caches() -> None:
     _subtree_summary.cache_clear()
     _has_any_leaf.cache_clear()
     _has_any_nongitignored.cache_clear()
+
+    from metabrowser.charts import clear_charts_cache
+
     clear_charts_cache()
 
 
 # Concrete bind hosts registered by the CLI (``--host``). Wildcard binds
-# never land here; loopback names are always permitted by the middleware.
+# (``server_utils.wildcard_host``) never land here: they accept connections on
+# every interface and are not meaningful Host-header names. Loopback names are
+# always permitted by the middleware.
 _EXTRA_ALLOWED_HOSTS: set[str] = set()
-
-# Bind values that accept connections on every interface. They are not
-# meaningful Host-header names, so they are never added to the allowlist.
-_WILDCARD_BIND_HOSTS: frozenset[str] = frozenset({"", "0.0.0.0", "::", "[::]"})
 
 
 def _register_allowed_host(bind_host: str) -> None:
@@ -767,14 +839,20 @@ def _register_allowed_host(bind_host: str) -> None:
     browser would send, and allowing everything would defeat the
     DNS-rebinding check. Operators reaching a wildcard bind through a
     concrete name allow it explicitly with ``METABROWSER_ALLOWED_HOSTS``.
+
+    An IPv6 literal is registered in brackets, as a ``Host`` header carries
+    it, in the spelling given (the printed URL's) and in the compressed one
+    a browser rewrites it to.
     """
     raw = bind_host.strip().lower()
-    if raw in _WILDCARD_BIND_HOSTS:
-        # Check before normalizing: the Host-header port-strip heuristic
-        # would mangle a bare IPv6 wildcard ("::" -> ":").
+    if wildcard_host(raw):
+        return
+    address = ipv6_literal(raw)
+    if address is not None:
+        _EXTRA_ALLOWED_HOSTS.update({f"[{raw.strip('[]')}]", f"[{address.compressed}]"})
         return
     hostname = _HostValidationMiddleware._hostname(raw)
-    if hostname and hostname != ":" and hostname not in _WILDCARD_BIND_HOSTS:
+    if hostname and not wildcard_host(hostname):
         _EXTRA_ALLOWED_HOSTS.add(hostname)
 
 
@@ -918,12 +996,14 @@ class _HostValidationMiddleware:
         # An absent Host header (HTTP/1.0 clients) is allowed: rebinding
         # requires a browser, and browsers always send Host.
         if hostname and hostname not in allowed:
+            # One statement and one remedy (docs/design-system-messages.md). Why the
+            # guard exists, DNS rebinding, is this class's docstring. The remedy is the
+            # setting, not `--host NAME`, which also admits a name: binding to it fails
+            # for a name a tunnel or proxy reaches this machine by.
             response = PlainTextResponse(
-                f"Host {hostname!r} is not a permitted name for this local server. "
-                "This guard blocks DNS-rebinding attacks. If this name is a "
-                "trusted way to reach this machine, restart with "
-                f"--host {hostname} or add it to the METABROWSER_ALLOWED_HOSTS "
-                "environment variable (comma-separated).\n",
+                f"{hostname!r} is not a permitted name for this local server. "
+                "If it is a trusted way to reach this machine, restart with it in "
+                "METABROWSER_ALLOWED_HOSTS.\n",
                 status_code=421,
             )
             await response(scope, receive, send)
@@ -1132,6 +1212,61 @@ def _pin_is_served() -> bool:
         return True
 
 
+def _end_request_span(
+    span: event_log.Span,
+    *,
+    status: int | None,
+    body_bytes: int,
+    start_ms: float | None,
+    query: str,
+    record: server_timing.Record,
+    failure: BaseException | None,
+) -> None:
+    """End a request's event-log span with what the request log line says.
+
+    A status of 500 or more is ``failed``; a request cancelled, as when the client left,
+    is ``cancelled`` whether or not its answer had begun, and one the application raised
+    on is ``failed``.
+    """
+
+    attrs: dict[str, Any] = {"status": status, "bytes": body_bytes}
+    if query:
+        attrs["query"] = event_log.redact(query, limit=event_log.MAX_TEXT_CHARS)
+    if start_ms is not None:
+        attrs["start_ms"] = round(start_ms, 1)
+    phases = record.totals()
+    if phases:
+        attrs["phases"] = {name: round(ms, 1) for name, ms in phases}
+    processes = record.git_processes()
+    if processes:
+        attrs["git_processes"] = processes
+    if failure is not None:
+        cancelled = isinstance(failure, asyncio.CancelledError)
+        if not cancelled:
+            attrs["error"] = event_log.describe_error(failure)
+        span.end("cancelled" if cancelled else "failed", **attrs)
+    else:
+        span.end("failed" if status is not None and status >= 500 else "ok", **attrs)
+
+
+# Long-lived endpoints never flagged as slow. The SSE transport intentionally holds the
+# connection open for as long as the tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so
+# without this skip every connected browser tab would emit a slow-request warning. These
+# paths also get no ``Server-Timing`` header, and a page never reports them as slow or
+# pending (``event_log_reports.browser_settings``). ``/api/tail`` has no route.
+LONG_LIVED_PATHS: Final[tuple[str, ...]] = ("/api/events", "/api/tail", "/api/stream")
+
+
+def _request_client(scope: dict[str, Any]) -> str | None:
+    """The page's ID for this request (``event_log.CLIENT_HEADER``), when it sent one."""
+
+    wanted = event_log.CLIENT_HEADER.encode("latin-1")
+    for name, value in scope.get("headers") or []:
+        if name == wanted:
+            return event_log.client_id(value)
+    return None
+
+
 class _SlowRequestLogMiddleware:
     """Time + log browser server requests.
 
@@ -1153,12 +1288,7 @@ class _SlowRequestLogMiddleware:
         self.threshold_ms = threshold_ms
         self.verbose = verbose
 
-    # Long-lived endpoints we never want flagged as slow. The SSE
-    # transport intentionally holds the connection open for as long as the
-    # tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so without this skip
-    # every connected browser tab would emit a slow-request warning. These
-    # paths also get no ``Server-Timing`` header. ``/api/tail`` has no route.
-    _LONG_LIVED_PATHS: tuple[str, ...] = ("/api/events", "/api/tail", "/api/stream")
+    _LONG_LIVED_PATHS: tuple[str, ...] = LONG_LIVED_PATHS
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
@@ -1180,6 +1310,20 @@ class _SlowRequestLogMiddleware:
         body_bytes = 0
         start_ms: float | None = None
         record, token = server_timing.begin()
+        # The event log's record of the request (metabrowser.event_log): current while
+        # the application runs, so a job the request starts names it as its parent, and
+        # carries the page's ID for it, which a page's reports name too.
+        method = scope.get("method", "")
+        # A request for something inside the events directory is not recorded, when this
+        # server's folder holds the directory (event_log.quiet_request says why).
+        request_span = (
+            event_log.begin("request", f"{method} {path}", client=_request_client(scope))
+            if event_log.enabled()
+            and not event_log.quiet_request(
+                path, (scope.get("query_string") or b"").decode("latin-1")
+            )
+            else event_log.NULL_SPAN
+        )
 
         async def send_wrapper(message: dict[str, Any]) -> None:
             nonlocal body_bytes, start_ms, status
@@ -1208,8 +1352,13 @@ class _SlowRequestLogMiddleware:
                 body_bytes += len(body)
             await send(message)
 
+        failure: BaseException | None = None
         try:
-            await self.app(scope, receive, send_wrapper)
+            with event_log.within(request_span):
+                await self.app(scope, receive, send_wrapper)
+        except BaseException as exc:
+            failure = exc
+            raise
         finally:
             server_timing.end(record, token)
             # The time to the end of the body, which no header can carry.
@@ -1218,6 +1367,16 @@ class _SlowRequestLogMiddleware:
             phases = server_timing.log_value(record)
             query = (scope.get("query_string") or b"").decode("latin-1")
             full_path = f"{path}?{query}" if query else path
+            if request_span is not event_log.NULL_SPAN:
+                _end_request_span(
+                    request_span,
+                    status=status,
+                    body_bytes=body_bytes,
+                    start_ms=start_ms,
+                    query=query,
+                    record=record,
+                    failure=failure,
+                )
             if self.verbose:
                 # Verbose mode: every request, with arrival + completion
                 # epochs so correlation against browser-side perf.js
@@ -1279,66 +1438,51 @@ def _initial_path_html() -> str:
 def _pin_label_html(status: SourceStatus) -> str:
     """The navigation heading for a pinned revision.
 
-    A served mirror's is the repository's name, where a folder's name stands and with
-    the same `.path-base` emphasis, then the ref and the short commit, muted: the page
-    is called what a checkout of the repository would be, and the commit it is pinned
-    to stays in sight beside it. The full commit is in the heading's tooltip.
+    A pin with a name is headed by the name alone, where a folder's name stands and with
+    the same `.path-base` emphasis: a served mirror by the repository's name, as a
+    checkout of it would be called, and a revision a folder's server shows of its own
+    checkout by the folder's name. The ref selector beneath the tabs names the ref,
+    so the heading can stay focused on the name (mb-qq4e).
 
-    A pin with no mirror has no origin to take a name from. Its ref stands as the name
-    with the short commit after it, or the short commit alone when no ref is known,
-    and the full commit is its served root.
+    A pin with no mirror has no origin to take a name from, and no ref selector, so its
+    heading is the only place that names it. Its ref stands as the name with the short
+    commit after it, muted, in the commit-ID face (`.git-commit-sha`) a commit has
+    wherever it appears, or the short commit alone when no ref is known; the full commit
+    is its served root.
     """
-
-    short = html_escape((status["pin"] or "")[:12])
-    name = status["name"]
-    ref_name = status["ref_name"]
 
     def base(text: str) -> str:
         return f'<span class="path"><span class="path-base">{text}</span></span>'
 
-    commit = f'<span class="header-revision">{short}</span>'
-    if name is None:
-        return base(short) if ref_name is None else base(html_escape(ref_name)) + commit
-    ref = (
-        ""
-        if ref_name is None
-        else f'<span class="header-revision header-ref">{html_escape(ref_name)}</span>'
+    name = status["name"]
+    if name is not None:
+        return base(html_escape(name))
+    short = html_escape(short_commit(status["pin"] or ""))
+    ref_name = status["ref_name"]
+    if ref_name is None:
+        return base(f'<span class="git-commit-sha">{short}</span>')
+    return (
+        base(html_escape(ref_name)) + f'<span class="header-revision git-commit-sha">{short}</span>'
     )
-    return base(html_escape(name)) + ref + commit
 
 
 def _mirror_tip(status: SourceStatus) -> str | None:
-    """What a served mirror's heading says of itself on hover, or ``None`` for any other subject.
-
-    A page of a mirror looks like a page of a folder, and is not one: nothing is
-    checked out, and each file is read from a Git object at the pinned commit. So the
-    sentence says what the directory it names is, and does not leave the path to be
-    read as a folder of these files.
-    """
-
+    """Explain how the root's files are read, beside the separately displayed path."""
     if status["location"] is None:
         return None
     if status["origin"] is None:
-        # A revision of the served checkout: the directory is the reader's own folder, and
-        # the page is not the files in it.
-        return (
-            f"Committed revision {status['pin']} of the checkout in {status['location']}, "
-            "read from its Git objects: not the files in that folder now."
-        )
-    borrowing = f", borrowing objects from {status['borrows']}" if status["borrows"] else ""
-    return (
-        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}"
-        f"{borrowing}: a bare Git repository, with no checked-out files."
-    )
+        return "Files come from a committed revision of this checkout."
+    if status["borrows"]:
+        return "Bare Git mirror that shares objects with a local checkout."
+    return "Bare Git mirror with no checked-out files."
 
 
 def _mirror_heading_attrs(status: SourceStatus) -> str:
     """The navigation heading's attributes that say where a served mirror is kept.
 
-    `data-mirror-location` is the status's `location` and `data-mirror-tip` the sentence
-    around it. `static/mirror-heading.js` reads both back, as the file header reads
-    `data-served-root`, which on a served mirror is the repository's name. These two
-    attributes of the page and the status envelope are the only places a response names
+    The root menu and the file header read `data-mirror-location`. The heading preserves
+    the same description in `data-mirror-tip` for the browserless shell fixture.
+    The location attribute and the status envelope are the only places a response names
     a path in the cache.
     """
 
@@ -1359,9 +1503,7 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
 def _mirror_heading_script() -> str:
     """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
 
-    Only a mirror's page has a note, a location, or a commit to copy, so the code for
-    them is written into that page and is no startup script of a folder's. Read where a
-    mirror is first served, so a folder's server never reads it.
+    Mirrors and pinned checkouts can show a location note in their view header.
     """
 
     script = STATIC_DIR.joinpath("mirror-heading.js").read_text(encoding="utf-8")
@@ -1412,8 +1554,10 @@ def _static_asset_url(rel_path: str) -> str:
 # Interface-font sets offered by the settings dropdown. The first entry is the
 # default. Each set's actual font stacks live in styles.css as a
 # `html[data-app-font="<value>"]` block (the default uses the :root base). To add
-# a set, append one entry here and one CSS block there — the dropdown options and
-# the pre-paint bootstrap both derive from this single list, so they stay in sync.
+# a set, append one entry here and one CSS block there, which sets both --font-sans and
+# the sans's x-height, --font-sans-ex-height (tests/test_short_commit.py checks each) —
+# the dropdown options and the pre-paint bootstrap both derive from this single list,
+# so they stay in sync.
 _FONT_SETS: tuple[dict[str, str], ...] = (
     {"value": "clean", "label": "Clean Fonts"},
     {"value": "system", "label": "System Fonts"},
@@ -1490,6 +1634,83 @@ def _startup_script_tags(names: tuple[str, ...]) -> str:
     return "".join(f'\n  <script src="{_static_asset_url(name)}"></script>' for name in names)
 
 
+_PULL_HEAD_REF: Final = re.compile(r"refs/pull/([1-9][0-9]{0,9})/head")
+
+
+def _source_ref_chip_html(name: str, kind: str) -> str:
+    return (
+        f'<span class="git-ref git-ref-{kind}">'
+        f'<span class="git-ref-label">{html_escape(name)}</span></span>'
+    )
+
+
+def _source_ref_view_html(word: str) -> str:
+    """The word a checkout's revision row starts with, then the dot before its ref."""
+
+    return (
+        f'<span class="source-ref-selector-view">{word}</span>'
+        # The spaces are the text's alone: as a flex item's edges they collapse, and
+        # the label's gap sets the room.
+        '<span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+    )
+
+
+def _source_ref_label_html(
+    pin: GitRevisionSubject | None, *, checkout: bool, working_head: CheckedOutHead | None
+) -> str:
+    """The selected source before the chooser mounts, in the same faces and dimensions.
+
+    A checkout's row says which of its two views the page shows, in words, before the ref:
+    "Working tree" and the branch, or the commit a detached ``HEAD`` is at, that the files
+    on disk are on, or "Revision" and the ref that was chosen
+    (``static/source-ref-selector.js``, ``describe``).
+    """
+
+    if pin is None:
+        if not checkout:
+            return "Revision"
+        if working_head is None:
+            return "Working tree"
+        on = (
+            _source_ref_chip_html(working_head.branch, "local")
+            if working_head.branch is not None
+            else f'<span class="git-commit-sha">{html_escape(short_commit(working_head.revision))}</span>'
+        )
+        return _source_ref_view_html("Working tree") + on
+    if checkout:
+        return _source_ref_view_html("Revision") + _source_ref_revision_html(pin, checkout=True)
+    return _source_ref_revision_html(pin, checkout=False)
+
+
+def _source_ref_revision_html(pin: GitRevisionSubject, *, checkout: bool) -> str:
+    """The ref a revision's page was drawn for: its chip, a pull request, or a bare commit."""
+
+    if checkout:
+        from metabrowser.checkout_revisions import checkout_ref_name
+
+        name = checkout_ref_name(pin.ref)
+    else:
+        from metabrowser.git.tree_source import ref_short_name
+
+        pull = _PULL_HEAD_REF.fullmatch(pin.ref or "")
+        if pull is not None:
+            return f'Pull request: <span class="source-ref-selector-pull-number">#{pull[1]}</span>'
+        name = ref_short_name(pin.ref)
+    if name:
+        ref = pin.ref or ""
+        kind = (
+            "tag"
+            if ref.startswith("refs/tags/")
+            else "local"
+            if checkout and ref.startswith("refs/heads/")
+            else "remote"
+        )
+        return _source_ref_chip_html(name, kind)
+    return (
+        f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
+    )
+
+
 async def index(
     request: Request,
     *,
@@ -1519,6 +1740,10 @@ async def index(
     # awaited: a pin is never trusted, so a switch of the served subject while this
     # request renders cannot hand a revision's shell the folder's policy.
     page_capabilities = capabilities_for(pinned_revision=git_pin)
+    # The reader's privacy preference, read from the request's cookies once, so the
+    # settings the page carries and the policy it is served under cannot disagree.
+    block_remote_images = blocks_remote_images(request.cookies)
+    remote_images_checked = " checked" if block_remote_images else ""
     # Only a pin has a mirror session; a folder's shell never reads the app's state.
     mirror = mirror_session(request.app) if pin is not None else None
     # The served checkout's own refs and revisions: a folder that is a repository's root,
@@ -1529,7 +1754,8 @@ async def index(
     # The tab's title, and a native window's: what the served subject is called, from the
     # model `/api/identity` answers, so the two cannot disagree. A page changes subject
     # only by loading again, so the title written here stays current.
-    page_title = html_escape(root_identity(mirror, checkout)["title"])
+    identity = root_identity(mirror, checkout)
+    page_title = html_escape(identity["title"])
     if pin is not None:
         # Imported where a pin is served, like every other Git import below: the
         # modules behind a pinned revision are start-up work a folder never uses.
@@ -1542,8 +1768,8 @@ async def index(
         # what the file header's prefix and this heading's tooltip call the root.
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
-        # What styles a mirror's headings apart from a folder's: its root is a name,
-        # which is cut at its end, and its commit has a copy control beside it.
+        root_source_tip = html_escape(_mirror_tip(status) or "")
+        # A mirror's root is a name rather than a path, so the heading cuts it at its end.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
@@ -1557,9 +1783,57 @@ async def index(
     else:
         initial_path = _initial_path_html()
         initial_root = html_escape(_display_root_str(), quote=True)
-        mirror_attrs = mirror_class = ""
+        mirror_attrs = mirror_class = root_source_tip = ""
         repository_context = await asyncio.to_thread(
             discover_repository_context, _shell_folder(folder_root)
+        )
+    # The mark before the root's name names which of the three kinds of root the page shows,
+    # a plain folder, a Git checkout, or a cloud mirror (docs/design-system-icons.md,
+    # "Source Kinds"). The server writes the kind, the glyph for it, and the sentence, the
+    # same one `/api/identity` answers as `kind_tip`. The glyph is not in the icon registry:
+    # the registry is a startup script every page pays for under a gated budget, and a page
+    # draws one of the three, which only the server knows (source_kind_marks.py).
+    #
+    # A revision of the served checkout has no mirror but belongs to its checkout's
+    # repository. Keep the checkout's HEAD context for ref actions. The page's
+    # repository context names the pinned commit.
+    tip_context = repository_context
+    if pin is not None and checkout is not None and checkout.serves(pin):
+        tip_context = await asyncio.to_thread(discover_repository_context, checkout.root)
+        if tip_context is not None:
+            repository_context = {
+                **tip_context,
+                "revision": pin.commit_oid,
+                "branch": None,
+                "branch_on_origin": False,
+            }
+    root_kind = identity["kind"]
+    root_kind_svg = source_kind_svg(root_kind)
+    root_kind_tip = html_escape(identity_kind_tip(identity, tip_context), quote=True)
+    root_kind_label = html_escape(identity["kind_label"], quote=True)
+    root_repository_url = (
+        canonical_repository_url(tip_context)
+        if root_kind != "folder"
+        and tip_context is not None
+        and {tip_context["owner"], tip_context["name"]}.isdisjoint({".", ".."})
+        else None
+    )
+    root_repository_attr = root_repository_links = ""
+    if root_repository_url is not None:
+        safe_url = html_escape(root_repository_url, quote=True)
+        root_repository_attr = f' data-repository-url="{safe_url}"'
+        root_repository_links = f"""
+            <div class="root-details-links">
+              <div class="menu-link-url" id="root-repository-url">{safe_url}</div>
+              <div class="root-details-actions" hidden></div>
+            </div>"""
+    root_checkout_meta = ""
+    if root_kind == "git" and pin is None and tip_context is not None:
+        revision = tip_context["revision"]
+        root_checkout_meta += (
+            '<div>Commit: <span class="git-commit-revision"'
+            f' data-revision="{html_escape(revision, quote=True)}">'
+            f'<span class="git-commit-sha">{html_escape(short_commit(revision))}</span></span></div>'
         )
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
@@ -1574,6 +1848,7 @@ async def index(
     view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
     source_append_url = _static_asset_url("source-append.js")
+    revision_ages_url = _static_asset_url("revision-ages.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
@@ -1590,11 +1865,17 @@ async def index(
     pull_route_script = _startup_script_tags(PULL_PAGE_STARTUP_SCRIPTS if pull_page else ())
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
+    remote_images_url = _static_asset_url("remote-images.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree-expansion.js")
+    nav_collapse_url = _static_asset_url("nav-collapse.js")
+    # How every menu closes (docs/design-system.md, "Every Menu Closes Alike"): no menu is
+    # open before the first tree, and one opened sooner asks for this bundle. Loaded at
+    # startup, it put the startup scripts 870 bytes over their budget (2026-11-25).
+    menus_url = _static_asset_url("menus.js")
     tree_filter_model_url = _static_asset_url("tree-filter-model.js")
     pending_tally_diagnostics_url = _static_asset_url("pending-tally-diagnostics.js")
     known_file_catalog_url = _static_asset_url("known-file-catalog.js")
@@ -1614,6 +1895,7 @@ async def index(
     git_graph_url = _static_asset_url("git-graph.js")
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
+    event_reports_url = _static_asset_url("event-reports.js")
     source_freshness_url = _static_asset_url("source-freshness.js")
     source_ref_selector_url = _static_asset_url("source-ref-selector.js")
     app_url = _static_asset_url("app.js")
@@ -1626,8 +1908,10 @@ async def index(
         **client_settings_dict(
             syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES,
             capabilities=page_capabilities,
+            block_remote_images=block_remote_images,
         ),
         "BUILD_TAG": BUILD_TAG,
+        "EVENT_REPORTS": event_log_reports.browser_settings(long_lived=LONG_LIVED_PATHS),
     }
     if pin is not None:
         client_settings["STORE_TAG"] = store_tag(pin.command_target.git_dir)
@@ -1639,47 +1923,64 @@ async def index(
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
-    # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    # A pin's freshness row, filled by static/source-freshness.js. A plain folder has
+    # none. A checkout that keeps a store of its origin has one on every page, its
+    # working tree's too, saying when that store was fetched and offering Refresh.
+    origin_store = checkout_store(request.app) if checkout is not None else None
+    # It sits above the keyboard shortcut strip, so the strip stays the pane's last row
+    # (owner, 2026-11-20).
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
-        if git_pin
+        if git_pin or (origin_store is not None and origin_store.fetchable)
         else ""
     )
-    # The branch and tag selector, filled by static/source-ref-selector.js: on a pin
-    # served from a mirror, and on a checkout, whose working tree and revisions it
-    # switches between. A plain folder and a pin with no mirror have nothing to switch to.
-    if checkout is not None:
-        # A checkout's row is drawn here with the button it will have, so that nothing
-        # below it moves when its module mounts, a moment after the tree's first rows:
-        # hidden until then, the row pushed the filter bar and every tree row down by its
-        # height (33 px in the default pane, which tests/test_files_totals_stable_chrome.py
-        # caught on a folder holding a `.git`). The module adopts this button, so focus a
-        # reader put on it stays (static/source-ref-selector.js#build), and removes the
-        # row when Git says the root is no repository.
-        if pin is None:
-            shown_ref = "Working tree"
-        else:
-            from metabrowser.checkout_revisions import checkout_ref_name
-
-            shown_ref = checkout_ref_name(pin.ref) or f"Commit: {pin.commit_oid[:12]}"
-        source_ref_selector_row = (
-            '\n      <div class="source-ref-selector" id="source-ref-selector">'
-            '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
-            ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
-            ' data-tip-text="Switch branch or tag">'
-            f'<span class="source-ref-selector-label">{html_escape(shown_ref)}</span>'
-            '<span class="chip-menu-caret" aria-hidden="true"></span></button></div>'
+    # The selector is its own row, under the tabs and above the Files and Commits toolbars,
+    # since both tabs show the revision it chooses. Reserve the label, its chooser button,
+    # and a revision's way back at first paint. A checkout's row says
+    # which view the page shows: the working tree, the live files on disk, named with the
+    # branch or commit they are on, or a revision chosen from the list, with a button back
+    # to the working tree (docs/design-system.md, "The Ref Selector").
+    source_ref_selector = ""
+    if checkout is not None or (git_pin and mirror is not None):
+        working_head: CheckedOutHead | None = None
+        view_attrs = ""
+        back = ""
+        if checkout is not None and pin is None:
+            working_head = (
+                CheckedOutHead(tip_context["branch"], tip_context["revision"])
+                if tip_context is not None
+                else await asyncio.to_thread(checked_out_head, checkout.root)
+            )
+            view_attrs = ' data-view="working-tree"'
+            if working_head is not None and working_head.branch is not None:
+                view_attrs += (
+                    f' data-working-branch="{html_escape(working_head.branch, quote=True)}"'
+                )
+            elif working_head is not None:
+                view_attrs += f' data-working-commit="{working_head.revision}"'
+        elif checkout is not None:
+            view_attrs = ' data-view="revision"'
+            back = (
+                '<button type="button" class="btn source-ref-selector-back"'
+                ' aria-label="Back to the working tree"'
+                ' data-tip-text="Back to the working tree, the files on disk">'
+                '<span class="source-ref-selector-back-arrow" aria-hidden="true">←</span>'
+                "Working tree</button>"
+            )
+        label = _source_ref_label_html(
+            pin, checkout=checkout is not None, working_head=working_head
         )
-    else:
-        source_ref_selector_row = (
-            '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
-            if git_pin and mirror is not None
-            else ""
+        source_ref_selector = (
+            f'<div class="source-ref-selector" id="source-ref-selector"{view_attrs}>'
+            '<span class="source-ref-selector-button">'
+            f'<span class="source-ref-selector-label">{label}</span>'
+            '<button type="button" class="icon-btn source-ref-selector-toggle disclosure-toggle"'
+            ' aria-label="Switch branch or tag" aria-haspopup="dialog" aria-expanded="false"'
+            f' data-tip-text="Switch branch or tag"></button></span>{back}</div>'
         )
-    # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
-    # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
-    # github.com. It costs a plain folder nothing, not even a script in a bundle, and a page
-    # that has it draws it at first paint, so the tabs never shift when it arrives.
+    # The Pulls tab follows a hosted mirror or a GitHub checkout, including a
+    # checkout's revisions and subdirectories. It costs a plain folder nothing,
+    # and a page with the tab draws it at first paint so the tabs never shift.
     pulls_tab = repository_context is not None
     pulls_in_front = pulls_tab and (pull_page or pull_list)
     # Commits is drawn here when the served root is a repository's root, the one root Git
@@ -1687,7 +1988,7 @@ async def index(
     # discovery removes it in the rare case Git does not agree. It comes after Pulls, in the
     # main tabs' order (static/main-tabs.js, MAIN_TABS).
     commits_tab = git_pin or await asyncio.to_thread(
-        lambda: (_shell_folder(folder_root).resolve() / ".git").exists()
+        lambda: is_checkout_root(_shell_folder(folder_root).resolve())
     )
     # A commit's address lands on Commits, so it is drawn in front, with its toolbar and its
     # panel's container, and the landing never shows Files and then swaps it. The neutral Git
@@ -1703,6 +2004,15 @@ async def index(
     # toolbar its script fills later ships the shared pending tally, never an empty slot.
     filter_bar_behind = "" if files_in_front else " hidden"
     pending_tally = '<span class="count tally-pending"></span>'
+    # The served revision's row heads the two tabs that show it, Files and Commits, and hides
+    # under Pulls, which has its own scope (static/main-tabs.js#activateNavPanel).
+    source_ref_behind = "" if files_in_front or commits_in_front else " hidden"
+    source_ref_row = (
+        f'<div class="nav-source-ref" id="nav-source-ref"{source_ref_behind}>'
+        f"{source_ref_selector}</div>"
+        if source_ref_selector
+        else ""
+    )
     commits_button = (
         f'\n        <button class="tab-btn{" active" if commits_in_front else ""}" type="button"'
         f' role="tab" data-tab="git" aria-selected="{"true" if commits_in_front else "false"}">'
@@ -1730,6 +2040,9 @@ async def index(
     ) + (
         '\n      <div class="nav-toolbar" id="nav-toolbar-pulls" data-nav-toolbar="pulls"'
         f"{'' if pulls_in_front else ' hidden'}>{pending_tally}</div>"
+        # The band under the Pulls filters, which the list's count and connection lines
+        # fill (builtin_plugins/github/pulls-panel.js), as the Files totals fill theirs.
+        '\n      <div class="nav-metadata-band" id="nav-metadata-pulls"></div>'
         if pulls_tab
         else ""
     )
@@ -1908,12 +2221,23 @@ async def index(
         # and the freshness row compares both with what the server serves, so a switch
         # or a restart onto another pin before its first poll still offers a reload.
         page_pin = _json.dumps({"pin": pin.commit_oid, "ref": pin.ref}).replace("<", "\\u003c")
+        # Whether the Git this server runs dates a revision's files, which is what the Files
+        # tab's age menus wait for: Group by age and Modified within, hidden on a revision
+        # that has no times (static/app.js `noFileAges`).
+        has_ages = "true" if pin.capabilities.recency else "false"
         repository_context_block += (
+            f"<script>window.METABROWSER_FILE_AGES={has_ages};</script>"
             f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
             f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
+
+    if pin is not None and checkout is not None and checkout.serves(pin) and tip_context:
+        ref_context = _json.dumps(tip_context).replace("<", "\\u003c")
+        repository_context_block += (
+            f"<script>window.METABROWSER_CHECKOUT_REF_CONTEXT={ref_context};</script>"
+        )
     if checkout is not None:
         # A checkout's page says so, and whether it shows the working tree: the ref
         # selector reads it for what it offers, and the pin guard, which the selector's
@@ -1968,6 +2292,7 @@ async def index(
         # continues in the background.
         "shell-tools": [
             main_tabs_asset,
+            {"src": menus_url, "provides": "MetabrowserMenus"},
             {"src": known_file_catalog_url},
             {"src": catalog_feed_url},
             {"src": file_fuzzy_match_url},
@@ -1976,6 +2301,9 @@ async def index(
             {"src": overlay_layer_url},
             {"src": keyboard_help_url},
             {"src": key_reveal_url},
+            # Hiding the navigation pane: app.js draws its chevron at first paint, and a
+            # click before this bundle arrives loads it and then hides the pane.
+            {"src": nav_collapse_url},
             {"src": shell_keymap_url},
             {"src": plugin_shortcuts_url},
             {"src": tree_keyboard_navigation_url},
@@ -1985,11 +2313,61 @@ async def index(
             {"src": git_panel_url},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
             *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
+            # The event log's reporter, last: nothing here waits on it (`event-reports`).
+            {"src": event_reports_url},
         ],
         # The compositor is needed only once file navigation begins, after the
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # What the page reports to the event log, and the Details a failure or a late
+        # wait offers (static/event-reports.js). It is the last script of `shell-tools`,
+        # so it loads after the first usable tree, and a page that waits on something
+        # before then asks for it by this name; the loader runs a script once whichever
+        # bundle asks. A report of what came earlier reads the browser's Resource Timing.
+        # Not a startup script, nor a call in app.js: the startup budget had 99 bytes left
+        # when it was written, and #622's changes left 2 after such a call (2026-11-19).
+        "event-reports": [{"src": event_reports_url}],
+        # Mermaid 12.3.0's ESM entry (static/vendor/mermaid/), imported by the Markdown
+        # plugin's diagram renderer only when a mounted view holds a diagram. The entry
+        # imports the chunks of each diagram type it draws by relative specifiers, so a
+        # document fetches the 30,936-byte entry and its types' chunks, and a document
+        # with no diagram fetches nothing (docs/project/specs/active/
+        # plan-2026-08-21-mermaid-diagram-rendering.md has the measurement).
+        "mermaid": [{"module": _static_asset_url("vendor/mermaid/mermaid.esm.min.mjs")}],
+        # KPress's diagram renderer and its opt-in controls, at the stamped URLs a
+        # render's asset manifest names, so they import the one KPress runtime the
+        # document's other modules share. Fetched with the first diagram, beside Mermaid.
+        "kpress-diagrams": [
+            {"module": kpress_adapter.kpress_static_url("js/diagrams.js", prefix=kpress_prefix)}
+        ],
+        "kpress-diagram-controls": [
+            {
+                "module": kpress_adapter.kpress_static_url(
+                    "js/diagram-controls.js", prefix=kpress_prefix
+                )
+            }
+        ],
+        # A file's and a folder's view header: its builders, and the folder line's live
+        # refresh. renderFile draws a header only after loadViewComposition, which fetches
+        # this beside the compositor and the SDK's view helpers, so the first tree never
+        # waits for it. What that costs a view, measured in Chrome on 2026-11-18 against
+        # the builders in app.js, 36 cold loads of a folder and of a file a side in
+        # alternating back-to-back pairs, at load averages of 24 to 33 on 10 cores: the
+        # bundle is 14,102 bytes, 4,514 as a gzip client receives it; its request starts
+        # with the other two and ended no later than both in 48 of 72 loads; and the
+        # header's median time after DOMContentLoaded went from 40 to 41 ms on a folder
+        # and stayed at 58 ms on a file.
+        "view-header": [
+            {"src": _static_asset_url("view-header.js"), "provides": "MetabrowserViewHeader"}
+        ],
+        # The page's file watches on its event stream (static/file-watches.js), fetched
+        # the first time a view calls metabrowser.watchFile: a table, or a container
+        # whose children the tree shows. Most pages watch nothing, so it is no startup
+        # script; app.js only hands it each snapshot's connection and each change.
+        "file-watches": [
+            {"src": _static_asset_url("file-watches.js"), "provides": "MetabrowserFileWatches"}
+        ],
         # What a view's renderer calls: the line-number gutter with its `#L` anchors,
         # and the SDK helpers a renderer builds its markup with (the Source surface,
         # the copy wrapper, the partial-content notice, the syntax service). Nothing
@@ -2017,6 +2395,9 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
+        # The menu's Block remote images checkbox draws from the page's settings and
+        # needs this only to change them, once.
+        "remote-images": [{"src": remote_images_url, "provides": "MetabrowserRemoteImages"}],
         # The tree of a change set's files that both the Pulls tab and a diff's Diff summary
         # draw, which two plugins share through metabrowser.loadChangedFilesTree(). Only a
         # page that shows a pull request's files or a multi-file diff asks for it: a diff
@@ -2039,13 +2420,15 @@ async def index(
         # made for the refs until a reader opens it. A pin's page carries the pin guard
         # inline. A checkout's working-tree page takes it here, ahead of the selector
         # that can make the server serve something else, so that a folder's first paint
-        # carries none of it: inline it would be 3,354 compressed bytes on the page of
-        # every checkout, most of which never switch. Measured 2026-11-18 in headless
-        # Chrome 152 from 127.0.0.1, three runs on a 10-core Mac at a load average of
-        # 13 to 16: the guard 3,354 compressed bytes in 8.6 to 10.5 ms and the selector
-        # 9,879 in 7.0 to 9.7 ms, both asked for 124 to 142 ms after the navigation
-        # began, once the first tree rows were in; the selector was mounted 170 to
-        # 181 ms after it (tests/dom/checkout-ref-selector-chrome.mjs prints them).
+        # carries none of it: inline it would add its compressed size to the page of
+        # every checkout, most of which never switch. That is 4,751 bytes and the
+        # selector's 10,538, at gzip -6 (`delivery.GZIP_LEVEL`), as of the switch hold
+        # (mb-bio7, 2026-11-18). Measured 2026-11-18 in headless Chrome 152 from
+        # 127.0.0.1, three runs on a 10-core Mac at a load average of 13 to 16, when they
+        # were 3,354 and 9,879 bytes: the guard in 8.6 to 10.5 ms and the selector in 7.0
+        # to 9.7 ms, both asked for 124 to 142 ms after the navigation began, once the
+        # first tree rows were in; the selector was mounted 170 to 181 ms after it
+        # (tests/dom/checkout-ref-selector-chrome.mjs prints them).
         "source-ref-selector": [
             *(
                 [{"src": _static_asset_url("source-pin-guard.js")}]
@@ -2055,6 +2438,17 @@ async def index(
             {"src": source_ref_selector_url},
         ],
         "source-append": [{"src": source_append_url}],
+        # The watch on a revision's file ages and the notes about them, which only a page whose
+        # Git can read ages and whose response says they are not all in yet needs: asked for
+        # the first time a response says `dating`, `partial`, or `failed`, and never by a page
+        # whose answer is whole or whose Git cannot (it is not offered to that page at all).
+        # It was a startup script of every pin's shell, 4,940 bytes (1,896 gzipped) before a
+        # page could use it, and 3,783 bytes of that shell over the folder's budget.
+        **(
+            {"revision-ages": [{"src": revision_ages_url, "provides": "MetabrowserRevisionAges"}]}
+            if pin is not None and pin.capabilities.recency
+            else {}
+        ),
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
             {"src": charts_url, "requires": "Chart"},
@@ -2139,22 +2533,28 @@ async def index(
     # core does not special-case plugin names.
     plugin_asset_config = _build_plugin_asset_config_block(plugin_prefixes)
 
-    # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
-    # style-tokens.css (the @font-face source of truth) and preload the chrome's
-    # always-present Source Sans face, using the SAME stamped URLs the
-    # embedded document requests so the woff2 downloads exactly once and is
-    # served from the immutable cache (see kpress_static_asset). Preloading
-    # only the chrome face avoids an "unused preload" warning on tree-only views;
-    # PT Serif (embedded prose) rides the same immutable cache + font-display:
-    # block on first document open.
-    _sans_url = kpress_adapter.kpress_static_url(
+    # The sidebar uses an optional-display alias of KPress's stamped Source Sans
+    # faces so a late response cannot move its tabs, filter bar, or root menu.
+    # The rest of the app uses KPress's original faces and the same font bytes.
+    sans_url = kpress_adapter.kpress_static_url(
         "fonts/source-sans-3-latin-wght-normal.woff2", prefix=kpress_prefix
     )
-    _tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
-    kpress_font_head = (
-        f'<link rel="preload" as="font" type="font/woff2" crossorigin href="{_sans_url}">\n'
-        f'  <link rel="stylesheet" href="{_tokens_url}">'
+    italic_sans_url = kpress_adapter.kpress_static_url(
+        "fonts/source-sans-3-latin-wght-italic.woff2", prefix=kpress_prefix
     )
+    tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
+    sidebar_sans_faces = _json.dumps((("normal", sans_url), ("italic", italic_sans_url)))
+    kpress_font_head = f"""<link rel="preload" as="font" type="font/woff2" crossorigin href="{sans_url}">
+  <link rel="stylesheet" href="{tokens_url}">
+  <script>
+    if (typeof FontFace === "function" && document.fonts) {{
+      for (const [style, url] of {sidebar_sans_faces}) {{
+        document.fonts.add(new FontFace("Metabrowser Sidebar Sans", 'url("' + url + '")', {{
+          style, weight: "200 900", display: "optional",
+        }}));
+      }}
+    }}
+  </script>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="en" style="--doc-max-chars: {DOC_MAX_CHARS_DEFAULT}">
@@ -2163,10 +2563,7 @@ async def index(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <title>{page_title}</title>
-  <!-- Reader fonts: preload the chrome's Source Sans face + link KPress's
-       @font-face source of truth, version-keyed so chrome and the embedded
-       document share one download. Built in kpress_font_head above from the
-       required KPress package. No flash of unstyled text on first paint. -->
+  <!-- Preload the shared Source Sans bytes and register the sidebar face before layout. -->
   {kpress_font_head}
   {client_settings_block}
   <script>{_DOCUMENT_WIDTH_SCRIPT}</script>
@@ -2181,36 +2578,53 @@ async def index(
     <div class="tree-pane" id="tree-pane">
       <header class="app-header" data-kbd-badge-anchor>
         <!-- data-served-root is the one place the absolute root is written:
-             the file header reads it back to render its dimmed prefix, so
-             the two headers cannot disagree about what the root is. It is also
-             what this heading's tooltip is built from.
+             the file header reads it back to render the root's address, so
+             the two headers cannot disagree about what the root is. The
+             details disclosure uses it for the root's address.
 
-             No data-tip-text here, deliberately. This element has a tooltip of
-             its own in app.js — the folder's counts and age, not just its
-             path — and an element carrying both would announce through two
-             mechanisms at once, which is the bug the one-tooltip rule exists
-             to prevent. See "One Tooltip, and It Is Ours" in
-             docs/design-system.md.
-
-             The folder's name is Home (docs/design-system.md, "Home"): app.js keeps a
-             plain activation in the page and shows the folder's home view as a fresh load
-             of this address does, every tab at its first, and `0` does the same. Its
-             accessible name is "Home:" and then the name it shows, read from its own
-             content, so the name a mirror's heading shows, its ref and commit with it,
-             stays in it. The header anchors the key's badge, which sits beside the name
-             because the name clips. -->
+             The folder's icon and name link Home (docs/design-system.md, "Home"). A
+             plain activation in app.js and the `0` shortcut return to the fresh-load
+             view. The accessible name uses just the heading text after "Home:", so a
+             pin's ref and commit count as the name. The header anchors the key badge
+             beside the heading because the name clips. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
-           aria-labelledby="header-home-label header-home"
-           data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
+           aria-labelledby="header-home-label header-home-name"
+           data-served-root="{initial_root}"{mirror_attrs}>
+          <span class="header-root-kind" id="header-root-kind" role="img"
+                data-root-kind="{root_kind}" data-tip-text="{root_kind_tip}"
+                aria-label="{root_kind_tip}">{root_kind_svg}</span>
+          <span class="header-home-name" id="header-home-name">{initial_path}</span>
+        </a>
         <span id="header-home-label" hidden>Home:</span>
+        <div id="root-details" class="root-details"{root_repository_attr}>
+          <button type="button" class="icon-btn root-details-trigger disclosure-toggle"
+                  aria-expanded="false" aria-controls="root-details-panel"
+                  aria-label="{root_kind_label} details" data-tip-text="{root_kind_label} details"></button>
+          <div id="root-details-panel" class="menu root-details-panel" hidden>
+            <div class="root-details-info">
+              <strong>{root_kind_label}</strong>
+              <div class="root-details-local">
+                Local path
+                <div class="root-details-location">{"" if git_pin else initial_root}</div>
+              </div>
+              <div class="root-details-stats"></div>
+              {root_checkout_meta}
+              <div class="root-details-source">{root_source_tip}</div>
+            </div>
+            {root_repository_links}
+            <div class="root-details-status" role="status"></div>
+          </div>
+        </div>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,
              which returns that line of the navigation column — the app's
              scarcest width — to the path. Inside: two icon-segment choosers
              (theme + reading font), a small font-set dropdown
-             (#app-font-select, options from _FONT_SETS), and the same build
-             version line printed by `metab --version`. Choices apply instantly.
+             (#app-font-select, options from _FONT_SETS), a privacy checkbox
+             (Block remote images, which reloads the page because the server's
+             policy follows it), and the same build version line printed by
+             `metab --version`. Other choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
              menu's visibility via CSS.
@@ -2241,30 +2655,43 @@ async def index(
               <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" data-tip-text="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
             </div>
             <div class="menu-separator"></div>
-            <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <select class="field menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
             <div class="menu-separator"></div>
             <label class="menu-row" for="doc-max-chars-input">Max text width
-              <input class="menu-number" id="doc-max-chars-input" type="number"
+              <input class="field menu-number" id="doc-max-chars-input" type="number"
                      min="40" max="160" step="1" inputmode="numeric"
                      data-tip-text="Characters per line in rendered documents"></label>
+            <div class="menu-separator"></div>
+            <label class="menu-row" for="block-remote-images-input">Block remote images
+              <input class="menu-check" id="block-remote-images-input" type="checkbox"{remote_images_checked} disabled
+                     data-tip-text="Show an untrusted document's images from the web as their alt text. Reloads the page"></label>
             <div class="menu-separator"></div>
             <div class="menu-version">{version_line}</div>
           </div>
         </div>
-      </header>{source_ref_selector_row}
+      </header>
       <div class="tab-bar nav-tab-bar" role="tablist">
         <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}{commits_button}
       </div>
+      {source_ref_row}
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
-           stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>{toolbars}
+           stay put while .tree-content scrolls. app.js fills it.
+
+           Under it, the Files totals and the remarks on them, a band of
+           navigation metadata lines that app.js fills. It is outside
+           .tree-content too: that scroller reserves its scrollbar's gutter
+           and clips what it holds short of it, so a line inside it drew its
+           rule short of the pane's edge. The band shows with its toolbar
+           (`.nav-metadata-band` in styles.css). -->
+      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>
+      <div class="nav-metadata-band" id="nav-metadata-files"></div>{toolbars}
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files"{files_behind}>
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
             class="sr-only">Loading files…</span></div>
         </div>{git_container}{pulls_container}
-      </div>
+      </div>{source_freshness_row}
       <!-- role="group" carries the accessible name: ARIA forbids naming a
            generic element, so a bare div would drop the label and announce
            the hints and their controls with no grouping context. Not a live
@@ -2275,7 +2702,7 @@ async def index(
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
-      </div>{source_freshness_row}
+      </div>
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
@@ -2288,6 +2715,14 @@ async def index(
       <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
         {preview_loading}
       </div>
+      <!-- Hides and shows the navigation pane, as the backslash key does: at the start
+           of the main page's foot, in its gutter, on the row of the navigation's shortcut
+           strip. It is in the frame, not the pane, so it stays when the pane is hidden and
+           slides with the page. app.js draws its chevron; static/nav-collapse.js runs it,
+           and static/styles.css places it. -->
+      <button class="icon-btn nav-collapse-toggle disclosure-toggle" id="nav-collapse-toggle" type="button"
+              aria-controls="tree-pane" aria-expanded="true"
+              aria-label="Hide navigation"></button>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional
@@ -2334,8 +2769,21 @@ async def index(
     return HTMLResponse(
         html,
         headers={
-            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "Content-Security-Policy": untrusted_shell_csp(
+                nonce,
+                origin,
+                tuple(
+                    kpress_adapter.kpress_static_url(module, prefix=kpress_prefix)
+                    for module in kpress_adapter.DIAGRAM_MODULES
+                ),
+                remote_images=not block_remote_images,
+            ),
             "X-Frame-Options": "DENY",
+            # No page address goes to an image's host, from an image the allowlist wrote
+            # (`referrerpolicy` on it says so too) or one a Mermaid diagram drawn in the
+            # page names, which no markup of the document reaches
+            # (`builtin_plugins/markdown/diagram-frame.js`). Nothing here reads a Referer.
+            "Referrer-Policy": "no-referrer",
         },
     )
 
@@ -2398,7 +2846,7 @@ async def commit_shell(request: Request) -> Response:
 
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
-        return PlainTextResponse("Invalid commit route.", status_code=400)
+        return PlainTextResponse("This address is not a commit.", status_code=400)
     return await index(request, commit_page=True)
 
 
@@ -2413,7 +2861,22 @@ async def pull_shell(request: Request) -> Response:
 
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_pull_route(raw_path) is None:
-        return PlainTextResponse("Invalid pull-request route.", status_code=400)
+        return PlainTextResponse("This address is not a pull request.", status_code=400)
+    return await index(request, pull_page=True)
+
+
+async def stack_shell(request: Request) -> Response:
+    """Serve the SPA shell for a native stack's page and its subroutes.
+
+    A stack is an address space of its own, as a pull request is, and its shell is a pull
+    request page's: the Pulls tab in front and the same startup script. The view that
+    renders it is the one a plugin registers for the `pull-stack` kind; the stack route
+    says what this server has of that number.
+    """
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_stack_route(raw_path) is None:
+        return PlainTextResponse("Invalid stack route.", status_code=400)
     return await index(request, pull_page=True)
 
 
@@ -2877,6 +3340,9 @@ async def api_tree(request: Request) -> Response:
         if group_by is not None:
             return await git_revision_tree_groups(request, pin, tree_filter, group_by)
         return await git_revision_tree(request, pin, tree_filter)
+    if tree_filter.group is not None and tree_filter.group.id == UNDATED_GROUP_ID:
+        # Only a Git revision has files with no time.
+        return JSONResponse({"error": "Not found"}, status_code=404)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
@@ -2903,14 +3369,31 @@ async def api_tree(request: Request) -> Response:
 async def api_rollup(request: Request) -> Response:
     """Bounded treemap rollup for a directory subtree.
 
-    `GET /api/rollup?path=&depth=&top=&ext_top=&filename_top=&remaining_top=`
-    clamps parameters to the ROLLUP_* settings bounds. `node` is null while the
+    `GET /api/rollup?path=&depth=&top=&nodes=&ext_top=&filename_top=&remaining_top=`
+    `&ext_rank=&ignored=&encoding=` clamps the numeric parameters to the ROLLUP_*
+    settings bounds, and `max` asks for the bound itself (the Treemap asks for
+    `depth=max&top=max&nodes=max`). `nodes` is the node budget, ROLLUP_DEFAULT_NODES
+    unless named, which expands the heaviest folders first and gives each the share
+    of it `_emit_limit` in `inventory_rollup.py` sets. `node` is null while the
     index cannot serve the path yet (cold start); the client renders that as a
     pending treemap and refreshes off `/api/events` activity. Totals always
-    cover the full subtree. Depth truncation is represented by `children: null`
-    without a rest bucket; node-budget truncation can retain emitted `children`
-    alongside a `rest` bucket for their omitted siblings.
-    A Git pin answers from recursive blob names and sizes and omits mtime.
+    cover the full subtree. `children: null`, without a rest bucket, means the
+    directory was not expanded: it is at `depth`, or the node budget did not
+    reach it. A directory whose children ran past `top` or its share of the node
+    budget keeps the emitted `children` and a `rest` bucket for the omitted
+    siblings.
+
+    `ignored=exclude` leaves gitignored entries out of `children` and `rest` and
+    spends none of the budget on them; every total, tally, and breakdown is as with
+    `include`, the default. `encoding=compact` writes each expanded directory's
+    file children as `[name, size, mtime, ext, gitignored]` entries in its `files`
+    array, with only directories in `children`, and says `"encoding": "compact"`
+    in the envelope; `json`, the default, writes neither. A client derives a
+    compact file's path as its folder's path, a `/`, and its name, which a Git
+    pin's wire paths are not, so a pin always answers `json`. The shapes are
+    `RollupDirNode` and `RollupCompactFile` in `wire_models.py`, and the folder
+    aggregate helpers in `docs/plugins.md` describe them. A Git pin answers from
+    recursive blob names and sizes and omits mtime.
     """
 
     require_source_capability("navigation")
@@ -2946,8 +3429,22 @@ async def api_rollup(request: Request) -> Response:
                 frozenset({"bytes", "dual"}),
             ),
         )
+        ignored = cast(
+            RollupIgnored,
+            _query_choice(request, "ignored", "include", frozenset({"include", "exclude"})),
+        )
+        encoding = cast(
+            RollupEncoding,
+            _query_choice(request, "encoding", "json", frozenset({"json", "compact"})),
+        )
     except ValueError as error:
-        return JSONResponse({"error": str(error)}, status_code=400)
+        return JSONResponse(
+            {"error": "This folder summary could not be made.", "detail": str(error)},
+            status_code=400,
+        )
+    nodes = _query_bounded_int(
+        request, "nodes", ROLLUP_DEFAULT_NODES, minimum=1, maximum=ROLLUP_MAX_NODES
+    )
 
     pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
@@ -2960,11 +3457,16 @@ async def api_rollup(request: Request) -> Response:
                 depth=depth,
                 top=top,
                 ext_top=ext_top,
-                max_nodes=ROLLUP_MAX_NODES,
+                max_nodes=nodes,
                 remaining_top=remaining_top,
                 filename_top=filename_top,
                 ext_rank=ext_rank,
                 omit_mtime=True,
+                ignored=ignored,
+                # A pin's paths are wire tokens (``GitPath.to_wire``), not the folder's
+                # path, a `/`, and the display name a compact entry carries, so a pin
+                # answers the JSON encoding, and its envelope says no other.
+                encoding="json",
             ),
         )
 
@@ -2990,15 +3492,20 @@ async def api_rollup(request: Request) -> Response:
         query_id="rollup",
         path=subpath,
         max_depth=depth,
-        max_nodes=ROLLUP_MAX_NODES,
+        max_nodes=nodes,
         top=top,
         extension_top=ext_top,
         remaining_top=remaining_top,
         filename_top=filename_top,
         rank=ext_rank,
+        ignored=ignored,
+        encoding=encoding,
     )
     diagnostics = DiagnosticsQuery(query_id="rollup-diagnostics")
-    request_shape = f"{subpath}-{depth}.{top}.{ext_top}.{remaining_top}.{filename_top}.{ext_rank}"
+    request_shape = (
+        f"{subpath}-{depth}.{top}.{nodes}.{ext_top}.{remaining_top}.{filename_top}."
+        f"{ext_rank}.{ignored}.{encoding}"
+    )
 
     def etag_for(version: HostVersion) -> str:
         engine = version.engine
@@ -3034,6 +3541,7 @@ async def api_rollup(request: Request) -> Response:
                 {
                     "root": str(session_filesystem_root()),
                     "path": subpath,
+                    **({"encoding": "compact"} if encoding == "compact" else {}),
                     "node": payload.get("node") if payload is not None else None,
                     "ext_tallies": (payload.get("ext_tallies", []) if payload is not None else []),
                     "file_type_breakdown": breakdown,
@@ -3081,7 +3589,7 @@ async def api_rollup(request: Request) -> Response:
 
 
 @log_async_calls()
-async def api_recent(request: Request) -> JSONResponse:
+async def api_recent(request: Request) -> Response:
     """``GET /api/recent`` — top-N files by mtime within a
     rolling window (1h / 24h / 7d / 30d / all), filtered by
     the navigation filter vocabulary plus optional ``prefix`` and
@@ -3116,6 +3624,19 @@ async def api_recent(request: Request) -> JSONResponse:
     # CLI inspection. Merge it into `types` so one provider predicate decides
     # both spellings before the response cap is applied.
     types = parse_types((*requested_filter.types, *ext_filter))
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        # A revision has no inventory: the newest files by the time of their last commit.
+        from metabrowser.git.content_routes import git_revision_recent
+
+        return await git_revision_recent(
+            pin,
+            window=window,
+            limit=limit,
+            types=types,
+            min_size=requested_filter.min_size,
+            prefix=prefix_filter,
+        )
     recent_filter = TreeFilter(
         recency_seconds=int(RECENT_WINDOW_SECONDS[window] or 0),
         types=types,
@@ -3239,6 +3760,26 @@ class JSONResponse(_StarletteJSONResponse):
 # ``starlette.responses.JSONResponse`` directly is unaffected.
 
 
+def _file_mtime(target: Path) -> float | None:
+    """A served file's modification time in epoch seconds, or ``None`` if it cannot be read.
+
+    The envelope's ``mtime`` is what a file's view header shows as its age, in the unit a
+    folder envelope's ``dir.mtime`` and a tree row's ``mtime`` use.
+    """
+
+    try:
+        return target.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _mtime_field(mtime: float | None) -> dict[str, float]:
+    """``{"mtime": ...}``, or nothing when the time could not be read: never a null,
+    which the browser reads as a value still on its way."""
+
+    return {} if mtime is None else {"mtime": mtime}
+
+
 def _compression_identity_fields(artifact: ArtifactPath) -> dict[str, Any]:
     """Compression fields that do not require reading the decoded stream."""
     if not artifact.is_compressed:
@@ -3258,6 +3799,18 @@ def _compression_envelope_fields(artifact: ArtifactPath, logical_size: int) -> d
     return {"size_uncompressed": logical_size, **identity}
 
 
+def _jsonl_failure_message(exc: OSError | TypeError | ValueError) -> str:
+    """The reader's sentence for a JSONL log that could not be parsed; the failure's own
+    account is the answer's ``detail``."""
+    if isinstance(exc, JsonlParseLimitError):
+        return "This log is too large to show here."
+    if isinstance(exc, ContentReadError):
+        return exc.reader_message
+    if isinstance(exc, OSError):
+        return "This file cannot be read."
+    return "This log could not be read."
+
+
 def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONResponse:
     """Return a renderable file-error envelope instead of bubbling a 500."""
     target = resolve_session_identity(subpath)
@@ -3275,7 +3828,8 @@ def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONRespo
             "views": [],
             "path": subpath,
             "size": size,
-            "error": (f"Internal error while rendering this file. {type(exc).__name__}: {exc}"),
+            "error": "An unexpected error stopped this preview.",
+            "detail": f"Internal error while rendering this file. {type(exc).__name__}: {exc}",
             "warning": (
                 "Metabrowser returned a degraded error view instead of a server 500. "
                 "Check the server log for the traceback."
@@ -3352,7 +3906,11 @@ async def _api_folder_envelope(
         "kind": "folder",
         "path": subpath,
         "name": target.name,
-        "views": _views_for_kind("folder"),
+        "views": (
+            await asyncio.to_thread(_views_for_kind, "folder", target=target)
+            if _FOLDER_OFFERS
+            else _views_for_kind("folder")
+        ),
         "dir": {
             "total_files": total_files,
             "total_size": total_size,
@@ -3463,6 +4021,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
+    file_mtime = _file_mtime(target)
     ext = artifact.logical_ext
     logical_size: int | None
     try:
@@ -3479,6 +4038,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 **_compression_identity_fields(artifact),
             }
         )
@@ -3504,7 +4064,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": [],
                     "path": subpath,
                     "size": disk_size,
-                    "error": str(exc),
+                    **_mtime_field(file_mtime),
+                    "error": exc.reader_message,
+                    "detail": str(exc),
                     **_compression_identity_fields(artifact),
                 }
             )
@@ -3516,6 +4078,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 **_compression_identity_fields(artifact),
             }
         )
@@ -3548,7 +4111,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             {
                 "type": "error",
                 "path": subpath,
-                "error": "Requested preview window exceeds the decompression budget",
+                "error": "This part of the file is past what can be shown here.",
+                "detail": "Requested preview window exceeds the decompression budget",
                 "max_offset": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             },
             status_code=416,
@@ -3592,6 +4156,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": views,
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "mtime_hash": mtime_hash,
                     **compression_fields,
                     **parsed,
@@ -3605,7 +4170,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "kind": "error",
                     "views": [],
                     "path": subpath,
-                    "error": str(exc),
+                    "error": _jsonl_failure_message(exc),
+                    "detail": str(exc),
                 }
             )
 
@@ -3617,14 +4183,19 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("image"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 "mtime_hash": mtime_hash,
                 **compression_fields,
             },
             headers=etag_headers,
         )
 
+    disk_prefix: bytes | None = None
     with server_timing.phase("read"):
-        text_body = ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target)
+        if ext in BROWSER_TEXT_EXTS:
+            text_body = True
+        else:
+            text_body, disk_prefix = await asyncio.to_thread(_sniff_text_body, target)
     if text_body:
         try:
             content_has_more = False
@@ -3652,6 +4223,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                         "views": _views_for_kind("binary"),
                         "path": subpath,
                         "size": disk_size,
+                        **_mtime_field(file_mtime),
                         **_compression_identity_fields(artifact),
                     }
                 )
@@ -3662,7 +4234,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": [],
                     "path": subpath,
                     "size": disk_size,
-                    "error": str(exc),
+                    **_mtime_field(file_mtime),
+                    "error": exc.reader_message,
+                    "detail": str(exc),
                     **compression_fields,
                 }
             )
@@ -3672,6 +4246,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "type": "binary",
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     **compression_fields,
                 }
             )
@@ -3682,6 +4257,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "type": "text_chunk",
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "mtime_hash": mtime_hash,
                     "content": content,
                     "content_offset": text_offset,
@@ -3730,6 +4306,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "path": subpath,
             "ext": ext,
             "size": disk_size,
+            **_mtime_field(file_mtime),
             "mtime_hash": mtime_hash,
             "content": content,
             "content_offset": 0,
@@ -3746,20 +4323,23 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         }
         if frontmatter is not None:
             result["frontmatter"] = frontmatter
-        if frontmatter_error is not None:
-            result["frontmatter_error"] = frontmatter_error
+        result |= frontmatter_error_fields(frontmatter_error)
         # Rendered Markdown is fetched separately through the KPress route.
         # Keeping this payload source-only avoids duplicating the rendered
         # document in the normal file response.
         return JSONResponse(result, headers=etag_headers)
 
+    # A plugin kind that claims a binary format by its magic number, whatever the
+    # file's name, then a plugin's claim by path; the model stays the file's bytes.
+    binary_kind = _magic_kind(disk_prefix) or _binary_kind(target, ext)
     return JSONResponse(
         {
             "type": "binary",
-            "kind": "binary",
-            "views": _views_for_kind("binary"),
+            "kind": binary_kind,
+            "views": _views_for_kind(binary_kind),
             "path": subpath,
             "size": disk_size,
+            **_mtime_field(file_mtime),
             "mtime_hash": mtime_hash,
             **compression_fields,
         },
@@ -3802,6 +4382,30 @@ _KPRESS_EXPORT_REQUEST_MAX_BYTES = 64 * 1024
 MAX_REQUEST_BODY_BYTES: Final = _KPRESS_RENDER_REQUEST_MAX_BYTES
 
 
+def _kpress_render_refusal(detail: str) -> JSONResponse:
+    """A render request the route cannot read: the reader's sentence, and *detail* for
+    the request's author."""
+    return JSONResponse(
+        {
+            "type": "kpress_render_error",
+            "error": kpress_adapter.RENDER_FAILED_MESSAGE,
+            "detail": detail,
+        },
+        status_code=400,
+    )
+
+
+def _unreadable_file(exc: OSError) -> JSONResponse:
+    """A file that cannot be read; the operating system's words are the detail."""
+    return JSONResponse({"error": "This file cannot be read.", "detail": str(exc)}, status_code=404)
+
+
+def _frontmatter_detail(reason: str | None) -> dict[str, str]:
+    """A render's ``frontmatter_error_detail``: why front matter KPress was told could not
+    be read was refused, beside the reader's sentence its ``frontmatter_error`` holds."""
+    return {} if reason is None else {"frontmatter_error_detail": reason}
+
+
 @log_async_calls(if_slower_than=0.1)
 async def api_kpress_render(request: Request) -> Response:
     """Render a safe served-root-relative file through the KPress adapter."""
@@ -3815,21 +4419,16 @@ async def api_kpress_render(request: Request) -> Response:
             return JSONResponse(
                 {
                     "type": "kpress_render_error",
-                    "error": "Render request exceeds safety limits",
+                    "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                    "detail": "Render request exceeds safety limits",
                     "max_size": _KPRESS_RENDER_REQUEST_MAX_BYTES,
                 },
                 status_code=413,
             )
         except (_json.JSONDecodeError, UnicodeDecodeError) as exc:
-            return JSONResponse(
-                {"type": "kpress_render_error", "error": "Invalid JSON body", "detail": str(exc)},
-                status_code=400,
-            )
+            return _kpress_render_refusal(f"Invalid JSON body: {exc}")
         if not isinstance(body, dict):
-            return JSONResponse(
-                {"type": "kpress_render_error", "error": "Request body must be a JSON object"},
-                status_code=400,
-            )
+            return _kpress_render_refusal("Request body must be a JSON object")
         subpath = body.get("path", "")
         view = body.get("view", "document")
         profile_value = body.get("profile")
@@ -3842,27 +4441,18 @@ async def api_kpress_render(request: Request) -> Response:
             or not isinstance(source_override, str)
             or (profile_value is not None and not isinstance(profile_value, str))
         ):
-            return JSONResponse(
-                {"type": "kpress_render_error", "error": "Invalid render body fields"},
-                status_code=400,
-            )
+            return _kpress_render_refusal("Invalid render body fields")
         profile = profile_value or None
         try:
             source_size = len(source_override.encode())
         except UnicodeEncodeError as exc:
-            return JSONResponse(
-                {
-                    "type": "kpress_render_error",
-                    "error": "Invalid transformed source encoding",
-                    "detail": str(exc),
-                },
-                status_code=400,
-            )
+            return _kpress_render_refusal(f"Invalid transformed source encoding: {exc}")
         if source_size > _TEXT_PREVIEW_MAX_CHUNK_BYTES:
             return JSONResponse(
                 {
                     "type": "kpress_render_error",
-                    "error": "Transformed source exceeds safety limits",
+                    "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                    "detail": "Transformed source exceeds safety limits",
                     "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
                 },
                 status_code=413,
@@ -3882,7 +4472,7 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Invalid toc",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": f"Invalid toc: {include_toc!r}; expected 'auto', 'on', or 'off'",
                 "diagnostics": [],
             },
@@ -3914,7 +4504,7 @@ async def api_kpress_render(request: Request) -> Response:
     try:
         disk_size = artifact.disk_size
     except OSError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=404)
+        return _unreadable_file(exc)
 
     try:
         if artifact.is_compressed and source_override is None:
@@ -3930,7 +4520,8 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "File is too large for full document rendering",
+                "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                "detail": "File is too large for full document rendering",
                 "path": subpath,
                 "size": disk_size,
                 "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
@@ -3941,8 +4532,8 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Compressed source exceeds safety limits",
-                "detail": str(exc),
+                "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                "detail": f"Compressed source exceeds safety limits: {exc}",
                 "path": subpath,
                 "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             },
@@ -3950,23 +4541,24 @@ async def api_kpress_render(request: Request) -> Response:
         )
     except ArtifactCompressionError as exc:
         if artifact.is_gzip:
-            return JSONResponse({"error": str(exc)}, status_code=404)
+            return JSONResponse({"error": exc.reader_message, "detail": str(exc)}, status_code=404)
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Unable to read compressed source",
-                "detail": str(exc),
+                "error": exc.reader_message,
+                "detail": f"Unable to read compressed source: {exc}",
                 "path": subpath,
             },
             status_code=400,
         )
     except OSError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=404)
+        return _unreadable_file(exc)
     if ext not in BROWSER_TEXT_EXTS and not await asyncio.to_thread(_prefers_text_body, target):
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "KPress render supports text-like files only",
+                "error": kpress_adapter.RENDER_TEXT_ONLY_MESSAGE,
+                "detail": "KPress render supports text-like files only",
                 "path": subpath,
                 "ext": ext,
                 "size": disk_size,
@@ -3977,7 +4569,8 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "File is too large for full document rendering",
+                "error": kpress_adapter.RENDER_TOO_LARGE_MESSAGE,
+                "detail": "File is too large for full document rendering",
                 "path": subpath,
                 "size": disk_size,
                 "logical_size": logical_size,
@@ -3991,7 +4584,7 @@ async def api_kpress_render(request: Request) -> Response:
             with server_timing.phase("read"):
                 content = await asyncio.to_thread(target.read_text, errors="replace")
     except OSError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=404)
+        return _unreadable_file(exc)
 
     ctx = FileContext(target, ext)
 
@@ -4015,7 +4608,7 @@ async def api_kpress_render(request: Request) -> Response:
                     mtime_hash=mtime_hash,
                     size=logical_size,
                     frontmatter=frontmatter,
-                    frontmatter_error=frontmatter_error,
+                    frontmatter_error=shown_frontmatter_error(frontmatter_error),
                     profile=profile,
                     include_toc=include_toc,
                 )
@@ -4038,7 +4631,7 @@ async def api_kpress_render(request: Request) -> Response:
                             mtime_hash=mtime_hash,
                             size=logical_size,
                             frontmatter=frontmatter,
-                            frontmatter_error=frontmatter_error,
+                            frontmatter_error=shown_frontmatter_error(frontmatter_error),
                             profile=profile,
                             include_toc=include_toc,
                         )
@@ -4057,7 +4650,7 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "Invalid KPress render request",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": str(exc),
                 "diagnostics": [str(exc)],
             },
@@ -4067,7 +4660,7 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse(
             {
                 "type": "kpress_render_error",
-                "error": "KPress render failed",
+                "error": kpress_adapter.RENDER_FAILED_MESSAGE,
                 "detail": str(exc),
                 "diagnostics": [str(exc)],
             },
@@ -4082,7 +4675,12 @@ async def api_kpress_render(request: Request) -> Response:
             _raw_versions, str(rendered.get("html") or ""), subpath
         )
     return JSONResponse(
-        {**rendered, "raw_versions": raw_versions}, headers={"cache-control": "no-cache"}
+        {
+            **rendered,
+            **_frontmatter_detail(frontmatter_error),
+            "raw_versions": raw_versions,
+        },
+        headers={"cache-control": "no-cache"},
     )
 
 
@@ -4513,6 +5111,16 @@ def _raw_versions(rendered_html: str, source_path: str) -> dict[str, str]:
     return versions
 
 
+def _media_type_from_file(target: Path) -> str | None:
+    """The media type *target*'s leading bytes give, from one bounded read, or None."""
+
+    try:
+        with target.open("rb") as stream:
+            return media_type_from_prefix(stream.read(MEDIA_SIGNATURE_BYTES))
+    except OSError:
+        return None
+
+
 async def raw_file(request: Request) -> Response:
     """Serve raw bytes for one file on the active subject.
 
@@ -4536,6 +5144,9 @@ async def raw_file(request: Request) -> Response:
 
     artifact = ArtifactPath(target)
     media_type = artifact.mime_type
+    if media_type == "application/octet-stream" and not artifact.is_compressed:
+        # A name that gives no type: the file's leading bytes may (media_type_from_prefix).
+        media_type = await asyncio.to_thread(_media_type_from_file, target) or media_type
     accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
 
     # Uncompressed path: stream the file as-is. ``FileResponse`` streams in
@@ -4598,10 +5209,11 @@ async def raw_file(request: Request) -> Response:
     # can fail only after a 200 response and a partial body reach the client.
     try:
         await asyncio.to_thread(lambda: artifact.logical_size)
-    except ArtifactDecompressionLimitError as exc:
-        return PlainTextResponse(str(exc), status_code=413)
     except ArtifactCompressionError as exc:
-        return PlainTextResponse(str(exc), status_code=400)
+        # A plain-text answer has no field for the detail, so the log keeps it.
+        LOG.info("raw: a compressed file is not served: %s", exc)
+        status = 413 if isinstance(exc, ArtifactDecompressionLimitError) else 400
+        return PlainTextResponse(exc.reader_message, status_code=status)
 
     # Identity fallback: client refuses gzip (rare, e.g. ``curl`` without
     # ``--compressed``). Stream-decompress so the client gets plain
@@ -4634,8 +5246,10 @@ async def raw_file(request: Request) -> Response:
 # server run) is deliberately deferred.
 
 from metabrowser.plugin_loader.classify import (
+    CONTENT_PREDICATE_MAX_BYTES,
     CompiledKindRule,
     build_classifier,
+    classify_magic,
     collect_folder_markers,
 )
 from metabrowser.plugin_loader.discovery import (
@@ -4646,9 +5260,13 @@ from metabrowser.plugin_loader.manifest import (
     view_entry,
 )
 from metabrowser.plugin_loader.static_assets import (
+    FileOffer,
+    FolderOffer,
     build_plugin_routes,
     plugin_asset_prefix,
     plugin_asset_trees,
+    resolve_file_offers,
+    resolve_folder_offers,
 )
 from metabrowser.tree import (
     set_folder_markers,
@@ -4686,21 +5304,32 @@ _PLUGIN_ASSET_TREES = plugin_asset_trees(_LOADED_PLUGINS)
 # Pre-compile plugin kind rules and view bindings for fast lookup at
 # request time. Higher priority wins; within a priority, the plugin
 # discovered first wins (``CompiledKindRule.sort_key``).
+# A ``binary = true`` rule is asked only about a file already found to be binary, so it
+# sits in its own list and no text classifier sees it.
 _PLUGIN_KIND_RULES: list[CompiledKindRule] = []
+_PLUGIN_BINARY_KIND_RULES: list[CompiledKindRule] = []
 _PLUGIN_VIEWS_BY_KIND: dict[str, list[dict[str, Any]]] = {}
 for _idx, _plugin in enumerate(_LOADED_PLUGINS):
     for _kr in _plugin.manifest.kind:
-        _PLUGIN_KIND_RULES.append(
+        (_PLUGIN_BINARY_KIND_RULES if _kr.binary else _PLUGIN_KIND_RULES).append(
             CompiledKindRule(rule=_kr, plugin_name=_plugin.name, discovery_index=_idx)
         )
     for _view in _plugin.manifest.view:
         _PLUGIN_VIEWS_BY_KIND.setdefault(_view.kind, []).append(view_entry(_view))
 
+# Folder views a plugin offers only where its predicate accepts the folder, by view id.
+_FOLDER_OFFERS: dict[str, FolderOffer | None] = resolve_folder_offers(_LOADED_PLUGINS)
+# File views a plugin offers only where its predicate accepts the file's leading bytes,
+# by kind and view id, and the kinds that have one.
+_FILE_OFFERS: dict[tuple[str, str], FileOffer | None] = resolve_file_offers(_LOADED_PLUGINS)
+_FILE_OFFER_KINDS: frozenset[str] = frozenset(kind for kind, _view in _FILE_OFFERS)
+
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
+_PLUGIN_CLASSIFY_BINARY = build_classifier(_PLUGIN_BINARY_KIND_RULES)
 # Hand the tree renderer the folder-marker set so directories whose direct
 # children include a known marker get a ``marker_basename`` field on their
 # row. This is the only piece of plugin state that ``tree.py`` needs.
-set_folder_markers(collect_folder_markers(_PLUGIN_KIND_RULES))
+set_folder_markers(collect_folder_markers(_PLUGIN_KIND_RULES + _PLUGIN_BINARY_KIND_RULES))
 
 
 def _classify_with_plugins(
@@ -4713,7 +5342,7 @@ def _classify_with_plugins(
     """Classify a file. Plugin rules take precedence; legacy detector chain is the fallback.
 
     Returns the winning kind id. The legacy chain still drives the
-    built-in kinds (markdown, text, binary, agent-log, unknown-jsonl).
+    built-in kinds (markdown, text, binary, unknown-jsonl).
 
     *file_ctx* is optional — pass an existing :class:`FileContext` to
     avoid re-parsing frontmatter in callers that need both classification
@@ -4724,6 +5353,44 @@ def _classify_with_plugins(
     if plugin_kind is not None:
         return plugin_kind
     return classify_file_kind(target, ext, adapter)
+
+
+def _magic_kind(disk_prefix: bytes | None) -> str | None:
+    """The plugin kind whose ``magic`` bytes a file's leading bytes on disk hold.
+
+    Checked only where a file would otherwise be ``binary``, from the sniff prefix the
+    caller already read; None for no prefix (a compressed artifact) or no match.
+    """
+    if disk_prefix is None:
+        return None
+    return classify_magic(_PLUGIN_KIND_RULES, disk_prefix)
+
+
+def _classify_content_kind(target: Path, ext: str) -> str:
+    """The kind ``/api/file`` gives a file on the served folder, for a caller with no
+    envelope of its own: an image extension, then text or JSONL through the plugin
+    classifier, then a ``magic`` kind, a ``binary = true`` claim, or ``binary`` for bytes that sniff as binary."""
+    if ext in BROWSER_IMAGE_EXTS:
+        return "image"
+    if ext != ".jsonl" and ext not in BROWSER_TEXT_EXTS:
+        text_body, disk_prefix = _sniff_text_body(target)
+        if not text_body:
+            return _magic_kind(disk_prefix) or _binary_kind(target, ext)
+    return _classify_with_plugins(target, ext)
+
+
+def _binary_kind(target: Path, ext: str) -> str:
+    """The kind of a served file found to be binary: a plugin's binary claim, or ``binary``.
+
+    Path predicates only, so this reads nothing; ``_classify_with_plugins`` is never
+    asked about a binary file, whose content its predicates would misread. A claim by a
+    kind no loaded plugin gives a view keeps ``binary``, so the file keeps its Bytes view
+    rather than reaching a page with nothing to show.
+    """
+    if not _PLUGIN_BINARY_KIND_RULES:
+        return "binary"
+    claimed = _PLUGIN_CLASSIFY_BINARY(FileContext(target, ext, None))
+    return claimed if claimed is not None and _PLUGIN_VIEWS_BY_KIND.get(claimed) else "binary"
 
 
 def _container_kinds() -> dict[str, dict[str, str]]:
@@ -4795,7 +5462,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
             continue
         artifact = ArtifactPath(target)
         ext = artifact.logical_ext
-        kind = _classify_with_plugins(target, ext)
+        kind = _classify_content_kind(target, ext)
         info = kinds.get(kind)
         if info is None:
             return None
@@ -4826,8 +5493,72 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
     return None
 
 
+def _table_source_declarations() -> list[TableSourceDeclaration]:
+    """Every ``[[table_source]]`` the server serves, in discovery order.
+
+    An operator-directory plugin runs no Python, so its declarations are ignored with a
+    log line, as its data hooks are (``build_plugin_routes``).
+    """
+    out: list[TableSourceDeclaration] = []
+    for plugin in _LOADED_PLUGINS:
+        if not plugin.manifest.table_source:
+            continue
+        if plugin.source.startswith("local:"):
+            LOG.warning(
+                "metabrowser local plugin '%s' declares table sources; operator-directory "
+                "plugins are JavaScript-only, so they are ignored",
+                plugin.name,
+            )
+            continue
+        out.extend(
+            TableSourceDeclaration(plugin=plugin.name, kind=spec.kind, adapter=spec.adapter)
+            for spec in plugin.manifest.table_source
+        )
+    return out
+
+
+def _classify_served_file(ref: ContentRef) -> str | None:
+    target = resolve_session_identity(ref.identity)
+    if target is None or not target.is_file():
+        return None
+    return _classify_content_kind(target, ref.logical_ext)
+
+
+async def _table_content_kind(ref: ContentRef) -> str | None:
+    """The kind of the content a table route names, as ``/api/file`` classifies it.
+
+    On a served folder it runs the plugin classifier and the fallback chain on the file;
+    on a pin it applies the Git-blob subset of the rules (extension and basename), which
+    is every rule a table source's kind uses.
+    """
+    if get_source_session().subject.filesystem_root is not None:
+        # Resolving and statting the file runs off the event loop, with the classifier.
+        return await asyncio.to_thread(_classify_served_file, ref)
+    from metabrowser.git.content_routes import plugin_kind_for_git_wire, plugin_magic_kind
+
+    kind = plugin_kind_for_git_wire(ref.identity)
+    if kind is not None or ref.logical_ext in BROWSER_IMAGE_EXTS:
+        return kind or "image"
+    head = await read_content_window(ref, max_bytes=SNIFF_PREFIX_BYTES)
+    content_class = classify_prefix(head.data)
+    if content_class is ContentClass.BINARY or (
+        ref.logical_ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
+    ):
+        return plugin_magic_kind(head.data)
+    return classify_by_ext(ref.logical_ext)
+
+
+install_table_sources(
+    _table_source_declarations(), _table_content_kind, container_kinds=_container_kinds()
+)
+
+
 def _views_for_kind(
-    kind: str, *, target: Path | None = None, active_content: bool | None = None
+    kind: str,
+    *,
+    target: Path | None = None,
+    prefix: tuple[bytes, str] | None = None,
+    active_content: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
@@ -4842,14 +5573,127 @@ def _views_for_kind(
     dropped when active content is off, and a bounded sniff may move the
     default tab to Source. *target* is the file being classified; omit it
     only when no file is in hand.
+
+    For the folder kind *target* is the folder, and :func:`_offered_folder_views`
+    keeps a plugin's offered view only where its predicate accepts the folder; with
+    no folder in hand no offered view is kept. The predicates touch the disk, so a
+    caller on the event loop runs this in a thread when :data:`_FOLDER_OFFERS` is
+    not empty.
+
+    For a file kind, :func:`_offered_file_views` keeps a plugin's offered view only
+    where its predicate accepts the file's leading bytes: *prefix*, the bytes and the
+    logical extension, when the caller holds them, as a pinned blob's does, or else
+    read from *target*. Only a file served as text passes either, `/api/file`'s text
+    answer and a pinned text blob's; an image, a binary, a JSONL log, or a container's
+    entry passes neither, so its kind's offered views are never kept, and the first such
+    answer logs a warning for the plugin's author. Reading *target* touches the disk, so
+    a caller on the event loop that passes it runs this in a thread.
     """
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
+    if kind == "folder" and _FOLDER_OFFERS:
+        out = _offered_folder_views(out, target)
+    elif kind in _FILE_OFFER_KINDS:
+        if prefix is None and target is None:
+            _warn_offers_never_read(kind)
+        out = _offered_file_views(kind, out, prefix if prefix is not None else _file_prefix(target))
     if kind == "html":
         out = _html_kind_views(out, target, active_content=active_content)
     elif out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
     return live_view_keys(out)
+
+
+def _offered_folder_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
+    """Keep each offered folder view only where its predicate accepts *target*.
+
+    A predicate that raises is logged and its view left out, so one plugin cannot take
+    every folder page down. An offered view that is a default becomes the only
+    default, the first such one if several are offered: the folder is the plugin's
+    subject, so its page opens there rather than on the Overview.
+    """
+
+    kept: list[dict[str, Any]] = []
+    offered_default: str | None = None
+    for view in views:
+        view_id = view["id"]
+        if view_id not in _FOLDER_OFFERS:
+            kept.append(view)
+            continue
+        predicate = _FOLDER_OFFERS[view_id]
+        if target is None or predicate is None:
+            continue
+        try:
+            offered = bool(predicate(target))
+        except Exception:
+            LOG.exception("folder view %s offer failed; leaving the view out", view_id)
+            continue
+        if not offered:
+            continue
+        kept.append(view)
+        if offered_default is None and view.get("default"):
+            offered_default = view_id
+    if offered_default is not None:
+        kept = [{**view, "default": view["id"] == offered_default} for view in kept]
+    return kept
+
+
+@functools.cache
+def _warn_offers_never_read(kind: str) -> None:
+    """Say once that *kind*'s offered views are left out of an answer that reads no
+    leading bytes, since an offer is decided only for a file served as text."""
+
+    LOG.warning(
+        "%s views declare an offer, but a %s file is not served as text, so no leading "
+        "bytes are read and those views are never offered",
+        kind,
+        kind,
+    )
+
+
+def _file_prefix(target: Path | None) -> tuple[bytes, str] | None:
+    """The leading logical bytes every file offer reads, one past the largest content
+    predicate's cap, and the logical extension; None with no file in hand or none that
+    can be read."""
+
+    if target is None:
+        return None
+    artifact = ArtifactPath(target)
+    try:
+        with artifact.open_binary(max_output_bytes=CONTENT_PREDICATE_MAX_BYTES + 1) as source:
+            data = source.read(CONTENT_PREDICATE_MAX_BYTES + 1)
+    except (ArtifactCompressionError, OSError):
+        return None
+    return data, artifact.logical_ext
+
+
+def _offered_file_views(
+    kind: str, views: list[dict[str, Any]], prefix: tuple[bytes, str] | None
+) -> list[dict[str, Any]]:
+    """Keep each of *kind*'s offered views only where its predicate accepts *prefix*.
+
+    A predicate that raises is logged and its view left out, as a folder's is. A view
+    left out that was the default leaves the default to the caller's fallback, the
+    first view.
+    """
+
+    kept: list[dict[str, Any]] = []
+    for view in views:
+        key = (kind, view["id"])
+        if key not in _FILE_OFFERS:
+            kept.append(view)
+            continue
+        predicate = _FILE_OFFERS[key]
+        if prefix is None or predicate is None:
+            continue
+        try:
+            offered = bool(predicate(*prefix))
+        except Exception:
+            LOG.exception("%s view %s offer failed; leaving the view out", kind, view["id"])
+            continue
+        if offered:
+            kept.append(view)
+    return kept
 
 
 def _html_kind_views(
@@ -4916,18 +5760,21 @@ async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
 
 
 def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
-    """Configure manifest-owned assets by the kinds that consume them.
+    """Configure manifest-owned assets by plugin, and the plugins each kind consumes.
 
     No plugin asset is an eager shell dependency. The private plugin host
-    loads one descriptor at most once when ``app.js`` selects any kind in its
-    manifest. Extra classic scripts retain manifest order before ``index.js``;
-    styles load in parallel and settle before the plugin renderer mounts.
+    loads one plugin at most once, when ``app.js`` selects any kind in its
+    manifest or code asks for its exports by name (``metabrowser.plugins.load``),
+    which is how a plugin with no kind of its own is reached. Extra classic
+    scripts retain manifest order before ``index.js``; styles load in parallel
+    and settle before the plugin renderer mounts.
 
     Every URL is under the plugin's stamped prefix (*prefixes*, from
     :func:`_shell_asset_prefixes`, which takes them off the event loop), so its
     relative imports, worker, and stylesheet references inherit the stamp.
     """
-    assets_by_kind: dict[str, list[dict[str, object]]] = {}
+    plugins: dict[str, dict[str, object]] = {}
+    kinds: dict[str, list[str]] = {}
     for plugin in _LOADED_PLUGINS:
         prefix = prefixes.get(plugin.name, f"/plugin-static/{plugin.name}")
         styles: list[str] = []
@@ -4937,17 +5784,17 @@ def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
             url = f"{prefix}/{extra}"
             if url not in styles:
                 styles.append(url)
-        descriptor: dict[str, object] = {
+        plugins[plugin.name] = {
             "name": plugin.name,
             "module": f"{prefix}/index.js",
             "scripts": [f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_scripts],
             "styles": styles,
         }
-        kinds = {view.kind for view in plugin.manifest.view}
-        kinds.update(kind.id for kind in plugin.manifest.kind)
-        for kind in sorted(kinds):
-            assets_by_kind.setdefault(kind, []).append(descriptor)
-    encoded = _json.dumps(assets_by_kind).replace("<", "\\u003c")
+        owned = {view.kind for view in plugin.manifest.view}
+        owned.update(kind.id for kind in plugin.manifest.kind)
+        for kind in sorted(owned):
+            kinds.setdefault(kind, []).append(plugin.name)
+    encoded = _json.dumps({"plugins": plugins, "kinds": kinds}).replace("<", "\\u003c")
     return f"<script>window.MetabrowserPluginHost.configureAssets({encoded});</script>"
 
 
@@ -5081,6 +5928,7 @@ routes = [
     Route("/view/{path:path}", view_shell),
     Route("/commit/{rest:path}", commit_shell),
     Route("/pull/{rest:path}", pull_shell),
+    Route("/stack/{rest:path}", stack_shell),
     Route("/pulls", pulls_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
@@ -5097,7 +5945,11 @@ routes = [
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount(
-        "/static", app=StampedStaticFiles(directory=STATIC_DIR, tree=_STATIC_TREE), name="static"
+        "/static",
+        app=StampedStaticFiles(
+            directory=STATIC_DIR, tree=_STATIC_TREE, self_named=_SELF_NAMED_STATIC
+        ),
+        name="static",
     ),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure
@@ -5111,6 +5963,10 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
+    # Where the event log is, and its records (metabrowser.event_log).
+    *EVENT_LOG_ROUTES,
+    # A page's github.com counterpart, which every View on GitHub control links to.
+    *COUNTERPART_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
 ]
 
@@ -5167,10 +6023,15 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # refresh jobs start once the pin is attached and are cancelled before it closes.
     # What a folder's server keeps for its checkout comes last, so it is left first: a
     # revision of the checkout still served at shutdown is closed while the rest is up.
+    # The store a folder keeps of its checkout's origin needs the refresh jobs, and comes
+    # before the checkout's revisions, whose `--ref` may name a ref read from it.
+    # A served process's event log pings this loop, so a turn that blocks it is on record.
+    event_log.watch_loop(asyncio.get_running_loop())
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),
         lifespan_refresh(app),
+        lifespan_checkout_store(app),
         lifespan_checkout(),
     ):
         try:

@@ -12,15 +12,16 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 cloning <PATH> into <HOME>
 cloned <PATH> in 0.0 s
 --- gh ---
-gh api repos/octo/demo --jq .size
 gh auth status
+gh api repos/octo/demo --jq .size
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA'
 exit: 1
 --- stdout ---
@@ -120,6 +121,7 @@ status: 202
     "checks_pending": true,
     "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -130,6 +132,7 @@ status: 202
     "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
     "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -318,7 +321,7 @@ status: 200
   "reason": null,
   "source": "<PATH>",
   "number": 7,
-  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin": "de22d10b6b8d1dd5f87861fb532b0ab66af5f408",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "verified_at": "2026-09-17T12:00:00Z",
@@ -327,6 +330,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "c7e69ff926b1958699d816d8c0988196806d4cb3b111587afe60be87da06c5b5",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -337,6 +341,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -497,14 +502,14 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/de22d10b6b8d1dd5f87861fb532b0ab66af5f408/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/de22d10b6b8d1dd5f87861fb532b0ab66af5f408/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # sources/<SLUG>/pulls/7.snapshots.json
 [{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"},{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"de22d10b6b8d1dd5f87861fb532b0ab66af5f408"}]
 

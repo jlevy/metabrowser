@@ -34,7 +34,7 @@ import pytest
 
 from metabrowser.cache.layout import migrate_layout
 from metabrowser.home import ensure_home
-from tests.cache_home_fixture import FIXTURE_VERSION, _stage_and_publish_store
+from tests.cache_home_fixture import FIXTURE_VERSION, FixedStore, _stage_and_publish_store
 from tests.golden_harness import (
     HOME_LABEL,
     FixedClock,
@@ -172,7 +172,7 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
     # stream name the store's own directory or a staging entry.
     assert str(home) not in first.stdout
     for stream in (first.stderr, again.stderr):
-        assert "repository-stores" not in stream
+        assert "repos" not in stream
         assert "staging" not in stream
     assert "Serving" not in first.stdout + first.stderr
 
@@ -196,6 +196,7 @@ def test_the_home_label_is_refused_anywhere_but_the_whole_lines_that_may_name_it
 
     home = tmp_path / "home"
     url = "file:///srv/origin.git"
+    store_key = "github-com-octo-demo-" + "0f" * 5 + "0"
     allowed = (
         f"cloning {url} into {home}\n"
         f"using the clone of {url} cached in {home}, fetched 2 hours ago\n"
@@ -203,30 +204,31 @@ def test_the_home_label_is_refused_anywhere_but_the_whole_lines_that_may_name_it
         f"using the clone of {url} cached in {home}\n"
         # A served mirror's status says where it is kept: the store's bare repository,
         # by its key or by the key's label.
-        f'  "location": "{home}/repository-stores/{"0f" * 32}/repository.git",\n'
-        f'    "location": "{home}/repository-stores/<STORE_KEY-A>/repository.git",\n'
+        f'  "location": "{home}/repos/{store_key}/repository.git",\n'
+        f'    "location": "{home}/repos/<STORE_KEY-A>/repository.git",\n'
     )
     assert label_home(allowed, home) == allowed.replace(str(home), HOME_LABEL)
     for leaked in (
-        f"cloning {url} into {home}/repository-stores/abc/repository.git\n",
+        f"cloning {url} into {home}/repos/abc/repository.git\n",
         f"cloning {url} into {home}/staging/acq-0123456789ab\n",
-        f"using the clone of {url} cached in {home}/repository-stores/abc, fetched 1 day ago\n",
+        f"using the clone of {url} cached in {home}/repos/abc, fetched 1 day ago\n",
         f"cloning {url} into {home} and more\n",
         f"note: store at {home}\n",
         f'  "where": "{home}"\n',
         f"Error: could not read {home}\n",
         # Only the location, and only the store's repository.
-        f'  "store": "{home}/repository-stores/{"0f" * 32}/repository.git",\n',
-        f'  "location": "{home}/repository-stores/{"0f" * 32}",\n',
-        f'  "location": "{home}/sources/local--origin--0123456789ab",\n',
-        f'  "location": "{home}/repository-stores/{"0f" * 32}/repository.git/objects",\n',
-        f'  "error": "not found in {home}/repository-stores/{"0f" * 32}/repository.git",\n',
+        f'  "store": "{home}/repos/{store_key}/repository.git",\n',
+        f'  "location": "{home}/repos/{store_key}",\n',
+        f'  "location": "{home}/sources/local-origin-01234567890",\n',
+        f'  "location": "{home}/repos/{store_key}/repository.git/objects",\n',
+        f'  "error": "not found in {home}/repos/{store_key}/repository.git",\n',
     ):
         with pytest.raises(AssertionError, match="outside the lines that may name it"):
             label_home(leaked, home)
 
 
-FIRST_ORPHAN_KEY = "0" * 64
+# A store whose key sorts before any a sandbox origin's: `local-` comes after `a-`.
+FIRST_ORPHAN = FixedStore(id="sha256:" + "0" * 64, key="a-" + "0" * 11)
 
 
 def test_golden_unreferenced_store_is_kept_by_the_next_acquire(
@@ -238,7 +240,7 @@ def test_golden_unreferenced_store_is_kept_by_the_next_acquire(
     # sorts first whatever that hash is.
     ensure_home(home)
     migrate_layout(home, version=FIXTURE_VERSION)
-    _stage_and_publish_store(home, FIRST_ORPHAN_KEY, with_revision=False)
+    _stage_and_publish_store(home, FIRST_ORPHAN, with_revision=False)
     url = file_url(named_origin(tmp_path, "a"))
     session.origin("A", url)
 
@@ -247,14 +249,14 @@ def test_golden_unreferenced_store_is_kept_by_the_next_acquire(
     assert f'"created_by": "{FIXTURE_VERSION}"' in layout
     before = session.inspect("/api/cache/stores")
     assert '"reference_state": "unreferenced"' in before
-    assert f"sha256:{FIRST_ORPHAN_KEY}" in before
+    assert FIRST_ORPHAN.id in before
 
     session.note("Acquiring another source keeps it, unreferenced, beside the new store.")
     session.no_serve("A", url)
     after = session.inspect("/api/cache/stores")
     assert '"reference_state": "unreferenced"' in after
     assert '"reference_state": "referenced"' in after
-    assert f"sha256:{FIRST_ORPHAN_KEY}" in after
+    assert FIRST_ORPHAN.id in after
     assert ORIGIN_REVISION in after
 
     session.note(

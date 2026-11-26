@@ -10,10 +10,10 @@
 //
 // What it measures is layout, which no browserless DOM computes: where a menu's group
 // heading starts against its rows, how tall an open menu is drawn against its rows and
-// the window, which controls the bar's row and closed drawer hold, whether the row fits
-// its pane, how it wraps in a narrower one, and which take keyboard numbers, where a
-// Group by section's heading starts against its tree and where its tally sits beside its
-// name, at the default pane and the narrowest, whether a name cut short there shows its
+// the window, which controls the bar's row and closed drawer hold and the lines the open
+// drawer lays them on, whether the row fits its pane, how it wraps in a narrower one, and
+// which take keyboard numbers, where a Group by section's heading starts against its tree
+// and where its tally sits beside its name, at the default pane and the narrowest, whether a name cut short there shows its
 // tooltip, and what Chrome names the section, whether a refresh after a write keeps the
 // scroll position and the focused row, what a Group by choice shows while its request is
 // held, and a tree row's leading slot, a folder's chevron and a file's icon, against the
@@ -109,11 +109,28 @@ const MEASURE = `(key) => {
   const first = rows[0];
   const firstBox = first.getBoundingClientRect();
   const rowInset = firstBox.left + parseFloat(getComputedStyle(first).paddingLeft);
+  // A category's heading leads with its icon (docs/design-system.md, "File-Type Category
+  // Icons"): the icon starts on the inset, in the heading's ink, and the name follows it.
+  const iconOf = (heading) => {
+    const icon = heading.querySelector(":scope > .category-icon");
+    if (!icon) return null;
+    const iconBox = icon.getBoundingClientRect();
+    const ink = getComputedStyle(heading).color;
+    return {
+      width: round(iconBox.width),
+      height: round(iconBox.height),
+      textFromIcon: round(textLeft(heading) - iconBox.right),
+      inHeadingInk: getComputedStyle(icon).color === ink && getComputedStyle(icon).stroke === ink,
+    };
+  };
   const headings = [...panel.querySelectorAll(".group-heading")].map((heading) => {
     const group = heading.parentElement;
+    const icon = heading.querySelector(":scope > .category-icon");
     return {
       text: heading.textContent,
-      fromRowInset: round(textLeft(heading) - rowInset),
+      // The heading's lead, its icon where it has one, else its name.
+      fromRowInset: round((icon ? icon.getBoundingClientRect().left : textLeft(heading)) - rowInset),
+      icon: iconOf(heading),
       namesItsGroup:
         group.classList.contains("menu-group") &&
         group.getAttribute("role") === "group" &&
@@ -143,6 +160,11 @@ const MEASURE = `(key) => {
       round(rule.getBoundingClientRect().height),
     ),
     headings,
+    // The glyph size and the gap from icon to name, which a category's heading takes.
+    glyph: round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--icon-glyph"))),
+    categoryIconGap: round(
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--category-icon-gap")),
+    ),
   };
 }`;
 
@@ -310,16 +332,17 @@ const ROW = `(() => ({
   drawerInert: document.getElementById("filter-drawer").inert,
 }))()`;
 
-// Whether the row fits its pane: Group by's trigger and Show ignored at their natural
-// widths, the room to spare before Clear and the chevron, and what the badge counts.
-// `spare` is the space between Show ignored and the trailing span beyond the row's gap,
-// less how far that span runs past the row's edge: positive when the row fits with room
-// left, negative by the overflow when it does not (the span's auto margin is 0 then, so
-// the space alone cannot say).
+// Whether the row fits its pane: Group by's trigger at its natural width, the room to
+// spare before Clear and the chevron, any count badge, and the chevron's name, which
+// carries the count. `spare` is the space
+// between Group by and the trailing span beyond the row's gap, less how far that span
+// runs past the row's edge: positive when the row fits with room left, negative by the
+// overflow when it does not (the span's auto margin is 0 then, so the space alone cannot
+// say).
 const ROW_FIT = `(() => {
   const row = document.querySelector(".nav-filter-bar-main");
   const trigger = row.querySelector('[data-chip-menu-toggle="group"]');
-  const check = row.querySelector(".filter-check");
+  const group = row.querySelector('.chip-menu[data-chip-menu="group"]');
   const end = row.querySelector(".nav-filter-bar-end");
   const round = (value) => Math.round(value * 100) / 100;
   const rowBox = row.getBoundingClientRect();
@@ -331,11 +354,11 @@ const ROW_FIT = `(() => {
     pane: round(document.getElementById("nav-filter-bar").getBoundingClientRect().width),
     row: row.clientWidth,
     content: row.scrollWidth,
-    spare: round(endBox.left - check.getBoundingClientRect().right - gap - overflow),
+    spare: round(endBox.left - group.getBoundingClientRect().right - gap - overflow),
     triggerClipped: trigger.scrollWidth > trigger.clientWidth,
-    checkClipped: check.scrollWidth > check.clientWidth,
     clear: Boolean(end.querySelector("[data-chip-clear]")),
     badge: end.querySelector(".chip-badge")?.textContent.trim() || null,
+    name: end.querySelector(".filter-drawer-toggle")?.getAttribute("aria-label") ?? null,
   };
 })()`;
 
@@ -367,6 +390,37 @@ const NARROW = `(() => {
   };
 })()`;
 
+// The open drawer's line: its controls in order, the lines they take, and whether each is
+// whole inside the bar, Show ignored's checkbox among them, one line tall and centred in
+// it as the toolbar row's controls are (docs/design-system.md, "Navigation Toolbars Wrap").
+const DRAWER = `(() => {
+  const bar = document.getElementById("nav-filter-bar");
+  const drawerRow = bar.querySelector(".filter-drawer-row");
+  const barBox = bar.getBoundingClientRect();
+  const round = (value) => Math.round(value * 100) / 100;
+  const controls = [...drawerRow.children].map((child) => {
+    const box = child.getBoundingClientRect();
+    return {
+      name: child.matches(".chip-menu")
+        ? "menu:" + child.dataset.chipMenu
+        : child.matches(".filter-check")
+          ? "check:" + child.querySelector("[data-chip-check]").dataset.chipCheck
+          : child.className,
+      top: round(box.top),
+      height: round(box.height),
+      middle: round(box.top + box.height / 2),
+      inside: box.left >= barBox.left - 0.5 && box.right <= barBox.right + 0.5,
+      clipped: child.scrollWidth > child.clientWidth,
+    };
+  });
+  return {
+    controls,
+    lines: new Set(controls.map((control) => control.top)).size,
+    content: drawerRow.scrollWidth,
+    width: drawerRow.clientWidth,
+  };
+})()`;
+
 // Which filter menu is open, and whether the drawer is.
 const OPEN_MENU = `({
   menu: document.querySelector('.chip-menu[aria-expanded="true"]')?.dataset.chipMenu ?? null,
@@ -380,6 +434,7 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
   const round = (value) => Math.round(value * 100) / 100;
   const heading = section.querySelector(":scope > .tree-section-heading");
   const label = heading.querySelector(".tree-section-label");
+  const icon = heading.querySelector(":scope > .category-icon");
   const range = document.createRange();
   range.selectNodeContents(label);
   const row = section.querySelector(".tree-item");
@@ -421,8 +476,21 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
     numeralWeight: getComputedStyle(document.documentElement).getPropertyValue("--count-numeral-weight").trim(),
     dotHidden: dot.getAttribute("aria-hidden") === "true",
     headingClasses: [...heading.classList],
-    fromRowInset: Math.round((range.getBoundingClientRect().left - box.left -
-      parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft)) * 100) / 100,
+    // The heading's lead, its category icon, starts on the tree's row inset, and the name
+    // follows it by the gap, in the heading's ink (docs/design-system.md, "File-Type
+    // Category Icons").
+    fromRowInset: round(((icon ? icon.getBoundingClientRect().left : range.getBoundingClientRect().left) -
+      box.left - parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft))),
+    icon: icon
+      ? {
+          width: round(icon.getBoundingClientRect().width),
+          height: round(icon.getBoundingClientRect().height),
+          textFromIcon: round(range.getBoundingClientRect().left - icon.getBoundingClientRect().right),
+          inHeadingInk:
+            getComputedStyle(icon).color === headingStyle.color &&
+            getComputedStyle(icon).stroke === headingStyle.color,
+        }
+      : null,
     namesItsTree: section.getAttribute("aria-labelledby") === heading.id &&
       tree?.getAttribute("aria-labelledby") === heading.id,
     divider: parseFloat(getComputedStyle(section).borderTopWidth),
@@ -577,10 +645,10 @@ try {
   );
 
   const result = { gear };
-  // Group by and Show ignored are the row; the three filters wait in the closed drawer.
+  // Group by is the row; the three filters and Show ignored wait in the closed drawer.
   result.row = await browser.evaluate(ROW);
-  // The row at its widest: a filter set, so Clear and the badge show, under each Group by
-  // value. Then Show ignored off alone: Clear shows, and the badge leaves it out.
+  // The row at its widest: a filter set, so Clear shows, under each Group by value. Then
+  // Show ignored off alone: Clear shows, and the chevron's name counts it.
   const setFilters = async (patch) => {
     await browser.evaluate(`window.metabrowser.filterState.set(${JSON.stringify(patch)}), true`);
     await browser.evaluate(frames);
@@ -641,7 +709,7 @@ try {
   await browser.evaluate(frames);
   result.themesAlike = JSON.stringify(light) === JSON.stringify(dark);
   phase("wrapped");
-  // At the narrowest pane, with a filter set, the row is three lines. Reading them meets
+  // At the narrowest pane, with a filter set, the row is two lines. Reading them meets
   // the controls in their Tab order, the keyboard numbers still open Group by and the
   // drawer's filters, and the drawer opens under the lines and closes back to them with no
   // gap left standing.
@@ -663,12 +731,20 @@ try {
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   result.narrowOpen = await browser.evaluate(NARROW);
-  await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
-  await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "false"`);
-  await browser.evaluate(BAR_SETTLED);
+  result.narrowDrawer = await browser.evaluate(DRAWER);
+  const drawerToggle = async (open) => {
+    await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
+    await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "${open}"`);
+    await browser.evaluate(BAR_SETTLED);
+  };
+  await drawerToggle(false);
   result.narrowClosed = await browser.evaluate(NARROW);
   await paneWidth(null);
   await browser.evaluate(frames);
+  // At the default pane the open drawer holds its three filters and Show ignored.
+  await drawerToggle(true);
+  result.drawer = await browser.evaluate(DRAWER);
+  await drawerToggle(false);
   phase("narrow");
 
   await setFilters({ size: "all", group: "none", showIgnored: false });
@@ -930,9 +1006,10 @@ try {
   }
   await browser.evaluate(frames);
   result.refresh = { before: beforeWrite, after: await browser.evaluate(REFRESH_STATE) };
-  // The heading kept its place and updated its tally beside its name.
+  // The heading kept its place, its category's icon, and its name, and updated its tally
+  // beside its name.
   result.refreshedHeading = await browser.evaluate(
-    `(() => { const heading = ${CODE_HEADING}; return { kept: heading.dataset.before === "1", tally: heading.querySelector(":scope > .heading-tally").textContent }; })()`,
+    `(() => { const heading = ${CODE_HEADING}; return { kept: heading.dataset.before === "1", icon: heading.firstElementChild?.matches(".category-icon") ?? false, tally: heading.querySelector(":scope > .heading-tally").textContent }; })()`,
   );
   phase("refreshed");
   // No grouping is the one tree again.

@@ -1239,22 +1239,7 @@
          "."
         ]
        },
-       "\n",
-       {
-        "tag": "link",
-        "attrs": [
-         [
-          "rel",
-          "stylesheet"
-         ],
-         [
-          "href",
-          "http://127.0.0.1:9/evil.css"
-         ]
-        ],
-        "children": []
-       },
-       "\n",
+       "\n\n",
        {
         "tag": "img",
         "attrs": [
@@ -1437,18 +1422,7 @@
          "styled"
         ]
        },
-       "\n",
-       {
-        "tag": "input",
-        "attrs": [
-         [
-          "src",
-          "https://e.x/i.png"
-         ]
-        ],
-        "children": []
-       },
-       "\n",
+       "\n\n",
        {
         "tag": "p",
         "attrs": [],
@@ -1533,6 +1507,85 @@
          {
           "tag": "img",
           "attrs": [
+           [
+            "class",
+            "kpress-image"
+           ],
+           [
+            "data-kpress-image",
+            "true"
+           ],
+           [
+            "loading",
+            "lazy"
+           ]
+          ],
+          "children": []
+         }
+        ]
+       },
+       "\n",
+       {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "https://x.com/ojoshe"
+           ],
+           [
+            "target",
+            "_blank"
+           ],
+           [
+            "rel",
+            "noopener noreferrer"
+           ]
+          ],
+          "children": [
+           {
+            "tag": "img",
+            "attrs": [
+             [
+              "src",
+              "https://img.shields.io/badge/follow-%40ojoshe-black"
+             ],
+             [
+              "alt",
+              "Follow @ojoshe on X"
+             ],
+             [
+              "class",
+              "kpress-image"
+             ],
+             [
+              "data-kpress-image",
+              "true"
+             ],
+             [
+              "loading",
+              "lazy"
+             ]
+            ],
+            "children": []
+           }
+          ]
+         },
+         " ",
+         {
+          "tag": "img",
+          "attrs": [
+           [
+            "src",
+            "https://img.shields.io/badge/standalone-blue"
+           ],
+           [
+            "alt",
+            "standalone"
+           ],
            [
             "class",
             "kpress-image"

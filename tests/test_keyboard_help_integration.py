@@ -3,22 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
 
 from metabrowser import server as proc_browser
+from tests.shell_request import shell_request
 
 
 def _render_index_html() -> str:
-    class _FakeQuery:
-        def get(self, key: str, default: str = "") -> str:
-            return default
-
-    class _FakeReq:
-        def __init__(self) -> None:
-            self.query_params = _FakeQuery()
-            self.headers: dict[str, str] = {}
-
-    response = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
+    response = asyncio.run(proc_browser.index(shell_request()))
     return response.body.decode() if isinstance(response.body, bytes) else str(response.body)
 
 

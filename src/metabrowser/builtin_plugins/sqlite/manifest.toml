@@ -1,0 +1,74 @@
+[plugin]
+name = "sqlite"
+display_name = "SQLite"
+version = "0.0.1"
+sdk_version = "0.8"
+python_requires = ["starlette"]
+# The table plugin's routes serve this plugin's [[table_source]], and its view draws a
+# table's Table view (mb.plugins.load("table") in table-view.js).
+requires = ["table"]
+
+# Any SQLite database, whatever its name: a file that would otherwise be binary and
+# starts with "SQLite format 3\0" (the hex below). A database is a navigation container
+# whose children are its tables, views, and virtual tables, each at <database>/<segment>
+# (database.py says how a name becomes a segment). The extensions decide only the tree's
+# chevron: a database with another name or none is reached by opening it, and a `.db`
+# file that is not SQLite stays binary, its chevron expanding to nothing. Every
+# connection to it runs in a reader process (metabrowser.sqlite_readers) through
+# metabrowser.sqlite_access, which never writes to it, creates or removes a file beside
+# it, or takes a lock that can refuse its owner.
+[[kind]]
+id = "sqlite"
+match = { magic = { offset = 0, hex = "53514c69746520666f726d6174203300" }, exts = [".sqlite", ".sqlite3", ".db", ".db3", ".s3db"] }
+priority = 0
+container = { children = "children" }
+
+# The database's overview, a list of its tables by group with their estimates, or at a
+# table's address the table itself, drawn by the table plugin.
+[[view]]
+kind = "sqlite"
+id = "table"
+label = "Table"
+key = "v"
+default = true
+container_class = "content-body table-view-host"
+printable = true
+print_profile = "table"
+render_runtime = "client"
+
+# Each object's DDL, indexes, triggers, and foreign keys, or one table's.
+[[view]]
+kind = "sqlite"
+id = "schema"
+label = "Schema"
+key = "s"
+container_class = "content-body sqlite-schema-host"
+render_runtime = "client"
+
+[[view]]
+kind = "sqlite"
+id = "info"
+label = "Info"
+key = "i"
+container_class = "content-body sqlite-info-host"
+render_runtime = "client"
+
+[[data_hook]]
+route = "info"
+sidekick = "metabrowser.builtin_plugins.sqlite.sidekick:info_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "schema"
+sidekick = "metabrowser.builtin_plugins.sqlite.sidekick:schema_handler"
+methods = ["GET"]
+
+# Nav-tree child rows for the container affordance.
+[[data_hook]]
+route = "children"
+sidekick = "metabrowser.builtin_plugins.sqlite.sidekick:children_handler"
+methods = ["GET"]
+
+[[table_source]]
+kind = "sqlite"
+adapter = "metabrowser.builtin_plugins.sqlite.source:adapter"

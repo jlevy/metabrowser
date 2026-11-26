@@ -9,9 +9,9 @@
 // own, which Chrome and the server join, and judges the one JSON line it prints.
 //
 // What it measures is layout, which no browserless DOM computes (docs/design-system.md,
-// "Diff Summary"; mb-hi4l): where the header's chevron and words start, and where each row
-// of the opened tree starts at every depth, so its first level is one indentation step in
-// from the header and each level one more; that the opened tree has no scroll bar of its own
+// "Diff Summary"; mb-hi4l): where the header's words start and end, where its chevron, after
+// them (mb-f0pz), starts, and where each row of the opened tree starts at every depth, so its
+// first level is one indentation step in from the header's words and each level one more; that the opened tree has no scroll bar of its own
 // and is as tall as its rows, in the page's flow; that on a long change set only the rows in
 // the window's view of the tree and its overscan are in the document, as the page scrolls;
 // that the header starts collapsed with no tree; and that the keys and the focus ring are
@@ -20,7 +20,8 @@
 // measure its indentation.
 //
 // It also reads the chrome around the diff (`CHROME` below), on the patch and on COMMIT's
-// page, where the toolbar holds the layout control alone: that the toolbar draws no rule
+// page, where the toolbar ends with the diff's choosers' group after the Diff summary or
+// the File type control: that the toolbar draws no rule
 // and the first file card starts the cards' gap below it ("Diff Layout Control"; mb-a073),
 // and the computed weight of every run of text in the count summaries the page shows, the
 // Diff summary's header, the Files totals, and the Commits tally, so a number reads bold
@@ -102,7 +103,13 @@ const LAYOUT = `(() => {
     viewHeight: innerHeight,
     header: {
       chevron: round(left(toggle.querySelector(".diff-summary-chevron"))),
-      words: round(left(toggle.querySelector(".diff-summary-files"))),
+      // Where its words end: the part before its chevron, which follows them (mb-f0pz).
+      wordsEnd: round(
+        toggle.querySelector(".diff-summary-chevron").previousElementSibling.getBoundingClientRect().right,
+      ),
+      // The header's words start at its change line where its page says the file count on
+      // its size line ("Change Size Line"), and at the file count where it says it itself.
+      words: round(left(toggle.querySelector(".diff-summary-files") ?? toggle.querySelector(".change-line"))),
     },
     body: body === null ? null : {
       overflowY: bodyStyle.overflowY,
@@ -168,6 +175,9 @@ const CHROME = `(() => {
   return {
     toolbar: {
       holds: [...toolbar.children].map((child) => child.classList[0]),
+      ends: [...(toolbar.querySelector(".diff-toolbar-end")?.children ?? [])].map(
+        (child) => child.classList[0],
+      ),
       rule: [style.borderBottomStyle, style.borderBottomWidth].join(" "),
       position: style.position,
       paddingBottom: style.paddingBottom,
@@ -211,12 +221,14 @@ const PAINT = `async (theme) => {
   for (const name of ["--text", "--muted", "--git-status-added", "--git-status-deleted", "--git-status-modified", "--git-status-renamed"]) {
     tokens[name] = token(name);
   }
-  const files = header.querySelector(".diff-summary-files");
+  // The file count: the header's own, or, on a page that says it on its size line above the
+  // header ("Change Size Line"), that line's, with the size's numbers after it once known.
+  const files = header.querySelector(".diff-summary-files") ?? document.querySelector(".page-header-line > .change-size-line");
   const painted = {
     theme,
     tokens,
     words: files ? ink(files) : null,
-    numbers: [...header.querySelectorAll(".diff-summary-files .summary-number")].map((node) => [node.textContent, ink(node), getComputedStyle(node).fontWeight]),
+    numbers: [...(files?.querySelectorAll(".summary-number") ?? [])].map((node) => [node.textContent, ink(node), getComputedStyle(node).fontWeight]),
     counts: (${STATUS_COUNTS})(header),
     marks: [...header.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node), getComputedStyle(node).fontWeight]),
     text: header.textContent,

@@ -9,8 +9,11 @@ env:
   METABROWSER_LOG_LEVEL: "WARNING"
 before: >-
   cp -R "$TRYSCRIPT_TEST_DIR/../fixtures/untrusted-markdown" hostile &&
+  cp -R "$TRYSCRIPT_TEST_DIR/../fixtures/github-layout" layout &&
   mkdir slow && (printf '[%.0s' $(seq 1 100); head -c 61440 /dev/zero | tr '\0' '%')
-  > slow/slow.md
+  > slow/slow.md &&
+  mkdir diagrams && printf '# Diagrams\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```svg\n<svg viewBox="0 0 1 1"></svg>\n```\n' > diagrams/README.md &&
+  mkdir pdfs && printf '[the report](report.pdf)\n\n![The report](report.pdf)\n\n<img src="report.pdf" alt="html">\n\n<object data="report.pdf"></object>\n\n<embed src="report.pdf">\n\n<iframe src="report.pdf"></iframe>\n' > pdfs/README.md
 ---
 # Golden Test: Markdown From an Untrusted Source
 
@@ -31,11 +34,16 @@ stylesheets and the files they use stay in its assets.
 
 The render is marked `inert`, and its HTML is the document reduced to the allowlist:
 plain text markup, links (`href`, and `target` and `rel` on one that leaves the page),
-the repository image (`src`, `alt`), and each heading’s `user-content-` anchor (`id`),
-which the hardener makes from the heading’s text.
-The envelope goes to a file, and its `html` is then shown whole, so each attribute is
-pinned with its value: a `javascript:` link, an outside image, or a `data:` URL that
-survived would be in this line.
+the repository image and an image from the web over `https` (`src`, `alt`, and
+`referrerpolicy="no-referrer"` on the one from the web), and each heading’s
+`user-content-` anchor (`id`), which the hardener makes from the heading’s text.
+An image that is not loaded, one over `http` or one with no address, is its alt text in
+a `mb-image-fallback` span (`class`, and `data-tip-text`, the address it stands for),
+inside the link it was in, so a badge keeps its destination, or inside a link to the
+image.
+The envelope goes to a file, and its `html` is then shown whole, so each attribute
+is pinned with its value: a `javascript:` link, an `http` image that loaded, or a
+`data:` URL that survived would be in this line.
 
 ```console
 $ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=document' > inert.txt
@@ -45,7 +53,7 @@ $ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=docume
 ```console
 $ grep -E '^  "(type|html|profile|printable|toc|inert)":' inert.txt
   "type": "kpress-rendered-document",
-  "html": "\n<div><div><h1 id=\"user-content-hostile-readme\">Hostile readme</h1>\n<p>Rebased on <code>topic</code>; see <a href=\"docs/new.md\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n\n<p><img loading=\"lazy\" src=\"docs/diagram.png\" alt=\"diagram\"> <a href=\"https://example.com/t.gif\" target=\"_blank\" rel=\"noopener noreferrer\">tracker</a> <a href=\"https://example.com/p.gif\" target=\"_blank\" rel=\"noopener noreferrer\">image</a> <span>image</span></p>\n<p><a href=\"docs/guide.md\">Guide</a> <a href=\"#user-content-readme\">Top</a> <a href=\"../x.md\">Up</a> <a>tab</a> <a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">slashes</a></p>\n<p><a>api</a> <a>dots</a> <a>escaped</a> <a>debug</a> <a>query</a> <a>raw</a> <span>raw image</span> <a href=\"https://evil.test/no-slashes\" target=\"_blank\" rel=\"noopener noreferrer\">bare</a> <a href=\"https://one.test/x\" target=\"_blank\" rel=\"noopener noreferrer\">one slash</a></p>\n<p><a>dotdot</a> <a>dot2e</a> <a>slash</a> <a>back</a> <span>dotimg</span> <span>dot2eimg</span></p>\n<h2 id=\"user-content-section\">Section</h2>\n<p>text</p></div></div>",
+  "html": "\n<div><div><h1 id=\"user-content-hostile-readme\">Hostile readme</h1>\n<p>Rebased on <code>topic</code>; see <a href=\"docs/new.md\">the docs</a>.</p>\n\n<img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/badge.png\" alt=\"build badge\"> <span class=\"mb-image-fallback\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n\n<p><img loading=\"lazy\" src=\"docs/diagram.png\" alt=\"diagram\"> <img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/t.gif\" alt=\"tracker\"> <img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/p.gif\"> <span class=\"mb-image-fallback\">image</span></p>\n<p><a href=\"https://x.com/ojoshe\" target=\"_blank\" rel=\"noopener noreferrer\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://img.shields.io/badge/follow-%40ojoshe-black\" alt=\"Follow @ojoshe on X\"></a> <img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://img.shields.io/badge/standalone-blue\" alt=\"standalone\"></p>\n<p><a href=\"docs/guide.md\">Guide</a> <a href=\"#user-content-readme\">Top</a> <a href=\"../x.md\">Up</a> <a>tab</a> <a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">slashes</a></p>\n<p><a>api</a> <a>dots</a> <a>escaped</a> <a>debug</a> <a>query</a> <a>raw</a> <span class=\"mb-image-fallback\">raw image</span> <a href=\"https://evil.test/no-slashes\" target=\"_blank\" rel=\"noopener noreferrer\">bare</a> <a href=\"https://one.test/x\" target=\"_blank\" rel=\"noopener noreferrer\">one slash</a></p>\n<p><a>dotdot</a> <a>dot2e</a> <a>slash</a> <a>back</a> <span class=\"mb-image-fallback\">dotimg</span> <span class=\"mb-image-fallback\">dot2eimg</span></p>\n<h2 id=\"user-content-section\">Section</h2>\n<p>text</p></div></div>",
   "profile": "document",
   "printable": true,
   "toc": false,
@@ -56,7 +64,8 @@ $ grep -E '^  "(type|html|profile|printable|toc|inert)":' inert.txt
 The render also names the version of the one repository image it embeds, by the `/raw`
 identity the page resolves it to, and the page puts it in that image’s address, so a
 replaced image is a new address.
-The outside images, links here, get none.
+The images from the web get none: they are fetched from where they are, and an address
+that is not the tree’s has no version of ours.
 
 ```console
 $ grep -A2 '^  "raw_versions":' inert.txt
@@ -137,6 +146,29 @@ $ grep -E '^        "(id|loading)":' inert.txt
         "loading": "resource"
         "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
         "loading": "resource"
+? 0
+```
+
+## Test: an untrusted README keeps GitHub’s layout attributes
+
+`tests/fixtures/github-layout/README.md` lays itself out with the HTML attributes
+github.com keeps: Metabrowser’s own README opening, a `width="192"` image in a
+`<p align="center">` above an `<h1 align="center">`, then images floated or sized by
+`align`, `width`, and `height`, and a table whose cells and rows say how they align.
+The inert render keeps each, with its value checked (`ALIGN_VALUES` and `DIMENSIONS` in
+`src/metabrowser/inert_html.py`), as KPress’s trusted render keeps it, so the page lays
+the document out as github.com does; `tests/test_markdown_github_layout_chrome.py`
+measures that in Chrome.
+A value that is not a keyword or a number is dropped (`tests/test_inert_html.py`).
+
+```console
+$ metab layout --untrusted --api '/api/kpress/render?path=README.md&view=document' > layout.txt
+? 0
+```
+
+```console
+$ grep -E '^  "html":' layout.txt
+  "html": "\n<div><div><p align=\"center\"><img loading=\"lazy\" src=\"icon.png\" alt=\"Centered icon\" width=\"192\"></p>\n<h1 id=\"user-content-github-layout\" align=\"center\">GitHub Layout</h1>\n<p align=\"center\">A centered paragraph with a badge <img loading=\"lazy\" src=\"icon.png\" alt=\"Badge\" height=\"20\"> in its text.</p>\n<h2 id=\"user-content-a-right-aligned-image\">A Right-Aligned Image</h2>\n<img loading=\"lazy\" src=\"icon.png\" alt=\"Right icon\" align=\"right\" width=\"120\">\n<p>This paragraph wraps beside an image floated to the right by its <code>align</code> attribute, as\nGitHub draws one, with twenty pixels of room between the image and the text.\nA README puts a project's logo or a screenshot here, beside its introduction, and the\ntext runs down the left side of it until it is past the image's foot.</p>\n<h2 id=\"user-content-a-left-aligned-image\">A Left-Aligned Image</h2>\n<img loading=\"lazy\" src=\"icon.png\" alt=\"Left icon\" align=\"left\" width=\"96\">\n<p>This paragraph wraps beside an image floated to the left, which keeps its room on the\nright, between the image and the text.</p>\n<h2 id=\"user-content-sized-images\">Sized Images</h2>\n<p><img loading=\"lazy\" src=\"icon.png\" alt=\"By width\" width=\"64\"> <img loading=\"lazy\" src=\"icon.png\" alt=\"By height\" height=\"48\"> <img loading=\"lazy\" src=\"icon.png\" alt=\"By both\" width=\"80\" height=\"40\"></p>\n<h2 id=\"user-content-a-table-with-aligned-cells\">A Table With Aligned Cells</h2>\n<div><table>\n  <tbody><tr><th align=\"left\">Left</th><th>Header</th><th align=\"right\">Right</th></tr>\n  <tr><td align=\"center\">Centered</td><td>Default</td><td align=\"right\">Right</td></tr>\n  <tr align=\"right\"><td>Row right</td><td align=\"left\">Cell left</td><td>Row right</td></tr>\n</tbody></table></div>\n<div align=\"right\">A block aligned right.</div>\n<h2 id=\"user-content-a-float-that-ends-the-document\">A Float That Ends the Document</h2>\n<img loading=\"lazy\" src=\"icon.png\" alt=\"Last icon\" align=\"right\" width=\"160\">\n<p>A short last paragraph, beside an image that ends below it.</p></div></div>",
 ? 0
 ```
 
@@ -268,5 +300,82 @@ $ grep -E '^        "(id|loading)":' rich.txt
         "loading": "resource"
         "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
         "loading": "resource"
+? 0
+```
+
+## Test: a Mermaid diagram survives the allowlist as GitHub’s fallback markup
+
+KPress wraps a `mermaid` fence in a figure whose class and `data-*` the allowlist drops.
+The block keeps one attribute instead, `lang="mermaid"`, as GitHub’s own fallback spells
+it, so the page draws it, as an image (`builtin_plugins/markdown/diagrams.js`). An `svg`
+fence stays code, as GitHub shows it: Metabrowser asks KPress for `diagrams="mermaid"`
+(`kpress_adapter.render_kpress_view`).
+
+```console
+$ metab diagrams --untrusted --api '/api/kpress/render?path=README.md&view=document' > diagrams-inert.txt
+? 0
+```
+
+```console
+$ grep -E '^  "html":' diagrams-inert.txt
+  "html": "\n\n<div><div><h1 id=\"user-content-diagrams\">Diagrams</h1>\n<pre lang=\"mermaid\"><code>flowchart LR\n  A --&gt; B\n</code></pre>\n<pre><code>&lt;svg viewBox=\"0 0 1 1\"&gt;&lt;/svg&gt;\n</code></pre></div></div>",
+? 0
+```
+
+A trusted render keeps KPress’s Mermaid figure, which the page draws in the document,
+and the `svg` fence is still code.
+
+```console
+$ metab diagrams --api '/api/kpress/render?path=README.md&view=document' > diagrams-trusted.txt
+? 0
+```
+
+```console
+$ grep -oE 'data-kpress-diagram=\\"[a-z]+\\"' diagrams-trusted.txt
+data-kpress-diagram=\"mermaid\"
+? 0
+```
+
+## Test: a PDF a document embeds reaches the page as an image’s address
+
+A document can name a PDF as a link, as a Markdown or HTML image, or as an `<object>`,
+`<embed>`, or `<iframe>`. KPress keeps the link and the images and drops the other
+three, trusted or untrusted, so no render hands the page a viewer to start.
+The link enhancer then draws each image of a `.pdf` as the pdf plugin’s card, with a
+link to the PDF’s view (`pdfEmbeds` in cli-ui-markdown-functional.tryscript.md).
+
+```console
+$ metab pdfs --api '/api/kpress/render?path=README.md&view=document' > pdfs-trusted.txt
+? 0
+```
+
+```console
+$ grep '^  "html":' pdfs-trusted.txt | grep -oE '<(a|img|object|embed|iframe)( [^>]*)?>'
+<a href=\"report.pdf\">
+<img src=\"report.pdf\" alt=\"The report\" class=\"kpress-image\" data-kpress-image=\"true\" loading=\"lazy\">
+<img src=\"report.pdf\" alt=\"html\" class=\"kpress-image\" data-kpress-image=\"true\" loading=\"lazy\">
+? 0
+```
+
+KPress names each tag it removed in `sanitizer_diagnostics`.
+
+```console
+$ grep -oE 'Removed raw HTML tag <[a-z]+>' pdfs-trusted.txt
+Removed raw HTML tag <object>
+Removed raw HTML tag <embed>
+Removed raw HTML tag <iframe>
+? 0
+```
+
+```console
+$ metab pdfs --untrusted --api '/api/kpress/render?path=README.md&view=document' > pdfs-inert.txt
+? 0
+```
+
+```console
+$ grep '^  "html":' pdfs-inert.txt | grep -oE '<(a|img|object|embed|iframe)( [^>]*)?>'
+<a href=\"report.pdf\">
+<img loading=\"lazy\" src=\"report.pdf\" alt=\"The report\">
+<img loading=\"lazy\" src=\"report.pdf\" alt=\"html\">
 ? 0
 ```

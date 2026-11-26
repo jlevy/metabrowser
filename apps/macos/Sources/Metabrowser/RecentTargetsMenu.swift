@@ -1,20 +1,18 @@
 import AppKit
 import ShellCore
-import UniformTypeIdentifiers
 
 /// File > Open Recent and the Dock icon's menu, both drawn from `metab`'s recent targets
 /// (`RecentTargets`).
 ///
 /// `metab` keeps the list, so the menus hold what the user opened lately, in this app, in
-/// the other build of it, or with `metab` in Terminal, up to `metab`'s own cap, and the
-/// app decides nothing about membership or order. Both menus are drawn from one answer,
-/// so they list the same targets in the same order (`RecentTargets.rows`).
+/// the other build of it, or with `metab` in Terminal. Both menus show the most recent
+/// entries from one answer, up to `RecentTargets.menuLimit` (`RecentTargets.rows`).
 ///
 /// A menu shows the last answer at once. The app asks again when it becomes active, when
-/// File > Open Recent opens, when the Dock menu is asked for, and once the server it
-/// started for an open has started; an answer that arrives while Open Recent is open
-/// redraws it, and the Dock, which takes a copy of its menu, shows a newer answer the
-/// next time it is opened.
+/// File > Open Recent opens, when the Dock menu is asked for, and after each change it
+/// makes, an open's among them; an answer that arrives while Open Recent is open redraws
+/// it, and the Dock, which takes a copy of its menu, shows a newer answer the next time it
+/// is opened.
 ///
 /// The app no longer registers folders with `NSDocumentController`: macOS would add its
 /// own recent-documents list to the Dock menu beside this one. What an earlier build
@@ -30,7 +28,6 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    private static let iconSize = NSSize(width: 16, height: 16)
     private let setup: () -> RuntimeSetup?
     private let open: (URL) -> Void
     private let opensURLs = RecentTargets.opensURLs(infoDictionary: Bundle.main.infoDictionary ?? [:])
@@ -41,6 +38,8 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     /// Whether to ask once more when the answer under way arrives.
     private var asksAgain = false
     private var askedAt: ContinuousClock.Instant?
+    /// The changes to the list, an open's, a forget, or a clear, made one at a time.
+    private var changes = RecentTargets.Changes()
     /// The Open Recent menu to redraw when an answer arrives.
     private weak var menu: NSMenu?
 
@@ -53,24 +52,23 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         NSDocumentController.shared.clearRecentDocuments(nil)
     }
 
-    /// `root` was asked for, by the user: a folder, or a repository by its address. Its
-    /// server records it as it starts, so the app tells `metab` itself only for one that
-    /// `isOpen` already, which starts none.
-    func noteOpened(_ root: URL, isOpen: Bool) {
-        if isOpen { change(RecentTargets.addArguments(RecentTargets.target(root))) }
+    /// The app showed `root`, a folder or a repository by its address, because of
+    /// `showing`. An open moves it to the front of the list (`metab ROOT --recent-add`),
+    /// and anything else leaves the list as it was (`RecentTargets.changes`). Every open
+    /// comes here once, as it is shown (`AppDelegate.showOpened`), and so do the restore
+    /// and a Dock click with no window; no server the app starts records
+    /// (`RecentTargets.serverRecords`). The Dock menu, which nothing else refreshes until
+    /// the app is activated or a menu opens, lists an open next.
+    func shown(_ root: URL, _ showing: RecentTargets.Showing) {
+        RecentTargets.changes(showing: root, because: showing).forEach(change)
     }
 
     /// Asks `metab` for the list, unless an answer is on its way or is newer than
-    /// `RecentTargets.refreshInterval`.
+    /// `RecentTargets.refreshInterval`. A change still waiting for a runtime runs first,
+    /// and the list is asked for once it is made.
     func refresh() {
+        guard changes.isIdle else { return runChanges() }
         if let askedAt, askedAt.duration(to: .now) < RecentTargets.refreshInterval { return }
-        ask()
-    }
-
-    /// Asks `metab` for the list now, whatever the last answer's age: an open the app
-    /// started has a server that recorded it, so the Dock menu, which nothing else
-    /// refreshes until the app is activated or a menu opens, lists it next.
-    func refreshAfterOpen() {
         ask()
     }
 
@@ -116,9 +114,15 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         if let menu, shown.0 != items || shown.1 != problem { draw(.openRecent, into: menu) }
     }
 
-    /// Runs a command that changes the list, then asks for the list again.
+    /// Runs a command that changes the list after those asked for before it, then asks for
+    /// the list again. With no `metab` to run, it waits for the next `refresh()`.
     private func change(_ arguments: [String]) {
-        guard let setup = setup() else { return }
+        changes.ask(arguments)
+        runChanges()
+    }
+
+    private func runChanges() {
+        guard changes.hasNext, let setup = setup(), let arguments = changes.next() else { return }
         let spec = RecentTargets.spec(arguments, with: setup, inherited: ProcessInfo.processInfo.environment)
         Task { [weak self] in
             let result = await CommandRunner.run(spec, timeout: RecentTargets.timeout)
@@ -127,8 +131,13 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
                 AppLog.app.error(
                     "metab \(arguments.last ?? "", privacy: .public) failed: \(said, privacy: .public)")
             }
-            self?.ask()
+            self?.changed()
         }
+    }
+
+    private func changed() {
+        changes.finished()
+        if changes.isIdle { ask() } else { runChanges() }
     }
 
     // MARK: - The two menus
@@ -168,8 +177,10 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
                 item.target = self
                 item.representedObject = Carried(entry)
                 item.toolTip = entry.toolTip
-                item.image = Self.icon(for: entry.target.mode)
-                item.image?.size = Self.iconSize
+                // The shared mark, the page's own glyph (`RootMark`), from what the list holds
+                // of the entry and never from its path: a look at a listed folder can raise a
+                // privacy prompt nobody asked for.
+                item.setMark(RootMark(entry.target))
                 menu.addItem(item)
             case .empty:
                 let none = NSMenuItem(title: "No Recent Items", action: nil, keyEquivalent: "")
@@ -185,24 +196,28 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The generic folder icon, and a cloud for a mirror, neither read from the entry's
-    /// own path: a look at a listed folder can raise a privacy prompt nobody asked for.
-    private static func icon(for mode: RecentTarget.Mode) -> NSImage? {
-        switch mode {
-        case .folder: NSWorkspace.shared.icon(for: .folder)
-        case .mirror: NSImage(systemSymbolName: "cloud", accessibilityDescription: "Mirror")
-        }
-    }
-
     @objc private func openRecent(_ sender: NSMenuItem) {
         guard let entry = (sender.representedObject as? Carried)?.entry else { return }
-        // Looked at only now that the user chose it. A folder that is gone gets the app's
-        // usual message from `open`, and leaves the list.
-        let gone = entry.target.mode == .folder && !FileChecks.isDirectory(entry.target.root)
         // From the Dock's menu the app may be in the background.
         NSApp.activate()
-        open(entry.url)
-        if gone { change(RecentTargets.forgetArguments(entry.target.root)) }
+        openListed(entry.url, with: open)
+    }
+
+    /// The list's last answer, which the folder chooser lists; a newer one is asked for,
+    /// for the next time.
+    func listed() -> [RecentTargets.Item] {
+        refresh()
+        return items
+    }
+
+    /// Opens `url`, an entry of the list, with `opening`. The folder is looked at only now
+    /// that the user chose it: one that is gone gets the app's usual message from
+    /// `opening`, and leaves the list.
+    func openListed(_ url: URL, with opening: (URL) -> Void) {
+        let folder = url.isFileURL ? FolderSession.path(of: url) : nil
+        let gone = folder.map { !FileChecks.isDirectory($0) } ?? false
+        opening(url)
+        if gone, let folder { change(RecentTargets.forgetArguments(folder)) }
     }
 
     @objc private func clearRecent(_ sender: Any?) {

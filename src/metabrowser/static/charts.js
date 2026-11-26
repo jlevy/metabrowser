@@ -44,6 +44,18 @@
     return v || ref;
   }
 
+  // A Chart.js font from the type scale: its size is a token's pixels, so a chart's text
+  // moves with every other surface's, and its face is the chrome's. A token the page does
+  // not define leaves the size to Chart.js rather than guessing one.
+  function chartFont(sizeToken) {
+    var px = parseFloat(cssVar(sizeToken));
+    var font = { family: cssVar("--font-sans") };
+    if (Number.isFinite(px)) {
+      font.size = px;
+    }
+    return font;
+  }
+
   // Apply alpha (0..1) to an oklch()/hsl()/hex color. Works with the
   // resolved output of cssVar() or a concrete color already in the spec.
   function colorWithAlpha(color, alpha) {
@@ -152,8 +164,8 @@
     failed: "tally-color-failed",
     error: "tally-color-error",
     critical: "tally-color-critical",
-    high: "tally-color-high",
-    elevated: "tally-color-elevated",
+    high: "tally-color-warning",
+    elevated: "tally-color-warning",
     kill: "tally-color-kill",
   };
 
@@ -203,7 +215,7 @@
       () => {
         if (typeof Chart === "undefined") {
           container.innerHTML +=
-            '<div class="preview-empty" role="alert">Charts are unavailable. Refresh the page to try again.</div>';
+            '<div class="preview-empty" role="alert">Charts are unavailable. Reload the page to try again.</div>';
           return;
         }
 
@@ -321,22 +333,35 @@
           legend: {
             display: datasets.length > 1,
             position: "top",
-            labels: { boxWidth: 10, font: { size: 10 } },
+            labels: {
+              boxWidth: 10,
+              font: chartFont("--micro-font-size"),
+              color: cssVar("--muted"),
+            },
           },
-          tooltip: { enabled: true, bodyFont: { size: 11 } },
+          tooltip: { enabled: true, bodyFont: chartFont("--ui-small-font-size") },
         },
         scales: {
           x: {
             type: spec.x_type === "time" ? "time" : "linear",
             time: { tooltipFormat: "MMM d, HH:mm:ss" },
-            ticks: { font: { size: 10 }, maxTicksLimit: 8 },
+            ticks: {
+              font: chartFont("--micro-font-size"),
+              color: cssVar("--muted"),
+              maxTicksLimit: 8,
+            },
             grid: { display: false },
           },
           y: {
             min: spec.y_min,
             max: spec.y_max,
-            title: { display: !!spec.y_label, text: spec.y_label || "", font: { size: 10 } },
-            ticks: { font: { size: 10 } },
+            title: {
+              display: !!spec.y_label,
+              text: spec.y_label || "",
+              font: chartFont("--micro-font-size"),
+              color: cssVar("--muted"),
+            },
+            ticks: { font: chartFont("--micro-font-size"), color: cssVar("--muted") },
             grid: { color: cssVar("--chart-grid") },
           },
         },
@@ -365,7 +390,7 @@
             display: true,
             content: th.label,
             position: "end",
-            font: { size: 9 },
+            font: chartFont("--micro-font-size"),
             backgroundColor: colorWithAlpha(th.color, 0.13),
             color: th.color,
           },
@@ -400,7 +425,7 @@
             content: ann.label,
             position: "start",
             rotation: -90,
-            font: { size: 9 },
+            font: chartFont("--micro-font-size"),
             backgroundColor: colorWithAlpha(color, 0.13),
             color: cssVar("--chart-label-text"),
           },
@@ -467,10 +492,109 @@
     }
   }
 
+  // `metabrowser.chart`, the SDK's Chart.js wrapper. It is here rather than in
+  // plugin-sdk.js, a startup script, because it needs Chart.js, which comes in this same
+  // `chart` bundle: until `ensureAsset("chart")` resolves the SDK's placeholder throws.
+  // explorations/performance-loop/performance-budgets.toml records what the move saved.
+  function _resolveChartThemeValue(value) {
+    if (typeof value === "string") {
+      const match = value.match(/^var\(\s*(--[\w-]+)\s*\)$/);
+      if (!match || typeof global.getComputedStyle !== "function") {
+        return value;
+      }
+      const resolved = global
+        .getComputedStyle(global.document.documentElement)
+        .getPropertyValue(match[1])
+        .trim();
+      return resolved || value;
+    }
+    if (Array.isArray(value)) {
+      return value.map(_resolveChartThemeValue);
+    }
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Object.prototype.toString.call(value) !== "[object Object]"
+    ) {
+      return value;
+    }
+    var resolvedObject = {};
+    for (var key of Object.keys(value)) {
+      resolvedObject[key] = _resolveChartThemeValue(value[key]);
+    }
+    return resolvedObject;
+  }
+
+  function _hasChartThemeValue(value) {
+    if (typeof value === "string") {
+      return /^var\(\s*--[\w-]+\s*\)$/.test(value);
+    }
+    if (Array.isArray(value)) {
+      return value.some(_hasChartThemeValue);
+    }
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Object.prototype.toString.call(value) !== "[object Object]"
+    ) {
+      return false;
+    }
+    return Object.values(value).some(_hasChartThemeValue);
+  }
+
+  function chart(container, type, data, options) {
+    if (typeof global.Chart === "undefined") {
+      throw new Error(
+        'metabrowser.chart: Chart.js is on the on-demand tier; await metabrowser.ensureAsset("chart") first',
+      );
+    }
+    // Container can be either a <canvas> or a <div> we'll create a canvas in.
+    let canvas;
+    if (container instanceof HTMLCanvasElement) {
+      canvas = container;
+    } else {
+      canvas = global.document.createElement("canvas");
+      container.appendChild(canvas);
+    }
+    var dataTemplate = data;
+    var optionsTemplate = options || {};
+    var followsTheme = _hasChartThemeValue(dataTemplate) || _hasChartThemeValue(optionsTemplate);
+    var instance = new global.Chart(canvas, {
+      type: type,
+      data: followsTheme ? _resolveChartThemeValue(dataTemplate) : dataTemplate,
+      options: followsTheme ? _resolveChartThemeValue(optionsTemplate) : optionsTemplate,
+    });
+    if (!followsTheme || !global.MetabrowserTheme) {
+      return instance;
+    }
+    var destroyed = false;
+    var unsubscribeTheme = global.MetabrowserTheme.subscribe(() => {
+      if (destroyed) {
+        return;
+      }
+      instance.data = _resolveChartThemeValue(dataTemplate);
+      instance.options = _resolveChartThemeValue(optionsTemplate);
+      instance.update("none");
+    });
+    var destroyChart = instance.destroy.bind(instance);
+    instance.destroy = () => {
+      if (destroyed) {
+        return;
+      }
+      destroyed = true;
+      unsubscribeTheme();
+      destroyChart();
+    };
+    return instance;
+  }
+
   global.MetabrowserTheme.subscribe(repaintForTheme);
 
   global.MetabrowserCharts = {
     dispose: dispose,
     renderPayload: renderPayload,
   };
+  if (global.metabrowser) {
+    global.metabrowser.chart = chart;
+  }
 })(window);

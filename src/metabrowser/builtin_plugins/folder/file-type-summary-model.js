@@ -119,7 +119,7 @@ function normalizeBreakdown(raw) {
     }
     return Object.freeze({
       key: `${label}:others`,
-      label: "Others",
+      label: "Other",
       omittedDistinctValues: /** @type {number} */ (others.omitted_distinct_values),
       ...normalizePopulationMetrics(others.metrics, `${label} Others`),
     });
@@ -342,14 +342,14 @@ const VISIBLE_ROWS_PER_SUBSECTION = 10;
  * the rows in it are worth reading. A directory with forty extensions at three
  * files each spent ten rows on entries that cannot matter, and the reader had
  * to scan them to find that out. This is the other half of the bound: an entry
- * at or below this share is folded however much room is left.
+ * below this share is folded however much room is left, and one at it is shown.
  *
  * Of the metric on screen, not of the files. The rollup toggles between files
  * and bytes, so an entry can be worth a row in one and not the other — which
  * is right, because it is a claim about what is being measured rather than
  * about the entry.
  *
- * The route's compact legend names a family only above this same share
+ * The route's compact legend names a family only at or above this same share
  * (LEGEND_MINIMUM_SHARE_PERCENT in file_type_legend.py), so it never names one
  * these rows fold away; tests/test_file_type_legend.py holds the two equal.
  */
@@ -368,7 +368,7 @@ function sortRows(rows, metric) {
 }
 
 /** What resolves to the neutral page: a name the extension table cannot match. */
-const GENERIC_FILE_ICON = "file";
+export const GENERIC_FILE_ICON = "file";
 
 /**
  * The icon path for a family: a stand-in filename carrying its canonical
@@ -383,7 +383,7 @@ const GENERIC_FILE_ICON = "file";
  * @param {{extensions?: ReadonlyArray<string>}} descriptor
  * @returns {string | null}
  */
-function familyIconPath(descriptor) {
+export function familyIconPath(descriptor) {
   const canonical = descriptor.extensions?.[0];
   return typeof canonical === "string" && canonical ? `x${canonical}` : null;
 }
@@ -403,8 +403,8 @@ function boundedRows(rows, metric, identity, population, formatters, percentForm
     return Object.freeze(sorted.slice(0, VISIBLE_ROWS_PER_SUBSECTION));
   }
   // Whichever bound is tighter. The rows are sorted by the metric, so shares
-  // descend with them and the first row at or below the floor is where the
-  // tail begins — no need to look past it.
+  // descend with them and the first row below the floor is where the tail
+  // begins — no need to look past it.
   //
   // These are the same shares the rows print as their percentages, computed
   // against the same population, so a row cannot say 0.4% and still be judged
@@ -412,7 +412,7 @@ function boundedRows(rows, metric, identity, population, formatters, percentForm
   /** @param {{fileShare: number, byteShare: number}} row */
   const share = (row) => (metric === "files" ? row.fileShare : row.byteShare);
   let worthShowing = 0;
-  while (worthShowing < sorted.length && share(sorted[worthShowing]) > MINIMUM_VISIBLE_SHARE) {
+  while (worthShowing < sorted.length && share(sorted[worthShowing]) >= MINIMUM_VISIBLE_SHARE) {
     worthShowing += 1;
   }
   const limit = Math.min(worthShowing, VISIBLE_ROWS_PER_SUBSECTION);
@@ -847,8 +847,11 @@ export function buildFileTypeSummaryModel(
     runtime,
     selectedMetric,
   );
+  // Each group's heading names its category, led by the category's icon.
   const groupDescriptors = Object.freeze(
-    runtime.displayGroups.map((group) => Object.freeze({ id: group.id, label: group.label })),
+    runtime.displayGroups.map((group) =>
+      Object.freeze({ id: group.id, label: group.label, icon: group.icon ?? null }),
+    ),
   );
 
   const filesText = formatters.formatFileCount(population.files);
@@ -895,6 +898,13 @@ export function buildFileTypeSummaryModel(
     indexFailed: envelope.indexStatus === "failed",
     indexedFiles: envelope.indexedFiles,
     maxFiles: envelope.maxFiles,
+    // The scan's progress count is blank until one has arrived: a literal "~0 files scanned"
+    // reads as a stuck scan.
+    indexedFilesText:
+      typeof envelope.indexedFiles === "number" && envelope.indexedFiles > 0
+        ? formatters.formatInteger(envelope.indexedFiles)
+        : "",
+    maxFilesText: formatters.formatFileCount(envelope.maxFiles ?? 0),
   };
   if (population.files === 0) {
     if (!showIgnored && population.allFiles > 0) {

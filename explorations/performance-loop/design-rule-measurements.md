@@ -25,6 +25,14 @@ Before, at 760 px, the Diff summary was 13 px on both pages, a pull request’s 
 ages and status line were 12 px and 18 px tall, its header 229 and 255 px, and the
 commit’s metadata one line 8 px under its subject.
 
+On 2026-11-22, the same Chrome fixture measured the Commit and pull request size rows at
+980, 560, and 360 px pane widths.
+Both rows use the 21 px body line.
+At the default gutter step, the Commit page has 6 px on each side of its size row and 16
+px from its Diff summary to its description card.
+The pull request has 9 px on each side of its size row and 10 px from its Diff summary
+to its tabs.
+
 ## Type by Role
 
 For [Type Scale](../../docs/design-system.md#type-scale), recorded on 2026-11-16, when
@@ -115,7 +123,19 @@ For
   they center onto one baseline.
   At the path’s size alone the link form still sat 0.5 px above it at 14 px and 0.75 px
   at 13 px, at ratios of 1 and 2, until it took the toggle’s `normal` line height
-  ([Type by Role](#type-by-role)).
+  ([Type by Role](#type-by-role)). On 2026-11-23 the toggle and the control each moved
+  into a group of the bar, each centered in its group and each group in the bar
+  ([Diff File Bar](../../docs/design-system.md#diff-file-bar)). In headless Chrome, on a
+  pull request’s Changes and a commit’s page, on every bar drawn on one line, the
+  control’s baseline was the path’s, 0 px apart, at ratios of 1 and 2: the link form as
+  the pages drew it, and a button of the control’s class put in its place.
+  Later on 2026-11-23 the stats and notes left the toggle for a box of their own after
+  the copy control, set at the path’s size and line height, and the control followed
+  them in the name’s group.
+  In headless Chrome, on a pull request’s Docs and Changes, the path’s, the stats’, and
+  View on branch’s text had one top and one bottom in bars 920 px wide at ratios of 1
+  and 2 and 400 px wide at 1, and the chooser ended at the bar’s end pad, on the bar’s
+  line at 920 px and on a second line at 400.
 - A mirror’s location note at the far end of the file header, centered rather than
   baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1. On
   2026-11-16 and 2026-11-17, at the header’s one size, 13 px and then 14 px
@@ -123,7 +143,9 @@ For
   top at a device pixel ratio of 1.
 - Aligning the Git commit summary’s monospace revision on one baseline with the
   body-size sans beside it grows that line by 1.25px at a device pixel ratio of 2, so it
-  stays centered.
+  stays centered. That was measured with the revision at `--nav-font-size` and the line’s
+  line height, before an ID took its line’s size with `line-height: normal`
+  ([Short Commit IDs](#short-commit-ids)), and has not been measured again since.
 
 ## Disclosure Motion
 
@@ -159,6 +181,54 @@ fixed chip size the ratio replaced.
 | A commit’s summary and its tooltip | 14px metadata | 12.6px | 12px |
 | A pull request’s header | 14px branch line | 12.6px | 12px |
 | The ref selector’s button and list | 12px | 10.8px | 12px |
+
+## Short Commit IDs
+
+For [Short Commit IDs](../../docs/design-system.md#short-commit-ids), recorded on
+2026-11-19 (mb-qq4e), when an ID took its line’s size with its monospace face scaled to
+the sans’s x-height, in place of `--nav-font-size` and the ref selector’s chip ratio.
+Measured in headless Chrome 152 on macOS 26.5 against a served mirror of a public
+repository and a revision of a local checkout, in both font sets.
+
+The faces’ x-heights per em, at 12, 13, and 14 px, by the `ex` unit and by the ink of
+“x” on a canvas, which agreed: Source Sans 3 (Clean Fonts) 0.486; system-ui (System
+Fonts), SF Pro at its text optical size, 0.526, and 0.508 at 100 px and above; Menlo,
+which Chrome draws for the monospace stack since it cannot reach SF Mono by name, 0.547,
+the same as its OS/2 table.
+SF Mono, which WebKit draws, is 0.526 in its OS/2 table (1077 of 2048 units) and
+measured 0.530 in a standalone WKWebView on macOS 26.5, the engine the macOS app uses,
+in the pull request’s review the same day.
+Chrome reported the faces it drew through `CSS.getPlatformFontsForNode`.
+
+The x-height of an ID and of the line around it, in px.
+Before is the ID’s computed size times Menlo’s measured ratio, and on a checkout’s
+heading the old rule put back in the page; after is the width of `100ex` in each, over
+100\. A heading’s line figure is 13 px times the regular sans’s ratio, since its sans is
+the bold name, whose x-height measured 6.45 in Clean and 6.99 in System.
+
+| Context, line size | Font set | Before: ID / line | After: ID / line |
+| --- | --- | --- | --- |
+| A checkout’s revision’s heading, 13 px | Clean | 7.109 / 6.32 (+12.5%) | 6.316 / 6.32 |
+| A checkout’s revision’s heading, 13 px | System | 7.109 / 6.84 (+3.9%) | 6.836 / 6.84 |
+| A commit’s page and hover card, 14 px | Clean | 7.11 / 6.80 (+4.5%) | 6.803 / 6.805 |
+| A commit’s page and hover card, 14 px | System | 7.11 / 7.37 (−3.5%) | 7.361 / 7.369 |
+| The ref selector’s rows, 12 px | Clean | 5.91 / 5.83 (+1.2%) | 5.830 / 5.833 |
+| The ref selector’s rows, 12 px | System | 5.91 / 6.32 (−6.5%) | 6.311 / 6.316 |
+
+With the line’s ratio inherited, an ID’s line box was a whole 21 px line around 15 px of
+glyphs, whose half-leading put its top above the sans’s, and a Conversation commit row,
+which aligns its items on their baselines, was 22 px, so two commits’ glyphs stood 22 px
+apart against the 20 px rhythm; with `line-height: normal` on the ID the row is 21 px
+and the rhythm holds.
+In Clean Fonts the old ID made a checkout’s revision’s heading 24.5 px tall, and the
+adjusted ID 23.5 px, as in System Fonts.
+No ref selector row or commit page line changed height.
+The same change then dropped the ref and the ID from a served mirror’s heading and a
+checkout’s revision’s, which are the name alone; the heading rows above measure the
+navigation heading’s line, which a pin with no mirror still sets an ID in.
+In that WKWebView, at 13 px in System Fonts, the line’s x-height was 6.843 px and the
+ID’s, adjusted to 0.526, 6.838 px; adjusted to Clean’s 0.486, the ID measured 6.318 px
+against Clean’s 6.32 above, so `font-size-adjust` holds in WebKit.
 
 ## Regions That Moved
 
@@ -269,6 +339,55 @@ and the body size (mb-26zj): the summary sits 6 px under the age line and 16 px 
 description, and its header is one 24 px row from a 373 px pane, where it was from 354
 px at 13 px, and wraps to two lines at 320 px.
 
+## Rendered Diff Block Spacing
+
+For [Rendered Diff Spacing](../../docs/design-system.md#rendered-diff-spacing), recorded
+on 2026-11-23 (mb-6d1s), when a rendered Markdown diff’s rows stopped padding their
+blocks and let their margins collapse.
+Measured in headless Chrome 152 by `tests/dom/diff-markdown-spacing-chrome.mjs`, in 900
+px frames, the production `appendBlocks` building the projection of the change in
+`tests/test_diff_markdown_spacing_chrome.py` beside KPress’s render of each version as a
+Document view renders it.
+A gap is from one block’s box to the next’s, a list read item by item.
+Before is `main` at 06781e41b; the live pull request page at the same commit gave the
+same values for the pairs it held.
+The serif and the sans reading font gave the same values.
+
+| From, to | Document view | Diff before | Diff after |
+| --- | --- | --- | --- |
+| h1, p | 16 | 36 | 16 |
+| p, p | 12 | 32 | 12 |
+| p, h1 or h2 | 32 | 52 | 32 |
+| h2, p | 16 | 36 | 16 |
+| p, h3 | 22.39 | 42.39 | 22.39 |
+| h3, p | 12 | 31.19 | 12 |
+| p, h4 | 16 | 36 | 16 |
+| h4, p | 11.19 | 31.19 | 11.19 |
+| p, h5 or h6 | 12 | 31.19 | 12 |
+| h5 or h6, p | 8 | 28 | 8 |
+| p, first list item | 12 | 31.19 | 12 |
+| list item, list item, in two rows | 11.19 | 19.19 | 11.19 |
+| last list item, p | 12 | 20 | 12 |
+| p, quote; quote, code | 24 | 32 | 24 |
+| code, p | 12 | 32 | 12 |
+| h2, h3 straight after it | 17.59 | 46.39 | 22.39 |
+
+Before, each row padded its block by 4 px above and below and kept the block’s margins
+inside it, so a gap was the two margins added plus 8 px; between two rows of one list,
+whose list’s margins were zeroed, the two paddings alone put its items 8 px further
+apart than the document’s. After, every gap is the document’s except an h3 straight
+after an h2, which keeps the h3’s own space after a paragraph, because joining KPress’s
+`h2 + h3` across rows would restate its margin.
+With the rows’ padding gone, the fold of unchanged blocks, opened, still kept its last
+block’s margin inside the fold, giving 24 px to the paragraph after it where the
+document has 12: KPress’s `::details-content` clips with `overflow: hidden`, which
+starts a formatting context; a plain page in Chrome 152 with the same markup and no
+`overflow` collapsed the margins.
+Changed blocks used to touch, their 4 px paddings forming one band; with the document’s
+spacing, two changed blocks’ bands part by the gap less 8 px.
+Since mb-zkmy one band spans each run of changed blocks of one kind, so blocks in a run
+no longer part.
+
 ## Diff Summary
 
 For [Diff Summary](../../docs/design-system.md#diff-summary).
@@ -303,6 +422,15 @@ later.
 
 Recorded again on 2026-11-16, when the summary’s header took the body size (mb-26zj):
 the block is 203 by 11.89 px, still 14.5 em of the header’s type, now 14 px.
+
+Recorded again on 2026-11-20, when a page header’s file count moved to its size line
+above the summary (mb-772c;
+[Change Size Line](../../docs/design-system.md#change-size-line)): measured in headless
+Chrome 152 at 560 px in both themes, a summary of one status, from “1 M · +3 −1” to “8 M
+· +120 −30”, ends 6.71 to 8.3 em from the row’s start, its text 6.28 to 7.87 em, so the
+block became 7 em, which ends between the two; the row is 24 px before and after the
+summary arrives, and the tab bar under it does not move.
+The size line’s row above it is 24 px too, holding its own placeholder or its line.
 
 Recorded on 2026-11-17, when the placeholder began at a page’s first paint rather than
 at its core preview (mb-30dz): headless Chrome 152, this repository served as a checkout
@@ -370,6 +498,55 @@ checkout’s store took 2.3 to 2.5 s once, 11 merge bases 0.42 s, and each list 
 ms. A batch of heads the store lacks is one Git fetch: 39 of this repository’s pull
 request heads, fetched from GitHub into a store that borrows the checkout’s objects,
 took 0.76 s.
+
+## Diff File Bar Widths
+
+For [Diff File Bar](../../docs/design-system.md#diff-file-bar), and the tokens
+`--diff-file-actions-gap` and `--diff-file-lead-basis` in the diff plugin’s
+`styles.css`.
+
+Recorded on 2026-11-23 in headless Chrome 152 at a device pixel ratio of 1, on pull
+request 7 of `tests/github_pull_fixture.py`’s stand-in, Docs and Changes alike, after
+View on branch moved out of the end group to follow the stats (#759). With it inside the
+name’s group, which does not wrap, a bar with a Rendered | Source chooser gave the
+name’s width to View on branch, and at 159 px View on branch ran 16 px past the bar’s
+edge (review A of #759, A1). It is now a part of the bar of its own after that group,
+and every bar wraps.
+The name’s visible width in px, at the merge base, with View on branch inside the name’s
+group, and as it is now; the long path is
+`docs/project/architecture/arch-views-models-routes.md` (348 px) put into the bars’
+text, and the short ones are `docs/new.md` (82 px, with a chooser) and `src/app.txt` (66
+px, without):
+
+| Bar | Long, chooser | Short, chooser | Long, none | Short, none |
+| --- | --- | --- | --- | --- |
+| 1,063 px | 348 / 348 / 348 | 82 / 82 / 82 | 348 / 348 / 348 | 66 / 66 / 66 |
+| 499 px | 348 / 282 / 348 | 82 / 82 / 82 | 275 / 275 / 275 | 66 / 66 / 66 |
+| 399 px | 279 / 182 / 279 | 82 / 82 / 82 | 175 / 175 / 175 | 66 / 66 / 66 |
+| 299 px | 179 / 82 / 179 | 82 / 82 / 82 | 75 / 75 / 75 | 66 / 66 / 66 |
+| 199 px | 79 / 0 / 79 | 79 / 0 / 79 | 0 / 0 / 77 | 0 / 0 / 66 |
+| 159 px | 39 / 0 / 39 | 39 / 0 / 39 | 0 / 0 / 37 | 0 / 0 / 37 |
+
+With View on branch in the name’s group, it ended 16 px past a 159 px bar on every bar.
+At the merge base nothing ended past the bar, but at 159 px a bar without a chooser drew
+its stats under View on branch, and on a commit’s page under Copy path.
+Now nothing ends past the bar or covers another part at any of these widths, on Docs,
+Changes, and a commit’s page; a bar without a chooser cut its name on one line beside
+View on branch down to 299 px and moved View on branch to a second line below that.
+`--diff-file-lead-basis` is where that move happens: beside the name, the rest of the
+name’s group took 106 px with stats of `+1 −0` and 174 px with `+12,345 −12,345`, so a
+basis of 176 px keeps such stats clear of View file down to 199 px.
+A mode-change note beside `+12,345 −12,345` made it 277 px, more than the basis, and a
+bar without a chooser covered part of the group from 379 to 299 px; at 199 px and below,
+that group alone was wider than the bar, with or without a chooser.
+
+At rest the name’s text ended 28 px before the stats, a 20 px slot for Copy path with
+the group’s 4 px gap on each side, and before the space before View file the stats ended
+8 px before View on branch’s text, its 4 px pad and the bar’s gap, so the stats read
+with the action. With `--diff-file-actions-gap` at 32 px the stats end 44 px before it.
+Where the bar is short, that space gives way first: on a bar without a chooser, with the
+name cut beside View on branch, the stats ended 12 px before it, and the name was as
+wide as at the merge base.
 
 ## The Pull Request Header
 
@@ -442,6 +619,24 @@ sentence by 34.88 px, and at 360 px two stacks cut “forker wants to merge 2 co
 156.31 px; a late chip still moved no part’s start and no row and kept 8 px from the
 sentence, and at 560 px two stacks cut a long author’s sentence by 77.69 px, and at 360
 px “forker wants to merge 2 commits” by 80.85 px.
+
+Recorded on 2026-11-24, when the chip moved to the end of the row of ages, just before
+Refresh’s slot (mb-646g): measured in Chrome 152.0.7977.83 at 980 to 320 px with the
+header session’s records, on Conversation, where Refresh is held hidden, and on Changes,
+where it shows. The header and the tab bar laid out to the same heights as before in all
+306 shapes measured, six widths, 17 records, and three tabs: the row of ages is 26 px,
+the strut’s, and the author’s row 21 px, where they had been 21 and 26. A late chip
+moved no part’s start, no row, and not Refresh, which ends the row on the content edge,
+and sat 8 px before Refresh.
+It took its width from the ages: one stack’s chip cut them by up to 54.75 px and two
+stacks’ by up to 155.3 px.
+Browse code stayed whole down to 360 px beside one stack’s chip, 96.8% of it shown at
+320 px, and down to 560 px beside two stacks’, 94.9% shown at 420 px and 23.2% at 360
+px. At 320 px two stacks’ chips, the ages and Browse code gone, first ran 20.61 px past
+the header and took Refresh with them; the chips now give way last, their positions cut
+short, the slot 135.7 of its 156.31 px.
+The held slot’s gap leaves a pull request in no stack 8 px less for its ages in a narrow
+pane: 92.05 px at 360 px, where it had 100.05.
 
 For
 [Stack Groups in the Pulls Tab](../../docs/design-system.md#stack-groups-in-the-pulls-tab):

@@ -15,7 +15,7 @@ registerHooks({
         format: "module",
         shortCircuit: true,
         source:
-          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} }); export const mountDiffSummary = (_slot, document, _api, options) => ({ document, options, dispose() {} });",
+          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const setGapLoader = (load) => { globalThis.gapLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} }); export const mountDiffSummary = (_slot, document, _api, options) => ({ document, options, dispose() {} }); export const mountFilePatch = () => ({ dispose() {} });",
       };
     }
     return nextLoad(url, context);
@@ -62,6 +62,38 @@ async function main() {
   assert.deepEqual(requests[2].params, { ...requests[0].params, file: " lead\nfile " });
   assert.equal(requests[0].signal, signal);
   assert.equal(requests[2].signal, signal);
+  // A gap's lines are asked for from the same route, the file and the run beside its own
+  // parameters (`view=lines`, tests/golden/cli-api-diff-lines.tryscript.md).
+  await globalThis.gapLoader(
+    rendered.document.__revision,
+    "src/app.py",
+    { start: 9, count: 25 },
+    { signal },
+  );
+  const gap = requests.pop();
+  assert.equal(`${gap.plugin}/${gap.hook}`, "github/pull-comparison");
+  assert.deepEqual(gap.params, {
+    ...requests[0].params,
+    file: "src/app.py",
+    view: "lines",
+    start: "9",
+    count: "25",
+  });
+  assert.equal(gap.signal, signal);
+  // A gap opened upward to a hunk asks for the run up to it by its end.
+  await globalThis.gapLoader(
+    rendered.document.__revision,
+    "src/app.py",
+    { end: 40, count: 25 },
+    { signal },
+  );
+  assert.deepEqual(requests.pop().params, {
+    ...requests[0].params,
+    file: "src/app.py",
+    view: "lines",
+    end: "40",
+    count: "25",
+  });
   for (const route of [
     "https://example.org/api/plugin/github/pull-comparison",
     "//example.org/api/plugin/github/pull-comparison",
@@ -103,8 +135,19 @@ async function main() {
     [["pull-comparison", undefined, undefined]],
     "a prefetch of a comparison asked for Markdown",
   );
+  // A tree in the first screen asks for the structured plugin's exports beside its
+  // projection, so Changes finds them loaded; Markdown alone asks for none (C1 of
+  // mb-8274 review).
+  const kinds = [];
+  window.metabrowser.plugins = {
+    load: async (name) => {
+      kinds.push(name);
+      return {};
+    },
+  };
   const page = new AbortController();
   await registered.prefetchMarkdown(pull, read, page.signal);
+  assert.deepEqual(kinds, [], "a first screen of Markdown asked for the tree's plugin");
   assert.deepEqual(
     requests.map(({ hook, params }) => [hook, params.file, params.prefetch]),
     [
@@ -120,6 +163,16 @@ async function main() {
   assert.equal(requests.length, 0, "a page that went still asked for Markdown");
   await registered.prefetchMarkdown(comparison, read, new AbortController().signal);
   assert.equal(requests.length, 0, "a comparison with no rendered route asked for Markdown");
+  const yaml = {
+    id: "tree-file",
+    availability: "ready",
+    old: null,
+    new: { entry_type: "file", path: "config/app.yaml" },
+  };
+  const trees = { ...read, manifest: { ...read.manifest, files: [yaml, ...read.manifest.files] } };
+  await registered.prefetchMarkdown(pull, trees, new AbortController().signal);
+  assert.deepEqual(kinds, ["structured"], "a first screen with a tree asks for its plugin once");
+  assert.equal(requests[0].params.file, "tree-file", "and for its projection first");
   requests.length = 0;
   // The route codec a page has loaded; View on branch's own behavior is its session's.
   window.MetabrowserGitPath = { wire: () => "g1-UkVBRE1FLm1k" };
@@ -182,6 +235,12 @@ async function main() {
   const counted = await registered.render({}, { comparison, summaryTotals: totals });
   assert.equal(counted.options.summaryTotals, totals, "a page's totals reach the view");
   assert.equal(again.options.summaryTotals, undefined, "and only where it gives them");
+
+  // A pull request's Docs tab fixes the layout at Unified (mb-0ze2), which the view is
+  // handed; a page that fixes none leaves the reader's choice and its control.
+  const fixed = await registered.render({}, { comparison, layout: "unified" });
+  assert.equal(fixed.options.layout, "unified", "a page's fixed layout reaches the view");
+  assert.equal(again.options.layout, undefined, "and only where it fixes one");
 
   // A page's Diff summary on its own reads the comparison's manifest alone, so its patches
   // are neither read nor validated, and one whose manifest is not valid draws nothing (A5 of

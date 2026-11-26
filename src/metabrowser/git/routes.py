@@ -37,7 +37,8 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from metabrowser import server_timing
-from metabrowser.content_errors import ContentUnavailableError
+from metabrowser.content_errors import ContentUnavailableError, content_error_wire
+from metabrowser.git.change_size import commit_size
 from metabrowser.git.detail import read_commit_detail
 from metabrowser.git.history import (
     HISTORY_SESSIONS,
@@ -48,6 +49,7 @@ from metabrowser.git.history import (
     current_history_scope,
 )
 from metabrowser.git.log import read_history_summary, read_refs
+from metabrowser.git.message import read_commit_message, render_commit_body
 from metabrowser.git.process import GitError, GitLocation, GitTimeoutError, failure_detail
 from metabrowser.git.ref_state import ref_state
 from metabrowser.git.repo import RepoContext, repo_info
@@ -61,7 +63,18 @@ log = logging.getLogger(__name__)
 
 
 def session_git_location() -> GitLocation:
-    """The Git command location for the active repository subject."""
+    """The Git command location for the active repository subject: where every Git route reads.
+
+    The subject is the one choice the Files tab and the Commits tab both show, which the
+    ref selector switches (``POST /api/source/pin``). A folder's working tree is read
+    from the folder, so its history walks ``HEAD``, its upstream, and the trunk refs. A
+    revision, a mirror's pin or one of a checkout's branches, tags, or commits, is read
+    at its store target, so its history walks that commit's ancestry and every ``scope=all``
+    ref of its Git directory. Its commit views and comparisons are read there too, under
+    the store policies, which run no program a checkout's configuration names
+    (:attr:`GitLocation.diff_driver_args`). One location for the history, the commit, and
+    the files means the Commits tab cannot show another revision than the Files tab.
+    """
 
     pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
@@ -96,16 +109,20 @@ def _git_failure_response(exc: GitError) -> JSONResponse:
     the browser can present it as such.
     """
     if isinstance(exc, GitTimeoutError):
-        return JSONResponse({"error": "git command timed out"}, status_code=504)
+        return JSONResponse(
+            {"error": exc.reader_message, "detail": "git command timed out"}, status_code=504
+        )
     if isinstance(exc, ContentUnavailableError):
         # An object the store names and does not hold, as a pinned file's read answers
         # it: the ID is Git's own and names no path.
         oid = getattr(exc, "oid", None)
         return JSONResponse(
-            {"error": str(exc), "code": exc.code, **({"oid": oid} if oid else {})},
+            {**content_error_wire(exc), **({"oid": oid} if oid else {})},
             status_code=exc.http_status,
         )
-    return JSONResponse({"error": "git command failed"}, status_code=500)
+    return JSONResponse(
+        {"error": exc.reader_message, "detail": "git command failed"}, status_code=500
+    )
 
 
 async def api_git_repo(_request: Request) -> JSONResponse:
@@ -209,8 +226,8 @@ async def api_git_log(request: Request) -> Response:
         ``all`` walks every ref. The default walks HEAD, its upstream,
         and whichever trunk refs exist, because ``--all`` in a
         many-ref repository shows whichever branch commits most often
-        and buries the rest. A pinned revision's default walk is that
-        object id only, not the store's ambient HEAD.
+        and buries the rest. A revision's default walk is its commit's ancestry,
+        not the store's ambient HEAD (:func:`session_git_location`).
 
     A page's body is a function of its session and page number, which its
     ``page_cursor`` names, so that is its entity tag. A first page asked for
@@ -327,6 +344,78 @@ async def api_git_commit(request: Request) -> JSONResponse:
     return JSONResponse(dict(detail))
 
 
+async def api_git_commit_markdown(request: Request) -> JSONResponse:
+    """``GET /api/git/commit-markdown/{revision}`` -- a commit message's body as Markdown.
+
+    The commit page asks for it beside ``/api/git/commit/{revision}``, which keeps the
+    message as written; :mod:`metabrowser.git.message` says how a body is rendered.
+    """
+    revision = request.path_params.get("revision", "")
+    if not isinstance(revision, str) or not is_full_revision(revision):
+        # Not echoed back, as the commit route does not echo it.
+        return JSONResponse(
+            {
+                "error": "revision must be a full 40- or 64-character object id",
+                "code": "revision_not_full",
+            },
+            status_code=400,
+        )
+
+    location = session_git_location()
+    context, info = await _resolve(location)
+    if context is None:
+        return JSONResponse(_negative_payload(info))
+
+    try:
+        message = await read_commit_message(context.command_location(), revision)
+    except GitError as exc:
+        log.warning("git commit message failed for %s: %s", revision, failure_detail(exc))
+        return _git_failure_response(exc)
+    if message is None:
+        return JSONResponse(
+            {"error": "unknown revision", "code": "commit_not_found"}, status_code=404
+        )
+    status, payload = await render_commit_body(message, revision)
+    return JSONResponse(payload, status_code=status)
+
+
+async def api_git_commit_size(request: Request) -> JSONResponse:
+    """``GET /api/git/commit-size/{revision}`` -- a commit's size as Git pushes it.
+
+    Apart from ``/api/git/commit/{revision}``, which a hover card asks for on every row,
+    because the first measure of a large commit takes a pack's time
+    (:mod:`metabrowser.git.change_size`). Once measured it is kept, so a commit is
+    measured once; a size that cannot be known answers ``unknown`` with its reason, at
+    200, as an ordinary state of the repository.
+    """
+    revision = request.path_params.get("revision", "")
+    if not isinstance(revision, str) or not is_full_revision(revision):
+        # Not echoed back, as the commit route does not echo it.
+        return JSONResponse(
+            {
+                "error": "revision must be a full 40- or 64-character object id",
+                "code": "revision_not_full",
+            },
+            status_code=400,
+        )
+
+    location = session_git_location()
+    context, info = await _resolve(location)
+    if context is None:
+        return JSONResponse(_negative_payload(info))
+
+    try:
+        size = await commit_size(context.command_location(), revision)
+    except GitError as exc:
+        log.warning("git commit size failed for %s: %s", revision, failure_detail(exc))
+        return _git_failure_response(exc)
+    if size is None:
+        return JSONResponse(
+            {"error": "unknown revision", "code": "commit_not_found"}, status_code=404
+        )
+    return JSONResponse({"is_repo": True, "size": dict(size)})
+
+
 def _clamped_limit(raw: str) -> int:
     """Parse and clamp a ``limit`` query parameter."""
     try:
@@ -345,12 +434,16 @@ GIT_ROUTES: list[Route] = [
     Route("/api/git/summary", api_git_summary),
     Route("/api/git/log", api_git_log),
     Route("/api/git/commit/{revision}", api_git_commit),
+    Route("/api/git/commit-markdown/{revision}", api_git_commit_markdown),
+    Route("/api/git/commit-size/{revision}", api_git_commit_size),
 ]
 
 
 __all__ = [
     "GIT_ROUTES",
     "api_git_commit",
+    "api_git_commit_markdown",
+    "api_git_commit_size",
     "api_git_log",
     "api_git_refs",
     "api_git_repo",

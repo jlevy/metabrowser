@@ -344,10 +344,10 @@
         const coverage = snapshot.complete
           ? ""
           : snapshot.truncated
-            ? " Indexing stopped at the file limit."
+            ? " Some files are not indexed."
             : " Scanning continues.";
         status.textContent = includesPulls
-          ? `Search includes ${scope} and cached pull requests.${coverage}`
+          ? `Search includes ${scope} and the pull requests already loaded.${coverage}`
           : `Search includes ${scope}.${coverage}`;
         return;
       }
@@ -473,7 +473,9 @@
       option.classList.add("search-palette-option-pull");
       const number = `#${result.number}`;
       const state = result.state[0].toUpperCase() + result.state.slice(1);
-      option.setAttribute("aria-label", `Pull request ${number}, ${result.label}, ${state}`);
+      // Said in the order it shows, the title, then the number, as every row of a pull request's
+      // fields keeps them (docs/design-system.md, "One Order for a Pull Request's Fields").
+      option.setAttribute("aria-label", `${result.label}, pull request ${number}, ${state}`);
 
       const text = hostDocument.createElement("span");
       text.className = "search-palette-option-text";
@@ -712,13 +714,19 @@
       input.removeAttribute("aria-activedescendant");
     }
 
-    /** @param {HTMLElement | null} [trigger] */
-    function open(trigger = null) {
+    /** @param {HTMLElement | null} [trigger] @param {string} [initialQuery] */
+    function open(trigger = null, initialQuery = "") {
       if (disposed) {
         return;
       }
       modal?.open(trigger);
-      input.select();
+      if (initialQuery) {
+        input.value = initialQuery;
+        input.setSelectionRange(initialQuery.length, initialQuery.length);
+        runSearch();
+      } else {
+        input.select();
+      }
     }
 
     /** @param {boolean} [restoreFocus] */
@@ -777,7 +785,7 @@
           control: modal?.control,
           copy: {
             action: "Quick Search",
-            description: "Find and open a file or, on GitHub, a cached pull request.",
+            description: "Find and open a file or, on GitHub, a pull request.",
             hint: "Quick Search",
           },
           group: "anywhere",
@@ -864,6 +872,27 @@
     const unsubscribe = options.controller.subscribe(consumeState);
     const unsubscribeCatalog = options.subscribeCatalog?.(onCatalogChanged) || (() => {});
     const unregisterCommands = registerCommands();
+    if (includesPulls) {
+      unregisterCommands.push(
+        options.shortcuts.register({
+          bindings: [{ key: "#" }],
+          copy: {
+            action: "Search Pull Requests",
+            description: "Open Quick Search with the pull request prefix.",
+            hint: "Search Pull Requests",
+          },
+          group: "anywhere",
+          handler: () => {
+            open(null, "#");
+            return true;
+          },
+          id: "quick-file.open-pull",
+          order: 21,
+          scope: "global",
+          surfaces: { help: "always" },
+        }),
+      );
+    }
     const unsubscribeHints = options.shortcuts.subscribe((event) => {
       const kinds = event.kind === "batch" ? event.kinds || [] : [event.kind];
       if (kinds.some((kind) => HINT_EVENT_KINDS.has(kind))) {

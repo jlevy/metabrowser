@@ -9,45 +9,73 @@ from pathlib import Path
 from typing import Any
 
 from kpress import runtime
+from kpress.contract import PUBLIC_DIAGRAM_SCRIPT_MODULES
 from kpress.runtime import KPressRenderRequest, get_static_asset
 from pytest import MonkeyPatch
 
-from metabrowser.kpress_adapter import render_kpress_view
+from metabrowser.kpress_adapter import DIAGRAM_MODULES, render_kpress_view
 from tests.test_design_vocabulary import _rules_of
 
 PROJECT_FILE = Path(__file__).resolve().parent.parent / "pyproject.toml"
 SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
 
 
-def test_kpress_is_an_exact_required_runtime_dependency() -> None:
-    project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
-
-    assert "kpress==0.3.8" in project["project"]["dependencies"]
-    assert "kpress" not in project["project"].get("optional-dependencies", {})
-    assert "kpress" not in project.get("dependency-groups", {}).get("dev", [])
+# The repository an unreleased KPress commit is built from while a Metabrowser change
+# waits on it (pyproject.toml, `[tool.uv.sources]`). publish.yml refuses a release while
+# any source is set.
+KPRESS_REPOSITORY = "https://github.com/jlevy/kpress"
 
 
-def test_the_pinned_kpress_release_is_the_one_reviewed_for_the_cool_off() -> None:
-    """The pin and its supply-chain record move together.
-
-    KPress is first-party and exempt from the cool-off, but the exemption is
-    per-release: each one is reviewed against its predecessor. Bumping the pin
-    without updating that record would leave the exemption naming a version
-    nobody ships, which reads as reviewed when it is not.
-    """
+def _kpress_selection() -> tuple[str, dict[str, str] | None]:
+    """The KPress requirement and, when it is built from a commit, that commit's source."""
 
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
     pins = [d for d in project["project"]["dependencies"] if d.startswith("kpress")]
     assert len(pins) == 1, pins
+    sources = project.get("tool", {}).get("uv", {}).get("sources", {})
+    return pins[0], sources.get("kpress")
 
-    policy = (PROJECT_FILE.parent / "SUPPLY-CHAIN-SECURITY.md").read_text(encoding="utf-8")
-    assert f"`{pins[0]}`" in policy, f"{pins[0]} is not recorded in SUPPLY-CHAIN-SECURITY.md"
 
+def test_kpress_is_a_required_runtime_dependency_with_one_selection() -> None:
+    """A release pins KPress exactly; a commit build names KPress's repository and commit."""
 
-def test_kpress_does_not_resolve_from_the_monorepo_workspace() -> None:
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
+    pin, source = _kpress_selection()
+    if source is None:
+        assert re.fullmatch(r"kpress==\d+\.\d+\.\d+", pin), pin
+    else:
+        # Never a workspace, path, or branch: a branch moves with `uv lock --upgrade` and
+        # is deleted when its pull request merges. The commit is the one uv.lock records.
+        assert set(source) == {"git", "rev"}, source
+        assert source["git"] == KPRESS_REPOSITORY, source
+        assert re.fullmatch(r"[0-9a-f]{40}", source["rev"]), source
+        lock = (PROJECT_FILE.parent / "uv.lock").read_text(encoding="utf-8")
+        assert f'#{source["rev"]}"' in lock, "uv.lock does not record the pinned commit"
+        assert re.fullmatch(r"kpress>=\d+\.\d+\.\d+\.dev\d+", pin), pin
+    assert "kpress" not in project["project"].get("optional-dependencies", {})
+    assert "kpress" not in project.get("dependency-groups", {}).get("dev", [])
 
-    assert "kpress" not in project.get("tool", {}).get("uv", {}).get("sources", {})
+
+def test_the_kpress_selection_is_the_one_reviewed_for_the_cool_off() -> None:
+    """The selection and its supply-chain record move together.
+
+    KPress is first-party and exempt from the cool-off, but the exemption is
+    per-selection: each release, or the commit a change is built from, is reviewed
+    against its predecessor. Changing the selection without updating that record would
+    leave the exemption naming a version nobody ships, which reads as reviewed when it
+    is not.
+    """
+
+    pin, source = _kpress_selection()
+    recorded = f"`{pin}`" if source is None else f"`kpress` commit `{source['rev'][:7]}`"
+    policy = (PROJECT_FILE.parent / "SUPPLY-CHAIN-SECURITY.md").read_text(encoding="utf-8")
+    assert recorded in policy, f"{recorded} is not recorded in SUPPLY-CHAIN-SECURITY.md"
+
+
+def test_the_diagram_modules_are_the_ones_kpress_names() -> None:
+    """The shell names them without importing KPress; an untrusted page admits only these."""
+
+    assert DIAGRAM_MODULES == PUBLIC_DIAGRAM_SCRIPT_MODULES
 
 
 def test_markdown_uses_the_kpress_toc_only_when_the_document_has_one(
@@ -120,11 +148,13 @@ def test_markdown_uses_the_kpress_toc_only_when_the_document_has_one(
     )
     assert rules[f"{layout} > .thumbnail"]["grid-area"] == "thumbnail"
     table = rules[f'{document} .kpress-table-wrap[data-kpress-table-scale="wide"]']
+    assert rules[f".preview-pane > {layout} > .kpress-long-text > .kpress-table-wrap"] == table
     assert table["width"] == "max-content"
     assert table["min-width"] == "100%"
     assert (
         " ".join(table["max-width"].split())
-        == "calc(100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)))"
+        == "calc( 100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)) -"
+        " var(--reading-inset, 0px) - var(--markdown-table-toc-space, 0px) )"
     )
 
 
@@ -144,7 +174,8 @@ def test_embedded_readme_keeps_wide_tables_inside_the_panel() -> None:
     assert rules[embedded]["max-width"] == "100%"
     with_toc = (
         ".metabrowser-markdown-document > .kpress-doc "
-        '> .kpress-doc-layout:has(> .kpress-toc) .kpress-table-wrap[data-kpress-table-scale="wide"]'
+        "> .kpress-doc-layout:where(:has(> .kpress-toc)) "
+        '.kpress-table-wrap[data-kpress-table-scale="wide"]'
     )
     assert rules[with_toc]["max-width"] == "100%"
 
@@ -253,6 +284,38 @@ def test_pinned_kpress_owns_the_toc_insets() -> None:
                 if _is_toc_entry(selector) and inset.search(declarations):
                     restated.append(f"{path.relative_to(PROJECT_FILE.parent)}: {selector.strip()}")
     assert restated == []
+
+
+def test_file_overviews_legend_rail_copies_the_kpress_toc_inset() -> None:
+    """File Overview's legend rail restates KPress's table-of-contents inset, so a release
+    that moves it fails here.
+
+    On a wide pane the legend shares the contents' track and lines up with its entries:
+    the rail takes `.kpress-toc`'s inline padding, and each name's gap past its swatch
+    takes the entries' 2px mark and 0.75rem level-1 inset (`folder/overview.css`). CSS
+    cannot read another element's padding, and KPress exposes none of these as a custom
+    property, so the copy is pinned on both sides.
+    `tests/test_overview_readme_toc_chrome.py` measures the alignment in Chrome.
+    """
+
+    components = get_static_asset("css/components.css").content.decode("utf-8")
+    assert _kpress_values(components, ".kpress-toc", "padding") == ["0.5rem 0.7rem 1rem 1.2rem"]
+    assert _kpress_values(components, ".kpress-toc a", "border-inline-start") == [
+        "2px solid transparent"
+    ]
+    assert _kpress_values(components, ".kpress-toc-level-1 > a", "padding-inline-start") == [
+        "0.75rem"
+    ]
+
+    overview = (SOURCE_DIR / "builtin_plugins" / "folder" / "overview.css").read_text(
+        encoding="utf-8"
+    )
+    rail = ".file-overview-body .file-type-summary-share"
+    item = ".file-overview-body .file-type-summary-legend-item"
+    assert _kpress_values(overview, rail, "padding-inline") == ["1.2rem 0.7rem"]
+    assert _kpress_values(overview, item, "gap") == [
+        "calc(2px + 0.75rem - var(--mb-distribution-track-height))"
+    ]
 
 
 def test_the_app_owns_the_palette_and_corners_of_every_kpress_fragment() -> None:

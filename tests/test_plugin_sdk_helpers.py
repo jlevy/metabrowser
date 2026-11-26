@@ -87,8 +87,8 @@ def test_a_plugin_finds_every_view_helper_wherever_its_code_runs(
     # load theirs. Its whole output is pinned by cli-ui-plugin-view-helpers.tryscript.md.
     loaded = view_helpers["withoutACompositor"]
     # The startup script keeps none of the helpers, or the move saved nothing.
-    assert loaded["helpersBefore"] == "0 of 16"
-    assert loaded["helpersAfter"] == "16 of 16"
+    assert loaded["helpersBefore"] == "0 of 17"
+    assert loaded["helpersAfter"] == "17 of 17"
     # The plugin's stylesheet and module are on the wire beside the helpers, not a
     # round trip after them, and none of its code has run while they are.
     assert loaded["requestedTogether"] == [STYLESHEET, MODULE_PRELOAD, VIEW_HELPERS, TEMPLATES]
@@ -136,7 +136,7 @@ def test_template_readiness_joins_prefetch_and_retries_before_plugin_evaluation(
     refused = view_helpers["whenTemplatesCannotBeFetched"]
     assert refused["whileHeld"] == {
         "loading": "pending",
-        "helpers": "16 of 16",
+        "helpers": "17 of 17",
         "templateRequests": 1,
         "pluginCode": [],
     }
@@ -363,7 +363,7 @@ def test_sdk_exports_perf_measure() -> None:
 def test_sdk_fetch_plugin_data_throws_on_degraded_plugin_error() -> None:
     src = _sdk_source()
     assert 'data.type === "plugin_error"' in src
-    assert "Plugin data hook failed" in src
+    assert "new Error(data.error || PLUGIN_DATA_FAILED)" in src
 
 
 def test_sdk_exports_kpress_render_helper() -> None:

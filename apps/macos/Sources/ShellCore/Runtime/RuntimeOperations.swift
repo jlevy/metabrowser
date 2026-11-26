@@ -11,8 +11,8 @@ import Foundation
 ///   needs an answer: a runtime whose file changed while it ran is checked again, and a
 ///   search it overtook runs again, with a fresh ticket, so the overtaken one's late
 ///   result still changes nothing. Without that, a choice rejected during the first
-///   search left no runtime, no search, and no first-run steps, and the folders opened
-///   meanwhile waited for Find Again.
+///   search left no runtime, no search, and no first-run status, and the folders opened
+///   meanwhile waited for a Refresh.
 ///
 /// The app (`AppDelegate`) supplies the work, which runs `metab` and the login shell, and
 /// shows each operation's end; `RuntimeOperationsTests` drive it with fakes.
@@ -179,7 +179,7 @@ public final class RuntimeOperations {
     }
 }
 
-/// What Settings says while it has neither a runtime nor first-run steps to show, from
+/// What Settings says while it has neither a runtime nor first-run status to show, from
 /// what is running now (`RuntimeView`). It says it is looking only while a search runs:
 /// it said so whenever both were missing, so a choice rejected during the first search
 /// left it looking forever.
@@ -188,12 +188,12 @@ public nonisolated enum RuntimeActivity: Equatable, Sendable {
     case searching
     /// A file chosen with Choose metab… is being checked.
     case checkingChoice
-    /// A search found nothing, and the steps to install `metab` are being worked out.
-    case preparingSteps
-    /// Nothing is running: Find Again and Choose metab… are what remain.
+    /// A search found nothing, and the app is locating the directory to watch.
+    case preparingGuide
+    /// Nothing is running: Refresh and Choose metab… are what remain.
     case idle
 
-    public init(isSearching: Bool, isChoosing: Bool, isPreparingSteps: Bool) {
-        self = isSearching ? .searching : isChoosing ? .checkingChoice : isPreparingSteps ? .preparingSteps : .idle
+    public init(isSearching: Bool, isChoosing: Bool, isPreparingGuide: Bool) {
+        self = isSearching ? .searching : isChoosing ? .checkingChoice : isPreparingGuide ? .preparingGuide : .idle
     }
 }

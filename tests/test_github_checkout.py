@@ -15,6 +15,7 @@ add the evidence no transcript gives, each with what breaks it:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import stat
@@ -30,6 +31,7 @@ import pytest
 
 from metabrowser.builtin_plugins.github import pull_list, pull_markdown, pulls
 from metabrowser.builtin_plugins.github.pull_record import write_refresh_stamp
+from metabrowser.cache.identity import name_suffixes
 from metabrowser.cache.paths import source_pull_refresh
 from metabrowser.capabilities import Capabilities, set_capabilities
 from tests.checkout_replica import fingerprint
@@ -287,8 +289,8 @@ def test_nothing_is_written_under_a_slug_no_source_holds(tmp_path: Path) -> None
     with pytest.raises(FileNotFoundError):
         write_refresh_stamp(
             home,
-            "github-com--octo--demo--0123456789ab",
-            source_pull_refresh("github-com--octo--demo--0123456789ab", 7),
+            "github-com-octo-demo-01234567890",
+            source_pull_refresh("github-com-octo-demo-01234567890", 7),
             stamp,
         )
     assert not home.exists()
@@ -480,7 +482,7 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
     record = _api(root, route, {"number": 10, "retry": True}, request)
     assert record.exit_code == 0, record.stderr
     assert _after(record)["record"]["unavailable"]["comparison"] == "no_store"
-    assert not list((home / "repository-stores").iterdir())
+    assert not list((home / "repos").iterdir())
 
     fetched = _api(
         root,
@@ -705,6 +707,341 @@ def test_a_running_prefetch_does_not_cost_the_open_pull_request_its_idle_compari
 
 
 @pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("joining", ["metadata", "comparison", "eager_revision", "optional"])
+def test_a_readers_start_that_joins_a_job_being_stopped_gets_its_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, joining: str
+) -> None:
+    """Bead mb-ql28 (review C1 of #721): a reader's job for pull request 11 arrived at the
+    checkout's store, so the job for 12 was told to stop: a prefetch's that held the turn,
+    or the optional comparison, which a reader's start for another pull request ends.
+    Before 12's job had unwound the reader opened 12. The start was answered ``joined``,
+    the job ended cancelled, and nothing refreshed 12 after the join."""
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    events: list[str] = []
+    repository, started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
+    prefetching = asyncio.Event()
+    # The first refresh of a prefetched 12 runs until it is told to stop.
+    stops = [] if joining == "optional" else [True]
+
+    async def refresh(companion: ServedPull) -> None:
+        events.append(f"refresh {companion.number}")
+        if companion.number == 12 and stops:
+            stops.pop()
+            prefetching.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                events.append(f"refresh {companion.number} cancelled")
+                raise
+        await asyncio.sleep(0.01)
+        events.append(f"refresh {companion.number} ends")
+
+    monkeypatch.setattr(ServedPull, "refresh", refresh)
+
+    def start(number: int, **kwargs: Any) -> str:
+        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+
+    joins: dict[str, dict[str, Any]] = {
+        "metadata": {},
+        "comparison": {"comparison": True},
+        "eager_revision": {"comparison": True, "eager_revision": "a" * 64},
+        "optional": {},
+    }
+    answers: list[str] = []
+    counted: list[bool] = []
+
+    async def run() -> None:
+        key = checkout_module.checkout_job_key(repository, 12)
+        try:
+            if joining == "optional":
+                assert start(12, comparison=True, eager_revision="a" * 64) == "started"
+                await asyncio.wait_for(started.wait(), 5)
+            else:
+                assert start(12, background=True) == "started"
+                await asyncio.wait_for(prefetching.wait(), 5)
+            # A reader's job for another pull request: 12's job is told to stop.
+            answers.append(start(11))
+            await asyncio.sleep(0)
+            # The reader opens 12 before its job has unwound.
+            assert coordinator.job(key) is not None
+            answers.append(start(12, **joins[joining]))
+            # The reader's job counts from the join, in the place it takes now.
+            counted.append(key in checkout_module._PULL_JOBS)  # pyright: ignore[reportPrivateUsage]
+            # Asked again before the stopped job has unwound: still one job after it.
+            answers.append(start(12, **joins[joining]))
+            for _ in range(3):
+                await coordinator.drain(timeout_s=5)
+        finally:
+            release.set()
+            await coordinator.aclose()
+
+    coordinator = RefreshCoordinator()
+    asyncio.run(run())
+    # An optional start asked again finds the reader's jobs, and is not due.
+    again = "not_due" if joining == "eager_revision" else "joined"
+    assert answers == ["started", "joined", again]
+    assert counted == [True]
+    stopped = (
+        ["idle 12 starts", "idle 12 cancelled"]
+        if joining == "optional"
+        else ["refresh 12", "refresh 12 cancelled"]
+    )
+    # The reader's job for 12 waits its turn behind 11's, and runs once.
+    after = ["comparison 12"] if joining == "comparison" else ["refresh 12", "refresh 12 ends"]
+    assert events == [*stopped, "refresh 11", "refresh 11 ends", *after]
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_the_restart_of_a_job_a_reader_joined_runs_however_many_reader_jobs_run_then(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review A5 of #762: the reader's job for 12 took its place among the reader's jobs
+    when the reader joined it as it stopped. By the time it has unwound,
+    :data:`MAX_PULL_JOBS` other reader jobs run, one of them a prefetch a reader promoted,
+    which no bound refuses. The restart is no new start, so it is not refused either."""
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull
+    from metabrowser.mirror_refresh import MAX_PULL_JOBS, RefreshCoordinator
+
+    events: list[str] = []
+    repository, _started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
+    prefetching = asyncio.Event()
+    stops = [True]
+
+    async def refresh(companion: ServedPull) -> None:
+        events.append(f"refresh {companion.number}")
+        if companion.number == 12 and stops:
+            stops.pop()
+            prefetching.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                events.append("refresh 12 cancelled")
+                raise
+        await asyncio.sleep(0)
+        events.append(f"refresh {companion.number} ends")
+
+    monkeypatch.setattr(ServedPull, "refresh", refresh)
+
+    def start(number: int, **kwargs: Any) -> str:
+        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+
+    others = [11, *range(1, MAX_PULL_JOBS - 1)]
+    seen: dict[str, Any] = {}
+
+    async def run() -> None:
+        key = checkout_module.checkout_job_key(repository, 12)
+        jobs = checkout_module._PULL_JOBS  # pyright: ignore[reportPrivateUsage]
+        try:
+            assert start(12, background=True) == "started"
+            await asyncio.wait_for(prefetching.wait(), 5)
+            assert start(11) == "started"
+            await asyncio.sleep(0)
+            stopped = coordinator.job(key)
+            assert stopped is not None and stopped.cancelling()
+            assert start(12) == "joined"
+            # The reader's other jobs fill the bound with 12's...
+            seen["starts"] = [start(number) for number in others[1:]]
+            assert start(99) == "too_many"
+            # ...and one more joins it, a prefetch a reader opened.
+            assert start(100, background=True) == "started"
+            assert start(100) == "joined"
+            seen["others at the restart"] = len(jobs - {key})
+            # Its done callbacks, the restart among them, run before this wait's.
+            await asyncio.wait({stopped}, timeout=5)
+            assert stopped.done()
+            for _ in range(5):
+                await asyncio.sleep(0)
+            restarted = coordinator.job(key)
+            seen["restarted"] = restarted is not None and restarted is not stopped
+            for _ in range(3):
+                await coordinator.drain(timeout_s=5)
+        finally:
+            release.set()
+            await coordinator.aclose()
+
+    coordinator = RefreshCoordinator()
+    asyncio.run(run())
+    assert seen["starts"] == ["started"] * (MAX_PULL_JOBS - 2)
+    assert seen["others at the restart"] == MAX_PULL_JOBS
+    assert seen["restarted"] is True
+    assert events.count("refresh 12 ends") == 1, events
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("joining", ["metadata", "comparison", "eager_revision"])
+def test_a_readers_join_of_a_prefetch_waiting_at_the_turn_stops_a_background_holder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, joining: str
+) -> None:
+    """Bead mb-3egb (review A1 of #762): 13's prefetch held the checkout's turn and 12's
+    waited behind it. A reader opened 12 and was answered ``joined``, but the promotion
+    did not tell the turn, so 12's job, which as a background one had stopped nothing when
+    it arrived, waited for 13's to finish rather than to unwind. A mirror's promotion has
+    told the turn since review A3 of #721 (``test_mirror_companion.py``)."""
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    events: list[str] = []
+    repository, _started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
+    holding = asyncio.Event()
+    finish = asyncio.Event()
+    twelve_done = asyncio.Event()
+
+    async def refresh(companion: ServedPull) -> None:
+        events.append(f"refresh {companion.number}")
+        if companion.number == 13:
+            holding.set()
+            try:
+                await finish.wait()
+            except asyncio.CancelledError:
+                events.append("refresh 13 cancelled")
+                raise
+        await asyncio.sleep(0.01)
+        events.append(f"refresh {companion.number} ends")
+        if companion.number == 12:
+            twelve_done.set()
+
+    async def prepare_foreground(
+        _coordinator: Any, _state: Any, _repository: Any, companion: ServedPull
+    ) -> str:
+        events.append(f"comparison {companion.number}")
+        if companion.number == 12:
+            twelve_done.set()
+        return "done"
+
+    monkeypatch.setattr(ServedPull, "refresh", refresh)
+    monkeypatch.setattr(checkout_module, "_prepare_foreground", prepare_foreground)
+
+    def start(number: int, **kwargs: Any) -> str:
+        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+
+    joins: dict[str, dict[str, Any]] = {
+        "metadata": {},
+        "comparison": {"comparison": True},
+        "eager_revision": {"comparison": True, "eager_revision": "a" * 64},
+    }
+    seen: dict[str, Any] = {}
+
+    async def run() -> None:
+        try:
+            assert start(13, background=True) == "started"
+            await asyncio.wait_for(holding.wait(), 5)
+            assert start(12, background=True) == "started"
+            for _ in range(5):
+                await asyncio.sleep(0)
+            seen["join"] = start(12, **joins[joining])
+            # 13's prefetch holds the turn until the test lets it end, which it does only
+            # after 12's work, or after waiting for it in vain.
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(twelve_done.wait(), 5)
+            seen["before 13 could end"] = list(events)
+            finish.set()
+            for _ in range(3):
+                await coordinator.drain(timeout_s=5)
+        finally:
+            finish.set()
+            release.set()
+            await coordinator.aclose()
+
+    coordinator = RefreshCoordinator()
+    asyncio.run(run())
+    assert seen["join"] == "joined"
+    after = ["comparison 12"] if joining == "comparison" else ["refresh 12", "refresh 12 ends"]
+    # The reader's job waits for the background holder to unwind, not to end.
+    assert seen["before 13 could end"] == ["refresh 13", "refresh 13 cancelled", *after], events
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("asked", ["metadata", "comparison"])
+def test_an_optional_job_a_reader_promoted_is_not_ended_by_another_readers_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, asked: str
+) -> None:
+    """Bead mb-qi6a (review A2 of #762): a reader's start for 12 promoted the optional
+    comparison job of 12 and was answered ``joined``. A reader's start for 11 then
+    cancelled that job as if it were still optional, and nothing started it again, so
+    12 had no refresh, or no comparison, until its page next asked.
+
+    Review B5 of #762: a prefetch was still ``not_due`` beside the promoted job, until
+    some other reader's start forgot it as the optional one."""
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    events: list[str] = []
+    repository, started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
+    working = asyncio.Event()
+
+    async def refresh(companion: ServedPull) -> None:
+        events.append(f"refresh {companion.number}")
+        if companion.number == 12:
+            working.set()
+            try:
+                await asyncio.sleep(0.3)
+            except asyncio.CancelledError:
+                events.append("refresh 12 cancelled")
+                raise
+        await asyncio.sleep(0.01)
+        events.append(f"refresh {companion.number} ends")
+
+    async def prepare_foreground(
+        _coordinator: Any, _state: Any, _repository: Any, companion: ServedPull
+    ) -> str:
+        events.append(f"comparison {companion.number}")
+        if companion.number == 12:
+            working.set()
+            try:
+                await asyncio.sleep(0.3)
+            except asyncio.CancelledError:
+                events.append("comparison 12 cancelled")
+                raise
+        events.append(f"comparison {companion.number} ends")
+        return "done"
+
+    monkeypatch.setattr(ServedPull, "refresh", refresh)
+    monkeypatch.setattr(checkout_module, "_prepare_foreground", prepare_foreground)
+
+    def start(number: int, **kwargs: Any) -> str:
+        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+
+    answers: list[str] = []
+
+    async def run() -> None:
+        try:
+            assert start(12, comparison=True, eager_revision="a" * 64) == "started"
+            await asyncio.wait_for(started.wait(), 5)
+            # Beside the optional job a prefetch is not due...
+            answers.append(start(13, background=True))
+            if asked == "metadata":
+                answers.append(start(12))
+            else:
+                answers.append(start(12, comparison=True))
+            # ...but 12's job is a reader's now, not the checkout's optional one, so a
+            # prefetch starts beside it, as beside any reader's job (review B5 of #762),
+            # before any other reader's start and after one.
+            answers.append(start(13, background=True))
+            release.set()
+            await asyncio.wait_for(working.wait(), 5)
+            answers.append(start(11))
+            answers.append(start(14, background=True))
+            for _ in range(3):
+                await coordinator.drain(timeout_s=5)
+        finally:
+            release.set()
+            await coordinator.aclose()
+
+    coordinator = RefreshCoordinator()
+    asyncio.run(run())
+    assert answers == ["not_due", "joined", "started", "started", "started"]
+    work = "refresh" if asked == "metadata" else "comparison"
+    assert f"{work} 12 cancelled" not in events, events
+    assert f"{work} 12 ends" in events, events
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
 def test_idle_comparison_is_never_queued_with_or_ahead_of_a_readers_job(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
@@ -876,7 +1213,7 @@ def test_checkout_comparison_fetch_refuses_to_clone_when_borrowing_is_unavailabl
     assert after["last_refresh"]["outcome"] == "lender_missing"
     assert after["record"] == initial["record"]
     assert str(checkout) not in fetched.stdout
-    assert not list((home / "repository-stores").iterdir())
+    assert not list((home / "repos").iterdir())
     assert fingerprint(checkout) == before
 
 
@@ -922,9 +1259,11 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
     elif damage == "config_corrupt":
         config.write_text("not: [valid\n")
     else:
+        # The layout is at f03 and the configuration, which has its own history, at f01.
         path = config if damage == "config_future" else layout
-        replacement = "f00" if damage == "unknown" else "f02"
-        path.write_text(path.read_text().replace("format: f01", f"format: {replacement}", 1))
+        current, future = ("f01", "f02") if damage == "config_future" else ("f03", "f04")
+        replacement = "f00" if damage == "unknown" else future
+        path.write_text(path.read_text().replace(f"format: {current}", f"format: {replacement}", 1))
 
     def snapshot(root: Path) -> dict[str, tuple[int, int, int, bytes | str | None]]:
         entries = {}
@@ -1162,7 +1501,7 @@ def test_publication_rebinds_checkout_records_to_the_claimed_slug(
     def longer_slug(transport: Any, address: str, source_id: str, **kwargs: Any) -> str:
         # Inject the admitted collision chooser; publication and route reads remain real.
         short = choose(transport, address, source_id, **kwargs)
-        return short.rsplit("--", 1)[0] + "--" + source_id.removeprefix("sha256:")[:16]
+        return short.rpartition("-")[0] + "-" + name_suffixes(source_id)[1]
 
     monkeypatch.setattr(acquire, "cache_slug", longer_slug)
     refreshed = _api(
@@ -1175,7 +1514,7 @@ def test_publication_rebinds_checkout_records_to_the_claimed_slug(
     assert _api(checkout, route, None, request).payload()["record"] == after["record"]
     assert _api(other, route, None, request).payload()["record"] == after["record"]
     written = list(home.glob("sources/*/pulls/10.json"))
-    assert len(written) == 1 and len(written[0].parents[1].name.rsplit("--", 1)[1]) == 16
+    assert len(written) == 1 and len(written[0].parents[1].name.rpartition("-")[2]) == 19
 
 
 @pytest.mark.usefixtures("fresh_checkout_state")
@@ -1519,7 +1858,7 @@ def test_conversation_alone_never_creates_a_store_or_runs_git(
     for number in (9, 10):
         assert session.after({"number": number, "retry": True})["comparison_route"] is None
     assert session.git() == []
-    assert not list((session.home / "repository-stores").iterdir())
+    assert not list((session.home / "repos").iterdir())
     assert fingerprint(session.checkout) == session.before
 
 
@@ -2206,6 +2545,50 @@ def test_a_reader_s_failure_is_reported_even_when_its_stamp_is_refused(
 
 
 @pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("kept", [True, False], ids=["kept", "off"])
+def test_the_prefetchs_attach_keeps_no_store_where_none_of_the_origin_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, kept: bool
+) -> None:
+    """Review B1 of #762: with ``METABROWSER_ORIGIN_STORE=0`` the Pulls tab's prefetch still
+    attached the checkout's store for its lists of changed files, which fetched the origin,
+    though no reader asked for a comparison. Now it attaches none and each list goes to
+    GitHub; kept, it attaches the store as before."""
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.checkout_store import ORIGIN_STORE_ENV
+    from tests.golden_harness import isolate_cli
+
+    if kept:
+        monkeypatch.delenv(ORIGIN_STORE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ORIGIN_STORE_ENV, "0")
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    fetched: list[str] = []
+
+    def origin_url(_source: object) -> str:
+        fetched.append("origin")
+        return pull_origin.url
+
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", origin_url)
+
+    async def run() -> object:
+        async with checkout_module.checkout_store_turn(repository, lambda: None):
+            return await checkout_module.attach_store_for_lists(repository)
+
+    attached = asyncio.run(run())
+    state = checkout_module._checkout_state(repository)  # pyright: ignore[reportPrivateUsage]
+    assert (attached is not None, state.pulls.git_dir is not None, bool(fetched)) == (
+        kept,
+        kept,
+        kept,
+    )
+
+
+@pytest.mark.usefixtures("fresh_checkout_state", "keeps_origin_store")
 def test_the_prefetchs_attach_gives_way_to_a_readers_and_binds_one_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:

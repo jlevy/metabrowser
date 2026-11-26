@@ -4,10 +4,14 @@ import asyncio
 import json
 import re
 from pathlib import Path
-from typing import Any, cast
 
 from metabrowser import server
-from metabrowser.repository_context import discover_repository_context
+from metabrowser.repository_context import (
+    CheckedOutHead,
+    checked_out_head,
+    discover_repository_context,
+)
+from tests.shell_request import shell_request
 
 _OVERSIZED_GIT_CONFIG_BYTES = 1024 * 1024 + 1
 
@@ -37,6 +41,7 @@ def test_discovers_bounded_github_identity_for_served_subdirectory(tmp_path: Pat
 
     assert discover_repository_context(served) == {
         "branch": "feature/navigation",
+        "branch_on_origin": False,
         "host": "github.com",
         "name": "docs",
         "owner": "example",
@@ -54,6 +59,24 @@ def test_rejects_non_github_remote_and_invalid_revision(tmp_path: Path) -> None:
     )
 
     assert discover_repository_context(tmp_path) is None
+
+
+def test_checked_out_head_names_a_committed_branch_or_a_detached_commit(tmp_path: Path) -> None:
+    _write_repository(
+        tmp_path,
+        remote="https://example.com/example/docs.git",
+        head="feature/navigation",
+        revision="a" * 40,
+    )
+    assert checked_out_head(tmp_path) == CheckedOutHead("feature/navigation", "a" * 40)
+    head = tmp_path / ".git" / "HEAD"
+    # A detached HEAD names its commit and no branch, in lowercase as every ID is shown.
+    head.write_text("B" * 40 + "\n")
+    assert checked_out_head(tmp_path) == CheckedOutHead(None, "b" * 40)
+    head.write_text("ref: refs/heads/unborn\n")
+    assert checked_out_head(tmp_path) is None
+    head.write_text("ref: refs/heads/feature//navigation\n")
+    assert checked_out_head(tmp_path) is None
 
 
 def test_rejects_oversized_git_configuration(tmp_path: Path) -> None:
@@ -76,11 +99,15 @@ def test_reads_packed_branch_revision(tmp_path: Path) -> None:
     (git_dir / "config").write_text(
         '[remote "origin"]\n\turl = https://github.com/example/docs.git\n'
     )
-    (git_dir / "HEAD").write_text("ref: refs/heads/main\n")
-    (git_dir / "packed-refs").write_text(f"{revision} refs/heads/main\n")
+    (git_dir / "HEAD").write_text("ref: refs/heads/trunk\n")
+    (git_dir / "packed-refs").write_text(
+        f"{revision} refs/heads/trunk\n{revision} refs/remotes/origin/trunk\n"
+    )
 
+    # A packed `refs/remotes/origin/trunk` says origin has the branch.
     assert discover_repository_context(tmp_path) == {
-        "branch": "main",
+        "branch": "trunk",
+        "branch_on_origin": True,
         "host": "github.com",
         "name": "docs",
         "owner": "example",
@@ -100,13 +127,14 @@ def test_index_exposes_only_public_repository_identity(tmp_path: Path) -> None:
     served = tmp_path / "docs"
     served.mkdir()
     server._set_root_dir(served)
-    response = asyncio.run(server.index(cast(Any, object())))
+    response = asyncio.run(server.index(shell_request()))
 
     html = bytes(response.body).decode("utf-8")
     match = re.search(r"window\.METABROWSER_REPOSITORY_CONTEXT=([^;]+);", html)
     assert match is not None
     assert json.loads(match.group(1)) == {
         "branch": "main",
+        "branch_on_origin": False,
         "host": "github.com",
         "name": "docs",
         "owner": "example",
@@ -114,3 +142,29 @@ def test_index_exposes_only_public_repository_identity(tmp_path: Path) -> None:
         "served_prefix": "docs",
     }
     assert str(tmp_path) not in match.group(1)
+
+
+def test_recognizes_the_current_branch_on_origin(tmp_path: Path) -> None:
+    """Origin needs a matching tip or an explicit tracking relationship."""
+
+    revision = "e" * 40
+    _write_repository(
+        tmp_path, remote="https://github.com/example/docs.git", head="topic", revision=revision
+    )
+    context = discover_repository_context(tmp_path)
+    assert context is not None and context["branch_on_origin"] is False
+    remote = tmp_path / ".git" / "refs" / "remotes" / "origin"
+    remote.mkdir(parents=True)
+    (remote / "topic").write_text(f"{revision}\n")
+    context = discover_repository_context(tmp_path)
+    assert context is not None and context["branch_on_origin"] is True
+
+    (remote / "topic").write_text(f"{'a' * 40}\n")
+    context = discover_repository_context(tmp_path)
+    assert context is not None and context["branch_on_origin"] is False
+
+    config = tmp_path / ".git" / "config"
+    with config.open("a") as file:
+        file.write('[branch "topic"]\n\tremote = origin\n\tmerge = refs/heads/topic\n')
+    context = discover_repository_context(tmp_path)
+    assert context is not None and context["branch_on_origin"] is True

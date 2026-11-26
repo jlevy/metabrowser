@@ -36,7 +36,6 @@ MONO_DECLARATION_RE = re.compile(r"(?:^|;)\s*font(?:-family)?\s*:[^;]*--font-mon
 #   .log-event-raw *
 # Named exceptions, each deliberate:
 #   .compression-badge          a 7px glyph, iconography rather than text
-#   .metabrowser-kpress-error-detail   a verbatim error payload
 #   .log-event-header           structured log values (type, timestamps), not paths
 #   .git-commit-sha             an object id, where every character is identity
 MONO_ALLOWED_SELECTORS = frozenset(
@@ -49,16 +48,32 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".md-body:not(.metabrowser-kpress-host) code",
         ".log-event-raw pre",
         ".log-event-raw code",
-        # A diff's lines and a comment's hunk of one: the user's code.
+        # A diff's lines and its excerpts in review comments and Guided Review.
         ".metabrowser-diff-host .diff-line",
         ".metabrowser-diff-host .diff-split-side",
         ".github-pull-hunk",
+        ".github-pull-guide-excerpt",
         # A JSON or YAML document's own structure, whose indent carries meaning.
         ".structured-tree",
+        # A table's literal values: keys, timestamps, hex, JSON, and null, the reader's own
+        # data (docs/design-system.md, "Data Tables").
+        ".data-literal",
         ".compression-badge",
-        ".metabrowser-kpress-error-detail",
         ".log-event-header",
+        # The Session view's event row: the same structured log values (kind, tool,
+        # timestamp) as the Log's event header, in the same face so the two views agree.
+        ".agents-event",
         ".git-commit-sha",
+        # The event log's own words: a span's name (`mirror_refresh.MirrorSession._pull_job`,
+        # `GET /api/tree`), an identifier or a client ID in a span's detail, the attributes
+        # it wrote as JSON, and the name a table lists. They are program text, as the agent
+        # log's raw payload is, and a name keeps its columns in the face that aligns them.
+        ".event-log-name",
+        ".event-log-fact-value",
+        ".event-log-attrs",
+        ".event-log-cell-start",
+        # The command a page's Details tells a person to run, which is code they copy.
+        ".event-log-details-open code",
     }
 )
 

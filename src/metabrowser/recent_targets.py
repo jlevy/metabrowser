@@ -23,6 +23,15 @@ optionally where in the root the open pointed. The words are the open-modes desi
 - ``target``, optional, is where the open pointed when that is not the root itself: the
   file or folder named inside a folder's root. A mirror's is to be its web URL, which
   this release does not write yet. It is not part of the key.
+- ``git``, optional, is whether a folder root was a checkout when it was opened: it held a
+  ``.git`` entry (:func:`~metabrowser.repository_context.is_checkout_root`), which is the
+  ``git`` kind ``GET /api/identity`` gives it, and a shell draws the Git checkout's mark
+  for it where a plain folder's would otherwise be (docs/design-system-icons.md, "Source
+  Kinds"). It is written when true, only for a folder, at the open, because a shell
+  draws the list without looking at a listed folder: a look can raise a privacy prompt,
+  and the list holds the answer from when the folder was last opened. An entry with none,
+  one an earlier release wrote, is a plain folder until it is opened again. It is not
+  part of the key.
 
 ``mode`` with ``root`` is the key of the macOS app's session for the root, so one entry
 is one window. No entry records a view, what a server shows at a given moment: a recent
@@ -59,6 +68,18 @@ read and written only through :mod:`metabrowser.home`'s owner-only helpers.
   read, change, and atomic rename, so neither loses the other's entry. A reader takes
   no lock: a rename shows it the old file or the new.
 
+**Who records.** The list holds what a person opened, so a serve records its root only
+when someone opened it to read (:func:`serve_records`): when :data:`RECORD_ENV` is ``1``,
+which ``--present`` passes on to the server it starts for a browser when it would record
+itself; or, with the variable unset, when the serve's standard input is a terminal, which
+only a person typing ``metab ROOT`` gives it. A serve that an agent, a test, a golden, or
+a tool starts reads its standard input from a pipe or ``/dev/null``, so it records
+nothing, and nobody has to remember to say so: such serves made up most of one user's
+list and pushed folders they had opened out of the sixteen the app's menus show
+(``mb-1q02``). ``--recent-add`` is itself a request to record, so it records unless the
+variable is ``0``: the macOS app records each open with it, as it shows the open, and
+tells every server it starts ``0``.
+
 A server records itself with :func:`record_quietly`, which never raises and never waits
 longer than :data:`LOCK_WAIT_S`: the list is not worth delaying or failing a server for.
 """
@@ -78,7 +99,7 @@ from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal, TextIO, cast
 
 import yaml
 
@@ -101,13 +122,19 @@ except ImportError:  # Windows: the owner-only helpers refuse first, as unverifi
 
 log = logging.getLogger(__name__)
 
-# Set to ``0`` (or ``false``, ``no``, ``off``), this keeps a process from recording
-# anything: a serve does not record its root, and ``--recent-add`` records nothing. It
-# is for a server nobody opened to read: a benchmark's, a test's, a development run of
-# the macOS app, and the servers the app starts when it restores its last session, which
-# is not an open. Listing, forgetting, and clearing are unaffected.
+# Who records (the module docstring's "Who records"). Set to ``1`` (or ``true``, ``yes``,
+# ``on``), a serve records the root it opens: ``--present`` sets it on the server it starts
+# for a browser when it would record itself. Set to ``0`` (or ``false``, ``no``, ``off``),
+# it keeps a process from recording anything: a serve does not record its root, and
+# ``--recent-add`` records nothing. That is for a server nobody opened to read, whatever
+# its standard input: every server the macOS app starts, since the app records each open
+# itself with ``--recent-add`` (``RecentTargets.serverRecords`` in apps/macos), a
+# development run of the app (``make macos-run``), a benchmark's, a test's, and
+# ``--remote``'s far server. Unset, or any other value, a serve records only when its
+# standard input is a terminal. Listing, forgetting, and clearing are unaffected.
 RECORD_ENV: Final = "METABROWSER_RECORD_RECENT"
 _OFF: Final = frozenset({"0", "false", "no", "off"})
+_ON: Final = frozenset({"1", "true", "yes", "on"})
 STORE_FILE: Final = "recent-targets.yml"
 LOCK_FILE: Final = "recent-targets.lock"
 # The format this release writes: ``mf`` for a Metabrowser format, then its number, so
@@ -153,7 +180,10 @@ MAX_STORE_BYTES: Final = 512 * 1024
 # measurement one :func:`record` into a full list, which holds the lock across its read,
 # its atomic write, and both fsyncs, took a median 3.3 ms (p95 3.7 ms, slowest 5.3 ms),
 # so this covers hundreds of servers starting at once and still bounds what a wedged
-# holder can cost a server's start.
+# holder can cost a server's start. A loaded machine stretches each hold, as a holder
+# loses its CPU partway: on the same Mac at load average 300, 40 processes that each
+# recorded once at the same moment held the lock a median 11 ms (p95 152 ms, slowest
+# 503 ms), and the longest any of them waited, over 10 such bursts, was 1.3 s.
 LOCK_WAIT_S: Final = 2.0
 _LOCK_RETRY_FIRST_S: Final = 0.005
 _LOCK_RETRY_MAX_S: Final = 0.1
@@ -169,7 +199,7 @@ MODES: Final[tuple[TargetMode, ...]] = ("folder", "mirror")
 _TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _ENTRY_KEYS: Final = frozenset({"mode", "root", "opened_at"})
 # The fields an entry may hold beside those, which this release knows and checks.
-_OPTIONAL_KEYS: Final = frozenset({"target"})
+_OPTIONAL_KEYS: Final = frozenset({"target", "git"})
 # What a mode is spelled like. A mode this release does not know is a newer release's;
 # anything else in a mode's place is damage.
 _MODE_NAME: Final = re.compile(r"[a-z][a-z0-9_-]{0,31}")
@@ -192,6 +222,9 @@ class RecentTarget:
     target: str | None = None
     """Where in the root the open pointed, when not at the root itself: for a folder,
     the file or folder named inside it. Not part of :attr:`key`, and never a view."""
+    git: bool = False
+    """Whether a folder root was a checkout when it was opened, as the module's docstring
+    says. Never true for a mirror. Not part of :attr:`key`."""
     extra: Mapping[str, Any] = field(default_factory=dict[str, Any])
     """The fields of the entry this release does not know, as the file spelled them: a
     later release's, kept so that rewriting the list does not lose them."""
@@ -202,26 +235,30 @@ class RecentTarget:
 
         return (self.mode, self.root)
 
-    def as_json(self) -> dict[str, str | None]:
+    def as_json(self) -> dict[str, str | bool | None]:
         """What a listing says of the entry: the fields this release knows, ``target``
-        ``null`` when the open pointed at the root."""
+        ``null`` when the open pointed at the root, and ``git`` false for an entry that
+        has none."""
 
         return {
             "mode": self.mode,
             "root": self.root,
             "opened_at": self.opened_at,
             "target": self.target,
+            "git": self.git,
         }
 
     def as_stored(self) -> dict[str, Any]:
         """The entry as the file holds it: the known fields, then any it carries along.
 
-        ``target`` is written only when there is one.
+        ``target`` and ``git`` are written only when there is one, and when it is true.
         """
 
         known: dict[str, Any] = {"mode": self.mode, "root": self.root, "opened_at": self.opened_at}
         if self.target is not None:
             known["target"] = self.target
+        if self.git:
+            known["git"] = True
         return {**known, **self.extra}
 
 
@@ -429,12 +466,18 @@ def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
                 raise _Damaged(f"entry {position} has a target that is not text")
             if (reason := _checked_target(mode, root, target)) is not None:
                 raise _Damaged(f"entry {position} cannot have that target: {reason}")
+        # The base loader reads every scalar as text, so a flag is the word the dump wrote.
+        git = values.get("git")
+        if git is not None and (git != "true" or mode != "folder"):
+            raise _Damaged(f"entry {position} has a git flag that is not true, or is of a mirror")
         if (mode, root) in seen:
             raise _Damaged(f"entry {position} repeats an earlier one")
         seen.add((mode, root))
         known = _ENTRY_KEYS | _OPTIONAL_KEYS
         extra = {name: value for name, value in values.items() if name not in known}
-        targets.append(RecentTarget(cast(TargetMode, mode), root, opened_at, target, extra))
+        targets.append(
+            RecentTarget(cast(TargetMode, mode), root, opened_at, target, git is not None, extra)
+        )
     return tuple(targets)
 
 
@@ -607,11 +650,44 @@ def _change(directory: Path | None, change: _Change) -> tuple[RecentTarget, ...]
         ) from error
 
 
-def recording_enabled(environ: Mapping[str, str] | None = None) -> bool:
-    """Whether this process records what it opens: true unless :data:`RECORD_ENV` says no."""
+def _record_setting(environ: Mapping[str, str] | None) -> bool | None:
+    """What :data:`RECORD_ENV` says: true for yes, false for no, and None when it is unset
+    or says neither."""
 
     variables = os.environ if environ is None else environ
-    return variables.get(RECORD_ENV, "").strip().lower() not in _OFF
+    value = variables.get(RECORD_ENV, "").strip().lower()
+    if value in _OFF:
+        return False
+    return True if value in _ON else None
+
+
+def recording_enabled(environ: Mapping[str, str] | None = None) -> bool:
+    """Whether this process may record at all: true unless :data:`RECORD_ENV` says no.
+
+    ``--recent-add`` asks this, since it is itself a request to record. A serve asks
+    :func:`serve_records`.
+    """
+
+    return _record_setting(environ) is not False
+
+
+def serve_records(environ: Mapping[str, str] | None = None, stdin: TextIO | None = None) -> bool:
+    """Whether a serve records the root it opens.
+
+    Yes when :data:`RECORD_ENV` says yes, never when it says no, and otherwise only when
+    standard input (*stdin*, :data:`sys.stdin` by default) is a terminal, which only a
+    person typing ``metab ROOT`` gives a serve. An agent's, a test's, a golden's, or a
+    tool's serve reads a pipe or ``/dev/null`` there, so it records nothing.
+    """
+
+    setting = _record_setting(environ)
+    if setting is not None:
+        return setting
+    stream = sys.stdin if stdin is None else stdin
+    try:
+        return stream.isatty()
+    except (AttributeError, OSError, ValueError):  # no stdin at all, or a closed one
+        return False
 
 
 def now() -> str:
@@ -625,15 +701,17 @@ def record(
     root: str,
     *,
     target: str | None = None,
+    git: bool = False,
     directory: Path | None = None,
     opened_at: str | None = None,
 ) -> RecentTarget:
     """Put *root*, opened in *mode*, at the front of the list; return its entry.
 
-    An entry the list already holds for the root moves to the front with the new time
-    and this open's *target*, and the oldest entry past :data:`MAX_RECENT_TARGETS` falls
-    off. *root* is a folder's :func:`recorded_path` or a source's normalized address, and
-    *target* where in it the open pointed. A *target* that is the root, or that the list
+    An entry the list already holds for the root moves to the front with the new time,
+    this open's *target*, and whether this open found a checkout (*git*, a folder's alone:
+    a mirror is recorded without it), and the oldest entry past :data:`MAX_RECENT_TARGETS`
+    falls off. *root* is a folder's :func:`recorded_path` or a source's normalized address,
+    and *target* where in it the open pointed. A *target* that is the root, or that the list
     cannot hold, is recorded as none: where an open pointed is never worth losing the
     open. A root the list cannot hold raises :class:`UnrecordableRootError`, and a list
     that cannot be written raises :class:`RecentTargetsError`.
@@ -649,7 +727,9 @@ def record(
         target = None
     if opened_at is not None and _TIMESTAMP.fullmatch(opened_at) is None:
         raise UnrecordableRootError("the time opened is not a UTC time to the second")
-    entry = RecentTarget(mode, root, now() if opened_at is None else opened_at, target)
+    entry = RecentTarget(
+        mode, root, now() if opened_at is None else opened_at, target, git and mode == "folder"
+    )
 
     def to_front(before: tuple[RecentTarget, ...]) -> tuple[RecentTarget, ...]:
         others = (other for other in before if other.key != entry.key)
@@ -679,19 +759,22 @@ def clear(*, directory: Path | None = None) -> int:
     return len(_change(directory, lambda before: () if before else None))
 
 
-def record_quietly(mode: TargetMode, root: str, *, target: str | None = None) -> None:
-    """Record a root a server is about to serve, and where it opens, and never raise.
+def record_quietly(
+    mode: TargetMode, root: str, *, target: str | None = None, git: bool = False
+) -> None:
+    """Record a root a server is about to serve, where it opens, and whether it is a
+    checkout (*git*), and never raise.
 
     A failure is logged once as a warning that says what to do, without the root or a
-    path, and the server starts regardless. With :data:`RECORD_ENV` off, nothing is
-    recorded and nothing is read or written.
+    path, and the server starts regardless. The serve asks :func:`serve_records` first;
+    with :data:`RECORD_ENV` off, nothing is recorded and nothing is read or written.
     """
 
     if not recording_enabled():
         log.debug("not recording a recent target: %s is off", RECORD_ENV)
         return
     try:
-        record(mode, root, target=target)
+        record(mode, root, target=target, git=git)
     except UnrecordableRootError as error:
         log.info("this root is not recorded as a recent target: %s", error)
     except RecentTargetsError as error:
@@ -732,4 +815,5 @@ __all__ = [
     "recorded_path",
     "recording_enabled",
     "record_quietly",
+    "serve_records",
 ]

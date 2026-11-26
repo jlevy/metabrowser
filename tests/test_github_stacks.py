@@ -23,6 +23,7 @@ from metabrowser.builtin_plugins.github.pull_list import ListedRepository, write
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.pull_stacks import read_stacks, refresh_stacks
 from metabrowser.builtin_plugins.github.pull_stacks_route import StackView, stack_envelope
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
 from metabrowser.server import app
 from tests.cache_home_fixture import FixtureSource, _stage_and_publish_source, build_empty_home
@@ -135,10 +136,22 @@ def test_titles_follow_the_matching_catalog_without_refetching_native_membership
     asyncio.run(refresh_stacks(repository))
     before = stack_envelope(StackView(repository, None, False))
     assert before["stacks"][0]["titles"] == [None, None]
+    assert before["stacks"][0]["authors"] == before["stacks"][0]["avatars"] == [None, None]
     stored = read_stacks(repository)
-    seed_catalog(repository, [generated_item(7) | {"title": "A useful title"}])
+    avatar = "https://avatars.githubusercontent.com/u/7?v=4"
+    seed_catalog(
+        repository,
+        [
+            generated_item(7)
+            | {"title": "A useful title", "user": {"login": "maintainer", "avatar_url": avatar}}
+        ],
+    )
     first = stack_envelope(StackView(repository, None, False))
     assert first["stacks"][0]["titles"] == ["A useful title", None]
+    # The member's author and avatar come from the same cached row, for the stack menu.
+    assert first["stacks"][0]["authors"] == ["maintainer", None]
+    # The catalog keeps the avatar at the size a list draws it.
+    assert first["stacks"][0]["avatars"] == ["https://avatars.githubusercontent.com/u/7?s=40", None]
     assert envelope_etag(first) != envelope_etag(before)
     seed_catalog(
         repository,
@@ -149,6 +162,42 @@ def test_titles_follow_the_matching_catalog_without_refetching_native_membership
     assert len(calls) == 4, "projecting cached titles never invokes the provider"
     data = (repository.home / f"sources/{repository.slug}/pulls/stacks.json").read_text()
     assert '"titles"' not in data, "native membership does not duplicate catalog metadata"
+    assert '"authors"' not in data and '"avatars"' not in data
+
+
+def test_a_member_the_catalog_lacks_is_named_by_its_cached_record(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A merged member the repository's list no longer holds is named in the stack menu as a
+    # stack's page names it, by its cached record (`member_identity`); one whose record
+    # another account read, like one with neither a row nor a record, has no name.
+    from metabrowser.builtin_plugins.github import pull_route
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord
+
+    fixtures = Path(__file__).parent / "fixtures" / "github-pull-page-responses.json"
+    recorded = PullRecord.model_validate(
+        json.loads(fixtures.read_text(encoding="utf-8"))["current"]["body"]["record"]
+    )
+    merged = recorded.model_copy(
+        update={
+            "reader": f"gh:{READER}",
+            "pull": recorded.pull.model_copy(
+                update={"number": 8, "title": "Merged work", "author": "maintainer"}
+            ),
+        }
+    )
+    records = {8: merged, 9: merged.model_copy(update={"reader": "gh:someone-else"})}
+
+    def cached(_home: Path, _slug: str, number: int) -> tuple[Any, None, None]:
+        return records.get(number, "not_cached"), None, None
+
+    monkeypatch.setattr(pull_route, "cached_pull_record", cached)
+    provider(monkeypatch, [response([native(30, 7, 8, 9, 10)])])
+    asyncio.run(refresh_stacks(repository))
+    seed_catalog(repository, [generated_item(7)])
+    stack = envelope(repository)["stacks"][0]
+    assert stack["titles"] == ["Work item 7", "Merged work", None, None]
+    assert stack["authors"] == ["contributor", "maintainer", None, None]
 
 
 @pytest.mark.parametrize("changed", ["reader", "source"])
@@ -421,16 +470,20 @@ def test_cached_route_etag_ignores_countdown_but_changes_at_expiry(
     before = (repository.home / f"sources/{repository.slug}/pulls/stacks.json").read_bytes()
     with TestClient(app) as client:
         first = client.get("/api/plugin/github/stacks")
-        assert first.status_code == 200 and first.json()["fresh_for_s"] == 300
+        # A snapshot that was read is read again FULL_REFRESH_S later, where a failed
+        # attempt waits STACK_FRESHNESS_S.
+        assert first.status_code == 200 and first.json()["fresh_for_s"] == FULL_REFRESH_S
         monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=30))
-        assert envelope(repository)["fresh_for_s"] == 270
+        assert envelope(repository)["fresh_for_s"] == FULL_REFRESH_S - 30
         assert (
             client.get(
                 "/api/plugin/github/stacks", headers={"if-none-match": first.headers["etag"]}
             ).status_code
             == 304
         )
-        monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=301))
+        monkeypatch.setattr(
+            pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=FULL_REFRESH_S + 1)
+        )
         expired = client.get(
             "/api/plugin/github/stacks", headers={"if-none-match": first.headers["etag"]}
         )
@@ -556,3 +609,40 @@ def test_unwritable_cache_keeps_snapshot_and_process_backoff(
     provider(monkeypatch, [response([native(2)])])
     asyncio.run(refresh_stacks(repository, retry=True))
     assert envelope(repository)["stacks"][0]["number"] == 2
+
+
+def test_an_automatic_read_waits_for_the_budget_and_slows_past_the_process_ceiling(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import gh_budget
+    from metabrowser.builtin_plugins.github.pull_stacks import refresh_wanted
+
+    provider(monkeypatch, [response([native(30, 7, 9)])])
+    asyncio.run(refresh_stacks(repository))
+
+    def later(seconds: float) -> None:
+        monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=seconds))
+
+    later(FULL_REFRESH_S + 1)
+    assert refresh_wanted(repository)
+    low = {
+        "x-ratelimit-limit": "5000",
+        "x-ratelimit-remaining": "1000",
+        "x-ratelimit-reset": str(int((FETCHED_AT + timedelta(minutes=30)).timestamp())),
+    }
+    try:
+        # Below the floor an automatic read stops; a reader's Retry never asks.
+        gh_budget.observe(low, resource="core")
+        assert not refresh_wanted(repository)
+        assert refresh_wanted(repository, retry=True)
+        gh_budget.forget()
+        # Past the ceiling it is slowed to five minutes, not stopped.
+        gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=FETCHED_AT)
+        assert not refresh_wanted(repository)
+        assert envelope(repository)["fresh_for_s"] == gh_budget.CEILING_FULL_READ_S - (
+            FULL_REFRESH_S + 1
+        )
+        later(gh_budget.CEILING_FULL_READ_S + 1)
+        assert refresh_wanted(repository)
+    finally:
+        gh_budget.forget()

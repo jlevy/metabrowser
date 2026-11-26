@@ -1,9 +1,12 @@
-// Browserless session: a served mirror's freshness label, newer-revision offer, and pin
-// switch, driven through the production browser code.
+// Browserless session: a served mirror's freshness label, following a branch to its new
+// commit, and pin switches, driven through the production browser code.
 //
 // The page talks to the server through three routes, and the commit view through a
-// fourth. Every response here is one the in-process application gave while a mirror
-// went stale, refreshed, gained a newer commit, switched its pin, lost its origin,
+// fourth. A page on a branch also makes its own ask while visible, which has the server
+// probe that branch at its origin; the scripted server answers it as the real one does
+// when the branch has not moved, with the status as it is, unless a step queued the
+// recorded answer of a probe that found a push. Every response here is one the in-process application gave while a mirror
+// went stale, refreshed onto a newer commit it followed, switched its pin, lost its origin,
 // invalidated an open history cursor, and was asked for commits it did not have,
 // recorded in tests/fixtures/source-freshness-responses.json.
 // tests/test_source_freshness_session.py replays that story against a real store and
@@ -28,6 +31,16 @@ const repoRoot = path.resolve(__dirname, "../..");
 const staticDir = path.join(repoRoot, "src/metabrowser/static");
 const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/source-freshness-responses.json"), "utf8"),
+);
+
+// What a repository folder's server answered for the store it keeps of its checkout's
+// origin, recorded by tests/test_source_ref_selector_origin_session.py: the statuses the
+// freshness row of a folder's pages reads, printed under the `folder` argument.
+const recordedFolder = JSON.parse(
+  fs.readFileSync(
+    path.join(repoRoot, "tests/fixtures/source-ref-selector-origin-responses.json"),
+    "utf8",
+  ),
 );
 
 // A few minutes after the recording's stand-in fetch times, so ages read naturally.
@@ -55,7 +68,14 @@ function loadProductionModules() {
   };
   context.window.window = context.window;
   vm.createContext(context);
-  for (const name of ["source-freshness.js", "source-pin-guard.js", "git-history-window.js"]) {
+  // formatters.js names the offered commit as every line does, as the shell's startup
+  // scripts load it first.
+  for (const name of [
+    "formatters.js",
+    "source-freshness.js",
+    "source-pin-guard.js",
+    "git-history-window.js",
+  ]) {
     const file = path.join(staticDir, name);
     vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   }
@@ -87,10 +107,16 @@ function createPage() {
   let renders = 0;
   let model = null;
   const postAnswers = { "/api/source/refresh": [], "/api/source/pin": [] };
+  // Answers to the page's own ask, `{"for": "page"}`, ahead of the default one.
+  const pageAskAnswers = [];
+  // While set, the page's ask is not answered: a probe the server is still waiting for.
+  let pageAskHeld = null;
   let currentStatus = null;
   let currentTag = null;
   let tagCounter = 0;
   let answering = true;
+  // The page's own address, which a follow names so the server says where it lands.
+  let address = "/view/";
 
   function setStatus(status) {
     currentStatus = status;
@@ -112,6 +138,19 @@ function createPage() {
         return { status: 200, etag: currentTag, body: currentStatus };
       }
       log.push(`POST ${route} ${JSON.stringify(options.body ?? {})}`);
+      if (route === "/api/source/refresh" && options.body?.for === "page") {
+        if (!answering) {
+          throw new Error("connection refused");
+        }
+        if (pageAskHeld !== null) {
+          // The server holds the ask for as long as its probe takes.
+          await pageAskHeld;
+        }
+        const scripted = pageAskAnswers.shift();
+        return scripted
+          ? { status: scripted.status, etag: null, body: scripted.body }
+          : { status: 200, etag: null, body: { refresh: "probed", status: currentStatus } };
+      }
       const answer = postAnswers[route].shift();
       assert(answer, `no scripted answer for POST ${route}`);
       return { status: answer.status, etag: null, body: answer.body };
@@ -137,6 +176,7 @@ function createPage() {
     navigate(href) {
       navigated.push(href);
     },
+    address: () => address,
   };
 
   // The commit view's side of opening a commit the mirror lacks, as static/git-panel.js
@@ -189,8 +229,33 @@ function createPage() {
     stopAnswering() {
       answering = false;
     },
+    setAddress(value) {
+      address = value;
+    },
     answerPost(route, status, body) {
       postAnswers[route].push({ status, body });
+    },
+    answerPageAsk(status, body) {
+      pageAskAnswers.push({ status, body });
+    },
+    /** Leave the page's asks unanswered until the function this answers is called. */
+    holdPageAsk() {
+      let release = () => {};
+      pageAskHeld = new Promise((resolve) => {
+        release = () => {
+          pageAskHeld = null;
+          resolve(undefined);
+        };
+      });
+      return release;
+    },
+    /**
+     * Open the page and let its first ask be answered. The controller does not wait for
+     * that ask, so a step that looks at once would see it still on its way.
+     */
+    async start(controller) {
+      await controller.start();
+      await settle();
     },
     setVisible(value) {
       visible = value;
@@ -212,7 +277,9 @@ function createPage() {
             ? "fast"
             : pending[0].delayMs === freshness.SLOW_POLL_MS
               ? "slow"
-              : String(pending[0].delayMs);
+              : pending[0].delayMs === (currentStatus?.probe_every_s ?? 0) * 1000
+                ? "ask"
+                : String(pending[0].delayMs);
       const painted = renders;
       renders = 0;
       const observed = {
@@ -260,7 +327,9 @@ function paintOf(model) {
     offer:
       offer === null
         ? null
-        : `${offer.text} [${offer.button}]${offer.kind === "switch" ? ` → ${offer.ref}` : ""}`,
+        : offer.kind === "switch"
+          ? `${offer.text} [${offer.button}] → ${offer.ref}`
+          : `${offer.text} [${offer.button}]`,
     error: model.error,
   };
 }
@@ -271,18 +340,233 @@ async function settle() {
   }
 }
 
+// A repository folder that keeps a store of its checkout's origin: the row is on every
+// page of the folder, its working tree's too, says what was fetched is that store, and
+// its Refresh fetches the store. A page that shows nothing of the store has it fetched
+// quietly when it has grown old, and says "Refreshing…" only for the reader's own press.
+// The reload offer is the ref selector's there.
+async function runFolder() {
+  const steps = [];
+  const options = { checkout: true };
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps, options);
+    page.setStatus(recordedFolder.status_stale);
+    page.answerPageAsk(recordedFolder.ask_started.status, recordedFolder.ask_started.body);
+    await page.start(controller);
+    steps.push(
+      page.observe("the working tree's page, its origin's store grown old, asks quietly, once"),
+    );
+
+    page.setStatus(recordedFolder.status_refreshed);
+    await page.fireTimer();
+    steps.push(page.observe("the store was fetched; the row says when, and nothing reloads"));
+
+    page.answerPost(
+      "/api/source/refresh",
+      recordedFolder.refresh_started.status,
+      recordedFolder.refresh_started.body,
+    );
+    await controller.requestRefresh();
+    steps.push(page.observe("the reader's own Refresh says so while it runs"));
+
+    page.setStatus(recordedFolder.status_refresh_failed);
+    await page.fireTimer();
+    steps.push(page.observe("a fetch that failed says the checkout is unchanged"));
+    controller.dispose();
+  }
+  {
+    // A page on one of the origin's branches, read from the store.
+    const status = recordedFolder.switch_origin_branch.body.status;
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      ...options,
+      shown: { pin: status.pin, ref: status.ref },
+    });
+    page.setStatus(status);
+    await page.start(controller);
+    steps.push(page.observe("an origin branch's page names the store, not a mirror"));
+    assert(!JSON.stringify(steps.at(-1).paint).includes("mirror"), "a folder's row said mirror");
+    // The server came to serve the working tree: the selector offers the reload, not the row.
+    page.setStatus(recordedFolder.status_working_tree);
+    await page.fireTimer();
+    steps.push(page.observe("the server shows the working tree again: this row offers no reload"));
+    controller.dispose();
+  }
+  {
+    // An origin branch's page opened on a store grown old asks as the reader's Refresh
+    // does: it shows the store, so the fetch can change what it shows, and the row says
+    // "Refreshing…" while it runs.
+    const status = recordedFolder.status_origin_branch_stale;
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      ...options,
+      shown: { pin: status.pin, ref: status.ref },
+    });
+    page.setStatus(status);
+    page.answerPost(
+      "/api/source/refresh",
+      recordedFolder.origin_branch_refresh_started.status,
+      recordedFolder.origin_branch_refresh_started.body,
+    );
+    await page.start(controller);
+    steps.push(page.observe("an origin branch's page, its store grown old, asks loudly"));
+    const opened = steps.at(-1);
+    assert(
+      JSON.stringify(opened.requests) ===
+        JSON.stringify(["GET /api/source/status", "POST /api/source/refresh {}"]),
+      `an origin branch's page did not ask loudly: ${JSON.stringify(opened.requests)}`,
+    );
+    assert(
+      opened.paint.label === "Refreshing…",
+      `an origin branch's page did not say Refreshing…: ${JSON.stringify(opened.paint)}`,
+    );
+    controller.dispose();
+  }
+  // The same statuses on a page that is not a folder's show no row for a working tree.
+  const plain = freshness.describe(recordedFolder.status_working_tree, {
+    shown: null,
+    nowMs: NOW_MS,
+  });
+  assert(plain.visible === false, "a working tree's status drew a row on a page of no folder");
+  return steps;
+}
+
+// A repository folder's page on one of the checkout's own branches. It reads that branch,
+// not one commit of it: the page asks as often as its status says, the server reads the
+// checkout's refs for the ask and fetches nothing, and when the reader's commit moved the
+// branch the page goes to the new commit at its own address. With a store of the origin
+// the row is the store's as on every page of the folder; with none there is no row but
+// while the page follows, or when its follow was refused.
+async function runCheckoutBranch() {
+  const steps = [];
+  {
+    const opened = recordedFolder.switch_local_branch.body;
+    const page = createPage();
+    page.setAddress(opened.view_href);
+    const controller = freshness.createController(page.deps, {
+      checkout: true,
+      shown: { pin: opened.status.pin, ref: opened.status.ref },
+    });
+    page.setStatus(opened.status);
+    await page.start(controller);
+    steps.push(page.observe("a page on the checkout's own branch asks where the branch is"));
+    await page.fireTimer();
+    steps.push(page.observe("the branch is where it was: nothing repaints, and it asks again"));
+
+    // The reader committed on the branch: the server read the refs and serves the commit.
+    page.answerPageAsk(recordedFolder.ask_local_moved.status, recordedFolder.ask_local_moved.body);
+    page.answerPost(
+      "/api/source/pin",
+      recordedFolder.follow_local_branch.status,
+      recordedFolder.follow_local_branch.body,
+    );
+    await page.fireTimer();
+    steps.push(page.observe("the reader committed on the branch; the page follows it"));
+    controller.dispose();
+  }
+  {
+    // A checkout that keeps no store: nothing is refreshable, and the branch still follows.
+    const opened = recordedFolder.plain_switch.body;
+    const page = createPage();
+    page.setAddress(opened.view_href);
+    const controller = freshness.createController(page.deps, {
+      checkout: true,
+      shown: { pin: opened.status.pin, ref: opened.status.ref },
+    });
+    page.setStatus(opened.status);
+    await page.start(controller);
+    steps.push(page.observe("with no store of an origin there is no row, and the page still asks"));
+    assert(steps.at(-1).paint === null, "a folder with no store drew a row for an unmoved branch");
+
+    page.answerPageAsk(recordedFolder.plain_ask_moved.status, recordedFolder.plain_ask_moved.body);
+    page.answerPost(
+      "/api/source/pin",
+      recordedFolder.plain_follow_refused.status,
+      recordedFolder.plain_follow_refused.body,
+    );
+    await page.fireTimer();
+    steps.push(page.observe("a follow the server refused says the branch moved, and why"));
+
+    // The reader presses the row: the follow is asked for again, and the page goes.
+    page.answerPost(
+      "/api/source/pin",
+      recordedFolder.plain_follow.status,
+      recordedFolder.plain_follow.body,
+    );
+    await controller.requestRefresh();
+    await settle();
+    steps.push(page.observe("pressed, the page asks again and follows"));
+    controller.dispose();
+  }
+  {
+    // A hidden page asks nothing, and a commit opened by its ID is never asked about.
+    const opened = recordedFolder.plain_switch.body;
+    const page = createPage();
+    page.setVisible(false);
+    const controller = freshness.createController(page.deps, {
+      checkout: true,
+      shown: { pin: opened.status.pin, ref: opened.status.ref },
+    });
+    page.setStatus(opened.status);
+    await page.start(controller);
+    steps.push(page.observe("a hidden page asks nothing"));
+    controller.dispose();
+    const commit = { ...opened.status, ref: null, follows: false, probe_every_s: null };
+    const model = freshness.describe(
+      { ...commit, pin: recordedFolder.plain_ask_moved.body.status.pin },
+      { shown: { pin: opened.status.pin, ref: null }, nowMs: NOW_MS, checkout: true },
+    );
+    assert(model.visible === false && model.follow === null, "a commit opened by its ID moved");
+  }
+  {
+    // The reader deleted the branch the page shows: the server keeps its last commit
+    // served, the status reads the branch as naming none, and a quiet row says so.
+    const opened = recordedFolder.plain_topic.body;
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      checkout: true,
+      shown: { pin: opened.status.pin, ref: opened.status.ref },
+    });
+    page.setStatus(opened.status);
+    page.answerPageAsk(recordedFolder.plain_ask_gone.status, recordedFolder.plain_ask_gone.body);
+    await page.start(controller);
+    steps.push(page.observe("the reader deleted the branch: the row says its last commit stays"));
+    controller.dispose();
+    // With a store the row is the store's, and says it as well.
+    const stored = { ...recordedFolder.switch_local_branch.body.status, latest: null };
+    const model = freshness.describe(stored, {
+      shown: { pin: stored.pin, ref: stored.ref },
+      nowMs: NOW_MS,
+      checkout: true,
+    });
+    steps.push({
+      step: "with a store, the store's row says the branch is gone",
+      paint: { label: model.label, tone: model.tone, detail: model.detail },
+    });
+    assert(model.follow === null, "a gone branch was followed");
+  }
+  return steps;
+}
+
 async function run() {
   const steps = [];
+  // The steps of a page's own ask, printed under the `asks` argument: one transcript of
+  // every step is more than the golden runner can match as one block.
+  const asks = [];
   const topic = recorded.refreshed.ref;
+  const folder = await runFolder();
+  const checkoutBranch = await runCheckoutBranch();
 
-  // One page through a whole refresh and switch.
+  // One page through a whole refresh, which moves its branch: the server follows the
+  // branch, and the page goes with it, with nothing to accept.
   {
     const page = createPage();
     const controller = freshness.createController(page.deps);
 
     page.setStatus(recorded.stale);
     page.answerPost("/api/source/refresh", 202, recorded.refresh_started);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("open a stale page"));
 
     page.setStatus(recorded.refresh_started.status);
@@ -291,10 +575,6 @@ async function run() {
 
     await page.fireTimer();
     steps.push(page.observe("an unchanged status is a 304"));
-
-    page.setStatus(recorded.refreshed);
-    await page.fireTimer();
-    steps.push(page.observe("the refresh brought a newer commit"));
 
     page.setVisible(false);
     controller.onVisibilityChange();
@@ -305,14 +585,174 @@ async function run() {
     await settle();
     steps.push(page.observe("a page shown again polls at once"));
 
-    page.answerPost("/api/source/pin", 200, recorded.switched);
-    await controller.acceptOffer();
-    steps.push(page.observe("accept the offer"));
+    page.setStatus(recorded.refreshed);
+    page.answerPost("/api/source/pin", 200, recorded.followed);
+    await page.fireTimer();
+    steps.push(page.observe("the refresh moved the branch; the page follows it"));
     assert(
-      JSON.stringify(steps.at(-1).requests) ===
-        JSON.stringify([`POST /api/source/pin ${JSON.stringify({ ref: topic })}`]),
-      "accepting must pin the ref the offer named",
+      steps.at(-1).requests.at(-1) ===
+        `POST /api/source/pin ${JSON.stringify({ ref: topic, view: "/view/" })}` &&
+        steps.at(-1).reloads === 1,
+      "following must ask for the page's own ref at its own address, then reload in place",
     );
+    controller.dispose();
+  }
+
+  // A page on a branch, visible for a while. It makes its own ask with its first status
+  // and then every `probe_every_s`; each has the server ask the origin where the branch
+  // is, and the answer is the status, so the ask is the page's poll too. A hidden page
+  // asks nothing. When a probe finds a push, the server starts the fetch at once, the
+  // page polls quickly until it ends, and then follows its branch.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    const answerAsk = (answer) => page.answerPageAsk(answer.status, answer.body);
+    page.setStatus(recorded.probe_page);
+    answerAsk(recorded.probe_unchanged);
+    await page.start(controller);
+    asks.push(page.observe("a page on a branch asks with its first status"));
+
+    answerAsk(recorded.probe_unchanged);
+    await page.fireTimer();
+    asks.push(page.observe("an unchanged branch: the ask is the poll, and nothing repaints"));
+
+    page.setVisible(false);
+    controller.onVisibilityChange();
+    asks.push(page.observe("a hidden page asks nothing"));
+
+    page.setVisible(true);
+    answerAsk(recorded.probe_unchanged);
+    controller.onVisibilityChange();
+    await settle();
+    asks.push(page.observe("shown again, the page asks at once"));
+
+    answerAsk(recorded.probe_moved);
+    await page.fireTimer();
+    asks.push(page.observe("the origin moved the branch: the fetch starts at once"));
+
+    page.setStatus(recorded.probe_followed);
+    page.answerPost("/api/source/pin", 200, recorded.followed);
+    await page.fireTimer();
+    asks.push(page.observe("the fetch brought the push; the page follows its branch"));
+    controller.dispose();
+  }
+
+  // Once a window the page's ask fetches the whole mirror. Nobody pressed for that, so
+  // the status calls it quiet: the row keeps its words, its button, and its silence, and
+  // the page keeps its own interval, not the quick poll of a refresh it shows.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.probe_followed);
+    await page.start(controller);
+    page.observe("opened");
+    page.answerPageAsk(recorded.window_fetch.status, recorded.window_fetch.body);
+    await page.fireTimer();
+    asks.push(page.observe("once a window the mirror is fetched, and the row says nothing"));
+    page.setStatus(recorded.window_fetched);
+    await page.fireTimer();
+    asks.push(page.observe("the quiet fetch ended, and the row still says nothing new"));
+    controller.dispose();
+  }
+
+  // A server that refuses the page's ask is polled as before, and one that stops
+  // answering is reported as a failed poll is and found again by the slow poll.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.probe_page);
+    page.answerPageAsk(recorded.pin_refused.status, recorded.pin_refused.body);
+    await page.start(controller);
+    asks.push(page.observe("a refused ask says nothing, and the page polls instead"));
+    await page.fireTimer();
+    asks.push(page.observe("the poll after a refused ask"));
+    controller.dispose();
+  }
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.probe_page);
+    await page.start(controller);
+    page.observe("opened");
+    page.stopAnswering();
+    await page.fireTimer();
+    asks.push(page.observe("the server stopped answering the page's asks"));
+    controller.dispose();
+  }
+
+  // A page on a commit opened by its ID, which no push moves: the status names no
+  // interval, so the page sends no ask of its own and polls slowly.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.commit_pin);
+    await page.start(controller);
+    asks.push(page.observe("a page on a commit sends no ask of its own"));
+    await page.fireTimer();
+    asks.push(page.observe("a page on a commit polls slowly"));
+    // The server's own fetch, which it runs while no page asks: quiet as well.
+    page.setStatus(recorded.idle_fetch);
+    await page.fireTimer();
+    asks.push(page.observe("the server's own fetch says nothing on a page that is open"));
+    controller.dispose();
+  }
+
+  // A commit the mirror lacks, opened by its address on a server pinned to a branch. The
+  // commit view asks for the first status itself, and the page's first ask goes out with
+  // it. The server may hold that ask for as long as a probe takes, and the view does not
+  // wait for it: it says what it found while the ask is still unanswered.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.probe_page);
+    const release = page.holdPageAsk();
+    const opening = freshness.openMissingCommit(
+      controller,
+      page.commitView(recorded.commit_missing.oid),
+    );
+    const answered = await Promise.race([opening.then(() => true), settle().then(() => false)]);
+    const step = page.observe("a missing commit does not wait for the page's first ask");
+    step.answeredBeforeTheAsk = answered;
+    asks.push(step);
+    assert(answered, "the commit view waited for the page's first ask to be answered");
+    release();
+    await opening;
+    await settle();
+    asks.push(page.observe("the page's first ask is answered afterwards"));
+    controller.dispose();
+  }
+
+  // A page on a file the new commit lacks goes where the server says, the root. A page
+  // whose address the new commit has reloads in place, as above, keeping line and scroll.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      shown: { pin: recorded.stale.pin, ref: recorded.stale.ref },
+    });
+    page.setAddress(recorded.followed_elsewhere.view);
+    page.setStatus(recorded.refreshed);
+    page.answerPost("/api/source/pin", 200, recorded.followed_elsewhere.answer);
+    await page.start(controller);
+    await settle();
+    steps.push(page.observe("a page on a file the new commit lacks goes to the root"));
+    controller.dispose();
+  }
+
+  // A follow the server refuses: the row says why, offers a reload, and asks no more.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      shown: { pin: recorded.stale.pin, ref: recorded.stale.ref },
+    });
+    page.setStatus(recorded.refreshed);
+    page.answerPost("/api/source/pin", recorded.pin_refused.status, recorded.pin_refused.body);
+    await page.start(controller);
+    await settle();
+    steps.push(page.observe("a refused follow says why and offers a reload"));
+    await page.fireTimer();
+    steps.push(page.observe("a refused follow is not asked again on the next poll"));
+    await controller.acceptOffer();
+    steps.push(page.observe("the reload a refused follow offers"));
     controller.dispose();
   }
 
@@ -321,7 +761,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.refreshed);
-    await controller.start();
+    await page.start(controller);
     page.observe("opened");
     page.setStatus(recorded.after_switch);
     await page.fireTimer();
@@ -340,7 +780,7 @@ async function run() {
       shown: { pin: recorded.refreshed.pin, ref: recorded.refreshed.ref },
     });
     page.setStatus(recorded.after_switch);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("switched before the first poll"));
     controller.dispose();
   }
@@ -355,7 +795,7 @@ async function run() {
     });
     page.setStatus(pending);
     page.answerPost("/api/source/refresh", 202, recorded.selection_refresh_started);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("a URL selection waits for its fetch"));
     page.setStatus(recorded.selection_found);
     await page.fireTimer();
@@ -371,7 +811,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.selection_not_found);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("the address is not on the origin"));
     controller.dispose();
   }
@@ -379,7 +819,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.selection_fetch_failed);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("the address could not be fetched"));
     page.answerPost("/api/source/refresh", 202, recorded.selection_retry_started);
     await controller.acceptOffer();
@@ -401,7 +841,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.commit_page);
-    await controller.start();
+    await page.start(controller);
     page.observe("opened");
     const view = page.commitView(recorded.commit_missing.oid);
     outcomes.push(await freshness.openMissingCommit(controller, view));
@@ -430,7 +870,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.commit_page);
-    await controller.start();
+    await page.start(controller);
     page.observe("opened");
     answerRefresh(page, recorded.commit_retry_started);
     page.answerCommit(recorded.commit_absent_after);
@@ -454,7 +894,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.commit_page);
-    await controller.start();
+    await page.start(controller);
     page.observe("opened");
     answerRefresh(page, recorded.commit_retry_started);
     page.answerCommit(recorded.commit_refused);
@@ -481,7 +921,7 @@ async function run() {
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.commit_beside_page);
     answerRefresh(page, recorded.commit_beside_refresh);
-    await controller.start();
+    await page.start(controller);
     page.observe("opened; the page refreshes the stale data beside the mirror");
     answerRefresh(page, recorded.commit_beside_only);
     page.answerCommit(recorded.commit_absent_after);
@@ -507,7 +947,7 @@ async function run() {
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.unreachable);
     page.answerPost(refreshRoute, 202, recorded.unreachable_started);
-    await controller.start();
+    await page.start(controller);
     page.setStatus(recorded.unreachable_after);
     await page.fireTimer();
     page.observe("opened stale");
@@ -539,7 +979,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.commit_retry_started.body.status);
-    await controller.start();
+    await page.start(controller);
     page.observe("opened while a fetch runs");
     answerRefresh(page, recorded.commit_joined);
     page.answerCommit(recorded.commit_found);
@@ -565,7 +1005,7 @@ async function run() {
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.queue_full_page);
     answerRefresh(page, recorded.queue_full_refresh);
-    await controller.start();
+    await page.start(controller);
     page.observe("opened");
     answerRefresh(page, recorded.commit_unqueued_started);
     page.answerCommit(recorded.commit_unqueued_after);
@@ -589,7 +1029,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.commit_page);
-    await controller.start();
+    await page.start(controller);
     page.observe("opened");
     answerRefresh(page, recorded.commit_retry_started);
     const opening = freshness.openMissingCommit(
@@ -627,7 +1067,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.origin_not_shown);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("the origin no longer shows the repository"));
     controller.dispose();
   }
@@ -637,22 +1077,8 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.failed);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("a refresh failed; the pin is still served"));
-    controller.dispose();
-  }
-
-  // A switch the server refuses, as it does when a later refresh pruned the offered
-  // branch before the reader accepted: the recorded refusal of a name the mirror lacks.
-  {
-    const page = createPage();
-    const controller = freshness.createController(page.deps);
-    page.setStatus(recorded.refreshed);
-    await controller.start();
-    page.observe("offered");
-    page.answerPost("/api/source/pin", recorded.pin_refused.status, recorded.pin_refused.body);
-    await controller.acceptOffer();
-    steps.push(page.observe("a refused switch says why and does not reload"));
     controller.dispose();
   }
 
@@ -663,7 +1089,7 @@ async function run() {
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.unreachable);
     page.answerPost("/api/source/refresh", 202, recorded.unreachable_started);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("open a stale page whose origin is gone"));
     page.setStatus(recorded.unreachable_after);
     await page.fireTimer();
@@ -688,7 +1114,7 @@ async function run() {
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.queue_full_page);
     answerRefresh(page, recorded.queue_full_refresh);
-    await controller.start();
+    await page.start(controller);
     steps.push(page.observe("a page's own refresh with no room in the queue says nothing"));
     answerRefresh(page, recorded.queue_full_refresh);
     await controller.requestRefresh();
@@ -702,7 +1128,7 @@ async function run() {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.folder);
-    await controller.start();
+    await page.start(controller);
     const asked = await controller.requestRefresh();
     const folder = page.observe("a folder asks for no refresh");
     assert(asked === null, "a folder's press must ask for nothing");
@@ -741,6 +1167,10 @@ async function run() {
     "/api/file?path=g1-UkVBRE1FLm1k",
     "/api/source/status",
     "http://elsewhere.example/api/file",
+    // The event log is about the server, whichever revision it shows (A4, review A of #629).
+    "/api/event-log/client",
+    "/api/event-log?client=k3v9q2zx",
+    "/api/event-logs",
     "/api/tree?depth=1",
   ]) {
     answered.push((await guardedFetch(url)).status);
@@ -935,6 +1365,7 @@ async function run() {
     { name: "the session expired", status: 410, body: {}, initial: false },
     { name: "the cursor was rejected", status: 400, body: {}, initial: false },
     { name: "a conflict without a code", status: 409, body: {}, initial: false },
+    { name: "another tab switched the revision", ...recorded.pin_changed, initial: false },
     { name: "the server failed", status: 500, body: {}, initial: false },
     { name: "the first page was stale", ...recorded.history_stale, initial: true },
   ];
@@ -950,12 +1381,114 @@ async function run() {
     }),
   }));
 
-  return { steps, guard, landing, wired, history };
+  // Focused invariants of `describe`, outside the recorded conversation: the recording's
+  // mirror has no pull request heads to pin. A pin on a pull request's head follows it as
+  // a branch's does (`follows_moves` in mirror_refresh.py), and the row names the pull
+  // request, not its raw ref. A commit opened by its ID that is such a head stays put
+  // (`follows` false), and the head's new tip is offered instead.
+  {
+    const onHead = {
+      ...recorded.stale,
+      ref: "refs/pull/7/head",
+      ref_name: "refs/pull/7/head",
+      follows: true,
+      pin: recorded.refreshed.pin,
+      latest: recorded.refreshed.pin,
+    };
+    const followed = freshness.describe(onHead, {
+      shown: { pin: recorded.stale.pin, ref: onHead.ref },
+      nowMs: NOW_MS,
+    });
+    assert(
+      followed.follow?.ref === onHead.ref &&
+        followed.follow.commit === onHead.pin &&
+        followed.offer === null &&
+        followed.label === "Updating to pull request #7…" &&
+        followed.detail === "Pull request #7 has moved, and this page follows it.",
+      `a pull request's head is followed, and named: ${JSON.stringify(followed)}`,
+    );
+    const byId = { ...onHead, follows: false, pin: recorded.stale.pin };
+    const offered = freshness.describe(byId, {
+      shown: { pin: byId.pin, ref: byId.ref },
+      nowMs: NOW_MS,
+    });
+    assert(
+      offered.follow === null &&
+        offered.offer?.kind === "switch" &&
+        offered.offer.ref === byId.ref &&
+        offered.offer.text === "Pull request #7 has moved" &&
+        offered.offer.button === "Switch",
+      `a commit opened by its ID is offered its ref's new tip: ${JSON.stringify(offered)}`,
+    );
+    // The row's own words start a sentence capitalized, and a ref's name stays its own.
+    const gone = { ...byId, latest: byId.pin, ref_on_origin: false };
+    const goneRow = freshness.describe(gone, {
+      shown: { pin: gone.pin, ref: gone.ref },
+      nowMs: NOW_MS,
+    });
+    const branchGone = freshness.describe(
+      { ...gone, ref: "refs/heads/topic", ref_name: "topic" },
+      { shown: { pin: gone.pin, ref: "refs/heads/topic" }, nowMs: NOW_MS },
+    );
+    assert(
+      goneRow.detail.startsWith("Pull request #7 is no longer on the origin;") &&
+        branchGone.detail.startsWith("topic is no longer on the origin;"),
+      `a sentence the label starts: ${JSON.stringify({ goneRow, branchGone })}`,
+    );
+
+    // Taking the offer asks for the ref by name, which the server follows from then on,
+    // naming the page's address, and lands where the answer says the page is, as a follow
+    // does (B2 of review B on #745): in place on a file the new tip has, the root on one it
+    // lacks. A refusal says so and keeps the offer.
+    const page = createPage();
+    page.setStatus(byId);
+    const controller = freshness.createController(page.deps, {
+      shown: { pin: byId.pin, ref: byId.ref },
+    });
+    await page.start(controller);
+    page.observe("opened on a commit a pull request's head has moved on from");
+    page.answerPost("/api/source/pin", 409, { code: "ref_moved" });
+    await controller.acceptOffer();
+    const refused = page.observe("the switch is refused");
+    page.answerPost("/api/source/pin", 200, { changed: true, status: onHead, view_href: "/view/" });
+    await controller.acceptOffer();
+    const taken = page.observe("the switch is taken");
+    const lacked = recorded.followed_elsewhere;
+    page.setAddress(lacked.view);
+    page.answerPost("/api/source/pin", 200, { ...lacked.answer, status: onHead });
+    await controller.acceptOffer();
+    const elsewhere = page.observe("the switch from a file the new tip lacks");
+    controller.dispose();
+    const asked = (view) => `POST /api/source/pin ${JSON.stringify({ ref: byId.ref, view })}`;
+    assert(
+      refused.requests.includes(asked("/view/")) &&
+        refused.reloads === 0 &&
+        refused.paint.error === "Could not switch to that commit." &&
+        refused.paint.offer === "Pull request #7 has moved [Switch] → refs/pull/7/head" &&
+        taken.requests.includes(asked("/view/")) &&
+        taken.reloads === 1 &&
+        taken.navigated === undefined &&
+        elsewhere.requests.includes(asked(lacked.view)) &&
+        elsewhere.reloads === 1 &&
+        JSON.stringify(elsewhere.navigated) === JSON.stringify([lacked.answer.view_href]),
+      `the offer switches to the ref by name and lands as a follow does: ${JSON.stringify({ refused, taken, elsewhere })}`,
+    );
+  }
+
+  return { steps, asks, folder, checkoutBranch, guard, landing, wired, history };
 }
 
 run()
-  .then((transcript) => {
-    process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
+  .then(({ asks, folder, checkoutBranch, ...transcript }) => {
+    const printed =
+      process.argv[2] === "asks"
+        ? { part: "asks", steps: asks }
+        : process.argv[2] === "folder"
+          ? { part: "folder", steps: folder }
+          : process.argv[2] === "checkout-branch"
+            ? { part: "checkout-branch", steps: checkoutBranch }
+            : transcript;
+    process.stdout.write(`${JSON.stringify(printed, null, 2)}\n`);
   })
   .catch((error) => {
     process.stderr.write(`${error.stack || error}\n`);

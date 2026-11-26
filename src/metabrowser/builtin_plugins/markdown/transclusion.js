@@ -1,5 +1,5 @@
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
-import { placeRendered } from "./place-rendered.js";
+import { drawDiagrams, placeRendered } from "./place-rendered.js";
 import { kpressTocConfig } from "./toc-toggle.js";
 
 /** Bounds recursive embedding depth. */
@@ -334,6 +334,8 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
   let nestedHandle = null;
   /** @type {(() => void) | null} */
   let disposeToc = null;
+  /** @type {{dispose(): void} | null} */
+  let diagrams = null;
   const abortParent = () => dispose();
   if (options.signal?.aborted) {
     disposed = true;
@@ -360,6 +362,8 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
     nestedHandle = null;
     disposeToc?.();
     disposeToc = null;
+    diagrams?.dispose();
+    diagrams = null;
   }
 
   function clearClaimTimeout() {
@@ -469,6 +473,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
               },
             })
           : mb.kpressInitToc?.(aside, kpressTocConfig(aside)) || null;
+      diagrams = drawDiagrams(aside, mb, inertRender ? "image" : "document");
     } catch (error) {
       if (disposed || options.signal?.aborted) {
         return;
@@ -591,6 +596,9 @@ function renderTransclusionError(aside, label, code) {
   aside.innerHTML = "";
   aside.setAttribute("aria-busy", "false");
   aside.setAttribute("role", "alert");
+  // A failure is a notice, the shell's one box for it, rather than the embedded card.
+  aside.setAttribute("class", "notice metabrowser-transclusion-notice");
+  aside.setAttribute("data-severity", "error");
   aside.setAttribute("data-metabrowser-transclusion-status", "error");
   aside.setAttribute("data-metabrowser-transclusion-error", code);
   aside.setAttribute("title", explanation);
@@ -602,14 +610,14 @@ function transclusionErrorLabel(code) {
   /** @type {Record<string, string>} */
   const labels = {
     cycle: "This embed would create a cycle.",
-    "depth-limit": "The nested embed depth limit was reached.",
-    "document-limit": "The embedded document limit was reached.",
+    "depth-limit": "Embeds are nested too deeply to show.",
+    "document-limit": "This document embeds too many notes to show them all.",
     "missing-location": "The requested heading or block was not found.",
     "render-failed": "The embedded note could not be rendered.",
-    "source-byte-limit": "The embedded source limit was reached.",
+    "source-byte-limit": "The embedded notes are too large to show them all.",
     "source-too-large": "The embedded note is too large.",
     "timed-out": "The embedded note timed out.",
-    "transformed-source-byte-limit": "The embedded note expands past the render limit.",
+    "transformed-source-byte-limit": "The embedded note is too large to render.",
     "unsupported-location": "The requested embedded location is unsupported.",
     "wiki-target-limit": "The embedded note has too many wiki targets.",
   };

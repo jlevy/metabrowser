@@ -82,7 +82,7 @@
    * `key`, on a dropdown's option, is the letter that chooses its row while the menu is
    * open and has focus; the shell's keymap gives it to the shortcut registry.
    * @typedef {{value: string, label: string, tip?: string, className?: string,
-   *            count?: number, icon?: string, iconClass?: string,
+   *            count?: number | string, icon?: string, iconClass?: string,
    *            ageClass?: string, key?: string}} ChipOption
    * @typedef {{key: string, select?: string, layout?: string, label: string,
    *            options: ChipOption[], value: string | string[] | null,
@@ -206,7 +206,7 @@
    *          anyValue?: string, anyKey?: string, select?: string, open?: boolean,
    *          menuId: string,
    *          presets?: Array<{id: string, label: string, values: string[], count?: number}>,
-   *          presetSections?: Array<{id: string, label?: string, presets: Array<{id: string, label: string, values: string[], count?: number}>}>}} spec
+   *          presetSections?: Array<{id: string, label?: string, icon?: string, presets: Array<{id: string, label: string, values: string[], count?: number}>}>}} spec
    */
   function menuGroupHtml(spec) {
     const many = spec.select !== "one";
@@ -254,7 +254,7 @@
         const extra = opt.className ? ` ${esc(opt.className)}` : "";
         const tip = opt.tip ? ` data-tip-text="${esc(opt.tip)}"` : "";
         const count =
-          typeof opt.count === "number"
+          typeof opt.count === "number" || typeof opt.count === "string"
             ? `<span class="chip-menu-count">${esc(opt.count.toLocaleString())}</span>`
             : "";
         // The file-type icon, not a colored label: the icon is what
@@ -303,7 +303,8 @@
         return (
           `<div class="menu-group" role="group" aria-labelledby="${esc(labelId)}"` +
           ` data-chip-menu-section="${esc(section.id)}">` +
-          `<div class="group-heading" id="${esc(labelId)}">${esc(section.label || section.id)}</div>` +
+          `<div class="group-heading" id="${esc(labelId)}">${section.icon || ""}` +
+          `${esc(section.label || section.id)}</div>` +
           section.presets
             .map((preset) => {
               const on =
@@ -680,6 +681,8 @@
     if (menu?.getAttribute("aria-expanded") !== "true") {
       return null;
     }
+    // Every way a dropdown opens comes here.
+    boundMenus.get(root)?.opened();
     const panel = menu.querySelector(".chip-menu-panel");
     const row = /** @type {HTMLElement | null} */ (
       panel?.querySelector('.chip-menu-item[aria-checked="true"]') ??
@@ -736,9 +739,37 @@
     return () => settleFocus(root, selector);
   }
 
+  // How every menu closes: static/menus.js, a shell tool, fetched if one opens sooner.
+  /** @param {MetabrowserDismissibleMenu} menu @returns {MetabrowserDismissibleHandle} */
+  function dismissible(menu) {
+    let gone = false;
+    /** @type {MetabrowserDismissibleHandle | undefined} */
+    let handle;
+    const real = () => (handle ??= window.MetabrowserMenus?.dismissible(menu));
+    return Object.freeze({
+      opened() {
+        if (real()) {
+          real()?.opened();
+        } else {
+          window.MetabrowserAssets?.ensureAsset("shell-tools").then(
+            () => !gone && menu.isOpen() && real()?.opened(),
+            console.error,
+          );
+        }
+      },
+      closed: () => real()?.closed(),
+      dispose() {
+        gone = true;
+        real()?.dispose();
+      },
+    });
+  }
+
   /** Each bound container's row path, so a row's letter runs what a click on it runs.
    * @type {WeakMap<Element, (row: HTMLElement) => void>} */
   const boundRows = new WeakMap();
+  /** @type {WeakMap<Element, MetabrowserDismissibleHandle>} */
+  const boundMenus = new WeakMap();
 
   /**
    * Choose a dropdown row as a click on it does, through the handlers of the container
@@ -785,7 +816,7 @@
   function bind(root, handlers) {
     const opts = handlers || {};
 
-    /** Any open dropdown, so outside clicks and Escape can close it. */
+    /** The open dropdown's key, or null: the container holds at most one open. */
     function openMenuKey() {
       const open = root.querySelector('.chip-menu[aria-expanded="true"]');
       return open ? open.getAttribute("data-chip-menu") : null;
@@ -838,6 +869,25 @@
 
     /** @param {Event} event */
     function onClick(event) {
+      const target = /** @type {Element} */ (event.target);
+      const key = openMenuKey();
+      const beside = !openWrap()?.contains(target);
+      handleClick(event);
+      closeBeside(beside && !target.closest?.("label") ? key : null);
+    }
+
+    /** @param {string | null} key */
+    function closeBeside(key) {
+      if (key !== null && openMenuKey() === key) {
+        opts.onMenuToggle?.(key, false);
+      }
+      if (openMenuKey() === null) {
+        dropdowns.closed();
+      }
+    }
+
+    /** @param {Event} event */
+    function handleClick(event) {
       const target = /** @type {Element | null} */ (event.target);
       if (!target || typeof target.closest !== "function") {
         return;
@@ -1003,47 +1053,27 @@
       }
     }
 
-    // Outside interaction dismisses the dropdown. Bound on the
-    // document because the whole point is clicks the bar never sees;
-    // the disposer below detaches it with the rest.
-    /** @param {Event} event */
-    function onDocumentPointerDown(event) {
-      const openKey = openMenuKey();
-      if (openKey === null) {
-        return;
-      }
-      const target = /** @type {Node | null} */ (event.target);
-      if (target && root.contains(target)) {
-        return;
-      }
-      if (opts.onMenuToggle) {
-        opts.onMenuToggle(openKey, false);
-      }
-    }
-
-    // Escape has to work even when focus has left the bar, so it is
-    // bound on the document. Kept separate from onKeyDown so arrow
-    // traversal stays scoped to the bar and nothing fires twice.
-    /** @param {Event} event */
-    function onDocumentEscape(event) {
-      const ev = /** @type {KeyboardEvent} */ (event);
-      if (ev.key !== "Escape" || ev.altKey || ev.ctrlKey || ev.metaKey) {
-        return;
-      }
-      // An Escape that closed a surface above the bar, such as Quick Search or Help, is
-      // that surface's: the topmost closes first (docs/design-system.md, "Shared Overlay
-      // Lifecycle"), and the menu waits for the next.
-      if (ev.defaultPrevented) {
-        return;
-      }
-      const openKey = openMenuKey();
-      if (openKey !== null && opts.onMenuToggle) {
-        const trigger = root.querySelector(`[data-chip-menu-toggle="${quoted(openKey)}"]`);
-        opts.onMenuToggle(openKey, false);
-        // Back to the trigger, unless focus had already left the bar for the page.
-        settleFocus(root, trigger ? controlSelector(trigger) : null);
-      }
-    }
+    // A press beside it in the container closes it once the control acts, on its click or a
+    // checkbox's change: the consumer's rebuild as it closes would take the control away.
+    const openWrap = () => root.querySelector('.chip-menu[aria-expanded="true"]');
+    const dropdowns = dismissible({
+      name: "chip-menu-panel",
+      trigger: () =>
+        /** @type {HTMLElement | null} */ (openWrap()?.querySelector("[data-chip-menu-toggle]")),
+      inside: (node) => root.contains(node),
+      isOpen: () => !!openWrap(),
+      close(how) {
+        const openKey = openMenuKey();
+        const trigger = openWrap()?.querySelector("[data-chip-menu-toggle]");
+        if (openKey !== null) {
+          opts.onMenuToggle?.(openKey, false);
+        }
+        // Escape: focus back to the trigger, as rebuilt.
+        if (how === "escape") {
+          settleFocus(root, trigger ? controlSelector(trigger) : null);
+        }
+      },
+    });
 
     // Checkboxes report through `change`, not `click`: that is the
     // event that fires for keyboard activation too.
@@ -1057,6 +1087,7 @@
       if (key && opts.onToggle) {
         opts.onToggle(key, target.checked === true);
       }
+      closeBeside(openMenuKey());
     }
 
     // An open dropdown's room changes with the window, so it is fitted again.
@@ -1067,31 +1098,137 @@
     root.addEventListener("click", onClick);
     root.addEventListener("change", onChange);
     root.addEventListener("keydown", onKeyDown);
-    const doc = root.ownerDocument;
-    const view = doc?.defaultView;
-    doc?.addEventListener("pointerdown", onDocumentPointerDown);
-    doc?.addEventListener("keydown", onDocumentEscape);
+    const view = root.ownerDocument?.defaultView;
     view?.addEventListener("resize", onWindowResize);
     boundRows.set(root, pickRow);
+    boundMenus.set(root, dropdowns);
+    // Drawn open, as by a consumer rebinding each paint (Agents), it keeps closing.
+    if (openWrap()) {
+      dropdowns.opened();
+    }
     // In a navigation toolbar, a segmented group wider than its line takes the cluster.
     const stopFitting = keepJoinedGroupsFitted(root);
     return () => {
       if (boundRows.get(root) === pickRow) {
         boundRows.delete(root);
       }
+      if (boundMenus.get(root) === dropdowns) {
+        boundMenus.delete(root);
+      }
+      dropdowns.dispose();
       root.removeEventListener("click", onClick);
       root.removeEventListener("change", onChange);
       root.removeEventListener("keydown", onKeyDown);
-      doc?.removeEventListener("pointerdown", onDocumentPointerDown);
-      doc?.removeEventListener("keydown", onDocumentEscape);
       view?.removeEventListener("resize", onWindowResize);
       stopFitting();
     };
   }
 
+  // ── File type menu rows, for the Files tab and diffs alike ──────
+  // A hard cap that includes the selection: appending unranked selected tokens let one
+  // preset add dozens of rows; its other members stay reachable through its row.
+  const TYPE_MENU_MAX = 20;
+
+  /**
+   * @param {ReadonlyArray<MetabrowserPublicTypeTallyRow> | undefined} rows
+   * @param {boolean} showIgnored
+   * @returns {Array<[string, number]>}
+   */
+  function shownCounts(rows, showIgnored) {
+    return (rows || []).map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]);
+  }
+
+  /**
+   * @param {MetabrowserPublicTypeTally} tally
+   * @param {MetabrowserPublicTypeMenuOptions} [options]
+   * @returns {Array<MetabrowserPublicFilterOption>}
+   */
+  function typeMenuOptions(tally, options = {}) {
+    const canonical = tally.canonical_extensions || [];
+    const ranked = shownCounts(
+      canonical.length > 0 ? canonical : tally.extensions,
+      options.showIgnored !== false,
+    )
+      .filter((row) => row[1] > 0)
+      // Re-rank on the shown count: the server ranks by the total.
+      .sort((a, b) => (b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1]));
+    const iconFor = options.iconFor ?? window.MetabrowserFileTypes?.iconFor;
+    return ranked.slice(0, options.max ?? TYPE_MENU_MAX).map(([ext, count]) => {
+      const fi = iconFor?.(`x${ext}`);
+      return { value: ext, label: ext, count, ...(fi ? { icon: fi.svg, iconClass: fi.cls } : {}) };
+    });
+  }
+
+  /**
+   * Groups, then each display group's families that have files.
+   *
+   * @param {MetabrowserPublicTypeTally} tally
+   * @param {MetabrowserPublicTypeMenuOptions} [options]
+   * @returns {Array<MetabrowserPublicTypePresetSection>}
+   */
+  function typeMenuPresetSections(tally, options = {}) {
+    const showIgnored = options.showIgnored !== false;
+    const presetCounts = new Map(shownCounts(tally.type_presets, showIgnored));
+    const familyCounts = new Map(shownCounts(tally.type_families, showIgnored));
+    const taxonomy = window.MetabrowserFileTypeTaxonomy;
+    const groupPresets = (window.METABROWSER_SETTINGS?.FILTER_TYPE_PRESETS || []).map((preset) => ({
+      ...preset,
+      count: presetCounts.get(preset.id) || 0,
+    }));
+    /** @param {string} groupId */
+    const families = (groupId) =>
+      (taxonomy?.families || [])
+        .filter((family) => (family.groupId || family.category) === groupId)
+        .map((family) => ({
+          id: `family:${family.id}`,
+          label: family.label,
+          values: family.extensions.slice(),
+          count: familyCounts.get(family.id) || 0,
+        }))
+        .filter((family) => family.count > 0);
+    // Display groups in the app's order, Documentation first.
+    const withClass = options.groupIcon ?? window.MetabrowserIcons?.withClass;
+    return [
+      { id: "groups", label: "Groups", presets: groupPresets },
+      ...(taxonomy?.displayGroups || []).map((group) => {
+        const icon = withClass?.(group.icon, "category-icon");
+        return {
+          id: `families:${group.id}`,
+          label: group.label,
+          ...(icon ? { icon } : {}),
+          presets: families(group.id),
+        };
+      }),
+    ];
+  }
+
+  /**
+   * Additive: turning a preset on adds its values, turning it off removes only its own.
+   *
+   * @param {ReadonlyArray<string> | null} current
+   * @param {ReadonlyArray<string>} values
+   * @param {boolean} wasOn
+   * @returns {Array<string> | null}
+   */
+  function togglePreset(current, values, wasOn) {
+    const picked = current || [];
+    const next = wasOn
+      ? picked.filter((value) => values.indexOf(value) < 0)
+      : picked.concat(values.filter((value) => picked.indexOf(value) < 0));
+    return next.length > 0 ? next : null;
+  }
+
+  const typeMenu = Object.freeze({
+    MAX_OPTIONS: TYPE_MENU_MAX,
+    options: typeMenuOptions,
+    presetSections: typeMenuPresetSections,
+    togglePreset,
+  });
+
   const api = {
     activateMenuRow,
     escapeHtml: esc,
+    typeMenu,
     nextSelection,
     isSelected,
     groupHtml,
@@ -1112,4 +1249,5 @@
     return;
   }
   window.metabrowser.filterControls = api;
+  window.metabrowser.menus = Object.freeze({ dismissible });
 })();

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Any, cast
 
 from kpress.runtime import get_static_asset
 
 from metabrowser import server as proc_browser
 from metabrowser.settings import DOC_MAX_CHARS_DEFAULT, client_settings_dict
+from tests.shell_request import shell_request
 
 KPRESS_DOC_MIN_WIDTH_QUERY_RE = re.compile(r"@container kpress-doc \(min-width: [\d.]+rem\) \{")
 
@@ -27,23 +27,21 @@ def _read_icons_js() -> str:
 
 
 def _render_index_html() -> str:
-    class _FakeReq:
-        def __init__(self) -> None:
-            self.query_params: dict[str, str] = {}
-            self.headers: dict[str, str] = {}
-
-    resp = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
+    resp = asyncio.run(proc_browser.index(shell_request()))
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)
 
 
 def test_app_shell_tracks_active_printable_view() -> None:
     src = _read_app_js()
-    assert "function setActivePreviewView" in src
+    # Which view is in front, and its print state, is the compositor's to say.
+    composition = proc_browser.STATIC_DIR.joinpath("view-composition.js").read_text()
+    assert "function setActiveView(host, viewId)" in composition
+    assert "host.dataset.printable = " in composition
+    assert "setActiveView(host, tabId)" in composition
     assert "data-printable" in src
     assert "data-print-profile" in src
     assert "data-render-runtime" in src
     assert 'data-active-view="false"' in src
-    assert "setActivePreviewView(tabId, container)" in src
     # Printing is the browser's, for Command-P and for the rendered document's print
     # button alike: the shell draws no print control and holds no print command (mb-07a1).
     assert "file-header-print" not in src
@@ -269,3 +267,21 @@ def test_embedded_kpress_wide_toc_uses_borderless_rail() -> None:
     assert "scrollbar-width: none;" in band_block
     assert ".metabrowser-kpress-host .kpress-toc::-webkit-scrollbar {" in band_block
     assert "display: none;" in band_block
+
+
+def test_print_page_margin_is_kpress_token_as_a_length() -> None:
+    """WebKit resolves no custom property in ``@page``, so the adapter writes KPress's margin out.
+
+    The copy in ``static/styles.css`` must stay KPress's ``--kpress-print-page-margin``,
+    and must outrank print.css's own ``@page`` rule, which loads after it.
+    """
+
+    tokens = get_static_asset("css/style-tokens.css").content.decode()
+    token = re.search(r"--kpress-print-page-margin:\s*([^;]+);", tokens)
+    assert token is not None
+    css = _read_styles_css()
+    adapter = css[css.index("/* ── Print adapter") :]
+    page = re.search(r"@page \{\s*(?:/\*.*?\*/\s*)?margin: ([^;]+);", adapter, re.DOTALL)
+    assert page is not None
+    assert page.group(1) == f"{token.group(1).strip()} !important"
+    assert "var(" not in page.group(1)

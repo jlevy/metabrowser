@@ -8,7 +8,8 @@ nonisolated private let plan = PresentPlan(kind: .pullRequest, repository: repos
 nonisolated private let metab = "metab 0.13.0 at /opt/metab"
 
 /// What File > Open URL… hands to `metab`: only a full GitHub URL that `GitHubLink`, the
-/// check every link sent to the app passes, accepts.
+/// check every link sent to the app passes, accepts, once text that is plainly one is
+/// written in full.
 @Suite struct OpenURLEntryTests {
     /// Each kind of link `metab` opens, as typed or pasted, is the link given to `metab`,
     /// unchanged but for the white space around it.
@@ -33,16 +34,109 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         }
     }
 
-    /// Anything else is said in the panel and never reaches `metab`, which would read a
-    /// shorthand as a local path.
+    /// Text that is plainly a GitHub URL is written in full, and then is exactly what the
+    /// full URL is: the same link, or the same problem. GitHub answers each spelling as it
+    /// answers the full one.
+    @Test(arguments: [
+        ("github.com/jlevy/kpress", "https://github.com/jlevy/kpress"),
+        ("jlevy/metabrowser", "https://github.com/jlevy/metabrowser"),
+        ("  Team-42/Example.docs_repo-2\n", "https://github.com/Team-42/Example.docs_repo-2"),
+        ("GitHub.com/jlevy/kpress", "https://GitHub.com/jlevy/kpress"),
+        ("www.github.com/jlevy/kpress", "https://www.github.com/jlevy/kpress"),
+        ("github.com/jlevy/metabrowser/pull/539/files", "https://github.com/jlevy/metabrowser/pull/539/files"),
+        ("raw.githubusercontent.com/jlevy/metabrowser/main/README.md",
+         "https://raw.githubusercontent.com/jlevy/metabrowser/main/README.md"),
+        ("github.com", "https://github.com"),
+        ("github.com?tab=repositories", "https://github.com?tab=repositories"),
+        ("github.com/octo/demo/blob/main/a b.md", "https://github.com/octo/demo/blob/main/a b.md"),
+        ("github.com/octo/demo/blob/main/a\\b.md", "https://github.com/octo/demo/blob/main/a\\b.md"),
+        ("http://github.com/jlevy/kpress", "https://github.com/jlevy/kpress"),
+        ("HTTP://www.GitHub.com/jlevy/kpress", "https://www.GitHub.com/jlevy/kpress"),
+        ("http://raw.githubusercontent.com/jlevy/metabrowser/main/README.md",
+         "https://raw.githubusercontent.com/jlevy/metabrowser/main/README.md"),
+        ("//github.com/jlevy/kpress", "https://github.com/jlevy/kpress"),
+        ("  github.com/jlevy/kpress\n", "https://github.com/jlevy/kpress"),
+    ])
+    func plainlyAGitHubURLIsWrittenInFull(_ text: String, _ full: String) {
+        #expect(OpenURLEntry.corrected(text) == full)
+        #expect(OpenURLEntry.link(text) == OpenURLEntry.link(full))
+    }
+
+    /// The owner's example, 2026-11-19, opens what the full URL opens.
+    @Test func theOwnersExampleOpens() throws {
+        let link = try OpenURLEntry.link("github.com/jlevy/kpress").get()
+        #expect(link.absoluteString == "https://github.com/jlevy/kpress")
+        #expect(GitHubLink.accepts(link))
+    }
+
+    /// The correction leaves other sites, credentials, ports, and explicit paths alone.
+    /// A repository shortcut has exactly two segments in the GitHub repository grammar.
+    @Test(arguments: [
+        "https://github.com/jlevy/kpress",
+        "gitlab.com/jlevy/kpress",
+        "gist.github.com/jlevy/0123",
+        "github.com.evil.example/jlevy/kpress",
+        "evilgithub.com/jlevy/kpress",
+        "http://gitlab.com/jlevy/kpress",
+        "http://user@github.com/jlevy/kpress",
+        "http://github.com:80/jlevy/kpress",
+        "ftp://github.com/jlevy/kpress",
+        "//gitlab.com/jlevy/kpress",
+        "///github.com/jlevy/kpress",
+        "user@github.com/jlevy/kpress",
+        "user:secret@github.com/jlevy/kpress",
+        "github.com:8443/jlevy/kpress",
+        "github.com:443/jlevy/kpress",
+        "git@github.com:jlevy/kpress.git",
+        "https:/github.com/jlevy/kpress",
+        "~/src/kpress",
+        "/srv/git/kpress",
+        "./jlevy/kpress",
+        "jlevy",
+        "jlevy/kpress/",
+        "./docs/macos-app.md",
+        "../src/main.py",
+        "jlevy/kpress/pull/1",
+        "jlevy/kpress?tab=readme",
+        "jlevy/kpress%2fother",
+        "jlevy/kpress#12",
+        "jlevy/.",
+        "jlevy/..",
+        "jle.vy/kpress",
+        "jlevy/kp ress",
+    ])
+    func anythingElseIsLeftAsItIs(_ text: String) {
+        #expect(OpenURLEntry.corrected(text) == text)
+    }
+
+    /// Explicit filesystem paths and shorthand for pages inside a repository are refused.
+    @Test(arguments: ["./docs/macos-app.md", "jlevy/kpress/pull/1", "jlevy/kpress#12"])
+    func explicitPathsAndLongerShorthandAreRefused(_ text: String) {
+        #expect(OpenURLEntry.corrected(text) == text)
+        #expect(OpenURLEntry.link(text) == .failure(.notAFullURL))
+        var panel = OpenURLPanel()
+        panel.edit(text)
+        let opened = panel.open()
+        #expect(opened == nil)
+        #expect(panel.text == text)
+        #expect(panel.message == OpenURLEntry.Problem.notAFullURL.message)
+    }
+
+    /// Anything else is said in the panel and never reaches `metab`, which would read
+    /// text with no scheme as a local path.
     @Test(arguments: [
         ("", OpenURLEntry.Problem.empty),
         (" \n\t", .empty),
-        ("jlevy/metabrowser", .notAFullURL),
-        ("github.com/jlevy/metabrowser", .notAFullURL),
+        ("gitlab.com/jlevy/metabrowser", .notAFullURL),
+        ("gist.github.com/jlevy/0123", .notAFullURL),
+        ("user:secret@github.com/jlevy/metabrowser", .notAFullURL),
+        ("github.com:8443/jlevy/metabrowser", .notAFullURL),
+        ("jlevy/metabrowser/pull/539", .notAFullURL),
         ("git@github.com:jlevy/metabrowser.git", .notAFullURL),
         ("~/src/metabrowser", .notAFullURL),
-        ("http://github.com/jlevy/metabrowser", .notHTTPS),
+        ("//gitlab.com/jlevy/metabrowser", .notAFullURL),
+        ("http://gitlab.com/jlevy/metabrowser", .notHTTPS),
+        ("http://user@github.com/jlevy/metabrowser", .notHTTPS),
         ("ssh://git@github.com/jlevy/metabrowser", .notHTTPS),
         ("file:///tmp/metabrowser", .notHTTPS),
         ("https://user:secret@github.com/jlevy/metabrowser", .credentials),
@@ -68,6 +162,8 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         ("https://github.com/octo/demo/blob/main/100%.md", .percent),
         ("https://github.com/octo/demo/blob/main/a%zz.md", .percent),
         ("https://github.com/octo/demo/blob/main/a%2", .percent),
+        ("github.com/octo/demo/blob/main/a\\b.md", .character("\\")),
+        ("jlevy/..", .notAFullURL),
     ])
     func anythingElseIsSaidAndNotSent(_ text: String, _ problem: OpenURLEntry.Problem) {
         #expect(OpenURLEntry.link(text) == .failure(problem))
@@ -97,6 +193,11 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
     }
 
     @Test func aLinkPastTheLimitIsTooLong() {
+        // Within the limit as typed, but not once `https://` is written before it.
+        let start = "github.com/octo/demo/blob/main/"
+        let bare = start + String(repeating: "a", count: GitHubLink.maximumLength - start.utf8.count)
+        #expect(bare.utf8.count == GitHubLink.maximumLength)
+        #expect(OpenURLEntry.link(bare) == .failure(.tooLong))
         let long = "https://github.com/octo/demo/blob/main/" + String(repeating: "a", count: GitHubLink.maximumLength)
         #expect(OpenURLEntry.link(long) == .failure(.tooLong))
         // Within the limit as typed, but not once each é is sent as %C3%A9.
@@ -132,12 +233,15 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
 /// The panel's states: what Open, an edit, `metab`'s answer, and Cancel do.
 @Suite struct OpenURLPanelTests {
     /// A panel asking `metab` about `text`, which `link` is.
-    private func checking(_ text: String, link: URL = pullRequest) -> OpenURLPanel {
+    private func checking(
+        _ text: String, link: URL = pullRequest
+    ) throws -> (OpenURLPanel, OpenURLPanel.Request) {
         var panel = OpenURLPanel()
         panel.edit(text)
         let opened = panel.open()
-        #expect(opened == link)
-        return panel
+        let request = try #require(opened)
+        #expect(request.link == link)
+        return (panel, request)
     }
 
     @Test func openWaitsForText() {
@@ -151,55 +255,119 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.canOpen)
     }
 
-    /// A shorthand is not sent: the panel says why, stays open, and the next edit clears it.
+    /// Text that is not a link is not sent: the panel says why, stays open with the text as
+    /// typed, and the next edit clears the reason.
     @Test func textThatIsNotALinkIsSaidUnderTheField() {
         var panel = OpenURLPanel()
-        panel.edit("jlevy/metabrowser")
+        panel.edit(" gitlab.com/jlevy/metabrowser ")
         let opened = panel.open()
         #expect(opened == nil)
         #expect(panel.message == OpenURLEntry.Problem.notAFullURL.message)
+        #expect(panel.text == " gitlab.com/jlevy/metabrowser ")
         #expect(panel.phase == .editing)
         #expect(panel.canOpen)
         panel.edit("https://github.com/jlevy/metabrowser")
         #expect(panel.message == nil)
     }
 
-    /// Open sends the link once: a second press while `metab` is asked does nothing.
-    @Test func openSendsTheLinkOnce() {
-        var panel = checking("  \(pullRequest.absoluteString)\n")
-        #expect(panel.phase == .checking(pullRequest))
-        #expect(panel.isChecking)
+    /// Open writes the URL in full in the field before it asks `metab`.
+    @Test(arguments: [
+        ("https://github.com/jlevy/metabrowser", repository),
+        ("github.com/jlevy/metabrowser", repository),
+        ("jlevy/metabrowser", repository),
+        ("github.com/jlevy/metabrowser/pull/539", pullRequest),
+        (" http://github.com/jlevy/metabrowser/pull/539\n", pullRequest),
+        ("//github.com/jlevy/metabrowser/pull/539", pullRequest),
+    ])
+    func openWritesAGitHubURLInFull(_ typed: String, _ expected: URL) throws {
+        let (panel, request) = try checking(typed, link: expected)
+        #expect(panel.text == expected.absoluteString)
+        #expect(panel.message == nil)
+        #expect(panel.phase == .checking(request))
+    }
+
+    /// The field holds the full URL, so a refusal of it, the panel's or `metab`'s, is about
+    /// what the field shows; editing it from there works as any edit does.
+    @Test func aRefusalOfACorrectedURLIsAboutWhatTheFieldShows() throws {
+        var panel = OpenURLPanel()
+        panel.edit("github.com/octo/demo/blob/main/a\\b.md")
+        let refused = panel.open()
+        #expect(refused == nil)
+        #expect(panel.text == "https://github.com/octo/demo/blob/main/a\\b.md")
+        #expect(panel.message == OpenURLEntry.Problem.character("\\").message)
+
+        let issues = try #require(URL(string: "https://github.com/jlevy/metabrowser/issues/1"))
+        panel.edit("github.com/jlevy/metabrowser/issues/1")
+        let opened = panel.open()
+        let request = try #require(opened)
+        #expect(request.link == issues)
+        #expect(panel.text == issues.absoluteString)
+        let refusal = PresentRefusal(code: "unsupported_github_url", message: "GitHub issues pages are not opened")
+        _ = panel.answered(.refused(refusal), for: request, metab: metab)
+        #expect(panel.text == issues.absoluteString)
+        #expect(panel.message == refusal.message)
+        let dropped = panel.edit("github.com/jlevy/metabrowser")
+        #expect(dropped == nil)
+        let reopened = panel.open()
+        #expect(reopened?.link == repository)
+        #expect(panel.text == repository.absoluteString)
+    }
+
+    @Test func openSendsTheLinkOnce() throws {
+        let (checkingPanel, request) = try checking("  \(pullRequest.absoluteString)\n")
+        var panel = checkingPanel
+        #expect(panel.phase == .checking(request))
+        #expect(panel.progress == "Checking URL…")
         #expect(!panel.canOpen)
         let openedAgain = panel.open()
         #expect(openedAgain == nil)
     }
 
-    /// A plan closes the panel and is opened; nothing changes the panel after that.
-    @Test func aPlanClosesThePanel() {
-        var panel = checking(pullRequest.absoluteString)
-        let opens = panel.answered(.plan(plan), for: pullRequest, metab: metab)
+    @Test func aPlanKeepsThePanelOpenUntilTheWindowIsPresented() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        let opens = panel.answered(.plan(plan), for: request, metab: metab)
         #expect(opens == plan)
-        #expect(panel.phase == .closed)
+        #expect(panel.phase == .opening(request))
+        #expect(panel.progress == "Opening repository…")
+        #expect(!panel.canEdit)
+        #expect(!panel.canOpen)
         panel.edit("https://github.com/jlevy/tbd")
         #expect(panel.text == pullRequest.absoluteString)
-        let opened = panel.open()
-        #expect(opened == nil)
-        let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
-        #expect(opensLate == nil)
-        // The panel closing after its plan stops no dry run: the plan's is over.
+        let presented = panel.presented(for: request)
+        #expect(presented)
+        #expect(panel.phase == .closed)
+        #expect(panel.progress == nil)
         let dropped = panel.cancel()
         #expect(dropped == nil)
+    }
+
+    @Test func aWindowPlacementFailureLetsTheUserRetry() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        _ = panel.answered(.plan(plan), for: request, metab: metab)
+        panel.failed("Could not present a window.", for: request)
+        #expect(panel.phase == .editing)
+        #expect(panel.message == "Could not present a window.")
+        #expect(panel.canOpen)
+        #expect(panel.text == pullRequest.absoluteString)
+        let reopened = panel.open()
+        let retry = try #require(reopened)
+        #expect(retry.link == request.link)
+        #expect(retry != request)
+        #expect(panel.message == nil)
     }
 
     /// `metab`'s refusal is said in its own words, and the panel stays open with the text.
     @Test func aRefusalIsSaidAndThePanelStaysOpen() throws {
         let issues = "https://github.com/jlevy/metabrowser/issues/1"
         let link = try #require(URL(string: issues))
-        var panel = checking(issues, link: link)
+        let (checkingPanel, request) = try checking(issues, link: link)
+        var panel = checkingPanel
         let refusal = PresentRefusal(
             code: "unsupported_github_url",
             message: "GitHub issues pages are not opened; open the repository at https://github.com/jlevy/metabrowser")
-        let opens = panel.answered(.refused(refusal), for: link, metab: metab)
+        let opens = panel.answered(.refused(refusal), for: request, metab: metab)
         #expect(opens == nil)
         #expect(panel.message == refusal.message)
         #expect(panel.phase == .editing)
@@ -207,21 +375,23 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.canOpen)
     }
 
-    @Test func aLongRefusalIsShortened() {
-        var panel = checking(pullRequest.absoluteString)
+    @Test func aLongRefusalIsShortened() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
         let long = String(repeating: "x", count: PresentAnswer.shownLineLength * 2)
-        _ = panel.answered(.refused(PresentRefusal(code: "c", message: long)), for: pullRequest, metab: metab)
+        _ = panel.answered(.refused(PresentRefusal(code: "c", message: long)), for: request, metab: metab)
         #expect(panel.message?.count == PresentAnswer.shownLineLength)
     }
 
     /// An answer the app cannot read names the `metab` and the reason, and never its
     /// output, which can hold a traceback or JSON.
     @Test func anUnreadableAnswerNamesMetabAndNotItsOutput() throws {
-        var panel = checking(pullRequest.absoluteString)
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
         let answer = PresentAnswer.unreadable(
             reason: "printed no answer (exit status 1)",
             output: ["Traceback (most recent call last):", #"{"kind": "#])
-        let opens = panel.answered(answer, for: pullRequest, metab: metab)
+        let opens = panel.answered(answer, for: request, metab: metab)
         #expect(opens == nil)
         let message = try #require(panel.message)
         #expect(message.contains(metab))
@@ -231,49 +401,58 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.phase == .editing)
     }
 
-    /// An edit while `metab` is asked drops its answer: the text it answered about is gone.
-    /// It returns the link it stopped awaiting, whose dry run the app stops; an edit
-    /// with no answer awaited returns nothing.
-    @Test func anEditDropsTheAnswerAwaited() {
-        var panel = checking(pullRequest.absoluteString)
-        #expect(panel.awaited == pullRequest)
+    @Test func anEditDropsTheAnswerAwaited() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        #expect(panel.awaited == request)
         let dropped = panel.edit("https://github.com/jlevy/metabrowser/pull/540")
-        #expect(dropped == pullRequest)
+        #expect(dropped == request)
         #expect(panel.awaited == nil)
-        let droppedAgain = panel.edit("https://github.com/jlevy/metabrowser/pull/541")
-        #expect(droppedAgain == nil)
-        #expect(panel.phase == .editing)
-        let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
+        let opensLate = panel.answered(.plan(plan), for: request, metab: metab)
         #expect(opensLate == nil)
         #expect(panel.phase == .editing)
         #expect(panel.message == nil)
     }
 
-    /// Cancel, or closing the panel, returns the link it stopped awaiting, as an edit does.
-    @Test func cancelDropsTheAnswerAwaited() {
-        var panel = checking(pullRequest.absoluteString)
+    @Test func aRuntimeWaitCanResumeOrBeCancelled() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        let waiting = panel.setWaitingForRuntime(true, for: request)
+        #expect(waiting)
+        #expect(panel.phase == .waitingForRuntime(request))
+        #expect(panel.progress == "Waiting for the server runtime…")
+        let openedAgain = panel.open()
+        #expect(openedAgain == nil)
+        let resumed = panel.setWaitingForRuntime(false, for: request)
+        #expect(resumed)
+        #expect(panel.phase == .checking(request))
+        // A runtime can also become unavailable between the plan and window placement.
+        _ = panel.answered(.plan(plan), for: request, metab: metab)
+        let waitingAgain = panel.setWaitingForRuntime(true, for: request)
+        #expect(waitingAgain)
         let dropped = panel.cancel()
-        #expect(dropped == pullRequest)
-        let droppedAgain = panel.cancel()
-        #expect(droppedAgain == nil)
-        let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
-        #expect(opensLate == nil)
+        #expect(dropped == request)
+        let resumedAfterCancel = panel.setWaitingForRuntime(false, for: request)
+        #expect(!resumedAfterCancel)
         #expect(panel.phase == .closed)
-        let opened = panel.open()
-        #expect(opened == nil)
     }
 
-    /// With no `metab` to ask, the link goes to the link queue, which waits for one.
-    @Test func aLinkBeingCheckedCanBeHandedOn() {
-        var panel = checking(pullRequest.absoluteString)
-        let handed = panel.handOff()
-        #expect(handed == pullRequest)
-        #expect(panel.phase == .closed)
-        let handedAgain = panel.handOff()
-        #expect(handedAgain == nil)
-        var editing = OpenURLPanel()
-        editing.edit(pullRequest.absoluteString)
-        let editingHanded = editing.handOff()
-        #expect(editingHanded == nil)
+    @Test func aCancelledSubmissionCannotCloseANewerPanelForTheSameURL() throws {
+        let (firstCheckingPanel, firstRequest) = try checking(pullRequest.absoluteString)
+        var firstPanel = firstCheckingPanel
+        let dropped = firstPanel.cancel()
+        #expect(dropped == firstRequest)
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        #expect(request != firstRequest)
+        let opensLate = panel.answered(.plan(plan), for: firstRequest, metab: metab)
+        #expect(opensLate == nil)
+        panel.failed("Old failure.", for: firstRequest)
+        #expect(panel.message == nil)
+        let current = panel.answered(.plan(plan), for: request, metab: metab)
+        #expect(current == plan)
+        let oldPresentation = panel.presented(for: firstRequest)
+        #expect(!oldPresentation)
+        #expect(panel.phase == .opening(request))
     }
 }

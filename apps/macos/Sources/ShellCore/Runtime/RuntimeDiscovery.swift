@@ -89,7 +89,7 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
 ///
 /// It runs only a candidate no other account can change (`ExecutableTrust`), since running
 /// `--version` executes it; one it refuses is recorded as `.untrusted`, with the reason,
-/// for Settings, the log, and the first-run steps.
+/// for Settings, the log, and the first-run status.
 ///
 /// Cheap locations come first, each a file check plus
 /// `metab --exit-on-eof --present --recent --version` (`validate`): the saved path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin
@@ -99,14 +99,13 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
 /// never saw in Terminal.
 public nonisolated enum RuntimeDiscovery {
     public static let homebrewBins = ["/opt/homebrew/bin", "/usr/local/bin"]
-    public static let installCommand = "uv tool install metabrowser"
     /// A first run after `uv tool install` compiles bytecode, so `--version` can take
     /// seconds; one that takes longer than this is broken.
     static let versionTimeout: Duration = .seconds(20)
     /// A login shell whose startup files take longer is given up on, and setup goes on
     /// without its `PATH`.
     static let shellTimeout: Duration = .seconds(8)
-    /// Settings > Run Doctor stops `metab --doctor` after this, so a check stuck on a
+    /// Check Setup… stops `metab --doctor --json` after this, so a check stuck on a
     /// hung tool or network leaves the window usable.
     public static let doctorTimeout: Duration = .seconds(60)
     static let beginMarker = "__METABROWSER_LOGIN_ENV_BEGIN__"

@@ -2,145 +2,38 @@ import Foundation
 import Testing
 @testable import ShellCore
 
-/// The first run without a usable `metab` (mb-su30): which steps are missing, which
-/// commands they show, and where the app waits for `metab`.
 @Suite struct SetupGuideTests {
     private let bin = "/Volumes/Home/.local/bin"
 
     private func guide(
-        tried: [CandidateOutcome] = [], uv: String? = nil, loginPath: [String]? = nil, homebrew: Bool = false,
-        released: Bool = true, refused: [UvRefusal] = []
+        tried: [CandidateOutcome] = [], released: Bool = true, refused: [UvRefusal] = []
     ) -> SetupGuide {
         SetupGuide(
-            tried: tried, uv: uv, binDirectory: bin, home: "/Volumes/Home", loginPath: loginPath, hasHomebrew: homebrew,
+            tried: tried, binDirectory: bin, home: "/Volumes/Home",
             minimumIsReleased: released, refusedUv: refused)
     }
 
-    @Test func withoutUvItShowsBothInstallsInOrder() {
-        let steps = guide().steps
-        #expect(steps == [.installUv(homebrew: false), .installMetab(inNewTerminal: true)])
-        #expect(steps.map(\.command) == [
-            "curl -LsSf https://astral.sh/uv/install.sh | sh", "uv tool install metabrowser",
-        ])
-        #expect(steps[0].alternative == nil)
-        // The Terminal that ran uv's installer has not read the PATH it added.
-        #expect(steps[1].note == "In a new Terminal window, so that it finds uv:")
-    }
-
-    @Test func withHomebrewTheUvStepOffersItToo() {
-        #expect(guide(homebrew: true).steps.first?.alternative == "brew install uv")
-    }
-
-    @Test func withUvOnlyMetabIsMissing() {
-        let steps = guide(uv: "/opt/homebrew/bin/uv", loginPath: ["/opt/homebrew/bin", "/usr/bin"]).steps
-        #expect(steps == [.installMetab(inNewTerminal: false)])
-        #expect(steps[0].note == nil)
-    }
-
-    @Test func anOlderMetabIsUpgradedToTheFloor() {
-        let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: "0.12.0"))
-        let steps = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
-        #expect(steps == [.upgradeMetab(path: bin + "/metab", version: "0.12.0", inNewTerminal: false)])
-        #expect(steps[0].command == "uv tool install --upgrade 'metabrowser>=0.12.1'")
-        #expect(steps[0].title(home: "/Volumes/Home")
-            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs 0.12.1 or later.")
-        #expect(guide(tried: [old], uv: bin + "/uv").heading == "Metabrowser needs metab 0.12.1 or later")
-        #expect(guide(uv: bin + "/uv").heading == "Metabrowser needs the metab command-line tool")
-    }
-
-    /// mb-sugi: a development build of the minimum from before `--exit-on-eof`,
-    /// `--present`, or `--recent` meets the number, so the steps name the newest flag such
-    /// a build lacks rather than compare the numbers.
-    @Test func aBuildFromBeforeTheServeFlagIsNamedForTheFlag() {
-        let version = "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
-        let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: version))
-        let upgrade = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
-        #expect(upgrade == [.upgradeMetab(path: bin + "/metab", version: version, inNewTerminal: false)])
-        #expect(upgrade[0].command == "uv tool install --upgrade 'metabrowser>=0.12.1'")
-        #expect(upgrade[0].title(home: "/Volumes/Home")
-            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --recent,"
-            + " which Metabrowser needs.")
-        let checkout = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], released: false).steps
-        #expect(checkout[0].title(home: "/Volumes/Home")
-            == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
-            + " with Choose metab… below: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before"
-            + " --recent, and Metabrowser needs metab 0.12.1 or later, which is not on PyPI yet.")
-    }
-
-    /// `uv tool install` says a broken tool is already installed and changes nothing.
-    @Test func aBrokenToolInstallIsReinstalled() {
-        let broken = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .rejected("could not run: x"))
-        let elsewhere = CandidateOutcome(path: "/srv/metab", source: .environment, result: .rejected("could not run: y"))
-        #expect(guide(tried: [elsewhere, broken], uv: bin + "/uv").steps == [
-            .reinstallMetab(path: bin + "/metab", reason: "could not run: x", inNewTerminal: true),
-        ])
-        #expect(guide(tried: [elsewhere, broken], uv: bin + "/uv").steps[0].command
-            == "uv tool install --reinstall metabrowser")
-        #expect(guide(tried: [elsewhere], uv: bin + "/uv", loginPath: [bin]).steps == [.installMetab(inNewTerminal: false)])
-    }
-
-    /// mb-99ee: once the watch saw the uv just installed, the note went away, though
-    /// the Terminal that ran the installer still cannot find it.
-    @Test func theNewTerminalNoteStaysUntilTheLoginShellFindsUv() {
-        let before = guide(loginPath: ["/usr/bin", "/bin"]).steps
-        #expect(before.last?.note == "In a new Terminal window, so that it finds uv:")
-        let detected = guide(uv: bin + "/uv", loginPath: ["/usr/bin", "/bin"]).steps
-        #expect(detected == [.installMetab(inNewTerminal: true)])
-        #expect(detected[0].note == "In a new Terminal window, so that it finds uv:")
-        #expect(guide(uv: bin + "/uv").steps[0].note != nil)  // the login PATH is unknown
-        #expect(guide(uv: bin + "/uv", loginPath: [bin]).steps[0].note == nil)
-    }
-
-    /// mb-w8to: until the minimum is on PyPI, uv installs only older releases, so the
-    /// steps end in this checkout's own metab and Choose metab….
-    @Test func beforeTheMinimumIsReleasedTheStepsEndInTheSourceCheckout() {
-        let fresh = guide(released: false)
-        #expect(fresh.steps == [
-            .installUv(homebrew: false), .buildFromCheckout(oldPath: nil, oldVersion: nil, inNewTerminal: true),
-        ])
-        #expect(fresh.steps[1].command == "make install")
-        #expect(fresh.steps[1].title(home: "/Volumes/Home")
-            == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
-            + " with Choose metab… below: Metabrowser needs metab 0.12.1 or later, which is not on PyPI yet.")
-        #expect(fresh.steps[1].note
-            == "In a new Terminal window, so that it finds uv, at the root of the checkout:")
-        #expect(fresh.endsWithChoice)
-        #expect(!guide().endsWithChoice)
-        #expect(fresh.heading == "Metabrowser needs metab 0.12.1 or later")
-        let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: "0.12.0"))
-        let upgrade = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], released: false).steps
-        #expect(upgrade == [.buildFromCheckout(oldPath: bin + "/metab", oldVersion: "0.12.0", inNewTerminal: false)])
-        #expect(upgrade[0].note == "At the root of the checkout:")
-        #expect(upgrade[0].title(home: "/Volumes/Home")
-            == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
-            + " with Choose metab… below: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs metab"
-            + " 0.12.1 or later, which is not on PyPI yet.")
-        let broken = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .rejected("could not run: x"))
-        #expect(guide(tried: [broken], uv: bin + "/uv", loginPath: [bin], released: false).steps
-            == [.buildFromCheckout(oldPath: nil, oldVersion: nil, inNewTerminal: false)])
-        #expect(MetabRequirement.isReleased == false)
-    }
-
-    /// mb-2i0h: a uv another account can change is not run, and the screen says why.
-    @Test func aUvTheAppMayNotRunIsNamedWithItsReason() {
-        let refused = [UvRefusal(path: "/opt/homebrew/bin/uv", reason: "/opt/homebrew belongs to another account (uid 502)")]
-        let shown = guide(uv: "/opt/homebrew/bin/uv", loginPath: ["/opt/homebrew/bin"], refused: refused)
-        // Present for the user's Terminal, which is theirs to run; not run by the app.
-        #expect(shown.steps == [.installMetab(inNewTerminal: false)])
-        #expect(shown.notices == [
-            "Metabrowser does not run /opt/homebrew/bin/uv itself: /opt/homebrew belongs to another account (uid 502).",
+    @Test func anAbsentRuntimeLeavesTheWatchDirectoryAndPrereleaseStatus() {
+        #expect(guide().binDirectory == bin)
+        #expect(guide().notices.isEmpty)
+        #expect(guide(released: false).notices == [
+            "This preview needs metab \(MetabRequirement.minimum) or later. That version is pending on PyPI.",
         ])
     }
 
-    /// A `metab` discovery would not run (mb-3o3h) is named with its reason, and with the
-    /// way to run it anyway, which is the user's choice.
-    @Test func aMetabTheAppMayNotRunIsNamedWithItsReason() {
+    @Test func theGuideReportsDiscoveryFailures() {
         let reason = "/opt/homebrew/bin is writable by its group"
-        let untrusted = CandidateOutcome(path: "/opt/homebrew/bin/metab", source: .homebrew, result: .untrusted(reason))
-        let shown = guide(tried: [untrusted], uv: bin + "/uv", loginPath: [bin])
-        #expect(shown.steps == [.installMetab(inNewTerminal: false)])
-        #expect(shown.notices == [
-            "Metabrowser does not run /opt/homebrew/bin/metab itself: \(reason). Choose metab… runs it if you trust it.",
+        let tried = [
+            CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: "0.12.0")),
+            CandidateOutcome(path: "/tmp/metab", source: .localBin, result: .rejected("could not run")),
+            CandidateOutcome(path: "/opt/homebrew/bin/metab", source: .homebrew, result: .untrusted(reason)),
+            CandidateOutcome(path: "/other/bin/metab", source: .localBin, result: .missing),
+        ]
+        #expect(guide(tried: tried, refused: [UvRefusal(path: "/opt/homebrew/bin/uv", reason: reason)]).notices == [
+            "~/.local/bin/metab is metab 0.12.0. It is incompatible: the app needs \(MetabRequirement.minimum) or later.",
+            "/tmp/metab could not be used: could not run.",
+            "Automatic discovery skipped /opt/homebrew/bin/metab: \(reason). Choose metab… if you trust this file.",
+            "Automatic discovery skipped /opt/homebrew/bin/uv: \(reason).",
         ])
     }
 
@@ -157,25 +50,15 @@ import Testing
         let candidates = ["/Volumes/Home/.local/bin/uv", "/opt/homebrew/bin/uv", "/Volumes/Home/.cargo/bin/uv"]
         let refuseHomebrew: @Sendable (String) -> String? = { $0.hasPrefix("/opt/homebrew") ? "/opt/homebrew/bin is writable by its group" : nil }
         let both = await UvToolDirectory.survey(candidates, env: env, refusal: refuseHomebrew)
-        #expect(both.found == "/opt/homebrew/bin/uv")
         #expect(both.run == "/Volumes/Home/.cargo/bin/uv")
         #expect(both.refused == [UvRefusal(path: "/opt/homebrew/bin/uv", reason: "/opt/homebrew/bin is writable by its group")])
         #expect(both.binDirectory == "/Volumes/Home/uv-bin")
         #expect(ran.all == ["/Volumes/Home/.cargo/bin/uv"])
         let none = await UvToolDirectory.survey(Array(candidates.prefix(2)), env: env, refusal: refuseHomebrew)
         #expect(none.run == nil)
-        #expect(none.found == "/opt/homebrew/bin/uv")
         #expect(none.binDirectory == "/Volumes/Home/.local/bin")  // uv's documented default
         #expect(none.failure == nil)
         #expect(ran.all == ["/Volumes/Home/.cargo/bin/uv"])  // the refused one never ran
-    }
-
-    /// The app needs nothing on PATH; Terminal does, and only `uv tool update-shell` adds it.
-    @Test func updateShellIsSuggestedUnlessTheLoginShellAlreadyHasTheDirectory() {
-        #expect(guide().suggestsUpdateShell)
-        #expect(guide(loginPath: ["/usr/bin", "/bin"]).suggestsUpdateShell)
-        #expect(!guide(loginPath: [bin, "/usr/bin"]).suggestsUpdateShell)
-        #expect(SetupGuide.updateShellCommand == "uv tool update-shell")
     }
 
     @Test func uvIsLookedForWhereItsInstallerAndHomebrewPutItThenOnTheLoginPath() {

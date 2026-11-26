@@ -28,9 +28,9 @@ def _rule(css: str, selector: str) -> str:
 def test_disclosure_chevron_is_one_glyph_everywhere() -> None:
     icons = (STATIC / "icons.js").read_text(encoding="utf-8")
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    # The registry's leading chevrons (tree rows, tally tree, diff bars);
+    # The registry's one leading chevron (tree rows, tally tree, diff bars, log events);
     # icons.js quotes attributes with double quotes.
-    assert icons.count(f'd="{CHEVRON_PATH}"') >= 2, "registry chevron glyphs changed shape"
+    assert icons.count(f'd="{CHEVRON_PATH}"') == 1, "the registry's chevron forked or changed"
     # The section-disclosure mask draws the same path (single-quoted
     # inside the data URI).
     assert f"d='{CHEVRON_PATH}'" in styles, "section-disclosure mask forked the glyph"
@@ -247,7 +247,6 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     """
     el, text, box = _El, _text, _box
     tree = "File tree row"  # renderTreeNodes, _buildRowHtml, renderContainerChildren
-    header = "File and folder header"  # the file view header and renderFolderHeader
     diff_host = ".metabrowser-diff-host"
     rows = [
         (
@@ -335,89 +334,50 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
                 text("git-graph-meta", el("git-graph-age age-min")),
             ),
         ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header",
-                text("file-header-path folder-breadcrumb", el("folder-crumb folder-crumb-current")),
-                box("file-header-badge-slot", el("file-header-badge badge-live")),
-                text("size file-header-size"),
-            ),
-        ),
-        (
-            header,
-            ".file-header",
-            el("file-header", text("file-header-path"), box("size tally-pending file-header-size")),
-        ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header folder-header",
-                box("btn parent-nav-btn parent-nav-btn-icon-only folder-up"),
-                text("file-header-path folder-breadcrumb"),
-                text(
-                    "folder-header-summary",
-                    el("size file-header-size"),
-                    el("count folder-header-count"),
-                    el("folder-header-age", el("age-min")),
-                ),
-            ),
-        ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header folder-header",
-                box("btn parent-nav-btn folder-up"),
-                text("file-header-path"),
-                box(
-                    "folder-header-summary",
-                    el("size tally-pending file-header-size"),
-                    el("count tally-pending folder-header-count"),
-                    el("folder-header-age", el("tally-pending tally-pending-narrow")),
-                ),
-            ),
-        ),
     ]
     # Diff file bar: renderFileBar in the diff plugin, inside its host.
-    toggle = el(
+    toggle = box(
         "diff-file-toggle expanded",
         box("diff-file-chevron"),
         text("diff-file-kind diff-file-kind-modified"),
         text("diff-file-path"),
-        text("diff-file-stats", el("diff-stat-add"), el("diff-stat-del")),
+    )
+    # The change's stats and notes, after the copy control: a box at the path's size, which
+    # centering puts on its baseline, with its own text on one baseline.
+    facts = box(
+        "diff-file-facts",
+        text(
+            "diff-file-stats",
+            el("change-line", el("change-line-stats", el("diff-stat-add"), el("diff-stat-del"))),
+        ),
         text("diff-file-note"),
     )
-    bar = el(
-        "diff-file-bar",
+    # The bar is a centered row of boxes: the name's group, the toggle with the copy control
+    # right after it and the change's stats; the View file or View on branch control, a box
+    # at the path's size, which centering puts on its baseline; and the group at its end, a
+    # file's Full | Concise | Source chooser behind its progress mark (`add` in diff-markdown.js).
+    # Each group is a centered row of boxes too.
+    lead = box(
+        "diff-file-lead",
         toggle,
-        # The View file or View on branch control: a box at the path's size, which centering
-        # puts on its baseline.
-        box("diff-file-view"),
         box("icon-btn icon-btn-reveal diff-file-copy"),
+        facts,
     )
+    end = box(
+        "diff-file-end",
+        box("diff-markdown-progress"),
+        box("diff-markdown-control"),
+    )
+    bar = el("diff-file-bar diff-file-bar-markdown", lead, box("diff-file-view"), end)
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
+    rows.append(("Diff file bar", f"{diff_host} .diff-file-facts", facts))
+    rows.append(("Diff file bar", f"{diff_host} .diff-file-lead", lead))
+    rows.append(("Diff file bar", f"{diff_host} .diff-file-end", end))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
-    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The chevron and the
-    # state icon are boxes on the first line, centered, beside the number's line and the age,
-    # which share its baseline; the title is alone on the second (mb-lkkt, mb-3cbf).
-    rows.append(
-        (
-            "Pull request row",
-            ".github-pulls-row",
-            el(
-                "github-pulls-row",
-                box("github-pulls-toggle"),
-                box("github-pull-state-icon"),
-                text("github-pulls-title"),
-                text("github-pulls-age age-min"),
-                text("github-pulls-meta"),
-            ),
-        )
-    )
+    # A Pulls row is not one: its title is one run of inline text, and its change line sets
+    # its text at one size on one line height and centers it (docs/design-system.md, "Row
+    # Text Shares a Baseline"; mb-85op, mb-lqkb).
     return rows
 
 
@@ -458,15 +418,25 @@ def test_row_text_shares_one_baseline() -> None:
                 assert applying, f"{label}: text slot .{name} does not opt in to the baseline"
             elif child.role == "box":
                 assert not applying, f"{label}: box .{name} is baseline-aligned by {applying}"
-    # The header's path fills the header's content box, so the baseline
-    # group lands where centering put it at any header height.
-    assert "min-height: 100%;" in _rule(styles, ".file-header > .file-header-path"), (
-        "the header path no longer fills the header, so its text rides to the top"
-    )
-    # The diff bar's View file controls are centered boxes beside the toggle, so they
-    # land on the path's baseline only at the path's own size: the toggle's, which its
-    # path inherits, and the view's, both the main view's body size.
-    for selector in (".diff-file-toggle", ".diff-file-view"):
+    # A view header's eyebrow sets its text at one size and centers it, and its heading row
+    # sets the title and the metadata line after it as one run of inline text, so the line
+    # sits on the title's baseline as text does (docs/design-system.md, "View Headers"). No
+    # flex baseline rule reaches either: an item holding only a pending skeleton, aligned
+    # as a flex item, would sit the skeleton's bottom edge on the baseline.
+    # The header's corner (`.view-header-end`) is neither row: a strut of the title's type
+    # and the View on GitHub button, which opts in to the strut's baseline, the title's
+    # first line's (mb-tatf), as a row's text does. tests/dom/view-header-chrome.mjs
+    # measures the button's label and the title on one baseline.
+    for selector, _is_items in rules:
+        if selector.startswith(".view-header-end"):
+            continue
+        assert not re.search(r"\.(?:file-header|view-header)", selector), (
+            f"{selector} aligns a view header's text to a baseline"
+        )
+    # The diff bar's stats and View file controls are centered boxes beside the toggle, so
+    # they land on the path's baseline only at the path's own size: the toggle's, which its
+    # path inherits, the stats', and the view's, all the main view's body size.
+    for selector in (".diff-file-toggle", ".diff-file-facts", ".diff-file-view"):
         assert "font-size: var(--body-font-size);" in _rule(
             diff_css, f".metabrowser-diff-host {selector}"
         ), f"{selector} left the diff bar's one text size"
@@ -474,7 +444,8 @@ def test_row_text_shares_one_baseline() -> None:
     # And at the toggle's line height, a button's `normal`: at the bar's 1.5, which a link
     # inherits, the link form sat 0.5 px above the path's baseline in Chrome and the button
     # form on it (Design Rule Measurements, "Row Baselines").
-    assert "line-height: normal;" in _rule(diff_css, ".metabrowser-diff-host .diff-file-view")
+    for selector in (".diff-file-facts", ".diff-file-view"):
+        assert "line-height: normal;" in _rule(diff_css, f".metabrowser-diff-host {selector}")
     assert "line-height" not in _rule(diff_css, ".metabrowser-diff-host .diff-file-toggle")
 
 
@@ -530,17 +501,11 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
 
 
 def test_inline_change_stats_are_bold() -> None:
+    # Every lines summary is the brief change line, a file's and a folder's too, so its one
+    # rule inks and weighs every +N and −N (mb-ox6a).
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
-        encoding="utf-8"
-    )
-    for css, selector in (
-        (diff_css, ".metabrowser-diff-host .diff-stat-add"),
-        (diff_css, ".metabrowser-diff-host .diff-stat-del"),
-        (styles, ".git-stat-add"),
-        (styles, ".git-stat-del"),
-    ):
-        assert "font-weight: var(--weight-bold)" in _rule(css, selector), f"{selector} not bold"
+    for selector in (".change-line-stats > .diff-stat-add", ".change-line-stats > .diff-stat-del"):
+        assert "font-weight: var(--weight-bold)" in _rule(styles, selector), f"{selector} not bold"
 
 
 def test_branch_chips_are_bold_and_square() -> None:
@@ -582,6 +547,80 @@ def test_row_targets_share_the_hover_token() -> None:
     )
 
 
+def test_diff_file_bar_keeps_its_actions_by_the_name_and_its_chooser_at_its_end() -> None:
+    """A diff's file bar: the name's group, then View file, then a chooser at its end.
+
+    ``tests/dom/diff-view-behavior.js`` and ``tests/dom/diff-view-file-session.js`` hold what
+    each part contains, in order. Where they sit is layout, and these declarations are what
+    put them there (docs/design-system.md, "Diff File Bar"; mb-leg0, mb-ceap).
+    ``tests/test_diff_file_bar_chrome.py`` lays the bars out in headless Chrome at widths
+    from 1,063 to 159 px and holds that no part is cut off or covers another, that a bar
+    with a chooser cuts its name only on a line of its own, and that at rest the stats read
+    with the name. On a pull request's Docs and Changes and a commit's page, measured at
+    those widths, the name kept at least the width it had with View on branch in the end
+    group (review A of #759, A1; Design Rule Measurements, "Diff File Bar Widths").
+    """
+
+    diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
+        encoding="utf-8"
+    )
+    host = ".metabrowser-diff-host"
+    # Every bar wraps its parts in order where they do not fit one line, so nothing is cut
+    # off past its end.
+    assert "flex-wrap: wrap;" in _rule(diff_css, f"{host} .diff-file-bar")
+    # The name's group gives way before anything else does, so Copy path and the stats sit
+    # right after the name at any width and a long path is cut short with them still beside
+    # it. Without a chooser the group is laid out at its basis, so a long name is cut on one
+    # line beside View file down to that basis, and grows no wider than its content, so View
+    # file follows the name; with one it is laid out whole, so View file and the chooser
+    # take the next line before the name is cut at all.
+    lead = _rule(diff_css, f"{host} .diff-file-lead")
+    assert "flex: 1 1 var(--diff-file-lead-basis);" in lead
+    assert "max-width: max-content;" in lead
+    assert "min-width: 0;" in lead
+    chooser_lead = _rule(diff_css, f"{host} .diff-file-bar-markdown .diff-file-lead")
+    assert "flex: 0 1 auto;" in chooser_lead
+    toggle = _rule(diff_css, f"{host} .diff-file-toggle")
+    assert "flex: 0 1 auto;" in toggle and "min-width: 0;" in toggle
+    for selector in (".diff-file-copy", ".diff-file-facts", ".diff-file-view"):
+        assert "flex: none;" in _rule(diff_css, f"{host} {selector}"), f"{selector} gives way"
+    # The space before View file is the first thing to give way, before the name.
+    space = _rule(diff_css, f"{host} .diff-file-lead:has(+ .diff-file-view)::after")
+    assert "width: var(--diff-file-actions-gap);" in space
+    assert "flex: 0 1000000 auto;" in space and "min-width: 0;" in space
+    # The end group keeps its width, and its start margin takes the bar's free space, which
+    # holds it at the bar's end on a line of its own too; empty, it takes no line.
+    end = _rule(diff_css, f"{host} .diff-file-end")
+    assert "flex: none;" in end
+    assert "margin-inline-start: auto;" in end
+    assert "display: none;" in _rule(diff_css, f"{host} .diff-file-end:empty")
+    # A chooser's group, where it alone is wider than the bar, wraps too, with each line at
+    # the bar's end.
+    wrapping_end = _rule(diff_css, f"{host} .diff-file-bar-markdown .diff-file-end")
+    assert "flex: 0 1 auto;" in wrapping_end
+    assert "flex-wrap: wrap;" in wrapping_end
+    assert "justify-content: flex-end;" in wrapping_end
+    # Copy path shows while the pointer is on the bar or the keyboard's focus is in it, the
+    # reveal contract of every `.icon-btn-reveal` ("Copyable Identifiers Use One Delegate"),
+    # and through its own "Copied", as a file header's does. The focus is `:focus-visible`:
+    # in headless Chrome a mouse press on the name focused the disclosure, and under
+    # `:focus-within` the control stayed at full opacity with the pointer off the bar.
+    reveal = (
+        f"{host} .diff-file-bar:hover .diff-file-copy,\n"
+        f"{host} .diff-file-bar:has(:focus-visible) .diff-file-copy,\n"
+        f"{host} .diff-file-copy.copied {{\n"
+        "  opacity: 1;\n"
+        "  pointer-events: auto;\n"
+        "}"
+    )
+    assert reveal in diff_css, "the bar no longer reveals Copy path on hover and keyboard focus"
+    assert ":focus-within .diff-file-copy" not in diff_css, (
+        "a press on a bar's name would hold Copy path shown"
+    )
+    copied = f"{host} .diff-file-copy.copied {{\n  color: var(--status-success-text);\n}}"
+    assert copied in diff_css, "a copied path no longer shows in the success ink"
+
+
 def test_preview_navigation_arrival_motion_is_shared_and_reduced_motion_safe() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
@@ -609,6 +648,11 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
     pull_files = pulls + (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(
         encoding="utf-8"
     )
+    # The table view: its model says where a key moves, and the view moves the tab stop.
+    table = "".join(
+        (REPO_ROOT / BUILTIN_PLUGINS / f"table/{name}").read_text(encoding="utf-8")
+        for name in ("table-model.js", "table-view.js")
+    )
 
     assert "### Navigational Row Collections" in design
     assert "test_nav_like_row_sets_share_the_vertical_keyboard_contract" in design
@@ -617,6 +661,7 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
         (git, "moveCommitRowFocus"),
         (pulls, "nav.move("),
         (pull_files, "nav.moveFile("),
+        (table, "moveFocus("),
     ):
         assert movement_helper in source
         assert '"ArrowUp"' in source
@@ -657,6 +702,8 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     """Paths and revisions use one explicit-value copy delegate."""
     design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
+    # A file's view header writes its Copy path control (view-header.js).
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
     sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
     git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     diff = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff-view.js").read_text(
@@ -667,50 +714,12 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     assert "test_copyable_identifiers_share_the_copy_contract" in design
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert 'mode === "text"' in sdk and 'mode === "wrap"' in sdk
-    assert 'data-mb-copy="text"' in app
+    assert 'data-mb-copy="text"' in header
     assert 'setAttribute("data-mb-copy", "text")' in diff
     assert 'data-mb-copy="text"' in git and "commit.id" in git
     assert "git-commit-revision-copy" in git
-    for source in (app, diff, git):
+    for source in (app, header, diff, git):
         assert "data-copy-path" not in source, "a local path-copy contract reappeared"
-
-
-def test_age_is_one_primitive_everywhere() -> None:
-    """An age is an age: one formatter, one styling rule, and call sites
-    that add positioning only."""
-    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
-    assert "function age(epochSeconds, options = {})" in formatters, (
-        "the shared age primitive moved"
-    )
-    for name in ("git-panel.js", "app.js"):
-        consumer = (STATIC / name).read_text(encoding="utf-8")
-        assert "MetabrowserFormatters" in consumer and "age(" in consumer, (
-            f"{name} must take its ages from the shared primitive"
-        )
-    tiers = _rule(
-        styles, ":is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
-    )
-    for declaration in ("color:", "font-weight:", "font-variant-numeric:"):
-        assert declaration in tiers, f"the age primitive lost {declaration}"
-    # An age is secondary metadata, which reads at the size of the text it sits in
-    # ("Type Scale"; mb-ctlu): the primitive sets no size, and no rule sets one on an age.
-    assert "font-size" not in tiers, "an age takes the size of the text it sits in"
-    # The classes an age's own element carries: the primitive's tiers and each call site's.
-    age_selector = re.compile(
-        r"\.(age-(live|sec|min|hr|day|wk|old)|tree-item-age|git-graph-age|git-commit-age"
-        r"|git-history-summary-age|github-pulls?-age)(?![\w-])"
-    )
-    for sheet in _stylesheets():
-        for selector, declarations in _rules_of(sheet):
-            assert not (age_selector.search(selector) and "font-size" in declarations), (
-                f"{sheet.name}: {selector} sizes an age"
-            )
-    # A call site that restates color or weight has forked the vocabulary.
-    graph_age = _rule(styles, ".git-graph-age")
-    assert "color:" not in graph_age and "font-weight:" not in graph_age, (
-        ".git-graph-age must carry positioning only"
-    )
 
 
 def test_branch_chips_have_their_own_ground() -> None:
@@ -919,7 +928,6 @@ _CHIP_CLASSES = frozenset(
         "git-ref-tag",
         "git-ref-trunk",
         "git-ref-head",
-        "git-ref-copyable",
         "git-ref-label",
         "merge-refs-source",
         "merge-refs-target",
@@ -955,7 +963,7 @@ _CHIP_TYPE_AND_BOX = frozenset(
 )
 # A form's own room, on the chip itself and never from a context: the tag's notch and
 # the copyable chip's reserved control.
-_CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}, ".git-ref-copyable": {"padding-right"}}
+_CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}}
 
 
 # The boxes a chip sits in, in every context: a merge's grid, a history row's ref group, a commit summary's identity and ref groups, and
@@ -995,7 +1003,7 @@ def test_branch_chips_scale_with_their_text() -> None:
             if token in declarations
         ]
         assert defined == [("styles.css", ":root")], f"{token} is defined at {defined}"
-    root = dict(_rules_of(STATIC / "styles.css"))[":root"]
+    root = _root_rule(STATIC / "styles.css")
     scale = float(root["--git-ref-font-scale"])
     assert 0.8 <= scale < 1, "a chip is slightly smaller than its text, not larger or equal"
     assert root["--git-ref-font-size"] == "calc(var(--git-ref-font-scale) * 1em)"
@@ -1003,14 +1011,27 @@ def test_branch_chips_scale_with_their_text() -> None:
     chip = shell[".git-ref"]
     assert chip["font-size"] == "var(--git-ref-font-size)"
     assert chip["font-weight"] == "var(--weight-bold)"
-    # The box scales with the text: 16px at 12px, and a 13px history row's chip is 15.6px,
-    # so a HEAD ring (2px out) fits the 22px row.
-    line = float(chip["line-height"])
-    assert abs(line - 4 / 3) < 0.001
-    assert 13 * scale * line + 4 <= 22
-    assert chip["padding"] == "0 5px"
+    # The shared outer height leaves room for the HEAD ring in a history row.
+    assert chip["line-height"] == "var(--compact-chip-height)"
+    assert float(root["--compact-chip-height"].removesuffix("px")) + 4 <= 22
+    assert chip["padding"] == "0 var(--compact-chip-padding-inline)"
     assert chip["border-radius"] == "var(--radius-tag)"
     assert chip["max-width"] == "22em", "the width bound scales with the chip"
+    github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    table = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "table/styles.css"))
+    for bordered_chip in (
+        shell[".source-ref-selector-badge"],
+        github[".github-pull-label"],
+        table[".table-ref"],
+    ):
+        assert (
+            bordered_chip["line-height"]
+            == "calc(var(--compact-chip-height) - 2 * var(--chip-border))"
+        )
+        assert bordered_chip["border"] == "var(--chip-border) solid var(--border)"
+        assert bordered_chip["padding"] == chip["padding"]
+        assert bordered_chip["border-radius"] == chip["border-radius"]
+    assert table[".table-chip"]["min-block-size"] == "var(--chip-height)"
     restyled = []
     sized = []
     for sheet in _stylesheets():
@@ -1050,18 +1071,18 @@ def test_each_context_assigns_its_chip_kind() -> None:
         "A commit’s summary",
         "A commit’s tooltip",
         "A pull request’s header",
-        "The ref selector’s button and list",
+        "The Files revision row and chooser list",
     ):
         assert f"| {context} |" in section, f"the table lost {context!r}"
     # One mapping from a Git kind to a chip's: a tag, a remote branch, else a local branch.
     views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
     mapping = 'options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local"'
-    assert views.count(mapping) == 2, "refChip and refChipHtml map kinds one way"
+    assert views.count(mapping) == 1, "refChip and refChipHtml share a kind mapping"
     # A history row, a commit's summary, and its tooltip draw the wire's refs, all three
     # marks included, through one function.
     panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     badges = re.search(
-        r"function renderRefBadges\(refs, copy = \"sibling\"\) \{(.*?)\n  \}", panel, re.S
+        r"function renderRefBadges\(refs, menu = \"sibling\"\) \{(.*?)\n  \}", panel, re.S
     )
     assert badges is not None
     for option in ("kind: ref.kind,", "trunk: ref.is_trunk,", "head: ref.is_head,"):
@@ -1079,16 +1100,16 @@ def test_each_context_assigns_its_chip_kind() -> None:
         assert 'kind: "remote"' in options, f"{name}'s branches are remote"
         assert not re.search(r"\b(?:trunk|head):", calls[0]), f"{name} marks trunk or HEAD"
     # The ref selector: a tag is a tag, and a branch is remote but for a checkout's own,
-    # which is local, on the button and in the list. Neither is trunk or HEAD; the list
+    # which is local, in the source row and the list. Neither is trunk or HEAD; the list
     # says "default", and "checked out" for a checkout's HEAD, in words.
     selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
     chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
-    assert len(chips) == 2, "the selector draws a chip on its button and on each row"
+    assert len(chips) == 2, "the selector draws a chip for the source and for each list row"
     for chip in chips:
         assert re.search(r"kind: (?:model\.selectedRef\.kind|row\.chip),", chip)
         assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
     squeezed = re.sub(r"\s+", " ", selector)
-    # A list's rows, by the list shown, and the button, by what the page shows.
+    # The chooser's rows by list kind and the source row by the currently viewed ref.
     assert (
         'state.kind === "tag" ? "tag" : state.kind === "branch" && checkout ? "local" : "remote";'
         in squeezed
@@ -1134,15 +1155,21 @@ def test_git_commit_summary_is_one_component() -> None:
     assert '"git-commit-summary git-commit-summary-compact"' in panel
     assert 'class="git-commit-change-stats"' in panel
     assert "html += renderCommitSummary(detail);" in panel
-    assert "renderCommitSummary(detail, { compact: true })" in panel
-    # The commit page's change counts are its one Diff summary, which its diff draws in the
-    # summary's place (mb-pb35); only the compact summary, in a tooltip, draws its own, one
-    # line in the Diff summary's words and paint (mb-khm6). Until the diff draws it, and where
-    # it is not drawn, the place holds the commit's totals (A6 of review A on #470).
+    assert "return renderCommitSummary(detail, {\n      compact: true," in panel
+    # The commit page's change counts are its size line and its one Diff summary, which its
+    # diff draws in the summary's place (mb-pb35): the size line, the page header's line
+    # above it, says the file count and the size ("Change Size Line"), and the summary the
+    # statuses and line totals. Only the compact summary, in a tooltip, draws its own, its
+    # size line and one line in the Diff summary's words and paint (mb-khm6). Until the diff
+    # draws it, and where it is not drawn, the place holds the commit's totals (A6 of review
+    # A on #470).
+    assert "html += renderCommitChangeStats(stats, options.size ?? null);" in panel
     assert (
-        "html += compact\n"
-        "      ? renderCommitChangeStats(stats)\n"
-        '      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
+        'html += `<div class="git-commit-size page-header-line page-header-size">'
+        "${commitSizeLineHtml(stats, kept)}</div>`;"
+    ) in panel
+    assert (
+        'html += `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
         "${renderCommitTotals(stats)}</div>`;"
     ) in panel
     assert (
@@ -1180,7 +1207,11 @@ def test_git_commit_summary_is_one_component() -> None:
     # Its face is chrome prose's, which its markup carries (test_serif_is_only_for_documents).
     assert "font-family" not in summary_body
     assert "font-size: var(--document-body-font-size)" in summary_body
-    assert "white-space: pre-wrap" in summary_body
+    # Its Markdown is set as a PR description's (placeCommitBody); the message as written,
+    # until then and where it is not rendered, and its trailers keep their newlines.
+    assert "white-space" not in summary_body
+    written = _rule(styles, ".git-commit-body-plain,\n.git-commit-trailers")
+    assert "white-space: pre-wrap" in written
     for rule in (
         change_stats,
         meta,
@@ -1192,17 +1223,17 @@ def test_git_commit_summary_is_one_component() -> None:
     # Its ref chips take their size from this text, by the chip ratio, and no rule here
     # sizes them: test_branch_chips_scale_with_their_text.
     assert ".git-commit-summary .git-ref" not in styles
-    # The revision is the documented exception: monospace at body size
-    # renders optically larger than the sans beside it, so the sha sits
-    # one step down the ramp. See "Git Commit Summary" in the design
-    # system.
+    # The revision is monospace, the documented exception, at the size of its line, with its
+    # face's x-height the sans's: "Short Commit IDs" in the design system, and
+    # test_the_commit_id_face_is_one_face_one_gray_and_its_lines_size.
     assert "font-family: var(--font-mono)" in summary_sha
-    assert "font-size: var(--nav-font-size)" in summary_sha
+    assert "font-size:" not in summary_sha
+    assert "font-size-adjust: var(--font-sans-ex-height)" in summary_sha
     assert "noninteractive copy glyph" in doc
 
 
 # The lines under a page header's title, by the class each page's line has: the commit page's
-# author, revision, and age, and the pull request's author, branches, ages, and status.
+# author, revision, and age, and the pull request's state and ages, author, branches, and status.
 _PAGE_HEADER_LINES = (
     "page-header-line",
     "git-commit-byline",
@@ -1216,15 +1247,19 @@ _PAGE_HEADER_LINES = (
 
 
 def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
-    """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
+    """A commit's, a pull request's, and a stack's page have one header ("Page Headers").
 
-    Each is a `.page-header`, its title then its lines 6 px apart, and every line under the
-    title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
-    age in it and the Diff summary's row included, whose header the diff plugin sets at the
+    One since mb-26zj, and the stack's since mb-cm31.
+
+    Each is a `.page-header`, with its first line `--page-title-gap` under the title and
+    the common line gap beneath it. The pull request adds half a gap on each side of its
+    size line. Every line under the title but the labels and a stack's members card is a
+    `.page-header-line` at
+    `--body-font-size`, including the ages and Diff summary, whose text the diff plugin sets at the
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
     another size on a line or its text; a chip keeps its own (Branch Chips, Label Colors) and
-    a revision its one step down. `tests/dom/page-header-chrome.mjs` reads the computed sizes
+    a revision the line's. `tests/dom/page-header-chrome.mjs` reads the computed sizes
     on both pages in Chrome.
     """
 
@@ -1233,13 +1268,29 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     assert "test_page_headers_set_every_line_under_the_title_at_the_body_size" in doc
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".page-header"] == {
+        "--page-header-line-gap": "6px",
+        "--page-header-size-margin": "0px",
+        "--page-header-end-padding": (
+            "calc(var(--content-padding-y) - 2 * var(--page-header-size-margin))"
+        ),
         "display": "flex",
         "flex-direction": "column",
-        "gap": "6px",
+        "gap": "var(--page-header-line-gap)",
     }
+    # The first line is `--page-title-gap` under the title, the gap a view header leaves
+    # between its title and the metadata line after it (mb-wcbc).
+    assert shell[".page-header > .page-heading"] == {
+        "margin": "0 0 calc(var(--page-title-gap) - var(--page-header-line-gap))"
+    }
+    assert shell[".view-header-title.page-heading"]["padding-inline-end"] == (
+        "var(--page-title-gap)"
+    )
     assert shell[".page-header-line"]["font-size"] == "var(--body-font-size)"
+    assert shell[".page-header > .page-header-size"]["margin-block"] == (
+        "var(--page-header-size-margin)"
+    )
     # An age in a line takes the line's size because the age primitive sets none
-    # (test_age_is_one_primitive_everywhere), so no rule restates it here.
+    # (tests/test_age_single_source.py), so no rule restates it here.
     assert not any(":is(.age-live" in selector for selector in shell if ".page-header" in selector)
     diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     assert diff[".metabrowser-diff-host .diff-summary"]["font-size"] == "var(--body-font-size)"
@@ -1280,6 +1331,11 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     ):
         assert f'class: "{row} page-header-line"' in page, row
     assert 'class: "github-pull-labels"' in page, "the labels row is a row of chips"
+    # A native stack's page is a pull request's header for the whole stack ("The Stack
+    # Page"): it builds its header and the lines it shares with a pull request's page with
+    # the pull request page's builders (`pageHeaderParts` and its neighbours in
+    # pull-page.js), and its members with the stack menu's (`stackMemberRow`), so nothing
+    # here restates their classes.
 
 
 def test_a_person_is_one_identity_on_every_page() -> None:
@@ -1345,15 +1401,12 @@ def test_navigation_tooltips_are_pointer_only() -> None:
     assert 'document.addEventListener("mouseleave", hideTipText, true)' in app
     assert 'document.addEventListener("focusin", showTipText)' not in app
     assert 'document.addEventListener("focusout", hideTipText)' not in app
-    # Any focus transition hides the tooltip, but the focus a press on the folder's name
-    # gives it: that is the pointer's click, which neither shows nor hides the name's
-    # tooltip (docs/design-system.md, "Home"; tests/test_folder_home_chrome.py).
+    # Moving focus dismisses a pointer tooltip. A rebuild can repair focus.
     assert 'document.addEventListener("focusin", hideTooltipOnFocus)' in app
     on_focus = app[app.index("function hideTooltipOnFocus(") :]
     on_focus = on_focus[: on_focus.index("\n}\n")]
-    assert "if (pressed !== null && event.target === pressed) {" in on_focus
+    assert "if (previous && previous.isConnected === false) {" in on_focus
     assert on_focus.rstrip().endswith("hideTooltip();")
-    assert app.count("tooltipPressedAnchor = headerPath;") == 1
     assert 'element.addEventListener("focus", () =>' not in panel
     assert "dismissHoverTooltip();" in panel
 
@@ -1428,6 +1481,13 @@ def _rules_of(path: Path) -> list[tuple[str, dict[str, str]]]:
     ]
 
 
+def _root_rule(path: Path) -> dict[str, str]:
+    """The sheet's first `:root` rule, its unconditional tokens. The window's steps after it
+    in styles.css restate the main view's gutter in `:root` rules inside `@media`."""
+
+    return next(declarations for selector, declarations in _rules_of(path) if selector == ":root")
+
+
 _ROLE_TAB = re.compile(r"""role="tab"|"role",\s*"tab"|role:\s*"tab\"""")
 _TAB_SELECTOR = re.compile(r"\.[\w-]*\btabs?\b[\w-]*")
 # The classes the tab primitive and its one bar variant are made of, and names that merely
@@ -1489,7 +1549,9 @@ def test_every_tab_is_the_tab_primitive() -> None:
     # A tab that is an address renders as the same tab.
     link = _rule(styles, "a.tab-btn")
     assert "text-decoration: none" in link and "line-height: normal" in link
-    assert "outline: 2px solid var(--link)" in _rule(styles, ".tab-btn:focus-visible")
+    assert "outline: var(--focus-ring-width) solid var(--focus-ring-color)" in _rule(
+        styles, ".tab-btn:focus-visible"
+    )
     # Only core styles the primitive; a use site adds positioning from its own class.
     for sheet in _stylesheets()[1:]:
         for selector, _declared in _rules_of(sheet):
@@ -1515,7 +1577,7 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h4"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) .checkbox"): "relative to its text",
     # A treemap cell's label and value are sized from the cell's area, set on each cell inline
-    # by treemap.js; the stylesheet's defaults are the small size.
+    # by treemap-map.js; the stylesheet's defaults are the small size.
     ("folder/styles.css", ".tm-cell-label"): "a cell's size, from its area",
     ("folder/styles.css", ".tm-cell-sub"): "a cell's size, from its area",
 }
@@ -1585,26 +1647,33 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".parent-nav-arrow"): "a button's glyph",
     ("styles.css", ".fold-expander"): "a control row (Fold Expanders)",
     ("styles.css", ".menu-item"): "a menu",
+    ("styles.css", ".menu-link-url"): "the destination shown inside a menu",
     ("styles.css", ".menu-version"): "a menu's line",
     ("styles.css", ".menu-select"): "a menu's control",
     ("styles.css", ".menu-row"): "a menu's line",
     ("styles.css", ".menu-number"): "a menu's control",
-    ("styles.css", ".source-ref-selector"): "a chip and its menu",
+    ("styles.css", ".source-ref-selector-panel"): "a chip's menu",
     ("styles.css", ".chip"): "a chip",
     ("styles.css", ".chip-menu-count"): "a chip menu's count",
+    ("styles.css", ".counterpart-status"): "a split button's result, where its menu was",
     ("styles.css", ".filter-check"): "a filter",
     ("styles.css", ".chip-clear"): "a chip's control",
     ("styles.css", ".file-header-badge"): "a badge",
-    ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
-    ("agent_log/styles.css", ".log-event-kind"): "a badge",
     (
-        "diff/styles.css",
-        ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
-    ): "a fold's control",
+        "styles.css",
+        ".mb-image-fallback",
+    ): "the stand-in for a badge: an image the page does not load",
+    ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
+    ("agents/agent-log.css", ".log-event-kind"): "a badge",
     ("github/styles.css", ".github-pull-labels"): "a row of label chips",
     ("github/styles.css", ".github-pull-label"): "a label chip",
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
     ("html/styles.css", ".metabrowser-html-host .file-html-preview-open"): "a control",
+    ("table/styles.css", ".table-chip"): "a filter chip",
+    ("table/styles.css", ".table-fit-note"): "a control: it opens the Columns menu",
+    ("table/styles.css", ".table-stored-mark"): "a badge",
+    ("table/styles.css", ".table-ref"): "a reference chip",
+    ("table/styles.css", ".table-menu-note"): "a menu's line",
 }
 # Who may set the micro size, a step under the controls': a mark, never running text.
 _MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
@@ -1635,14 +1704,12 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".git-history-page-placeholder"),
     ("styles.css", ".git-panel-empty"),
     ("styles.css", ".git-commit-files-summary"),
-    ("styles.css", ".git-stat-add"),
-    ("styles.css", ".git-stat-del"),
     ("styles.css", ".git-stat-binary"),
     ("styles.css", ".file-header-path"),
     ("styles.css", ".file-header-mirror"),
     ("styles.css", ".file-header-size"),
     ("styles.css", ".folder-header-count"),
-    ("styles.css", ".folder-header-age"),
+    ("styles.css", ".view-header-age"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
     ("github/styles.css", ".github-pulls-by"),
@@ -1732,7 +1799,7 @@ _TOGGLE_SOURCES: dict[str, str] = {
     "app.js": ".menu-seg's checked mark and the drawer's .icon-btn toggle",
     "server.py": ".menu-seg in the shell's menu",
     "source-ref-selector.js": "marks a chip of its groupHtml in place",
-    "agent_log/index.js": "marks a chip of its groupHtml in place",
+    "agents/agent-log.js": "marks a chip of its groupHtml in place",
     "folder/treemap.js": "marks a chip of its groupHtml in place",
     "github/pulls-panel.js": "marks a chip of its groupHtml in place",
     "shell-keymap.js": "reads a filter menu's checked row to focus it, and renders none",
@@ -1798,11 +1865,13 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     wrapped_rest = styles.index('.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) > .chip {')
     assert styles.index(".chip-group > .chip:hover {") > max(chip_rest, wrapped_rest)
     # One focus ring. A fill cannot be the signal, since a checked segment's would hide it.
-    ring = "outline: 2px solid var(--link)"
+    ring = "outline: var(--focus-ring-width) solid var(--focus-ring-color)"
     for selector in (".chip:focus-visible", ".menu-seg:focus-visible"):
         rule = _rule(styles, selector)
         assert ring in rule, f"{selector} lost the focus ring"
-        assert "outline-offset: -2px" in rule, f"{selector} moved the focus ring"
+        assert "outline-offset: var(--focus-ring-offset)" in rule, (
+            f"{selector} moved the focus ring"
+        )
     # A consumer repaints a group from its state, so focus has to survive that.
     controls = (STATIC / "filter-controls.js").read_text(encoding="utf-8")
     assert "chip.isConnected === false" in controls
@@ -1895,8 +1964,17 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     plugins = REPO_ROOT / BUILTIN_PLUGINS
     overview = (plugins / "folder/overview.js").read_text(encoding="utf-8")
     assert '"section-heading folder-overview-panel-heading"' in overview
-    diff = (plugins / "diff/diff-view.js").read_text(encoding="utf-8")
-    assert '"fold-expander diff-fold-control disclosure-toggle"' in diff
+    # One fold bar for every fold of a diff: a code file's run of changed lines and a
+    # rendered Markdown file's run of unchanged blocks (docs/design-system.md, "Fold
+    # Expanders").
+    fold_bar = (plugins / "diff/diff-fold.js").read_text(encoding="utf-8")
+    assert '"fold-expander diff-fold-control disclosure-toggle"' in fold_bar
+    for user in ("diff/diff-view.js", "diff/diff-markdown.js"):
+        source = (plugins / user).read_text(encoding="utf-8")
+        assert re.search(
+            r'import \{[^}]*\bfoldExpander\b[^}]*\} from "\./diff-fold\.js";', source
+        ), user
+        assert "fold-expander" not in source, f"{user} builds a fold bar of its own"
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
     headings = re.findall(r'h\("h2", \{([^}]+)\}', page)
     assert headings and len(headings) == page.count('h("h2",')
@@ -1923,6 +2001,100 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     assert details[".github-pull-hunk-earlier[open]::details-content"]["height"] == "auto"
 
 
+# A fold expander's two glyphs, KPress's table-of-contents pair, each by a path only it has
+# (docs/design-system.md, "Fold Expanders"): chevrons-up-down closed, chevrons-down-up open.
+FOLD_CLOSED_PATH = "m7 15 5 5 5-5"
+FOLD_OPEN_PATH = "m7 20 5-5 5 5"
+# The browser sources that build a fold expander, each with the builder it uses: the diff's
+# factory, and a review comment's earlier lines, on a native summary.
+_FOLD_BUILDERS = {
+    "diff/diff-fold.js": '"fold-expander diff-fold-control disclosure-toggle"',
+    "github/pull-page.js": '{ class: "fold-expander disclosure-toggle" }',
+}
+# The classes a fold is built of: the primitive, the diff's bar, and the pull page's fold.
+_FOLD_CLASSES = ("fold-expander", "diff-fold-control", "github-pull-hunk-earlier")
+
+
+def test_a_fold_expander_draws_the_pair_not_the_chevron() -> None:
+    """Every fold leads with the expand/contract pair its primitive draws, never a chevron.
+
+    A fold sets withheld content back in place; a chevron turns for a row's children. The
+    primitive draws the pair from the control's own state, so no fold's markup holds a
+    glyph, and none can turn one.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    rules = _rules_of(STATIC / "styles.css")
+    glyph = dict(_declarations(_rule(styles, ".fold-expander::before")))
+    assert glyph["content"] == '""'
+    assert glyph["width"] == glyph["height"] == "var(--toggle-chevron-size)"
+    assert glyph["background-color"] == "currentcolor", "the glyph is the expander's muted ink"
+    assert f"d='{FOLD_CLOSED_PATH}'" in glyph["mask"] and FOLD_OPEN_PATH not in glyph["mask"]
+    # Open is the control's own state: a button's aria-expanded, a native summary's open.
+    opened = [
+        (selector, declarations)
+        for selector, declarations in rules
+        if f"d='{FOLD_OPEN_PATH}'" in declarations.get("mask-image", "")
+    ]
+    assert [selector for selector, _ in opened] == [
+        '.fold-expander[aria-expanded="true"]::before',
+        "details[open] > summary.fold-expander::before",
+    ]
+    # The text's ink under the pointer and the ring, and CanvasText in forced colors, which
+    # force the glyph's background to Canvas (tests/test_icon_catalog.py holds every mask).
+    assert {
+        declarations["background-color"]
+        for selector, declarations in rules
+        if selector == ".fold-expander:is(:hover, :focus-visible)::before"
+    } == {"var(--text)", "CanvasText"}, (
+        "the glyph takes the text's ink under the pointer and the ring"
+    )
+    # Nothing styles a chevron in a fold or turns anything there, and the control itself
+    # does not move: only the group it opens travels.
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            if not any(re.search(rf"\.{name}(?![\w-])", selector) for name in _FOLD_CLASSES):
+                continue
+            where = f"{_sheet_name(sheet)}: {selector}"
+            assert "toggle-chevron" not in selector and "svg" not in selector, where
+            assert not any("rotate" in value for value in declarations.values()), where
+            if re.search(r"\.(?:fold-expander|diff-fold-control)(?![\w-])", selector):
+                assert "transform" not in declarations, where
+                assert "transition" not in declarations, where
+    plugins = REPO_ROOT / BUILTIN_PLUGINS
+    for path in [*_browser_sources(), *_stylesheets()]:
+        text = path.read_text(encoding="utf-8")
+        for retired in ("diff-fold-chevron", "github-pull-fold-chevron"):
+            assert retired not in text, f"{path.name} names the fold's old chevron, {retired}"
+    # Only the registered builders make a fold, and neither puts a glyph in it.
+    building = {
+        _source_key(source)
+        for source in _browser_sources()
+        if re.search(r"(?<![\w-])fold-expander(?![\w-])", source.read_text(encoding="utf-8"))
+    }
+    assert building == set(_FOLD_BUILDERS), "a new fold expander is built outside its builders"
+    for key, builder in _FOLD_BUILDERS.items():
+        assert builder in (plugins / key).read_text(encoding="utf-8"), key
+        for glyph_text, listed_builder in _TOGGLE_GLYPHS.get(key, ()):
+            assert listed_builder != builder or "summary" in glyph_text, (
+                f"{key} puts {glyph_text} in a fold expander, which draws its own glyph"
+            )
+    # The factory's body alone, to its top-level closing brace, so a glyph helper declared
+    # after it in the file is not read as the factory's.
+    fold = (plugins / "diff/diff-fold.js").read_text(encoding="utf-8")
+    factory = fold.split("export function foldExpander", 1)[1].split("\n}\n", 1)[0]
+    assert "return { control, group" in factory, "the slice is not foldExpander's body"
+    assert "shellIcon(" not in factory, "foldExpander draws a glyph; .fold-expander draws it"
+    page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
+    assert re.search(
+        r'h\("summary", \{ class: "fold-expander disclosure-toggle" \}, \[\s*'
+        r'h\("span", \{ class: "github-pull-fold-closed" \}',
+        page,
+    ), "a review comment's fold summary holds its words alone"
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "test_a_fold_expander_draws_the_pair_not_the_chevron" in doc
+
+
 # ── Disclosure toggles never select text ───────────────────────────
 #
 # docs/design-system.md, "Disclosure Toggles Never Select Text". Every browser source
@@ -1937,13 +2109,13 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
 _TOGGLE_MARKER = re.compile(
     r"aria-expanded|ariaExpanded|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\""
     r"|ICONS\.toggle|icons\.toggle|MetabrowserIcons\?\.toggle|shellIcon\(\"toggle\"\)"
-    r"|registryIcon\(\"toggle\"\)|icons\.chevron|host\.chevron\(\)|srow-chevron\""
+    r"|registryIcon\(\"toggle\"\)|host\.chevron\(\)|srow-chevron\""
 )
 # A chevron or summary going into markup, each of which `_TOGGLE_GLYPHS` lists.
 _TOGGLE_GLYPH = re.compile(
     r"\$\{ICONS\.toggle\}|ICONS\.toggle \+|icon: ICONS\.toggle|ICONS\.toggle,|"
     r"\$\{menuChevron\}|MetabrowserIcons\?\.toggle \?\?|shellIcon\(\"toggle\"\)|"
-    r"mb\.icons\.chevron|host\.chevron\(\)|\[chevron\(\)\]|^\s*chevron\(\),|srow-chevron\""
+    r"mb\.icons\.toggle \+|host\.chevron\(\)|\[chevron\(\)\]|^\s*chevron\(\),|srow-chevron\""
     r"|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\"",
     re.MULTILINE,
 )
@@ -1958,13 +2130,20 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         '" tree-container disclosure-toggle collapsed"',
         "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'",
         'className: "filter-drawer-toggle disclosure-toggle"',
+        '"icon-btn nav-collapse-toggle disclosure-toggle"',
     ),
+    "server.py": ('class="icon-btn root-details-trigger disclosure-toggle"',),
     "charts.js": ("'<div class=\"tally-node disclosure-toggle'",),
     "filter-controls.js": ('class="chip chip-menu-trigger disclosure-toggle"',),
-    "source-ref-selector.js": (
-        '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
+    "source-ref-selector.js": ('"icon-btn source-ref-selector-toggle disclosure-toggle"',),
+    # The View on GitHub button's chevron, which opens its menu.
+    "plugin-sdk-views.js": (
+        '"git-ref-action", "disclosure-toggle"',
+        '"git-ref-menu-hit disclosure-toggle"',
+        '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
     ),
-    "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
+    "agents/agent-log.js": ('class="log-event-header disclosure-toggle"',),
+    "event_log/event-log-views.js": ('"disclosure-toggle event-log-row-head"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
     "markdown/rendered.js": ('class="section-disclosure-trigger disclosure-toggle">Diagnostics',),
@@ -1975,15 +2154,15 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "folder/overview.js": (
         '"folder-overview-panel-toggle section-disclosure-trigger disclosure-toggle"',
     ),
+    "diff/diff-fold.js": ('"fold-expander diff-fold-control disclosure-toggle"',),
     "diff/diff-view.js": (
-        '"fold-expander diff-fold-control disclosure-toggle"',
         '"diff-file-bar disclosure-toggle"',
         '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
     ),
     "diff/diff-summary.js": (
         '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
     ),
-    "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
+    "diff/diff-markdown.js": ('heading.className = "disclosure-toggle"',),
     "github/pulls-panel.js": (
         '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
@@ -1996,11 +2175,13 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
 }
 # Sources with a marker that build no toggle of their own, and why.
 _NOT_TOGGLES: dict[str, str] = {
+    "file-watches.js": "reads aria-expanded on the tree rows app.js builds",
     "tree-keyboard-navigation.js": "reflects aria-expanded on the tree rows app.js builds",
     "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
     "search-palette.js": "the search field is a combobox, and its text stays editable",
     "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
-    "server.py": "the settings gear is an icon-only menu button with no chevron",
+    "nav-collapse.js": "reflects aria-expanded on the chevron server.py writes and app.js draws",
+    "table/table-view.js": "the Columns button and a header's menu button open dialogs, not disclosures",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
 # element it goes into. Whitespace in a glyph is collapsed to one space.
@@ -2010,22 +2191,29 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ("${ICONS.toggle}", '" tree-container disclosure-toggle collapsed"'),
         ("icon: ICONS.toggle", 'className: "filter-drawer-toggle disclosure-toggle"'),
         ("ICONS.toggle +", "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'"),
+        ("${ICONS.toggle}", '"icon-btn nav-collapse-toggle disclosure-toggle"'),
     ),
     "charts.js": (("ICONS.toggle +", "'<div class=\"tally-node disclosure-toggle'"),),
     "filter-controls.js": (("${menuChevron}", 'class="chip chip-menu-trigger disclosure-toggle"'),),
     "source-ref-selector.js": (
         (
             "MetabrowserIcons?.toggle ??",
-            '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
+            '"icon-btn source-ref-selector-toggle disclosure-toggle"',
         ),
     ),
-    "agent_log/index.js": (("mb.icons.chevron", 'class="log-event-header disclosure-toggle"'),),
+    "plugin-sdk-views.js": (
+        ("MetabrowserIcons?.toggle ??", '"git-ref-action", "disclosure-toggle"'),
+        (
+            "MetabrowserIcons?.toggle ??",
+            '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
+        ),
+    ),
+    "agents/agent-log.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
     "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
     ),
     "diff/diff-view.js": (
-        ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
         ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
     ),
@@ -2036,7 +2224,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ),
     ),
     "diff/diff-markdown.js": (
-        ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
+        ('createElement("summary")', 'heading.className = "disclosure-toggle"'),
     ),
     "github/pulls-panel.js": (
         ("[chevron()]", '"github-pulls-change disclosure-toggle collapsed"'),
@@ -2048,7 +2236,6 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "github/pull-page.js": (
         ('h( "summary"', '"btn github-pull-stack-trigger disclosure-toggle"'),
         ('h("summary"', '{ class: "fold-expander disclosure-toggle" }'),
-        ("chevron(),", '{ class: "fold-expander disclosure-toggle" }'),
     ),
 }
 # A glyph built far from its builder: a folder row's parts are made by one function and
@@ -2070,6 +2257,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "chip-menu-trigger",
         "source-ref-selector-toggle",
         "log-event-header",
+        "event-log-row-head",
         "srow-container",
         "kpress-toc-toggle",
         "section-disclosure-trigger",
@@ -2236,14 +2424,14 @@ def test_an_unmarked_chevron_beside_a_marked_toggle_fails() -> None:
     new chevron button built just after a diff fold's passed.
     """
 
-    key = "diff/diff-view.js"
+    key = "diff/diff-fold.js"
     text = (REPO_ROOT / BUILTIN_PLUGINS / key).read_text(encoding="utf-8")
-    anchor = (
-        '  const control = el("button", "fold-expander diff-fold-control disclosure-toggle");\n'
-    )
+    anchor = '  control.className = "fold-expander diff-fold-control disclosure-toggle";\n'
     assert anchor in text
     beside = anchor + (
-        '  const more = el("button", "diff-fold-more");\n  more.innerHTML = shellIcon("toggle");\n'
+        '  const more = document.createElement("button");\n'
+        '  more.className = "diff-fold-more";\n'
+        '  more.innerHTML = shellIcon("toggle");\n'
     )
     assert _toggle_source_problems(key, text) == []
     assert _toggle_source_problems(key, text.replace(anchor, beside))
@@ -2357,12 +2545,33 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "## The Pulls Tab" in doc
     assert "test_the_pulls_tab_carries_the_shells_primitives" in doc
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
-    # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring.
+    # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring. A
+    # pull request's run and last line are one item (mb-1z7j): its zone hovers, carries the
+    # current mark, and takes the ring of the link inside it, as a Files row's `.tree-item` does.
     row = github[".github-pulls-row"]
     assert row["min-height"] == "var(--ui-row-height)"
-    assert github[".github-pulls-row:hover"]["background"] == "var(--hover-bg)"
-    assert github[".github-pulls-row.selected"]["background"] == "var(--highlight-bg)"
-    assert github[".github-pulls-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    item = ".github-pulls-entry"
+    assert github[f"{item}:hover"]["background"] == "var(--hover-bg)"
+    assert github[".github-pulls-stack-row:hover"]["background"] == "var(--hover-bg)"
+    assert (
+        github[f"{item}:has(> .github-pulls-row.selected)"]["background"] == "var(--highlight-bg)"
+    )
+    assert github[".github-pulls-row.selected"]["border-left-color"] == "var(--highlight-bar)"
+    ring = github[f"{item}:has(> .github-pulls-row:focus-visible)"]
+    assert ring["outline"] == "var(--focus-ring-width) solid var(--focus-ring-color)"
+    assert ring["outline-offset"] == "var(--focus-ring-offset)"
+    assert (
+        github[".github-pulls-stack-row:focus-visible"]["outline"]
+        == "var(--focus-ring-width) solid var(--focus-ring-color)"
+    )
+    assert github[f"{item} > .github-pulls-row:focus-visible"]["outline"] == "none"
+    # The toggle, the lines and the chevron, is the item's inner target: no ground of its own,
+    # and only its chevron's plate answers the pointer, so its status inks keep the grounds
+    # their contrast is held on.
+    assert ".github-pulls-change:hover" not in github
+    assert github[".github-pulls-change:hover > .github-pulls-toggle"]["background"] == (
+        "var(--border)"
+    )
     assert "transition" not in row, "a row crossed by a held key answers with no easing"
     # Icons: the app's glyph, in the state's color and never its own. The four shapes are the
     # plugin's, Lucide's, and drawn only on a GitHub repository's page, so no folder's startup
@@ -2378,15 +2587,18 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         assert f'"{name}"' in state
         assert name not in icons, f"{name} is back in the shell's eager icon registry"
     assert 'fill="none" stroke="currentColor"' in state, "a state's glyph takes its color"
-    # A row and its page match: one state's icon, from one module.
-    assert "pullStateIcon(" in panel and "pullStateIcon(" in page
+    # A row and its page match: one state's icon, from one module; a Pulls row draws its
+    # icon with its fields (stack-member-row.js).
+    member_row = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-member-row.js").read_text(
+        encoding="utf-8"
+    )
+    assert "pullStateIcon(" in member_row and "pullStateIcon(" in page
     assert 'aria-label", PULL_STATES[state].label' in state
-    # Ages, filters, buttons, and the spinner are the shell's.
-    assert "mb.formatAge(" in panel
+    # Filters, buttons, and the spinner are the shell's.
     assert "controls.groupHtml(" in panel
     assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
     assert 'class: "github-pulls-status nav-metadata"' in panel
-    assert 'class: "btn github-pulls-reload"' in panel
+    assert 'class: "btn github-pulls-refresh"' in panel
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     # No control or notice counts the rows held. Below them, pages still on their way show
@@ -2427,8 +2639,11 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
-    assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
-    assert 'h("span", { class: "github-pull-stack-member-title" })' in page
+    # A Pulls row, the stack menu, a stack's page, and a guide's pull request row draw a pull
+    # request's fields with one builder (stack-member-row.js), its title through the SDK's
+    # titleNodes.
+    assert "stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN)" in panel
+    assert "stackMemberRow(link, deps.titleNodes, deps.identity)" in page
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:
         assert github[title]["color"] == "var(--text)", title
@@ -2444,9 +2659,10 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
     # A pull request's number is bold wherever it names the pull request, the weight of a
     # stack's position, through one token (mb-vrvs): one rule in the GitHub plugin for the
-    # title's, a Pulls row's, and a stack member's, and the shell's Quick Search result
-    # and ref selector; no other rule sets a number's weight. In headless Chrome each
-    # computes to 700 (github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs).
+    # title's, a Pulls row's, and a stack menu member's (mb-1kzu), and the shell's Quick
+    # Search result and ref selector; no other rule sets a number's weight. In headless
+    # Chrome each computes to 700 (github-pulls-stacks-chrome.mjs,
+    # github-pull-header-chrome.mjs).
     assert "### Pull Request Numbers" in doc
     shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert shell_css.count("--pull-number-weight:") == 1
@@ -2471,9 +2687,10 @@ _PULL_NUMBERS = frozenset(
     {
         ".github-pull-number",
         ".github-pulls-number",
-        ".github-pull-stack-member-number",
         ".github-pull-stack-position",
         ".github-pull-stack-member-position",
+        ".github-pull-stack-member-number",
+        ".github-pull-guide-reference-pull",
         ".search-palette-pull-number",
         ".source-ref-selector-pull-number",
     }
@@ -2506,7 +2723,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
     pull request numbers' rules alone. One shell class, `.summary-number`, takes the token
     and nothing else, so a number keeps its line's ink and size, and no stylesheet restyles
     it, by its own class or by a class a source gives it beside that one. Each surface that
-    paints a count summary puts its numbers in it: the browserless sessions named in the
+    paints a count summary puts its counts in it: the browserless sessions named in the
     design system hold the markup, and tests/test_changed_file_rows_chrome.py and
     tests/test_nav_metadata_chrome.py read 700 for the numbers and 400 for the words in
     Chrome.
@@ -2547,7 +2764,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
             if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
                 assert "font-weight" not in declarations, (sheet, selector)
     painters = {
-        "static/formatters.js": "{ className: SUMMARY_NUMBER_CLASS, text: part.number",
+        "static/formatters.js": "{ className: part.sizeStyle ?? SUMMARY_NUMBER_CLASS, text: part.number",
         "static/navigation.js": "window.MetabrowserFormatters.countPartsHtml(parts)",
         "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
         "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
@@ -2576,6 +2793,7 @@ _PUNCTUATION_PAINTERS = {
         '...(at === 0 ? [] : [{ punctuation: "," }, " "]),',
         "{ status: entry.status, letter: entry.letter, count: written(entry.count) },",
         'const CHANGE_LINE_CLASS = "change-line";',
+        'const CHANGE_LINE_NONE_CLASS = "change-line-none";',
         "{ statuses: entries, additions: totals.additions, deletions: totals.deletions },",
     ),
     "static/plugin-sdk.js": (
@@ -2585,15 +2803,23 @@ _PUNCTUATION_PAINTERS = {
         "changeLine: changeLine,",
         "changeLineNodes: changeLineNodes,",
     ),
+    # The size line is a view helper, drawn only by a commit's or a pull request's page
+    # and a commit's hover card, so it is not in a startup script ("Change Size Line").
+    "static/plugin-sdk-views.js": (
+        "element.append(...mb.countPartsNodes(counts));",
+        "sized.append(...mb.countPartsNodes(size));",
+        "const paint = global.MetabrowserFormatters.countPartsHtml;",
+        "changeSizeLineNodes,",
+    ),
     "static/changed-files-tree.js": (
         "return formatters().changeSummary(totals, statusBreakdown(statuses), formatCount);",
         'letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",',
     ),
     "static/git-panel.js": (
         "const said = formatters.changeSummary(",
-        "formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])",
         "formatters.changeLineHtml(said.line)",
-        'const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });',
+        # The size line, the SDK's one component for it ("Change Size Line").
+        "return mb.changeSizeLineHtml(",
     ),
     "builtin_plugins/diff/diff-view.js": (
         'const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });',
@@ -2702,6 +2928,9 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
         "align-items": "baseline",
         "column-gap": "inherit",
     }
+    # A line leaves out a total of zero and says "0 lines" for a change of none, muted at
+    # its line's weight, wherever it stands (mb-efum, mb-ox6a).
+    assert shell[".change-line-stats > .change-line-none"] == {"color": "var(--muted)"}
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:
@@ -2747,47 +2976,33 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert group["grid-template-columns"] == (
         "minmax(0, max-content) max-content minmax(0, max-content)"
     ), "each name may shrink and the arrow never shrinks"
-    assert group["min-width"] == "calc(2 * (5px + 19px) + 3em)", "the merge's floor"
-    assert (shell[".git-ref"]["padding"], shell[".git-ref-copyable"]["padding-right"]) == (
-        "0 5px",
-        "19px",
-    ), "the floor counts each chip's padding and copy slot"
+    assert group["min-width"] == "calc(2 * var(--compact-chip-padding-inline) + 3em)", (
+        "the merge's floor"
+    )
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # The Pulls tab's number's line names no branches (the pull request's page does) and is
-    # one line (mb-lkkt): the author carries its separator, a break falls at its floor onto a
-    # second line its box clips, one line of the number's type tall, and a separator that
-    # starts a line lies in the one-separator offset the box clips.
+    # A Pulls row names no branches (the pull request's page does) (mb-lkkt, mb-pw8t, mb-rb3n):
+    # its run is the title, the place, the number, and the author, the number never breaking,
+    # the author in the row's type and its name ending in an ellipsis only where it is wider
+    # than a line; its last line is the lines, and the age at the row's end.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
-    meta = github[".github-pulls-meta"]
-    assert (meta["min-width"], meta["overflow"], meta["height"]) == ("0", "clip", "1lh")
-    assert meta["font-size"] == "var(--nav-font-size)", "1lh is the number's line"
-    # The author is the number's line's secondary metadata, at its size, which it inherits.
+    assert ".github-pulls-meta" not in github and ".github-pulls-line" not in github
+    assert github[".github-pulls-number"]["white-space"] == "nowrap", "the number never breaks"
+    assert ".github-pulls-byline" not in github, "the author is in the run"
+    assert github[".github-pulls-row > .github-pulls-tail"]["height"] == (
+        "var(--github-pulls-change-line)"
+    )
+    assert github[".github-pulls-tail > .github-pulls-age"]["justify-self"] == "end"
+    # The author is the run's secondary metadata, at its size, which it inherits.
     assert "font-size" not in github[".github-pulls-by"]
-    assert "text-overflow" not in meta
-    line = github[".github-pulls-line"]
-    assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
-    assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
-    assert github[".github-pulls-id"]["margin-inline-start"] == ("var(--github-pulls-sep)")
-    assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
-    by_rule = github[".github-pulls-by"]
-    assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")
+    assert ".github-pulls-id" not in github, "the run names the number once"
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
-    by = github[".github-pulls-by"]
-    assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
-    avatar = " ".join(github[".github-pulls-by:has(.actor-avatar)"]["min-width"].split())
-    assert avatar == (
-        "calc( var(--github-pulls-sep) + var(--actor-avatar-size) +"
-        " var(--actor-identity-gap) + 1.75em )"
-    ), "a name beside it"
-    # The floor counts the avatar's box and its gap, through the two tokens that size them in
-    # the shell's identity (mb-xlla, mb-nunw).
-    shell = dict(_rules_of(STATIC / "styles.css"))
-    assert (shell[".actor-avatar"]["width"], shell[".actor-identity"]["gap"]) == (
-        "var(--actor-avatar-size)",
-        "var(--actor-identity-gap)",
-    ), "the floor counts the avatar and its gap"
+    assert github[".github-pulls-by"]["--actor-avatar-size"] == (
+        "var(--github-pull-row-avatar-size)"
+    ), "a list row's avatar"
+    assert github[".github-pulls-by > .github-pull-identity"]["max-width"] == "100%"
+    assert ".github-pulls-by:has(.actor-avatar)" not in github
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
     assert ".github-pulls-who" not in github
@@ -2805,8 +3020,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # Branch names and file paths are chrome: no `<code>` for either.
     assert 'h("code"' not in page
     assert "mb.mergeRefs(" in page and 'kind: "remote"' in page
-    # One age, not a timestamp at each call site.
-    assert "mb.formatAge(" in page
+    # One exact time, in the age's tooltip, not a timestamp at each call site.
     assert page.count("mb.formatTimestamp(") == 1, "the exact time belongs in the age's tooltip"
     assert "`file-header-badge github-pull-badge github-pull-${kind}`" in page
     assert 'class: "notice github-pull-notice"' in page
@@ -2821,23 +3035,35 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
     title_glyph = github[".github-pull-title > .github-pull-state-icon svg"]
     assert (title_glyph["width"], title_glyph["height"]) == ("1em", "1em")
-    # Links take the link token rather than the browser's blue.
-    assert github[".github-pull-header a"]["color"] == "var(--link)"
-    # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
-    # hash) is quiet: muted at rest, the link token on hover and focus. The header's and a
-    # check's are at their row's size; a commit hash is one step below its row (below).
-    for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
-        action = f"{place} .github-pull-external-action"
-        assert github[action] == {"color": "var(--muted)"}, action
-        for state in (":hover", ":focus-visible"):
-            assert github[action + state]["color"] == "var(--link)", action + state
-    assert page.count('"github-pull-external-action"') == 2, "the header's and a check's"
-    assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
+    # Links take the link token rather than the browser's blue, all but the corner's View on
+    # GitHub button, which is a chip and takes a chip's ink (mb-4wqh).
+    assert github[".github-pull-header a:not(:where(.view-header-end *))"]["color"] == (
+        "var(--link)"
+    )
+    # A check's action on GitHub is quiet: muted at rest, the link token on hover and
+    # focus, at its row's size. View on GitHub is the header corner's button, a chip
+    # (mb-4wqh), and not one of them.
+    action = ".github-pull-checks .github-pull-external-action"
+    assert github[action] == {"color": "var(--muted)"}, action
+    for state in (":hover", ":focus-visible"):
+        assert github[action + state]["color"] == "var(--link)", action + state
+    assert page.count('"github-pull-external-action"') == 1, "a check's"
+    # A conversation commit's hash links to it on GitHub and is a short commit ID, in the
+    # commit-ID gray under the pointer too, which only underlines it (docs/design-system.md,
+    # "Short Commit IDs"); tests/test_github_pull_timeline_chrome.py measures it.
+    assert '"github-pull-commit-id git-commit-sha"' in page
+    assert not any(
+        "color" in declarations
+        for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+        if ".github-pull-commit-id" in selector
+        or ".github-pull-commit .github-pull-external-action" in selector
+    )
+    assert github[".github-pull-commit-id:hover"]["text-decoration"] == "underline"
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
     # A conversation commit is said in a card head's type ("Conversation Timeline"): its
-    # when is no quieter than a comment's, its age is the head's, and its hash takes a
-    # revision's own size, one step below the text beside it. The sizes and the line they
+    # when is no quieter than a comment's, its age is the head's, and its hash is the size
+    # of the text beside it, as a short commit ID is everywhere. The sizes and the line they
     # draw are measured in Chrome by tests/test_github_pull_timeline_chrome.py.
     commit = github[".github-pull-commit"]
     assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
@@ -2866,8 +3092,15 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # The events the line joins: the description, each comment and review, and each commit.
     assert page.count("github-pull-event") == 3, "the description, a card, and a commit"
     # Every author there is the shell's identity, whose avatar's box is there for an author
-    # without one, the person glyph in it (mb-nunw); only a Pulls row asks for none.
-    assert page.count("authorLabel(mb, ") == 4, "the header, the description, a card, a reply"
+    # without one, the person glyph in it (mb-nunw); only a Pulls row, a stack menu member, and
+    # a guide's pull request row (mb-x0z1) ask for none.
+    assert page.count("authorLabel(mb, ") == 6, (
+        "the header, the description, a card, a reply, a member, a guide's pull request row"
+    )
+    # Biome sets the guide's on lines of their own, so its braces are read past white space.
+    assert len(re.findall(r"\{\s*placeholder: false,?\s*\}", page)) == 2, (
+        "a stack menu member and a guide's pull request row"
+    )
     assert "{ slot: true }" not in page and "github-pull-avatar-slot" not in github
     shell = dict(_rules_of(STATIC / "styles.css"))
     avatar = shell[".actor-avatar"]
@@ -2884,11 +3117,13 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "github-pull-browse" not in page and '"Browse code"' in page
     assert page.count('class: "github-pull-text-action"') == 1
     assert '"github-pull-file github-pull-text-action"' in page
-    # The status line's Refresh or Fetch and Switch to the head are text actions too: the
-    # line is one of the header's metadata lines, and a bordered .btn made it 26 px where
-    # the row of ages above it is 18 (mb-2u08).
-    assert '"github-pull-text-action github-pull-refresh"' in page
-    assert '"github-pull-text-action github-pull-switch"' in page
+    # The status line's remedy, Retry or Fetch, is a text action too (mb-ablv): the line is
+    # one of the header's metadata lines, and a bordered .btn made it 26 px where the row of
+    # ages above it is 18 (mb-2u08). A switch to the head was one, until the server followed
+    # the head itself (mb-6a6w). The page has no Refresh of its own.
+    assert '"github-pull-text-action github-pull-remedy"' in page
+    assert "github-pull-refresh" not in page
+    assert "github-pull-switch" not in page
     # A <button> is an atomic inline box whatever its display, so the link and the plain
     # path are one too: a wrapped path then puts the badge after it on the next line in every
     # form, where the link alone let it follow the text. Measured in Chrome on a 685 px card
@@ -3077,6 +3312,39 @@ def test_a_hovered_legend_entrys_ink_reads_for_every_family() -> None:
             assert ratio >= 4.5, f"{family['key']} reads {ratio:.2f}:1 on the {theme} page"
 
 
+# How many times the separation floor Other's neutral must be from every family's color. The
+# legend names up to nine families and Other (file_type_legend.py), and the family colors are
+# held a floor apart from each other (devtools/check_file_type_colors.py), which nothing held
+# for Other, drawn in --muted. Measured 2026-11-20, 56 families: 0.1111 in the light theme and
+# 0.1074 in the dark, 7.4 and 7.2 times the floor, the nearest to Other plain text and asciidoc.
+OTHER_CLEARANCE_FLOORS = 5
+
+
+def test_other_is_clear_of_every_family_in_both_themes() -> None:
+    """The legend's Other, drawn in `--muted`, is never taken for a family it sits beside.
+
+    Every family's color is `MINIMUM_HOUSE_DELTA_E` or more from every other's in both themes,
+    held by `devtools/check_file_type_colors.py`. Other is none of them and takes the page's
+    muted ink (`--mb-distribution-other`), so this holds it the same distance in Oklab,
+    several times over, from each family, as the server resolves them for each theme.
+    """
+
+    from devtools.check_file_type_colors import MINIMUM_HOUSE_DELTA_E
+    from metabrowser.file_type_filters import serialize_distribution_colors
+
+    light_block, dark_block = _theme_blocks()
+    assert _declared(light_block, "--mb-distribution-other") == "var(--muted)"
+    colors = serialize_distribution_colors()
+    assert len(colors) > 9
+    for theme, block in (("light", light_block), ("dark", dark_block)):
+        other = _oklab(_declared(block, "--muted"))
+        for family in colors:
+            distance = math.dist(other, _oklab(family[theme]))
+            assert distance >= OTHER_CLEARANCE_FLOORS * MINIMUM_HOUSE_DELTA_E, (
+                f"{family['key']} is {distance:.4f} from Other on the {theme} page"
+            )
+
+
 def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
     """The one wait that dims what is shown has its own token, and dims nothing twice.
 
@@ -3169,7 +3437,7 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
     assert row["border-left"] == "2px solid transparent"
     assert row["height"] == "var(--ui-row-height)"
     assert shell[".changed-file-row:hover"] == {"background": "var(--hover-bg)"}
-    assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "-2px"
+    assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
     assert shell[".changed-file-toggle"]["width"] == "var(--tree-icon-slot)"
     sources = ("diff/diff-summary.js", "github/pull-files-view.js")
     for source in sources:
@@ -3196,7 +3464,7 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
     diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     toggle = ".metabrowser-diff-host .diff-summary-toggle"
     assert diff[toggle]["border-radius"] == "0"
-    assert diff[toggle + ":focus-visible"]["outline-offset"] == "-2px"
+    assert diff[toggle + ":focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
     # A folder's tooltip gives what its sums leave out, the counts alone.
     for source in sources:
         text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
@@ -3235,7 +3503,7 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
     # A person's avatar box and the gap after it are the shell's, declared once on its root,
     # and every page that draws a person reads them: a commit's author and a pull request's
     # alike (mb-nunw). No plugin declares its own.
-    root = shell[":root"]
+    root = _root_rule(STATIC / "styles.css")
     assert (root["--actor-avatar-size"], root["--actor-identity-gap"]) == ("18px", "4px")
     assert "--github-pull-avatar-size" not in github and "--github-pull-identity-gap" not in github
     assert (
@@ -3250,7 +3518,6 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
     for selector in (
         ".github-pull-commit",
         ".github-pull-meta-details > .github-pull-identity",
-        ".github-pulls-by:has(.actor-avatar)",
     ):
         geometry = " ".join(
             rules[selector].get("padding", rules[selector].get("min-width", "")).split()
@@ -3259,6 +3526,40 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
         assert "var(--actor-identity-gap)" in geometry, selector
     # No avatar size or gap is written as a pixel literal in a rule.
     assert "18px + 4px" not in github and "+ 9px" not in github
+
+
+def test_boxed_prose_takes_one_inline_padding() -> None:
+    """A bordered box that holds prose has one inline padding, `--boxed-prose-padding-inline`.
+
+    The pane inset, `--pane-header-padding-x`, aligns the navigation column's rows, and put a
+    description's h2 a few pixels inside its box's border (owner, 2026-11-20). The token is
+    declared once, on the shell's `:root`; a pull request's cards read it through
+    `--github-pull-text-inset`, which their head, text, hunk lines, and commit rows share, and
+    a commit's message reads it directly. docs/design-system.md, "Boxed Prose", names what
+    keeps its own padding and why. `tests/test_github_pull_text_chrome.py` measures the
+    padding the boxes lay out.
+    """
+
+    shell_path = STATIC / "styles.css"
+    github_path = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    token = "--boxed-prose-padding-inline"
+    shell_rules = _rules_of(shell_path)
+    declared = [
+        (selector, body[token])
+        for selector, body in shell_rules + _rules_of(github_path)
+        if token in body
+    ]
+    assert len(declared) == 1 and declared[0][0] == ":root", declared
+    assert re.fullmatch(r"\d+px", declared[0][1]), "the token's value is a length of its own"
+    github = dict(_rules_of(github_path))
+    shell = dict(shell_rules)
+    # A pull request's text is padded by the card's inset, which is the token and no pane inset.
+    assert github[".github-pull"]["--github-pull-text-inset"] == f"var({token})"
+    assert github[".github-pull-text"]["padding"] == (
+        "var(--content-padding-y) var(--github-pull-text-inset)"
+    )
+    # A commit's message is the same kind of box, and reads the token itself.
+    assert shell[".git-commit-body"]["padding"] == f"var(--pane-header-padding-y) var({token})"
 
 
 # A serif face, named directly, as a family, or through the token KPress reads it from.
@@ -3305,6 +3606,7 @@ _DOCUMENT_FACES = {
 _CHROME_PROSE_BUILDERS = {
     "static/git-panel.js": 1,  # a commit's body
     "builtin_plugins/github/pull-page.js": 1,  # textBlock: a pull request's every text
+    "builtin_plugins/github/guided-review.js": 1,  # proseHost: a guide step's title and note
 }
 
 
@@ -3467,11 +3769,19 @@ def test_diff_text_and_reserved_geometry_use_the_dense_mono_token() -> None:
         assert f"var(--diff-{kind}-row-height)" in view
 
 
-def test_branch_copy_plate_has_readable_interactive_ink() -> None:
-    css = (STATIC / "styles.css").read_text(encoding="utf-8")
-    assert "color: var(--text)" in _rule(css, ".git-ref-copy:is(:hover, :focus-visible)")
-    rules = dict(_rules_of(STATIC / "styles.css"))
-    assert rules[".git-ref-copy-layer > .git-ref-copy"]["color"] == "var(--git-ref-copy-ink)"
+def test_ref_menu_chevron_uses_neutral_ink_without_reserving_space() -> None:
+    rules = list(_rules_of(STATIC / "styles.css"))
+    caret, reduced_motion = [
+        declarations for selector, declarations in rules if selector == ".git-ref-menu-caret"
+    ]
+    assert caret["position"] == "absolute"
+    assert caret["color"] == "var(--muted)"
+    background = _MIX_OVER_TRANSPARENT.fullmatch(caret["background"])
+    assert background is not None and background["token"] == "--viz-surface-raised"
+    assert 0 < float(background["percent"]) < 100
+    assert "opacity var(--transition-fast)" in caret["transition"]
+    assert reduced_motion["transition"] == "none"
+    assert dict(rules)[".git-ref-menu-caret > svg"]["transform"] == "rotate(90deg)"
 
 
 # ── The Shift reveal's paint ────────────────────────────────────────
@@ -3738,11 +4048,12 @@ def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
     assert (beside["top"], beside["translate"]) == ("var(--kbd-badge-block)", "0 -50%")
     assert selected[":where(.kbd-badge-host)"] == {"position": "relative"}
     assert selected[":where([data-kbd-badge-anchor])"] == {"position": "relative"}
-    # The anchors: the file header and the folder header, for Up's crumb and button. The
+    # The anchor: the view header, a file's and a folder's alike, for Up's button. The
     # commit heading anchored Copy revision's badge, and copying has no key any more.
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert app.count('class="file-header" data-kbd-badge-anchor') == 1
-    assert app.count('class="file-header folder-header" data-kbd-badge-anchor') == 1
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
+    assert header.count("data-kbd-badge-anchor") == 1
+    assert '`<div class="file-header view-header${' in header
+    assert "data-kbd-badge-anchor" not in (STATIC / "app.js").read_text(encoding="utf-8")
     git_panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     assert "data-kbd-badge-anchor" not in git_panel
 
@@ -4005,3 +4316,342 @@ def test_a_heading_tally_out_of_sequence_fails() -> None:
     assert _heading_tally_problems("github/pull-page.js", padded)[1]
     elsewhere = text + '\nconst stray = `<span class="heading-tally">3</span>`;\n'
     assert _heading_tally_problems(key, elsewhere)[1]
+
+
+# ── Tokens: every one used is defined, and the system's inks read ────────────────────
+
+
+def _shipped_css_text() -> dict[Path, str]:
+    return {sheet: sheet.read_text(encoding="utf-8") for sheet in _stylesheets()}
+
+
+# A custom property a stylesheet reads that no shipped stylesheet or script sets: the host
+# page or an embedded document supplies these, so they are not ours to define. A prefix
+# names a family the host owns.
+_EXTERNAL_PROPERTIES: frozenset[str] = frozenset(
+    {
+        # Written per element by a script through a named constant, so no literal
+        # `setProperty("--name")` call is there to find (folder/category-palette.js's
+        # LIGHT_PROPERTY and DARK_PROPERTY; app.js's FILE_COLOR_*_PROPERTY).
+        "--mb-distribution-color-light",
+        "--mb-distribution-color-dark",
+        "--mb-file-color-light",
+        "--mb-file-color-dark",
+        # The embedded kpress document's own properties, which its stylesheet defines.
+        "--kpress-font-prose",
+        "--kpress-line-height-normal",
+        "--kpress-toc-toggle-clearance",
+        "--kpress-column-inset",
+    }
+)
+_VAR_WITHOUT_FALLBACK = re.compile(r"var\(\s*(--[\w-]+)\s*\)")
+_PROPERTY_DECLARATION = re.compile(r"(--[a-zA-Z][\w-]*)\s*:")
+_SET_PROPERTY = re.compile(r"setProperty\(\s*[\"'`](--[\w-]+)")
+
+
+def _defined_custom_properties() -> set[str]:
+    defined: set[str] = set()
+    for css in _shipped_css_text().values():
+        defined.update(_PROPERTY_DECLARATION.findall(re.sub(r"/\*.*?\*/", "", css, flags=re.S)))
+    for source in _browser_sources():
+        # A name in a comment is prose, not a definition.
+        text = re.sub(r"/\*.*?\*/", "", source.read_text(encoding="utf-8"), flags=re.S)
+        text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
+        defined.update(_SET_PROPERTY.findall(text))
+        # An inline `style="--x: …"` or a style object key written by a script.
+        defined.update(_PROPERTY_DECLARATION.findall(text))
+    return defined
+
+
+def test_every_custom_property_a_stylesheet_reads_is_defined() -> None:
+    """`var(--x)` with no fallback names a token, so the token must exist.
+
+    A read of a name nothing defines falls through to the property's initial value, which
+    is how `min-height: var(--button-height-compact)` sat in the shell doing nothing. A
+    read with a fallback is an optional hook and is not checked.
+
+    Limit: "defined" is a name set anywhere in a shipped stylesheet, or in a script outside
+    a comment, at any selector; it does not check that the definition is in scope of the
+    reader (a token set only under one component's selector but read elsewhere passes).
+    """
+
+    defined = _defined_custom_properties()
+    undefined: dict[str, set[str]] = {}
+    for sheet, css in _shipped_css_text().items():
+        stripped = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        for name in _VAR_WITHOUT_FALLBACK.findall(stripped):
+            if name in defined or name in _EXTERNAL_PROPERTIES:
+                continue
+            undefined.setdefault(name, set()).add(_sheet_name(sheet))
+    assert not undefined, f"custom properties read but never defined: {undefined}"
+
+
+_FOCUS_OUTLINE = "var(--focus-ring-width) solid var(--focus-ring-color)"
+_FOCUS_OFFSET = "var(--focus-ring-offset)"
+_FOCUS_OFFSET_OUTSET = "var(--focus-ring-offset-outset)"
+# The bare controls whose box is their text: a ring inside it would sit on the glyphs, so it
+# stands outside (docs/design-system.md, "Focus Ring"). Nothing else takes the outset.
+_FOCUS_RING_OUTSET = frozenset(
+    {
+        ".nav-shortcut-action:focus-visible",
+        ".source-freshness-label:focus-visible",
+        ".filter-check:has(input:focus-visible)",
+        ".help-project a:focus-visible",
+        ".event-log-details a:focus-visible",
+        # A session's link in the agents views: a bare inline link, as the two above are.
+        "a.agents-session-link:focus-visible",
+    }
+)
+
+
+def test_every_focus_ring_is_the_one_ring() -> None:
+    """Width, color, and offset come from the focus-ring tokens, never a literal."""
+
+    problems: list[str] = []
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            outline = declarations.get("outline")
+            if "focus-visible" not in selector or outline is None or outline in {"none", "0"}:
+                continue
+            offset = declarations.get("outline-offset")
+            want = _FOCUS_OFFSET_OUTSET if selector in _FOCUS_RING_OUTSET else _FOCUS_OFFSET
+            if outline != _FOCUS_OUTLINE or offset != want:
+                problems.append(f"{_sheet_name(sheet)} {selector}: {outline}; offset {offset}")
+    assert not problems, "\n".join(problems)
+
+
+def test_the_outset_focus_ring_is_only_for_the_documented_controls() -> None:
+    """A control not in the allowlist cannot take the outset by naming the token."""
+
+    outset = {
+        selector
+        for sheet in _stylesheets()
+        for selector, declarations in _rules_of(sheet)
+        if declarations.get("outline-offset") == _FOCUS_OFFSET_OUTSET
+    }
+    assert outset == set(_FOCUS_RING_OUTSET)
+    root = _theme_tokens()["light"]
+    assert root["--focus-ring-offset"].startswith("-")
+    assert root["--focus-ring-offset-outset"][0].isdigit()
+
+
+def test_a_link_no_rule_colors_is_the_link_color() -> None:
+    """The shell sets the base anchor, so a new view's bare link is never the user agent's.
+
+    The base is zero-specificity (`:where`), so every context's own color, hover, and ring
+    still win; it covers a visited link too (`:any-link`); and it sets the color alone, so
+    the contexts that keep the user agent's underline at rest are unchanged. The Chrome
+    half, that a bare `<a href>` in a plugin view computes to `--link` and not the user
+    agent's blue or visited purple, is in `tests/dom/agents-views-chrome.mjs`.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert dict(_declarations(_rule(styles, ":where(a:any-link)"))) == {"color": "var(--link)"}
+    # The rules the base made redundant stay gone: a context that colors every anchor in it
+    # with the link color is patching the user agent's fallback one context at a time.
+    for selector in (
+        ".help-project a",
+        ".event-log-details a",
+        ".md-body:not(.metabrowser-kpress-host) a",
+    ):
+        for sheet in _stylesheets():
+            for rule, declarations in _rules_of(sheet):
+                assert not (rule == selector and "color" in declarations), (
+                    f"{selector} recolors a link the base already colors"
+                )
+
+
+def test_a_control_no_rule_rings_takes_the_one_ring() -> None:
+    """A button or summary that no rule rings draws the one ring, not the user agent's.
+
+    The base is zero-specificity, `:focus-visible` inside the `:where` too, so every family's
+    own `:focus-visible` rule still wins; it states the ring from the four tokens and nothing
+    else; and it rings the elements a control is built from, `button` and `summary`, and not
+    links, whose ring is their context's (docs/design-system.md, "Focus Ring"). Because any
+    rule wins, KPress's ring on a `summary` in `article.kpress` does too, so the rendered
+    diff's fold states the ring itself; tests/test_diff_markdown_fold_chrome.py reads it.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    base = ":where(button:focus-visible, summary:focus-visible)"
+    assert dict(_declarations(_rule(styles, base))) == {
+        "outline": "var(--focus-ring-width) solid var(--focus-ring-color)",
+        "outline-offset": "var(--focus-ring-offset)",
+    }
+    # One base, stated once: a second would be a fork of it.
+    assert styles.count(base) == 1
+
+
+def test_the_ref_selectors_current_row_shows_focus_by_the_ring() -> None:
+    """A menu row shows focus by the hover tint, which the current row's highlight replaces.
+
+    So the current row, the working tree's or a ref's, draws the one ring on focus instead,
+    and keyboard focus on it is not invisible.
+    """
+
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".menu-item:focus-visible"] == {"background": "var(--hover-bg)", "outline": "none"}
+    for row in (".source-ref-selector-row", ".source-ref-selector-working-tree"):
+        current = f'{row}[aria-current="true"]'
+        assert shell[current]["background"] == "var(--highlight-bg)", row
+        assert shell[current + ":focus-visible"] == {
+            "outline": _FOCUS_OUTLINE,
+            "outline-offset": _FOCUS_OFFSET,
+        }, row
+
+
+_STATUS_TEXT_TOKENS = (
+    "--status-success-text",
+    "--status-warning-text",
+    "--status-error-text",
+    "--status-info-text",
+    "--status-success-soft-text",
+)
+_BADGE_TONES = (
+    "completed",
+    "failed",
+    "running",
+    "pending",
+    "adapter",
+    "compressed",
+)
+_STATUS_FILL_TOKENS = (
+    "--status-success",
+    "--status-warning",
+    "--status-warning-strong",
+    "--status-error",
+    "--status-error-strong",
+    "--status-info",
+)
+_AA_TEXT = 4.5
+
+
+def test_status_and_badge_inks_read_in_both_themes() -> None:
+    """A status ink is held to 4.5:1 on the page and the hover ground; a badge's on its own fill."""
+
+    for theme, tokens in _theme_tokens().items():
+        for ground_token in ("--bg", "--hover-bg"):
+            ground = _resolved(tokens, ground_token)
+            for token in _STATUS_TEXT_TOKENS:
+                ink = _resolved(tokens, token)
+                assert _contrast(ink, ground) >= _AA_TEXT, (
+                    f"{token} in the {theme} theme reads at {_contrast(ink, ground):.2f}:1 "
+                    f"on {ground_token}"
+                )
+        for tone in _BADGE_TONES:
+            fill = _resolved(tokens, f"--badge-{tone}-bg")
+            ink = _resolved(tokens, f"--badge-{tone}-text")
+            assert _contrast(ink, fill) >= _AA_TEXT, (
+                f"--badge-{tone} in the {theme} theme reads at {_contrast(ink, fill):.2f}:1"
+            )
+
+
+def test_status_text_inks_keep_their_fills_hue() -> None:
+    """A text ink is its fill's color seen as text, so the two share a hue family."""
+
+    light = _theme_tokens()["light"]
+    for name in ("success", "warning", "error"):
+        ink = _oklch_channels(_resolved(light, f"--status-{name}-text"))
+        fill = _oklch_channels(_resolved(light, f"--status-{name}"))
+        assert _hue_gap(ink[2], fill[2]) <= 15, name
+
+
+def test_no_stylesheet_sets_text_in_a_status_fill() -> None:
+    """A fill token is for dots, bars, tints, and borders; text takes the themed ink."""
+
+    fills = {f"var({token})" for token in _STATUS_FILL_TOKENS}
+    problems = [
+        f"{_sheet_name(sheet)} {selector}: color {declarations['color']}"
+        for sheet in _stylesheets()
+        for selector, declarations in _rules_of(sheet)
+        if declarations.get("color") in fills
+    ]
+    assert not problems, "\n".join(problems)
+
+
+def test_a_failure_is_one_ink_and_a_stat_is_one_pair() -> None:
+    """Additions and deletions read in one ink wherever drawn, and so does a failed load."""
+
+    ink = {
+        ".diff-stat-add": "--status-success-text",
+        ".diff-stat-del": "--status-error-text",
+    }
+    seen: dict[str, set[str]] = {}
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            for stat in ink:
+                if selector.endswith(stat) and "color" in declarations:
+                    seen.setdefault(stat, set()).add(declarations["color"])
+    for stat, token in ink.items():
+        assert seen.get(stat) == {f"var({token})"}, (stat, seen.get(stat))
+    failure = {
+        ".tree-lazy-error",
+        ".git-graph-more-failed",
+        ".nav-error",
+        ".source-freshness-error",
+        ".source-ref-selector-error",
+    }
+    found = {
+        selector: declarations["color"]
+        for selector, declarations in _rules_of(STATIC / "styles.css")
+        if selector in failure and "color" in declarations
+    }
+    assert set(found) == failure
+    assert set(found.values()) == {"var(--status-error-text)"}
+
+
+def test_the_diff_row_tints_are_shell_tokens() -> None:
+    """The plugins and the shell tint an added or removed line from one pair."""
+
+    root = _theme_tokens()["light"]
+    assert root["--diff-add-row-bg"] == "color-mix(in srgb, var(--status-success) 9%, transparent)"
+    assert root["--diff-del-row-bg"] == "color-mix(in srgb, var(--status-error) 9%, transparent)"
+
+
+_RADIUS_VALUE = r"(?:var\(--[\w-]*radius[\w-]*\)|0|inherit)"
+_BORDER_RADIUS = re.compile(rf"{_RADIUS_VALUE}(?:\s+{_RADIUS_VALUE})*")
+# A radius that is not a token, and why: a shape the token set cannot say.
+_RADIUS_EXCEPTIONS: dict[tuple[str, str], str] = {}
+
+
+def test_every_border_radius_is_a_radius_token() -> None:
+    """The app's corners are `--radius-*` tokens; a literal forks the shape vocabulary."""
+
+    problems = []
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            value = declarations.get("border-radius")
+            if value is None or _BORDER_RADIUS.fullmatch(value):
+                continue
+            if (_sheet_name(sheet), selector) in _RADIUS_EXCEPTIONS:
+                continue
+            problems.append(f"{_sheet_name(sheet)} {selector}: {value}")
+    assert not problems, "\n".join(problems)
+
+
+_FIELD_CONSUMERS = (".menu-select", ".menu-number", ".source-ref-selector-filter")
+_FIELD_OWNED = ("border", "background", "outline", "outline-offset", "border-radius")
+
+
+def test_text_fields_carry_the_field_primitive() -> None:
+    """Border, fill, ring, and hover are stated once; a field sets only its own layout."""
+
+    rules = _rules_of(STATIC / "styles.css")
+    alone = [
+        (selectors.strip(), dict(_declarations(body)))
+        for selectors, body in _style_rules((STATIC / "styles.css").read_text(encoding="utf-8"))
+    ]
+    for selector in _FIELD_CONSUMERS:
+        own = [declarations for selectors, declarations in alone if selectors == selector]
+        assert own, selector
+        for declarations in own:
+            restated = [name for name in _FIELD_OWNED if name in declarations]
+            assert not restated, f"{selector} restates {restated}"
+    field = dict(next(d for rule, d in rules if rule == ".field"))
+    assert {"border", "background", "border-radius", "padding"} <= set(field)
+    assert any(rule == ".field:focus-visible" for rule, _ in rules)
+    source = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
+    assert 'filter.className = "field source-ref-selector-filter";' in source
+    server = (STATIC.parent / "server.py").read_text(encoding="utf-8")
+    assert '<select class="field menu-select"' in server
+    assert '<input class="field menu-number"' in server

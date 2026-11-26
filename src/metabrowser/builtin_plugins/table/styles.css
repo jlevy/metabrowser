@@ -1,0 +1,474 @@
+/* The table view (table-view.js), built on the Data Tables component in
+   static/styles.css (.data-grid, .data-num, .data-literal) and the host's
+   .field, .btn, .menu, and .notice. docs/design-system.md, "Data Tables",
+   states the rules. Every rule on .data-grid here is under .table-view, so the
+   shared component looks the same elsewhere whether or not this sheet has loaded. */
+
+/* The view fills its tab: a toolbar, the grid in a scroll box of its own, so the
+   header stays put and the window reads the box's own scroll. */
+.table-view-host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: 0;
+}
+.table-view {
+  /* One line of the body text: Source Sans 3 at the body size takes 20 px, so a shorter
+     line box spilled a pixel and every cell read as cut (tests/test_table_view_chrome.py). */
+  --table-line-height: 20px;
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 8px;
+}
+.table-toolbar[hidden],
+.table-notes[hidden],
+.table-scroll[hidden],
+.table-record[hidden],
+.table-fit-note[hidden] {
+  display: none;
+}
+.table-search {
+  width: 16em;
+  max-width: 100%;
+}
+.table-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--chip-cluster-gap);
+}
+.table-chips:empty {
+  display: none;
+}
+.table-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 28em;
+  box-sizing: border-box;
+  min-block-size: var(--chip-height);
+  padding: var(--chip-padding-y) 2px var(--chip-padding-y) 8px;
+  border: var(--chip-border) solid var(--link);
+  border-radius: var(--radius-pill);
+  font-size: var(--ui-small-font-size);
+}
+.table-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-chip-remove {
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  text-decoration: none;
+}
+.table-chip-remove:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.table-chip-remove:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.table-status {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+}
+.table-fit-note {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--ui-small-font-size);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.table-fit-note:hover {
+  color: var(--text);
+}
+.table-fit-note:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.table-columns-button {
+  margin-inline-start: auto;
+}
+.table-notes {
+  display: grid;
+  gap: 6px;
+}
+.table-notes:not(:empty) {
+  margin-bottom: 8px;
+}
+.table-empty {
+  margin: 12px 0;
+  color: var(--muted);
+}
+
+/* ── The grid ─────────────────────────────────────────────── */
+.table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+}
+.table-view .data-grid {
+  table-layout: fixed;
+}
+.table-view .data-grid[hidden] {
+  display: none;
+}
+/* Every row is one height, the lines the table's longest cells need (one or two:
+   table-lines-1 or table-lines-2, which the view sets), so the window can place any row
+   by its index. A longer value is cut with an ellipsis, its whole text in the shared
+   tooltip. A one-line cell is a plain block cut on one line: the line clamp two lines
+   need cost about a third more layout over a thousand rows of twelve columns in Chrome
+   152 (tests/dom/table-view-measure.mjs). */
+.table-cell {
+  display: block;
+  height: var(--table-line-height);
+  overflow: hidden;
+  line-height: var(--table-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-lines-2 .table-cell {
+  display: -webkit-box;
+  height: calc(2 * var(--table-line-height));
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.table-lines-2 .data-num .table-cell {
+  display: block;
+  white-space: nowrap;
+}
+.table-view .data-grid .table-cell.data-literal {
+  line-height: var(--table-line-height);
+}
+.table-cell-null,
+.table-cell-absent,
+.table-cell-unpreviewed,
+.table-cell-error {
+  color: var(--muted);
+}
+.table-cell-error {
+  font-style: italic;
+}
+.table-cut {
+  color: var(--muted);
+}
+/* A value whose stored type differs from its column's: the stored type, small,
+   after the value. */
+.table-stored-mark {
+  margin-inline-start: 4px;
+  padding: 0 3px;
+  border: 1px solid var(--status-warning);
+  border-radius: var(--radius-chrome);
+  color: var(--status-warning-text);
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+}
+.table-view .data-grid thead th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.table-sort,
+.table-head-menu {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.table-sort:hover,
+.table-head-menu:hover {
+  color: var(--text);
+}
+.table-sort:focus-visible,
+.table-head-menu:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.table-sort-arrow {
+  color: var(--link);
+}
+.table-head-menu {
+  margin-inline-start: 4px;
+  opacity: 0;
+}
+.table-view .data-grid th:hover .table-head-menu,
+.table-head-menu:focus-visible,
+.table-head-menu[aria-expanded="true"] {
+  opacity: 1;
+}
+/* A touch screen has no hover to show the column menu's button by, and the menu holds
+   the column's filter and Hide column: it is always shown there. */
+@media (hover: none) {
+  .table-head-menu {
+    opacity: 1;
+  }
+}
+.table-view .data-grid tbody tr {
+  cursor: pointer;
+}
+/* The focused row: the hover ground and a bar at its start. The bar is on the row's first
+   cell, not the row, since WebKit has not painted a box shadow on a table row; it is
+   below, after the pinned column's rules. */
+.table-view .data-grid tbody tr:focus {
+  outline: none;
+  background: var(--hover-bg);
+}
+.table-view .data-grid tbody tr[aria-selected="true"] {
+  background: var(--highlight-bg);
+}
+.table-view .data-grid tbody td:focus-visible,
+.table-view .data-grid tbody a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.table-view .data-grid tbody tr.table-spacer,
+.table-view .data-grid tbody tr.table-spacer:hover {
+  background: transparent;
+  cursor: default;
+}
+.table-view .data-grid tbody tr.table-spacer > td {
+  padding: 0;
+  border: 0;
+}
+.table-position-head,
+.table-position-cell {
+  width: 1%;
+  text-align: right;
+  line-height: var(--table-line-height);
+}
+.table-view .data-grid th.table-position-cell {
+  font-weight: var(--weight-normal);
+}
+.table-position {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+  text-decoration: none;
+}
+.table-position:hover {
+  color: var(--link);
+}
+.table-value-filter {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--muted);
+  text-underline-offset: 3px;
+}
+.table-value-filter:hover {
+  color: var(--link);
+}
+.table-ref {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 var(--compact-chip-padding-inline);
+  overflow: hidden;
+  border: var(--chip-border) solid var(--border);
+  border-radius: var(--radius-tag);
+  color: var(--text);
+  font-size: var(--ui-small-font-size);
+  line-height: calc(var(--compact-chip-height) - 2 * var(--chip-border));
+  text-decoration: none;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.table-ref:hover {
+  border-color: var(--muted);
+  background: var(--hover-bg);
+}
+/* The first column stays in place while columns the reader chose scroll sideways. */
+.table-pinned thead tr > :first-child,
+.table-pinned tbody tr:not(.table-spacer) > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg);
+  box-shadow: inset -1px 0 0 var(--border);
+}
+.table-pinned thead tr > :first-child {
+  z-index: 3;
+}
+/* The focused row's bar (after the pinned column's rules, which it outranks). */
+.table-view .data-grid tbody tr:focus > :first-child {
+  box-shadow: inset 2px 0 0 var(--link);
+}
+.table-view .data-grid.table-pinned tbody tr:focus > :first-child {
+  box-shadow:
+    inset 2px 0 0 var(--link),
+    inset -1px 0 0 var(--border);
+}
+.table-ch-probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+}
+/* A cell's padding and nothing else, so its width is the padding a column adds. */
+.table-pad-probe {
+  position: absolute;
+  padding: var(--panel-cell-padding);
+  visibility: hidden;
+}
+/* Which rows a windowed table printed: on paper only, and only when it says something. */
+.table-print-note {
+  display: none;
+}
+
+/* ── Menus ────────────────────────────────────────────────── */
+.table-menu {
+  position: absolute;
+  z-index: var(--z-overlay);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.table-menu-check {
+  cursor: pointer;
+}
+.table-menu-note {
+  max-width: 24em;
+  padding: 6px var(--menu-row-inset);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  white-space: normal;
+}
+.table-filter-form {
+  display: flex;
+  gap: 4px;
+  padding: 6px var(--menu-row-inset);
+}
+.table-filter-value {
+  width: 10em;
+}
+
+/* ── The record ───────────────────────────────────────────── */
+.table-record {
+  max-width: 72rem;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+.table-record-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin-bottom: 12px;
+}
+.table-record-title {
+  margin: 0;
+  font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+}
+.table-back {
+  white-space: nowrap;
+}
+.table-record-fields {
+  display: grid;
+  grid-template-columns: minmax(8em, 14em) minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.table-record-fields > dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-bold);
+}
+.table-record-type {
+  color: var(--muted);
+  font-weight: var(--weight-normal);
+}
+.table-record-fields > dd {
+  min-width: 0;
+  margin: 0;
+}
+.table-record-value {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.table-record-value.data-num-value {
+  font-variant-numeric: var(--tabular-numerals);
+}
+.table-record-note {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+.table-record-backrefs {
+  margin-top: 20px;
+}
+.table-record-subtitle {
+  margin: 0 0 6px;
+}
+
+/* The hover card is the shared tooltip's content. */
+.table-card-label {
+  font-weight: var(--weight-bold);
+}
+.table-card-name {
+  color: var(--muted);
+}
+
+@media print {
+  .table-toolbar,
+  .table-head-menu {
+    display: none;
+  }
+  .table-print-note:not(:empty) {
+    display: block;
+    margin: 0 0 8px;
+    color: var(--muted);
+  }
+  .table-scroll {
+    overflow: visible;
+  }
+  .table-view-host,
+  .table-view {
+    display: block;
+  }
+}
+
+/* Live. The pill says whether the table follows its file, and the offer holds rows that
+   arrived above the reader's place (table-view.js, "Live"); both are `.btn`s. */
+/* Absent until each first shows; after that it keeps its slot while hidden, so the toolbar
+   keeps its box as the watch drops and returns or an offer is taken ("Regions Keep Their
+   Boxes"). Both sit between the fit note and Columns, which stay where they are. */
+.table-live-pill[hidden]:not([data-slot]),
+.table-offer[hidden]:not([data-slot]) {
+  display: none;
+}
+.table-live-pill[hidden][data-slot],
+.table-offer[hidden][data-slot] {
+  display: inline-block;
+  visibility: hidden;
+}
+/* A changed or arrived row flashes once in the live-row color, as the Files tree's
+   arriving rows do (docs/design-system.md, "Live Row Arrivals"); the reduced-motion rule
+   that shortens the tree's flash shortens this one. */
+.data-grid tr.table-row-flash > * {
+  animation: tree-row-flash-in 900ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .data-grid tr.table-row-flash > * {
+    animation-duration: 1ms;
+  }
+}

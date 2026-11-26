@@ -125,13 +125,16 @@ the validator authoritative rather than advisory.
   their bodies summarize many files.
 
 `/api/rollup` tags its body with the served root, the engine version (session, sequence,
-scope fingerprint, semantic fingerprint), and the request’s shape: path, depth, and
-every ranking bound, so two clients asking for different shapes at one version never
-share a body. Three layers sit behind the tag:
+scope fingerprint, semantic fingerprint), and the request’s shape: path, depth, every
+ranking bound, the node budget, the ignored scope, and the encoding, so two clients
+asking for different shapes at one version never share a body.
+Three layers sit behind the tag:
 
 1. **`304`:** a client that already holds the answer gets `304 Not Modified`.
-2. **Retained body:** `_ROLLUP_BODY_CACHE`, bounded by `ROLLUP_BODY_CACHE_ENTRIES`,
-   serves a client that arrives without the tag, such as a second tab.
+2. **Retained body:** `_ROLLUP_BODY_CACHE`, bounded by `ROLLUP_BODY_CACHE_ENTRIES` and
+   `ROLLUP_BODY_CACHE_BYTES`, serves a client that arrives without the tag, such as a
+   second tab. The oldest bodies go first, and a body over the byte bound is not kept
+   (`tests/test_rollup_route.py::test_rollup_body_cache_evicts_by_bytes`).
 3. **Single flight:** clients that arrive together await one build in
    `_ROLLUP_IN_FLIGHT`. The build is its own task, awaited through `asyncio.shield`, so
    a client that disconnects cancels only its own wait; the build finishes for everyone
@@ -156,6 +159,9 @@ During a scan the version moves on every write, so nothing is reused, which is c
 the answer is changing.
 
 ## Content Trust Model
+
+The [threat model](arch-threat-model.md) says which threat each policy below answers and
+the risk it accepts; a change to a policy names its threat there.
 
 Metabrowser serves two classes of response with different privilege.
 **Application surfaces** (the shell, static assets, every `/api` route, and plugin
@@ -229,13 +235,48 @@ The Markdown view then shows the document’s source under one line saying why
 (`builtin_plugins/markdown/render-refusal.js`).
 
 The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables,
-details, and links and images inside the served tree.
+details, links, images inside the served tree, and images from the web over `https`. It
+keeps the layout attributes github.com keeps and KPress keeps too, each value a keyword
+or a number (`ALIGN_VALUES` and `DIMENSIONS` in `inert_html.py`): `align` on a block, a
+heading, an image, or a table part, and `width` and `height` on an image or a table
+cell, so a README such as Metabrowser’s own, a `width="192"` logo in a
+`<p align="center">`, is laid out as on github.com.
+The shell’s stylesheet gives those attributes back where KPress’s rules outrank them, in
+every render (`static/styles.css`, “GitHub’s layout attributes in rendered Markdown”).
 It drops every class, `id`, `name`, `data-*`, style, and event attribute, and all SVG,
 MathML, media, stylesheets, frames, forms, and scripts.
-An outside image becomes a link to it.
+An image from the web is kept when the document writes its address in full over `https`
+(`remote_image` in `inert_html.py`), as github.com shows a README’s, with no referrer
+sent (`referrerpolicy="no-referrer"`) and none of Metabrowser’s cookies, which are
+`SameSite=Lax` preferences a browser does not send with an image to another site.
+An address with no host or one a URL parser refuses, one with a user name in it, and one
+whose host is written outside ASCII are not loaded; `tests/test_inert_html.py` holds the
+server’s choice and the page’s to one answer on a corpus.
+Any other image, one over `http` or one with no address of its own, is not loaded: it is
+its alt text in a small chip (`mb-image-fallback`), inside the link it was in, so a
+badge keeps its destination, and otherwise inside a link to the image, with the image’s
+address in the chip’s tooltip.
 A link keeps only an `http`, `https`, or in-document address and opens outside the page
 with no opener or referrer.
-No KPress script loads for such a document.
+A link that holds only an image, or the chip, takes no external-link mark.
+
+The reader can turn the images of the web off, in the Metabrowser menu (**Block remote
+images**, off unless they tick it).
+Every image from the web is then its chip.
+The choice is a host-wide preference cookie (`metabrowser.blockRemoteImages`, read by
+`static/remote-images.js`), which the server reads from the page request
+(`settings.blocks_remote_images`): the page’s `img-src` narrows to this origin and the
+avatar host, so the browser refuses an image from the web whatever the page’s code does,
+and the page carries `BLOCK_REMOTE_IMAGES` in `METABROWSER_SETTINGS`, which
+`static/inert-html.js` reads when it rebuilds a render.
+Ticking the box writes the cookie and loads the page again, so the policy follows it.
+It applies to every inert render: a mirrored repository’s documents, a folder served
+with `--untrusted`, and, on any page, a pull request’s text, a commit’s text, and a
+Markdown diff, which are inert whatever the folder’s profile.
+On an untrusted page the policy enforces it; on a trusted folder’s page, which has no
+policy to narrow, the allowlist alone does, so only those three texts follow it there.
+A trusted folder’s own Markdown and files are the reader’s, and are shown as they always
+were. No KPress script loads for such a document.
 
 In an inert render, an address that points at the application rather than the tree, a
 query alone or a root-relative `/api`, `/_debug`, or `/raw` address however spelled,
@@ -251,11 +292,33 @@ With active content off, the shell also carries a Content-Security-Policy and
 `capabilities.untrusted_shell_csp` is the policy: scripts run only from the
 application’s own static paths and, for the shell’s inline scripts, by a nonce fresh on
 every response; no inline event handler runs, and the application writes none.
+The one KPress script source is the set of modules that draw Mermaid diagrams as images,
+`kpress_adapter.DIAGRAM_MODULES`, each admitted by its exact stamped path.
 The browsed tree’s files under `/raw` are never script sources.
-Images admit this origin, `data:` images the stylesheet draws, and the exact avatar host
-for application-owned author portraits, whose URLs provider and browser code validate.
-The page frames nothing, since the untrusted profile removes the HTML preview, its only
-frame; nothing may frame it; and plugins, `<base>`, and form submission are off.
+The shell’s response also sends `Referrer-Policy: no-referrer`, so no image the page
+fetches, one the allowlist wrote or one a Mermaid diagram laid out in the page names (an
+`A@{ img: … }` shape), carries the page’s address.
+Images admit this origin, `data:` images the stylesheet draws, and any `https:` image,
+as github.com shows a README’s: the allowlist above keeps a document’s images to `https`
+addresses written in full, and an image runs no script whatever its address.
+With the reader’s Block remote images on, the policy admits this origin, those `data:`
+images, and the exact avatar host for application-owned author portraits, whose URLs
+provider and browser code validate.
+The page frames and embeds one address, `/raw` itself, by its exact path in `frame-src`
+and `object-src`: the PDF view’s `<embed>` of a file’s bytes, which the browser’s own
+viewer draws, and which Chrome draws in a frame of that address, checked against
+`frame-src` too. Every `/raw` answer carries its own sandbox, the sanitizer passes no
+frame or object from content, and the HTML preview, whose frames are `/raw/<path>`, is
+removed under this profile, so no other address of the origin can be framed or embedded
+(`tests/test_pdf_preview_chrome.py` embeds another and sees it refused).
+The threat this answers and the risk it accepts are in
+[the threat model](arch-threat-model.md).
+Its other frame is the diagram frame (`builtin_plugins/markdown/diagram-frame.js`), an
+`about:srcdoc` document that `frame-src` does not govern, sandboxed to scripts and its
+own origin, which keeps this policy and adds its own, admitting less, and under which a
+pull request’s text’s Mermaid diagrams are laid out on any page.
+This policy’s `style-src` admits the frame’s one stylesheet, from `/plugin-static/`.
+Nothing may frame the page; and `<base>` and form submission are off.
 Inline `style` attributes stay allowed because the application writes them for layout;
 untrusted Markdown carries none.
 `tests/test_untrusted_markdown.py` pins the policy and fails when the application writes
@@ -268,10 +331,15 @@ error bodies, carries the sandbox `raw_sandbox_csp` builds from `_RAW_SANDBOX_TO
 (`capabilities.py`) and `X-Content-Type-Options: nosniff`. The sandbox assigns an opaque
 origin, so script in a browsed file cannot read the application document, cookies,
 storage, or `/api` responses.
-`frame-ancestors` is omitted so nested frames inside a sandboxed page still load: the
-opaque ancestor origin would never match `'self'`. `/raw` is not behind the API origin
-check, because stylesheets and images must load as subresources; a previewed page can
-probe whether a file exists through load and error events, but cannot read its bytes.
+Its type is the one the file’s name gives; for a name that gives none, the file’s
+leading bytes may (`media_type_from_prefix` in `content_sniff.py`), so a PDF without a
+`.pdf` extension, which the `pdf` plugin claims by its bytes, is answered as a PDF
+rather than as `application/octet-stream`, which `nosniff` would leave a browser to
+download. `frame-ancestors` is omitted so nested frames inside a sandboxed page still
+load: the opaque ancestor origin would never match `'self'`. `/raw` is not behind the
+API origin check, because stylesheets and images must load as subresources; a previewed
+page can probe whether a file exists through load and error events, but cannot read its
+bytes.
 
 - **Active content off:** the sandbox omits `allow-scripts`, so a direct `/raw` link
   renders markup and loads subresources but runs nothing.
@@ -382,14 +450,13 @@ never offered there.
 Its Markdown renders with fenced code as plain text (`plain_code`, which the Markdown
 child sets on every inert render in `diff/markdown_projection_worker.py`): the inert
 render drops the classes highlighting writes anyway, and a lexer can cost far more than
-its input’s size (`kpress_adapter._PLAIN_CODE`). The profile here is the process’s one
-capability block, which holds while a process serves one kind of view.
-[Open Modes](arch-open-modes.md#a-revision-is-never-trusted) requires a revision’s
-profile to come from the subject a request resolved, once one server can show a trusted
-working tree and untrusted revisions.
-Plain fences do not bound the render itself; the child’s deadline does
-([Inert Markdown](#inert-markdown)), so whoever wrote a pinned Markdown file, such as a
-pull request’s author, cannot decide how long the server spends rendering it.
+its input’s size (`kpress_adapter._PLAIN_CODE`). A revision’s profile comes from the
+subject a request resolved (`capabilities.capabilities_for`), so a trusted folder’s own
+revisions are served untrusted too
+([Open Modes](arch-open-modes.md#a-revision-is-never-trusted)). Plain fences do not
+bound the render itself; the child’s deadline does ([Inert Markdown](#inert-markdown)),
+so whoever wrote a pinned Markdown file, such as a pull request’s author, cannot decide
+how long the server spends rendering it.
 
 ### Borrowed Objects
 

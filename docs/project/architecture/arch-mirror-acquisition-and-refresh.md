@@ -26,10 +26,12 @@ starts with `scheme://`; today it opens the folder named, and
 repository’s root. Anything else goes to `classify_root_argument` in `cache/urls.py`,
 whose grammar is frozen in `tests/fixtures/repository-cache/url-grammar.json`; a bare
 path is never rewritten into a `file://` source.
-Provider reducers run first (`cache/providers.py`); core names no provider, and the
-GitHub reducer in `builtin_plugins/github/urls.py` turns web, raw, and SSH spellings of
-a github.com repository into its canonical `https://` source plus a selection.
-`file://` and `https://` sources are acquired; SSH is classified and refused.
+An argument that names nothing on disk and begins with a host a reducer claims, such as
+`github.com/owner/repo`, is given `https://` before it is classified (`_root_in_full` in
+`cli/main.py`). Provider reducers run first (`cache/providers.py`); core names no
+provider, and the GitHub reducer in `builtin_plugins/github/urls.py` turns web, raw, and
+SSH spellings of a github.com repository into its canonical `https://` source plus a
+selection. `file://` and `https://` sources are acquired; SSH is classified and refused.
 
 A new acquisition needs a Git at or above the acquisition security floor
 (`ACQUISITION_MINIMUM` and `ACQUISITION_PATCHED_TRACKS` in `git/process.py`, frozen in
@@ -62,8 +64,15 @@ Credentials belong to the provider:
   `$HOME/.netrc` and Git cannot turn that off; only the `gh` helper command is given the
   real home, with the `GH_*` variables that would redirect or log it cleared.
 - Acquisition never inherits a checkout’s remote or credential helper.
-- With `gh` installed, `check_first_clone` refuses a first clone that GitHub reports
-  over `MAX_FIRST_CLONE_KB`, which `METABROWSER_MAX_FIRST_CLONE_KB` raises.
+- `check_first_clone` (`cache/providers.py`) refuses every first clone, whatever its
+  source, when the cache’s volume has less than the reserve free (`cache/free_space.py`,
+  which `METABROWSER_CACHE_RESERVE_MB` sets).
+  A first clone that borrows a checkout’s objects is not checked.
+- With `gh` installed, the GitHub provider then refuses a first clone whose
+  GitHub-reported size, packed, would leave less than the reserve free.
+  It first runs
+  [the GitHub status check](arch-github-pull-requests.md#the-github-status-check), and
+  refuses a pull-request URL that `gh` is missing, too old, or not signed in to read.
 
 Every fetch runs under `ACQUISITION_POLICY`, in the isolated Git environment of
 `git/process.py`: no inherited `GIT_*` variable, no system or global configuration,
@@ -109,7 +118,7 @@ tested directly, as the paragraph after it says.
 | `fetching` | `fetch_succeeded` | `fetched` | staging entry | Objects are in the staging store or, for an overlay, its lender |
 | `fetched` | `validation_failed` | `abandoned` | staging entry | The default branch or object format did not validate; staging deleted |
 | `fetched` | `validated` | `validated` | staging entry | Write `store.yml`, with the lender if any, and `state.yml` |
-| `validated` | `publish_store` | `store_published` | alias, store, staging entry | Verify the store directory is absent and rename staging into `repository-stores/<store key>` |
+| `validated` | `publish_store` | `store_published` | alias, store, staging entry | Verify the store directory is absent and rename staging into `repos/<store key>` |
 | `validated` | `store_exists_same_identity` | `store_reused` | alias, store, staging entry | A concurrent acquisition published the same store first; staging is deleted after the locks are released |
 | `store_published` or `store_reused` | `publish_alias` | `alias_published` | alias, store, staging entry | Create `sources/<slug>/` with `source.yml` and `store-alias.yml`, the only visibility commit |
 | `store_published` or `store_reused` | `alias_exists_same_store` | `alias_published` | alias, store, staging entry | Another process committed the same alias first |
@@ -203,11 +212,13 @@ What happens when a reader names a checkout:
 | The store already borrows from another checkout that can still lend | Keeps that lender and says so |
 | The route is under `/api/cache/` | Says the flag is not applied to a cache route and answers it |
 
-Beside a served folder, the GitHub plugin acquires an overlay for a pull request’s
-comparison with the folder’s checkout as the lender, never falling back to a full clone
-(`allow_clone_fallback=False` in `builtin_plugins/github/checkout.py`). A served
-subdirectory resolves to its enclosing checkout first, and the lender’s path stays in
-private cache metadata.
+Beside a served folder, core acquires an overlay with the folder’s checkout as the
+lender, never falling back to a full clone (`acquire_checkout_store` in
+`checkout_store.py`). A folder’s server makes it to list its origin’s branches and tags
+([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)),
+and the GitHub plugin asks core for the same store for a pull request’s comparison.
+A served subdirectory resolves to its enclosing checkout first, and the lender’s path
+stays in private cache metadata.
 [GitHub Pull Requests](arch-github-pull-requests.md#beside-a-checkout) covers when it
 runs.
 
@@ -276,6 +287,19 @@ A served mirror answers every page from the store and never makes a request wait
 network (`mirror_refresh.py`). A mirror is stale once its last fetch is older than
 `FRESHNESS_WINDOW_S`.
 
+A store Metabrowser keeps is fetched as often as it usefully can be (the owner’s rule,
+2026-11-22): a fetch into it is atomic, removes no commit, writes no reader’s checkout
+([What Is Never Written](arch-open-modes.md#what-is-never-written)), and spends no
+GitHub rate limit, so what limits it is process time and network.
+Three cadences follow, each constant beside its measurement in `mirror_refresh.py`: a
+visible page on a branch has that branch probed every `STORE_PROBE_S`, a visible page
+has the whole mirror fetched once it is older than `FRESHNESS_WINDOW_S`, and a server no
+page is looking at fetches every `STORE_IDLE_REFRESH_S`. The same three hold for the
+store a repository folder keeps of its checkout’s origin
+([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)):
+`StoreSession` is the store’s half of the session, which reads no served subject, and
+`MirrorSession` adds the pin.
+
 - **The coordinator:** `RefreshCoordinator`, on the application state, keeps one job per
   key, a store key or a store key and a pull-request number, so concurrent requests join
   the running one; `MAX_CONCURRENT_REFRESHES` bounds the network jobs across every key.
@@ -290,8 +314,71 @@ network (`mirror_refresh.py`). A mirror is stale once its last fetch is older th
   A job takes its network slot only once its turn has come.
 - **When a refresh starts:** serve mode refreshes a stale mirror once at startup, and a
   page asks for one when it opens or becomes visible on a stale mirror.
-  When another process holds the fetch lock, a served mirror follows that refresh
-  (`ELSEWHERE_POLL_S`, up to `ELSEWHERE_WAIT_S`) and observes the store when it ends.
+  A visible pull request’s page asks more often, and its server probes GitHub between
+  full reads
+  ([Serving Pull Requests](arch-github-pull-requests.md#serving-pull-requests)). A
+  refresh that moves the served branch moves the pin with it
+  ([Following a Branch](#following-a-branch)). When another process holds the fetch
+  lock, a served mirror follows that refresh (`ELSEWHERE_POLL_S`, up to
+  `ELSEWHERE_WAIT_S`) and observes the store when it ends.
+- **A visible page on a branch:** the status names `probe_every_s` for a pin served
+  under one of the origin’s branches (`probes_origin`), and the page sends its own ask
+  that often while it is visible, `POST /api/source/refresh` with `{"for": "page"}`,
+  starting with its first status, so a hidden page sends none
+  (`MirrorSession.page_ask`). The ask answers the status, so it is the page’s poll too.
+  The server fetches the whole mirror when it is older than the freshness window.
+  Otherwise it probes: one `ls-remote` of that branch (`StoreMirror.origin_tip`), which
+  takes no turn at the store, no network slot, and no lock, since it writes nothing.
+  A tip that differs from the mirror’s starts the fetch at once, so a push is served a
+  few seconds later and not a window and a poll later.
+  The request waits for the probe at most `STORE_PROBE_WAIT_S` and never for a fetch.
+  Core probes with Git alone and knows no provider.
+  A tag, a commit opened by its ID that no branch names, and a pull request’s head are
+  not probed.
+- **A visible page on a repository folder’s own branch:** such a page sends the same
+  ask, every `CHECKOUT_REFS_POLL_S`, for the server to read where the branch is in the
+  checkout
+  ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+  Where the folder keeps a store of its origin the ask is the store’s too, so while that
+  page is visible the store is fetched, quietly, once it is older than the freshness
+  window, and not only once for each time the page is shown.
+  That follows the rule for Metabrowser’s own stores: they are fetched as often as is
+  useful, and the checkout is never fetched into.
+- **What holds a probe or a page’s fetch:** one probe runs at a time, no closer than
+  `STORE_PROBE_FLOOR_S` to the last, however many tabs ask, and none while a refresh
+  runs. A probe that failed, or a fetch that failed, holds the page’s asks for a
+  freshness window from when it failed, so an origin that is gone or a machine that is
+  offline is asked once a window; a reader’s own Refresh is never held.
+  A tip a probe started a fetch for starts no second one within a window once that fetch
+  ran to the end, so an origin whose fetch does not bring what its `ls-remote` names
+  cannot make every probe a fetch.
+  A fetch that did not run, or one the probe only joined, holds nothing, so the next
+  probe fetches for the tip.
+- **A fetch nobody asked for is quiet:** the fetch a page’s ask starts once a window,
+  and the idle one below, run with no reader waiting, so status reports them with
+  `refresh_quiet`, and the row repaints nothing: no “Refreshing…”, no disabled button,
+  and nothing announced.
+  A reader’s own Refresh that joins one ends its quiet.
+  The fetch a probe starts because the branch moved is one the page asked for, and shows
+  as a refresh.
+- **A server no page is looking at:** `MirrorSession.run_idle_refresh`, started by the
+  lifespan in serve mode only, fetches once the last fetch, by this process or another
+  as the store’s record has it, is older than `STORE_IDLE_REFRESH_S`. It is the one
+  timer a server runs for a mirror, and a visible page’s asks keep the mirror newer than
+  it looks for. The record is read again when the fetch comes due, so another process’s
+  fetch is followed, and the served branch with it, instead of repeated.
+  The fetch is background work at the store: it goes only when no other job waits, takes
+  no network slot, and is cancelled when a reader’s job starts waiting, to be tried
+  again a freshness window later.
+  Status does not report that as a cancelled refresh, since no reader asked for it.
+  A reader’s refresh, a page’s ask, or a waiting URL selection that joins it makes it
+  theirs: it stops being background work, and `StoreTurn.promoted` stops any background
+  job holding the turn ahead of it, as a reader’s job arriving would have.
+  One that joins after the fetch was told to stop, before the cancellation is delivered,
+  has the fetch started again as its own once the stopped one has unwound
+  (`MirrorSession._join_running` asks `RefreshCoordinator.start_again_when_stopped`,
+  which restarts a prefetched pull request’s job the same way).
+  One that failed is tried again only after the whole interval.
 - **A commit the mirror lacks:** a page that opens a commit’s address asks for the fetch
   it waits on, which runs only when the mirror is stale, since a link in served content
   can lead to any address; a reader’s **Retry** always fetches.
@@ -311,6 +398,57 @@ revision as it was. A cached source whose pinned tree has gone from the store re
 path-free error when the pin is opened, with no traceback and no automatic clone;
 startup starts no repair fetch.
 
+### Following a Branch
+
+A mirror is browsed as github.com is: as of the data last fetched.
+A reader who opened a branch, a tag, or a pull request reads that ref, not one commit of
+it, so the served pin follows the ref when a fetch moves it, by a push or a force-push.
+The owner set this on 2026-11-19, replacing the earlier rule that a refresh never moved
+the served commit and offered the new one behind a **Switch** button (bead `mb-pq8y`),
+and on 2026-11-22 for a pull request’s head (bead `mb-6a6w`).
+
+- **Which pins follow:** one asked for by the origin’s branch, a tag, or a pull
+  request’s head, `refs/pull/<n>/head` (`follows_moves` in `mirror_refresh.py`), by name
+  or as `under`, which status reports as `follows`. A commit opened by its ID stays put,
+  as the owner decided (bead `mb-cww9`): it is served under no ref, or named by one
+  whose tip it is, the ref last served, as View file’s way back is, or a pull request’s
+  head, so the selector names that ref, but it never moves with it
+  (`MirrorSession._by_id`), and a pull request it heads is not attended.
+  When that ref moves on, status reports its tip as `latest`, and the row offers it,
+  `<ref> is now at <commit>` with **Switch**, which asks for the ref by name.
+  A pull request’s head moves in the mirror when that pull request’s refresh fetches it,
+  so the job that refreshes a pull request observes the mirror when it ends, as a fetch
+  of the mirror does.
+- **The server follows:** `MirrorSession.observe`, which runs after every refresh job
+  and after following another process’s, opens the ref’s new tip under the pin lock and
+  serves it under a new generation.
+  A pull request’s record that another process published reaches this server only when
+  its pull route reads it, so a read whose record names another head than a pin on that
+  pull request’s head starts one observation (`follow_adopted_head` in
+  `builtin_plugins/github/pull_route.py`, `MirrorSession.observe_pull_head`). So the
+  server never serves a branch behind where the mirror has it, a page or none open, and
+  Files and the Commits tab, which walks the served commit’s history, agree.
+  A ref the origin deleted is not followed; its last commit stays served, and the row
+  says the ref is gone.
+- **The page follows:** `static/source-freshness.js` sees on its next poll that the ref
+  it was drawn for is served at another commit.
+  It asks the pin route for that ref with its own `/view/` address, which changes
+  nothing once the server has followed and serves the tip when it could not yet, and the
+  answer’s `view_href` says where the page lands: the same file or folder when the new
+  commit has it, where the page reloads in place and keeps its line and scroll, or the
+  root. A pull request’s page reloads where it is; its Changes then shows the new head’s
+  diff, says which head it showed before, and holds the reader’s place in its file
+  ([Changes Follows the Head](arch-github-pull-requests.md#changes-follows-the-head)). A
+  refused follow says why and offers a reload, and is not asked again until the reader’s
+  refresh.
+- **A switch made in another tab** to another ref still only offers a reload: the reader
+  did not ask for that ref.
+- **A repository folder’s own branches** follow by the same step and the same page code,
+  with the move read from the checkout’s refs in place of a fetch
+  ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+  There a commit opened by its ID alone never follows, even while it is served under the
+  tip of the ref last served (bead `mb-dna1`).
+
 ## Source Routes
 
 Each handler’s docstring in `source_routes.py` holds its contract; the route index is in
@@ -325,10 +463,20 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   `{"for": "commit"}` is the fetch a missing commit waits on, fetched only outside the
   freshness window unless `"retry": true`; its `pull_refresh` says how the attended pull
   request’s refresh was answered.
-- **`GET /api/source/refs`** lists the mirror’s branches or tags for the ref selector
-  from one `for-each-ref`, filtered and clamped (`REFS_DEFAULT_LIMIT`, `REFS_MAX_LIMIT`,
-  `REFS_MAX_QUERY_CHARS`). A folder that is a repository’s root answers it and the pin
-  route for its own checkout;
+- **`GET /api/source/refs`** lists every one of the mirror’s branches or tags for the
+  ref selector from one `for-each-ref`, filtered by name (`REFS_MAX_QUERY_CHARS`), each
+  with its commit and that commit’s committer date, from which the selector shows its
+  age. The default branch lists first, then the rest newest first by that date, then by
+  name (`_newest_first` in `cache/resolve.py`); nothing pages the list, and the measured
+  cost of listing every ref is beside the constants in `source_routes.py`. An answer the
+  Git routes’ memo can keep is kept under the store’s ref state and the recorded default
+  branch (`_refs_answer_key`), so asking again while no ref moved runs no Git.
+  The memo keeps no body over its `MAX_ENTRY_BYTES`, about 9,000 branches, or about
+  5,200 where each is a pull request’s head (`REF_PULLS_PER_ROW` in `source_routes.py`),
+  and has no key for a repository with more loose refs than `MAX_REF_ENTRIES`; a listing
+  of either runs Git every time.
+  A folder that is a repository’s root answers it and the pin route for its own
+  checkout;
   [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)
   says how.
 - **`POST /api/source/pin`** resolves a branch, then a tag, then a commit ID in the
@@ -336,7 +484,7 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   With the page’s `/view/` address it answers `view_href`, where that page goes on the
   new pin. Its refusals are the `SelectionError` subclasses in `mirror_refresh.py`. A
   commit pinned by ID is served under the ref last served, or a pull request’s head ref,
-  the first whose tip it is.
+  the first whose tip it is, and stays put there.
   A request may name the ref as `under`, as View on branch and Browse code name the pull
   request’s `refs/pull/<n>/head`; when that ref is not at the commit, because the pull
   request moved on after the page was drawn, nothing is switched and the answer is
@@ -364,14 +512,14 @@ in sight:
   A pin with no mirror is headed by its ref and commit.
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
-- **Commit:** the ref and short commit follow the name, with a control that copies the
-  full commit.
-- **Location:** a note after the address names the store’s bare repository, with the
-  home directory as `~` when it is under it (`display_directory`). Nothing is checked
-  out, so the location is not drawn as the start of the address, and its tooltip says it
-  is a bare repository.
-  `static/mirror-heading.js` draws it, and the server writes it only into a mirror’s
-  page.
+- **Commit:** the navigation heading shows the name.
+  The revision row below the Files and Commits tabs names the ref.
+  Its chip opens the ref’s actions, and the separate chevron opens the chooser, whose
+  list shows short commit IDs.
+- **Location:** the Info menu shows the local path to the bare repository with a short
+  source note. A separate note after the address shows the store directory.
+  Both abbreviate the home directory as `~` (`display_directory`).
+  `static/mirror-heading.js` draws the address note from data in the mirror’s page.
 
 An origin is untrusted: its name is display text that passes through `display_segment`,
 is cut when too long, and is escaped on the server and again in the page.

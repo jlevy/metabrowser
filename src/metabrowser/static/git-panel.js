@@ -269,7 +269,7 @@
 
   /** @returns {string} */
   function copyIcon() {
-    return sdk()?.icons?.copy || "⧉";
+    return sdk()?.icons?.copy ?? "";
   }
 
   function perf() {
@@ -324,11 +324,6 @@
     Object.freeze({ key: "files_modified", status: "modified", letter: "M", word: "modified" }),
   ]);
 
-  /** The dot between the hover card's groups, muted and hidden, as the Diff summary's is. */
-  const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });
-  /** The commit totals line's dot, which says a comma in its place, as a line has no name. */
-  const COMMIT_TOTALS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
-
   /**
    * A commit's changes in its hover card, in the Diff summary's words and paint
    * (docs/design-system.md, "Git Commit Summary"): "32 files changed · 4 A, 28 M · +1,921
@@ -342,9 +337,10 @@
    * 160 deleted", in place of its letters and marks.
    *
    * @param {Record<string, unknown>} stats
+   * @param {MetabrowserGitChangeSize | null} [size] The commit's size, once it is known.
    * @returns {string}
    */
-  function renderCommitChangeStats(stats) {
+  function renderCommitChangeStats(stats, size = null) {
     const formatters = window.MetabrowserFormatters;
     /** @param {unknown} value */
     const known = (value) => (typeof value === "number" ? value : null);
@@ -362,18 +358,41 @@
       entries,
       formatters.formatInteger,
     );
-    /** @param {string} className @param {MetabrowserCountParts} parts */
-    const group = (className, parts) =>
-      '<span class="git-commit-change-group">' +
-      `<span class="${className}">${formatters.countPartsHtml(parts)}</span>` +
-      `${formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])}</span>`;
+    // The file count and the size on the size line, then the statuses and line totals,
+    // as a commit's page says them (docs/design-system.md, "Change Size Line").
     return (
+      `<div class="git-commit-size-line">${commitSizeLineHtml(stats, size)}</div>` +
       '<div class="git-commit-change-stats">' +
-      `<span class="visually-hidden">${escapeHtml(said.label)}</span>` +
+      `<span class="visually-hidden">${escapeHtml(said.line.label)}</span>` +
       '<span class="git-commit-change-line" aria-hidden="true">' +
-      group("git-commit-change-files", said.filesParts) +
       formatters.changeLineHtml(said.line) +
       "</span></div>"
+    );
+  }
+
+  /**
+   * A commit's size line, "32 files changed · 56.9 KB compressed (194.0 KB raw diff)": its file
+   * count from its stats, and, once `GET /api/git/commit-size` answers it, what Git pushes for
+   * it and its patch's size (docs/design-system.md, "Change Size Line"). A merge says how many
+   * commits it brings in; one commit does not say it is one.
+   *
+   * @param {Partial<MetabrowserGitCommitStats> | Record<string, unknown>} stats
+   * @param {MetabrowserGitChangeSize | null} size
+   * @returns {string}
+   */
+  function commitSizeLineHtml(stats, size) {
+    // The SDK's view helpers, which the panel waits for before it draws (`ensureViewHelpers`).
+    const mb = window.metabrowser;
+    const files = stats.files_changed;
+    const measured = size?.state === "measured" ? size : null;
+    const commits = measured?.commits ?? null;
+    return mb.changeSizeLineHtml(
+      mb.changeSizeLine({
+        ...(commits !== null && commits > 1 ? { commits } : {}),
+        files: typeof files === "number" && Number.isInteger(files) ? files : null,
+        pushedBytes: measured?.pushed_bytes ?? null,
+        diffBytes: measured?.diff_bytes ?? null,
+      }),
     );
   }
 
@@ -423,12 +442,9 @@
     }
     const formatters = window.MetabrowserFormatters;
     const said = formatters.changeSummary(totals, [], formatters.formatInteger);
-    return (
-      '<div class="diff-summary"><span class="diff-summary-group">' +
-      `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span> ` +
-      `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span> ` +
-      `${formatters.changeLineHtml(said.line)}</div>`
-    );
+    // The file count is on the size line above; this place says the line totals alone, as
+    // the Diff summary that replaces it does in a page's header.
+    return `<div class="diff-summary">${formatters.changeLineHtml(said.line, { spoken: ", " })}</div>`;
   }
 
   /**
@@ -436,14 +452,14 @@
    * out-of-root files, and bounds remain siblings because they describe the
    * rendered change rather than the commit's identity and message.
    *
-   * The page's summary is a page header, as a pull request's is, in the same order and
-   * type (docs/design-system.md, "Page Headers"): the subject, then one line each for the
-   * author, the revision and its refs, where a pull request has its branches, and the age,
-   * where a pull request has its row of ages, then the Diff summary; every line under the
-   * subject is at the body size. The hover card keeps its one line of metadata.
+   * The detail uses the shared page-header type and spacing (docs/design-system.md,
+   * "Page Headers"). Its subject is followed by the author, the revision and its refs,
+   * the committed age, the size line, and the Diff summary. The hover card keeps its
+   * one line of metadata.
    *
    * @param {MetabrowserGitCommitDetail} detail
-   * @param {{compact?: boolean}} [options]
+   * @param {{compact?: boolean, size?: MetabrowserGitChangeSize | null}} [options] *size* is
+   *   the commit's size for the hover card, once it is known.
    * @returns {string}
    */
   function renderCommitSummary(detail, options = {}) {
@@ -460,11 +476,19 @@
     // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
     // "Titles").
     html += `<${subjectTag} class="${subjectClass}">${subjectHtml(commit.subject)}</${subjectTag}>`;
+    if (!compact && window.METABROWSER_REPOSITORY_CONTEXT) {
+      // The header's corner, as a view header's (view-header.js): on a page whose repository
+      // is on github.com it holds the View on GitHub button, which renderCommitDetail asks
+      // for, and the subject leaves it room from first paint.
+      html += '<span class="view-header-end" data-counterpart></span>';
+    }
     // The revision and its refs, `.git-commit-identity`: the commit's own identity, not its
     // author's, which is the shell's `.actor-identity` below.
     let revisionGroup = '<span class="git-commit-identity">';
     revisionGroup += '<span class="git-commit-revision">';
-    revisionGroup += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
+    // The revision as every line names a commit, cut from its full ID, not Git's
+    // abbreviation (docs/design-system.md, "Short Commit IDs"); the copy button has it whole.
+    revisionGroup += `<span class="git-commit-sha">${escapeHtml(window.MetabrowserFormatters.shortCommit(commit.id))}</span>`;
     if (compact) {
       revisionGroup +=
         '<span class="git-commit-revision-copy-preview" aria-hidden="true">' +
@@ -483,10 +507,11 @@
     }
     revisionGroup += "</span>";
     const author = commit.author?.name || "";
-    const age =
-      `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}"` +
-      (compact ? "" : ` data-tip-text="${escapeHtml(exactTime(commit.committed_at))}"`) +
-      `>${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
+    const age = ageHtml(commit.committed_at, {
+      style: "relative",
+      className: "git-commit-age",
+      ...(compact ? {} : { tip: exactTime(commit.committed_at) }),
+    });
     if (compact) {
       html += `<div class="git-commit-meta">${revisionGroup}`;
       html += `<span class="actor-name git-commit-author">${escapeHtml(author)}</span>${age}</div>`;
@@ -505,12 +530,24 @@
     // the commit's files (`mountCommitDiff`). Until it does, and where it is not drawn, the
     // place says the commit's totals. The hover summary says its changes itself, in the Diff
     // summary's words and paint.
-    html += compact
-      ? renderCommitChangeStats(stats)
-      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
+    if (compact) {
+      html += renderCommitChangeStats(stats, options.size ?? null);
+    } else {
+      // The size line, the page header's line above its Diff summary: the file count at once,
+      // and the size when `placeCommitSize` has it. None where the detail has no count.
+      if (commitTotals(stats) !== null) {
+        const kept = sizeCache.get(commit.id) ?? null;
+        html += `<div class="git-commit-size page-header-line page-header-size">${commitSizeLineHtml(stats, kept)}</div>`;
+      }
+      html += `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
+    }
     html += "</div>";
     if (!compact && detail.body) {
-      html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
+      // The message as written, until its Markdown replaces it (`placeCommitBody`): a
+      // description's place on a pull request's page, in its type and face.
+      html +=
+        '<div class="git-commit-body page-card chrome-prose">' +
+        `<div class="git-commit-body-plain">${escapeHtml(detail.body)}</div></div>`;
     }
     html += "</section>";
     return html;
@@ -521,30 +558,23 @@
    * @returns {string}
    */
   function renderCommitTooltip(detail) {
-    return renderCommitSummary(detail, { compact: true });
+    return renderCommitSummary(detail, {
+      compact: true,
+      size: sizeCache.get(detail.commit.id) ?? null,
+    });
   }
 
   /**
-   * Compact relative age, matching the tree's convention.
+   * A commit's age as markup, from the shell's one age builder, so it reads and is inked
+   * exactly as a file's: same abbreviations, same freshness class (docs/design-system.md,
+   * "Age"). `options.className` places it; "" where the time is not known.
    *
    * @param {number} epochSeconds
-   * @param {{style?: "compact" | "relative"}} [options]
+   * @param {{style?: "compact" | "relative", className?: string, tip?: string}} [options]
    * @returns {string}
    */
-  function relativeAge(epochSeconds, options) {
-    // The shared age primitive, so a commit's age reads exactly like a
-    // file's: same abbreviations, same freshness tiers.
-    return window.MetabrowserFormatters?.age(epochSeconds, options)?.label ?? "";
-  }
-
-  /**
-   * The age's freshness class, so the colour convention holds here too.
-   *
-   * @param {number} epochSeconds
-   * @returns {string}
-   */
-  function ageClass(epochSeconds) {
-    return window.MetabrowserFormatters?.ageClass(epochSeconds) ?? "";
+  function ageHtml(epochSeconds, options) {
+    return window.MetabrowserFormatters?.ageLabelHtml(epochSeconds, options) ?? "";
   }
 
   /**
@@ -1209,6 +1239,327 @@
     }
   }
 
+  // ── Commit bodies as Markdown ──────────────────────────────
+
+  /**
+   * A commit body's Markdown, from `GET /api/git/commit-markdown/{revision}`
+   * (src/metabrowser/git/message.py), as a pull request's description takes it from its own
+   * route: KPress's render, reduced to the inert allowlist on the server, and here again by
+   * static/inert-html.js, which builds the nodes the page inserts; the trailers as written,
+   * a block of their own lines; and the base the body's links resolve against. Or the
+   * message stays as written, with the sentence that says why when one is owed.
+   *
+   * @typedef {{kind: "rendered", html: string, trailers: string, linkBase: string}
+   *   | {kind: "plain", note: string | null}} CommitBodyOutcome
+   */
+
+  // Bodies whose outcome cannot change while the page is open, by commit ID, bounded as the
+  // detail cache is: a render, and a body too long to render. A refusal the renderer may
+  // not repeat, and a request that failed, are asked again on the next visit.
+  /** @type {Map<string, CommitBodyOutcome>} */
+  const bodyCache = new Map();
+  // Requests on their way, each marked when a hover's preparation made it rather than a
+  // reader's request (`prepareRevision`).
+  /** @type {Map<string, {request: Promise<CommitBodyOutcome>, speculative: boolean}>} */
+  const bodyInFlight = new Map();
+  // Commit sizes, by commit ID, bounded as the detail cache is: a size names immutable
+  // commits, so an answer is kept for the page (`GET /api/git/commit-size`, git/change_size.py).
+  // A request that failed is not kept and is asked again on the next visit.
+  /** @type {Map<string, MetabrowserGitChangeSize>} */
+  const sizeCache = new Map();
+  /** @type {Map<string, Promise<MetabrowserGitChangeSize | null>>} */
+  const sizeInFlight = new Map();
+
+  /**
+   * A commit's size, asked once however many callers want it, and kept.
+   *
+   * @param {string} revision A full commit ID.
+   * @returns {Promise<MetabrowserGitChangeSize | null>}
+   */
+  function fetchCommitSize(revision) {
+    const kept = sizeCache.get(revision);
+    if (kept) {
+      return Promise.resolve(kept);
+    }
+    const existing = sizeInFlight.get(revision);
+    if (existing) {
+      return existing;
+    }
+    const request = (async () => {
+      try {
+        const response = await apiFetch(`/api/git/commit-size/${revision}`);
+        /** @type {{is_repo?: boolean, size?: MetabrowserGitChangeSize} | null} */
+        const body = await response.json().catch(() => null);
+        const size = response.ok && body?.is_repo === true ? (body.size ?? null) : null;
+        if (size !== null) {
+          if (sizeCache.size >= DETAIL_CACHE_SIZE) {
+            const oldest = sizeCache.keys().next();
+            if (!oldest.done) {
+              sizeCache.delete(oldest.value);
+            }
+          }
+          sizeCache.set(revision, size);
+        }
+        return size;
+      } catch {
+        return null;
+      } finally {
+        sizeInFlight.delete(revision);
+      }
+    })();
+    sizeInFlight.set(revision, request);
+    return request;
+  }
+
+  /**
+   * Put the commit's size on its page's size line once it is known; the file count is there
+   * from the first paint, so nothing moves but the line's end.
+   *
+   * @param {ParentNode} root The stage or the page that holds the summary.
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {Promise<void>}
+   */
+  function placeCommitSize(root, detail) {
+    if (sizeCache.has(detail.commit.id) || root.querySelector(".git-commit-size") === null) {
+      return Promise.resolve();
+    }
+    return fetchCommitSize(detail.commit.id).then((size) => {
+      const line = root.querySelector(".git-commit-size");
+      if (size !== null && line instanceof HTMLElement && line.isConnected !== false) {
+        line.innerHTML = commitSizeLineHtml(detail.stats, size);
+      }
+    });
+  }
+  // KPress's stylesheets, loaded once for every body, as a pull request's page loads them
+  // once for its texts. A load that failed is tried again by the next body.
+  /** @type {Promise<void> | null} */
+  let bodyStyles = null;
+
+  /**
+   * What the notice under a body shown as written says, from the route's refusal, or null
+   * when the answer says nothing a reader needs, such as a request that never arrived.
+   * The words of a pull request's text notices (`refusedTextNote` in
+   * builtin_plugins/github/pull-page.js), said of a message.
+   *
+   * @param {Record<string, any> | null} body
+   * @returns {string | null}
+   */
+  function commitBodyNote(body) {
+    // The bound and the deadline are the answer's (`max_bytes`, `deadline_ms`), for an
+    // agent; the note says what the reader sees (docs/design-system-messages.md).
+    switch (typeof body?.code === "string" ? body.code : null) {
+      case "body_too_large":
+        return "This message is too long to render, so it is shown as written.";
+      case "render_deadline":
+        return "This message took too long to render, so it is shown as written.";
+      case "renderer_exited":
+      case "render_failed":
+        return "This message could not be rendered, so it is shown as written.";
+      case "renderer_unavailable":
+      case "renderer_busy":
+        return "This message could not be rendered, so it is shown as written. Reload the page to try again.";
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * One commit body's outcome, asked once however many callers want it, and kept when it
+   * cannot change. A render is answered only once the allowlist and KPress's stylesheets
+   * have loaded, so a caller can insert it at once.
+   *
+   * A reader's request joins a hover's prefetch on its way, but not an outcome of it that
+   * is not kept: a busy or stopped renderer, or a request that failed, answered the hover,
+   * and the reader's own request is made when it does.
+   *
+   * @param {string} revision A full commit ID.
+   * @param {boolean} [speculative] Whether a hover's preparation asks, not a reader.
+   * @returns {Promise<CommitBodyOutcome>}
+   */
+  function fetchCommitBody(revision, speculative = false) {
+    const kept = bodyCache.get(revision);
+    if (kept) {
+      return Promise.resolve(kept);
+    }
+    const existing = bodyInFlight.get(revision);
+    if (existing?.speculative && !speculative) {
+      // The prefetch leaves the requests on their way before this runs, so a body it did
+      // not keep is asked for again.
+      return existing.request.then(() => bodyCache.get(revision) ?? fetchCommitBody(revision));
+    }
+    if (existing) {
+      return existing.request;
+    }
+    const request = measureAsync(
+      "gitRevision:bodyMarkdown",
+      async () => {
+        /** @type {CommitBodyOutcome} */
+        let outcome;
+        let durable = false;
+        try {
+          const response = await apiFetch(`/api/git/commit-markdown/${revision}`);
+          /** @type {Record<string, any> | null} */
+          const body = await response.json().catch(() => null);
+          if (response.ok && body?.is_repo === true && typeof body.html === "string") {
+            outcome = await insertableBody(body);
+            durable = outcome.kind === "rendered";
+          } else {
+            outcome = { kind: "plain", note: commitBodyNote(body) };
+            durable = body?.code === "body_too_large";
+          }
+        } catch {
+          outcome = { kind: "plain", note: null };
+        }
+        if (durable) {
+          if (bodyCache.size >= DETAIL_CACHE_SIZE) {
+            const oldest = bodyCache.keys().next();
+            if (!oldest.done) {
+              bodyCache.delete(oldest.value);
+            }
+          }
+          bodyCache.set(revision, outcome);
+        }
+        return outcome;
+      },
+      { revision },
+    );
+    bodyInFlight.set(revision, { request, speculative });
+    void request.finally(() => {
+      if (bodyInFlight.get(revision)?.request === request) {
+        bodyInFlight.delete(revision);
+      }
+    });
+    return request;
+  }
+
+  /**
+   * A render the page can insert now: the allowlist loaded, and KPress's stylesheets when
+   * there is prose to set. Plain, with no notice, when either cannot load, as a pull
+   * request's text stays plain then.
+   *
+   * @param {Record<string, any>} body The route's answer.
+   * @returns {Promise<CommitBodyOutcome>}
+   */
+  async function insertableBody(body) {
+    const pluginSdk = sdk();
+    try {
+      await pluginSdk.ensureAsset("inert-html");
+      if (body.html !== "") {
+        bodyStyles ??= pluginSdk.loadKpressAssets(body.assets);
+        await bodyStyles.catch((/** @type {unknown} */ error) => {
+          bodyStyles = null;
+          throw error;
+        });
+      }
+    } catch (error) {
+      console.warn("metabrowser git: a commit body's Markdown could not be shown", error);
+      return { kind: "plain", note: null };
+    }
+    if (!window.MetabrowserInertHtml) {
+      return { kind: "plain", note: null };
+    }
+    return {
+      kind: "rendered",
+      html: body.html,
+      trailers: typeof body.trailers === "string" ? body.trailers : "",
+      linkBase: typeof body.link_base === "string" ? body.link_base : "about:blank",
+    };
+  }
+
+  /**
+   * Show a commit's body as Markdown in the summary *root* holds: at once when its render is
+   * kept, and otherwise when it comes, the message as written held out of sight meanwhile,
+   * so the body's first sight is its Markdown, as a pull request's description's is
+   * (mb-d59o). A body that will not render shows as written.
+   *
+   * @param {ParentNode} root
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {Promise<void>} Settles once the body shows, as Markdown or as written.
+   */
+  function placeCommitBody(root, detail) {
+    const box = root.querySelector(".git-commit-body");
+    const plain = box?.querySelector(".git-commit-body-plain");
+    if (!(box instanceof HTMLElement) || !(plain instanceof HTMLElement) || !detail.body) {
+      return Promise.resolve();
+    }
+    const kept = bodyCache.get(detail.commit.id);
+    if (kept) {
+      showCommitBody(box, kept);
+      return Promise.resolve();
+    }
+    plain.classList.add("git-commit-body-plain-pending");
+    return fetchCommitBody(detail.commit.id).then((outcome) => showCommitBody(box, outcome));
+  }
+
+  /**
+   * Put *outcome* in a body's *box*, in place of the message as written: the Markdown in a
+   * KPress article, as a pull request's page sets a description (`kpressHost` in
+   * builtin_plugins/github/pull-page.js), then the trailers, one block of their lines. A
+   * body shown as written is shown, with its notice.
+   *
+   * @param {HTMLElement} box `.git-commit-body`
+   * @param {CommitBodyOutcome} outcome
+   */
+  function showCommitBody(box, outcome) {
+    const plain = box.querySelector(".git-commit-body-plain");
+    if (!(plain instanceof HTMLElement)) {
+      return;
+    }
+    const inert = window.MetabrowserInertHtml;
+    /** @type {HTMLElement[]} */
+    const parts = [];
+    if (outcome.kind === "rendered" && inert) {
+      if (outcome.html !== "") {
+        parts.push(commitKpressHost(inert, outcome.html, outcome.linkBase));
+      }
+      if (outcome.trailers !== "") {
+        const trailers = document.createElement("div");
+        trailers.className = "git-commit-trailers";
+        trailers.textContent = outcome.trailers;
+        parts.push(trailers);
+      }
+    }
+    if (parts.length > 0) {
+      plain.replaceWith(...parts);
+      return;
+    }
+    plain.classList.remove("git-commit-body-plain-pending");
+    const note = outcome.kind === "plain" ? outcome.note : null;
+    if (note !== null && !box.querySelector(".git-commit-body-notice")) {
+      const notice = document.createElement("div");
+      notice.className = "notice git-commit-body-notice";
+      notice.dataset.severity = "warning";
+      notice.setAttribute("role", "status");
+      notice.textContent = note;
+      box.append(notice);
+    }
+  }
+
+  /**
+   * A body's sanitized nodes in a KPress article, as a pull request's page builds one for a
+   * description: the page's own article and classes, KPress's stylesheets setting the type,
+   * and each kept link decorated as an outside link.
+   *
+   * @param {MetabrowserInertHtmlRuntime} inert
+   * @param {string} html The route's hardened HTML.
+   * @param {string} linkBase What the server resolved the body's links against.
+   * @returns {HTMLElement}
+   */
+  function commitKpressHost(inert, html, linkBase) {
+    const article = document.createElement("article");
+    article.className = "kpress kpress-inert";
+    article.append(inert.kpressProse(inert.sanitizeHtml(html, linkBase), document));
+    for (const anchor of article.querySelectorAll("a[href]")) {
+      if (anchor instanceof HTMLElement) {
+        sdk()?.decorateExternalLink?.(anchor);
+      }
+    }
+    const host = document.createElement("div");
+    host.className = "metabrowser-kpress-host";
+    host.append(article);
+    return host;
+  }
+
   /**
    * The key a comparison request is kept under, or null when its answer can change.
    *
@@ -1369,9 +1720,18 @@
     abortPreparation(preparationSlot);
     const controller = typeof AbortController === "undefined" ? null : new AbortController();
     const diff = beginDiffPreparation(revision, controller);
+    const detail = fetchCommitDetail(revision, controller?.signal);
+    // The body's Markdown is asked for once the detail says there is a body, beside the
+    // comparison, so a commit a hover prepared shows its body as Markdown when it opens. A
+    // preparation given up before then asks for none.
+    void detail.then((read) => {
+      if (read?.body && controller?.signal.aborted !== true) {
+        void fetchCommitBody(revision, speculative);
+      }
+    });
     preparationSlot = {
       revision,
-      detail: fetchCommitDetail(revision, controller?.signal),
+      detail,
       assets: diff.assets,
       comparison: diff.comparison,
       controller,
@@ -1419,24 +1779,28 @@
   }
 
   /**
+   * The panel's one line and the walk again: Retry after a read that failed, Refresh where
+   * nothing failed (docs/design-system.md, "Refresh, Retry, and Reload Page").
+   *
    * @param {HTMLElement} panel
    * @param {string} message
+   * @param {"Refresh" | "Retry"} action
    */
-  function renderRefreshState(panel, message) {
+  function renderRefreshState(panel, message, action) {
     const empty = document.createElement("div");
     empty.className = "git-panel-empty";
     const label = document.createElement("div");
     label.textContent = message;
     empty.appendChild(label);
 
-    const refresh = document.createElement("button");
-    refresh.type = "button";
-    refresh.className = "btn git-panel-refresh";
-    refresh.textContent = "Refresh";
-    refresh.addEventListener("click", () => {
+    const again = document.createElement("button");
+    again.type = "button";
+    again.className = action === "Retry" ? "btn git-panel-retry" : "btn git-panel-refresh";
+    again.textContent = action;
+    again.addEventListener("click", () => {
       void refreshHistory();
     });
-    empty.appendChild(refresh);
+    empty.appendChild(again);
     panel.replaceChildren(empty);
   }
 
@@ -1568,14 +1932,7 @@
       if (state.stale) {
         placeholder.appendChild(staleHistoryNotice());
       } else if (state.failed && state.failedPage !== null) {
-        const retry = document.createElement("button");
-        retry.type = "button";
-        retry.className = "btn git-history-retry";
-        retry.textContent = "Retry loading history";
-        retry.addEventListener("click", () => {
-          void retryFailedPage();
-        });
-        placeholder.appendChild(retry);
+        placeholder.appendChild(failedPageNotice());
       } else {
         // A pending page shows the shape of the rows it is holding space
         // for, not the word "loading". See design-system.md, "Loading
@@ -1968,15 +2325,16 @@
       renderRefreshState(
         panel,
         viewHelpersFailed
-          ? "Could not load Git view controls. Refresh to try again."
+          ? "Could not load Git view controls."
           : "Could not read repository history.",
+        "Retry",
       );
       return;
     }
     if (state.rowCount === 0) {
       // A repository with no commits yet. Distinct from a failure, and
       // it should read that way.
-      renderRefreshState(panel, "No commits yet.");
+      renderRefreshState(panel, "No commits yet.", "Refresh");
       return;
     }
 
@@ -2045,21 +2403,19 @@
       ]),
     );
     const firstCommitAt = state.summary.firstCommitAt;
-    const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
-    if (!firstAge || firstCommitAt === null) {
+    // "begun 3mo ago" — the age is the shell's one age builder's, inked as commit rows'
+    // are; the words around it stay ordinary row text.
+    const ageSpan = window.MetabrowserFormatters.ageLabel(document, firstCommitAt, {
+      className: "git-history-summary-age",
+    });
+    if (ageSpan.textContent === "") {
       row.replaceChildren(countSpan);
       return;
     }
-    // "begun 3mo ago" — the age value carries the shared age primitive
-    // (tier hue, weight, tabular numerals) exactly as commit rows do;
-    // the words around it stay ordinary row text.
     const firstSpan = document.createElement("span");
     firstSpan.className = "git-history-summary-first";
     const begun = document.createElement("span");
     begun.textContent = "begun";
-    const ageSpan = document.createElement("span");
-    ageSpan.className = `git-history-summary-age ${ageClass(firstCommitAt)}`;
-    ageSpan.textContent = firstAge;
     const ago = document.createElement("span");
     ago.textContent = "ago";
     firstSpan.replaceChildren(begun, ageSpan, ago);
@@ -2106,7 +2462,7 @@
 
   /**
    * The typed stale state: the refs this walk was fingerprinted by moved, so the
-   * rows above are history as it was when the list loaded. Reloading starts a new
+   * rows above are history as it was when the list loaded. Refresh starts a new
    * walk over the refs as they are now.
    *
    * @returns {HTMLElement}
@@ -2117,14 +2473,36 @@
     notice.setAttribute("role", "status");
     const text = document.createElement("span");
     text.textContent = "History changed since this list loaded.";
-    const reload = document.createElement("button");
-    reload.type = "button";
-    reload.className = "btn git-history-reload";
-    reload.textContent = "Reload history";
-    reload.addEventListener("click", () => {
+    const refresh = document.createElement("button");
+    refresh.type = "button";
+    refresh.className = "btn git-history-refresh";
+    refresh.textContent = "Refresh";
+    refresh.addEventListener("click", () => {
       void refreshHistory();
     });
-    notice.append(text, reload);
+    notice.append(text, refresh);
+    return notice;
+  }
+
+  /**
+   * A page of history that did not load, where its rows go or at the list's end: what
+   * failed, and Retry, which asks for that page again (`retryFailedPage`).
+   *
+   * @returns {HTMLElement}
+   */
+  function failedPageNotice() {
+    const notice = document.createElement("div");
+    notice.className = "git-graph-more git-graph-more-failed git-history-failed";
+    const text = document.createElement("span");
+    text.textContent = "Could not load these commits.";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "btn git-history-retry";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", () => {
+      void retryFailedPage();
+    });
+    notice.append(text, retry);
     return notice;
   }
 
@@ -2159,16 +2537,7 @@
     } else if (state.stale) {
       trailing = staleHistoryNotice();
     } else if (state.failed && state.failedPage === state.nextPageNumber) {
-      trailing = document.createElement("div");
-      trailing.className = "git-graph-more git-graph-more-failed";
-      const retry = document.createElement("button");
-      retry.type = "button";
-      retry.className = "btn git-history-retry";
-      retry.textContent = "Retry loading history";
-      retry.addEventListener("click", () => {
-        void retryFailedPage();
-      });
-      trailing.appendChild(retry);
+      trailing = failedPageNotice();
     }
     if (trailing) {
       list.appendChild(trailing);
@@ -2214,8 +2583,7 @@
       (refs ? `<span class="git-graph-refs">${refs}</span>` : "") +
       `<span class="git-graph-subject">${subjectHtml(commit.subject)}</span>` +
       `<span class="git-graph-meta"><span class="actor-name">${escapeHtml(commit.author?.name || "")}</span>` +
-      `<span class="git-graph-age ${escapeHtml(ageClass(commit.committed_at))}">` +
-      `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
+      `${ageHtml(commit.committed_at, { className: "git-graph-age" })}</span>`;
     element.appendChild(body);
 
     element.addEventListener("click", () => selectCommit(commit.id, { rowElement: element }));
@@ -2227,16 +2595,16 @@
     const item = document.createElement("div");
     item.className = "git-graph-item";
     item.appendChild(element);
-    rowCopyReleases.add(window.metabrowser.mountRefCopies(element, item));
+    rowCopyReleases.add(window.metabrowser.mountRefMenus(element, item));
     return item;
   }
 
   /**
    * @param {MetabrowserGitRef[]} refs
-   * @param {"inline"|"sibling"|false} [copy]
+   * @param {"inline"|"sibling"|false} [menu]
    * @returns {string}
    */
-  function renderRefBadges(refs, copy = "sibling") {
+  function renderRefBadges(refs, menu = "sibling") {
     return refs
       .map((ref) =>
         window.metabrowser.refChipHtml(ref.name, {
@@ -2244,7 +2612,8 @@
           kind: ref.kind,
           trunk: ref.is_trunk,
           head: ref.is_head,
-          copy,
+          ref: ref.id,
+          menu,
         }),
       )
       .join("");
@@ -2276,6 +2645,9 @@
         lastSelection?.revision === revision &&
         shell()?.isPreviewClaimCurrent(lastSelection.claim);
       const preparation = selectedHere ? null : prepareRevision(revision, true);
+      // The size is asked beside the detail, so the card shows it when it is in by then; the
+      // card is shown once and never redrawn for it, and a later hover has it kept.
+      void fetchCommitSize(revision);
       let detail = await (preparation?.detail ?? fetchCommitDetail(revision));
       // The history was rebuilt while the detail was read: read it in this session, if
       // the hover is still wanted. A hover cancelled meanwhile, as by teardown, asks
@@ -2446,7 +2818,7 @@
     if (controller === null || !freshness) {
       paint({
         state: "not_found",
-        title: "Commit not found",
+        title: "This commit was not found.",
         detail: "This commit is not in the repository.",
         retry: false,
       });
@@ -2491,16 +2863,15 @@
    * Say what an address with a short commit ID or a ref name needs, instead of that the
    * commit could not be loaded.
    *
-   * @param {string} revision
    * @param {MetabrowserPreviewClaim} previewClaim
    */
-  function showRevisionNotFull(revision, previewClaim) {
+  function showRevisionNotFull(previewClaim) {
     shell()?.renderPreviewNode(
       missingCommitNode(
         {
           state: "not_full",
-          title: "Full commit ID needed",
-          detail: `A commit’s address uses its full 40- or 64-character lowercase ID, not “${revision}”.`,
+          title: "This address needs the full commit ID.",
+          detail: "Use the commit’s full lowercase ID in the address, or open it from its row.",
           retry: false,
         },
         null,
@@ -2647,7 +3018,7 @@
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
           } else if (refusedRevision === revision) {
-            showRevisionNotFull(revision, previewClaim);
+            showRevisionNotFull(previewClaim);
           } else {
             bridge.renderPreviewHtml(
               '<div class="preview-empty">Could not load this commit.</div>',
@@ -2735,7 +3106,7 @@
       // one, which is the worse failure.
       html += `<div class="git-commit-file git-commit-file-note">This commit changes ${
         stats.files_changed || files.length
-      } files; the diff below is bounded.</div>`;
+      } files; only some of them are shown below.</div>`;
     }
     // The commit's diff is rendered by the diff plugin's own view over
     // this commit's first-parent comparison — the history view composes
@@ -2753,6 +3124,10 @@
       },
       { revision: commit.id },
     );
+    // Before the stage is shown: a kept render is in place at once, and one on its way
+    // lands in the stage or the page, whichever holds the body when it comes.
+    void placeCommitBody(stage, detail);
+    void placeCommitSize(stage, detail);
     const diffPreparation = preparation ?? {
       ...beginDiffPreparation(commit.id, null),
     };
@@ -2785,6 +3160,7 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
+      mountCommitCounterpart(stage, commit.id);
       const identity = stage.querySelector(".git-commit-identity");
       // A detail the cache did not hand out is the caller's, which vouches for it.
       const generation = refsReadIn.get(detail) ?? historyGeneration;
@@ -2803,6 +3179,27 @@
     } finally {
       unstage();
     }
+  }
+
+  /**
+   * Ask for the commit page's View on GitHub button (plugin-sdk-views.js, mountCounterpart),
+   * which the server answers for the page: the commit, or one of its files when the address
+   * names one. The page is the address when the address names this commit, and the commit's
+   * own route otherwise.
+   *
+   * @param {HTMLElement} root
+   * @param {string} revision
+   */
+  function mountCommitCounterpart(root, revision) {
+    const corner = root.querySelector(".git-commit-header > .view-header-end[data-counterpart]");
+    const routes = window.MetabrowserNavigationRoute;
+    if (!corner || !routes || typeof window.metabrowser?.mountCounterpart !== "function") {
+      return;
+    }
+    const pathname = window.location?.pathname ?? "";
+    const page =
+      routes.parseCommit(pathname)?.revision === revision ? pathname : routes.commitHref(revision);
+    void window.metabrowser.mountCounterpart(corner, page);
   }
 
   /** @param {HTMLElement} root */
@@ -2907,14 +3304,17 @@
     const tag = navigable ? "button" : "div";
     const attrs = navigable ? ` type="button" data-path="${escapeHtml(file.path)}"` : "";
 
-    let counts = "";
-    if (file.binary) {
-      counts = '<span class="git-stat-binary">binary</span>';
-    } else {
-      counts =
-        `<span class="git-stat-add">+${file.additions ?? 0}</span>` +
-        `<span class="git-stat-del">−${file.deletions ?? 0}</span>`;
-    }
+    // A binary file says so; any other its lines as every lines summary says them, through
+    // the shell's one component (formatters.js, `changeLine`; mb-ox6a).
+    const formatters = window.MetabrowserFormatters;
+    const counts = file.binary
+      ? '<span class="git-stat-binary">binary</span>'
+      : formatters.changeLineHtml(
+          formatters.changeLine(
+            { statuses: [], additions: file.additions ?? 0, deletions: file.deletions ?? 0 },
+            formatters.formatInteger,
+          ),
+        );
 
     let name = escapeHtml(file.path);
     if (file.old_path) {
@@ -3287,6 +3687,8 @@
     state = emptyState();
     detailCache.clear();
     detailInFlight.clear();
+    bodyCache.clear();
+    bodyInFlight.clear();
     mountedSummary = null;
     missingRevisions.clear();
     clearComparisonCache();
@@ -3682,8 +4084,7 @@
       ensurePageLoaded,
       emptyState,
       focusCommitRow,
-      ageClass,
-      relativeAge,
+      ageHtml,
       renderCommitSummary,
       renderCommitTooltip,
       renderCommitDetail,
@@ -3698,6 +4099,12 @@
       retryFailedPage,
       selectCommit,
       fetchCommitDetail,
+      fetchCommitBody,
+      prepareRevision,
+      cancelSpeculativePreparation,
+      placeCommitBody,
+      commitBodyNote,
+      keptCommitBodies: () => [...bodyCache.keys()],
       mountedSummaryRevision: () => mountedSummary?.revision ?? null,
       wireCommitFileNavigation,
       setStateForTests: (/** @type {PanelState} */ next) => {

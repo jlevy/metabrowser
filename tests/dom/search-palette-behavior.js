@@ -71,6 +71,8 @@ class FakeElement {
     this._textContent = "";
     this.focusCalls = 0;
     this.selectCalls = 0;
+    this.selectionStart = 0;
+    this.selectionEnd = 0;
     this.scrollCalls = 0;
     this.scrollTop = 0;
   }
@@ -190,6 +192,12 @@ class FakeElement {
 
   select() {
     this.selectCalls += 1;
+    this.setSelectionRange(0, this.value.length);
+  }
+
+  setSelectionRange(start, end) {
+    this.selectionStart = start;
+    this.selectionEnd = end;
   }
 
   scrollIntoView() {
@@ -633,6 +641,15 @@ async function main() {
   const question = fakeEvent("keydown", { key: "?", shiftKey: true, target: initialFocus });
   document.dispatchEvent(question);
   check("? leaves the palette closed", overlay.hidden === true && !question.defaultPrevented);
+
+  const hash = fakeEvent("keydown", {
+    code: "Digit3",
+    key: "#",
+    shiftKey: true,
+    target: initialFocus,
+  });
+  document.dispatchEvent(hash);
+  check("# is unclaimed in a plain folder", overlay.hidden === true && !hash.defaultPrevented);
 
   // Shift never changes a key: Shift+T is T, and a slash typed with Shift, as
   // on a German layout, is a slash.
@@ -1129,7 +1146,7 @@ async function main() {
   equal(
     "an idle palette says indexing stopped at the file limit",
     status.textContent,
-    "Search includes 4,242 indexed files. Indexing stopped at the file limit.",
+    "Search includes 4,242 indexed files. Some files are not indexed.",
   );
   catalogTruncated = false;
   catalogObservedCount = 5;
@@ -1363,6 +1380,23 @@ async function pullSearchSession() {
     });
   }
 
+  const hash = { code: "Digit3", key: "#", shiftKey: true };
+  const editor = document.createElement("input");
+  document.body.append(editor);
+  editor.focus();
+  const editableHash = fakeEvent("keydown", { ...hash, target: editor });
+  document.dispatchEvent(editableHash);
+  check(
+    "typing # in an editor leaves the palette closed",
+    !palette.isOpen() && !editableHash.defaultPrevented,
+  );
+  editor.remove();
+  const closeModal = shortcuts.activateScope("test-modal", { exclusive: true });
+  const modalHash = fakeEvent("keydown", { ...hash, target: landing });
+  document.dispatchEvent(modalHash);
+  check("# leaves an exclusive modal alone", !palette.isOpen() && !modalHash.defaultPrevented);
+  closeModal();
+
   palette.open();
   const heading = dialog.querySelector(".modal-title").textContent;
   const placeholder = input.getAttribute("placeholder");
@@ -1407,7 +1441,7 @@ async function pullSearchSession() {
   equal("a late PR is appended after the file rows", mixed, [
     "render.js",
     "src/renderer.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged",
+    "Fix <em>renderer</em>, pull request #123, Merged",
   ]);
   equal("a late PR leaves every painted file row in place", mixed.slice(0, 2), firstPaint);
   const mixedPull = mixed[2];
@@ -1443,7 +1477,7 @@ async function pullSearchSession() {
   equal("newly cached PRs update the standing title query", grown, [
     "render.js",
     "src/renderer.js",
-    "Pull request #124, Render the latest state, Closed",
+    "Render the latest state, pull request #124, Closed",
     mixedPull,
   ]);
   const grownPull = grown[2];
@@ -1475,7 +1509,23 @@ async function pullSearchSession() {
   );
 
   catalog.observeRecent([{ path: "notes/#render.md", type: "file" }]);
-  type("#");
+  palette.close(false);
+  landing.focus();
+  const openPullSearch = fakeEvent("keydown", { ...hash, target: landing });
+  document.dispatchEvent(openPullSearch);
+  if (controller.state()?.request.query !== "#") {
+    throw new Error("# must start a pull request search with the hash already entered");
+  }
+  check("# opens the same palette", palette.isOpen() && openPullSearch.defaultPrevented);
+  equal("the shortcut starts the input with #", input.value, "#");
+  check(
+    "the query is focused with the caret after #",
+    document.activeElement === input && input.selectionStart === 1 && input.selectionEnd === 1,
+  );
+  const hashInsidePalette = fakeEvent("keydown", { ...hash, target: input });
+  input.dispatchEvent(hashInsidePalette);
+  check("# remains typeable in the search field", !hashInsidePalette.defaultPrevented);
+
   const recentsSignal = await recentsRecheckStarted.promise;
   const recents = choices();
   equal("a lone hash immediately shows the recent cached PRs", recents, [grownPull, mixedPull]);
@@ -1499,7 +1549,7 @@ async function pullSearchSession() {
   const prefix = choices();
   const selectedAfterPrefixGrowth = currentChoice();
   equal("the exact PR precedes the other numeric prefix matches", prefix, [
-    "Pull request #12, Exact number, Draft",
+    "Exact number, pull request #12, Draft",
     grownPull,
     mixedPull,
   ]);
@@ -1543,7 +1593,7 @@ async function pullSearchSession() {
     "span.search-palette-label"
   ];
   equal("a prefixed title is one pull request", prefixedChoices, [
-    "Pull request #125, feat(chart): chart the strategies, Open",
+    "feat(chart): chart the strategies, pull request #125, Open",
   ]);
   equal("each part of a prefixed title marks its own match", prefixedTitle, [
     { "span.title-prefix": ["feat(", { mark: "chart" }, "):"] },
@@ -1589,7 +1639,7 @@ async function pullSearchSession() {
   await warmComplete;
   const cold = choices();
   equal("an empty cold catalog can populate within one query", cold, [
-    "Pull request #77, Cold catalog match, Open",
+    "Cold catalog match, pull request #77, Open",
   ]);
   key("Enter");
   await settle();

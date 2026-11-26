@@ -13,17 +13,55 @@ only what is listed here and drops the rest.
 - Tags: :data:`ALLOWED_TAGS`. :data:`DROPPED_WITH_CONTENT` are removed with everything in
   them; any other tag is unwrapped, keeping its text.
 - Attributes: none, except ``a[href]``, ``img[src, alt]`` where images are kept, with
-  ``loading="lazy"`` written here on every one and never read from the document,
-  ``ol[start]`` as digits, ``td``/``th`` ``colspan`` and ``rowspan`` as small numbers and
-  ``align`` as left, center, or right, and ``details[open]``. A kept link opens in a new
-  tab with no opener or referrer when it leaves the page.
+  ``loading="lazy"`` written here on every one and never read from the document, and
+  ``referrerpolicy="no-referrer"`` on one from the web, ``ol[start]`` as digits,
+  ``td``/``th`` ``colspan`` and ``rowspan`` as small numbers, ``details[open]``, and the
+  layout attributes github.com keeps (:data:`ALIGN_VALUES`,
+  :data:`DIMENSIONS`): ``align`` as a keyword on a block, a heading, an image, or a table
+  part, ``width`` and ``height`` as a number of pixels or a percentage on an image or a
+  table cell, and ``width`` on a table. A kept link opens in a new tab with no opener or
+  referrer when it leaves the page. A ``span`` keeps only the image fallback's own
+  attributes, described below.
+- Layout: github.com's sanitizer (html-pipeline's ``SanitizationFilter``) keeps
+  ``align``, ``width``, and ``height`` on every element, and a README lays itself out
+  with them: ``<p align="center"><img width="192">`` is a small centered logo there. Each
+  is a keyword or a number, with no address, script, or style in it, so the allowlist
+  keeps those that KPress's sanitized mode keeps too, and the page shows a document from
+  an untrusted source laid out as a trusted one is. A table's ``align`` and ``width``
+  are kept with the rest, so the two renders write the same HTML, but they change
+  nothing on the page today: KPress's stylesheet sets every table at least as wide as
+  its column. KPress's sanitized mode drops others that github.com keeps before this
+  sees them: ``valign``, ``hspace``, ``vspace``, ``clear``, ``nowrap``, and ``open`` on
+  ``details``, which this would keep.
 - Links and images depend on *link_base*. With one -- a pull request's github.com page
   -- every reference is made absolute against it and kept only for ``http`` and
-  ``https``, and every image becomes a link to it. Without one -- a document inside the
-  served tree -- a reference inside the tree (a relative path or a fragment) is kept as
-  written, for the page to resolve within the served root or pin; an outside ``http`` or
-  ``https`` link is kept; and an image is kept only when it is inside the tree, and
-  otherwise becomes a link. Anything else, such as ``javascript:`` or ``data:``, goes.
+  ``https``. Without one -- a document inside the served tree -- a reference inside the
+  tree (a relative path or a fragment) is kept as written, for the page to resolve within
+  the served root or pin, and an outside ``http`` or ``https`` link is kept. Anything
+  else, such as ``javascript:`` or ``data:``, goes.
+- Images: one inside the served tree is kept, and so is one the document writes as an
+  ``https`` address (:func:`remote_image`), which the page shows as github.com does with
+  no referrer sent; the page's policy (``capabilities.untrusted_shell_csp``) admits
+  ``https`` images and nothing else, and the reader's own setting turns even those into
+  the fallback below (``static/inert-html.js``). Any other image -- ``http``, a reference
+  into the application, a pull-request comment's relative path -- is not loaded, and
+  becomes the fallback: its alt text as a small span of the class
+  :data:`IMAGE_FALLBACK_CLASS`, whose ``data-tip-text`` is the address the image would
+  have loaded (the page's tooltip shows it). Inside a link, which a badge is, the span is
+  the link's content and the link keeps its own destination; outside one, the span is
+  inside a link to the image. A ``span`` keeps no other attribute, and these two only in
+  that shape, the class exactly and the tooltip as an absolute ``http`` or ``https``
+  address, so the hardener's own answer hardens to itself, as the page needs it to. A
+  document that writes the shape gets a chip and a tooltip of that address, which do
+  nothing else.
+- Checkboxes: an ``input`` is kept only in the shape of a task list's box, as KPress
+  and github.com write one for ``- [ ]`` and ``- [x]``: ``type="checkbox"``, always
+  ``disabled``, and ``checked`` when the document's was, so a ticked item reads as
+  ticked (:data:`CHECKBOX_ATTRIBUTES`). The allowlist reads HTML, not where it came
+  from, so a checkbox the document writes in raw HTML, in a paragraph or a table cell,
+  is kept in that shape too. Like an image, it is not an allowed tag: any other
+  ``input``, and any other attribute of one, goes. A disabled checkbox with no name,
+  value, or form cannot be focused, changed, or submitted, and reaches no handler.
 - Heading anchors, in a document inside the served tree only: every ``h1`` to ``h6``
   gets an ``id`` the hardener makes, never one the document wrote, as github.com does:
   :data:`ANCHOR_PREFIX` and the GitHub slug of the heading's inert text
@@ -41,6 +79,7 @@ only what is listed here and drops the rest.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import unicodedata
 from collections import Counter
@@ -121,19 +160,75 @@ DROPPED_WITH_CONTENT: Final = frozenset(
         "video",
     }
 )
+# The align keywords each tag keeps, lowercased: those a browser lays out (the HTML
+# standard's rendering section), so a kept value always means what it does on github.com.
+# A block, a heading, and a table's cells, rows, and row groups align their text; a table
+# sits left, center, or right; an image floats left or right, or sits on the line at its
+# top, middle (written `middle` or `center`), bottom, or baseline.
+_TEXT_ALIGN: Final = ("left", "center", "right", "justify")
+ALIGN_VALUES: Final = {
+    "p": _TEXT_ALIGN,
+    "div": _TEXT_ALIGN,
+    **{f"h{level}": _TEXT_ALIGN for level in range(1, 7)},
+    "img": ("left", "right", "top", "middle", "center", "bottom", "baseline"),
+    "table": ("left", "center", "right"),
+    **dict.fromkeys(("thead", "tbody", "tfoot", "tr", "td", "th"), _TEXT_ALIGN),
+}
+# The sizes each tag keeps, each a number of pixels or a percentage (_DIMENSION).
+DIMENSIONS: Final = {
+    "img": ("width", "height"),
+    "table": ("width",),
+    "td": ("width", "height"),
+    "th": ("width", "height"),
+}
 # The attributes each tag may keep; every value is checked by allowed_attributes, except
-# a heading's id, which is always the hardener's own anchor and never the document's, and
-# an image's loading, which is always lazy. An image is not an allowed tag: it is kept,
-# with these, only inside the served tree.
+# a heading's id, which is always the hardener's own anchor and never the document's, an
+# image's loading, which is always lazy, its referrerpolicy, which is always no-referrer,
+# and a span's, which only the image fallback's own shape (IMAGE_FALLBACK_CLASS) keeps. An
+# image is not an allowed tag: it is kept, with these, only inside the served tree and
+# from an https address. Nor is an input: it is kept only in the shape of a task list's
+# box, which CHECKBOX_ATTRIBUTES writes, wherever the document writes a checkbox.
 ALLOWED_ATTRIBUTES: Final = {
     "a": ("href", "target", "rel"),
-    "img": ("loading", "src", "alt"),
+    "img": ("loading", "referrerpolicy", "src", "alt", "align", "width", "height"),
+    "input": ("type", "disabled", "checked"),
+    "span": ("class", "data-tip-text"),
     "ol": ("start",),
-    "td": ("colspan", "rowspan", "align"),
-    "th": ("colspan", "rowspan", "align"),
+    "p": ("align",),
+    "div": ("align",),
+    "table": ("align", "width"),
+    "thead": ("align",),
+    "tbody": ("align",),
+    "tfoot": ("align",),
+    "tr": ("align",),
+    "td": ("colspan", "rowspan", "align", "width", "height"),
+    "th": ("colspan", "rowspan", "align", "width", "height"),
     "details": ("open",),
-    **{f"h{level}": ("id",) for level in range(1, 7)},
+    "pre": ("lang",),
+    **{f"h{level}": ("id", "align") for level in range(1, 7)},
 }
+# The one shape an input keeps, a task list's box, ahead of `checked` when the document's
+# was ticked: the hardener writes each of these, and reads only `type` and `checked` from
+# the document.
+CHECKBOX_ATTRIBUTES: Final = (("type", "checkbox"), ("disabled", ""))
+# The attributes written without a value, whose presence is their meaning. The allowlist
+# reads none of their values: HTML spells one as nothing or as the attribute's own name.
+BARE_ATTRIBUTES: Final = frozenset({"open", "disabled", "checked"})
+# The one language a block keeps: a Mermaid diagram's, spelled as GitHub's own fallback
+# markup spells it, `<pre lang="mermaid">`, so the page can draw it as an image
+# (builtin_plugins/markdown/diagrams.js). KPress marks the block with this class inside
+# its diagram figure, and the figure and its class do not survive the allowlist.
+DIAGRAM_LANGUAGE: Final = "mermaid"
+_DIAGRAM_SOURCE_CLASS: Final = "kpress-diagram-source"
+# What an image the page does not load becomes: its alt text in a span of this class,
+# which static/styles.css draws as a compact chip, with the address the image would have
+# loaded in its `data-tip-text`, the page's tooltip (a `title` is a second tooltip, which
+# docs/design-system.md, "One Tooltip, and It Is Ours", forbids). Only the hardener writes
+# the class, and a document's own span keeps it only in that shape.
+IMAGE_FALLBACK_CLASS: Final = "mb-image-fallback"
+# The policy an image from the web is fetched under: no `Referer`, so the page's address
+# (which names the repository the reader opened) does not reach the image's host.
+IMAGE_REFERRER_POLICY: Final = "no-referrer"
 # Every heading anchor begins with this, as on github.com: the document's names stay
 # apart from the application's ids and from window properties.
 ANCHOR_PREFIX: Final = "user-content-"
@@ -218,7 +313,13 @@ _VOID: Final = frozenset(
 )
 _DIGITS: Final = re.compile(r"^[0-9]{1,6}$")
 _SPAN: Final = re.compile(r"^[1-9][0-9]?$")
-_ALIGN: Final = frozenset({"left", "center", "right"})
+# A size as a browser reads one from an attribute: a number, with an optional fraction,
+# then `%` for a share of the container, or the `px` a README often writes, which a
+# browser reads as the number before it. Five digits reach 99999 pixels, past any screen
+# or image a README sizes (an 8K display is 7680 wide), and bound how long a value a
+# document can write; a longer one is dropped. Whatever a width says, the page caps an
+# image at its container (`max-width: 100%`). static/inert-html.js has the same pattern.
+_DIMENSION: Final = re.compile(r"[0-9]{1,5}(?:\.[0-9]{1,3})?(?:%|px)?", re.IGNORECASE)
 # What a browser strips from a URL before reading it: ASCII tab and newline anywhere,
 # and C0 controls and spaces at either end. Read the same way here, so "java\tscript:"
 # is the scheme a browser would see.
@@ -342,6 +443,15 @@ def link_href(href: str | None, base: str | None) -> tuple[str, bool] | None:
     return None if outside is None else (outside, True)
 
 
+def _checkbox_type(kind: str | None) -> bool:
+    """Whether an input's `type` makes it a checkbox, as a browser reads one: ASCII
+    letters in any case, and nothing around them. Python's `lower` also folds U+212A
+    KELVIN SIGN to `k`, which neither a browser's match nor KPress's sanitizer does."""
+
+    written = kind or ""
+    return written.isascii() and written.lower() == "checkbox"
+
+
 def allowed_attributes(
     tag: str, attrs: dict[str, str | None], base: str | None
 ) -> list[tuple[str, str]]:
@@ -359,10 +469,25 @@ def allowed_attributes(
         # A constant, so the document has no say in when its images load: a trusted
         # render's images wait until they near the reader, and these wait the same way.
         # Ahead of src, for a browser that reads the two in order.
-        kept += [("loading", "lazy"), ("src", _clean(attrs.get("src") or ""))]
+        kept.append(("loading", "lazy"))
+        remote = remote_image(attrs.get("src"), base)
+        if remote is None:
+            kept.append(("src", _clean(attrs.get("src") or "")))
+        else:
+            # The address as a browser's URL parser writes it, as a kept link's is.
+            kept += [("referrerpolicy", IMAGE_REFERRER_POLICY), ("src", remote)]
         alt = attrs.get("alt")
         if alt:
             kept.append(("alt", alt))
+    elif tag == "span":
+        # The fallback the hardener writes for an image the page does not load, so its own
+        # answer hardens to itself: the class exactly, and an address a browser reads as
+        # http(s) for the tooltip.
+        if attrs.get("class") == IMAGE_FALLBACK_CLASS:
+            kept.append(("class", IMAGE_FALLBACK_CLASS))
+            address = outside_link(attrs.get("data-tip-text"), None)
+            if address is not None:
+                kept.append(("data-tip-text", address))
     elif tag == "ol":
         start = attrs.get("start") or ""
         if _DIGITS.match(start):
@@ -372,18 +497,149 @@ def allowed_attributes(
             value = attrs.get(name) or ""
             if _SPAN.match(value):
                 kept.append((name, value))
-        align = (attrs.get("align") or "").lower()
-        if align in _ALIGN:
-            kept.append(("align", align))
     elif tag == "details" and "open" in attrs:
         kept.append(("open", ""))
+    elif tag == "input" and _checkbox_type(attrs.get("type")):
+        kept += CHECKBOX_ATTRIBUTES
+        if "checked" in attrs:
+            kept.append(("checked", ""))
+    elif tag == "pre" and (
+        (attrs.get("lang") or "").lower() == DIAGRAM_LANGUAGE
+        or _DIAGRAM_SOURCE_CLASS in (attrs.get("class") or "").split()
+    ):
+        kept.append(("lang", DIAGRAM_LANGUAGE))
+    # A browser matches an align keyword in any case and with nothing around it.
+    align = (attrs.get("align") or "").lower()
+    if align in ALIGN_VALUES.get(tag, ()):
+        kept.append(("align", align))
+    for name in DIMENSIONS.get(tag, ()):
+        size = attrs.get(name) or ""
+        if _DIMENSION.fullmatch(size):
+            kept.append((name, size))
     return kept
 
 
-def keeps_image(src: str | None, base: str | None) -> bool:
-    """Whether an image stays an image: only one inside the served tree, and only then."""
+# An address written in full: its scheme (or none, for `//host`), two slashes in any mix, and
+# then a character of the host, so `//`, `https:///`, and `//?x` name none. Without a host
+# of its own, an address resolves against the page it sits in, which is no image of the web.
+_WRITTEN_AUTHORITY: Final = re.compile(r"^(?:https:)?[/\\]{2}[^/\\?#]", re.IGNORECASE)
+# The authority a written address names: what follows its two slashes up to the path, query,
+# or fragment. A host in letters outside ASCII is read through IDNA, which Python does not
+# have and which drops or maps characters a document can hide a different host in, so an
+# address with one is not an image the page fetches: its alt text and a link are shown.
+_AUTHORITY: Final = re.compile(r"^(?:https:)?[/\\]{2}([^/\\?#]*)", re.IGNORECASE)
+# What a browser's URL parser refuses in a host: controls, space, and these (the WHATWG
+# URL standard's forbidden host code points, with the percent sign it adds for a domain).
+_HOST_FORBIDDEN: Final = re.compile(r"[\x00-\x20#%/:<>?@\[\\\]^|\x7f]")
 
-    return base is None and is_inside(src)
+
+# A number in one part of an IPv4 address, as the URL standard reads one: hex after `0x`,
+# octal after a leading `0`, decimal otherwise.
+_IPV4_DECIMAL: Final = re.compile(r"[0-9]+")
+_IPV4_HEX: Final = re.compile(r"[0-9a-fA-F]*")
+_IPV4_OCTAL: Final = re.compile(r"[0-7]*")
+
+
+def _ipv4_number(part: str) -> int | None:
+    if part == "":
+        return None
+    if part[:2].lower() == "0x":
+        digits, pattern, base = part[2:], _IPV4_HEX, 16
+    elif len(part) > 1 and part[0] == "0":
+        digits, pattern, base = part[1:], _IPV4_OCTAL, 8
+    else:
+        digits, pattern, base = part, _IPV4_DECIMAL, 10
+    if pattern.fullmatch(digits) is None:
+        return None
+    return int(digits, base) if digits else 0
+
+
+def _ends_in_number(host: str) -> bool:
+    """The URL standard's test for a host that is an IPv4 address, or fails to be one."""
+
+    parts = host.split(".")
+    if parts[-1] == "":
+        if len(parts) == 1:
+            return False
+        parts.pop()
+    return _ipv4_number(parts[-1]) is not None
+
+
+def _ipv4_parses(host: str) -> bool:
+    parts = host.split(".")
+    if parts[-1] == "" and len(parts) > 1:
+        parts.pop()
+    numbers = [_ipv4_number(part) for part in parts]
+    if len(parts) > 4 or None in numbers:
+        return False
+    values = [number for number in numbers if number is not None]
+    return all(number < 256 for number in values[:-1]) and values[-1] < 256 ** (5 - len(parts))
+
+
+def _host_parses(address: str) -> bool:
+    """Whether *address* has a host a browser reads and a port it accepts.
+
+    The host is named, holds none of :data:`_HOST_FORBIDDEN`, and, in brackets, is an IPv6
+    address; the port, if there is one, is a number a browser takes. Python's own split
+    reads neither, so an address with an empty or malformed one passes it.
+    """
+
+    try:
+        parts = urlsplit(address)
+        host = parts.hostname
+        parts.port  # noqa: B018 -- reading it is the check: it raises for one out of range
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if parts.netloc.rpartition("@")[2].startswith("["):
+        try:
+            ipaddress.IPv6Address(host)
+        except ValueError:
+            return False
+        return True
+    if _HOST_FORBIDDEN.search(host) is not None:
+        return False
+    # A host that ends in a number is an IPv4 address or none: `evil.test127.0.0.1` is neither.
+    return _ipv4_parses(host) if _ends_in_number(host) else True
+
+
+def remote_image(src: str | None, base: str | None) -> str | None:
+    """The ``https`` address of an image the page may fetch from the web, or ``None``.
+
+    Only an address the document writes in full qualifies, as ``https://host/...``, in
+    any case or spelling a browser reads the same way (``//host/...``, ``https:host/...``,
+    a backslash for a slash), so a relative path in a pull request's comment, which
+    :func:`outside_link` would make absolute against *base*, is not one. ``http`` is not
+    one, nor is an address with no host, or one a browser's URL parser refuses
+    (:func:`_host_parses`), nor one with a user name or password in it, which a browser
+    refuses an image under, nor one whose host is written outside ASCII. What qualifies is
+    returned as :func:`outside_link` writes it.
+    ``static/inert-html.js`` makes the same choice; ``tests/test_inert_html.py`` holds the two
+    to one answer on a corpus.
+    """
+
+    if not src:
+        return None
+    cleaned = _spelled_out(_clean(src), base)
+    if not _WRITTEN_AUTHORITY.match(cleaned):
+        return None
+    authority = _AUTHORITY.match(cleaned)
+    if authority is None or not authority[1].isascii():
+        return None
+    outside = outside_link(src, base)
+    if outside is None or not outside.startswith("https://"):
+        return None
+    parts = urlsplit(outside)
+    if parts.username or parts.password:
+        return None
+    return outside if _host_parses(outside) else None
+
+
+def keeps_image(src: str | None, base: str | None) -> bool:
+    """Whether an image stays an image: one inside the served tree, or one from the web."""
+
+    return (base is None and is_inside(src)) or remote_image(src, base) is not None
 
 
 def image_link(src: str | None, alt: str | None, base: str | None) -> tuple[str | None, str]:
@@ -392,18 +648,33 @@ def image_link(src: str | None, alt: str | None, base: str | None) -> tuple[str 
     return outside_link(src, base), (alt or "").strip() or "image"
 
 
+def image_fallback(text: str, address: str | None) -> str:
+    """The span an image the page does not load becomes: its alt *text*, and the
+    *address* it would have loaded, if it has one, for the page's tooltip."""
+
+    kept = [("class", IMAGE_FALLBACK_CLASS)]
+    if address is not None:
+        kept.append(("data-tip-text", address))
+    return f"{_open_tag('span', kept)}{escape(text, quote=False)}</span>"
+
+
 def _open_tag(tag: str, kept: list[tuple[str, str]]) -> str:
     rendered = "".join(
-        f" {name}" if name == "open" else f' {name}="{escape(value)}"' for name, value in kept
+        f" {name}" if name in BARE_ATTRIBUTES else f' {name}="{escape(value)}"'
+        for name, value in kept
     )
     return f"<{tag}{rendered}>"
 
 
 class _Heading:
-    def __init__(self, index: int, tag: str, original: str | None) -> None:
+    def __init__(
+        self, index: int, tag: str, original: str | None, kept: list[tuple[str, str]]
+    ) -> None:
         self.index = index
         self.tag = tag
         self.original = original
+        # The attributes it keeps besides the anchor, such as its `align`.
+        self.kept = kept
         self.text: list[str] = []
 
 
@@ -418,6 +689,9 @@ class _Hardener(HTMLParser):
         self.out: list[str] = []
         # Depth inside a dropped element; nothing is written while it is above zero.
         self.dropped = 0
+        # Depth inside a link, which an image's fallback is the content of, not a link of
+        # its own.
+        self.links = 0
         # Each heading of a document, in order: where its open tag is in `out`, its tag,
         # the id the document gave it, and its inert text. `open_headings` holds those
         # not yet closed, which the text written now belongs to.
@@ -433,32 +707,17 @@ class _Hardener(HTMLParser):
             if tag not in _VOID:
                 self.dropped += 1
             return
-        values = dict(attrs)
+        # An attribute written twice is its first, as a browser, KPress's sanitizer, and
+        # static/inert-html.js read it: `<input type="text" type="checkbox">` is no box.
+        values = dict(reversed(attrs))
         if tag == "img":
-            if keeps_image(values.get("src"), self.base):
-                kept = allowed_attributes("img", values, self.base)
-                if self.rewrite_local is None:
-                    self.out.append(_open_tag("img", kept))
-                    return
-                original = dict(kept)["src"]
-                src = self.rewrite_local(original, True)
-                if src is not None:
-                    kept = [(name, src if name == "src" else value) for name, value in kept]
-                    self.out.append(_open_tag("img", kept))
-                    return
-                # An image the rewrite does not keep is a link to where it leads as one,
-                # an address the rewrite wrote and so kept as it is.
-                href = self.rewrite_local(original, False)
-                text = image_link(None, values.get("alt"), self.base)[1]
-                link = None if href is None else [("href", href)]
-            else:
-                href, text = image_link(values.get("src"), values.get("alt"), self.base)
-                link = None if href is None else allowed_attributes("a", {"href": href}, self.base)
-            self._text(text)
-            if link is None:
-                self.out.append(f"<span>{escape(text, quote=False)}</span>")
-            else:
-                self.out.append(f"{_open_tag('a', link)}{escape(text, quote=False)}</a>")
+            self._image(values)
+            return
+        if tag == "input":
+            # Kept only in the shape of a task list's box, wherever a checkbox is written;
+            # any other input is void, so nothing of it is left.
+            if kept := allowed_attributes("input", values, self.base):
+                self.out.append(_open_tag("input", kept))
             return
         if tag in ALLOWED_TAGS:
             kept = allowed_attributes(tag, values, self.base)
@@ -467,11 +726,49 @@ class _Hardener(HTMLParser):
                 if href is not None and is_inside(href):
                     scoped = self.rewrite_local(href, False)
                     kept = [] if scoped is None else [("href", scoped)]
+            if tag == "a":
+                self.links += 1
             self.out.append(_open_tag(tag, kept))
             if tag in _HEADINGS and self.base is None:
-                heading = _Heading(len(self.out) - 1, tag, values.get("id"))
+                heading = _Heading(len(self.out) - 1, tag, values.get("id"), kept)
                 self.headings.append(heading)
                 self.open_headings.append(heading)
+
+    def _image(self, values: dict[str, str | None]) -> None:
+        """Write an image: kept, or the fallback for one the page does not load."""
+
+        src = values.get("src")
+        if keeps_image(src, self.base):
+            kept = allowed_attributes("img", values, self.base)
+            if remote_image(src, self.base) is not None or self.rewrite_local is None:
+                # An address on the web is not a reference into the tree, so the rewrite
+                # a page makes of those is not asked about it.
+                self.out.append(_open_tag("img", kept))
+                return
+            original = dict(kept)["src"]
+            rewritten = self.rewrite_local(original, True)
+            if rewritten is not None:
+                kept = [(name, rewritten if name == "src" else value) for name, value in kept]
+                self.out.append(_open_tag("img", kept))
+                return
+            # An image the rewrite does not keep is a link to where it leads as one,
+            # an address the rewrite wrote and so kept as it is.
+            href = self.rewrite_local(original, False)
+            text = image_link(None, values.get("alt"), self.base)[1]
+            link = None if href is None else [("href", href)]
+            address = href
+        else:
+            href, text = image_link(src, values.get("alt"), self.base)
+            link = None if href is None else allowed_attributes("a", {"href": href}, self.base)
+            address = href
+        self._text(text)
+        fallback = image_fallback(text, address)
+        if link is None or self.links:
+            # Inside a link, which a badge is, the link is the image's own: a second one
+            # inside it is not valid, and a browser reads it as the first's end.
+            self.out.append(fallback)
+        else:
+            self.out.append(f"{_open_tag('a', link)}{fallback}</a>")
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
@@ -483,6 +780,8 @@ class _Hardener(HTMLParser):
             if tag not in _VOID:
                 self.dropped -= 1
             return
+        if tag == "a" and self.links:
+            self.links -= 1
         if tag in ALLOWED_TAGS and tag not in _VOID:
             self.out.append(f"</{tag}>")
         # A heading's end closes it and any heading still open inside it.
@@ -510,7 +809,7 @@ class _Hardener(HTMLParser):
         replaced: dict[str, str] = {}
         for heading in self.headings:
             anchor = anchors.anchor("".join(heading.text))
-            self.out[heading.index] = f'<{heading.tag} id="{escape(anchor)}">'
+            self.out[heading.index] = _open_tag(heading.tag, [("id", anchor), *heading.kept])
             if heading.original is not None and written[heading.original] == 1:
                 replaced[heading.original] = anchor
         return replaced
@@ -551,18 +850,26 @@ def _harden(
 
 
 __all__ = [
+    "ALIGN_VALUES",
     "ALLOWED_ATTRIBUTES",
     "ANCHOR_PREFIX",
     "ALLOWED_TAGS",
+    "BARE_ATTRIBUTES",
+    "CHECKBOX_ATTRIBUTES",
+    "DIMENSIONS",
     "DROPPED_WITH_CONTENT",
+    "IMAGE_FALLBACK_CLASS",
+    "IMAGE_REFERRER_POLICY",
     "allowed_attributes",
     "fragment_link",
     "harden",
     "harden_document",
     "heading_slug",
+    "image_fallback",
     "image_link",
     "is_inside",
     "keeps_image",
     "link_href",
     "outside_link",
+    "remote_image",
 ]

@@ -45,9 +45,8 @@
     return (Number(value) || 0) >= COUNT_LARGE_THRESHOLD ? "count-large" : "";
   }
 
-  // Age tiers, coarsest first, as [suffix, milliseconds, class].
-  // One table so every age anywhere abbreviates and colours the same:
-  // an age is an age, whether it belongs to a file or a commit.
+  // Age tiers, coarsest first, as [suffix, milliseconds, class]: one table, so every age
+  // abbreviates and colours the same.
   /** @type {ReadonlyArray<readonly [string, number, string]>} */
   const AGE_TIERS = Object.freeze([
     ["y", 365 * 24 * 60 * 60 * 1000, "age-old"],
@@ -58,19 +57,14 @@
     ["m", 60 * 1000, "age-min"],
   ]);
 
-  /**
-   * Compact or relative age and its tier class for an epoch-seconds timestamp.
-   *
-   * @param {number} epochSeconds
-   * @param {{style?: "compact" | "relative"}} [options]
-   * @returns {{label: string, className: string}}
-   */
+  /** @param {number} epochSeconds @param {MetabrowserAgeOptions} [options] @returns {{label: string, className: string}} */
   function age(epochSeconds, options = {}) {
     const value = Number(epochSeconds);
     if (!Number.isFinite(value) || value <= 0) {
       return { label: "", className: "" };
     }
-    const delta = Date.now() - value * 1000;
+    const now = options.now === undefined ? Date.now() : options.now * 1000;
+    const delta = now - value * 1000;
     const elapsed = Math.abs(delta);
     const relative = options.style === "relative";
     for (const [suffix, span, className] of AGE_TIERS) {
@@ -85,18 +79,49 @@
     return { label: relative ? "just now" : "<1m", className: "age-sec" };
   }
 
-  /** @param {number} epochSeconds @returns {string} */
-  function ageClass(epochSeconds) {
-    return age(epochSeconds).className;
+  /** @param {number | null | undefined} epochSeconds @param {MetabrowserAgeLabelOptions} options @returns {{className: string, attributes: Array<[string, string]>, text: string}} */
+  function agePaint(epochSeconds, options) {
+    const { label, className } = age(Number(epochSeconds) || 0, options);
+    /** @type {Array<[string, string]>} */
+    const attributes = options.tip ? [["data-tip-text", options.tip]] : [];
+    const classes = [options.className, className].filter(Boolean).join(" ");
+    return { className: classes, attributes, text: label };
   }
 
-  // A title's conventional-commit prefix, "feat(ledger):", is drawn regular and the rest at
-  // the title's weight (docs/design-system.md, "Titles"): a type of lowercase letters, an
-  // optional scope of anything but parentheses, an optional "!", and the colon, at most 16
-  // code points, then whitespace and more of the title. The match is linear: each part is a
-  // run of one class, which the first character outside it ends.
+  /** @param {Document} doc @param {number | null | undefined} epochSeconds @param {MetabrowserAgeLabelOptions} [options] */
+  function ageLabel(doc, epochSeconds, options = {}) {
+    const paint = agePaint(epochSeconds, options);
+    const element = doc.createElement("span");
+    for (const [name, value] of [["class", paint.className], ...paint.attributes]) {
+      if (value) {
+        element.setAttribute(name, value);
+      }
+    }
+    element.textContent = paint.text;
+    return element;
+  }
+
+  /** @param {number | null | undefined} epochSeconds @param {MetabrowserAgeLabelOptions} [options] */
+  function ageLabelHtml(epochSeconds, options = {}) {
+    const paint = agePaint(epochSeconds, options);
+    return paint.text && paintHtml(paint);
+  }
+
+  // How much of a commit ID a line shows, as many characters as GitHub shows
+  // (docs/design-system.md, "Short Commit IDs"). The server's copy is `SHORT_COMMIT_CHARS`
+  // in commit_ids.py; tests/test_short_commit.py holds them equal.
+  const SHORT_COMMIT_CHARS = 7;
+
+  /** A commit ID as a line names it. @param {string} commit @returns {string} */
+  function shortCommit(commit) {
+    return String(commit).slice(0, SHORT_COMMIT_CHARS);
+  }
+
+  // A title's conventional-commit prefix, "feat(ledger):", at most 32 code points (mb-htmy;
+  // docs/design-system.md, "Titles"). The match is linear: each part is a run of one class,
+  // which the first character outside it ends.
   const TITLE_PREFIX = /^[a-z]+(?:\([^()]+\))?!?:(?=\s+\S)/u;
-  const TITLE_PREFIX_MAX_CHARS = 16;
+  const TITLE_PREFIX_MAX_CHARS = 32;
   /** The one class that sets a prefix's weight (static/styles.css). */
   const TITLE_PREFIX_CLASS = "title-prefix";
   /** @type {Record<string, string>} */
@@ -175,7 +200,7 @@
       return [part];
     }
     if ("number" in part) {
-      return [{ className: SUMMARY_NUMBER_CLASS, text: part.number }];
+      return [{ className: part.sizeStyle ?? SUMMARY_NUMBER_CLASS, text: part.number }];
     }
     if ("status" in part) {
       // A status count, "21 A": its number and its letter one span, bold, in the status's
@@ -239,7 +264,7 @@
       paint.children === undefined
         ? escaped(paint.text ?? "")
         : paint.children.map(paintHtml).join("");
-    return `<span class="${paint.className}"${attributes}>${content}</span>`;
+    return `<span class="${escaped(paint.className)}"${attributes}>${content}</span>`;
   }
 
   /**
@@ -292,11 +317,10 @@
   const CHANGE_LINE_GROUP_CLASS = "change-line-group";
   const CHANGE_LINE_STATUSES_CLASS = "change-line-statuses";
   const CHANGE_LINE_STATS_CLASS = "change-line-stats";
+  const CHANGE_LINE_NONE_CLASS = "change-line-none";
+  const NO_LINES = "0 lines";
 
   /**
-   * A brief change line, each count written with *formatCount* and an unknown one as "?":
-   * `text` as it reads, and `label` in words, "10 added, 5 deleted, 4 modified; 1,234 lines
-   * added, 567 deleted".
    * @param {MetabrowserChangeLineInput} change
    * @param {(count: number) => string} formatCount
    * @returns {MetabrowserChangeLine}
@@ -314,17 +338,26 @@
     const deleted = written(change.deletions);
     const additions = `+${added}`;
     const deletions = `${MINUS}${deleted}`;
-    const totals = `${additions} ${deletions}`;
+    const shownTotals = /** @type {const} */ (["additions", "deletions"]).filter(
+      (side) => change[side] !== 0,
+    );
+    const shown = { additions, deletions };
+    const totals = shownTotals.map((side) => shown[side]).join(" ") || NO_LINES;
     const text = statuses === "" ? totals : `${statuses} · ${totals}`;
     const lines =
       change.additions === null && change.deletions === null
         ? "line counts unknown"
-        : `${added} ${change.additions === 1 ? "line" : "lines"} added, ${deleted} deleted`;
+        : shownTotals
+            .map(
+              (side, at) =>
+                `${written(change[side])}${at ? "" : change[side] === 1 ? " line" : " lines"} ${side === "additions" ? "added" : "deleted"}`,
+            )
+            .join(", ") || "no lines changed";
     const words = change.statuses
       .map((entry) => `${written(entry.count)} ${entry.word}`)
       .join(", ");
     const label = words === "" ? lines : `${words}; ${lines}`;
-    return { statusParts, additions, deletions, text, label };
+    return { statusParts, additions, deletions, shownTotals, text, label };
   }
 
   /**
@@ -355,10 +388,12 @@
     }
     children.push({
       className: CHANGE_LINE_STATS_CLASS,
-      children: [
-        { className: "diff-stat-add", text: line.additions },
-        { className: "diff-stat-del", text: line.deletions },
-      ],
+      children: line.shownTotals.length
+        ? line.shownTotals.map((side) => ({
+            className: side === "additions" ? "diff-stat-add" : "diff-stat-del",
+            text: line[side],
+          }))
+        : [{ className: CHANGE_LINE_NONE_CLASS, text: NO_LINES }],
     });
     return { className: CHANGE_LINE_CLASS, children };
   }
@@ -383,8 +418,6 @@
   }
 
   /**
-   * What every summary of a change set says: its file count, "35 files changed", and its
-   * brief change line (docs/design-system.md, "Diff Summary").
    * @param {{files: number | null, additions: number | null, deletions: number | null, exact: boolean}} totals
    * @param {MetabrowserChangeLineInput["statuses"]} entries
    * @param {(count: number) => string} formatCount
@@ -409,7 +442,8 @@
 
   window.MetabrowserFormatters = Object.freeze({
     age,
-    ageClass,
+    ageLabel,
+    ageLabelHtml,
     changeLine,
     changeLineHtml,
     changeLineNodes,
@@ -420,6 +454,7 @@
     formatBytes,
     formatFileCount,
     formatInteger,
+    shortCommit,
     sizeClass,
     titleHtml,
     titleNodes,

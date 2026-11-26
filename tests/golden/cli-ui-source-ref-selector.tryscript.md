@@ -7,9 +7,11 @@ env:
 # Golden Test: Source Ref Selector
 
 A page on a served mirror’s pin shows a compact button naming the ref it was rendered
-for. Opening it lists the mirror’s branches or tags from `/api/source/refs`, the default
-branch first and the served ref marked; the filter box asks again after a pause in
-typing, and a newer filter, or closing the list, aborts a request still on its way.
+for.
+Opening it lists every one of the mirror’s branches or tags from `/api/source/refs`,
+the default branch first and then newest first, with the served ref marked; the filter
+box asks again after a pause in typing, and a newer filter, or closing the list, aborts
+a request still on its way.
 Choosing a ref switches the served pin with `POST /api/source/pin`, naming the page’s
 `/view/` address so the answer says where the page goes: the same file when the new
 revision has it, else the root.
@@ -25,6 +27,11 @@ what it would paint, and where it navigated.
 number set bold in brackets, and a commit with no ref; `keys` is where an arrow, Home,
 or End key moves focus in a list of three rows, `-1` being the filter box and `null` a
 key the list leaves alone.
+`windows` is which rows a list draws (`rowWindow`): those in its view and `overscan`
+more on either side, at the top, the middle, and the end of 10,001 rows, so the page
+draws about as many rows for every ref as for a few; before a row is measured, the first
+rows. The row that takes Tab is drawn too wherever the list is scrolled, since focus may
+be on it and Tab from the filter box goes to it.
 
 `checkout` is the same module as a served checkout’s selector: a folder that is a
 repository’s root, recorded in
@@ -34,17 +41,37 @@ Its panel begins with the working tree, which is what a folder opens on and the 
 choice that is not a ref, and has a third list, the remote-tracking branches.
 A branch is shown as a pinned revision, at the revision’s address for the page’s file.
 The checked-out branch is badged and is a ref like any other, so choosing it shows its
-commit; only the working-tree row asks the pin route for the working tree.
+commit; only the working-tree row asks the pin route for the working tree, and the row’s
+button back from a revision, `back`, which calls the same `chooseWorkingTree`. The
+button says which view the page shows before the ref: “Working tree” and the branch the
+files on disk are on, which the page names as the server writes it and as each listing
+reads `HEAD` again, or “Revision” and the ref chosen, so the checked-out branch’s own
+revision never reads as its working tree (mb-cxpq).
+The same selector heads the Commits tab, which shows the revision chosen: a switch made
+there names no address, and the page reloads on Commits at the tab’s own landing, the
+`/view/` history entry whose state is `gitLanding`, where its row names the revision.
+A way back that fails with the list closed says why in the row.
 A page left behind by a switch elsewhere offers a reload, which a mirror’s freshness row
 does for a mirror. A checkout’s rows say which chip each name is drawn as, and its
-`labels` are the button on the working tree, a branch, a remote-tracking branch, a tag,
-and a commit. A folder holding a `.git` that Git does not take for a repository’s root
-loses its row when the listing says so, and a Git older than the one a checkout’s
-revisions are read with is refused in the server’s own words.
+`labels` are the button on the working tree on a branch, at a detached `HEAD`, and with
+a `HEAD` the server could not read, then on a branch, a remote-tracking branch, a tag,
+and a commit, each with its view word’s tooltip.
+A folder holding a `.git` that Git does not take for a repository’s root loses its row
+when the listing says so, and a Git older than the one a checkout’s revisions are read
+with is refused in the server’s own words.
 `guard` is what each kind of page names on its data requests
 (`static/source-pin-guard.js`), which is how a tab left behind is refused: a revision
 its commit, a checkout’s working tree the word `working-tree`, and a plain folder
 nothing, since its server can serve nothing else.
+`folders` is where the Working tree row cuts a folder’s path to keep the folder’s own
+name whole: at the name the server sends, whichever separator the path was joined with,
+and nowhere when the folder is the home directory, whose path is `~`. `hold` is what the
+page’s own data requests do while it switches: the server may serve the other subject
+before the page has gone, so each waits for the answer and is held while the page goes.
+The guard sends them when the switch is refused or changes nothing, when the selector is
+taken away, when the back/forward cache shows the page again, and at the hold’s bound,
+which runs from the ask; an earlier switch’s bound does not end a later hold, and a
+request given up while it is held settles at once and is not sent.
 
 ```console
 $ node tests/dom/source-ref-selector-session.js
@@ -89,8 +116,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -108,8 +135,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -129,7 +156,7 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "feature c7ae2a331f54"
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -151,7 +178,7 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "feature c7ae2a331f54"
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -190,29 +217,9 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "v1 fcb9d63c3c85"
+          "v1 fcb9d63 2026-01-01T00:00:00Z"
         ],
         "note": "",
-        "error": null
-      }
-    },
-    {
-      "step": "a list longer than a page says it stops short",
-      "requests": [
-        "GET /api/source/refs?kind=branch"
-      ],
-      "filterPending": false,
-      "paint": {
-        "button": "Branch: topic",
-        "open": true,
-        "kind": "branch",
-        "query": "",
-        "loading": false,
-        "switching": false,
-        "rows": [
-          "topic 42382ea2303b [default] [current]"
-        ],
-        "note": "Showing 1 of 2 branches; filter to narrow.",
         "error": null
       }
     },
@@ -231,7 +238,7 @@ $ node tests/dom/source-ref-selector-session.js
         "switching": false,
         "rows": [],
         "note": "",
-        "error": "The tags could not be listed (HTTP 400)."
+        "error": "The tags could not be listed. Try again."
       }
     },
     {
@@ -269,8 +276,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -288,8 +295,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -346,11 +353,11 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
-        "error": "That ref is no longer in the mirror."
+        "error": "That branch or tag is no longer in the mirror."
       }
     },
     {
@@ -371,22 +378,25 @@ $ node tests/dom/source-ref-selector-session.js
   "labels": [
     "Tag: v1",
     "Pull request: #7 [bold #7]",
-    "Commit: 42382ea2303b"
+    "Commit: 42382ea"
   ],
   "copies": [
     {
       "name": "topic",
       "label": "topic",
+      "ref": "refs/remotes/origin/topic",
       "kind": "remote"
     },
     {
       "name": "v1",
       "label": "v1",
+      "ref": "refs/tags/v1",
       "kind": "tag"
     },
     {
       "name": "feature/long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-←<literal>",
       "label": "feature/long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-←<literal>",
+      "ref": "refs/remotes/origin/feature/long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-←<literal>",
       "kind": "remote"
     }
   ],
@@ -403,14 +413,29 @@ $ node tests/dom/source-ref-selector-session.js
     "Enter from 1: null",
     "ArrowDown from -1 in an empty list: null"
   ],
+  "overscan": 20,
+  "windows": [
+    "10001 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 0: rows 0 to 32",
+    "10001 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 9000: rows 0 to 32 and row 9000",
+    "10001 rows 28 px tall, scrolled 140010 px in 320 px, Tab on row 0: rows 4980 to 5032 and row 0",
+    "10001 rows 28 px tall, scrolled 140010 px in 320 px, Tab on row 5003: rows 4980 to 5032",
+    "10001 rows 28 px tall, scrolled 279708 px in 320 px, Tab on row 10000: rows 9969 to 10001",
+    "3 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 1: rows 0 to 3",
+    "10001 rows 0 px tall, scrolled 0 px in 0 px, Tab on row 0: rows 0 to 40",
+    "0 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 0: rows 0 to 0",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 0 px in 320 px, Tab on row 0: rows 0 to 30",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 115264 px in 320 px, Tab on row 0: rows 3526 to 3577 and row 0",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 324726 px in 320 px, Tab on row 10000: rows 9971 to 10001",
+    "10001 rows 28 px tall (every 10,001st 46 px), scrolled 0 px in 320 px, Tab on row 0: rows 0 to 31"
+  ],
   "checkout": {
     "steps": [
       {
-        "step": "the button names the working tree",
+        "step": "the button names the working tree and the branch it is on",
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": false
         }
       },
@@ -421,9 +446,9 @@ $ node tests/dom/source-ref-selector-session.js
         ],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -434,9 +459,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -449,9 +474,9 @@ $ node tests/dom/source-ref-selector-session.js
         ],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -462,8 +487,8 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "origin/feature c7ae2a331f54 (remote chip)",
-            "origin/topic 42382ea2303b (remote chip)"
+            "origin/feature c7ae2a3 2026-01-01T02:00:00Z (remote chip)",
+            "origin/topic 42382ea 2026-01-01T01:00:00Z (remote chip)"
           ],
           "note": "",
           "error": null
@@ -476,9 +501,9 @@ $ node tests/dom/source-ref-selector-session.js
         ],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -489,8 +514,8 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "local-tag c7ae2a331f54 (tag chip)",
-            "v1 fcb9d63c3c85 (tag chip)"
+            "local-tag c7ae2a3 2026-01-01T02:00:00Z (tag chip)",
+            "v1 fcb9d63 2026-01-01T00:00:00Z (tag chip)"
           ],
           "note": "",
           "error": null
@@ -503,9 +528,9 @@ $ node tests/dom/source-ref-selector-session.js
         ],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -516,9 +541,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -529,9 +554,9 @@ $ node tests/dom/source-ref-selector-session.js
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -542,9 +567,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -554,11 +579,12 @@ $ node tests/dom/source-ref-selector-session.js
         ]
       },
       {
-        "step": "the button names the branch shown",
+        "step": "the button names the branch shown, a revision, and offers the way back",
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Branch: feature",
+          "button": "Revision · Branch: feature",
+          "back": "[← Working tree]",
           "open": false
         }
       },
@@ -569,9 +595,10 @@ $ node tests/dom/source-ref-selector-session.js
         ],
         "filterPending": false,
         "paint": {
-          "button": "Branch: feature",
+          "button": "Revision · Branch: feature",
+          "back": "[← Working tree]",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout)",
           "lists": [
             "branch",
             "tag",
@@ -582,9 +609,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 [current] (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z [current] (local chip)"
           ],
           "note": "",
           "error": null
@@ -597,9 +624,10 @@ $ node tests/dom/source-ref-selector-session.js
         ],
         "filterPending": false,
         "paint": {
-          "button": "Branch: feature",
+          "button": "Revision · Branch: feature",
+          "back": "[← Working tree]",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout)",
           "lists": [
             "branch",
             "tag",
@@ -610,9 +638,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 [current] (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z [current] (local chip)"
           ],
           "note": "",
           "error": null
@@ -622,13 +650,24 @@ $ node tests/dom/source-ref-selector-session.js
         ]
       },
       {
+        "step": "the checked-out branch's revision is not its working tree",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Revision · Branch: topic",
+          "back": "[← Working tree]",
+          "open": false
+        }
+      },
+      {
         "step": "the working tree is asked for by name, not by a ref",
         "requests": [
           "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
         ],
         "filterPending": false,
         "paint": {
-          "button": "Branch: topic",
+          "button": "Revision · Branch: topic",
+          "back": "[← Working tree]",
           "open": false
         }
       },
@@ -637,12 +676,105 @@ $ node tests/dom/source-ref-selector-session.js
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Branch: topic",
+          "button": "Revision · Branch: topic",
+          "back": "[← Working tree]",
           "open": false
         },
         "navigated": [
           "/view/README.md"
         ]
+      },
+      {
+        "step": "a switch on the Commits tab names no address",
+        "requests": [
+          "POST /api/source/pin {\"ref\":\"refs/heads/feature\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        }
+      },
+      {
+        "step": "the page reloads on the Commits tab's own landing",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        },
+        "navigated": [
+          "/view/ {\"gitLanding\":true}"
+        ]
+      },
+      {
+        "step": "the reloaded Commits tab's row names the revision chosen there",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Revision · Branch: feature",
+          "back": "[← Working tree]",
+          "open": false
+        }
+      },
+      {
+        "step": "a failed way back says so in the row, with the list closed",
+        "requests": [
+          "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Revision · Branch: topic",
+          "back": "[← Working tree]",
+          "open": false,
+          "error": "The switch request failed."
+        }
+      },
+      {
+        "step": "opening and closing the list clears it",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Revision · Branch: topic",
+          "back": "[← Working tree]",
+          "open": false
+        }
+      },
+      {
+        "step": "a page drawn before a switch in a terminal names the branch it was on",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: feature",
+          "open": false
+        },
+        "tip": "The files on disk, live. The checkout is on feature."
+      },
+      {
+        "step": "a listing names the branch HEAD is on now, in the row and its tooltip",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        },
+        "tip": "The files on disk, live. The checkout is on topic."
+      },
+      {
+        "step": "a HEAD detached since is the working tree's word alone",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": false
+        },
+        "tip": "The files on disk, live."
       },
       {
         "step": "choosing the working tree while it is shown only closes",
@@ -651,7 +783,7 @@ $ node tests/dom/source-ref-selector-session.js
         ],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": false
         }
       },
@@ -662,9 +794,9 @@ $ node tests/dom/source-ref-selector-session.js
         ],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -675,12 +807,12 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
-          "error": "That ref is no longer in the checkout."
+          "error": "That branch or tag is no longer in the checkout."
         }
       },
       {
@@ -688,9 +820,9 @@ $ node tests/dom/source-ref-selector-session.js
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": false,
-          "stale": "The server now shows another revision [Reload]"
+          "stale": "The server now shows another revision [Reload page]"
         }
       },
       {
@@ -698,9 +830,10 @@ $ node tests/dom/source-ref-selector-session.js
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Branch: feature",
+          "button": "Revision · Branch: feature",
+          "back": "[← Working tree]",
           "open": false,
-          "stale": "The server now shows the working tree [Reload]"
+          "stale": "The server now shows the working tree [Reload page]"
         }
       },
       {
@@ -714,19 +847,19 @@ $ node tests/dom/source-ref-selector-session.js
         }
       },
       {
-        "step": "an older Git is refused in the server's words",
+        "step": "an older Git is refused, and the page says so",
         "requests": [
           "GET /api/source/refs?kind=branch"
         ],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
+          "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: Live local files [current]",
+          "workingTree": "Working tree [current]",
           "lists": [
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "branch",
           "query": "",
@@ -734,7 +867,7 @@ $ node tests/dom/source-ref-selector-session.js
           "switching": false,
           "rows": [],
           "note": "",
-          "error": "showing a branch or tag of a checkout needs Git 2.43.7 or newer, which is known never to fetch into it; this is git version 2.39.2"
+          "error": "Git on this machine is too old to list these. Update Git to see them."
         }
       },
       {
@@ -748,24 +881,138 @@ $ node tests/dom/source-ref-selector-session.js
       }
     ],
     "labels": [
-      "Working tree",
-      "Branch: feature (local chip)",
-      "Remote branch: origin/feature (remote chip)",
-      "Tag: v1 (tag chip)",
-      "Commit: c7ae2a331f54"
+      "Working tree · Branch: topic (local chip) | The files on disk, live. The checkout is on topic.",
+      "Working tree · c7ae2a3 (commit-ID face) | The files on disk, live. HEAD is detached at c7ae2a3.",
+      "Working tree | The files on disk, live.",
+      "Revision · Branch: feature (local chip) [← Working tree] | A committed revision, read from Git. The files on disk are unchanged.",
+      "Revision · Remote branch: origin/feature (remote chip) [← Working tree] | A committed revision, read from Git. The files on disk are unchanged.",
+      "Revision · Tag: v1 (tag chip) [← Working tree] | A committed revision, read from Git. The files on disk are unchanged.",
+      "Revision · Commit: c7ae2a3 (commit-ID face) [← Working tree] | A committed revision, read from Git. The files on disk are unchanged."
     ],
     "guard": {
       "a checkout's working tree": "working-tree; refused when another is served: true; while its own is: false",
       "a checkout's revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
       "a mirror's pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
       "a plain folder": "nothing"
-    }
+    },
+    "folders": {
+      "under the home directory": "~/src/[checkout]",
+      "with the platform's other separator": "~\\src\\[checkout]",
+      "the home directory itself": "[~]",
+      "outside the home directory": "/srv/[checkout]"
+    },
+    "hold": [
+      {
+        "step": "a request made while the switch is asked waits for the answer",
+        "sent": [],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a page that goes holds its requests until it is gone",
+        "sent": [],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a page still there at the bound sends them, to be refused",
+        "sent": [
+          "/api/tree?depth=0 working-tree",
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": []
+      },
+      {
+        "step": "choosing what the page shows sends them when it is answered",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a switch refused sends them when it is answered",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a selector taken away during its switch sends them when it is answered",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a request given up while it is held settles at once",
+        "sent": [],
+        "bounds": [
+          5000
+        ],
+        "settled": "AbortError"
+      },
+      {
+        "step": "and is not sent when the hold ends",
+        "sent": [],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a page the back/forward cache shows again sends them at once",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "the first switch's bound, firing during a second, sends nothing",
+        "sent": [],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "and the second sends them when it is answered",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a second source control cannot post while a ref switch is in flight",
+        "sent": [
+          "/api/source/pin null"
+        ],
+        "bounds": [],
+        "refusal": "selection_busy"
+      },
+      {
+        "step": "another source control can post after the first settles",
+        "sent": [
+          "/api/source/pin null"
+        ],
+        "bounds": []
+      }
+    ]
   }
 }
 ? 0
 ```
 
-## Copy a Ref Without Following Its Row
+## Open a Ref Menu Without Following Its Row
 
 The production SDK renders literal labels separately from raw copy values and keeps its
 copy buttons outside primary row links.
@@ -776,17 +1023,12 @@ scroll/resize hiding and listener disposal.
 $ node tests/dom/sdk-copy-delegate-behavior.js
 {
   "ref": {
-    "raw": "feature/←<literal>",
+    "name": "feature/←<literal>",
     "label": "fork:display",
-    "payload": "feature/←<literal>",
-    "feedback": "Copied!",
+    "kind": "local",
+    "ref": "refs/heads/feature/←<literal>",
     "primary": "a",
     "nestedButtons": 0,
-    "scrolledFocus": "primary",
-    "resizedCopy": "hidden",
-    "outsidePointerFocus": "primary",
-    "insidePointerCopy": "feature/←<literal>",
-    "clippedCopy": true,
     "listenersAfterDispose": 0
   }
 }

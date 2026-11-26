@@ -33,10 +33,11 @@ is and reports it not found. The pin route's answers are
 
 from __future__ import annotations
 
+import asyncio
 import bisect
 import re
 import unicodedata
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -49,6 +50,7 @@ from metabrowser.git.process import (
     RepositoryStoreTarget,
     run_git,
 )
+from metabrowser.git.ref_names import is_valid_ref_name
 from metabrowser.git.wire import is_full_revision
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
@@ -69,15 +71,12 @@ MAX_REF_CANDIDATES: Final[int] = 12
 # An abbreviated ID that names more objects than this is reported as ambiguous
 # without checking each one's type, one ``cat-file -t`` spawn at a time.
 MAX_DISAMBIGUATION_OBJECTS: Final[int] = 16
-# Git's own bound on a ref name is the file system's; this is the record bound for one.
-_REF_NAME_MAX_BYTES: Final = 1024
 
 _REF_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)"
 # Seven hexadecimal digits is the shortest commit ID Git abbreviates to by default and
 # the shortest a GitHub URL shows; anything shorter matches too much to mean one commit.
 # Always ``fullmatch``: ``$`` also matches before a trailing newline.
 _COMMIT_ID = re.compile(r"[0-9a-f]{7,64}")
-_REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
 # The one ref a mirror holds beyond its origin's branches and tags, fetched with a pull
 # request, whose number follows the GitHub URL grammar.
 _PULL_REFS: Final = "refs/pull/"
@@ -182,32 +181,6 @@ class UnresolvedSelection:
 
 
 type SelectionResolution = ResolvedSelection | UnresolvedSelection
-
-
-def is_valid_ref_name(name: str) -> bool:
-    """Git's ``check-ref-format`` rules, for a short name or a full one under ``refs/``.
-
-    No empty component, none that begins with ``.`` or ends with ``.lock``; no ``..``,
-    ``@{``, control character, space, ``~ ^ : ? * [ \\``; not ``@`` alone; no ``.`` or
-    ``/`` at the end; encodable as UTF-8 and at most 1024 bytes. Checked here rather
-    than by running Git, so a name is refused before any process sees it.
-    """
-
-    try:
-        encoded = name.encode("utf-8")
-    except UnicodeEncodeError:
-        return False
-    if len(encoded) > _REF_NAME_MAX_BYTES:
-        return False
-    if not name or name == "@" or name.endswith((".", "/")) or name.startswith("/"):
-        return False
-    if ".." in name or "@{" in name:
-        return False
-    if any(ord(ch) < 0x20 or ch in _REF_FORBIDDEN for ch in name):
-        return False
-    return all(
-        part and not part.startswith(".") and not part.endswith(".lock") for part in name.split("/")
-    )
 
 
 def is_pinnable_ref(ref: str, namespaces: RefNamespaces = MIRROR_REFS) -> bool:
@@ -407,18 +380,46 @@ async def mirror_refs(target: RepositoryStoreTarget) -> dict[str, str]:
     return held
 
 
-# Branches read in name order; tags newest first, as a release list reads, by the
-# tagger date of an annotated tag and the committer date of a lightweight one. The last
-# ``--sort`` is the primary key, so names break a tie between dates.
 # ``%(object)`` and ``%(type)`` are an annotated tag's own target, one level on every
 # Git version; both are empty for a ref that names a commit.
 # ``%(symref)`` is empty unless the ref is symbolic, as a checkout's ``origin/HEAD`` is.
-_LIST_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(object)%00%(type)%00%(symref)"
-_LIST_SORT: Final[Mapping[RefKind, tuple[str, ...]]] = {
-    "branch": ("--sort=refname",),
-    "tag": ("--sort=refname", "--sort=-creatordate"),
-    "remote": ("--sort=refname",),
-}
+# Then the commit's committer date, read from the ref's own object for a commit and from
+# the tagged one, ``%(*…)``, for an annotated tag; a row shows it as the commit's age
+# (static/source-ref-selector.js). For a tag whose own target is a commit, the only kind
+# listed, the two spellings agree on every Git version. The date is free: Git has parsed
+# the object for ``%(objecttype)``. A row shows its commit as every line names one, from
+# the full ID (``shortCommit`` in static/formatters.js), so no abbreviation is asked of
+# Git, which costs a lookup per ref (15 µs a ref over 528 branches, measured 2026-11-18 on
+# macOS with Git 2.50.1).
+_LIST_FORMAT: Final = (
+    "%(refname)%00%(objectname)%00%(objecttype)%00%(object)%00%(type)%00%(symref)"
+    "%00%(committerdate:unix)%00%(*committerdate:unix)"
+)
+_LIST_FIELDS: Final = 8
+
+
+def _newest_first(entry: MirrorRef) -> tuple[bool, bool, float, str]:
+    """A listing's order: the default branch, then newest first, then by name.
+
+    Every list, branches, tags, and remote-tracking branches alike, reads by the committer
+    date of the commit each ref names, ``committed_at``, which is the date its row shows
+    as an age (static/source-ref-selector.js), so the order and the ages agree. A tag is
+    dated by its commit too, not by an annotated tag's tagger date: a lightweight tag has
+    none, and a tag made later of an old commit would otherwise list above newer commits
+    while its row showed the old commit's age. A release tag, made with its commit, lists
+    where its tagger date would put it. A ref Git gave no date lists after every dated
+    one. Equal dates read by name, in Git's byte order, which comparing the decoded names
+    by code point keeps.
+    """
+
+    dated = entry.committed_at is not None
+    return (not entry.default, not dated, -(entry.committed_at or 0.0), entry.name)
+
+
+def in_listing_order(entries: tuple[MirrorRef, ...]) -> tuple[MirrorRef, ...]:
+    """*entries* in a listing's order (:func:`_newest_first`), for a list read from two places."""
+
+    return tuple(sorted(entries, key=_newest_first))
 
 
 async def list_mirror_refs(
@@ -434,7 +435,10 @@ async def list_mirror_refs(
     mirror has no remote-tracking branches, lists nothing. A remote-tracking ref that is
     symbolic, ``origin/HEAD``, is left out: it names another row of the same list.
 
-    The default branch, *default_ref*, comes first and is marked. A ref is listed when
+    Every ref is listed, in :func:`_newest_first`'s order: the default branch,
+    *default_ref*, first and marked, then newest first by the date each row shows, then
+    by name. Git sorts nothing; ordering 10,001 refs here took a median 1.8 ms of nine
+    runs (measured 2026-11-19 on an M1 Pro at a load average of 18). A ref is listed when
     it names a commit, or names an annotated tag whose own target is a commit. A tag of
     a tree, a blob, or another tag is left out rather than peeled one process at a
     time; the pin route still takes it by name. The target is read from the tag
@@ -442,37 +446,55 @@ async def list_mirror_refs(
     Git version, where ``%(*objecttype)`` peels one level on older Git and the whole
     chain on newer. A name that is not valid UTF-8 or not a valid ref name is left out
     too: it could not be shown, or sent back to the pin route, as JSON text. The
-    listing is bounded by the store-read policy's output cap and deadline.
+    listing is bounded by the store-read policy's output cap and deadline, and Git's
+    output is read and ordered off the event loop, since that work grows with every ref.
     """
 
     prefix = namespaces.prefix(kind)
     if prefix is None:
         return ()
-    out = await _git(
-        target, ["for-each-ref", f"--format={_LIST_FORMAT}", *_LIST_SORT[kind], "--", prefix]
+    out = await _git(target, ["for-each-ref", f"--format={_LIST_FORMAT}", "--", prefix])
+    return await asyncio.to_thread(
+        _listed_refs, out, kind=kind, prefix=prefix, default_ref=default_ref
     )
+
+
+def _listed_refs(
+    out: bytes, *, kind: RefKind, prefix: str, default_ref: str | None
+) -> tuple[MirrorRef, ...]:
+    """The rows of :func:`list_mirror_refs`'s ``for-each-ref`` output, in their order."""
+
     listed: list[MirrorRef] = []
     for line in out.split(b"\n"):
         try:
             fields = line.decode("utf-8").split("\0")
         except UnicodeDecodeError:
             continue
-        if len(fields) != 6 or not fields[0].startswith(prefix):
+        if len(fields) != _LIST_FIELDS or not fields[0].startswith(prefix):
             continue
-        ref, oid, object_kind, target_oid, target_kind, symbolic = fields
+        ref, oid, object_kind, target_oid, target_kind, symbolic = fields[:6]
+        own_date, tagged_date = fields[6:]
         if kind == "remote" and symbolic:
             continue
         if object_kind == "commit":
-            commit = oid
+            commit, date = oid, own_date
         elif object_kind == "tag" and target_kind == "commit":
-            commit = target_oid
+            commit, date = target_oid, tagged_date
         else:
             continue
         if not is_full_revision(commit) or not is_valid_ref_name(ref):
             continue
         name = ref.removeprefix(prefix)
-        listed.append(MirrorRef(name=name, ref=ref, commit=commit, default=ref == default_ref))
-    listed.sort(key=lambda entry: not entry.default)
+        listed.append(
+            MirrorRef(
+                name=name,
+                ref=ref,
+                commit=commit,
+                default=ref == default_ref,
+                committed_at=float(date) if date.isdigit() else None,
+            )
+        )
+    listed.sort(key=_newest_first)
     return tuple(listed)
 
 
@@ -536,6 +558,23 @@ async def ref_tip(target: RepositoryStoreTarget, ref: str) -> str | None:
         return None
     found = (await _exact_refs(target, [ref])).get(ref)
     return None if found is None else await _peeled_commit(target, found)
+
+
+async def ref_tips(target: RepositoryStoreTarget, refs: Sequence[str]) -> dict[str, str]:
+    """The commit each of the full refs *refs* names, for those that name one, in one read.
+
+    :func:`ref_tip` for several refs with one ``for-each-ref``: a ref that does not exist
+    under exactly that name, or names no commit, is left out. Only a tag of a tag costs
+    a further process, to peel it.
+    """
+
+    wanted = [ref for ref in refs if ref.startswith("refs/") and is_valid_ref_name(ref)]
+    tips: dict[str, str] = {}
+    for ref, found in (await _exact_refs(target, wanted)).items():
+        commit = await _peeled_commit(target, found)
+        if commit is not None:
+            tips[ref] = commit
+    return tips
 
 
 @dataclass(frozen=True, slots=True)
@@ -612,7 +651,8 @@ async def resolve_pin(
     pinned by ID has no ref, unless it is the tip of one of *keep_refs* in the mirror
     now: the refs a server was serving, which a reader who went to another commit and
     came back by ID is still on. The first such ref is kept, so the selector names it
-    and freshness keeps following it. A request names its own first such ref, as View on
+    and freshness says when it moves on; the commit itself stays put
+    (``MirrorSession._by_id``). A request names its own first such ref, as View on
     branch names the pull request's head. Otherwise it is served under a pull request's
     head when it is the tip of one the mirror holds. ``HEAD`` is the default branch,
     *default_ref*, as in a URL.
@@ -771,6 +811,7 @@ __all__ = [
     "MAX_DISAMBIGUATION_OBJECTS",
     "MAX_REF_CANDIDATES",
     "MIRROR_REFS",
+    "in_listing_order",
     "RefCandidate",
     "RefNamespaces",
     "ResolvedPin",
@@ -786,6 +827,7 @@ __all__ = [
     "mirror_refs",
     "ref_candidates",
     "ref_tip",
+    "ref_tips",
     "resolve_commit_id",
     "resolve_pin",
     "resolve_ref_and_path",

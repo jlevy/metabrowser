@@ -84,7 +84,21 @@ from metabrowser.git.shallow import PARENT_UNAVAILABLE, merge_base_answer, recor
 
 _NO_MERGE_BASE = "these two commits share no history, so they have no merge base"
 
+# What a page says for each refusal (docs/design-system-messages.md); the texts above, which
+# name revisions and Git's states, are the refusals' detail.
+_UNKNOWN_COMMIT = "This commit is not in this repository."
+_NO_SHARED_HISTORY = "These two commits share no history, so they cannot be compared."
+_FILE_NOT_COMPARED = "This file is not in this comparison."
+_LINES_NOT_SHOWN = "These lines cannot be shown."
+
 log = logging.getLogger(__name__)
+
+CONTEXT_LINES = 3
+"""The unchanged lines a comparison's patch keeps around each change, Git's own default. The
+patch run passes it as ``--unified`` (:meth:`GitDiffSource._patch`), so a reader's
+``diff.context`` does not change it, and a comparison says it as ``options.context``, which
+the diff view reads to tell where a last hunk's trailing context may not be the file's end
+(``hunkGaps`` in diff-view.js)."""
 
 MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
@@ -309,7 +323,7 @@ def say_left_out(
         for change in files
     ]
     named = [display_path(change) for change in files if change.id in gone]
-    warning = f"{len(named)} file(s) could not be read from the produced diff: {name_paths(named)}"
+    warning = f"Changes to these files could not be read: {name_paths(named)}"
     return marked, resolved.model_copy(update={"warnings": (*resolved.warnings, warning)})
 
 
@@ -622,7 +636,11 @@ class GitDiffSource:
                 self._location,
             )
         except GitError as exc:
-            raise DiffSourceError(f"unknown revision {revision!r}") from exc
+            raise DiffSourceError(
+                f"unknown revision {revision!r}",
+                reader_message=_UNKNOWN_COMMIT,
+                code="commit_not_found",
+            ) from exc
         return out.decode("ascii").strip()
 
     def _listable(self, revision: str) -> bool:
@@ -646,7 +664,11 @@ class GitDiffSource:
             )
         except GitTimeoutError as exc:
             # One name at a time would wait as long again, and refuse the first name so.
-            raise DiffSourceError(f"unknown revision {revisions[0]!r}") from exc
+            raise DiffSourceError(
+                f"unknown revision {revisions[0]!r}",
+                reader_message=_UNKNOWN_COMMIT,
+                code="commit_not_found",
+            ) from exc
         except GitError as exc:
             log.debug("rev-parse of %d names failed: %s", len(revisions), failure_detail(exc))
             return None
@@ -679,7 +701,14 @@ class GitDiffSource:
                     # added, a wrong answer with no warning, on a store and a served
                     # shallow checkout alike.
                     if await recorded_parents(self._location, right):
-                        raise DiffSourceError(PARENT_UNAVAILABLE) from None
+                        raise DiffSourceError(
+                            PARENT_UNAVAILABLE,
+                            reader_message=(
+                                "This commit's parent is not in this copy of the repository, "
+                                "so its changes cannot be shown."
+                            ),
+                            code="parent_unavailable",
+                        ) from None
                     left = ""  # root commit; git's empty-tree side
                     await self._ensure_empty_tree_oid()
         else:
@@ -708,7 +737,7 @@ class GitDiffSource:
             right=SnapshotRef(
                 kind=SnapshotKind.commit, id=right, symbolic=str(intent.get("right") or "") or None
             ),
-            options=DiffOptions(context=3, rename_detection=True, rename_similarity=50),
+            options=DiffOptions(context=CONTEXT_LINES, rename_detection=True, rename_similarity=50),
         )
 
     async def _merge_base(self, left: str, right: str) -> str:
@@ -720,10 +749,17 @@ class GitDiffSource:
             if not answer.certain:
                 raise DiffSourceError(
                     "this store's history is too shallow to know what these two commits share "
-                    "(base_uncertain)"
+                    "(base_uncertain)",
+                    reader_message=(
+                        "This copy of the repository has too little history to compare "
+                        "these commits."
+                    ),
+                    code="base_uncertain",
                 )
             if answer.merge_base is None:
-                raise DiffSourceError(_NO_MERGE_BASE)
+                raise DiffSourceError(
+                    _NO_MERGE_BASE, reader_message=_NO_SHARED_HISTORY, code="no_merge_base"
+                )
             return answer.merge_base
         try:
             out = await run_git_at(["merge-base", left, right], self._location)
@@ -731,7 +767,9 @@ class GitDiffSource:
             # Exit status 1 is Git's answer for histories with no common commit.
             if exc.returncode != 1:
                 raise
-            raise DiffSourceError(_NO_MERGE_BASE) from exc
+            raise DiffSourceError(
+                _NO_MERGE_BASE, reader_message=_NO_SHARED_HISTORY, code="no_merge_base"
+            ) from exc
         return out.decode("ascii").strip()
 
     async def _ensure_empty_tree_oid(self) -> None:
@@ -1068,7 +1106,11 @@ class GitDiffSource:
         by_id = {entry.id: entry for entry in listed.files}
         missing = [file_id for file_id in file_ids if file_id not in by_id]
         if missing:
-            raise DiffSourceError(f"no file {missing[0]!r} in this comparison")
+            raise DiffSourceError(
+                f"no file {missing[0]!r} in this comparison",
+                reader_message=_FILE_NOT_COMPARED,
+                code="file_not_in_comparison",
+            )
         changes = [by_id[file_id] for file_id in file_ids]
         target = self._location.target
         if (
@@ -1288,6 +1330,8 @@ class GitDiffSource:
                 ),
                 *(["-M50", "-C"] if renames else ["--no-renames"]),
                 *([] if diff_filter is None else [f"--diff-filter={diff_filter}"]),
+                # The context the comparison says it has, whatever `diff.context` says.
+                f"--unified={resolved.options.context}",
                 # The shape the parser reads, whatever a folder's configuration says: Git's
                 # own prefixes, which name a hunkless section, no external driver, and no
                 # color, which `color.diff=always` would write around every line.
@@ -1394,13 +1438,66 @@ class GitDiffSource:
             ),
         )
 
-    async def _read_blob(self, oid: str) -> bytes:
+    async def _read_blob(self, oid: str, *, max_bytes: int | None = None) -> bytes:
         target = self._location.target
         if isinstance(target, RepositoryStoreTarget):
             from metabrowser.git.tree_source import read_store_blob
 
-            return await read_store_blob(target, oid)
-        return await run_git_at(["cat-file", "blob", oid], self._location)
+            if max_bytes is None:
+                return await read_store_blob(target, oid)
+            return await read_store_blob(target, oid, max_blob_bytes=max_bytes)
+        return await run_git_at(["cat-file", "blob", oid], self._location, max_bytes=max_bytes)
+
+    async def side_bytes(self, entry: EntrySide, *, max_bytes: int) -> bytes:
+        """One side's content, for the lines its hunks leave out (``diff/side_lines.py``),
+        read from the store's shared readers or, in a folder, by ``cat-file``.
+
+        A side past *max_bytes* is refused with ``blob_too_large``. Any other Git failure,
+        a missing or damaged object among them, is the caller's, as a comparison's is.
+        """
+        if entry.content.kind is ContentRefKind.empty:
+            return b""
+        if entry.content.kind is not ContentRefKind.git_object or entry.content.oid is None:
+            raise DiffSourceError(
+                f"{entry.path!r} has no content in this repository",
+                reader_message=_LINES_NOT_SHOWN,
+                code="no_content",
+            )
+        from metabrowser.git.tree_source import GitBlobTooLargeError
+
+        try:
+            return await self._read_blob(entry.content.oid, max_bytes=max_bytes)
+        except (GitBlobTooLargeError, GitOutputTooLargeError) as exc:
+            raise DiffSourceError(
+                f"{entry.path!r} is past the {max_bytes}-byte bound its lines are read within",
+                reader_message=_LINES_NOT_SHOWN,
+                code="blob_too_large",
+            ) from exc
+
+    async def converts(self, path: str) -> bool:
+        """Whether Git diffs *path* through a textconv driver here, so the lines a hunk
+        numbers are a conversion's and not the content's.
+
+        Only a folder's diff runs drivers (``textconv.py``; a store's never does), and only
+        where its configuration names one. Then the path's ``diff`` attribute names the
+        driver, which converts where ``diff.<driver>.textconv`` is set.
+        """
+        if self._location.target is not None or await textconv_named(self._location) is False:
+            return False
+        out = await run_git_at(
+            ["check-attr", "-z", "diff", "--", path], self._location, max_bytes=64 * 1024
+        )
+        fields = out.split(b"\0")
+        driver = fields[2].decode("utf-8", "replace") if len(fields) > 2 else "unspecified"
+        if driver in ("unspecified", "set", "unset", ""):
+            return False
+        try:
+            await run_git_at(
+                ["config", "--get", f"diff.{driver}.textconv"], self._location, max_bytes=64 * 1024
+            )
+        except GitCommandError:
+            return False
+        return True
 
     async def content(
         self, resolved: ResolvedComparison, file_id: str, side: str
@@ -1417,14 +1514,20 @@ class GitDiffSource:
         manifest = await self.manifest(resolved)
         change = next((entry for entry in manifest.files if entry.id == file_id), None)
         if change is None:
-            raise DiffSourceError(f"no file {file_id!r} in this comparison")
+            raise DiffSourceError(
+                f"no file {file_id!r} in this comparison",
+                reader_message=_FILE_NOT_COMPARED,
+                code="file_not_in_comparison",
+            )
         entry = change.old if side == "old" else change.new
         if entry is None or entry.content.kind is not ContentRefKind.git_object:
             raise DiffSourceError(f"file {file_id!r} has no {side} git content")
         try:
             blob = await self._read_blob(str(entry.content.oid))
         except GitBlobTooLargeError as exc:
-            raise DiffSourceError(str(exc)) from exc
+            raise DiffSourceError(
+                str(exc), reader_message=exc.reader_message, code=exc.code
+            ) from exc
         except (GitObjectUnavailableError, GitPathError, GitError) as exc:
             raise DiffSourceError(f"file {file_id!r} has no {side} git content") from exc
         yield blob

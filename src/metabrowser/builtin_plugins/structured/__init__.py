@@ -27,6 +27,7 @@ It is not capped at the parse limit.
 from __future__ import annotations
 
 import asyncio
+import functools
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -38,8 +39,10 @@ from metabrowser.builtin_plugins.structured.parser import (
     lookup_structured_payload,
     parse_structured_bytes,
     remember_structured_payload,
+    serialize_structured_payload,
     truncated_payload,
 )
+from metabrowser.content_errors import content_error_wire
 from metabrowser.http_caching import build_scoped_etag
 from metabrowser.plugin_api import (
     ArtifactCompressionError,
@@ -50,7 +53,7 @@ from metabrowser.plugin_api import (
     resolve_content,
 )
 
-_STRUCTURED_EXTS = (".json", ".yaml", ".yml")
+STRUCTURED_EXTS = (".json", ".yaml", ".yml")
 
 
 def _envelope(
@@ -95,19 +98,15 @@ async def parsed_handler(request: Request) -> JSONResponse:
         if ref is None:
             return JSONResponse({"error": "Not found", "path": raw_path}, status_code=404)
         ext = ref.logical_ext
-        if ext not in _STRUCTURED_EXTS:
+        if ext not in STRUCTURED_EXTS:
             return JSONResponse(
                 {"error": "Unsupported extension", "path": raw_path, "ext": ext},
                 status_code=400,
             )
-        payload = lookup_structured_payload(ref.identity, ext, ref.fingerprint)
-        if payload is None:
-            payload = await _parse(ref, ext)
-            remember_structured_payload(ref.identity, ext, ref.fingerprint, payload)
+        payload = await load_structured_payload(ref)
     except ContentReadError as exc:
         return JSONResponse(
-            {"error": str(exc), "code": exc.code, "path": raw_path},
-            status_code=exc.http_status,
+            {**content_error_wire(exc), "path": raw_path}, status_code=exc.http_status
         )
     return _envelope(
         path=ref.identity,
@@ -118,7 +117,31 @@ async def parsed_handler(request: Request) -> JSONResponse:
     )
 
 
-async def _parse(ref: ContentRef, ext: str) -> StructuredPayload:
+async def load_structured_payload(ref: ContentRef, *, serialize: bool = True) -> StructuredPayload:
+    """The parse of *ref*'s content, from the cache when its fingerprint has not changed.
+
+    The Tree view's route and the record-list table source (records.py) both read a
+    file through this, so whichever view opens a file first, the other reads its parse.
+    The table asks with ``serialize=False``: it never draws the canonical YAML, and
+    writing it is most of a large file's cost (``devtools/bench_record_lists.py``
+    measured 16 to 80 s for 8 MiB of JSON records under load, where the parse took about
+    a tenth of a second), so a parse made for the table is kept without it, and the Tree
+    view writes it from that parse when it is first shown.
+    """
+
+    ext = ref.logical_ext
+    payload = lookup_structured_payload(ref.identity, ext, ref.fingerprint)
+    if payload is None:
+        payload = await _parse(ref, ext, serialize=serialize)
+    elif serialize and not payload.serialized:
+        payload = await asyncio.to_thread(serialize_structured_payload, payload)
+    else:
+        return payload
+    remember_structured_payload(ref.identity, ext, ref.fingerprint, payload)
+    return payload
+
+
+async def _parse(ref: ContentRef, ext: str, *, serialize: bool = True) -> StructuredPayload:
     """Bounded read plus parse.
 
     Content past the cap is ``truncated``, not an error: the Tree view falls
@@ -153,4 +176,6 @@ async def _parse(ref: ContentRef, ext: str) -> StructuredPayload:
         raise
     if window.has_more:
         return truncated_payload()
-    return await asyncio.to_thread(parse_structured_bytes, window.data, ext)
+    return await asyncio.to_thread(
+        functools.partial(parse_structured_bytes, window.data, ext, serialize=serialize)
+    )

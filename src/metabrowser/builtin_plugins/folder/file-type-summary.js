@@ -1,6 +1,7 @@
 import {
   disposeDistributionView,
   mountDistributionView,
+  setStatusNotice,
   updateDistributionView,
 } from "./distribution-view.js";
 import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file-type-summary-model.js";
@@ -14,11 +15,15 @@ import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file-type-
  * @param {SummaryPalette} palette
  * @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool
  * @param {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
- * @param {{signal?: AbortSignal, hover: import("./distribution-hover.js").DistributionHover, onNoTotals?: () => void, onTotalsPending?: () => void}} options
+ * @param {{signal?: AbortSignal, hover: import("./distribution-hover.js").DistributionHover, onNoTotals?: () => void, onTotalsPending?: () => void, onSnapshot?: (snapshot: Record<string, any> | null) => void, onRetry?: () => void}} options
  *   `hover` is the one the legend shares with the population bars that draw it.
  *   `onNoTotals` is called when the rollup answers or fails without totals and this body says
  *   why, so a sibling can stop waiting for them. `onTotalsPending` is called when an answer
  *   says they are still on their way and this body shows its skeleton, so the sibling waits too.
+ *   `onSnapshot` is given each answer as the route sent it, and null when a request fails
+ *   with nothing to show, before the first answer settles `ready`, so a sibling that
+ *   follows the index decides its box for the same first paint. `onRetry` is called when
+ *   the reader asks this body to try again, so the sibling tries again too.
  */
 export function mountFileTypeSummary(
   container,
@@ -69,6 +74,7 @@ export function mountFileTypeSummary(
     metricClasses,
     mb.fileTypeIcon,
     options.hover,
+    (name) => mb.icons.withClass?.(name, "category-icon") ?? "",
   );
 
   function render() {
@@ -113,6 +119,7 @@ export function mountFileTypeSummary(
     } else {
       options.onNoTotals?.();
     }
+    options.onSnapshot?.(/** @type {Record<string, any>} */ (raw));
     answered();
   }
 
@@ -132,6 +139,7 @@ export function mountFileTypeSummary(
           const status = view.body.querySelector(".file-type-summary-status");
           if (status) {
             status.textContent = "Could not refresh file types; showing the previous totals.";
+            setStatusNotice(status, "warning");
           }
           return;
         }
@@ -143,14 +151,16 @@ export function mountFileTypeSummary(
           console.warn("Could not display the file-type rollup.", error);
         }
         const message = contractFailure
-          ? "Could not display file types because the rollup data is incompatible."
+          ? "Could not display file types for this folder."
           : "Could not load file types.";
-        view.body.innerHTML = `<div class="folder-overview-panel-error" role="alert">${message}${classification.retryable ? ' <button type="button" data-file-types-retry>Retry</button>' : ""}</div>`;
+        view.body.innerHTML = `<div class="notice folder-overview-panel-error" data-severity="error" role="alert">${message}${classification.retryable ? ' <button type="button" class="btn" data-file-types-retry>Retry</button>' : ""}</div>`;
         view.body.querySelector("[data-file-types-retry]")?.addEventListener("click", () => {
           void watch.refresh();
+          options.onRetry?.();
         });
         loadFailed = true;
         options.onNoTotals?.();
+        options.onSnapshot?.(null);
         answered();
       },
     },

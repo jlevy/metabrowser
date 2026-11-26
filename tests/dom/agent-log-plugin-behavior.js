@@ -100,13 +100,19 @@ for (const relative of [
   "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin-sdk.js",
   "src/metabrowser/static/filter-controls.js",
+  "src/metabrowser/static/menus.js",
   "src/metabrowser/static/icons.js",
-  "src/metabrowser/builtin_plugins/agent_log/index.js",
 ]) {
   const filename = path.join(repoRoot, relative);
   const source = fs.readFileSync(filename, "utf8");
   vm.runInContext(source, sandbox, { filename });
 }
+// The plugin's index.js and its renderers are ES modules, which this realm evaluates; they
+// reach the page only through `window`, which is the sandbox's. The renderers register
+// their views over index.js's stubs.
+globalThis.window = sandbox;
+require(path.join(repoRoot, "src/metabrowser/builtin_plugins/agents/index.js"));
+require(path.join(repoRoot, "src/metabrowser/builtin_plugins/agents/agent-log.js"));
 
 const logView = sandbox.metabrowser.getRegisteredView("agent-log", "log");
 const chartsView = sandbox.metabrowser.getRegisteredView("agent-log", "charts");

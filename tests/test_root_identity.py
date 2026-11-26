@@ -11,24 +11,37 @@ serve a folder and read the route and the shell's ``<title>``; a served mirror's
 
 from __future__ import annotations
 
+import html
 import os
+import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
+from metabrowser.commit_ids import short_commit
 from metabrowser.mirror_refresh import MirrorDisplay
+from metabrowser.repository_context import RepositoryContext
 from metabrowser.root_identity import (
+    KIND_LABELS,
+    IdentityKind,
     RootIdentity,
     abbreviate_origin,
+    checkout_revision_identity,
     folder_identity,
+    kind_subject,
+    kind_tip,
     mirror_identity,
     user_home,
 )
+from metabrowser.source_kind_marks import source_kind_svg
 
 HOME = Path("/srv/people/reader")
 COMMIT = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+# The commit as a line names it (docs/design-system.md, "Short Commit IDs").
+SHORT = short_commit(COMMIT)
 REPLACED = "\ufffd"
 
 
@@ -47,7 +60,17 @@ def _mirror(short_name: str, full_name: str) -> RootIdentity:
         short_name=short_name,
         full_name=full_name,
         kind="mirror",
-        kind_label="Cached mirror",
+        kind_label="Cloud mirror",
+        title=f"{short_name} \u2022 Metabrowser",
+    )
+
+
+def _git(short_name: str, full_name: str) -> RootIdentity:
+    return RootIdentity(
+        short_name=short_name,
+        full_name=full_name,
+        kind="git",
+        kind_label="Local Git checkout",
         title=f"{short_name} \u2022 Metabrowser",
     )
 
@@ -260,8 +283,8 @@ def test_an_unrecognized_origin_is_shown_as_it_is() -> None:
             "refs/tags/v1.0.0",
             _mirror("tbd", "github.com/jlevy/tbd@v1.0.0"),
         ),
-        # A commit pinned by its ID shows its first twelve hex digits.
-        ("https://github.com/jlevy/tbd", None, _mirror("tbd", "github.com/jlevy/tbd@42382ea2303b")),
+        # A commit pinned by its ID shows its short ID.
+        ("https://github.com/jlevy/tbd", None, _mirror("tbd", f"github.com/jlevy/tbd@{SHORT}")),
         # A pull request's head is named as GitHub writes a pull request.
         (
             "https://github.com/jlevy/tbd",
@@ -276,14 +299,14 @@ def test_an_unrecognized_origin_is_shown_as_it_is() -> None:
         (
             "ssh://git@example.com/owner/tbd.git",
             None,
-            _mirror("tbd", "example.com/owner/tbd@42382ea2303b"),
+            _mirror("tbd", f"example.com/owner/tbd@{SHORT}"),
         ),
         (
             "file://~/git/tbd.git",
             "refs/remotes/origin/topic",
             _mirror("tbd", "~/git/tbd.git@topic"),
         ),
-        ("file:///srv/git/tbd.git", None, _mirror("tbd", "/srv/git/tbd.git@42382ea2303b")),
+        ("file:///srv/git/tbd.git", None, _mirror("tbd", f"/srv/git/tbd.git@{SHORT}")),
         # Another ref keeps its full spelling rather than being guessed at.
         (
             "https://github.com/jlevy/tbd",
@@ -348,9 +371,9 @@ def test_a_mirror_name_is_display_text() -> None:
 @pytest.mark.parametrize(
     ("ref", "expected"),
     [
-        ("refs/remotes/origin/topic", _mirror("topic", "topic@42382ea2303b")),
-        ("refs/tags/v1", _mirror("v1", "v1@42382ea2303b")),
-        (None, _mirror("42382ea2303b", "42382ea2303b")),
+        ("refs/remotes/origin/topic", _mirror("topic", f"topic@{SHORT}")),
+        ("refs/tags/v1", _mirror("v1", f"v1@{SHORT}")),
+        (None, _mirror(SHORT, SHORT)),
     ],
     ids=["branch", "tag", "commit"],
 )
@@ -376,8 +399,20 @@ def test_the_route_and_the_shell_name_a_served_folder(
 
     assert answer.status_code == 200
     # The contract the native app reads, in its order.
-    assert list(answer.json()) == ["short_name", "full_name", "kind", "kind_label", "title"]
-    assert answer.json() == _folder("a<b>&c", "~/wrk/a<b>&c")
+    assert list(answer.json()) == [
+        "short_name",
+        "full_name",
+        "kind",
+        "kind_label",
+        "title",
+        "kind_tip",
+        "repository",
+    ]
+    assert answer.json() == {
+        **_folder("a<b>&c", "~/wrk/a<b>&c"),
+        "kind_tip": "Local folder",
+        "repository": None,
+    }
     for address in ("/view/", "/pulls", "/pull/7"):
         shell = client.get(address)
         assert shell.status_code == 200, address
@@ -396,8 +431,184 @@ def test_the_shell_titles_a_folder_outside_the_home_folder(
     server._set_root_dir(root)
     client = TestClient(server.app)
 
-    assert client.get("/api/identity").json() == _folder("elsewhere", str(root.resolve()))
+    assert client.get("/api/identity").json() == {
+        **_folder("elsewhere", str(root.resolve())),
+        "kind_tip": "Local folder",
+        "repository": None,
+    }
     assert "<title>elsewhere \u2022 Metabrowser</title>" in client.get("/view/").text
+
+
+def _checkout(root: Path, origin: str | None) -> Path:
+    """A checkout at *root* whose ``origin`` is *origin*, written as Git writes one."""
+
+    git = root / ".git"
+    (git / "refs" / "heads").mkdir(parents=True)
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git / "refs" / "heads" / "main").write_text(f"{COMMIT}\n", encoding="utf-8")
+    remote = "" if origin is None else f'[remote "origin"]\n\turl = {origin}\n'
+    (git / "config").write_text(f"[core]\n\tbare = false\n{remote}", encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize(
+    ("origin", "repository", "tip"),
+    [
+        # Lowercase, as `metab URL --present --dry-run` names a link's root, in every
+        # form an origin on github.com takes; the tip spells the repository as its origin
+        # does.
+        (
+            "git@github.com:Octo/Demo.git",
+            "https://github.com/octo/demo",
+            "Local Git checkout (GitHub: Octo/Demo)",
+        ),
+        (
+            "https://github.com/octo/demo",
+            "https://github.com/octo/demo",
+            "Local Git checkout (GitHub: octo/demo)",
+        ),
+        (
+            "ssh://git@github.com/octo/demo.git",
+            "https://github.com/octo/demo",
+            "Local Git checkout (GitHub: octo/demo)",
+        ),
+        # No repository on github.com, or no origin: nothing to put a link beside, and
+        # nothing for the tip to name.
+        ("https://gitlab.com/octo/demo.git", None, "Local Git checkout"),
+        (None, None, "Local Git checkout"),
+    ],
+)
+def test_a_checkout_belongs_to_the_github_repository_its_origin_names(
+    tmp_path: Path, origin: str | None, repository: str | None, tip: str
+) -> None:
+    checkout = _checkout(tmp_path / "demo", origin)
+    for served in (checkout, checkout / "docs"):
+        served.mkdir(exist_ok=True)
+        server._set_root_dir(served)
+
+        client = TestClient(server.app)
+        answer = client.get("/api/identity").json()
+
+        # A folder below the checkout's root belongs to its repository too.
+        assert answer["repository"] == repository, served
+        # But it is a checkout's root that is the checkout: a folder served exactly below
+        # it is a plain folder, whose Git features are off (docs/project/architecture/
+        # arch-open-modes.md, "Resolving a Target to a Root").
+        is_root = served == checkout
+        assert answer["kind"] == ("git" if is_root else "folder"), served
+        assert answer["kind_label"] == KIND_LABELS["git" if is_root else "folder"], served
+        assert answer["kind_tip"] == (tip if is_root else "Local folder"), served
+        for address in ("/view/", "/view/README.md", "/pull/7"):
+            shell = client.get(address).text
+            details = re.search(r'<div id="root-details"[^>]*>', shell)
+            assert details is not None
+            assert ("data-repository-url=" in details[0]) == (is_root and repository is not None)
+            if is_root and repository is not None:
+                assert f'data-repository-url="{repository}"' in details[0]
+
+
+def _mark(shell: str) -> tuple[str, str]:
+    """The kind and the sentence the shell's mark beside the root's name carries."""
+
+    match = re.search(
+        r'<span class="header-root-kind" id="header-root-kind" role="img"\s+'
+        r'data-root-kind="([a-z]+)" data-tip-text="([^"]*)"\s+aria-label="([^"]*)">'
+        r"(<svg .*?</svg>)</span>",
+        shell,
+    )
+    assert match is not None
+    # The tooltip and the accessible name are the one sentence.
+    assert match.group(2) == match.group(3)
+    # The glyph is the kind's, written by the server: no script draws it.
+    assert match.group(4) == source_kind_svg(cast(IdentityKind, match.group(1)))
+    return match.group(1), html.unescape(match.group(2))
+
+
+@pytest.mark.parametrize("checkout", [False, True], ids=["plain-folder", "git-checkout"])
+def test_the_shells_mark_is_the_kind_and_tip_the_route_answers(
+    tmp_path: Path, checkout: bool
+) -> None:
+    """The page and ``/api/identity`` say a root's kind in the same words, at every address."""
+
+    root = tmp_path / "demo"
+    root.mkdir()
+    if checkout:
+        _checkout(root, "git@github.com:Octo/Demo.git")
+    server._set_root_dir(root)
+    client = TestClient(server.app)
+
+    answer = client.get("/api/identity").json()
+
+    assert (answer["kind"], answer["kind_tip"]) == (
+        ("git", "Local Git checkout (GitHub: Octo/Demo)")
+        if checkout
+        else ("folder", "Local folder")
+    )
+    for address in ("/view/", "/pulls", "/pull/7", "/commit/0123456789abcdef"):
+        assert _mark(client.get(address).text) == (answer["kind"], answer["kind_tip"]), address
+
+
+def test_a_tip_escapes_what_a_repository_name_may_hold(tmp_path: Path) -> None:
+    """A repository's name is the origin's, so the markup it reaches is escaped."""
+
+    root = _checkout(tmp_path / "demo", "https://github.com/octo/demo")
+    server._set_root_dir(root)
+
+    shell = TestClient(server.app).get("/view/").text
+
+    assert _mark(shell) == ("git", "Local Git checkout (GitHub: octo/demo)")
+    # No sentence ends the attribute early: both attributes close with a quote and a space
+    # or a bracket that _mark matched.
+    assert shell.count('id="header-root-kind"') == 1
+
+
+def test_a_revision_of_a_checkout_is_still_a_git_checkout() -> None:
+    """The kind is how the root was opened, and a revision it shows does not change that."""
+
+    shown = checkout_revision_identity(
+        HOME / "src" / "tbd", ref="refs/heads/topic", commit=COMMIT, home=HOME
+    )
+
+    assert shown["kind"] == "git"
+    assert shown["kind_label"] == "Local Git checkout"
+    assert shown["full_name"] == "~/src/tbd@topic"
+
+
+def test_a_folder_is_a_git_checkout_only_when_asked_to_be() -> None:
+    assert folder_identity(HOME / "tbd", home=HOME) == _folder("tbd", "~/tbd")
+    assert folder_identity(HOME / "tbd", home=HOME, checkout=True) == _git("tbd", "~/tbd")
+
+
+def _context(owner: str, name: str) -> RepositoryContext:
+    return RepositoryContext(
+        branch="main",
+        branch_on_origin=True,
+        host="github.com",
+        name=name,
+        owner=owner,
+        revision=COMMIT,
+        served_prefix="",
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "repository", "tip"),
+    [
+        ("mirror", _context("jlevy", "tbd"), "Cloud mirror of jlevy/tbd"),
+        # A mirror no provider knows names nothing: its origin is the source's address as
+        # given, which only the places tests/test_serve_pin.py allows may say.
+        ("mirror", None, "Cloud mirror"),
+        ("git", _context("jlevy", "tbd"), "Local Git checkout (GitHub: jlevy/tbd)"),
+        ("git", None, "Local Git checkout"),
+        # A plain folder is of nothing, wherever it stands.
+        ("folder", _context("jlevy", "tbd"), "Local folder"),
+        ("folder", None, "Local folder"),
+    ],
+)
+def test_a_kind_is_named_with_what_it_is_of(
+    kind: IdentityKind, repository: RepositoryContext | None, tip: str
+) -> None:
+    assert kind_tip(kind, kind_subject(kind, repository)) == tip
 
 
 def test_the_route_is_a_get(tmp_path: Path) -> None:

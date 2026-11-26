@@ -13,7 +13,8 @@ the selected path. Every mode also hands the server the store as a mirror, so
 
 A pull-request URL pins the pull request's head, read from its cached record or, when
 there is none, fetched once first; it falls back to the default branch, or a commit
-URL's commit, when the pull request cannot be opened. Every mode hands the server what
+URL's commit, when the pull request cannot be opened, and stops instead when only
+installing or signing in to the provider's tools can open it. Every mode hands the server what
 keeps the repository's pull requests, for any GitHub mirror: ``/api/plugin/github/pull``
 reads any of them, and the mirror's refresh keeps the one the URL named fresh.
 
@@ -216,7 +217,9 @@ async def _select(
             else contextlib.nullcontext()
         )
         async with reading:
-            pull = await open_pull_for_cli(published, number, fetch=fetch)
+            pull = await open_pull_for_cli(
+                published, number, fetch=fetch, anchor=selection.pull_file
+            )
         head = pull.resolution() if selection.kind == "pull_request" else None
         if head is not None:
             return _Selected(published, head.commit, head.ref, head, False, pull)
@@ -486,7 +489,10 @@ async def _prove_servable(
             view_href = await _selection_href(subject, path)
         elif source.selection is not None and selected.resolved is not None:
             view_href = selection_view_href(
-                source.selection, selected.resolved.path, commit=selected.resolved.commit
+                source.selection,
+                selected.resolved.path,
+                commit=selected.resolved.commit,
+                pull_file=selected.pull.file_path if selected.pull is not None else "",
             )
         else:
             view_href = VIEW_ROUTE_PREFIX

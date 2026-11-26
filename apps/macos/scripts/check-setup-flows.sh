@@ -149,19 +149,20 @@ case "$scenario" in
   no-metab)
     launch "$copy" "$folder"
     step "No uv and no metab" \
-      "Settings opens: \"Metabrowser needs metab 0.12.1 or later\" (0.12.1 is not on PyPI yet)." \
-      "1. Install uv, with the curl command and Copy (and \"brew install uv\" if Homebrew is installed)." \
-      "2. Build metab in the source checkout … then choose its .venv/bin/metab with Choose metab… below." \
-      "   \"In a new Terminal window, so that it finds uv, at the root of the checkout:\" and make install." \
-      "\"Waiting for metab in ~/.local/bin…\" and the uv tool update-shell suggestion." \
+      "Settings opens on Runtime and shows the minimum metab version, with a notice when that version is pending on PyPI." \
+      "It shows \"Watching for metab in ~/.local/bin.\" and offers \"Refresh\" and \"Choose metab…\"." \
+      "Places looked lists the places searched, scrolling within the tab when it is long; Reveal Logs Folder stays in the window." \
+      "Open \"Installation and troubleshooting on GitHub\" and check the README's Installation section." \
+      "If the minimum is on PyPI, the README gives the uv tool install and upgrade steps." \
+      "If pending, the Developer preview section explains how to build and select the checkout's .venv/bin/metab." \
       "No folder window opens."
     install_link "$uv_path" "$home/.local/bin/uv"
     step "uv installed (linked into the scratch ~/.local/bin)" \
-      "Within a few seconds, without clicking anything, only \"1. Build metab in the source checkout…\" is left," \
-      "still with \"In a new Terminal window, so that it finds uv\": the scratch login PATH lacks ~/.local/bin."
+      "Settings still shows the required runtime and watches ~/.local/bin." \
+      "Refresh still reports no usable metab, and no folder window opens."
     install_link "$checkout_metab" "$home/.local/bin/metab"
     step "metab installed (this checkout's, linked into the scratch ~/.local/bin)" \
-      "Within a few seconds, without clicking anything, the notes folder opens in its own window." \
+      "Within a few seconds, the notes folder opens in its own window without clicking Refresh." \
       "Settings shows metab $current from ~/.local/bin."
     ;;
   old-metab)
@@ -169,9 +170,10 @@ case "$scenario" in
     install_stand_in metab-0.12.0 "$home/.local/bin/metab"
     launch "$copy" "$folder"
     step "An older metab (a stand-in that reports 0.12.0)" \
-      "Settings opens: \"Metabrowser needs metab 0.12.1 or later\"." \
-      "1. Build metab in the source checkout …: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs" \
-      "   metab 0.12.1 or later, which is not on PyPI yet. The command is make install, with Copy." \
+      "Settings opens on Runtime and shows the minimum metab version." \
+      "It names ~/.local/bin/metab, reports version 0.12.0 as incompatible, and explains why." \
+      "The README's Installation section leads to the upgrade steps for a released minimum or the source" \
+      "checkout instructions when the minimum is pending on PyPI." \
       "No folder window opens."
     if [[ -n "$(server_pids)" ]]; then
       check_fail "a server started from the older metab: $(server_pids | tr '\n' ' ')"

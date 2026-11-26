@@ -45,17 +45,15 @@ function escaped(text) {
 
 function line(row) {
   const indent = "  ".repeat(row.depth);
+  // Its counts as its row writes them (`changeStats`), a total of zero left out (mb-ox6a).
+  const stats = shared.changeStats(row, String);
+  const counts = stats === null ? "" : ` ${stats.text}`;
   if (row.kind === "folder") {
-    const counts =
-      row.additions === null && row.deletions === null
-        ? ""
-        : ` +${row.additions ?? "?"} -${row.deletions ?? "?"}`;
     const unknown = row.unknown > 0 ? `, ${row.unknown} without counts` : "";
     return `${indent}${row.expanded ? "v" : ">"} ${row.name}/ (${row.files}${unknown})${counts}`;
   }
   const from = row.previousName === null ? "" : ` (from ${row.previousName})`;
-  const counts = `+${row.additions ?? "?"} -${row.deletions ?? "?"}`;
-  return `${indent}${row.badge} ${row.name}${from} ${counts}${row.current ? "  <- current" : ""}`;
+  return `${indent}${row.badge} ${row.name}${from}${counts}${row.current ? "  <- current" : ""}`;
 }
 
 /** Visible rows as lines, a run of more than six files at one depth shown by its ends. */
@@ -89,8 +87,10 @@ async function main() {
   const tree = await import(pathToFileURL(treePath).href);
   const formatTime = (iso) => iso;
   const describe = (envelope) => {
-    const model = tree.describeFileList(envelope);
-    const failure = tree.fileListFailure(envelope, formatTime);
+    const model = tree.describeFileList(envelope, (count) => count.toLocaleString("en-US"));
+    const failure = tree.fileListFailure(envelope, formatTime, (count) =>
+      count.toLocaleString("en-US"),
+    );
     return { ...model, failure: model.failure?.outcome ?? null, says: failure?.text ?? null };
   };
   const stories = {};
@@ -265,6 +265,7 @@ async function main() {
       asking,
       error: null,
       formatTime,
+      formatCount: (count) => count.toLocaleString("en-US"),
     });
     return {
       line: model.line,
@@ -396,6 +397,7 @@ async function controllerStory(tree) {
       now: () => Date.parse("2026-09-17T12:00:30Z"),
       isVisible: () => visible,
       formatTime: (iso) => iso,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render: (next) => {
         model = next;
       },

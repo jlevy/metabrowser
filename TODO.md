@@ -12,7 +12,8 @@ Checked items below are supported today; unchecked items are planned work.
 The latest release is 0.12.0, tagged on 2026-11-08 and published on 2026-11-09. It adds
 the repository mirror and GitHub browsing: open a Git or GitHub URL, read pull requests
 from the Pulls tab, and reopen what was fetched while offline.
-Work merged since then is listed under Unreleased in [CHANGELOG.md](CHANGELOG.md).
+Work merged since then is listed under Unreleased in [CHANGELOG.md](CHANGELOG.md) and in
+[changelog.d/](changelog.d/README.md).
 The owner-deferred 0.12 checks are open beads under `mb-425f`, among them the landing
 differential (`mb-2g6f`) and the human sign-off matrix (`mb-etqi`).
 
@@ -29,6 +30,7 @@ differential (`mb-2g6f`) and the human sign-off matrix (`mb-etqi`).
 | Git surfaces | [General diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | The Commits tab, commit pages, and diff rendering are implemented; working-tree status and `/compare/` remain |
 | CLI parity and goldens | [Functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [API envelope contract](docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md) | The route, kind, model, persisted-state, and functional-aspect gates are enforced; migrating the remaining UI behavior and a schema for the envelopes remain |
 | File search | [Quick Search](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md) | The client file finder and PR completions are implemented; full-text search is planned |
+| Tabular data and SQLite | [Tabular data browsing and live SQLite](docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md) | Draft; a generic table plugin over CSV, record lists, and SQLite, with its key decisions open |
 | Markdown navigation | [Navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md) | Baseline delivered; extensions partly delivered, with the remaining scope below |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; on-demand loading exists, but the Mermaid module entry still needs a dynamic import or a module entry in `asset-loader.js` |
 | File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Shared modal foundation delivered; action menus and file mutations planned |

@@ -11,9 +11,12 @@ Content-Security-Policy, and where the panel sits. ``tests/dom/checkout-ref-sele
 serves ``tests/source_checkout_fixture.py``'s checkout, whose working tree differs from
 every commit, and in one Chrome walks: the working tree's page and its panel, a branch,
 its lists, a switch made outside the page and the reload the selector then offers, a tag,
-the Working tree row, and Back onto a revision's address while the working tree is
-served. This judges it, and then compares every file under the checkout, its ``.git``
-included, with what it was before the server started.
+the Working tree row, Back onto a revision's address while the working tree is served,
+the checked-out branch's revision and its row's button back to the working tree, whose
+row reads apart from it (mb-cxpq), and a revision's Commits tab, which shows the same
+revision under the same row and switches it from there. This judges it, and then compares
+every file under the checkout, its ``.git`` included, with what it was before the server
+started.
 
 It also measures, since nothing should be slow here: each switch from the click to the
 new document's first tree rows, printed with a failure and bounded loosely
@@ -35,7 +38,9 @@ from typing import Any
 
 import pytest
 
+from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.git.process import acquisition_allowed, detect_git_version
+from metabrowser.paths_safe import tilde_path
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import needs_git, require_chrome, require_node
 from tests.source_checkout_fixture import build_checkout, snapshot, view
@@ -61,6 +66,9 @@ pytestmark = [
 SWITCH_BOUND_MS = 5000
 WORKING_TREE = ["NOTES.md", "README.md", "STAGED.md", "UNTRACKED.md"]
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
+# Each ref's commit as every line names one (`short_commit` in commit_ids.py), in the
+# fixture, whose IDs are literal (tests/source_checkout_fixture.py).
+TOPIC, FEATURE_SHORT, LOCAL_WORK, V1 = ("42382ea", "c7ae2a3", "25e0a2a", "fcb9d63")
 TRUSTED = {"active_content": True, "mutations": False}
 UNTRUSTED = {"active_content": False, "mutations": False}
 
@@ -75,6 +83,15 @@ def _free_port() -> int:
 
 def _rows(panel: dict[str, Any]) -> list[str]:
     return [row["text"] for row in panel["rows"]]
+
+
+def _one_look(name: str, shown: dict[str, Any]) -> None:
+    """Every short commit ID a page shows is one length, in the mono face, in the muted gray."""
+
+    face = shown["face"]
+    for entry in shown["ids"]:
+        assert len(entry["text"]) == SHORT_COMMIT_CHARS, (name, entry)
+        assert (entry["color"], entry["font"]) == (face["color"], face["font"]), (name, entry)
 
 
 def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrome(
@@ -107,71 +124,117 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
 
     # The working tree's page: the folder's own profile, the live files, and the selector.
     tree = result["workingTree"]
+    # The row says it shows the working tree, then the branch it is on, and has no way
+    # back, since it is where the way back goes (mb-cxpq).
     assert (tree["kind"], tree["button"], tree["heading"]) == (
         "filesystem",
-        "Working tree",
+        "Working tree · topic",
         "checkout",
     )
+    assert (tree["view"], tree["back"]) == ("working-tree", None)
     assert tree["checkout"] == {"working_tree": True} and tree["pin"] is None
     assert tree["tree"] == WORKING_TREE
     assert tree["capabilities"] == TRUSTED
     # The pin guard came with the selector's bundle, so the page says what it shows.
     assert tree["guard"] is True
+    assert tree["inFilesRow"] is True
 
     panel = result["workingTreePanel"]
     assert panel["open"] and panel["focused"]
-    assert panel["workingTree"] == {
-        "text": "Working tree Live local files, on topic",
-        "current": True,
-        "chip": None,
+    # Keyboard focus on the current row draws the one ring, which its highlight would
+    # otherwise hide: the hover tint is how other menu rows show focus.
+    assert result["currentRowFocus"] == {
+        "focused": True,
+        "current": "true",
+        "focusVisible": True,
+        "outline": "solid 2px -2px",
+        "ringColor": True,
     }
+    # The working tree is named by its folder, the path as the page names the folder, and
+    # has no commit or age; the folder's own name is shown whole in the narrow pane.
+    working_tree = panel["workingTree"]
+    assert working_tree["text"].startswith("Working tree ")
+    assert (working_tree["current"], working_tree["chip"]) == (True, None)
+    assert (working_tree["commitFace"], working_tree["age"]) == (None, None)
+    assert panel["location"] == tilde_path(checkout, Path.home().resolve())
+    assert panel["folderWhole"] is True
     assert [(entry["label"], entry["chosen"]) for entry in panel["lists"]] == [
         ("Branches", True),
-        ("Tags", False),
         ("Remotes", False),
+        ("Tags", False),
     ]
-    # The checked-out branch is badged, lists first, and is not the served row.
+    # The checked-out branch is badged, lists first, and is not the served row; the rest
+    # are newest first, local-work committed in the checkout after feature (mb-dcp2).
     assert _rows(panel) == [
-        "topic checked out 42382ea2303b",
-        "feature c7ae2a331f54",
-        "local-work 25e0a2a76ab4",
+        f"topic checked out {TOPIC}",
+        f"local-work {LOCAL_WORK}",
+        f"feature {FEATURE_SHORT}",
     ]
     assert not any(row["current"] for row in panel["rows"])
     assert {row["chip"] for row in panel["rows"]} == {"local"}
     assert _rows(result["workingTreeRemotes"]) == [
-        "origin/feature c7ae2a331f54",
-        "origin/topic 42382ea2303b",
+        f"origin/feature {FEATURE_SHORT}",
+        f"origin/topic {TOPIC}",
     ]
     assert {row["chip"] for row in result["workingTreeRemotes"]["rows"]} == {"remote"}
     assert sorted(_rows(result["workingTreeTags"])) == [
-        "local-tag c7ae2a331f54",
-        "v1 fcb9d63c3c85",
+        f"local-tag {FEATURE_SHORT}",
+        f"v1 {V1}",
     ]
     for name in ("workingTreePanel", "workingTreeRemotes", "workingTreeTags", "branchPanel"):
         assert result[name]["inside"], f"{name}: the panel leaves the navigation pane"
+        assert result[name]["spansToolbar"], f"{name}: the panel does not span the toolbar"
         assert result[name]["overflowing"] == 0, f"{name}: a row is wider than the panel"
         assert result[name]["error"] == ""
+        # Every ref's short ID is in the commit-ID face, and every ref has an age in a tier,
+        # its date the tooltip. A tag's is its commit's.
+        for row in result[name]["rows"]:
+            assert row["commitFace"] is True, (name, row)
+            assert row["age"]["text"] and row["age"]["tier"] and row["age"]["tip"], (name, row)
+        # The ages end the rows in one column, so the IDs line up: the widest compact age
+        # takes no more room than the narrowest.
+        assert len(set(result[name]["ageColumn"])) == 1, (name, result[name]["ageColumn"])
+        assert result[name]["commitColumns"] <= 1, name
+        # Every ref's commit in the list is one short ID: one length, the mono face, and the
+        # muted gray (docs/design-system.md, "Short Commit IDs"), which the owner asked for
+        # after seeing longer IDs in this list.
+        assert len(result[name]["commitIds"]["ids"]) >= len(result[name]["rows"]), name
+        _one_look(name, result[name]["commitIds"])
+    for name in ("workingTree", "branch", "tag", "reloaded", "back"):
+        _one_look(name, result[name]["commitIds"])
+    # A revision's heading is the folder's name alone, as the working tree's is: the button
+    # names the ref and the heading's tooltip the full commit, so no commit ID shows on the
+    # page until the list is opened (mb-qq4e).
+    assert result["branch"]["commitIds"]["ids"] == []
 
     # A branch: a revision's page, under the untrusted profile, with no file of the disk's.
     branch = result["branch"]
     assert (branch["kind"], branch["path"]) == ("git_revision", view("README.md"))
     assert branch["pin"] == {"pin": FEATURE, "ref": "refs/heads/feature"}
     assert branch["checkout"] == {"working_tree": False}
-    assert branch["button"] == "feature"
-    assert branch["heading"] == f"checkoutfeature{FEATURE[:12]}"
+    assert branch["button"] == "Revision · feature"
+    assert branch["view"] == "revision"
+    assert branch["back"] == {
+        "text": "←Working tree",
+        "name": "Back to the working tree",
+        "btn": True,
+    }
+    assert branch["heading"] == "checkout"
     assert branch["tree"] == ["FEATURE.md", "README.md"]
     assert branch["capabilities"] == UNTRUSTED
     assert branch["title"] == tree["title"] == "checkout • Metabrowser"
     on_branch = result["branchPanel"]
     assert on_branch["workingTree"]["current"] is False
-    assert [row["text"] for row in on_branch["rows"] if row["current"]] == ["feature c7ae2a331f54"]
+    assert [row["text"] for row in on_branch["rows"] if row["current"]] == [
+        f"feature {FEATURE_SHORT}"
+    ]
 
-    # The selector's row is drawn by the server with its button, so mounting the selector
-    # moves nothing: one height for the row and one place for the tree's first row, from
-    # each document's start, on the working tree's page and on a revision's.
+    # The selector is drawn by the server with its button, leading the Files toolbar, so
+    # mounting it moves nothing: one height for the selector and one place for the tree's
+    # first row, from each document's start, on the working tree's page and on a revision's.
     for name in ("workingTreeLayout", "branchLayout"):
         layout = result[name]
-        assert len(layout["rowHeights"]) == 1, f"{name}: the row changed height: {layout}"
+        assert len(layout["rowHeights"]) == 1, f"{name}: the selector changed height: {layout}"
         assert len(layout["treeTops"]) == 1, f"{name}: the tree moved: {layout}"
         # The button the parser drew is the one the mounted module uses, so focus put on
         # it before the module arrived is not lost to a swap.
@@ -181,30 +244,76 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     # before its guard arrived, and the revision's through a file and its history. The
     # server refuses a page's fetch that names no commit while a pin is served, so this
     # is also that every request of a pin's page does name it.
-    for name in ("workingTreeBrowsing", "revisionRequests", "revisionBrowsing"):
+    for name in (
+        "workingTreeBrowsing",
+        "revisionRequests",
+        "revisionBrowsing",
+        "chosenOnCommitsBrowsing",
+    ):
         assert result[name]["asked"] > 0, name
         assert result[name]["refused"] == [], f"{name}: refused {result[name]['refused']}"
+    # Nor is the page that asked to switch, which asks nothing more: it asked for its root's
+    # tallies every few milliseconds through the switch, as its own refresh of them can,
+    # and each waited for the answer and went with the page (mb-bio7).
+    assert result["leftBehind"] == [], f"the page left behind asked: {result['leftBehind']}"
 
     # Another tab switched the server back: this page is refused, and offers a reload.
     assert (result["switchedOutside"], result["refused"]) == (200, 409)
-    assert result["stale"]["stale"] == "The server now shows the working treeReload"
+    assert result["stale"]["stale"] == "The server now shows the working treeReload page"
+    # It sits at the pane's foot, after the indexing row and under the tree: outside the
+    # Files toolbar and the metadata band under it, which hide with the Files tab. Its
+    # button's label, Reload page, is one line beside the sentence, which wraps.
+    stale_at = {
+        "buttonLines": 1,
+        "after": "index-progress",
+        "inToolbarOrBand": False,
+        "shown": True,
+        "underTree": True,
+        "inPane": True,
+    }
+    assert result["staleAt"] == {**stale_at, "front": "files"}
     # The reload asks for the revision's address, which the server sends to the folder's.
     reloaded = result["reloaded"]
     assert (reloaded["kind"], reloaded["path"], reloaded["button"]) == (
         "filesystem",
         "/view/README.md",
-        "Working tree",
+        "Working tree · topic",
     )
     assert reloaded["stale"] is None and reloaded["tree"] == WORKING_TREE
 
     # A tag, and the way back by the Working tree row.
     tag = result["tag"]
-    assert (tag["kind"], tag["button"], tag["tree"]) == ("git_revision", "v1", ["README.md"])
+    assert (tag["kind"], tag["button"], tag["tree"]) == (
+        "git_revision",
+        "Revision · v1",
+        ["README.md"],
+    )
+    assert result["tagMenu"] == {
+        "context": "Tag v1",
+        "items": ["Copy Tag Name"],
+        "copied": "v1",
+        "widthChanged": False,
+        "caret": "none",
+        "chooserClosed": True,
+        "dismissed": True,
+        "chordsLeftAlone": True,
+        "fork": {
+            "context": "Remote branch forker:topic/nested",
+            "url": "https://github.com/forker/demo/tree/refs/heads/topic/nested",
+            "actions": ["Copy Branch Name", "Open on GitHub"],
+            "focused": True,
+            "repeatClosed": True,
+        },
+        "repeatClick": {"direct": True, "opened": True, "closed": True},
+    }
+    from_menu = result["tagFromHistory"]
+    assert (from_menu["kind"], from_menu["button"]) == ("git_revision", "Revision · v1")
+    assert from_menu["capabilities"] == UNTRUSTED
     back = result["back"]
     assert (back["kind"], back["path"], back["button"]) == (
         "filesystem",
         "/view/README.md",
-        "Working tree",
+        "Working tree · topic",
     )
     assert back["tree"] == WORKING_TREE and back["capabilities"] == TRUSTED
 
@@ -214,13 +323,68 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert after_back["tree"] == WORKING_TREE
     assert (result["served"]["subject"], result["served"]["pin"]) == ("attached_filesystem", None)
 
+    # The checked-out branch snapshot is still available through the chooser.
+    checked_out = result["checkedOutBranch"]
+    assert checked_out["pin"]["ref"] == "refs/heads/topic"
+    assert checked_out["pin"]["pin"].startswith(TOPIC)
+    assert checked_out["kind"] == "git_revision"
+    assert "UNTRACKED.md" not in checked_out["tree"]
+    # It names the same branch as the working tree's row, and still reads apart from it.
+    assert checked_out["button"] == "Revision · topic" != tree["button"]
+    # Its row's button goes back to the working tree in one click.
+    by_button = result["backByButton"]
+    assert (by_button["kind"], by_button["button"], by_button["back"]) == (
+        "filesystem",
+        "Working tree · topic",
+        None,
+    )
+    assert "UNTRACKED.md" in by_button["tree"] and by_button["capabilities"] == TRUSTED
+
     # Each document came under its subject's policy: a revision's has one, the folder's none.
     documents = [entry for entry in result["documents"] if entry["status"] == 200]
     assert documents, result["documents"]
-    for entry in documents:
+    # The last is the reload on Commits after topic was chosen there, at the root's address,
+    # which names no file of either: the revision's, under its policy.
+    *by_address, on_commits = documents
+    assert on_commits == {"url": "/view/", "status": 200, "csp": True}
+    for entry in by_address:
         assert entry["csp"] is entry["url"].startswith("/view/g1-"), entry
 
-    for name in ("toBranch", "toTag", "toWorkingTree"):
+    # One choice for both tabs. On feature's page, Commits shows feature: the same row heads
+    # it, between the tabs and its tally, and names the revision, and its history is
+    # feature's, from feature's commit, which the tab lands on.
+    assert result["revisionCommits"] == {
+        "front": "git",
+        "row": True,
+        "placed": True,
+        "button": "Revision · feature",
+        "pin": {"pin": FEATURE, "ref": "refs/heads/feature"},
+        "newest": FEATURE,
+        "landed": FEATURE,
+    }
+    # Chosen on Commits, topic reloads the page on Commits, at topic's history, and Files
+    # then shows topic too: the committed files, without the working tree's own.
+    on_commits = result["chosenOnCommits"]
+    assert (on_commits["front"], on_commits["row"], on_commits["placed"]) == ("git", True, True)
+    assert on_commits["button"] == "Revision · topic"
+    assert on_commits["pin"]["ref"] == "refs/heads/topic"
+    assert on_commits["pin"]["pin"].startswith(TOPIC)
+    assert on_commits["newest"] == on_commits["landed"] == on_commits["pin"]["pin"]
+    in_files = result["chosenOnCommitsFiles"]
+    assert (in_files["kind"], in_files["button"], in_files["pin"]) == (
+        "git_revision",
+        "Revision · topic",
+        on_commits["pin"],
+    )
+    assert in_files["tree"] == checked_out["tree"]
+    # A switch from another tab with Commits in front: the history is refused as the tree
+    # is, since it is the revision's, and the offer to reload shows on the Commits tab.
+    assert result["commitsSwitched"] == {
+        "statuses": [409, 409],
+        "at": {**stale_at, "front": "git"},
+    }
+
+    for name in ("toBranch", "toTag", "toWorkingTree", "toWorkingTreeByButton"):
         assert result[name]["rowsMs"] < SWITCH_BOUND_MS, f"{name}: {result[name]}"
 
     # And none of it wrote the checkout: the working tree, the index, HEAD, every ref and

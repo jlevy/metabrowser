@@ -1,0 +1,775 @@
+// The production stack page (`mountStackPage` in stack-page.js), mounted with a stub SDK on the
+// stack route's recorded answers (tests/fixtures/github-stack-responses.json). First its
+// header: the rows its first paint draws from the stack the Pulls tab knows, before the stack's
+// answer, are the rows the answer settles in, and what it passes the diff view draws the Diff
+// summary collapsed and Docs and Changes as a pull request's page does.
+// Then Guided Review:
+// the front page mounts the stack's guide and reads its first step at the comparison it draws;
+// a step's file opens in the stack's Changes and another pull request's file in that pull
+// request's; a file the rendered route renders is drawn whole at the comparison drawn; a
+// note's links resolve against the member that carries the guide; a new revision of that
+// member is read again while the drawn comparison is current, and a new comparison is offered,
+// not swapped in, until the reader takes it, whether a member below moved or the carrier
+// moved with it and was pinned again, which no step is read as, and the route's own refusal
+// of a step at a comparison it has moved past reads the stack at once; and leaving the tab
+// disposes the view and aborts its read. Last, Docs and Changes that could not load: each says so in a
+// pull request's error notice with Retry, whose press disposes what the failed draw left and
+// draws again, and a Retry left behind by a tab switch or the page's disposal draws nothing.
+// The navigation itself is github-guided-review-session.js's, and the stack's own
+// state machine github-stack-page-session.js's; this is the page's glue between them. Paint is
+// Chrome's.
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+const { pathToFileURL } = require("node:url");
+const { Element, root, settle } = require("./github-pull-page-mount-behavior.js");
+
+const recorded = JSON.parse(
+  fs.readFileSync(path.join(root, "tests/fixtures/github-stack-responses.json"), "utf8"),
+);
+const GUIDE_ROUTE = "/api/plugin/github/guided-review";
+const STACK_ROUTE = "/api/plugin/github/stack";
+const STACKS_ROUTE = "/api/plugin/github/stacks";
+/** A record revision, 64 hexadecimal characters. */
+const revision = (digit) => String(digit).repeat(64);
+
+// The page module imports pull-page.js, which reads the shell's route and Git path codecs at
+// import, as in the shell.
+const routeContext = { atob, btoa, TextDecoder, TextEncoder, Uint8Array };
+routeContext.window = routeContext;
+for (const name of ["navigation.js", "git-path.js"]) {
+  const file = path.join(root, "src/metabrowser/static", name);
+  vm.runInNewContext(fs.readFileSync(file, "utf8"), routeContext, { filename: file });
+}
+
+const timers = new Map();
+/** The base each note's HTML was sanitized against. */
+const bases = [];
+/** The address of each link the page marked as an outside link. */
+const decorated = [];
+globalThis.Node = Element;
+globalThis.HTMLElement = Element;
+globalThis.document = {
+  visibilityState: "visible",
+  addEventListener() {},
+  removeEventListener() {},
+  createElement: (tag) => new Element(tag),
+  importNode: () => new Element("svg"),
+};
+globalThis.window = {
+  MetabrowserGitPath: routeContext.MetabrowserGitPath,
+  MetabrowserNavigationRoute: routeContext.MetabrowserNavigationRoute,
+  location: { pathname: "/stack/70" },
+  setTimeout(callback, delay) {
+    const id = Symbol();
+    timers.set(id, { callback, delay });
+    return id;
+  },
+  clearTimeout: (id) => timers.delete(id),
+  // The allowlist's stand-in: a note comes back as one link, so a test reads the base it
+  // was resolved against and whether the page marked it. The rebuild itself is the
+  // allowlist's, pinned by tests/dom/inert-html-session.js.
+  MetabrowserInertHtml: {
+    sanitizeHtml(_html, base) {
+      bases.push(base);
+      const link = new Element("a");
+      link.setAttribute("href", "https://example.com/elsewhere");
+      link.textContent = "elsewhere";
+      return [link];
+    },
+    kpressProse(nodes) {
+      const prose = new Element("div");
+      prose.className = "kpress-prose";
+      prose.append(...nodes);
+      return prose;
+    },
+  },
+};
+globalThis.DOMParser = class {
+  parseFromString() {
+    return { body: { firstElementChild: null } };
+  }
+};
+
+/** The stack route's answers in order, each with its validator. */
+let stackAnswer = null;
+/** How many times the page has read the stack route. */
+let stackReads = 0;
+/** The repository's stacks, as the Pulls tab reads them: 70 of 8 and then 10, titled as the
+ * stack route's recorded answer titles them. */
+const stacksAnswer = {
+  state: "current",
+  reason: null,
+  source: "https://github.com/octo/demo",
+  reader: "gh:octo-reader",
+  fetched_at: "2026-09-17T12:05:01Z",
+  fresh_for_s: 90,
+  refreshing: false,
+  last_refresh: null,
+  complete: true,
+  stacks: [
+    {
+      number: 70,
+      base_ref: recorded.current.base_ref,
+      open: true,
+      pulls: recorded.current.members.map((member) => member.number),
+      titles: recorded.current.members.map((member) => member.title),
+      // The stacks route read 10's author with its title and holds none for 8, so 10's
+      // member row ends in its author and 8's in its number.
+      authors: recorded.current.members.map((member) =>
+        member.number === 10 ? "maintainer" : null,
+      ),
+      avatars: recorded.current.members.map(() => null),
+    },
+  ],
+};
+/** Each read of the guide: what it asked, its signal, and whether it was answered. */
+const reads = [];
+const response = (body, status = 200, etag = null) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  headers: { get: (name) => (name === "etag" ? etag : null) },
+  json: async () => body,
+  // The guide reads its answer as text, whose length it keeps (guide-reads.js).
+  text: async () => JSON.stringify(body),
+});
+globalThis.fetch = async (route, init = {}) => {
+  if (route.startsWith(`${STACK_ROUTE}?`)) {
+    stackReads += 1;
+    return response(stackAnswer, 200, `"${JSON.stringify(stackAnswer).length}"`);
+  }
+  if (route === STACKS_ROUTE && (init.method ?? "GET") === "GET") {
+    return response(stacksAnswer, 200, '"stacks-1"');
+  }
+  if (route.startsWith(`${GUIDE_ROUTE}?`)) {
+    const asked = new URL(route, "http://localhost").searchParams;
+    return new Promise((resolve, reject) => {
+      const read = { asked, signal: init.signal, answered: false };
+      read.answer = (body) => {
+        read.answered = true;
+        resolve(response(body));
+      };
+      init.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      reads.push(read);
+    });
+  }
+  return response({}, 404);
+};
+
+/** The comparison a stack answer names; the one it moves to when its bottom member's record
+ * catches up, whose key changes while its two commits and its files stay; the one it moves to
+ * when its bottom member moves, whose base and key change while the top's head and record
+ * stay; and the one it moves to when the top member, which carries the guide, moves too. */
+const drawnFirst = recorded.current.comparison;
+const caughtUp = {
+  ...drawnFirst,
+  key: "d".repeat(32),
+  route: drawnFirst.route.replace(drawnFirst.key, "d".repeat(32)),
+};
+const belowMoved = {
+  ...drawnFirst,
+  left: "<moved_base>",
+  key: "e".repeat(32),
+  route: drawnFirst.route.replace(drawnFirst.key, "e".repeat(32)),
+};
+const movedTo = {
+  ...belowMoved,
+  right: "<moved_head>",
+  key: "f".repeat(32),
+  route: drawnFirst.route.replace(drawnFirst.key, "f".repeat(32)),
+};
+
+/** The stack's answer: 70 current, its guide carried by 10 at *carried*, drawing *comparison*.
+ * Its bottom member, 8, has a head the first comparison already shows in `caughtUp`, whose
+ * record caught up, and two new commits in the moved comparisons, and 10, the top, one more
+ * in `movedTo`, as the route's `moved` says asked `since` the first. */
+function stack(carried, comparison = drawnFirst) {
+  const answer = structuredClone(recorded.current);
+  const moved = [];
+  if (comparison === caughtUp) {
+    answer.members[0].head = "<caught_up_8_head>";
+    moved.push({ number: 8, commits: 0 });
+  } else if (comparison !== drawnFirst) {
+    answer.members[0].head = "<moved_8_head>";
+    moved.push({ number: 8, commits: 2 });
+  }
+  if (comparison === movedTo) {
+    answer.members[1].head = "<moved_head>";
+    moved.push({ number: 10, commits: 1 });
+  }
+  return {
+    ...answer,
+    guide: { number: 10, revision: carried },
+    comparison,
+    // No probe: this session moves the stack itself.
+    probe: null,
+    moved: moved.length === 0 ? null : { since: drawnFirst.key, members: moved },
+  };
+}
+
+/** A reference as the route answers it, every field present. */
+const cited = (fields) => ({
+  kind: "file",
+  path: null,
+  side: null,
+  start_line: null,
+  end_line: null,
+  pull: null,
+  commit: null,
+  state: "ready",
+  rendered: null,
+  href: null,
+  hunks: [],
+  truncated: false,
+  comparison: null,
+  target: null,
+  ...fields,
+});
+const HUNK = {
+  old_start: 1,
+  old_count: 1,
+  new_start: 1,
+  new_count: 2,
+  heading: null,
+  lines: [
+    { op: "context", text: "one" },
+    { op: "add", text: "two" },
+  ],
+};
+
+const TITLES = ["The layers", "The draft", "The plan"];
+/** Step *step* of 10's three-step guide, read at *pins*, for record revision *carried*: a file
+ * of the stack drawn as a patch, one the rendered route renders, and a file of 9. 8, below
+ * the top, carries the guide's page here, so its notes' links are made absolute there. */
+function step(carried, at, pins) {
+  return {
+    stack: 70,
+    carrier: 10,
+    carrier_url: "https://github.com/octo/demo/pull/8",
+    record_revision: carried,
+    state: "ready",
+    comparison: pins,
+    step_count: TITLES.length,
+    titles: TITLES,
+    outline: TITLES.map((title, index) => ({ kind: "step", step: index + 1, title })),
+    step: at,
+    group: null,
+    title: TITLES[at - 1],
+    note: "Read [elsewhere](https://example.com/elsewhere).",
+    note_html: '<p><a href="https://example.com/elsewhere">elsewhere</a></p>',
+    note_refusal: null,
+    group_note_html: null,
+    group_note_refusal: null,
+    references: [
+      cited({ path: "src/app.txt", href: "/stack/70/changes/src/app.txt", hunks: [HUNK] }),
+      cited({
+        path: "docs/draft.md",
+        rendered: "markdown",
+        href: "/stack/70/changes/docs/draft.md",
+      }),
+      cited({
+        kind: "pull_file",
+        pull: 9,
+        path: "src/other.txt",
+        href: "/pull/9/files/src/other.txt",
+        hunks: [HUNK],
+        comparison: {
+          merge_base: "9".repeat(40),
+          head: "a".repeat(40),
+          route: "/api/plugin/github/pull-comparison?number=9",
+          image_route: "/api/plugin/github/pull-image?number=9",
+          rendered_route: "/api/plugin/github/pull-rendered-diff?number=9",
+        },
+      }),
+    ],
+    assets: {},
+  };
+}
+const pinsOf = (comparison) => ({ merge_base: comparison.left, head: comparison.right });
+
+async function run() {
+  const page = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/stack-page.js")).href
+  );
+  /** The routes the page asked the shell to open. */
+  const opened = [];
+  /** Each document the diff plugin was asked to draw whole, by the comparison's head. */
+  const documents = [];
+  /** Each patch the diff plugin drew, and whether its view was disposed. */
+  const patches = [];
+  const diff = {
+    mountFilePatch(_body, change, patch) {
+      const drawn = { path: change.new.path, lines: patch.hunks[0].lines.length, disposed: false };
+      patches.push(drawn);
+      return {
+        dispose() {
+          drawn.disposed = true;
+        },
+      };
+    },
+    mountRenderedFile(_body, comparison, file) {
+      const drawn = { path: file, right: comparison.right, disposed: false };
+      documents.push(drawn);
+      return {
+        settled: Promise.resolve(true),
+        dispose() {
+          drawn.disposed = true;
+        },
+      };
+    },
+  };
+  /** The diff view: what the page passed it for the header's Diff summary and for each
+   * diff it drew, and how many of each it drew. */
+  const files = { summaries: 0, rendered: 0 };
+  /** How the diff view's next draws fail, in order: `throw` fails the draw itself, and
+   * `late` draws and then fails its first screen, after the page has adopted the view. */
+  const failures = [];
+  /** Each diff view drawn, and whether the page disposed it. */
+  const views = [];
+  /** @type {Array<Record<string, unknown>>} */
+  const drawings = [];
+  const shape = (ctx) =>
+    Object.fromEntries(
+      Object.entries(ctx)
+        .filter(([name]) => !["comparison", "comparisonSignal", "raw"].includes(name))
+        .map(([name, value]) => [name, typeof value === "function" ? "function" : value]),
+    );
+  const filesView = {
+    prefetch: async () => ({ manifest: { totals: { files: 1 } } }),
+    summary: async (_slot, ctx) => {
+      files.summaries += 1;
+      drawings.push({ summary: shape(ctx) });
+      return { dispose() {} };
+    },
+    render: async (_host, ctx) => {
+      files.rendered += 1;
+      drawings.push({ render: shape(ctx) });
+      const failure = failures.shift();
+      if (failure === "throw") {
+        throw new Error("the stub diff could not draw");
+      }
+      const view = {
+        disposed: false,
+        dispose() {
+          view.disposed = true;
+        },
+      };
+      if (failure === "late") {
+        view.firstScreen = () => Promise.reject(new Error("the stub diff's first screen failed"));
+      }
+      views.push(view);
+      return view;
+    },
+  };
+  const mb = {
+    titleNodes: (title) => [title],
+    // The shell's actor identity, as its name alone.
+    actorIdentity(name, { nameClass = "" } = {}) {
+      const identity = new Element("span");
+      identity.className = nameClass;
+      identity.textContent = name;
+      return identity;
+    },
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
+    formatTimestamp: () => "now",
+    shortCommit: (sha) => sha.slice(0, 7),
+    ensureAsset: async () => {},
+    loadKpressAssets: async () => {},
+    ensureKindAssets: async () => {},
+    // The page is never idle here, so the guide reads each step when the reader moves to it;
+    // its reads ahead are pinned in github-guided-review-session.js.
+    whenIdle: () => () => {},
+    decorateExternalLink(anchor) {
+      decorated.push(anchor.getAttribute("href"));
+      return anchor;
+    },
+    plugins: {
+      async load(name) {
+        assert.equal(name, "diff", "the guide loads only the diff plugin");
+        return diff;
+      },
+    },
+    getRegisteredView: () => filesView,
+    changeSizeLine: ({ files: count }) => ({
+      text: `${count} file${count === 1 ? "" : "s"} changed`,
+    }),
+    changeSizeLineNodes: (line) => [line.text],
+    mergeRefs(source, target) {
+      const merge = new Element("span");
+      merge.textContent = `${source.name} → ${target.name}`;
+      return merge;
+    },
+  };
+  async function poll() {
+    const due = [...timers];
+    timers.clear();
+    for (const [, timer] of due) {
+      timer.callback();
+    }
+    await settle();
+  }
+  const asks = (read) =>
+    ["stack", "step", "left", "right", "key"].map((name) => read.asked.get(name)).join(" ");
+  const press = (container, label) =>
+    [...container.descendants()]
+      .find((node) => node.tag === "button" && node.getAttribute("aria-label") === label)
+      .events.get("click")();
+  const plain = { button: 0, preventDefault() {} };
+  const report = {};
+
+  // The Pulls tab has read the repository's stacks, as it has when a stack button opens the
+  // page.
+  const stacks = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-stacks.js")).href
+  );
+  const pullsTab = stacks.watchStacks(() => {});
+  await settle();
+
+  // The front page of 70, whose guide 10 carries, mounts the guide on its first step and
+  // reads it at the comparison the page draws.
+  stackAnswer = stack(revision(1));
+  const container = new Element("main");
+  const handle = page.mountStackPage(
+    container,
+    {
+      number: 70,
+      tab: "",
+      open(route) {
+        opened.push(route);
+        return Promise.resolve();
+      },
+    },
+    mb,
+  );
+  // The header's rows as the reader sees them: each row, and what it holds.
+  const header = container.querySelector(".github-pull-header");
+  const rowName = (node) =>
+    node.tag === "h1"
+      ? "title"
+      : node.classes.has("view-header-end")
+        ? "corner"
+        : node.classes.has("github-pull-stack-members")
+          ? "members"
+          : node.classes.has("github-pull-branches")
+            ? "merge"
+            : node.classes.has("github-pull-status")
+              ? "status"
+              : node.classes.has("github-pull-size")
+                ? "size"
+                : node.classes.has("github-pull-summary")
+                  ? "summary"
+                  : node.tag;
+  const holds = (node) =>
+    node.querySelector(".tally-pending") !== null ? "(pending)" : node.textContent;
+  const rows = () =>
+    header.children
+      .filter((node) => !node.hidden)
+      .map((node) => {
+        const name = rowName(node);
+        if (name === "members") {
+          return {
+            members: node
+              .querySelectorAll(".github-pull-stack-member")
+              .map((row) => row.textContent.replace(/\s+/g, " ").trim()),
+          };
+        }
+        return name === "title" || name === "corner" ? name : { [name]: holds(node) };
+      });
+  const firstPaint = rows();
+  const cold = header.classes.has("github-pull-cold");
+  await settle();
+  const settled = rows();
+  const names = (list) => list.map((row) => (typeof row === "string" ? row : Object.keys(row)[0]));
+  assert.deepEqual(names(firstPaint), names(settled), "the answer lands in the rows drawn");
+  assert.equal(cold, false, "a stack the Pulls tab knows is not held as cold");
+  const summaryDrawn = drawings.find((drawing) => drawing.summary)?.summary;
+  assert.deepEqual(Object.keys(summaryDrawn).sort(), ["openFile"], "where a file opens alone");
+  report.header = {
+    first_paint: firstPaint,
+    settled,
+    summary_drawing: summaryDrawn,
+  };
+  pullsTab.dispose();
+  const active = () =>
+    container
+      .querySelectorAll(".tab-btn")
+      .filter((tab) => tab.classes.has("active"))
+      .map((tab) => tab.textContent)
+      .join(",");
+  assert.equal(active(), "Guided Review");
+  assert.equal(reads.length, 1);
+  report.front = { tab: active(), asks: asks(reads[0]) };
+  assert.equal(
+    asks(reads[0]),
+    `70 1 ${drawnFirst.left} ${drawnFirst.right} ${drawnFirst.key}`,
+    "the guide is read at the comparison drawn",
+  );
+
+  // The step draws its files: a patch, a document whole from the comparison drawn, and 9's
+  // file from 9's own comparison. Its note is resolved against 8's page, the carrier's, and
+  // its outside link is marked.
+  reads[0].answer(step(revision(1), 1, pinsOf(drawnFirst)));
+  await settle();
+  // Its step list has no overview, and no step is in a group, so each row starts on a group
+  // heading's edge with its number, in a column one digit wide (mb-420k).
+  const list = container.querySelector(".github-pull-guide-steps");
+  const isElement = (node) => typeof node !== "string";
+  report.list = {
+    rows: list.children.filter(isElement).map((item) =>
+      item.children
+        .find(isElement)
+        .children.filter(isElement)
+        .map((part) => `${[...part.classes].join(".")}: ${part.textContent}`)
+        .join(", "),
+    ),
+    style: list.getAttribute("style"),
+  };
+  assert.deepEqual(
+    documents.map(({ path: file, right }) => `${file}@${right}`),
+    [`docs/draft.md@${drawnFirst.right}`],
+  );
+  assert.deepEqual(bases, ["https://github.com/octo/demo/pull/8"]);
+  assert.deepEqual(decorated, ["https://example.com/elsewhere"]);
+  // Each file's Open full diff opens it where it is a change: the stack's Changes, or 9's.
+  for (const full of container.querySelectorAll(".diff-file-view")) {
+    full.events.get("click")(plain);
+  }
+  assert.deepEqual(opened, [
+    { number: 70, tab: "changes", file: "src/app.txt", stack: true },
+    { number: 9, tab: "files", file: "src/other.txt" },
+  ]);
+  report.step = {
+    documents: documents.map(({ path: file, right }) => `${file}@${right}`),
+    patches: patches.map(({ path: file }) => file),
+    note_base: bases[0],
+    marked: [...decorated],
+    opened: opened.map((route) => JSON.stringify(route)),
+  };
+
+  // 8's record catches up, so the stack's key changes while its two commits and its files
+  // stay, and 10's record has a new revision. Nothing the reader sees changes: the
+  // comparison drawn stays, with no notice and the guide's view kept, and the step on screen
+  // is read again, at that comparison.
+  const view = container.querySelector(".github-pull-guided-review");
+  stackAnswer = stack(revision(2), caughtUp);
+  await poll();
+  assert.equal(container.querySelector(".github-pull-stack-take"), null, "nothing is offered");
+  assert.equal(container.querySelector(".github-pull-guided-review"), view, "nor drawn again");
+  assert.equal(reads.length, 2);
+  assert.equal(reads[1].asked.get("step"), "1");
+  reads[1].answer(step(revision(2), 1, pinsOf(drawnFirst)));
+  await settle();
+  report.edited = { reads: reads.length, asks: asks(reads[1]) };
+
+  // The reader has pressed on the page, as they did to open each file above, so from here a
+  // comparison that looks different is offered, not drawn under them.
+  container.events.get("pointerdown")();
+  // The bottom member moves the stack: its base and key change, while 10, the top member that
+  // carries the guide, keeps its head and its record. The new comparison is offered, not
+  // swapped in, its notice naming 8, whose new commits came after the head its record
+  // caught up to. The guide keeps the comparison drawn: nothing is read again, and the next
+  // step is read there and draws its document there. The notice's words are the golden's.
+  stackAnswer = stack(revision(2), belowMoved);
+  await poll();
+  const offer = container.querySelector(".github-pull-status")?.textContent ?? "";
+  assert.ok(offer.includes("#8"), "the notice names 8");
+  assert.notEqual(container.querySelector(".github-pull-stack-take"), null, "and offers it");
+  assert.equal(reads.length, 2, "an offered comparison reads nothing");
+  press(container, "Next step");
+  await settle();
+  assert.equal(reads.length, 3);
+  assert.equal(asks(reads[2]), `70 2 ${drawnFirst.left} ${drawnFirst.right} ${drawnFirst.key}`);
+  reads[2].answer(step(revision(2), 2, pinsOf(drawnFirst)));
+  await settle();
+  assert.equal(
+    documents.at(-1).right,
+    drawnFirst.right,
+    "a document is drawn at the comparison drawn",
+  );
+  report.below_moved = {
+    offer,
+    reads_before_next: 2,
+    asks: asks(reads[2]),
+    document_at: documents.at(-1).right,
+  };
+
+  // Then 10 moves too, and its author pins the guide again, so the carrier's revision and the
+  // comparison change together (B1 of review B on #838). Nothing is read; a step not read
+  // yet, read at the comparison drawn, names the new revision, or the route answers
+  // `stack_moved` for a guide pinned past it: either is that step's refusal in the stack's
+  // words, under the steps the guide keeps, and Show the new comparison is how to read it.
+  stackAnswer = stack(revision(3), movedTo);
+  await poll();
+  assert.equal(reads.length, 3, "a carrier that moves with the stack reads nothing");
+  const guided = () => container.querySelector(".github-pull-guided-review");
+  const said = () => guided().querySelector(".github-pull-quiet")?.textContent ?? "";
+  const listed = () => guided().querySelectorAll(".github-pull-guide-steps-item").length;
+  const MOVED =
+    "This stack has moved since its comparison was drawn. Show the new comparison to read its guide.";
+  press(container, "Next step");
+  await settle();
+  assert.equal(asks(reads[3]), `70 3 ${drawnFirst.left} ${drawnFirst.right} ${drawnFirst.key}`);
+  reads[3].answer(step(revision(3), 3, pinsOf(drawnFirst)));
+  await settle();
+  assert.equal(said(), MOVED);
+  assert.equal(listed(), 3, "the guide keeps its steps");
+  press(container, "Previous step");
+  await settle();
+  assert.equal(reads.length, 4, "a step in hand is not read again");
+  press(container, "Next step");
+  await settle();
+  assert.equal(asks(reads[4]), `70 3 ${drawnFirst.left} ${drawnFirst.right} ${drawnFirst.key}`);
+  // The route's own `stack_moved` says the comparison drawn may be gone, so the page reads
+  // the stack at once, not at its next poll, and keeps its offer.
+  const readsBefore = stackReads;
+  reads[4].answer({
+    stack: 70,
+    carrier: 10,
+    carrier_url: "https://github.com/octo/demo/pull/8",
+    record_revision: revision(3),
+    state: "stack_moved",
+  });
+  await settle();
+  assert.equal(said(), MOVED);
+  assert.equal(listed(), 3);
+  assert.equal(stackReads - readsBefore, 1, "the route's stack_moved reads the stack now");
+  assert.notEqual(container.querySelector(".github-pull-stack-take"), null, "and offers it");
+  const kept = listed();
+  // Back on the tab before taking the new comparison: the guide is not the one read at the
+  // comparison drawn, so nothing is read there, and the stack's words say why. The steps
+  // went with the view the tab disposed, and the route has only the guide pinned again.
+  handle.setTab("changes");
+  await settle();
+  handle.setTab("guided");
+  await settle();
+  assert.equal(reads.length, 5, "reopened, the guide reads nothing at the comparison drawn");
+  assert.equal(said(), MOVED);
+  report.carrier_moved = {
+    asks: asks(reads[3]),
+    step_refused: MOVED,
+    steps_kept: kept,
+    route_refused_step: reads[4].asked.get("step"),
+    route_refused_reads_stack: stackReads - readsBefore,
+    reopened_reads: reads.length - 5,
+    reopened_steps: listed(),
+  };
+
+  // The reader takes the new comparison: the guide is mounted again, its old view disposed,
+  // and read at the comparison now drawn.
+  container.querySelector(".github-pull-stack-take").events.get("click")();
+  await settle();
+  assert.ok(documents.every((drawn) => drawn.disposed) && patches.every((drawn) => drawn.disposed));
+  assert.equal(reads.length, 6);
+  assert.equal(asks(reads[5]), `70 1 ${movedTo.left} ${movedTo.right} ${movedTo.key}`);
+  report.taken = { asks: asks(reads[5]), earlier_views_disposed: true };
+
+  // Leaving the tab while that read is on its way disposes the view; the read goes on for
+  // the document's keep of the guide's answers (guide-reads.js), and its late answer draws
+  // nothing.
+  handle.setTab("changes");
+  await settle();
+  assert.equal(reads[5].signal.aborted, false);
+  assert.equal(container.querySelector(".github-pull-guided-review"), null);
+  reads[5].answer(step(revision(3), 1, pinsOf(movedTo)));
+  await settle();
+  assert.equal(container.querySelector(".github-pull-guided-review"), null);
+  const changes = drawings.findLast((drawing) => drawing.render)?.render;
+  assert.equal(changes.summary, false, "the header draws the Diff summary, the diff none");
+  report.left = {
+    tab: active(),
+    read_aborted: reads[5].signal.aborted,
+    // The header's Diff summary, once for each comparison drawn, and the diffs drawn.
+    summaries_drawn: files.summaries,
+    diffs_drawn: files.rendered,
+    changes_drawing: changes,
+  };
+
+  // Docs and Changes that could not load: a pull request's error notice and its Retry
+  // (`paintDiff` in stack-page.js, as `mountDiff` in pull-page.js). The page logs each
+  // failure; the session keeps the messages out of its transcript.
+  const logError = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args.map(String)[0]);
+  const body = container.querySelector(".github-pull-body");
+  const notice = () => body.querySelector(".github-pull-notice");
+  const retryButton = (node) => [...node.descendants()].find((each) => each.tag === "button");
+  /** What the body shows: the notice's words and its button, or the diff's host. */
+  const shows = () => {
+    const shown = notice();
+    if (shown === null) {
+      return body.querySelector(".metabrowser-diff-host") === null ? "(nothing)" : "the diff";
+    }
+    return `${shown.getAttribute("data-severity")}: ${shown.textContent}`;
+  };
+  const failed = {};
+  // Docs whose draw fails says so, and Retry draws it again.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  let renders = files.rendered;
+  failed.docs = { notice: shows(), retry: retryButton(notice())?.textContent ?? null };
+  assert.equal(failed.docs.notice, "error: Docs could not load. Retry");
+  retryButton(notice()).events.get("click")();
+  await settle();
+  failed.docs.after_retry = { shows: shows(), draws: files.rendered - renders };
+  assert.deepEqual(failed.docs.after_retry, { shows: "the diff", draws: 1 });
+  // Changes that draws and then fails its first screen says so too, and Retry disposes the
+  // view the failed draw left before it draws again.
+  failures.push("late");
+  handle.setTab("changes");
+  await settle();
+  const left = views.at(-1);
+  renders = files.rendered;
+  failed.changes = { notice: shows(), left_view_disposed: left.disposed };
+  assert.equal(failed.changes.notice, "error: Changes could not load. Retry");
+  retryButton(notice()).events.get("click")();
+  await settle();
+  failed.changes.after_retry = {
+    shows: shows(),
+    draws: files.rendered - renders,
+    left_view_disposed: left.disposed,
+  };
+  assert.deepEqual(failed.changes.after_retry, {
+    shows: "the diff",
+    draws: 1,
+    left_view_disposed: true,
+  });
+  // A Retry left behind by a tab switch draws nothing: the tab now shown keeps its diff.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  const behind = retryButton(notice());
+  handle.setTab("changes");
+  await settle();
+  renders = files.rendered;
+  behind.events.get("click")();
+  await settle();
+  failed.retry_after_tab_switch = { shows: shows(), draws: files.rendered - renders };
+  assert.deepEqual(failed.retry_after_tab_switch, { shows: "the diff", draws: 0 });
+  // And one pressed after the page is disposed draws nothing.
+  failures.push("throw");
+  handle.setTab("docs");
+  await settle();
+  const disposedRetry = retryButton(notice());
+  handle.dispose?.();
+  renders = files.rendered;
+  disposedRetry.events.get("click")();
+  await settle();
+  failed.retry_after_dispose = { draws: files.rendered - renders };
+  assert.deepEqual(failed.retry_after_dispose, { draws: 0 });
+  console.error = logError;
+  assert.equal(logged.length, 4, "each failure is logged once");
+  failed.logged = logged;
+  report.failed = failed;
+  console.log(JSON.stringify(report, null, 2));
+}
+
+run().catch((error) => {
+  // Straight to standard error: the failure section quiets `console.error` while it runs.
+  process.stderr.write(`${error?.stack ?? error}\n`);
+  process.exitCode = 1;
+});

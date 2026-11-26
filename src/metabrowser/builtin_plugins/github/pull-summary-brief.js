@@ -1,6 +1,7 @@
-// A pull request page's brief line in its Diff summary's row (mb-z8ea): "36 files changed ·
-// 2 A, 3 D, 31 M · +2,076 −224", what the pull request's cached list of changed files sums
-// to, drawn while the page reads the comparison its Diff summary is drawn from.
+// A pull request page's brief line in its Diff summary's row (mb-z8ea): "2 A, 3 D, 31 M ·
+// +2,076 −224", what the pull request's cached list of changed files sums to, drawn while the
+// page reads the comparison its Diff summary is drawn from; its file count, "36 files
+// changed", is on the header's size line above (pull-page.js, `paintSize`).
 //
 // The comparison waits on the record, which on a page whose record is not cached is the full
 // record from GitHub, seconds away, and is then read from the store. The changed-files list
@@ -29,9 +30,6 @@ import {
   rowLineInput,
   rowLineKey,
 } from "./row-lines.js";
-
-/** The dot after the file count, a line's, said as a comma (diff-view.js, `LINE_SEPARATOR`). */
-const SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
 
 /**
  * A cached list's sums with what it was listed against, as `GET pull-files-summary` answers
@@ -189,8 +187,8 @@ export function createSummaryBrief(deps) {
  * The brief line, through the SDK's painters, as the Diff summary's header draws a line with
  * no files to open (diff-view.js, `renderDiffSummary`): the file count, bold, and its dot, one
  * item (`.diff-summary-group`), then the shell's brief change line, each dot said as a comma.
- * An empty slot where the header's chevron is keeps its words where the header's will be
- * (`.github-pull-summary-brief` in styles.css).
+ * Its words start where the header's will, which leads with them, its chevron after them
+ * (`.github-pull-summary-brief` in styles.css; mb-f0pz).
  *
  * @param {{
  *   countPartsNodes(parts: MetabrowserCountParts): Array<Node | string>,
@@ -216,21 +214,9 @@ export function briefLine(mb, h, summary, breakdown) {
       role: "status",
       "aria-label": `${words}${line.label === "" ? "" : `: ${line.label}`}; loading the summary of changes`,
     },
-    [
-      h("span", { class: "diff-summary-chevron", "aria-hidden": "true" }),
-      h("span", { class: "diff-summary-group" }, [
-        h(
-          "span",
-          { class: "diff-summary-files" },
-          mb.countPartsNodes([
-            { number: mb.formatInteger(files) },
-            ` ${files === 1 ? "file" : "files"} changed`,
-          ]),
-        ),
-        ...mb.countPartsNodes([SEPARATOR]),
-      ]),
-      ...mb.changeLineNodes(line, { spoken: ", " }),
-    ],
+    // Its file count is on the size line above it, as the summary that replaces it leaves
+    // it there (docs/design-system.md, "Change Size Line").
+    mb.changeLineNodes(line, { spoken: ", " }),
   );
 }
 

@@ -41,11 +41,12 @@ from metabrowser.cache.atomic import RecordError, publish_entry, read_record, wr
 from metabrowser.cache.identity import (
     ObjectFormat,
     cache_slug,
+    cache_store_key,
     repository_store_id,
     source_identity,
-    store_key,
 )
 from metabrowser.cache.layout import (
+    LAYOUT_FORMAT,
     ensure_configuration,
     open_cache,
     preflight_layout,
@@ -53,6 +54,7 @@ from metabrowser.cache.layout import (
     read_layout,
 )
 from metabrowser.cache.lender import (
+    OVERLAY_FETCH_CONFIG,
     CheckoutRefusedError,
     Lender,
     LenderRefusal,
@@ -97,10 +99,12 @@ from metabrowser.cache.origin import (
     remote_tracking_ref,
 )
 from metabrowser.cache.paths import (
+    REPOSITORY_GIT,
     source_directory,
     source_record,
     staging_entry,
     store_directory,
+    store_git_directory,
     store_record,
 )
 from metabrowser.cache.providers import check_first_clone
@@ -249,7 +253,8 @@ class RemoteAccessError(AcquisitionError):
 
 
 class RepositoryTooLargeError(RemoteAccessError):
-    """A provider refused a first clone over its size limit, which *detail* states."""
+    """A first clone refused before it starts because it would not leave the reserve free
+    on the cache's volume (``cache/free_space.py``), which *detail* states."""
 
     def __init__(self, source_url: str, *, detail: str) -> None:
         super().__init__("too_large", source_url, detail=detail)
@@ -288,20 +293,25 @@ class RefCaseCollisionError(ValidationFailedError):
     state: Final = "ref_case_collision"
 
 
-async def _refuse_case_collisions(git_dir: Path, names: tuple[str, ...]) -> None:
-    """Refuse a store whose refs a case-insensitive filesystem folded together.
+async def _refuse_case_collisions(
+    git_dir: Path, names: tuple[str, ...], *, cause: GitCommandError | None = None
+) -> None:
+    """Refuse a store whose refs a case-insensitive filesystem cannot hold apart.
 
     On such a filesystem ``refs/remotes/origin/Feature`` and ``…/feature`` are one loose
-    file: a non-atomic fetch keeps whichever it wrote last under the first name, and the
-    other name resolves to it too, so a URL could pin the wrong commit. Nothing is
-    published; a refresh reports the same state for its own fetch.
+    file, and Git's non-atomic fetch meets that in one of two ways. Git 2.50.1 keeps
+    whichever it wrote last under the first name and exits 0, so the other name resolves
+    to it too and a URL could pin the wrong commit. Git 2.56.1 writes the first, refuses
+    the other with a ``!`` line in its porcelain listing, and exits 1; *cause* is that
+    failure, whose listing still names both (measured 2026-11-23 on macOS). Either way
+    nothing is published; a refresh reports the same state for its own fetch.
     """
 
     colliding = case_colliding_refs(names)
     if colliding and await store_ignores_case(repository_store_target(git_dir=git_dir)):
         raise RefCaseCollisionError(
             f"the source {describe_case_collision(colliding)}; nothing was published"
-        )
+        ) from cause
 
 
 def _report(on_phase: PhaseReporter | None, phase: str) -> None:
@@ -487,7 +497,7 @@ async def acquire_into_staging(
     # the home. Discovery stops at the working directory, and this one is private, new,
     # and never a repository, so neither the home nor anything enclosing it lends config.
     staging = home / staging_entry(entry)
-    git_dir = staging / "repository.git"
+    git_dir = staging / REPOSITORY_GIT
     try:
         _report(on_phase, "reading the default branch")
         try:
@@ -576,6 +586,7 @@ async def acquire_into_staging(
                     prune=False,
                     progress=on_progress is not None,
                     negotiation=negotiation,
+                    config=OVERLAY_FETCH_CONFIG if lender is not None else (),
                 ),
                 git_dir=git_dir,
                 on_progress=on_progress,
@@ -585,6 +596,7 @@ async def acquire_into_staging(
                 raise PartialCloneSourceError(
                     "the source is a partial clone missing objects; clone it fully first"
                 ) from exc
+            await _refuse_case_collisions(git_dir, fetched_ref_names(exc.stdout), cause=exc)
             raise _classified(source, exc) or FetchFailedError(
                 "the fetch into staging failed"
             ) from exc
@@ -695,6 +707,34 @@ def _claim_source_slug(home: Path, source: GitSource, source_id: str) -> tuple[s
         lock.release()
 
 
+def _claim_store_key(home: Path, source: GitSource, store_id: str) -> tuple[str, CacheLock]:
+    """Lock the key *store_id* is published under, or will be: the first no other store holds.
+
+    A name another store holds is skipped whatever the odds of that were
+    (:data:`~metabrowser.cache.identity.NAME_SUFFIX_CHARS`), so two stores never
+    share a directory. The identity is read again under the lock, which is what makes the
+    claim the store's: another process may have published at the key since it was chosen.
+    """
+
+    while True:
+        key = cache_store_key(
+            source.transport,
+            source.normalized,
+            store_id,
+            # Before the lock nothing here may change the home: the read under it does.
+            store_owner=lambda candidate: _store_id_at(home, candidate, shared="keep"),
+        )
+        lock = repository_store_lock(home, key)
+        try:
+            owner = _store_id_at(home, key)
+        except BaseException:
+            lock.release()
+            raise
+        if owner is None or owner == store_id:
+            return key, lock
+        lock.release()
+
+
 def _write_store_records(staged: StagingAcquisition, store_id: str, at: str) -> None:
     prefix = staging_entry(staged.entry)
     write_record_atomic(
@@ -722,6 +762,30 @@ def _write_store_records(staged: StagingAcquisition, store_id: str, at: str) -> 
         ),
         REPOSITORY_STORE_STATE_CONTRACT_ID,
     )
+
+
+def _store_id_at(home: Path, key: str, *, shared: SharedEntryPolicy = "repair") -> str | None:
+    """The identity the store published at *key* records, or ``None`` when nothing is there.
+
+    A store directory with no readable ``store.yml`` is damaged and is reported as such,
+    never as free: a claim must not publish beside it, and a lookup must not read it as
+    another store's.
+    """
+
+    try:
+        record = read_record(
+            home, store_record(key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID, shared=shared
+        )
+    except FileNotFoundError:
+        if os.path.lexists(home / store_directory(key)):
+            raise StoreDamagedError(
+                "a cached store has no store.yml (damaged), so it was not opened. Move the cache "
+                "directory aside, or set METABROWSER_CACHE_DIR to a different directory"
+            ) from None
+        return None
+    if not isinstance(record, RepositoryStore):
+        raise ValidationFailedError("store.yml did not validate")
+    return record.id
 
 
 def _require_same_store(home: Path, key: str, store_id: str) -> RepositoryStore:
@@ -810,7 +874,7 @@ def _published(
         home=home,
         slug=slug,
         store_key=key,
-        git_dir=home / store_directory(key) / "repository.git",
+        git_dir=home / store_git_directory(key),
         source=source,
         source_id=source_id,
         store_id=store_id,
@@ -846,9 +910,7 @@ def _attach_existing_source(home: Path, slug: str, source_id: str, store_id: str
         raise AliasConflictError("this source already names a different store")
 
 
-def _publish_store_and_alias(
-    staged: StagingAcquisition, store_id: str, key: str, at: str
-) -> PublishedSource:
+def _publish_store_and_alias(staged: StagingAcquisition, store_id: str, at: str) -> PublishedSource:
     """Publish or reuse the store, then its alias, under both locks held throughout.
 
     The alias lock and then the store lock are held from the store's rename through the
@@ -861,37 +923,41 @@ def _publish_store_and_alias(
     home, source, source_id = staged.home, staged.source, staged.source_id
     slug, alias_lock = _claim_source_slug(home, source, source_id)
     try:
-        with alias_lock, repository_store_lock(home, key) as store_lock:
-            _publish_store_if_absent(staged, key, store_lock)
-            # A concurrent acquisition may have won publication with a different HEAD.
-            # Report the selected store, never metadata from the discarded staging entry.
-            store = _require_same_store(home, key, store_id)
-            state = read_record(
-                home, store_record(key, "state.yml"), REPOSITORY_STORE_STATE_CONTRACT_ID
-            )
-            if (
-                not isinstance(state, RepositoryStoreState)
-                or state.default_remote_ref is None
-                or state.default_revision is None
-            ):
-                raise ValidationFailedError("the published store has no default revision")
-            if not os.path.lexists(home / source_directory(slug)):
-                _publish_source_directory(home, slug, source, source_id, store_id, at, alias_lock)
-            else:
-                _attach_existing_source(home, slug, source_id, store_id, at)
-            return _published(
-                home,
-                slug,
-                key,
-                source,
-                source_id,
-                store_id,
-                store.acquisition.object_format,
-                state.default_remote_ref,
-                state.default_revision,
-                state.last_fetch_at,
-                store.lender,
-            )
+        with alias_lock:
+            key, claim = _claim_store_key(home, source, store_id)
+            with claim as store_lock:
+                _publish_store_if_absent(staged, key, store_lock)
+                # A concurrent acquisition may have won publication with a different HEAD.
+                # Report the selected store, never metadata from the discarded staging entry.
+                store = _require_same_store(home, key, store_id)
+                state = read_record(
+                    home, store_record(key, "state.yml"), REPOSITORY_STORE_STATE_CONTRACT_ID
+                )
+                if (
+                    not isinstance(state, RepositoryStoreState)
+                    or state.default_remote_ref is None
+                    or state.default_revision is None
+                ):
+                    raise ValidationFailedError("the published store has no default revision")
+                if not os.path.lexists(home / source_directory(slug)):
+                    _publish_source_directory(
+                        home, slug, source, source_id, store_id, at, alias_lock
+                    )
+                else:
+                    _attach_existing_source(home, slug, source_id, store_id, at)
+                return _published(
+                    home,
+                    slug,
+                    key,
+                    source,
+                    source_id,
+                    store_id,
+                    store.acquisition.object_format,
+                    state.default_remote_ref,
+                    state.default_revision,
+                    state.last_fetch_at,
+                    store.lender,
+                )
     finally:
         if alias_lock.held:
             alias_lock.release()
@@ -941,16 +1007,35 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
     }
     if alias.store_id not in expected:
         raise AliasConflictError("this source already names a different store")
-    key = store_key(alias.store_id)
+    key = cache_store_key(
+        source.transport,
+        source.normalized,
+        alias.store_id,
+        store_owner=lambda candidate: _store_id_at(home, candidate, shared="keep"),
+    )
     try:
         store = read_record(
             home, store_record(key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID, shared="keep"
         )
+    except FileNotFoundError:
+        # No candidate key holds the store, so the alias names a store that is not there:
+        # a miss, and the acquisition that follows publishes the store under its key and
+        # leaves the alias as it is. This was "the aliased store is missing" and a refusal
+        # of every open, which no one could repair but by editing the cache. It is how an
+        # older release's clone, published under its old name after the migration,
+        # is cloned again and no longer in the way; ``/api/cache/sources`` still lists
+        # such a source ``dangling`` until then.
+        return None
+    try:
         state = read_record(
             home, store_record(key, "state.yml"), REPOSITORY_STORE_STATE_CONTRACT_ID, shared="keep"
         )
     except FileNotFoundError as exc:
-        raise ValidationFailedError("the aliased store is missing") from exc
+        raise ValidationFailedError("the aliased store has no state.yml") from exc
+    # A name no store held when it was read may hold one now: a store that records another
+    # identity is never opened for this source, whatever its directory is called.
+    if isinstance(store, RepositoryStore) and store.id != alias.store_id:
+        return None
     if not isinstance(store, RepositoryStore) or not isinstance(state, RepositoryStoreState):
         raise ValidationFailedError("the published store did not validate")
     if state.default_remote_ref is None or state.default_revision is None:
@@ -982,7 +1067,8 @@ def cached_source(source: GitSource, home: Path) -> PublishedSource | None:
     if not home.exists():
         return None
     validate_storage_separation(home)
-    if read_layout(home, shared="keep") is None:
+    layout = read_layout(home, shared="keep")
+    if layout is None or layout.format != LAYOUT_FORMAT:
         return None
     found = _find_published(source, home)
     if found is not None:
@@ -1058,11 +1144,10 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
         staged.abandon()
         raise ValidationFailedError("the source HEAD is not a branch")
     store_id = repository_store_id(staged.source_id, staged.object_format)
-    key = store_key(store_id)
     at = canonical_now()
     try:
         _write_store_records(staged, store_id, at)
-        return _publish_store_and_alias(staged, store_id, key, at)
+        return _publish_store_and_alias(staged, store_id, at)
     finally:
         # After the locks: when the store was reused, staging still holds a whole
         # fetched copy, and deleting it is no work to do under a lock.
@@ -1085,10 +1170,11 @@ async def acquire_source(
     A hit inspects an existing home without fetching or opening the cache, so it
     does not require the acquisition Git floor or owner-write on the home, and it
     makes no network request. It may try to record ``last_opened_at``; a failed write
-    is dropped and the hit still returns. A miss checks the Git floor and then lets
-    each provider refuse the first clone (the GitHub provider's size check) before
-    ``open_cache``, so neither refusal creates the application home or completes an
-    empty directory into an ``f01`` skeleton. A miss that is allowed to fetch then
+    is dropped and the hit still returns. A miss checks the Git floor and then
+    refuses a first clone that does not borrow from a checkout when the cache's volume has
+    less than the free-space reserve, and lets each provider refuse it (the GitHub
+    provider's size check), before ``open_cache``, so no refusal creates the application home or completes an
+    empty directory into an ``f03`` skeleton. A miss that is allowed to fetch then
     opens the cache (and sweeps staging) and fetches, telling *on_phase* each phase
     as it starts and *on_progress* how far the fetch has got. A future layout is refused
     before any write. Before it fetches, a miss takes the source's cold-load reservation:
@@ -1120,7 +1206,7 @@ async def acquire_source(
         source, checkout, on_note, allow_clone_fallback=allow_clone_fallback
     )
     if lender is None:
-        await check_first_clone(source)
+        await check_first_clone(source, home=home)
     home = (await run_lock_section(functools.partial(open_cache, home))).home
     with await _reserve_acquisition(source, home, on_note):
         found = await run_lock_section(functools.partial(_find_for_acquisition, source, home))
@@ -1141,7 +1227,7 @@ async def acquire_source(
                 raise CheckoutRefusedError(str(exc)) from exc
             # The origin's format is known only after the phase line was printed.
             _note(on_note, f"{exc}; cloning instead")
-            await check_first_clone(source)
+            await check_first_clone(source, home=home)
             staged = await acquire_into_staging(
                 source,
                 home=home,
@@ -1393,6 +1479,13 @@ def _find_for_acquisition(source: GitSource, home: Path) -> PublishedSource | No
         config_missing = read_config(configuration_directory(), shared="keep") is None
     except PrivateStorageError:
         layout = None
+    if layout is not None and layout.format != LAYOUT_FORMAT:
+        # An older home's stores are named as that format named them, and only the
+        # migration open_cache runs renames them. A store it holds is a hit once migrated,
+        # which needs no network, so the home is migrated before the hit is looked for and
+        # not after a miss has asked a provider about the repository.
+        open_cache(home)
+        layout = read_layout(home, shared="keep")
     if layout is not None:
         found = _find_published(source, home)
         if found is not None:

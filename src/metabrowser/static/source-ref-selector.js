@@ -1,9 +1,10 @@
 // The branch and tag selector of a served mirror, and of a served checkout.
 //
 // A page on a mirror's pin shows a compact button naming the ref it was rendered for.
-// Opening it lists the mirror's branches or tags from GET /api/source/refs, the
-// default branch first and the served ref marked, narrowed by a filter box; the server
-// bounds and counts the list, and the page says when it stops short. Choosing a ref
+// Opening it lists every one of the mirror's branches or tags from GET /api/source/refs,
+// the default branch first and then newest first, with the served ref marked, narrowed
+// by a filter box. The list draws only the rows near its view (`drawWindow`), so what it
+// draws costs the same over ten thousand branches as over ten. Choosing a ref
 // switches the served pin with POST /api/source/pin -- a same-origin JSON request
 // behind the server's guard -- and names the page's own /view/ address, so the answer
 // says where the page goes: the same file or folder when the new revision has it,
@@ -15,13 +16,49 @@
 // checked out. What a checkout adds is told by the page (`METABROWSER_SOURCE_CHECKOUT`)
 // and by the listing:
 //
+// - words in its row before the ref, since the checked-out branch names both of a
+//   checkout's views: "Working tree" and the branch or detached commit `HEAD` is on, or
+//   "Revision" and the ref chosen, with a button back to the working tree at the row's
+//   end (`describe`, docs/design-system.md, "The Ref Selector");
 // - a Working tree row above the refs, the live files on disk, which is what a folder
-//   opens on and the only choice that is not a ref. The checked-out branch is a ref like
-//   any other and shows its last commit, so it is marked "checked out", not "current";
+//   opens on and the only choice that is not a ref. It names the folder by its path, and
+//   has no commit or age: what is on disk is not one commit. The checked-out branch is a
+//   ref like any other and shows its last commit, so it is marked "checked out", not
+//   "current";
 // - a third list, Remotes, its remote-tracking branches, beside its own branches and
 //   its tags;
 // - an offer to reload when the server comes to serve something else, which a mirror's
-//   freshness row makes and a checkout's page has no such row to make.
+//   freshness row makes and a checkout's page has no such row to make;
+// - its origin's branches and tags from a store Metabrowser keeps beside the checkout
+//   (`origin` in the listing; metabrowser/checkout_store.py). Once that store exists, the
+//   Remotes list has the origin's branches as Metabrowser last fetched them, in place of
+//   the checkout's own `origin/*`, and the Tags list the origin's tags; a line under the
+//   list says so and when, or why the origin is not fetched. The origin's default branch
+//   is first there and marked. A row there whose branch the reader's own checkout has
+//   at another commit, or not at all, says so (`ownDifference`): "yours differs" where
+//   the checkout's own `origin/<branch>` is not where the origin's is, which is a branch
+//   the reader has not fetched since it moved, or has pushed since. An open list of a
+//   checkout, once it shows Remotes or Tags, makes a visible page's own ask once
+//   (`{"for": "page"}`), which fetches a store older than the server's freshness window,
+//   and asks for the list again while that runs.
+//
+// The selector chooses the revision the Files and Commits tabs both show: the server's
+// one source session, whose files the tree reads and whose history the graph walks
+// (`session_git_location` in git/routes.py). The server draws its one row under the tabs,
+// above both tabs' toolbars, and it hides under Pulls, which has its own scope (server.py,
+// static/main-tabs.js). A switch keeps the reader on the tab it was made from
+// (`switchTo`). Each listed ref shows its commit as the history does, Git's short ID in
+// the commit-ID face, and the commit's age by the shared formatter (docs/design-system.md,
+// "Age").
+//
+// A branch that is the head of a pull request shows it on a second line: its state's
+// icon, its title, and its number, from the listing's `pulls`, which the server reads from
+// what the repository's provider has cached and never fetches. The filter finds a branch
+// by its pull request's number or title too, which the server does, so the list the page
+// shows is the server's. While the provider is still filling its cache the listing says
+// so, and an open list asks again (`PULLS_POLL_MS`) until it is full. A row with a pull
+// request is taller than one without, so the window is placed by each row's own offset
+// (`rowOffsets`), not by one height.
 //
 // Every decision lives here without a DOM: `describe` turns the selector's state into
 // what it shows, and `createSelector` owns loading, filtering, stale answers, and the
@@ -32,6 +69,7 @@
 (() => {
   const REFS_ROUTE = "/api/source/refs";
   const PIN_ROUTE = "/api/source/pin";
+  const REFRESH_ROUTE = "/api/source/refresh";
   const VIEW_PREFIX = "/view/";
   // A mirror keeps its origin's branches where a checkout keeps a remote's: it has no
   // branches of its own, so they are simply its branches.
@@ -40,10 +78,51 @@
   const LOCAL_BRANCH_PREFIX = "refs/heads/";
   const REMOTE_PREFIX = "refs/remotes/";
   const WORKING_TREE = "Working tree";
+  // What a checkout's row says before the ref it shows when that is a revision, and what
+  // each of the two words says as its tooltip (docs/design-system.md, "The Ref Selector").
+  // server.py draws the same words at first paint (`_source_ref_label_html`).
+  const REVISION = "Revision";
+  const REVISION_TIP = "A committed revision, read from Git. The files on disk are unchanged.";
+  const WORKING_TREE_TIP = "The files on disk, live.";
+  const BACK_LABEL = "Back to the working tree";
+  const BACK_TIP = "Back to the working tree, the files on disk";
   const PULL_HEAD = /^refs\/pull\/([1-9][0-9]{0,9})\/head$/;
+  // The Commits tab's id among the main tabs (static/main-tabs.js, `MAIN_TABS`), and the
+  // history entry's state that is the tab's own landing: it has no address of its own, so
+  // a page reloaded on `/view/` with this state opens on Commits at its newest commit
+  // (main-tabs.js, `openMainTab`; app.js, `isGitHistoryLanding`).
+  const COMMITS_TAB = "git";
+  const COMMITS_LANDING = Object.freeze({ gitLanding: true });
   // Typing narrows the list through the server, which reads the mirror's refs once per
   // request; waiting for a short pause in typing asks once per word, not per key.
   const FILTER_DELAY_MS = 150;
+  // While the server says it is still filling its cache of pull requests, an open list asks
+  // again at this interval: the answer is kept under the cache's revision, so each ask
+  // reads one small file and runs no Git, and the rows gain their pull requests as the
+  // pages arrive. It stops when the list closes or the server says the cache is full.
+  const PULLS_POLL_MS = 3000;
+  // A pull request's title is cut to what one line holds; the row's tooltip carries the
+  // rest, and when more than one pull request names a branch, the others.
+  const PULL_MORE_LIMIT = 5;
+  // What the list says beside a filter's finds while the server has cached only some of the
+  // repository's pull requests: a number or a title may match more branches than it lists.
+  const PULLS_INCOMPLETE = "Some pull requests are still loading, so more branches may match.";
+  // Rows drawn beyond the list's view on either side, so a scroll or a key finds the next
+  // rows drawn already. The list draws the rows in its view and these, whatever the
+  // listing holds, and places each by its index over a box as tall as all of them
+  // (`drawWindow`). Drawing every row instead cost the same main-thread time per row
+  // whatever was in view. Measured 2026-11-19 in headless Chrome 152 on an M1 Pro at a
+  // load average of 17 to 19, building the rows and then laying them out: 1,301 rows took
+  // 8 and 54 ms, and 10,001 took 57 and 430 ms and 320 ms more to the next frame, while
+  // `content-visibility: auto` on each row made 10,001 slower, 0.8 to 1.0 s and 2.6 to
+  // 2.9 s. Drawing this window instead, 32 rows at the list's 320 px, ran no task over
+  // 50 ms: opening painted in a median 68 ms over 1,301 branches, and 0.25 and 0.67 s
+  // over 10,001 with packed and loose refs, of which fetching the listing alone took 30
+  // ms, 0.21 s, and 0.57 s; End, each ArrowDown, and a scroll to the foot each reached the
+  // next frame in 30 to 34 ms (same machine, a load average of 17 to 33). Twenty rows is
+  // 580 px, more than the list's tallest view, so a scroll of a whole view between two
+  // frames, before its scroll event draws, still lands on rows already drawn.
+  const ROWS_OVERSCAN = 20;
 
   /** @type {Readonly<Record<MetabrowserSourceRefKind, string>>} */
   const KIND_PLURAL = Object.freeze({
@@ -52,12 +131,12 @@
     remote: "remote branches",
   });
   /** @type {Readonly<Record<MetabrowserSourceRefKind, string>>} */
-  const KIND_LABEL = Object.freeze({ branch: "Branches", tag: "Tags", remote: "Remotes" });
+  const KIND_LABEL = Object.freeze({ branch: "Branches", remote: "Remotes", tag: "Tags" });
   /** The lists each subject has; the listing says the same in `kinds`.
    * @type {readonly MetabrowserSourceRefKind[]} */
   const MIRROR_KINDS = Object.freeze(["branch", "tag"]);
   /** @type {readonly MetabrowserSourceRefKind[]} */
-  const CHECKOUT_KINDS = Object.freeze(["branch", "tag", "remote"]);
+  const CHECKOUT_KINDS = Object.freeze(["branch", "remote", "tag"]);
 
   /**
    * What the button says for the ref and commit a page was rendered for. Pure.
@@ -90,7 +169,8 @@
     if (pull !== null) {
       return { kind: "Pull request", name: `#${pull[1]}` };
     }
-    return { kind: "Commit", name: shown.pin.slice(0, 12) };
+    // As every row names a commit (`shortCommit`).
+    return { kind: "Commit", name: window.MetabrowserFormatters.shortCommit(shown.pin) };
   }
 
   /**
@@ -105,10 +185,46 @@
     return (
       (record.kind === "branch" || record.kind === "tag" || record.kind === "remote") &&
       typeof record.query === "string" &&
-      typeof record.total === "number" &&
-      typeof record.truncated === "boolean" &&
       Array.isArray(record.refs)
     );
+  }
+
+  /**
+   * What a row of the origin's branches says where the reader's own remote-tracking
+   * branch is not at the row's commit, or `null` where it is. Pure.
+   *
+   * The row is the origin's branch as Metabrowser last fetched it into its own store;
+   * the checkout's `origin/<branch>` is where the reader's own last fetch left it. The
+   * server says only that the two differ, and where the checkout's is: which is ahead
+   * needs a walk of the history between them, which the listing does not make. The
+   * commits' dates are in the listing, so the tooltip says which was committed later.
+   *
+   * @param {MetabrowserSourceRef} row
+   * @returns {{text: string, tip: string} | null}
+   */
+  function ownDifference(row) {
+    const own = row.checkout;
+    if (own === undefined || own === null) {
+      return null;
+    }
+    if (own.commit === null) {
+      return {
+        text: "not in checkout",
+        tip: `Your checkout has no ${row.name} of its own. This row is the origin's, as last fetched.`,
+      };
+    }
+    const mine = own.committed_at;
+    const theirs = row.committed_at;
+    const where =
+      mine === null || theirs === null || mine === theirs
+        ? "another commit"
+        : mine < theirs
+          ? "an earlier commit by date"
+          : "a later commit by date";
+    return {
+      text: "yours differs",
+      tip: `Your checkout's ${row.name} is at ${where}. This row is the origin's, as last fetched.`,
+    };
   }
 
   /**
@@ -119,7 +235,42 @@
    */
   function describe(state) {
     const checkout = state.checkout === true;
-    const label = shownLabel(state.shown, checkout);
+    // Which of a checkout's two views the page shows, which its row says in words before
+    // the ref: the working tree, the files on disk on the branch or commit `HEAD` is on,
+    // or a revision chosen from the list, read-only, with a button back. A mirror has
+    // only revisions, so its row names the ref alone.
+    const view = !checkout ? null : state.shown === null ? "working-tree" : "revision";
+    const workingBranch = view === "working-tree" ? state.workingBranch || undefined : undefined;
+    const workingCommit =
+      view === "working-tree" && workingBranch === undefined
+        ? state.workingCommit || undefined
+        : undefined;
+    const label = workingBranch
+      ? { kind: "Branch", name: workingBranch }
+      : workingCommit
+        ? { kind: "Commit", name: window.MetabrowserFormatters.shortCommit(workingCommit) }
+        : view === "working-tree"
+          ? null
+          : shownLabel(state.shown, checkout);
+    // The working tree's detached commit is the ID alone: the word before it says what it is.
+    const refText =
+      label === null
+        ? ""
+        : workingCommit || label.name === ""
+          ? label.name || label.kind
+          : `${label.kind}: ${label.name}`;
+    const viewLabel =
+      view === "working-tree" ? WORKING_TREE : view === "revision" ? REVISION : null;
+    const viewTip =
+      view === null
+        ? null
+        : view === "revision"
+          ? REVISION_TIP
+          : workingBranch
+            ? `${WORKING_TREE_TIP} The checkout is on ${workingBranch}.`
+            : workingCommit
+              ? `${WORKING_TREE_TIP} HEAD is detached at ${label?.name}.`
+              : WORKING_TREE_TIP;
     const plural = KIND_PLURAL[state.kind];
     const listing = state.listing;
     // A mirror's branch is its origin's, a remote chip; a checkout's own is a local one.
@@ -132,11 +283,20 @@
         : listing.refs.map((row) => ({
             name: row.name,
             ref: row.ref,
-            commit: row.commit.slice(0, 12),
+            commit: window.MetabrowserFormatters.shortCommit(row.commit),
+            committedAt: row.committed_at,
             default: row.default,
             checkedOut: row.checked_out === true,
             current: row.current,
             chip,
+            own: ownDifference(row),
+            pulls: (row.pulls ?? []).map((pull) => ({
+              number: pull.number,
+              title: pull.title,
+              state: pull.state,
+            })),
+            // How many the branch heads, of which the row lists the first few.
+            pullsTotal: row.pulls_total ?? row.pulls?.length ?? 0,
           }));
     let note = "";
     if (state.loading && listing === null) {
@@ -146,35 +306,85 @@
         listing.query === ""
           ? `The ${checkout ? "checkout" : "mirror"} has no ${plural}.`
           : `No ${plural} match.`;
-    } else if (listing?.truncated) {
-      note = `Showing ${listing.refs.length} of ${listing.total} ${plural}; filter to narrow.`;
     }
     // The working tree is a checkout's alone, and is no ref: it is listed whatever the
-    // list and the filter show. Until the first listing says whether it is served, the
-    // page does: a checkout's page with no pin shows it.
+    // list and the filter show, named by the folder's path. Until the first listing says
+    // whether it is served, the page does: a checkout's page with no pin shows it. The
+    // branch it is on is not repeated here: the Branches list marks it "checked out".
     const tree = listing?.working_tree ?? null;
+    const location = tree?.location ?? "";
+    // The folder's own name, which the row keeps whole: the path ends with it, in the
+    // platform's separator, except at the home directory, whose path is `~` alone.
+    const name = tree?.name ?? "";
+    const cut = name !== "" && location.endsWith(name) ? location.length - name.length : 0;
     /** @type {MetabrowserSourceRefSelectorModel["workingTree"]} */
     const workingTree = !checkout
       ? null
       : {
           current: tree !== null ? tree.current : state.shown === null,
-          detail:
-            tree === null
-              ? "Live local files"
-              : tree.head_name !== null
-                ? `Live local files, on ${tree.head_name}`
-                : "Live local files, on no branch",
+          location,
+          directory: location.slice(0, cut),
+          base: location.slice(cut),
         };
+    // The filter finds a branch by its pull request's number or title once the server has
+    // them; a tag has none.
+    const pullsReady = listing?.pull_requests?.state === "ready";
+    // A filter finds only the pull requests the server has cached, so while it has some of
+    // them it says so, beside what the filter found (mb-tjbm review A8).
+    if (pullsReady && listing?.pull_requests?.complete === false && state.query !== "") {
+      note = note === "" ? PULLS_INCOMPLETE : `${note} ${PULLS_INCOMPLETE}`;
+    }
+    // What the list says of the store its origin's refs are read from: only for the lists
+    // that read it, a checkout's remote-tracking branches and its tags.
+    /** @type {MetabrowserSourceRefSelectorModel["origin"]} */
+    let origin = null;
+    const store = listing?.origin ?? null;
+    if (checkout && store !== null && state.kind !== "branch") {
+      const what = state.kind === "tag" ? "tags" : "branches";
+      if (store.state === "ready") {
+        origin = {
+          text: `The origin's ${what} are as Metabrowser last fetched them`,
+          fetchedAt: store.last_fetch_at,
+          tone: "quiet",
+        };
+      } else if (store.state === "acquiring") {
+        origin = {
+          text: `Fetching the origin's ${what}. Until then these are the checkout's own.`,
+          fetchedAt: null,
+          tone: "quiet",
+        };
+      } else {
+        // The store's reason (`store.detail`) is the answer's, for an agent.
+        origin = {
+          text: "Origin not fetched. These are the checkout's own.",
+          fetchedAt: null,
+          tone: "warning",
+        };
+      }
+    }
     return {
-      button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
+      button:
+        viewLabel === null ? refText : refText === "" ? viewLabel : `${viewLabel} · ${refText}`,
+      view,
+      viewLabel,
+      viewTip,
+      refText,
+      // A revision of a checkout has a button back to its working tree.
+      back: view === "revision",
       // A pull request's number, which the button sets in its own weight
       // (docs/design-system.md, "Pull Request Numbers").
-      pullNumber: label.kind === "Pull request" ? label.name : null,
+      pullNumber: label?.kind === "Pull request" ? label.name : null,
+      // A bare commit's ID, which the button sets in the commit-ID face.
+      commitId: label?.kind === "Commit" ? label.name : null,
       selectedRef:
-        label.kind === "Branch" || label.kind === "Tag" || label.kind === "Remote branch"
+        label !== null &&
+        (label.kind === "Branch" || label.kind === "Tag" || label.kind === "Remote branch")
           ? {
               name: label.name,
               label: label.name,
+              ref: workingBranch
+                ? LOCAL_BRANCH_PREFIX + workingBranch
+                : (state.shown?.ref ?? undefined),
               kind:
                 label.kind === "Tag"
                   ? "tag"
@@ -187,11 +397,14 @@
       kind: state.kind,
       kinds: [...(listing?.kinds ?? (checkout ? CHECKOUT_KINDS : MIRROR_KINDS))],
       query: state.query,
+      filterLabel: pullsReady ? `Filter ${plural} or pull requests` : `Filter ${plural}`,
+      pullRequests: listing?.pull_requests ?? null,
       loading: state.loading,
       switching: state.switching,
       workingTree,
       rows,
       note,
+      origin,
       error: state.error,
       removed: state.removed === true,
       stale:
@@ -238,24 +451,243 @@
   }
 
   /**
+   * Where each of *rows* sits in the list, and where the last one ends. A row with a pull
+   * request is *tall* high and any other *plain*, so the answer has one more entry than
+   * there are rows: row *at* is from `offsets[at]` to `offsets[at + 1]`. Pure.
+   *
+   * @param {ReadonlyArray<{pulls: ReadonlyArray<unknown>}>} rows
+   * @param {number} plain A row with no pull request.
+   * @param {number} tall A row with one.
+   * @returns {number[]}
+   */
+  function rowOffsets(rows, plain, tall) {
+    /** @type {number[]} */
+    const offsets = new Array(rows.length + 1);
+    let top = 0;
+    for (let at = 0; at < rows.length; at += 1) {
+      offsets[at] = top;
+      top += rows[at].pulls.length > 0 ? tall : plain;
+    }
+    offsets[rows.length] = top;
+    return offsets;
+  }
+
+  /**
+   * How many rows begin before *y*, or at it with *atIt*: the index of the first row that
+   * begins after it. Pure.
+   *
+   * @param {readonly number[]} offsets
+   * @param {number} y
+   * @param {boolean} [atIt]
+   * @returns {number}
+   */
+  function rowsBefore(offsets, y, atIt = false) {
+    let low = 0;
+    let high = offsets.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (atIt ? offsets[middle] <= y : offsets[middle] < y) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+
+  /**
+   * Which rows a list scrolled to *scrollTop* draws in a view *viewHeight* tall, over rows
+   * placed at *offsets* (`rowOffsets`): those in view and ROWS_OVERSCAN more on either
+   * side, as the range from *start* up to *end*, and the row at *roving*, the one that
+   * takes Tab, as *also* when the range leaves it out, else -1. That row may have focus,
+   * and Tab from the filter box goes to it, so it stays drawn however far the list scrolls
+   * from it. Until a row has been measured, every offset is 0 and the first rows are
+   * drawn, as many as the overscan on both sides. Pure.
+   *
+   * @param {readonly number[]} offsets
+   * @param {number} scrollTop
+   * @param {number} viewHeight
+   * @param {number} roving
+   * @returns {{start: number, end: number, also: number}}
+   */
+  function rowWindow(offsets, scrollTop, viewHeight, roving) {
+    const count = offsets.length - 1;
+    if (count <= 0) {
+      return { start: 0, end: 0, also: -1 };
+    }
+    let start = 0;
+    let end = Math.min(count, 2 * ROWS_OVERSCAN);
+    if (offsets[count] > 0) {
+      // The row at the view's top is the last that begins at or before it, and the view's
+      // foot is in the last row that begins before it.
+      const first = rowsBefore(offsets, scrollTop, true) - 1;
+      const last = rowsBefore(offsets, scrollTop + viewHeight);
+      start = Math.max(0, Math.min(count, first - ROWS_OVERSCAN));
+      end = Math.max(start, Math.min(count, last + ROWS_OVERSCAN));
+    }
+    const outside = roving >= 0 && roving < count && (roving < start || roving >= end);
+    return { start, end, also: outside ? roving : -1 };
+  }
+
+  /**
+   * Whether two answers of the refs route say the same, so an answer asked for again while
+   * the server fills its pull requests need not be drawn when nothing in it moved. Pure.
+   *
+   * @param {MetabrowserSourceRefListing | null} a
+   * @param {MetabrowserSourceRefListing | null} b
+   * @returns {boolean}
+   */
+  function sameListing(a, b) {
+    if (a === null || b === null) {
+      return a === b;
+    }
+    const pa = a.pull_requests;
+    const pb = b.pull_requests;
+    if (
+      a.kind !== b.kind ||
+      a.query !== b.query ||
+      a.pin !== b.pin ||
+      a.ref !== b.ref ||
+      a.refs.length !== b.refs.length ||
+      (pa?.state ?? null) !== (pb?.state ?? null) ||
+      pa?.complete !== pb?.complete ||
+      pa?.refreshing !== pb?.refreshing ||
+      JSON.stringify(a.origin ?? null) !== JSON.stringify(b.origin ?? null) ||
+      JSON.stringify(a.working_tree) !== JSON.stringify(b.working_tree)
+    ) {
+      return false;
+    }
+    for (let at = 0; at < a.refs.length; at += 1) {
+      const x = a.refs[at];
+      const y = b.refs[at];
+      if (
+        x.ref !== y.ref ||
+        x.name !== y.name ||
+        x.commit !== y.commit ||
+        x.committed_at !== y.committed_at ||
+        x.default !== y.default ||
+        x.checked_out !== y.checked_out ||
+        x.current !== y.current ||
+        JSON.stringify(x.checkout ?? null) !== JSON.stringify(y.checkout ?? null) ||
+        (x.pulls_total ?? 0) !== (y.pulls_total ?? 0) ||
+        pullsSignature(x.pulls ?? []) !== pullsSignature(y.pulls ?? [])
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * What a row's pull requests say, as one string to compare. Pure.
+   *
+   * @param {ReadonlyArray<{number: number, title: string, state: string}>} pulls
+   * @returns {string}
+   */
+  function pullsSignature(pulls) {
+    return pulls.map((pull) => `${pull.number}\0${pull.state}\0${pull.title}`).join("\n");
+  }
+
+  /**
+   * Whether two lists of model rows are the same refs drawn the same way, whatever pull
+   * requests they have: the rows a drawn list can keep as they are, and patch. Pure.
+   *
+   * @param {ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>} a
+   * @param {ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>} b
+   * @returns {boolean}
+   */
+  function sameRefLines(a, b) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    for (let at = 0; at < a.length; at += 1) {
+      const x = a[at];
+      const y = b[at];
+      if (
+        x.ref !== y.ref ||
+        x.name !== y.name ||
+        x.commit !== y.commit ||
+        x.committedAt !== y.committedAt ||
+        x.default !== y.default ||
+        x.checkedOut !== y.checkedOut ||
+        x.current !== y.current ||
+        x.chip !== y.chip ||
+        (x.own?.tip ?? "") !== (y.own?.tip ?? "")
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Where a list scrolls to when its rows are laid out again, as they are when pull
+   * requests arrive for rows above the view and make those rows taller. Pure.
+   *
+   * The reader keeps what they were looking at: the row at the top of the view stays
+   * where it was in the view, by its ref; a list scrolled to its foot, as End leaves it,
+   * stays at its foot; and a row that had focus and was in view is in view still.
+   *
+   * *before* and *after* are each the refs in order and where each sits
+   * (`rowOffsets`); *top* and *view* are the list's scroll position and its height;
+   * *focused* is the ref of the row that has focus, or null.
+   *
+   * @param {{refs: readonly string[], offsets: readonly number[]}} before
+   * @param {{refs: readonly string[], offsets: readonly number[]}} after
+   * @param {number} top
+   * @param {number} view
+   * @param {string | null} focused
+   * @returns {number}
+   */
+  function anchoredScroll(before, after, top, view, focused) {
+    const was = before.offsets[before.refs.length] ?? 0;
+    const now = after.offsets[after.refs.length] ?? 0;
+    const most = Math.max(0, now - view);
+    if (!(was > 0) || !(now > 0) || before.refs.length === 0) {
+      return Math.min(top, most);
+    }
+    if (top > 0 && top + view >= was - 0.5) {
+      return most;
+    }
+    const first = Math.max(0, rowsBefore(before.offsets, top, true) - 1);
+    const anchor = after.refs.indexOf(before.refs[first]);
+    let next = anchor < 0 ? top : after.offsets[anchor] + (top - before.offsets[first]);
+    if (focused !== null) {
+      const was_ = before.refs.indexOf(focused);
+      const is = after.refs.indexOf(focused);
+      const visible =
+        was_ >= 0 && before.offsets[was_ + 1] > top && before.offsets[was_] < top + view;
+      if (visible && is >= 0) {
+        if (after.offsets[is + 1] > next + view) {
+          next = after.offsets[is + 1] - view;
+        }
+        if (after.offsets[is] < next) {
+          next = after.offsets[is];
+        }
+      }
+    }
+    return Math.max(0, Math.min(next, most));
+  }
+
+  /**
    * Why a switch was refused, the way the selector says it.
    *
-   * @param {number} status
    * @param {unknown} body
    * @param {boolean} checkout Whether the refs are a checkout's, which fetches nothing.
    */
-  function switchFailure(status, body, checkout) {
+  function switchFailure(body, checkout) {
     const record = /** @type {{code?: unknown} | null} */ (
       body !== null && typeof body === "object" ? body : null
     );
     const code = record !== null && typeof record.code === "string" ? record.code : "";
     if (code === "selection_pending") {
-      return "The mirror is fetching that ref; choose it again when the fetch ends.";
+      return "That branch or tag is still being fetched. Choose it again shortly.";
     }
     if (code === "selection_not_found") {
-      return `That ref is no longer in the ${checkout ? "checkout" : "mirror"}.`;
+      return `That branch or tag is no longer in the ${checkout ? "checkout" : "mirror"}.`;
     }
-    return `Could not switch (${code || `HTTP ${status}`}).`;
+    // The status and code are the answer's, for an agent (docs/design-system-messages.md).
+    return "Could not switch. Try again.";
   }
 
   /**
@@ -263,12 +695,15 @@
    *
    * *options.shown* is the pin and ref the page was rendered for, which the server
    * writes into a pin's page. A switch that leaves the server serving exactly that
-   * only closes the selector; any other answer opens where the server says.
+   * only closes the selector; any other answer opens the new revision on the tab
+   * `deps.tab` names: Files where the server says, Commits at its own landing.
    * *options.checkout* is whether the page is a checkout's: with no pin it shows the
-   * working tree, which is then what a switch is compared with.
+   * working tree, which is then what a switch is compared with. *options.workingBranch*
+   * is the branch the working tree is on, and *options.workingCommit* the commit a
+   * detached `HEAD` is at, which its row names (server.py writes both on the row).
    *
    * @param {MetabrowserSourceRefSelectorDependencies} deps
-   * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean}} [options]
+   * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean, workingBranch?: string, workingCommit?: string}} [options]
    */
   function createSelector(deps, options = {}) {
     const checkout = options.checkout === true;
@@ -282,7 +717,14 @@
       loading: false,
       switching: false,
       error: null,
-      ...(checkout ? { checkout, stale: null } : {}),
+      ...(checkout
+        ? {
+            checkout,
+            workingBranch: options.workingBranch,
+            workingCommit: options.workingCommit,
+            stale: null,
+          }
+        : {}),
     };
     // Each listing request takes the next number; only the newest one's answer counts,
     // so a slow answer to an older filter never replaces a newer one. A newer request,
@@ -293,6 +735,11 @@
     let inflight = null;
     /** @type {unknown} */
     let filterTimer = null;
+    /** The wait before the next ask for pull requests the server was still filling. */
+    /** @type {unknown} */
+    let pullsTimer = null;
+    // Whether the visible page's own ask went out since the list was opened.
+    let askedForOrigin = false;
     let disposed = false;
 
     function render() {
@@ -308,20 +755,62 @@
       }
     }
 
+    function clearPullsTimer() {
+      if (pullsTimer !== null) {
+        deps.cancel(pullsTimer);
+        pullsTimer = null;
+      }
+    }
+
     function abortInflight() {
       inflight?.abort();
       inflight = null;
     }
 
-    async function load() {
-      clearFilterTimer();
+    /** Ask again after PULLS_POLL_MS while the server fills its pull requests, or fetches
+     * the store a checkout's origin is listed from. */
+    function watchPulls() {
+      clearPullsTimer();
+      const filling =
+        state.listing?.pull_requests?.refreshing === true ||
+        state.listing?.origin?.refreshing === true;
+      if (disposed || !state.open || !filling) {
+        return;
+      }
+      pullsTimer = deps.schedule(() => {
+        pullsTimer = null;
+        void load(true);
+      }, PULLS_POLL_MS);
+    }
+
+    /**
+     * Ask for the list. *quiet* is the ask for pull requests the server was filling: it
+     * shows nothing while it waits, and a refusal leaves the rows as they are.
+     *
+     * @param {boolean} [quiet]
+     */
+    async function load(quiet = false) {
+      // A quiet ask never stands in for one the reader waits on: a filter still in its
+      // pause asks for itself, with what was typed, and a quiet ask that failed meanwhile
+      // would have dropped it (mb-tjbm review A9).
+      if (quiet && filterTimer !== null) {
+        watchPulls();
+        return;
+      }
+      if (!quiet) {
+        clearFilterTimer();
+      }
+      clearPullsTimer();
       abortInflight();
       requested += 1;
       const ticket = requested;
       const controller = new AbortController();
       inflight = controller;
-      state.loading = true;
-      render();
+      if (!quiet) {
+        state.loading = true;
+        render();
+      }
+      const asked = { kind: state.kind, query: state.query };
       const params = new URLSearchParams({ kind: state.kind });
       if (state.query !== "") {
         params.set("q", state.query);
@@ -348,11 +837,12 @@
           // that folder for a repository's root: there is nothing to choose among, so
           // the row goes, as the Commits tab does when discovery says the same.
           gone = true;
-        } else if (refusal?.code === "unsupported_git" && typeof refusal.error === "string") {
-          // The server's own words: which Git a checkout's revisions are read with.
-          error = refusal.error;
+        } else if (refusal?.code === "unsupported_git") {
+          // Which Git is needed, and why, is the answer's `error`, for an agent.
+          error = "Git on this machine is too old to list these. Update Git to see them.";
         } else {
-          error = `The ${KIND_PLURAL[state.kind]} could not be listed (HTTP ${response.status}).`;
+          // The status is the answer's, which the network panel shows.
+          error = `The ${KIND_PLURAL[state.kind]} could not be listed. Try again.`;
         }
       } catch {
         error = "The server did not answer.";
@@ -361,14 +851,76 @@
         return;
       }
       inflight = null;
+      if (quiet) {
+        // A refusal, or an answer for a list the reader has since left, leaves the rows.
+        if (listing === null || asked.kind !== state.kind || asked.query !== state.query) {
+          return;
+        }
+        // Nothing moved, so nothing is drawn: the rows keep their focus, their tooltips,
+        // and a press in progress (mb-tjbm review A2).
+        if (sameListing(state.listing, listing)) {
+          watchPulls();
+          return;
+        }
+      }
       state.loading = false;
       state.listing = listing;
       state.error = error;
+      // A listing reads HEAD afresh, so a branch switched in a terminal since the page was
+      // drawn is named in the row as in the list's "checked out" badge. A detached HEAD's
+      // commit is not in it: a page drawn on a branch then names no ref, and one drawn
+      // detached keeps the commit the server wrote.
+      const tree = listing?.working_tree;
+      if (tree) {
+        if (tree.head_name !== null) {
+          state.workingBranch = tree.head_name;
+          state.workingCommit = undefined;
+        } else {
+          state.workingBranch = undefined;
+        }
+      }
       if (gone) {
         state.open = false;
         state.removed = true;
       }
       render();
+      watchPulls();
+    }
+
+    /**
+     * A visible page's own ask, for a checkout that keeps a store of its origin: the server
+     * fetches the store when it is older than its freshness window, and makes it when it
+     * has none. Sent once each time the list opens, with the first list that reads the
+     * store, the Remotes or the Tags, and never
+     * waited for: when the server says a fetch runs, the list is asked for again and then
+     * watched until it ends. The reader did not ask, so a refusal says nothing.
+     */
+    async function askForOrigin() {
+      // Only for a list that reads the store, the origin's branches or its tags: the
+      // checkout's own branches are read from the checkout, and a fetch moves none.
+      if (
+        !checkout ||
+        disposed ||
+        !state.open ||
+        askedForOrigin ||
+        state.kind === "branch" ||
+        (state.listing?.origin ?? null) === null
+      ) {
+        return;
+      }
+      askedForOrigin = true;
+      try {
+        const response = await deps.request("POST", REFRESH_ROUTE, { for: "page" });
+        const answer = /** @type {{refresh?: unknown} | null} */ (
+          response.body !== null && typeof response.body === "object" ? response.body : null
+        );
+        const started = answer?.refresh === "started" || answer?.refresh === "joined";
+        if (!disposed && state.open && response.status === 202 && started) {
+          await load(true);
+        }
+      } catch {
+        // The list is the server's as it was; the next opening asks again.
+      }
     }
 
     function open() {
@@ -377,7 +929,10 @@
       }
       state.open = true;
       state.error = null;
-      return load();
+      askedForOrigin = false;
+      return load().then(() => {
+        void askForOrigin();
+      });
     }
 
     function close() {
@@ -385,11 +940,14 @@
         return;
       }
       clearFilterTimer();
+      clearPullsTimer();
       // An answer still on its way belongs to a list nobody is looking at.
       abortInflight();
       requested += 1;
       state.open = false;
       state.loading = false;
+      // What the list said goes with it, so the row says only what failed while closed.
+      state.error = null;
       render();
     }
 
@@ -408,7 +966,9 @@
       }
       state.kind = kind;
       state.listing = null;
-      return load();
+      return load().then(() => {
+        void askForOrigin();
+      });
     }
 
     /** @param {string} query */
@@ -442,9 +1002,29 @@
       state.switching = true;
       state.error = null;
       render();
+      // Commits keeps no file or folder for the answer to translate: it lands on the new
+      // history's newest commit, so it names no address.
+      const commits = deps.tab?.() === COMMITS_TAB;
       const view = deps.currentView();
-      if (view?.startsWith(VIEW_PREFIX)) {
+      if (!commits && view?.startsWith(VIEW_PREFIX)) {
         body.view = view;
+      }
+      // From here the server may serve the other subject while this page is still here,
+      // and would refuse what it asks as a page left behind: its requests wait for the
+      // answer, and go with the page when it goes (static/source-pin-guard.js).
+      /** @type {(gone: boolean) => void} */
+      let decided = () => {};
+      const held = deps.hold?.(
+        new Promise((resolve) => {
+          decided = resolve;
+        }),
+      );
+      if (held === false) {
+        decided(false);
+        state.switching = false;
+        state.error = "Another switch is already in progress.";
+        render();
+        return;
       }
       try {
         const response = await deps.request("POST", PIN_ROUTE, body);
@@ -470,15 +1050,26 @@
             close();
             return;
           }
+          // The page goes to the tab it was on. From Files, the same file or folder in the
+          // new revision when it has it, else the root (`view_href`). From Commits, the
+          // tab's own landing, which selects the newest commit of the history now served,
+          // as a press on the tab does.
           const href = answer.view_href;
-          deps.navigate(
-            typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : VIEW_PREFIX,
-          );
+          if (commits) {
+            deps.navigate(VIEW_PREFIX, COMMITS_LANDING);
+          } else {
+            deps.navigate(
+              typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : VIEW_PREFIX,
+            );
+          }
+          decided(true);
           return;
         }
-        state.error = switchFailure(response.status, response.body, checkout);
+        state.error = switchFailure(response.body, checkout);
       } catch {
         state.error = "The switch request failed.";
+      } finally {
+        decided(false);
       }
       state.switching = false;
       render();
@@ -502,6 +1093,7 @@
     function dispose() {
       disposed = true;
       clearFilterTimer();
+      clearPullsTimer();
       abortInflight();
     }
 
@@ -522,6 +1114,33 @@
 
   // The group's key in the shared chip controls' markup and events.
   const KIND_GROUP = "source-ref-kind";
+  // The plugin that draws a pull request's state, whose exports the rows load; the Pulls
+  // tab loads the same plugin for its kind (static/pulls-nav.js). The plugin is 15
+  // requests and about 240 KB transferred, of which the four icons are `pull-state.js`'s 3 KB,
+  // and nothing loads them alone. Measured 2026-11-20 in headless Chrome against this
+  // repository's mirror, 137 branches of which most head a pull request, with the cache off:
+  // a list opened at once, before the Pulls tab's idle prefetch has loaded the plugin
+  // (`PREFETCH_IDLE_TIMEOUT_MS`), draws its rows in 209 ms and its icons in 338 ms, so the
+  // load costs the icons 129 ms and the rows nothing, their slots being as wide as the
+  // icons; opened after 5 s the plugin is there and the icons come with the rows, in 93 ms;
+  // opened at once with the cache warm, rows 75 ms and icons 82 ms.
+  const PULL_ICON_PLUGIN = "github";
+  /**
+   * The GitHub plugin's `pullStateIcon`, once its exports have loaded.
+   *
+   * @type {MetabrowserGithubPullStateIcon | null}
+   */
+  let drawPullState = null;
+
+  /** How every menu closes, which the shell loads before anything lazy.
+   * @returns {MetabrowserMenus} */
+  function menus() {
+    const controls = window.metabrowser.menus;
+    if (!controls) {
+      throw new Error("source ref selector: the menu helper is unavailable");
+    }
+    return controls;
+  }
 
   /** The shared chip controls, which the shell loads before anything lazy. */
   function chipControls() {
@@ -533,6 +1152,22 @@
   }
 
   /**
+   * The word a checkout's row starts with, which its tooltip explains. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorModel} model
+   * @returns {HTMLElement}
+   */
+  function viewWord(model) {
+    const word = document.createElement("span");
+    word.className = "source-ref-selector-view";
+    word.textContent = model.viewLabel;
+    if (model.viewTip !== null) {
+      word.dataset.tipText = model.viewTip;
+    }
+    return word;
+  }
+
+  /**
    * Paint one model. Browser only.
    *
    * The skeleton is built once so the filter box keeps its focus and caret while the
@@ -541,37 +1176,66 @@
    *
    * @param {MetabrowserSourceRefSelectorParts} parts
    * @param {MetabrowserSourceRefSelectorModel} model
-   * @param {(ref: string) => void} choose
    */
-  function paint(parts, model, choose) {
+  function paint(parts, model) {
     // A folder Git does not take for a repository's root has no selector after all.
     parts.root.hidden = model.removed;
     // Shown while the list is closed too: the page is no longer what the server shows.
     parts.staleText.textContent = model.stale ?? "";
     parts.stale.hidden = model.stale === null;
-    const refKey = JSON.stringify(model.selectedRef);
+    const refKey = JSON.stringify([
+      model.viewLabel,
+      model.viewTip,
+      model.refText,
+      model.selectedRef,
+    ]);
     if (parts.label.dataset.refKey !== refKey) {
-      parts.releaseCopies?.();
       parts.label.dataset.refKey = refKey;
       parts.label.replaceChildren();
+      // A checkout's row says which view the page shows before the ref: "Working tree" or
+      // "Revision", a muted dot, then the branch, tag, or commit.
+      if (model.viewLabel !== null && model.refText === "") {
+        parts.label.append(viewWord(model));
+      } else if (model.viewLabel !== null) {
+        const separator = document.createElement("span");
+        separator.className = "source-ref-selector-sep";
+        separator.setAttribute("aria-hidden", "true");
+        // The spaces are the text's alone: the label's gap sets the room around the dot.
+        separator.textContent = " · ";
+        parts.label.append(viewWord(model), separator);
+      }
       if (model.selectedRef !== null) {
-        parts.label.appendChild(
+        parts.label.append(
           window.metabrowser.refChip(model.selectedRef.name, {
             label: model.selectedRef.label,
             kind: model.selectedRef.kind,
-            copy: "sibling",
+            ref: model.selectedRef.ref,
+            current: true,
           }),
         );
       } else if (model.pullNumber !== null) {
         const number = document.createElement("span");
         number.className = "source-ref-selector-pull-number";
         number.textContent = model.pullNumber;
-        parts.label.append(model.button.slice(0, -model.pullNumber.length), number);
-      } else {
+        parts.label.append(model.refText.slice(0, -model.pullNumber.length), number);
+      } else if (model.commitId !== null) {
+        // A commit's ID is set in the commit-ID face wherever it appears
+        // (docs/design-system.md, "Short Commit IDs").
+        const id = document.createElement("span");
+        id.className = "git-commit-sha";
+        id.textContent = model.commitId;
+        parts.label.append(model.refText.slice(0, -model.commitId.length), id);
+      } else if (model.viewLabel === null) {
         parts.label.textContent = model.button;
       }
-      parts.releaseCopies = window.metabrowser.mountRefCopies(parts.toggle, parts.root);
     }
+    // A revision of a checkout offers the way back in its own row.
+    parts.back.hidden = !model.back;
+    parts.back.disabled = model.switching;
+    // A switch asked for with the list closed, by the back button, says why it failed in
+    // the row; the list's own error line is in the closed panel.
+    parts.backError.textContent = model.open ? "" : (model.error ?? "");
+    parts.backError.hidden = model.open || model.error === null;
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
     parts.root.dataset.open = String(model.open);
@@ -583,78 +1247,569 @@
       tab.setAttribute("aria-checked", String(kind === model.kind));
       tab.tabIndex = kind === model.kind ? 0 : -1;
     }
-    // A checkout's working tree, above its refs: the one choice that is not a ref.
+    // A checkout's working tree, above its refs: the one choice that is not a ref, named
+    // by the folder's path. The folder's own name, the path's last part, is kept whole,
+    // and what is before it shortens with an ellipsis.
     parts.workingTree.hidden = model.workingTree === null;
     if (model.workingTree !== null) {
       parts.workingTree.disabled = model.switching;
-      parts.workingTreeDetail.textContent = model.workingTree.detail;
+      parts.workingTreeDirectory.textContent = model.workingTree.directory;
+      parts.workingTreeBase.textContent = model.workingTree.base;
       if (model.workingTree.current) {
         parts.workingTree.setAttribute("aria-current", "true");
       } else {
         parts.workingTree.removeAttribute("aria-current");
       }
     }
-    parts.filter.placeholder = `Filter ${KIND_PLURAL[model.kind]}`;
-    parts.filter.setAttribute("aria-label", `Filter ${KIND_PLURAL[model.kind]}`);
+    parts.filter.placeholder = model.filterLabel;
+    parts.filter.setAttribute("aria-label", model.filterLabel);
     if (parts.filter.value !== model.query) {
       parts.filter.value = model.query;
     }
     parts.list.setAttribute("aria-busy", String(model.loading || model.switching));
-    // One row takes Tab at a time: the served one, else the first. Arrow keys move
-    // among the rest.
-    const current = model.rows.findIndex((row) => row.current);
-    const roving = current >= 0 ? current : 0;
-    const items = model.rows.map((row, index) => {
-      const item = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "menu-item source-ref-selector-row";
-      button.disabled = model.switching;
-      button.tabIndex = index === roving ? 0 : -1;
-      if (row.current) {
-        button.setAttribute("aria-current", "true");
-      }
-      const name = document.createElement("span");
-      name.className = "source-ref-selector-name";
-      // A mirror's branch is a remote chip and its tag a tag chip, as on the button; a
-      // checkout's own branch is a local chip. The default branch is not drawn as trunk:
-      // trunk is the server's `is_trunk` on a Git ref, and the mirror's default need not
-      // be the branch the history draws solid. The badge below says "default", or
-      // "checked out" for the branch a checkout's HEAD is on, in words
-      // (docs/design-system.md, "Branch Chips").
-      name.appendChild(
-        window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, copy: false }),
-      );
-      button.append(name);
-      if (row.default || row.checkedOut) {
-        const badge = document.createElement("span");
-        badge.className = "source-ref-selector-badge";
-        badge.textContent = row.default ? "default" : "checked out";
-        button.append(badge);
-      }
-      const commit = document.createElement("span");
-      commit.className = "source-ref-selector-commit";
-      commit.textContent = row.commit;
-      button.append(commit);
-      button.addEventListener("click", () => choose(row.ref));
-      // The row's name is cut short with an ellipsis when it is wider than the list;
-      // the tooltip then carries the whole name. pointerenter comes before the
-      // mouseenter the shell's tooltip listens for.
-      button.addEventListener("pointerenter", () => {
-        if (name.scrollWidth > name.clientWidth) {
-          button.dataset.tipText = row.name;
-        } else {
-          delete button.dataset.tipText;
-        }
-      });
-      item.append(button);
-      return item;
-    });
-    parts.list.replaceChildren(...items);
+    paintRows(parts, model);
     parts.note.textContent = model.note;
     parts.note.hidden = model.note === "";
+    const origin = model.origin;
+    if (origin === null) {
+      parts.origin.hidden = true;
+      parts.origin.textContent = "";
+    } else {
+      // When the store was fetched, as a row says its commit's age, with the exact time
+      // as its tooltip (docs/design-system.md, "Age").
+      const at = origin.fetchedAt === null ? Number.NaN : Date.parse(origin.fetchedAt) / 1000;
+      const fetched = Number.isFinite(at)
+        ? window.MetabrowserFormatters.age(at, { style: "relative" }).label
+        : "";
+      parts.origin.textContent = fetched === "" ? origin.text : `${origin.text}, ${fetched}.`;
+      if (Number.isFinite(at)) {
+        parts.origin.dataset.tipText = window.metabrowser.formatTimestamp(at);
+      } else {
+        delete parts.origin.dataset.tipText;
+      }
+      parts.origin.dataset.tone = origin.tone;
+      parts.origin.hidden = false;
+    }
     parts.error.textContent = model.error ?? "";
     parts.error.hidden = model.error === null;
+  }
+
+  /**
+   * The state's icon, drawn by the GitHub plugin once it has loaded: the shapes and hues of
+   * a pull request's state are the plugin's, in one place, so a row here and a row of the
+   * Pulls tab cannot disagree (docs/design-system.md, "A Pull Request's State"). Until it
+   * has, the slot is as wide as the icon will be, so nothing moves when it arrives.
+   * Browser only.
+   *
+   * @param {"open" | "draft" | "merged" | "closed"} state
+   * @returns {HTMLElement}
+   */
+  function pullIcon(state) {
+    const slot = document.createElement("span");
+    slot.className = "source-ref-selector-pull-icon";
+    if (drawPullState !== null) {
+      slot.append(drawPullState(state));
+    }
+    return slot;
+  }
+
+  /**
+   * A row's pull request line: the first pull request's state icon, its title, and its
+   * number, the order every row of a pull request's fields keeps (docs/design-system.md,
+   * "One Order for a Pull Request's Fields"), and a count of the others. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @returns {HTMLElement}
+   */
+  function pullLine(row) {
+    const [first] = row.pulls;
+    const others = row.pullsTotal - 1;
+    const line = document.createElement("span");
+    line.className = "source-ref-selector-pull";
+    const number = document.createElement("span");
+    number.className = "source-ref-selector-pull-number";
+    number.textContent = `#${first.number}`;
+    // A conventional-commit prefix is regular and the rest of the title bold
+    // (docs/design-system.md, "Titles").
+    const title = document.createElement("span");
+    title.className = "source-ref-selector-pull-title";
+    title.append(...window.MetabrowserFormatters.titleNodes(document, first.title));
+    line.append(pullIcon(first.state), title, number);
+    if (others > 0) {
+      const more = document.createElement("span");
+      more.className = "source-ref-selector-pull-more";
+      more.textContent = `+${others}`;
+      more.setAttribute("aria-label", `and ${others} more pull request${others === 1 ? "" : "s"}`);
+      line.append(more);
+    }
+    return line;
+  }
+
+  /**
+   * The branch's other pull requests, named: the first PULL_MORE_LIMIT of those the row
+   * lists, and how many more there are. "" when it has one. Pure.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @returns {string}
+   */
+  function otherPulls(row) {
+    if (row.pullsTotal <= 1) {
+      return "";
+    }
+    const named = row.pulls
+      .slice(1, 1 + PULL_MORE_LIMIT)
+      .map((pull) => `${pull.title} #${pull.number}`);
+    const rest = row.pullsTotal - 1 - named.length;
+    return `Also ${named.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}`;
+  }
+
+  /**
+   * What the row's tooltip says of its pull requests: the first one's whole title when the
+   * line cuts it short, and the others, which the line shows only as a count. A tooltip
+   * is one run of text, so these join with a dot. Pure.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @param {boolean} cut Whether the first one's title is cut short.
+   * @returns {string}
+   */
+  function pullTip(row, cut) {
+    /** @type {string[]} */
+    const parts = cut ? [`${row.pulls[0].title} #${row.pulls[0].number}`] : [];
+    const others = otherPulls(row);
+    if (others !== "") {
+      parts.push(others);
+    }
+    return parts.join(" · ");
+  }
+
+  /**
+   * What a row's pull request line is drawn from, to tell whether it needs drawing again.
+   * Pure.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @returns {string}
+   */
+  function pullKey(row) {
+    return `${row.pullsTotal}\n${pullsSignature(row.pulls)}`;
+  }
+
+  /**
+   * Draw, or draw again, a row's pull request line, and say the branch's others to
+   * assistive technology, which a tooltip does not reach (mb-tjbm review A11). Browser only.
+   *
+   * @param {HTMLLIElement} item
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   */
+  function drawPulls(item, row) {
+    const button = /** @type {HTMLButtonElement} */ (item.firstElementChild);
+    item.dataset.pulls = pullKey(row);
+    button.querySelector(":scope > .source-ref-selector-pull")?.remove();
+    if (row.pulls.length > 0) {
+      button.append(pullLine(row));
+    }
+    const others = otherPulls(row);
+    if (others === "") {
+      button.removeAttribute("aria-description");
+    } else {
+      button.setAttribute("aria-description", others);
+    }
+  }
+
+  /**
+   * One row: its ref's chip, a badge, its commit, and its commit's age, and under them the
+   * pull request it is the head of, if it is. Browser only.
+   *
+   * What the handlers say is read from the list when they run, not kept from here, so a
+   * row whose pull requests arrive later is patched in place (`patchRow`) and keeps its
+   * element, its focus, and its tooltip.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @param {number} at Its index among every row the list shows.
+   * @param {MetabrowserSourceRefSelectorRows} rows
+   * @returns {HTMLLIElement}
+   */
+  function rowElement(row, at, rows) {
+    const item = document.createElement("li");
+    item.className = "source-ref-selector-item";
+    // Only the rows near the view are in the document, so each says where it stands.
+    item.setAttribute("aria-posinset", String(at + 1));
+    item.setAttribute("aria-setsize", String(rows.shown.length));
+    item.style.top = `${rows.offsets[at] ?? 0}px`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "menu-item source-ref-selector-row";
+    button.dataset.index = String(at);
+    button.disabled = rows.switching;
+    button.tabIndex = at === rows.roving ? 0 : -1;
+    if (row.current) {
+      button.setAttribute("aria-current", "true");
+    }
+    // The ref's own line, which every row has; a pull request's line goes under it.
+    const main = document.createElement("span");
+    main.className = "source-ref-selector-main";
+    const name = document.createElement("span");
+    name.className = "source-ref-selector-name";
+    // A mirror's branch is a remote chip and its tag a tag chip, as on the button; a
+    // checkout's own branch is a local chip. The default branch is not drawn as trunk:
+    // trunk is the server's `is_trunk` on a Git ref, and the mirror's default need not
+    // be the branch the history draws solid. The badge below says "default", or
+    // "checked out" for the branch a checkout's HEAD is on, in words
+    // (docs/design-system.md, "Branch Chips").
+    name.appendChild(
+      window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, menu: false }),
+    );
+    main.append(name);
+    if (row.default || row.checkedOut) {
+      const badge = document.createElement("span");
+      badge.className = "source-ref-selector-badge";
+      badge.textContent = row.default ? "default" : "checked out";
+      main.append(badge);
+    }
+    // Where the reader's own `origin/<branch>` is not where the origin's branch is: a
+    // second tag, in a warning's ink, whose sentence the row's tooltip carries.
+    if (row.own !== null) {
+      const own = document.createElement("span");
+      own.className = "source-ref-selector-badge source-ref-selector-own";
+      own.textContent = row.own.text;
+      main.append(own);
+    }
+    // The commit as every line names one, its short ID in the commit-ID face, then
+    // its age, in the compact style of navigation, with the exact time as its tooltip
+    // (docs/design-system.md, "Age"). A date Git did not give has no age.
+    const commit = document.createElement("span");
+    commit.className = "git-commit-sha source-ref-selector-commit";
+    commit.textContent = row.commit;
+    const age = window.MetabrowserFormatters.ageLabel(document, row.committedAt, {
+      className: "source-ref-selector-age",
+      ...(row.committedAt === null
+        ? {}
+        : { tip: window.metabrowser.formatTimestamp(row.committedAt) }),
+    });
+    main.append(commit, age);
+    button.append(main);
+    item.append(button);
+    drawPulls(item, row);
+    button.addEventListener("click", () => rows.choose(row.ref));
+    // The row's name, or its pull request's title, is cut short with an ellipsis when it
+    // is wider than the list; the tooltip then carries the whole of it, and the other
+    // pull requests a branch is the head of. pointerenter comes before the mouseenter the
+    // shell's tooltip listens for.
+    button.addEventListener("pointerenter", () => {
+      const now = rows.shown[at] ?? row;
+      const title = button.querySelector(".source-ref-selector-pull-title");
+      const cut = title instanceof HTMLElement && title.scrollWidth > title.clientWidth;
+      /** @type {string[]} */
+      const tips = [];
+      if (name.scrollWidth > name.clientWidth) {
+        tips.push(row.name);
+      }
+      if (row.own !== null) {
+        tips.push(row.own.tip);
+      }
+      if (now.pulls.length > 0) {
+        const tip = pullTip(now, cut);
+        if (tip !== "") {
+          tips.push(tip);
+        }
+      }
+      if (tips.length > 0) {
+        button.dataset.tipText = tips.join(" · ");
+      } else {
+        delete button.dataset.tipText;
+      }
+    });
+    return item;
+  }
+
+  /**
+   * Bring a drawn row up to date with its model row, where its ref's line is what it was:
+   * where it sits, whether it takes Tab, and its pull request line, drawn again only if
+   * the pull requests moved. The element stays, so focus, a tooltip, and a press survive.
+   * Browser only.
+   *
+   * @param {HTMLLIElement} item
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @param {number} at
+   * @param {MetabrowserSourceRefSelectorRows} rows
+   */
+  function patchRow(item, row, at, rows) {
+    const top = `${rows.offsets[at] ?? 0}px`;
+    if (item.style.top !== top) {
+      item.style.top = top;
+    }
+    const button = /** @type {HTMLButtonElement} */ (item.firstElementChild);
+    button.disabled = rows.switching;
+    button.tabIndex = at === rows.roving ? 0 : -1;
+    if (item.dataset.pulls !== pullKey(row)) {
+      drawPulls(item, row);
+    }
+  }
+
+  /**
+   * Draw the rows in the list's view, ROWS_OVERSCAN more on either side, and the row that
+   * takes Tab, wherever it is; take the rest out. Browser only.
+   *
+   * Each row is placed by its offset over the sizer, which is as tall as every row, so the
+   * list scrolls over all of them and its scroll bar says how far through it is. A row
+   * already drawn is kept, so a scroll draws only the rows it brings near, and the rows
+   * stay in the document in their order.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   */
+  function drawWindow(parts) {
+    const rows = parts.rows;
+    const count = rows.shown.length;
+    parts.sizer.style.height = `${rows.offsets[count] ?? 0}px`;
+    const { start, end, also } = rowWindow(
+      rows.offsets,
+      parts.list.scrollTop || 0,
+      parts.list.clientHeight || 0,
+      rows.roving,
+    );
+    /** @type {number[]} */
+    const wanted = [];
+    if (also >= 0 && also < start) {
+      wanted.push(also);
+    }
+    for (let at = start; at < end; at += 1) {
+      wanted.push(at);
+    }
+    if (also >= end) {
+      wanted.push(also);
+    }
+    const keep = new Set(wanted);
+    for (const [at, item] of rows.drawn) {
+      if (!keep.has(at)) {
+        item.remove();
+        rows.drawn.delete(at);
+      }
+    }
+    let cursor = /** @type {Element | null} */ (parts.sizer.nextElementSibling);
+    for (const at of wanted) {
+      const drawn = rows.drawn.get(at);
+      if (drawn === undefined) {
+        const item = rowElement(rows.shown[at], at, rows);
+        rows.drawn.set(at, item);
+        parts.list.insertBefore(item, cursor);
+      } else if (drawn === cursor) {
+        cursor = cursor.nextElementSibling;
+      }
+    }
+  }
+
+  /**
+   * How tall a row is with no pull request and with one, measured by a row of each drawn
+   * out of sight, as the list lays it out. Browser only.
+   *
+   * Every row is placed by its offset, so the two must be exact, and each is the same for
+   * every row of its kind (docs/design-system.md, "The Ref Selector"). A pull request's
+   * line has a height of its own, and one row measured in the document, as this once did,
+   * says nothing of a kind of row it is not. The tall row is measured only when a row of
+   * the list is one.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {boolean} annotated Whether any row of the list has a pull request.
+   * @returns {{plain: number, tall: number}}
+   */
+  function measureRows(parts, annotated) {
+    /** @type {HTMLElement[]} */
+    const probes = [];
+    /** @param {boolean} tall */
+    const probe = (tall) => {
+      const item = rowElement(
+        {
+          name: "probe",
+          ref: "refs/remotes/origin/probe",
+          commit: "0000000",
+          committedAt: null,
+          default: false,
+          checkedOut: false,
+          current: false,
+          chip: "remote",
+          own: null,
+          pulls: tall ? [{ number: 1, title: "probe", state: "open" }] : [],
+          pullsTotal: tall ? 1 : 0,
+        },
+        0,
+        { ...parts.rows, shown: [], offsets: [0] },
+      );
+      item.style.visibility = "hidden";
+      item.setAttribute("aria-hidden", "true");
+      item.inert = true;
+      probes.push(item);
+      return item;
+    };
+    const plain = probe(false);
+    const tall = annotated ? probe(true) : null;
+    parts.list.append(...probes);
+    const measured = {
+      plain: plain.getBoundingClientRect().height,
+      tall: tall === null ? 0 : tall.getBoundingClientRect().height,
+    };
+    for (const item of probes) {
+      item.remove();
+    }
+    return measured;
+  }
+
+  /**
+   * The rows of a new model, the window first measured by a row of each kind. Browser only.
+   *
+   * A new list, or a new filter, is drawn afresh and starts at its top. The same list drawn
+   * again, as it is when the server's pull requests arrive, keeps what the reader sees:
+   * the rows that are the same refs stay as they are, patched (`patchRow`), so focus,
+   * a tooltip, and a press in progress survive, and the list scrolls so that the row at the
+   * top of its view stays where it was, the foot stays the foot, and a focused row stays
+   * in view, though the rows above have grown (`anchoredScroll`; mb-tjbm review A1, A2).
+   *
+   * The row that takes Tab is the one that had focus when this listing still has its
+   * ref, else the served one, else the first; a row that had focus keeps it.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {MetabrowserSourceRefSelectorModel} model
+   */
+  function paintRows(parts, model) {
+    const rows = parts.rows;
+    rows.model = model;
+    const active = /** @type {HTMLElement | null} */ (document.activeElement);
+    const hadFocus =
+      active !== null && parts.list.contains(active) && active.dataset.index !== undefined
+        ? rows.shown[Number(active.dataset.index)]?.ref
+        : undefined;
+    // A new list, or a new filter, starts at its top, its newest refs, unless it shows
+    // the served ref: then at that ref's row, once its rows arrive (below).
+    const shows = `${model.kind}\0${model.query}`;
+    const again = rows.listing === shows;
+    if (!again) {
+      rows.listing = shows;
+      rows.revealed = false;
+      parts.list.scrollTop = 0;
+    }
+    // Where the rows were, for the reader to keep their place among them.
+    const before = again ? { refs: rows.shown.map((row) => row.ref), offsets: rows.offsets } : null;
+    const scrolled = parts.list.scrollTop;
+    const view = parts.list.clientHeight || 0;
+    const inPlace = again && !rows.rebuild && sameRefLines(rows.shown, model.rows);
+    rows.rebuild = false;
+    if (!inPlace) {
+      for (const item of rows.drawn.values()) {
+        item.remove();
+      }
+      rows.drawn.clear();
+    }
+    rows.shown = model.rows;
+    rows.switching = model.switching;
+    const annotated = model.rows.some((row) => row.pulls.length > 0);
+    // The icons of a pull request's state are the GitHub plugin's, which loads on demand
+    // and then draws the rows again (`drawIcons`).
+    if (annotated) {
+      drawIcons(parts);
+    }
+    // One height places every row of a kind; both are measured again on each new listing,
+    // so a change of font or density is followed.
+    const measured = measureRows(parts, annotated);
+    rows.offsets = rowOffsets(model.rows, measured.plain, measured.tall);
+    const kept = hadFocus === undefined ? -1 : model.rows.findIndex((row) => row.ref === hadFocus);
+    const current = model.rows.findIndex((row) => row.current);
+    rows.roving = kept >= 0 ? kept : current >= 0 ? current : 0;
+    // The box is as tall as the rows are now before the list is scrolled in it, or the
+    // browser holds the scroll to the old height.
+    parts.sizer.style.height = `${rows.offsets[model.rows.length] ?? 0}px`;
+    if (before !== null) {
+      parts.list.scrollTop = anchoredScroll(
+        before,
+        { refs: model.rows.map((row) => row.ref), offsets: rows.offsets },
+        scrolled,
+        view,
+        hadFocus ?? null,
+      );
+    }
+    if (inPlace) {
+      for (const [at, item] of rows.drawn) {
+        patchRow(item, model.rows[at], at, rows);
+      }
+    }
+    drawWindow(parts);
+    if (!rows.revealed && model.rows.length > 0 && rows.offsets[model.rows.length] > 0) {
+      rows.revealed = true;
+      if (current > 0 && kept < 0) {
+        revealRow(parts, current);
+        drawWindow(parts);
+      }
+    }
+    if (kept >= 0 && !inPlace) {
+      /** @type {HTMLElement | null | undefined} */ (
+        rows.drawn.get(kept)?.firstElementChild
+      )?.focus({ preventScroll: true });
+    }
+  }
+
+  /**
+   * Load the GitHub plugin, which draws a pull request's state, once, and draw the rows
+   * again when it has: they were drawn with an empty slot where its icon goes, the slot's
+   * own width, so nothing moves. A plugin that cannot load leaves the slots empty, and
+   * each row's accessible text still says the title and number. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   */
+  function drawIcons(parts) {
+    const rows = parts.rows;
+    if (rows.iconsAsked || drawPullState !== null) {
+      return;
+    }
+    rows.iconsAsked = true;
+    void window.metabrowser.plugins.load(PULL_ICON_PLUGIN).then(
+      (github) => {
+        drawPullState = github.pullStateIcon;
+        if (!parts.disposed && rows.model !== null) {
+          // Drawn with an empty slot where the icon goes, so every row is drawn again.
+          rows.rebuild = true;
+          paintRows(parts, rows.model);
+        }
+      },
+      () => {},
+    );
+  }
+
+  /**
+   * Scroll the list the least that brings the row at *at* into its view; nothing until a
+   * row has been measured. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {number} at
+   */
+  function revealRow(parts, at) {
+    const { list, rows } = parts;
+    const top = rows.offsets[at];
+    const foot = rows.offsets[at + 1];
+    if (!(foot > top)) {
+      return;
+    }
+    if (top < list.scrollTop) {
+      list.scrollTop = top;
+    } else if (foot > list.scrollTop + list.clientHeight) {
+      list.scrollTop = foot - list.clientHeight;
+    }
+  }
+
+  /**
+   * Move the row that takes Tab to *at*, bring it into the list's view, and focus it.
+   * Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {number} at
+   */
+  function focusRow(parts, at) {
+    const rows = parts.rows;
+    rows.roving = at;
+    revealRow(parts, at);
+    drawWindow(parts);
+    for (const [index, item] of rows.drawn) {
+      /** @type {HTMLElement} */ (item.firstElementChild).tabIndex = index === at ? 0 : -1;
+    }
+    /** @type {HTMLElement | null | undefined} */ (rows.drawn.get(at)?.firstElementChild)?.focus({
+      preventScroll: true,
+    });
   }
 
   /**
@@ -662,44 +1817,61 @@
    *
    * @param {HTMLElement} element
    * @param {boolean} checkout Whether the page is a checkout's, with its third list.
+   * @param {(ref: string) => void} choose What a press on a row does.
    * @returns {MetabrowserSourceRefSelectorParts}
    */
-  function build(element, checkout) {
-    // A checkout's server draws the button with the row, so the row keeps its box from
-    // first paint. That button is adopted, not replaced: focus a reader put on it before
-    // this module arrived stays where it is. A mirror's row arrives empty.
+  function build(element, checkout, choose) {
+    // Adopt the server's chooser so it keeps any focus it received before mounting.
     const drawn = /** @type {HTMLButtonElement | null} */ (
       element.querySelector("button.source-ref-selector-toggle")
     );
     const toggle = drawn ?? document.createElement("button");
     toggle.type = "button";
+    toggle.className = "icon-btn source-ref-selector-toggle disclosure-toggle";
     toggle.setAttribute("aria-haspopup", "dialog");
+    toggle.setAttribute("aria-label", "Switch branch or tag");
     toggle.dataset.tipText = "Switch branch or tag";
+    toggle.innerHTML = window.MetabrowserIcons?.toggle ?? "";
     const label =
-      /** @type {HTMLElement | null} */ (toggle.querySelector(".source-ref-selector-label")) ??
+      /** @type {HTMLElement | null} */ (element.querySelector(".source-ref-selector-label")) ??
       document.createElement("span");
     label.className = "source-ref-selector-label";
-    const caret =
-      /** @type {HTMLElement | null} */ (toggle.querySelector(".chip-menu-caret")) ??
-      document.createElement("span");
-    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle";
-    caret.className = "chip-menu-caret";
-    caret.setAttribute("aria-hidden", "true");
-    caret.innerHTML = window.MetabrowserIcons?.toggle ?? "";
-    if (drawn === null) {
-      toggle.append(label, caret);
+    // A checkout's revision has a way back to the working tree in its row: one click, as
+    // the list's Working tree row does. The server draws it at first paint so the row
+    // keeps its box, and it is adopted here; a page with none gets one, kept hidden.
+    const back =
+      /** @type {HTMLButtonElement | null} */ (
+        element.querySelector("button.source-ref-selector-back")
+      ) ?? document.createElement("button");
+    back.type = "button";
+    back.className = "btn source-ref-selector-back";
+    back.setAttribute("aria-label", BACK_LABEL);
+    back.dataset.tipText = BACK_TIP;
+    if (!back.isConnected) {
+      back.hidden = true;
+      const arrow = document.createElement("span");
+      arrow.className = "source-ref-selector-back-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "←";
+      back.append(arrow, WORKING_TREE);
     }
-    // What a checkout's page says when the server comes to show something else.
-    const stale = document.createElement("span");
-    stale.className = "source-ref-selector-stale";
+    // What a checkout's page says when the server comes to show something else, as a
+    // freshness row: at the foot of the navigation pane, where a mirror's makes the same
+    // offer, so every tab shows it. Every tab's requests are refused then, the Pulls
+    // tab's too, and the chooser's row hides under Pulls.
+    const stale = document.createElement("div");
+    stale.className = "source-freshness source-ref-selector-stale";
     stale.setAttribute("role", "status");
     stale.hidden = true;
+    const staleOffer = document.createElement("span");
+    staleOffer.className = "source-freshness-offer";
     const staleText = document.createElement("span");
     const reload = document.createElement("button");
     reload.type = "button";
     reload.className = "btn source-ref-selector-reload";
-    reload.textContent = "Reload";
-    stale.append(staleText, reload);
+    reload.textContent = "Reload page";
+    staleOffer.append(staleText, reload);
+    stale.append(staleOffer);
     const panel = document.createElement("div");
     panel.className = "source-ref-selector-panel menu";
     panel.setAttribute("role", "dialog");
@@ -726,51 +1898,110 @@
     }
     const filter = document.createElement("input");
     filter.type = "search";
-    filter.className = "source-ref-selector-filter";
+    filter.className = "field source-ref-selector-filter";
     filter.autocomplete = "off";
     filter.spellcheck = false;
     const list = document.createElement("ul");
     list.className = "source-ref-selector-list";
+    // `list-style: none` drops a list's role in WebKit; the rows' places need it.
+    list.setAttribute("role", "list");
+    // As tall as every row together; the rows near the view are placed over it.
+    const sizer = document.createElement("li");
+    sizer.className = "source-ref-selector-sizer";
+    sizer.setAttribute("role", "none");
+    sizer.setAttribute("aria-hidden", "true");
+    list.append(sizer);
     const note = document.createElement("p");
     note.className = "source-ref-selector-note";
     note.setAttribute("role", "status");
+    // What the list says of the store a checkout's origin is listed from, and when it
+    // was fetched. Not a live region: its age is repainted with the list.
+    const origin = document.createElement("p");
+    origin.className = "source-ref-selector-note source-ref-selector-origin";
+    origin.hidden = true;
     const error = document.createElement("p");
     error.className = "source-ref-selector-error";
     error.setAttribute("role", "alert");
-    // A menu row like a ref's, with what it is in place of a commit.
+    // A menu row like a ref's, with the folder's path in place of a commit, in the path
+    // markup the shell names a folder by (`.path`, its last part `.path-base`).
     const workingTree = document.createElement("button");
     workingTree.type = "button";
     workingTree.className = "menu-item source-ref-selector-working-tree";
     workingTree.hidden = true;
     const workingTreeName = document.createElement("span");
-    workingTreeName.className = "source-ref-selector-name";
+    workingTreeName.className = "source-ref-selector-working-tree-name";
     workingTreeName.textContent = WORKING_TREE;
-    const workingTreeDetail = document.createElement("span");
-    workingTreeDetail.className = "source-ref-selector-commit";
-    workingTree.append(workingTreeName, workingTreeDetail);
-    panel.append(workingTree, kinds, filter, list, note, error);
+    const workingTreeLocation = document.createElement("span");
+    workingTreeLocation.className = "path source-ref-selector-location";
+    const workingTreeDirectory = document.createElement("span");
+    workingTreeDirectory.className = "source-ref-selector-location-directory";
+    const workingTreeBase = document.createElement("span");
+    workingTreeBase.className = "path-base";
+    workingTreeLocation.append(workingTreeDirectory, workingTreeBase);
+    workingTree.append(workingTreeName, workingTreeLocation);
+    // The path is shortened when the list is narrower than it; the tooltip then carries
+    // all of it. pointerenter comes before the mouseenter the shell's tooltip listens for.
+    workingTree.addEventListener("pointerenter", () => {
+      if (workingTreeDirectory.scrollWidth > workingTreeDirectory.clientWidth) {
+        workingTree.dataset.tipText = workingTreeLocation.textContent ?? "";
+      } else {
+        delete workingTree.dataset.tipText;
+      }
+    });
+    panel.append(workingTree, kinds, filter, list, note, origin, error);
     if (drawn === null) {
-      element.replaceChildren(toggle, stale, panel);
+      const buttonHost = document.createElement("span");
+      buttonHost.className = "source-ref-selector-button";
+      buttonHost.append(label, toggle);
+      element.replaceChildren(buttonHost, back);
+    }
+    const backError = document.createElement("p");
+    backError.className = "source-ref-selector-error source-ref-selector-back-error";
+    backError.setAttribute("role", "alert");
+    backError.hidden = true;
+    // After the back button, which the server draws on a revision's row and no other.
+    element.append(backError);
+    const foot = document.getElementById("index-progress");
+    if (foot) {
+      foot.after(stale);
     } else {
-      element.append(stale, panel);
+      element.append(stale);
     }
     element.hidden = false;
     return {
       root: element,
       toggle,
       label,
+      back,
+      backError,
       stale,
       staleText,
       reload,
       panel,
       workingTree,
-      workingTreeDetail,
+      workingTreeDirectory,
+      workingTreeBase,
       kinds,
       tabs,
       filter,
       list,
+      sizer,
       note,
+      origin,
       error,
+      rows: {
+        shown: [],
+        drawn: new Map(),
+        roving: 0,
+        offsets: [0],
+        model: null,
+        iconsAsked: false,
+        rebuild: false,
+        listing: "",
+        revealed: false,
+        switching: false,
+        choose,
+      },
     };
   }
 
@@ -786,10 +2017,9 @@
    */
   function mount(element) {
     const checkout = Boolean(window.METABROWSER_SOURCE_CHECKOUT);
-    const parts = build(element, checkout);
     /** @type {ReturnType<typeof createSelector> | null} */
     let selector = null;
-    const choose = (/** @type {string} */ ref) => void selector?.choose(ref);
+    const parts = build(element, checkout, (ref) => void selector?.choose(ref));
     selector = createSelector(
       {
         async request(method, route, body, signal) {
@@ -810,11 +2040,28 @@
         },
         schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
         cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
-        render: (model) => paint(parts, model, choose),
-        navigate: (href) => window.location.assign(href),
+        render: (model) => paint(parts, model),
+        navigate(href, state) {
+          if (state === undefined) {
+            window.location.assign(href);
+            return;
+          }
+          // A landing that is a history entry's state, which a reload keeps.
+          window.history.pushState(state, "", href);
+          window.location.reload();
+        },
         currentView: () => window.location.pathname,
+        // The main tab in front, as the tab bar marks it (static/main-tabs.js).
+        tab: () =>
+          document.querySelector(".nav-tab-bar .tab-btn.active")?.getAttribute("data-tab") ?? null,
+        hold: (going) => window.MetabrowserSourcePinGuard?.hold(going),
       },
-      { shown: window.METABROWSER_SOURCE_PIN ?? null, checkout },
+      {
+        shown: window.METABROWSER_SOURCE_PIN ?? null,
+        checkout,
+        workingBranch: element.dataset.workingBranch,
+        workingCommit: element.dataset.workingCommit,
+      },
     );
     const mounted = selector;
     const listening = new AbortController();
@@ -822,6 +2069,7 @@
     parts.workingTree.addEventListener("click", () => void mounted.chooseWorkingTree(), {
       signal,
     });
+    parts.back.addEventListener("click", () => void mounted.chooseWorkingTree(), { signal });
     parts.reload.addEventListener("click", () => window.location.reload(), { signal });
     // The pin guard announces a data request refused because the server serves
     // something else (static/source-pin-guard.js); only a checkout's selector says so.
@@ -839,10 +2087,29 @@
         parts.filter.focus();
       }
     };
+    const closeActionMenu = () => {
+      /** @type {HTMLButtonElement | null} */ (
+        parts.label.querySelector('button[aria-expanded="true"]')
+      )?.click();
+    };
+    // The list closes as every menu does (docs/design-system.md, "Every Menu Closes
+    // Alike"), and opening it, by its button or its key, closes any other.
+    const dismissal = menus().dismissible({
+      name: "source-ref-selector-panel",
+      trigger: parts.toggle,
+      inside: (node) => parts.panel.contains(node),
+      isOpen: () => !parts.panel.hidden,
+      close: () => mounted.close(),
+    });
     parts.toggle.addEventListener(
       "click",
       () => {
         void mounted.toggle();
+        if (parts.panel.hidden) {
+          dismissal.closed();
+        } else {
+          dismissal.opened();
+        }
         focusOpenFilter();
       },
       { signal },
@@ -854,13 +2121,16 @@
         }
       },
     });
+    element.append(parts.panel);
     parts.filter.addEventListener("input", () => mounted.setQuery(parts.filter.value), {
       signal,
     });
+    // The rows drawn now: those near the list's view, and the one that takes Tab.
     const rows = () =>
       /** @type {HTMLButtonElement[]} */ ([...parts.list.querySelectorAll("button")]);
-    // While the list is open, Escape closes it from anywhere on the page and Tab stays
-    // inside it, wrapping at either end, as in a dialog.
+    // A scroll draws the rows it brings near; a scroll event comes at most once a frame.
+    parts.list.addEventListener("scroll", () => drawWindow(parts), { signal, passive: true });
+    // While the list is open, Tab stays inside it, wrapping at either end, as in a dialog.
     // A key held with Command or Control is the browser's, as is one held with Option
     // other than Tab, which Safari moves focus with, so the trap keeps Option-Tab.
     document.addEventListener(
@@ -872,12 +2142,6 @@
           event.metaKey ||
           (event.altKey && event.key !== "Tab")
         ) {
-          return;
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          mounted.close();
-          parts.toggle.focus();
           return;
         }
         if (event.key !== "Tab") {
@@ -911,12 +2175,17 @@
         if (event.altKey || event.ctrlKey || event.metaKey) {
           return;
         }
-        const list = rows();
-        const index = list.indexOf(/** @type {HTMLButtonElement} */ (event.target));
-        if (index < 0 && event.target !== parts.filter) {
+        // A row's index is among every row the list shows, drawn or not.
+        const target = /** @type {HTMLElement} */ (event.target);
+        const index =
+          rows().includes(/** @type {HTMLButtonElement} */ (target)) &&
+          target.dataset.index !== undefined
+            ? Number(target.dataset.index)
+            : -1;
+        if (index < 0 && target !== parts.filter) {
           return;
         }
-        const next = moveRow(event.key, index, list.length);
+        const next = moveRow(event.key, index, parts.rows.shown.length);
         if (next === null) {
           return;
         }
@@ -925,31 +2194,7 @@
           parts.filter.focus();
           return;
         }
-        for (const [at, row] of list.entries()) {
-          row.tabIndex = at === next ? 0 : -1;
-        }
-        list[next]?.focus();
-      },
-      { signal },
-    );
-    // Focus that leaves the selector for another part of the page closes the list.
-    element.addEventListener(
-      "focusout",
-      (event) => {
-        const to = /** @type {Node | null} */ (event.relatedTarget);
-        if (!parts.panel.hidden && to !== null && !element.contains(to)) {
-          mounted.close();
-        }
-      },
-      { signal },
-    );
-    // A pointer press anywhere else closes the list, as a menu closes.
-    document.addEventListener(
-      "pointerdown",
-      (event) => {
-        if (!parts.panel.hidden && !element.contains(/** @type {Node | null} */ (event.target))) {
-          mounted.close();
-        }
+        focusRow(parts, next);
       },
       { signal },
     );
@@ -960,14 +2205,23 @@
       button: parts.toggle,
       activate() {
         const opened = mounted.open();
+        dismissal.opened();
         focusOpenFilter();
         return opened;
       },
+      close() {
+        closeActionMenu();
+        mounted.close();
+        dismissal.closed();
+      },
       dispose() {
+        closeActionMenu();
+        parts.disposed = true;
+        dismissal.dispose();
         listening.abort();
         unbindKinds();
         mounted.dispose();
-        parts.releaseCopies?.();
+        parts.stale.remove();
         element.replaceChildren();
         element.hidden = true;
         if (mountedSelector === handle) {
@@ -981,11 +2235,18 @@
 
   window.MetabrowserSourceRefSelector = Object.freeze({
     FILTER_DELAY_MS,
+    ROWS_OVERSCAN,
     createSelector,
     describe,
     mount,
     mounted: () => mountedSelector,
+    anchoredScroll,
     moveRow,
+    PULLS_POLL_MS,
+    rowOffsets,
+    rowWindow,
+    sameListing,
+    sameRefLines,
     shownLabel,
   });
 })();

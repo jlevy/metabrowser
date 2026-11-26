@@ -10,7 +10,7 @@ env:
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
   APP_HOME: '[^\s"]+/home'
-  STORE_KEY: '[0-9a-f]{64}'
+  STORE_KEY: '[a-z0-9-]+-[0-9a-z]{11}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   METABROWSER_CONFIG_DIR="$PWD/config"
@@ -49,10 +49,11 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -62,7 +63,9 @@ status: 200
     "at": "2026-09-17T12:00:05Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -94,10 +97,11 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "~/repository-stores/[STORE_KEY]/repository.git",
+  "location": "~/repos/[STORE_KEY]/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -107,7 +111,9 @@ status: 200
     "at": "2026-09-17T12:00:05Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -130,8 +136,10 @@ status: 200
   "short_name": "origin",
   "full_name": "[CWD]/origin.git@topic",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
-  "title": "origin • Metabrowser"
+  "kind_label": "Cloud mirror",
+  "title": "origin • Metabrowser",
+  "kind_tip": "Cloud mirror",
+  "repository": null
 }
 ? 0
 ```
@@ -146,8 +154,10 @@ status: 200
   "short_name": "origin",
   "full_name": "~/origin.git@topic",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
-  "title": "origin • Metabrowser"
+  "kind_label": "Cloud mirror",
+  "title": "origin • Metabrowser",
+  "kind_tip": "Cloud mirror",
+  "repository": null
 }
 ? 0
 ```
@@ -171,10 +181,11 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -184,7 +195,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -209,10 +222,11 @@ status: 200
     "ref_name": "v1",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -222,7 +236,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -250,10 +266,11 @@ status: 200
     "ref_name": null,
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -263,7 +280,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -293,10 +312,11 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -306,7 +326,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -331,10 +353,11 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -344,7 +367,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -403,11 +428,11 @@ Error: /api/source/pin returned HTTP 400
 ? 1
 ```
 
-## Test: the ref selector lists branches, the default first
+## Test: the ref selector lists every branch, the default first, then newest first
 
-`/api/source/refs` reads the mirror alone.
-Branches list by name after the default branch; `current` marks the ref the server
-serves.
+`/api/source/refs` reads the mirror alone and lists every ref, with no page and no
+count. The default branch lists first, then the rest newest first by their commits’
+dates, the dates each row shows as an age; `current` marks the ref the server serves.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/refs
@@ -416,7 +441,6 @@ status: 200
 {
   "kind": "branch",
   "query": "",
-  "limit": 100,
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "kinds": [
@@ -424,13 +448,14 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 2,
-  "truncated": false,
+  "origin": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "topic",
       "ref": "refs/remotes/origin/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "committed_at": 1767229200.0,
       "default": true,
       "checked_out": false,
       "current": true
@@ -439,6 +464,7 @@ status: 200
       "name": "feature",
       "ref": "refs/remotes/origin/feature",
       "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -457,7 +483,6 @@ status: 200
 {
   "kind": "tag",
   "query": "",
-  "limit": 100,
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "kinds": [
@@ -465,13 +490,14 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 1,
-  "truncated": false,
+  "origin": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "v1",
       "ref": "refs/tags/v1",
       "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+      "committed_at": 1767225600.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -481,18 +507,17 @@ status: 200
 ? 0
 ```
 
-## Test: the filter is a case-insensitive name fragment, and a page can stop short
+## Test: the filter is a case-insensitive name fragment
 
-Both branches contain a `t`; the page holds one of them, so `truncated` is true.
+`FEAT` matches `feature` alone.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?q=T&limit=1"
-api: /api/source/refs?q=T&limit=1
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?q=FEAT"
+api: /api/source/refs?q=FEAT
 status: 200
 {
   "kind": "branch",
-  "query": "T",
-  "limit": 1,
+  "query": "FEAT",
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "kinds": [
@@ -500,16 +525,17 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 2,
-  "truncated": true,
+  "origin": null,
+  "pull_requests": null,
   "refs": [
     {
-      "name": "topic",
-      "ref": "refs/remotes/origin/topic",
-      "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-      "default": true,
+      "name": "feature",
+      "ref": "refs/remotes/origin/feature",
+      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
+      "default": false,
       "checked_out": false,
-      "current": true
+      "current": false
     }
   ]
 }
@@ -550,10 +576,11 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -563,7 +590,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -591,10 +620,11 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -604,7 +634,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -640,10 +672,11 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -653,7 +686,9 @@ status: 202
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": true,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -669,10 +704,11 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -682,7 +718,9 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -714,10 +752,11 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -727,7 +766,9 @@ status: 202
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": true,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -743,10 +784,11 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -756,7 +798,9 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -771,7 +815,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file:
 api: /api/source/refresh
 status: 400
 {
-  "error": "\"for\" may only be \"commit\"",
+  "error": "\"for\" may only be \"commit\" or \"page\"",
   "code": "invalid_request"
 }
 Error: /api/source/refresh returned HTTP 400

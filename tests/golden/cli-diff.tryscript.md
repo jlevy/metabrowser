@@ -49,6 +49,10 @@ $ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 ## Test: manifest summary in text
 
+Line totals read as the browser’s do (`line_totals`, mb-ox6a): a total of zero is left
+out, so a file that only adds lines reads `[+1]`, and a change of no lines reads
+`0 lines`.
+
 ```console
 $ metab repo --diff 'HEAD^..HEAD'
 comparison git:10e5320d75eeeaf3 (direct)
@@ -56,8 +60,8 @@ left  ac107eaa9009cb6012a76154510bfdd9927b5fc2
 right cde4cdc5bf066da46253dae484db273f8d35cb70
 files 3  +3 -1  (exact)
 M    a.py  [+1 -1]
-R50  u.py -> h/u.py  [+1 -0]
-A    new.md  [+1 -0]
+R50  u.py -> h/u.py  [+1]
+A    new.md  [+1]
 ? 0
 ```
 
@@ -70,8 +74,8 @@ left  ac107eaa9009cb6012a76154510bfdd9927b5fc2
 right cde4cdc5bf066da46253dae484db273f8d35cb70
 files 3  +3 -1  (exact)
 M    a.py  [+1 -1]
-R50  u.py -> h/u.py  [+1 -0]
-A    new.md  [+1 -0]
+R50  u.py -> h/u.py  [+1]
+A    new.md  [+1]
 ? 0
 ```
 
@@ -318,8 +322,8 @@ $ printf 'this is not a diff at all\n' > prose.patch && metab . --diff prose.pat
 comparison patch:[..] (direct)
 left  patch
 right patch
-files 0  +0 -0  (exact)
-warning: no diff sections recognized in this input
+files 0  0 lines  (exact)
+warning: No changes could be read from this patch.
 ? 0
 ```
 
@@ -347,8 +351,8 @@ $ metab repo --diff 'main...side'
 comparison git:0626f0b9ec0a1ec4 (merge_base)
 left  ac107eaa9009cb6012a76154510bfdd9927b5fc2
 right d1d6c6b344905bbc379b0f996e6dcd7922b70f4a
-files 1  +1 -0  (exact)
-A    side.txt  [+1 -0]
+files 1  +1  (exact)
+A    side.txt  [+1]
 ? 0
 ```
 

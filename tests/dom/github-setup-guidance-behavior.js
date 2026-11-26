@@ -34,17 +34,19 @@ globalThis.window = {
   const [catalog, page, tree] = await Promise.all(
     ["pulls-panel.js", "pull-page.js", "pull-files-tree.js"].map(load),
   );
-  for (const [state, help, command] of [
-    ["gh_missing", "install", "gh auth login --hostname github.com"],
-    ["gh_too_old", "update", "gh auth status --hostname github.com"],
-    ["not_logged_in", undefined, "gh auth login --hostname github.com"],
+  // One fixed sentence per outcome on all three surfaces, whatever the job's message said:
+  // that stays in `last_refresh.message` for agents (docs/design-system-messages.md).
+  for (const [state, help, said] of [
+    ["gh_missing", "install", "GitHub CLI is not installed."],
+    ["gh_too_old", "update", "GitHub CLI needs an update."],
+    ["not_logged_in", undefined, "Run gh auth login --hostname github.com to sign in to GitHub."],
   ]) {
     const envelope = files[`failed ${state}`];
     assert.equal(envelope.last_refresh.outcome, state);
     for (const last of [envelope.last_refresh, { ...envelope.last_refresh, message: null }]) {
       const supplied = { ...envelope, last_refresh: last };
       const catalogFailure = catalog.refreshFailure(supplied, (at) => at);
-      const fileFailure = tree.fileListFailure(supplied, (at) => at);
+      const fileFailure = tree.fileListFailure(supplied, (at) => at, String);
       const detail = page.describePull(
         { ...pages.current.body, last_refresh: last },
         {
@@ -54,27 +56,17 @@ globalThis.window = {
         },
       );
       assert.equal(catalogFailure.help, help);
-      assert(catalogFailure.text.includes(command));
-      assert(
-        !catalogFailure.text.includes("You can still browse local files"),
-        "the connection row supplies its own cache context",
-      );
+      assert.equal(catalogFailure.text, said);
       assert.equal(fileFailure.retry, true);
       assert.equal(fileFailure.help, help);
-      assert(fileFailure.text.includes(command));
-      assert(
-        fileFailure.text.includes("You can still browse local files and any cached pull requests."),
-      );
-      if (help) {
-        assert(fileFailure.text.includes("https://cli.github.com/"));
-      }
-      if (last.message !== null) {
-        assert(fileFailure.text.startsWith(last.message), "file setup retains safe backend text");
-        assert(detail.failure.includes(last.message), "PR setup retains safe backend text");
-      }
+      assert.equal(fileFailure.text, said);
       assert.equal(detail.failureHelp, help);
-      assert(detail.failure.includes(command));
-      assert(detail.failure.includes("You can still browse local files"));
+      assert.equal(detail.failure, said);
+      if (last.message !== null) {
+        for (const text of [catalogFailure.text, fileFailure.text, detail.failure]) {
+          assert(!text.includes(last.message), "the job's message stays in the envelope");
+        }
+      }
       assert(detail.pull !== null, "setup failures must retain the cached PR");
       assert.equal(detail.canRefresh, true);
     }
@@ -87,7 +79,7 @@ globalThis.window = {
     },
     (at) => at,
   );
-  assert.equal(rejected.text, "Run gh auth login --hostname github.com to connect.");
+  assert.equal(rejected.text, "Run gh auth login --hostname github.com to sign in to GitHub.");
   for (const state of ["network_error", "not_found_or_private", "rate_limited"]) {
     const supplied = files[`failed ${state}`];
     const notice = catalog.refreshFailure(supplied, (at) => at);
@@ -103,7 +95,7 @@ globalThis.window = {
       setupStates: 3,
       views: 3,
       nullMessageFallbacks: true,
-      backendTextPreserved: true,
+      backendTextWithheld: true,
       cachedRecordPreserved: true,
       authUsesNormalizedGuidance: true,
       otherFailureKindsPreserved: true,

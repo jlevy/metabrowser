@@ -18,6 +18,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -28,6 +29,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -214,20 +216,21 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-gh api repos/octo/demo --jq .size
 gh auth status
+gh api repos/octo/demo --jq .size
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -236,14 +239,14 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data reader.json
 exit: 0
 --- stdout ---
@@ -265,6 +268,7 @@ status: 202
     "checks_pending": true,
     "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -275,6 +279,7 @@ status: 202
     "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
     "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": "<RECORD 7>",
     "core_preview": null,
     "repository_labels": [],
@@ -298,6 +303,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -308,6 +314,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null,
   "repository_labels": [],
@@ -318,14 +325,14 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7/commits/f7c5a99 --show src/app.txt
 exit: 0
 --- stdout ---
@@ -358,6 +365,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -368,6 +376,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null,
   "repository_labels": [],
@@ -382,15 +391,16 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: gh could not reach api.github.com (network_error))
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: GitHub could not be reached because api.github.com did not resolve (DNS) (network_error))
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
+gh api user
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 ## A repository URL, and a pull request no URL named: asked for by a request that is not a reader's, nothing starts; asked for by a reader's, it is fetched.
@@ -413,11 +423,13 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -446,11 +458,13 @@ status: 200
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": false,
     "last_refresh": null,
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -481,11 +495,13 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -509,6 +525,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -519,6 +536,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -596,14 +614,14 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/10
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data automatic.json
 exit: 0
 --- stdout ---
@@ -625,6 +643,7 @@ status: 200
     "checks_pending": false,
     "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "succeeded",
@@ -635,6 +654,7 @@ status: 200
     "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE>",
     "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
     "record": "<RECORD 10>",
     "core_preview": null,
     "repository_labels": [],
@@ -644,6 +664,51 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+gh api repos/octo/demo/issues/10
+## held.json names that record_revision as the record the asker holds: the answer says record_held in place of the record.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data held.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": "c691256511d05858850bc7684ae062fea0d41132",
+    "pin_ref": "refs/remotes/origin/topic",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "verified_at": "2026-09-17T12:00:00Z",
+    "verified_by": "fetch",
+    "head_moved": false,
+    "checks_pending": false,
+    "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+    "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false,
+    "record_held": true
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+--- stderr ---
+--- gh ---
+gh api repos/octo/demo/issues/10
 # metab https://github.com/octo/demo --api /api/source/status
 exit: 0
 --- stdout ---
@@ -657,10 +722,11 @@ status: 200
   "ref_name": "topic",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "<HOME>/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "<HOME>/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "c691256511d05858850bc7684ae062fea0d41132",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -670,7 +736,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -681,7 +749,7 @@ status: 200
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -690,19 +758,19 @@ pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/8
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/9 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -711,14 +779,14 @@ pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/9
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1
 gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/pull?number=8'
 exit: 0
 --- stdout ---
@@ -738,6 +806,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "bf216a4270ac3d6d3a5e23a0e7b42928b1687a9d8299db066d9aaf8d09ce8187",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -748,6 +817,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -856,7 +926,7 @@ pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -865,41 +935,40 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
+gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 0
+exit: 1
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
-selection: pull_request
-pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. (not_logged_in); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+Error: pull request 11 of https://github.com/octo/demo: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. (not_logged_in)
 --- gh ---
+gh api user
+gh auth status
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com-octo-demo-9vhngza0oa1
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+Error: pull request 11 of https://github.com/octo/demo: This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. (gh_too_old)
+--- gh ---
+gh api user
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
-store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
-revision: c691256511d05858850bc7684ae062fea0d41132
-selection: pull_request
-pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. (gh_too_old); the pin is the default branch)
---- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
---- gh ---
-gh auth status
-# metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 0
---- stdout ---
-acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -908,13 +977,13 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -923,13 +992,13 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -938,21 +1007,22 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh could not reach api.github.com (network_error); the pin is the default branch)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub could not be reached because the connection to api.github.com timed out (network_error); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
+gh api user
 gh auth status
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --api '/api/plugin/github/pull?number=11'
@@ -974,6 +1044,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "rate_limited",
@@ -984,6 +1055,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -994,14 +1066,14 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted; try again in a few minutes (rate_limited); the pin is the default branch)
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 ## Git's fetch of refs/pull/7/head is answered here with the text Git printed for a repository GitHub does not show.
 # metab https://github.com/octo/demo/pull/7 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -1010,19 +1082,19 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refre
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -1031,19 +1103,19 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refre
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7 --no-serve
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -1052,60 +1124,27 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refre
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
-gh auth status
+gh api user (If-None-Match)
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/11 --api '/api/plugin/github/pull?number=11'
-exit: 0
+exit: 1
 --- stdout ---
-api: /api/plugin/github/pull?number=11
-status: 200
-{
-  "state": "absent",
-  "reason": "not_cached",
-  "source": "https://github.com/octo/demo",
-  "number": 11,
-  "pin": "c691256511d05858850bc7684ae062fea0d41132",
-  "pin_ref": "refs/remotes/origin/topic",
-  "fetched_at": null,
-  "verified_at": null,
-  "verified_by": null,
-  "head_moved": false,
-  "checks_pending": false,
-  "record_revision": null,
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": {
-    "outcome": "gh_missing",
-    "message": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
-    "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
-  },
-  "comparison_route": null,
-  "image_route": null,
-  "rendered_route": null,
-  "record": null,
-  "core_preview": null,
-  "repository_labels": [],
-  "labels_pending": false
-}
 --- stderr ---
-selection: pull_request
-pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. (gh_missing); the pin is the default branch)
+Error: pull request 11 of https://github.com/octo/demo: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. (gh_missing)
 --- gh ---
 # metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7'
 exit: 0
@@ -1126,6 +1165,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "head_mismatch",
@@ -1136,6 +1176,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null,
   "repository_labels": [],
@@ -1146,16 +1187,16 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab root --api /api/cache/source/github-com--octo--demo--46386669dc01
+# metab root --api /api/cache/source/github-com-octo-demo-9vhngza0oa1
 exit: 0
 --- stdout ---
-api: /api/cache/source/github-com--octo--demo--46386669dc01
+api: /api/cache/source/github-com-octo-demo-9vhngza0oa1
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "source": {
-    "slug": "github-com--octo--demo--46386669dc01",
+    "slug": "github-com-octo-demo-9vhngza0oa1",
     "publication": "published",
     "identity": {
       "id": "sha256:46386669dc018f7570de90cce6b7e97fcdcf2d10c5a4949e668d38336b0fb12e",
@@ -1174,6 +1215,7 @@ status: 200
     },
     "problems": [],
     "store": {
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "full",

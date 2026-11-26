@@ -19,6 +19,8 @@ It links each document below and the contributor standards in `docs/`.
   dispatch, remote tunnels, and process exit
 - [Server and content](architecture/arch-server-and-content.md): request flow, safe
   paths, validators, and the content-trust model
+- [Threat model](architecture/arch-threat-model.md): assets, adversaries, trust
+  boundaries, and each threat’s policy, evidence, and accepted risk
 - [Views, models, and routes](architecture/arch-views-models-routes.md): kinds, views,
   formats, and the route index
 - [Parity registry](architecture/arch-parity-registry.md): the route and functional
@@ -48,13 +50,18 @@ It links each document below and the contributor standards in `docs/`.
   classification, the SDK gate, containers, and how to add a file type
 - [Browser shell](architecture/arch-browser-shell.md): shell modules, stores, lifecycle,
   and asset loading tiers
-- [macOS app](architecture/arch-macos-app.md): server supervision, windows and tabs,
-  restore, and WebKit differences
+- [macOS app](architecture/arch-macos-app.md): server supervision, windows, restore, and
+  WebKit differences
+- [App contract](architecture/arch-app-contract.md): what the macOS app reads of
+  `metab`, the one file that declares it, the golden that records it, and the checks
+  that hold both sides to it
 - [Recent targets](architecture/arch-recent-targets.md): the list of folders and
   repositories opened lately, what records an open, and the shells that read it
 
 ### Formats
 
+- [Collection format](architecture/arch-collection-format.md): ordered annotated items,
+  what the format owns and what a carrier adds, with guided reviews as the first carrier
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md): the JSON
   change-set document, its schema, and its apply oracle
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md):
@@ -65,6 +72,37 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Whole-stack review](specs/active/plan-2026-11-24-stack-review.md): a page for a
+  stack’s whole change, one consolidated diff with Docs over it; collection references
+  to a pull request, a file as one changes it, and a commit; a stack’s guide in a
+  `stack-review` block; and concise guides with Markdown notes
+- [Guided review groups, rationale, rendered documents, and stack rollups](specs/active/plan-2026-11-24-guided-review-groups.md):
+  optional groups of steps, a rationale step, documents drawn rendered in steps, and a
+  design for a stack-wide rollup that whole-stack review supersedes
+- [Guided reviews in the agent skill](specs/active/plan-2026-11-24-guided-reviews-skill.md):
+  the skill section that writes, publishes, and refreshes a pull request’s guided
+  review, now shipped, and a `metab` check of a draft guide, still to build
+- [The Diff | Current chooser](specs/active/plan-2026-11-23-diff-current-chooser.md):
+  one chooser in the diff’s toolbar, beside Split | Unified, for the whole diff, whose
+  Current shows the new version alone with its changes marked
+- [Pull request update cadence and GitHub budget](specs/active/plan-2026-11-22-pull-request-update-cadence.md):
+  a draft for free conditional probes every few seconds for what is on screen, full
+  reads once every minute or two, and a budget that leaves room for the account’s other
+  tools
+- [Treemap granularity: canvas cells and a denser rollup](specs/active/plan-2026-11-22-treemap-canvas-granularity.md):
+  a draft for painting every file down to a device pixel on a canvas, with DOM kept for
+  labels, focus, and hover, then sending the Treemap far more of the tree in a compact
+  encoding
+- [Tabular data browsing and live SQLite](specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
+  a draft for one generic table plugin over CSV, record lists, and SQLite, with
+  nondestructive, live reads of databases other applications are writing
+- [A structured event log](specs/active/plan-2026-11-19-structured-event-log.md): one
+  JSON line for every request, background job, and `git` or `gh` process, with latency,
+  outcome, and what started it; the causes of GitHub failures in the page; browser
+  reports of waits that never ended; then views of the log in Metabrowser
+- [The app’s command-line dependencies and a complete doctor](specs/active/plan-2026-11-18-cli-dependencies-and-doctor.md):
+  where each tool’s minimum version lives, the app’s versioning contract with `metab`, a
+  doctor that checks everything a setup needs, and Check Setup… in the macOS app
 - [View on branch](specs/active/plan-2026-11-17-view-on-branch.md): one control on a
   pull request’s Changes that opens a changed file at the pull request’s head in the
   main UI, replacing the standalone revision page; approved 2026-11-17
@@ -74,6 +112,13 @@ It links each document below and the contributor standards in `docs/`.
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
+- [Switching folders in the macOS app](specs/active/plan-2026-11-18-macos-folder-switching.md):
+  a window that can show any open folder, the title as a native chooser of open and
+  recent folders, a keyboard switcher, and marks shared with the page
+- [Operational views of Claude Code and Codex](specs/active/plan-2026-11-19-agent-operations-views.md):
+  one shared model, record kinds with one color each, and the home, session, timeline,
+  live, usage, and latency views for both agents, in six phases, with `urollup` as an
+  optional accelerator
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
@@ -88,6 +133,9 @@ It links each document below and the contributor standards in `docs/`.
   splitting it into unit, golden, and browser jobs, and cutting what a flake costs; the
   owner approved Phases 1 and 2 on 2026-11-16, and they are implemented by
   jlevy/metabrowser#499 and jlevy/metabrowser#504
+- [Opening anything from the CLI and the app](specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md):
+  `metab TARGET --present`, the `open_in` preference, GitHub URLs and Open URL… in the
+  app, GitHub sign-in checks, and named UI commands; Phase 1 partly built
 - [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
   Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
   the checks of a downloaded copy, with the owner-only steps
@@ -173,6 +221,12 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [Drawing dense, deep treemaps in the browser](research/research-2026-11-22-dense-treemap-rendering.md):
+  how desktop disk-usage tools and web libraries draw treemaps down to single files, and
+  measured canvas, DOM, and hit-testing costs in Chrome and WKWebView
+- [Operational visibility into Claude Code and Codex](research/research-2026-11-19-agent-home-visibility.md):
+  every file format under `~/.claude` and `~/.codex`, what Metabrowser shows of them
+  today, and a proposed agents plugin built on the public plugin contract
 - [Why CI takes twenty minutes](research/research-2026-11-16-ci-speed.md): where a CI
   run’s minutes go by job, step, and test, what flakes cost, and the options for the
   fast CI plan

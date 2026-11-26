@@ -6,6 +6,12 @@ Nothing else is ever read: no fetch starts, the served pin and checkout stay as 
 ``GET github/pull-rendered-diff`` (:mod:`.pull_rendered_diff`) and the image route here
 both admit their pair this way.
 
+An address may name ``stack=<n>`` in place of ``number``: a native stack's page asks for
+its combined comparison's rendered documents and their images so. It opens the stack's
+current pair, computed as the ``stack`` route computes it (:mod:`.pull_stack`), from its
+members' records and their ancestry, and an earlier pair that route answered while it is
+kept (:mod:`.pull_stack_retained`), since a stack's page keeps the comparison it drew.
+
 ``GET github/pull-image`` serves one image at the head of an admitted pair, for the
 rendered Markdown of Changes: the pull envelope's ``image_route`` names the pair
 (:func:`.pull_route.image_route`), and the rendered diff adds ``path``. A document link in
@@ -32,6 +38,7 @@ import asyncio
 import os
 import threading
 from collections import OrderedDict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal
@@ -42,6 +49,8 @@ from starlette.responses import JSONResponse, Response
 
 from metabrowser.builtin_plugins.github.pull_record import PullRecord, read_pull_record
 from metabrowser.builtin_plugins.github.pull_route import (
+    IMAGE_ROUTE,
+    NUMBER_REQUIRED,
     PullRequestError,
     image_route,
     pull_host,
@@ -85,17 +94,21 @@ type Admission = Literal["current", "retained", "refused", "unknown"]
 
 @dataclass(frozen=True, slots=True)
 class Snapshot:
-    """One revision pair of a pull request, as a store's token names it."""
+    """One revision pair of a pull request, or of a native stack, as a store's token names it."""
 
     number: int
     base: str
     head: str
     store: str
+    scope: Literal["pull", "stack"] = "pull"
 
     def image_href(self, path: GitPath) -> str:
         """The image route's address of *path* at the head."""
 
         query = urlencode({"path": path.to_wire()})
+        if self.scope == "stack":
+            names = {"stack": self.number, "left": self.base, "right": self.head}
+            return f"{IMAGE_ROUTE}?{urlencode({**names, 'store': self.store})}&{query}"
         return f"{image_route(self.number, self.base, self.head, store=self.store)}&{query}"
 
     def reference(self, source: GitPath, href: str, image: bool) -> str | None:
@@ -238,6 +251,40 @@ def _decide(
     return "retained" if retained else "refused"
 
 
+def requested_snapshot(params: Mapping[str, str]) -> tuple[int, Literal["pull", "stack"]]:
+    """The pull request a ``GET`` names by ``number``, or the stack by ``stack``: exactly one
+    of the two, or :class:`PullRequestError`."""
+
+    if "stack" in params:
+        if "number" in params:
+            raise PullRequestError(NUMBER_REQUIRED)
+        return requested_number({"number": params["stack"]}), "stack"
+    return requested_number(params), "pull"
+
+
+async def _stack_admission(
+    request: Request, published: PublishedSource, snapshot: Snapshot, reader: str | None
+) -> Admission:
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_stack import read_stack
+    from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
+
+    read = await read_stack(served_repository(request.app), published, snapshot.number, reader)
+    if read.reason == "commits_unavailable":
+        return "unknown"
+    pair = read.pair
+    if pair is not None and (pair.base, pair.head) == (snapshot.base, snapshot.head):
+        return "current"
+    # A pair the stack has moved from stays admitted while the stack route keeps it, so a
+    # page keeps drawing the comparison it drew (pull_stack_retained.py).
+    retained = await asyncio.to_thread(
+        retained_stack_pair, published, snapshot.number, reader, snapshot.base, snapshot.head, None
+    )
+    if retained == "unknown":
+        return "unknown"
+    return "retained" if retained is not None else "refused"
+
+
 async def admitted_snapshot(
     request: Request, snapshot: Snapshot
 ) -> tuple[PublishedSource | None, Admission]:
@@ -254,7 +301,11 @@ async def admitted_snapshot(
     ):
         return None, "refused"
     reader = host.pulls.observed_reader
-    allowed = await asyncio.to_thread(_admission, published, snapshot, reader)
+    allowed = (
+        await _stack_admission(request, published, snapshot, reader)
+        if snapshot.scope == "stack"
+        else await asyncio.to_thread(_admission, published, snapshot, reader)
+    )
     # The source and reader the decision was made for must still be the server's.
     if host.pulls.published is not published or host.pulls.observed_reader != reader:
         return None, "refused"
@@ -313,7 +364,7 @@ async def pull_image_handler(request: Request) -> Response:
 async def _respond(request: Request) -> Response:
     params = request.query_params
     try:
-        number = requested_number(params)
+        number, scope = requested_snapshot(params)
         base, head = params.get("left", ""), params.get("right", "")
         if (
             not is_full_revision(base)
@@ -326,7 +377,7 @@ async def _respond(request: Request) -> Response:
             raise ValueError
     except (PullRequestError, ValueError):
         return _error("invalid_image", "This image address is invalid.", 400)
-    snapshot = Snapshot(number, base, head, params.get("store", ""))
+    snapshot = Snapshot(number, base, head, params.get("store", ""), scope)
     published, admission = await admitted_snapshot(request, snapshot)
     if admission == "unknown":
         return _error(
@@ -350,7 +401,8 @@ async def _respond(request: Request) -> Response:
         if admission == "retained":
             return _error(
                 "snapshot_objects_expired",
-                "This earlier PR revision is no longer cached. Open Changes for the current comparison.",
+                "This earlier revision of the pull request is no longer available. Open Changes for "
+                "the current comparison.",
                 410,
             )
         return _error(

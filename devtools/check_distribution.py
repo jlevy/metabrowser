@@ -5,9 +5,12 @@ from __future__ import annotations
 import os
 import subprocess
 import tarfile
+import tempfile
+import tomllib
 import zipfile
 from pathlib import Path
 from textwrap import dedent
+from urllib.parse import urlsplit, urlunsplit
 
 from devtools.public_hygiene import find_hygiene_findings
 
@@ -93,15 +96,21 @@ WHEEL_SMOKE_SCRIPT = dedent(
     plugins = discover_plugins()
     names = {plugin.name for plugin in plugins.plugins}
     required = {
-        "agent-log",
+        "agents",
         "binary",
+        "delimited",
         "diff",
+        "event-log",
         "folder",
+        "fsqlite",
         "github",
         "html",
         "image",
         "markdown",
+        "pdf",
+        "sqlite",
         "structured",
+        "table",
         "text",
         "unknown-jsonl",
     }
@@ -126,13 +135,21 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "static/plugin-sdk-views.js",
         "static/tree-keyboard-navigation.js",
         "static/view-composition.js",
+        "static/view-header.js",
         "builtin_plugins/folder/overview.js",
+        "builtin_plugins/fsqlite/reader.py",
         "builtin_plugins/diff/diff-view.js",
         "builtin_plugins/image/index.js",
         "builtin_plugins/image/styles.css",
+        "builtin_plugins/pdf/index.js",
+        "builtin_plugins/pdf/styles.css",
         "builtin_plugins/html/index.js",
         "builtin_plugins/html/styles.css",
         "builtin_plugins/html/detect.py",
+        "builtin_plugins/agents/index.js",
+        "builtin_plugins/agents/agent-log.js",
+        "builtin_plugins/agents/agent-log.css",
+        "builtin_plugins/agents/adapters.py",
         "builtin_plugins/markdown/dom-traversal.js",
         "builtin_plugins/markdown/markdown-worker.js",
         "builtin_plugins/markdown/markdown-worker-client.js",
@@ -299,6 +316,47 @@ def _isolated_install_environment() -> dict[str, str]:
     return env
 
 
+def _locked_source_requirements() -> list[str]:
+    """Each package `[tool.uv.sources]` builds from Git, as the commit `uv.lock` records.
+
+    uv honors a source only in this checkout: the wheel's metadata keeps the bare
+    requirement, which no index may satisfy while the source names an unreleased commit.
+    The smoke installs therefore name the locked commit beside the wheel, so they test
+    the wheel against what the lock pins. publish.yml refuses a release while any source
+    is set, so a published wheel never depends on one.
+    """
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    sources = project.get("tool", {}).get("uv", {}).get("sources", {})
+    if not sources:
+        return []
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    requirements: list[str] = []
+    for package in lock.get("package", []):
+        if package.get("name") not in sources:
+            continue
+        git: object = package.get("source", {}).get("git")
+        if not isinstance(git, str) or not git:
+            raise RuntimeError(f"{package['name']}: only a Git source is supported here")
+        parts = urlsplit(git)
+        if not parts.fragment:
+            raise RuntimeError(f"{package['name']}: uv.lock records no commit for {git}")
+        repository = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        requirements.append(f"{package['name']} @ git+{repository}@{parts.fragment}")
+    if len(requirements) != len(sources):
+        raise RuntimeError(f"uv.lock lacks a locked package for {sorted(sources)}")
+    return requirements
+
+
+def _with_artifact(artifact: Path) -> list[str]:
+    """The `--with` arguments that install *artifact* and any locked Git source."""
+
+    arguments = ["--with", str(artifact)]
+    for requirement in _locked_source_requirements():
+        arguments += ["--with", requirement]
+    return arguments
+
+
 def _run_installed_python_smoke(artifact: Path, script: str) -> str:
     python_command = [
         "uv",
@@ -307,8 +365,7 @@ def _run_installed_python_smoke(artifact: Path, script: str) -> str:
         "run",
         "--isolated",
         "--no-project",
-        "--with",
-        str(artifact),
+        *_with_artifact(artifact),
         "python",
         "-I",
         "-c",
@@ -347,8 +404,7 @@ def _smoke_install(wheel: Path) -> None:
             "run",
             "--isolated",
             "--no-project",
-            "--with",
-            str(wheel),
+            *_with_artifact(wheel),
             command,
         ]
         subprocess.run([*cli_command, "--help"], cwd=ROOT, env=env, check=True)
@@ -373,20 +429,42 @@ def _smoke_install(wheel: Path) -> None:
         "run",
         "--isolated",
         "--no-project",
-        "--with",
-        str(wheel),
+        *_with_artifact(wheel),
         "metab",
         "--doctor",
     ]
-    subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
+    # `--doctor` counts an `open_in` it cannot read, or `app` where no app takes a target,
+    # as a problem, so the developer's own preference and config.yml would decide this
+    # step. `browser` looks for no app, and an empty configuration directory sets nothing.
+    # Its setup checks find a shared or unwritable cache directory a problem too, so the
+    # cache is a private directory of its own. The doctor's GitHub section runs `gh auth
+    # status`, so the failing stand-in the goldens use comes first on PATH: no build
+    # reaches a developer's signed-in gh. Its state, and Git's, are reported and never
+    # change the doctor's exit status.
+    no_real_gh = ROOT / "tests" / "no-real-gh"
+    with (
+        tempfile.TemporaryDirectory(prefix="metab-doctor-config-") as configuration,
+        tempfile.TemporaryDirectory(prefix="metab-doctor-cache-") as cache,
+    ):
+        subprocess.run(
+            doctor_command,
+            cwd=ROOT,
+            env={
+                **env,
+                "METABROWSER_OPEN_IN": "browser",
+                "METABROWSER_CONFIG_DIR": configuration,
+                "METABROWSER_CACHE_DIR": cache,
+                "PATH": f"{no_real_gh}{os.pathsep}{env.get('PATH', '')}",
+            },
+            check=True,
+        )
 
     api_check_command = [
         *uv_command,
         "run",
         "--isolated",
         "--no-project",
-        "--with",
-        str(wheel),
+        *_with_artifact(wheel),
         "metab",
         str(ROOT / "tests" / "manual-fixtures"),
         "--check-api",

@@ -12,7 +12,8 @@ responses. Serving began on the default branch, as it does when the pull request
 be opened at startup. The page opened with nothing cached, fetched the record, read its
 Markdown, switched the pin to the head the record names, went stale, refreshed to a
 record with the same text, and refreshed again to one with a hostile comment, recorded
-both as the hook answers it and as KPress alone renders it. The same server then fetched
+both as the hook answers it and, in ``tests/fixtures/github-pull-page-kpress-tree.json``,
+as KPress alone renders it. The same server then fetched
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
 in those states and a skipped check, then read 8 again once GitHub named no merger. With
 GitHub out of reach, a refresh of 8 failed and the page's own request found it not due,
@@ -194,6 +195,19 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
     return recorded
 
 
+def _until_refreshed(client: TestClient, number: int) -> None:
+    """Poll pull request *number* until its refresh has ended, as ``settle`` polls status.
+
+    Bounded as ``settle`` is, so a refresh that never ends fails this test, with what it
+    waited for, inside the recorder's budget, rather than ending the whole run.
+    """
+
+    deadline = time.monotonic() + 50
+    while client.get(_PULL, params={"number": number}).json()["refreshing"]:
+        assert time.monotonic() < deadline, f"the refresh of pull request {number} did not end"
+        time.sleep(0.01)
+
+
 def _fetched(client: TestClient, number: int) -> dict[str, Any]:
     """Pull request *number* after a reader's fetch of it has ended.
 
@@ -201,8 +215,7 @@ def _fetched(client: TestClient, number: int) -> dict[str, Any]:
     """
 
     client.post(_REFRESH, json={"number": number, "retry": True}, headers=JSON_BODY)
-    while client.get(_PULL, params={"number": number}).json()["refreshing"]:
-        time.sleep(0.01)
+    _until_refreshed(client, number)
     return _answer(client.get(_PULL, params={"number": number}))
 
 
@@ -338,13 +351,20 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["markdown added"] = _answer(
                 client.get(_MARKDOWN, params={**read_7, "part": f"issue_comment/{added['id']}"})
             )
-            # What KPress alone makes of the same text, before the hook hardens it: the
-            # input the page's own defense, neutralizeFragment, is played on.
-            recorded["kpress added"] = {
-                "status": 200,
-                "etag": None,
-                "body": {"tree": html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
-            }
+
+            # Ten seconds on, the page's own ask for the current record is a probe: GitHub
+            # answers its conditional read 304, so nothing is refreshed, and the record is
+            # vouched for by the probe. The ask names the record the page shows, so the
+            # answer leaves it out.
+            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=10)
+            held_7 = {**read_7, "held": recorded["refreshed"]["body"]["record_revision"]}
+            recorded["probed"] = _answer(client.post(_REFRESH, json=held_7, headers=JSON_BODY))
+            assert recorded["probed"]["body"]["refresh"] == "not_due"
+            probed = recorded["probed"]["body"]["pull"]
+            assert probed["record_held"] is True and "record" not in probed
+            recorded["probed_current"] = _answer(client.get(_PULL, params=read_7))
+            assert recorded["probed_current"]["body"]["verified_by"] == "probe"
+            clock[0] = FETCHED_AT + timedelta(minutes=6)
 
             # The same server, asked for the stand-in's merged and then its closed pull
             # request, each read once: what the header says in a state other than open.
@@ -372,11 +392,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["failed_again"] = _answer(
                 client.post(_REFRESH, json={"number": 8, "retry": True}, headers=JSON_BODY)
             )
-            while client.get(_PULL, params={"number": 8}).json()["refreshing"]:
-                time.sleep(0.01)
+            _until_refreshed(client, 8)
 
             # Served an older head of 7, as a page left open is: a refresh finds a newer
-            # one, and the pin stays until the reader takes the offer.
+            # one, and the server follows the pull request's head to it.
             def _answering_7(head: str) -> None:
                 path = "repos/octo/demo/pulls/7"
                 body = answers["api"][path]["body"]
@@ -402,7 +421,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             assert client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY).json()
             clock[0] = FETCHED_AT + timedelta(minutes=41)
             _answering_7(origin["fork_head"])
-            recorded["behind_head"] = _fetched(client, 7)
+            recorded["followed_head"] = _fetched(client, 7)
 
             # A number with no record, and a press of Fetch past the bound on jobs.
             recorded["absent_14"] = _answer(client.get(_PULL, params={"number": 14}))
@@ -437,6 +456,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
     return _session_tags(recorded)
 
 
+# The recorder runs about 226 processes one after another (75 launches of the fake gh, a
+# Python interpreter each, and 151 of Git) and spends about 9 s of CPU with them, measured
+# 2026-11-23 on a 10-core M1 Pro. CI's call takes about 4 s. Here, alone, it took 33 s at a
+# load average near 320 and 42 s near 400; three copies at once near 405 took 43 to 48 s.
+# Three more near 396, with an event log recording them, passed the suite's 60 s default,
+# which ends the whole run. Each was at a different step, every refresh job had ended (the
+# longest in 7.8 s), and no process ran longer than 1.5 s: slow, never stuck. Its polls
+# (``settle`` and ``_until_refreshed``) are each bounded at 50 s, so one that never ends
+# fails this test instead.
+@pytest.mark.timeout(180)
 def test_recording_is_what_a_served_pull_request_answers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
@@ -454,10 +483,10 @@ def test_recording_is_what_a_served_pull_request_answers(
         "too_many",
     )
     assert recorded["not_github"]["body"]["reason"] == "not_github"
-    behind = recorded["behind_head"]["body"]
-    assert behind["pin"] == pull_origin["fork_earlier"]
-    assert behind["pin_ref"] == "refs/pull/7/head"
-    assert behind["record"]["pull"]["head"]["sha"] == pull_origin["fork_head"]
+    followed = recorded["followed_head"]["body"]
+    assert followed["pin"] == pull_origin["fork_head"] != pull_origin["fork_earlier"]
+    assert followed["pin_ref"] == "refs/pull/7/head"
+    assert followed["record"]["pull"]["head"]["sha"] == pull_origin["fork_head"]
     assert recorded["switch_refused"]["status"] == 404
     assert recorded["pending"]["body"]["refreshing"] is True
     assert recorded["current"]["body"]["state"] == "current"
@@ -480,8 +509,15 @@ def test_recording_is_what_a_served_pull_request_answers(
         unchanged["record"]["issue_comments"]
         == recorded["stale"]["body"]["record"]["issue_comments"]
     )
-    kept = json.dumps(recorded["kpress added"]["body"]["tree"])
-    for hazard in ('"link"', '"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
+    # What KPress alone makes of the hostile comment, before the hook hardens it: the
+    # input the page's own defense, neutralizeFragment, is played on. It is no answer of
+    # the server, and at 245 lines it is a recording of its own, which keeps the server's
+    # inside the review budget.
+    kpress_tree = html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))
+    kept = json.dumps(kpress_tree)
+    # KPress (from jlevy/kpress#82) removes a raw `<link>` itself; tests/dom/inert-html-session.js
+    # hands one to the page's allowlist directly.
+    for hazard in ('"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
         assert hazard in kept, f"KPress alone no longer keeps {hazard}"
     assert allowlist_violations(recorded["markdown added"]["body"]["html"]) == []
     merged = recorded["merged"]["body"]["record"]["pull"]
@@ -495,6 +531,11 @@ def test_recording_is_what_a_served_pull_request_answers(
     check_recording(
         "github-pull-page-responses.json",
         _stored_once(recorded),
+        transcript="cli-ui-github-pull-page.tryscript.md",
+    )
+    check_recording(
+        "github-pull-page-kpress-tree.json",
+        {"tree": kpress_tree},
         transcript="cli-ui-github-pull-page.tryscript.md",
     )
 
@@ -517,7 +558,11 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
     assert allowlist_violations(hook) == []
     assert allowlist_violations(transcript["pageDefense"]) == []
-    assert "build badge</a>" in transcript["pageDefense"]
+    # An image written in full over https is an image, with no referrer sent.
+    assert (
+        '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/badge.png"'
+        ' alt="build badge">'
+    ) in transcript["pageDefense"]
     unavailable = transcript["filesUnavailable"]
     assert set(unavailable) == {
         "fetch_failed",
@@ -530,28 +575,60 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     }
     for state, said in unavailable.items():
         assert said["files"].startswith("Changes "), state
-    assert "does not guess" in unavailable["base_uncertain"]["files"]
-    assert "not readable here" in unavailable["commits_unavailable"]["files"]
+    # A state another fetch can settle ends with that remedy.
+    for state in ("base_uncertain", "commits_unavailable", "comparison_timeout"):
+        assert unavailable[state]["files"].split(". ")[-1].startswith("Refresh"), state
     # A checkout's page offers nothing that serves or switches code: it has no pin.
     for when, checkout_page in transcript["checkout"].items():
         if when.startswith("a mirror"):
             continue
-        assert (
-            checkout_page["browse"],
-            checkout_page["headOffer"],
-            checkout_page["comparison"],
-        ) == (None, None, None)
+        assert (checkout_page["browse"], checkout_page["comparison"]) == (None, None)
     assert transcript["hunks"] and transcript["place"]
 
 
-# What the header's numbers ask for in the mount session: the pull request's page on
-# GitHub, and a refresh that recovers the comparison on screen.
-_PULL_URL = "https://github.com/octo/demo/pull/7"
-_REFRESH_BODY = (
-    '{"number":7,"retry":true,"recovery":'
+# What the Pulls tab's Refresh asks of the page in the mount session (mb-ablv): a refresh
+# that recovers the comparison on screen.
+_PULLS_REFRESH = (
+    'POST /api/plugin/github/pull-refresh {"number":7,"retry":true,"recovery":'
     '{"base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",'
     '"head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"}}'
 )
+
+
+def _text_diagram_steps() -> list[str]:
+    """What the mount session's ``textDiagrams`` story says, step by step."""
+
+    # Each binding's Mermaid is the diagram frame's, on a folder's page as on a pinned
+    # revision's; the session publishes no Mermaid bundle, so asking only reads its address.
+    body = "body as image, 1 figure, Mermaid the diagram frame's"
+    comment = "issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's"
+    gone = ", disposed"
+    modules = "kpress-diagrams, kpress-diagram-controls"
+    address = "the mermaid bundle's address"
+    both = "2 blocks, 2 in a figure"
+    one = "1 block, 1 in a figure"
+    folder = f"{body}; {comment}"
+    first = f"{body}{gone}; {comment}{gone}"
+    return [
+        "a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; "
+        "asked nothing; bindings none",
+        f"the same with Mermaid blocks, on a folder's page: {both}; asked markdown plugin, "
+        f"markdown plugin, {modules}, {modules}, {address}; bindings {folder}",
+        f"a description and a comment each with a Mermaid block: {both}; asked markdown "
+        f"plugin, markdown plugin, {modules}, {modules}, {address}; bindings {first}; "
+        f"{body}; {comment}",
+        f"a poll of the same record: {both}; asked nothing; bindings {first}; {body}; {comment}",
+        f"Changes and back to Conversation: {both}; asked nothing; bindings {first}; "
+        f"{body}; {comment}",
+        f"the description edited, the comment not: {both}; asked markdown plugin, "
+        f"{modules}, {address}; bindings {first}; {body}{gone}; {comment}; {body}",
+        f"the description's block taken out: {one}; asked nothing; bindings {first}; "
+        f"{body}{gone}; {comment}; {body}{gone}",
+        f"a block whose text is replaced before the Markdown plugin arrives: {one}; asked "
+        f"markdown plugin; bindings {first}; {body}{gone}; {comment}; {body}{gone}",
+        f"the page ends: {one}; asked nothing; bindings {first}; {body}{gone}; "
+        f"{comment}{gone}; {body}{gone}",
+    ]
 
 
 def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
@@ -637,8 +714,11 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the preparation ends with no comparison: nothing",
             "a record whose comparison nothing prepares: nothing",
             "Changes, its diff reads no comparison: nothing",
-            "a record with a moved head lands, offering the newer changes: nothing",
-            "the reader takes them, their diff not yet read: the pending placeholder",
+            # Changes follows a moved head; the way back shows the earlier diff, whose failed
+            # read leaves the record's summary drawn, as a repair of an older diff does.
+            "a record with a moved head is followed: its diff reads the comparison: the summary",
+            "the reader goes back: the earlier diff reads none again: the summary",
+            "the reader takes the newer changes, their diff not yet read: the summary",
             "their diff reads the comparison: the summary",
             "Changes, its diff throws: nothing",
             "Retry, the diff not yet read: the pending placeholder",
@@ -653,25 +733,29 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # draws nothing more (mb-z8ea).
         "summaryBrief": [
             "a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads",
-            'its core preview, of the list\'s head and base branch: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
-            'its record lands, the comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'its core preview, of the list\'s head and base branch: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'its record lands, the comparison not yet read: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             "the comparison read: the summary; 1 reads",
             "a direct link's page, the list of an older head: the pending placeholder; 1 reads",
             "its core preview, of a newer head: the pending placeholder; 1 reads",
             "a record whose list was read for another base branch: the pending placeholder; 1 reads",
             "a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads",
-            'its record lands, naming the same comparison: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'its record lands, naming the same comparison: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             "a record whose comparison has another base than the local list's: the pending placeholder; 1 reads",
-            'a record of the list\'s head, its comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
-            'the comparison\'s read fails: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'a record of the list\'s head, its comparison not yet read: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'the comparison\'s read fails: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             "no list cached: the pending placeholder; 1 reads",
-            'opened from a Pulls row that drew its line: the brief line "1 file changed \u00b7 1 M \u00b7 +12 \u22124"; 0 reads',
-            'opened from a Pulls row whose line the lane marked out of date, read again: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            # A list that deleted nothing says no zero total (mb-ox6a).
+            'a record of a list that only adds lines: the brief line "1 A, 2 M \u00b7 +3,893"; 1 reads',
+            'opened from a Pulls row that drew its line: the brief line "1 M \u00b7 +12 \u22124"; 0 reads',
+            'opened from a Pulls row whose line the lane marked out of date, read again: the brief line "1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             "a page that went before its read answered, its summary drawn: the summary; 1 reads",
         ],
         # A page mounted with no record in hand holds its cold header and tab column for the
         # quiet period, and the first header with a record lifts it, also while the
-        # conversation's first paint still waits for its Markdown (exp-099).
+        # conversation's first paint still waits for its Markdown (exp-099). Its cold title is
+        # the Pulls row's, in the record's shape, when exactly one repository's row for its
+        # number is in hand, and the plain "Pull request #N" otherwise.
         "coldHold": [
             "mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
             "its record lands, the conversation waiting for its Markdown: header shown, tab column shown",
@@ -679,93 +763,166 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
             "its record lands: header shown, tab column shown",
             "mounted with its record in hand: header shown, tab column shown",
+            'no Pulls row in hand, mounted with no record in hand: title "Pull request #7", plain',
+            'its Pulls row in hand, mounted with no record in hand: title "Count to two in the app #7", the record\'s shape',
+            "its Pulls row in hand, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
+            'two repositories\' rows for its number, mounted with no record in hand: title "Pull request #7", plain',
         ],
-        # C, G, and E run the page's setTab through the shortcut facade, with or without
+        # The header's corner, for the View on GitHub button (mb-4wqh): right after the
+        # title from the cold header on, one corner for the page's life, and the page asks
+        # the SDK for the button of the address it is at after each header paint. An SDK
+        # with no button leaves the corner empty.
+        "counterpart": [
+            'mounted with no record in hand: the corner after the title "Pull request #7"; '
+            "asked /pull/7",
+            'its record lands: the corner after the title "Count to two in the app", '
+            "the same corner; asked /pull/7",
+            'a poll brings a new title: the corner after the title "Count to three in the app", '
+            "the same corner; asked /pull/7",
+            'the route shows Checks: the corner after the title "Count to three in the app", '
+            "the same corner; asked /pull/7/checks",
+            'an SDK with no button: the corner after the title "Count to two in the app"; '
+            "asked for none",
+        ],
+        # C, G, D, and E run the page's setTab through the shortcut facade, with or without
         # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
         # unless its first read fails, so they are live from first paint, as the links
         # are; they wait while the column is out after a failed first read, and while the
         # page is staged inert. The links come back badged at once while Shift is held,
         # which paintHeader's retarget does. The header's links and actions are numbered
         # by their place, through the same facade, and a number runs what its place's
-        # control does in the paint on screen: View on GitHub opens the pull request on
-        # GitHub, Browse code asks to serve the head, by its commit and under its ref, and,
-        # once a refresh serves it, opens the code; Refresh asks for a refresh, and moves up
-        # to 2 when Browse code goes.
+        # control does in the paint on screen: Browse code asks to serve the head, by its
+        # commit and under its ref, and, once a refresh serves it, opens the code; Refresh
+        # asks for a refresh, and moves up to 1 when Browse code goes. View on GitHub, the
+        # corner's button, is not numbered (mb-4wqh).
         "tabKeys": [
             "before the record, the tab column in the page: "
-            "Conversation C, Changes G, Checks E; live conversation files checks",
+            "Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks",
             "C: showed Conversation",
             "G: opened the files route",
             "the record arrives and paintHeader keeps the column: "
-            "Conversation C, Changes G, Checks E",
-            "live: conversation files checks",
-            "numbered: 1 View on GitHub, 2 Browse code",
-            f"1: window.open {_PULL_URL} _blank noopener,noreferrer",
-            "2: POST /api/source/pin "
+            "Conversation C, Docs D, Changes G, Checks E",
+            "live: conversation docs files checks",
+            "numbered: 1 Browse code",
+            "1: POST /api/source/pin "
             '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head",'
             '"view":"/view/"}',
             "C: showed Conversation",
             "G: opened the files route",
             "the route arrives: Changes",
-            "numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh",
-            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh",
-            "2: navigation.open /view/",
-            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh",
-            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "3: not handled",
-            # Code behind the head offers to switch to it, numbered after Refresh; while the
-            # refresh 3 asks for runs, Refresh waits, shown and disabled, and keeps 3, so the
-            # offer keeps 4 and a second 3 asks nothing (B2 of review B on #506).
-            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered with the code behind the head: "
-            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
-            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered while that refresh runs: "
-            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
-            "3: nothing asked",
-            # Once the refresh ends Refresh is offered again on Changes, and the offer keeps 4;
-            # on Conversation nothing is left to refresh, so Refresh is not shown and the offer
-            # takes 3 (C2 of review C on #506, accepted).
-            "numbered once the refresh ends: "
-            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
-            "numbered on Conversation once the refresh ends: "
-            "1 View on GitHub, 2 Browse code, 3 Switch to the head",
-            "4: POST /api/source/pin "
-            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head"}',
+            # The page has no Refresh of its own (mb-ablv): Changes numbers Browse code alone,
+            # and the Pulls tab's Refresh runs the page's `refresh`, which names the comparison
+            # on screen. While a refresh runs the page offers none, and says so to the Pulls
+            # tab, which waits while the list cannot refresh either. Code on the pull
+            # request's head numbers no switch to it: the server follows that head.
+            "numbered on Changes: 1 Browse code",
+            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            "numbered after a refresh serves the head: 1 Browse code",
+            "1: navigation.open /view/",
+            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            "numbered after a refresh with no pin: none",
+            "1: not handled",
+            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            "numbered with the code on the head: 1 Browse code",
+            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            "while that refresh runs, the page can refresh: false",
+            "the Pulls tab's Refresh, the page not offering one: nothing asked",
+            # Once the refresh ends the page offers one again on Changes; on Conversation
+            # nothing is left to refresh.
+            "once the refresh ends, the page can refresh: true",
+            "on Conversation once the refresh ends, the page can refresh: false",
+            "numbered on Conversation once the refresh ends: 1 Browse code",
+            "the page told the Pulls tab it can refresh: "
+            "false, true, false, true, false, true, false, true, false, true",
+            "2: not handled",
             "Shift+H: not handled",
             "Shift+E: opened the checks route",
             "Shift+C: opened the conversation route",
             "Ctrl+G: not handled",
             "staged inert: G: not handled",
             "committed: G: opened the files route",
-            "disposed: Conversation none, Changes none, Checks none; keys none; G: not handled",
+            "disposed: Conversation none, Docs none, Changes none, Checks none; keys none; G: not handled",
             "a failed first read takes the column out: live none",
             "G: not handled",
             "on Changes, Shift held while it is out: badges none",
             "the next read answers, and the returning tabs are badged: "
-            "Conversation C, Changes G, Checks E",
+            "Conversation C, Docs D, Changes G, Checks E",
             "the next read answers and paintHeader puts the column back: "
-            "Conversation C, Changes G, Checks E",
-            "live: conversation files checks",
+            "Conversation C, Docs D, Changes G, Checks E",
+            "live: conversation docs files checks",
             "G: showed Changes",
+            # Guided Review's tab and its key R (Docs holds D) exist only where the description
+            # opens a `guided-review` fence: the link leads the bar when a record brings one, stays while its tab is shown, and leaves the bar, and the
+            # key, otherwise. The page cannot tell a block from an example of one inside
+            # another fence, which the server's parse can (mb-y0en), so the example shows
+            # the tab too. On the front page, which a block makes the guide, R shows the
+            # page on screen and opens no second entry of it (B20 of review B on #677).
+            "no block in the description: Conversation C, Docs D, Changes G, Checks E; "
+            "live conversation docs files checks",
+            "R: not handled",
+            "a block in the description: "
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E; "
+            "live conversation docs files guided checks",
+            "R: showed Guided Review",
+            "the route arrives: Guided Review",
+            "the block leaves while its tab is shown: "
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E; Guided Review",
+            "back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled",
+            "the block returns while Shift is held: "
+            "badges Guided Review R, Conversation C, Docs D, Changes G, Checks E",
+            "R: showed Guided Review",
+            "an example of the block inside another fence: "
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E",
+            # The guide loads what draws its steps as it mounts, so a step shows whole
+            # (mb-7bu6); this page has neither, and the guide says so once for each.
+            "the guide, with no diff plugin or allowlist here, said: "
+            "metabrowser github: the diff plugin did not load for the guide; "
+            "metabrowser github: the guide's notes will show as typed",
             "disposed: keys none",
+        ],
+        # The guide's first step waits for the description it draws above it (mb-7bu6):
+        # a pending Markdown render keeps the step out of sight, and its insertion,
+        # which ends the wait, shows the step whole.
+        "guideIntroduction": [
+            "asked: pull-files-summary, stacks, guided-review, pull-markdown, pull",
+            "the guide answered, its description's Markdown not yet: the notice hidden; "
+            "the description hidden; a step waits out of sight true",
+            "the Markdown is inserted: the notice says This pull request has no guide.; "
+            "the description shows Counts to two, rendered.; a step waits out of sight "
+            "false",
+            "warned: 2",
+        ],
+        # A description whose Markdown never comes keeps the guide out of sight only until
+        # the introduction's bound, `GUIDE_INTRODUCTION_HOLD_MS` (review of #859, M2): then
+        # the step shows with the description's placeholder.
+        "guideIntroductionBound": [
+            "asked: pull-files-summary, stacks, guided-review, pull-markdown, pull",
+            "the guide answered, its description's Markdown not yet: the notice hidden; "
+            "the description hidden; a step waits out of sight true",
+            "its Markdown never comes, and the bound runs out: the notice says This pull "
+            "request has no guide.; the description shows its placeholder; a step waits out "
+            "of sight false",
+            "warned: 2",
         ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):
         # one notice right after its plain text, which a rebuilt text element keeps, a
         # later refusal replaces, and a render takes away.
         "textRefusal": [
             "refused past the deadline: plain, 1 notice right after it, a status: "
-            "This text took longer than 5 seconds to render, so it is shown as plain text.",
+            "This text took too long to render, so it is shown as written.",
             "rebuilt for another state, its Markdown not yet answered: plain, 1 notice "
-            "right after it, a status: This text took longer than 5 seconds to render, so "
-            "it is shown as plain text., new element",
+            "right after it, a status: This text took too long to render, so it is shown "
+            "as written., new element",
             "a newer record, the same text refused again as unavailable: plain, 1 notice "
-            "right after it, a status: The renderer could not start, so this text is shown "
-            "as plain text. Reload to try again., new element",
+            "right after it, a status: This text could not be rendered, so it is shown as "
+            "written. Reload the page to try again., new element",
             "a newer record whose Markdown renders: rendered rendered A, no notice, same element",
         ],
+        # A text's Mermaid blocks, in the description and in a comment, drawn as images
+        # through the Markdown plugin's published host, asked for only once a text has one;
+        # a binding lasts as long as its text's section and ends with the page (A3 of the
+        # review of #597).
+        "textDiagrams": _text_diagram_steps(),
         # Browse code's switch is the diff plugin's, in a module it loads on demand: the
         # plugin's assets or that module not loading is said as a failed request, and asks
         # the server nothing (A3 of review A on #511).
@@ -773,7 +930,63 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the diff plugin's assets not loading: The switch request failed.; asked nothing",
             "the switch module not loading: The switch request failed.; asked nothing",
         ],
+        # The Diff summary's wait, which the event log hears of only if it runs late: at the
+        # late threshold the placeholder says how long it has waited and offers Details, whose
+        # panel reads this page's records; leaving ends the wait never_completed, a summary
+        # that arrives ends it ok and closes the panel, and a failed refresh's Details read the
+        # failures around when it ended (mb-9zp5).
+        "eventLogDetails": _event_log_details_steps(),
+        # The page has no Refresh of its own (mb-ablv): a status line that says what to retry
+        # or fetch ends in its remedy, which waits, muted, until the refresh it asked for runs.
+        "statusRemedies": [
+            'a current record whose last refresh failed: status "Could not reach '
+            'GitHub.DetailsRetry"; remedy Retry; note shown; asked nothing; the Pulls tab '
+            "may refresh it",
+            'Retry pressed, its refresh not yet started: status "Could not reach '
+            'GitHub.DetailsRetry"; remedy Retry (waiting); note shown; asked POST '
+            '/api/plugin/github/pull-refresh {"number":8,"retry":true}; the Pulls tab has '
+            "nothing to refresh",
+            'Retry pressed again while it waits: status "Could not reach GitHub.DetailsRetry"; '
+            "remedy Retry (waiting); note shown; asked nothing; the Pulls tab has nothing to "
+            "refresh",
+            "the refresh runs: status none; remedy none; note shown; asked nothing; the Pulls "
+            "tab has nothing to refresh",
+            'a direct link to a pull request whose fetch failed: status "This pull request has '
+            'not been fetched yet.Could not reach GitHub.DetailsFetch"; remedy Fetch; note '
+            "none; asked nothing; the Pulls tab may refresh it",
+            'Fetch pressed: status "Fetching the pull request…Could not reach GitHub.Details"; '
+            "remedy none; note none; asked POST /api/plugin/github/pull-refresh "
+            '{"number":7,"retry":true,"wait_core":true}; the Pulls tab has nothing to refresh',
+            'a direct link to a copy saved by another version: status "The saved copy of this '
+            'pull request is from another version.Fetch"; remedy Fetch; note none; asked '
+            "nothing; the Pulls tab may refresh it",
+        ],
     }
+
+
+def _event_log_details_steps() -> list[str]:
+    wait = 'githubPull:diffSummary {"number":7} timed from its start'
+    late = 'the late line "The summary of changes has not arrived after 10 s. Details"'
+    asked = 'Details asked for {"client":"k3v9q2zx"}, abortable true'
+    return [
+        f"mounted, the comparison not yet read: the pending placeholder; {wait} running",
+        f"still waiting at the late threshold: {late}; {wait} running",
+        asked,
+        "Details opened: expanded true; the panel says "
+        '"Still running: checkout._pull_job for 61.0 s"',
+        "Details closed: expanded false; panel in the header false",
+        asked,
+        f"the page left: panel in the header false; expanded false; {wait} ended never_completed",
+        f"another page, late: {late}; {wait} running",
+        asked,
+        f"its comparison read, its Details open: the summary; {wait} ended ok",
+        "the late line's Details: expanded false; panel in the header false",
+        f"a page whose comparison is read at once: the summary; {wait} ended ok",
+        'a failed refresh, ended 2026-09-17T12:30:00Z: "Could not reach GitHub.Details"',
+        'Details asked for {"client":"k3v9q2zx","since":"2026-09-17T11:30:00Z",'
+        '"until":"2026-09-17T12:31:00Z"}, abortable true',
+        'no reporter: "The event log is not available here."',
+    ]
 
 
 def test_idle_comparison_is_route_owned_and_promotes_on_changes() -> None:
@@ -798,11 +1011,53 @@ def test_file_history_restores_place_and_fresh_selection_wins() -> None:
     }
 
 
-@pytest.mark.parametrize("scenario", ["history", "poll-order"])
+@pytest.mark.parametrize("scenario", ["history", "poll-order", "docs", "docs-offered"])
 def test_explicit_repair_preserves_route_and_response_ownership(scenario: str) -> None:
     assert run_session("github-pull-repair-lifecycle-behavior.js", "--case", scenario) == {
         "case": scenario,
         "passed": True,
+    }
+
+
+def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
+    """The production page joins a followed diff to the reader's place and history entry.
+
+    A mounted page with a history entry and a diff view that answers ``sectionForPath`` and
+    ``pathForSection`` from its own sections (A4 of review A on #745): the place names its
+    file, the emptied pane's clamp to its top is not written while the newer comparison is
+    read (A3), the newer diff keeps the reader's file, a page mounted again on the entry says
+    the same note and lands there, the reader's choice of the earlier diff outlives a reload
+    (A5), and a file the newer diff lacks lands on a block's top (A8). While a followed diff
+    is read, what replaces it keeps the place already kept: a second push, a push on a page
+    loaded again on its entry, and **Show the earlier changes** pressed over the read (B1 of
+    review B). A move to Docs draws the record's comparison as read now where nothing was
+    chosen (C2 of review C), and Docs's entry remembers what it shows as Changes's does, so
+    its note and the reader's choice outlast a reload (C1). Through the production page
+    host, a walk of the Pulls tab's files and a click on a file land the page on an entry
+    with no state, which the page writes its memory into, so the choice outlasts the next
+    reload (A1 of review A on #758); Back to an entry the page left gets what the diff
+    shows now, its note and choice included (B1 of review B). Both diff tabs say new
+    commits are on their way and
+    Conversation does not (A2), and Docs asks for a missing comparison by itself only at
+    its own address (A3).
+    """
+
+    assert run_session("github-pull-changes-follow-behavior.js") == {
+        "placeNamesItsFile": True,
+        "clampIsNotWritten": True,
+        "followKeepsTheFile": True,
+        "reloadSaysAndLands": True,
+        "choiceSurvivesReload": True,
+        "missingFileLandsOnABlockTop": True,
+        "secondFollowDuringReadKeepsTheFile": True,
+        "followDuringReloadReadKeepsTheFile": True,
+        "wayBackDuringReadKeepsTheFile": True,
+        "docsDrawsTheRecordsComparison": True,
+        "docsRemembersWhatItShows": True,
+        "walkAndClickKeepTheChoice": True,
+        "backKeepsTheChoice": True,
+        "newCommitsOnBothDiffTabs": True,
+        "docsAsksForTheComparison": True,
     }
 
 
@@ -832,7 +1087,7 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         "firstVisit": "held, then final",
         "refreshedSameText": "kept",
         "revisit": "final at first paint",
-        "pastTheBound": "plain, then Markdown",
+        "pastTheBound": "a placeholder, then Markdown",
         # The comments and reviews the first screen shows wait with the description, so none is
         # plain at the paint that makes the page ready (review A6).
         "comments": {"texts": 5, "asked": 5, "plainAtReady": 0},
@@ -900,6 +1155,10 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "rounds": 4,
             },
         },
+        # The record that follows a core preview asks for its comments in view as it paints,
+        # each a placeholder at that paint and never its source (review A5 on #589); before,
+        # the observer asked after the frame, which showed them as source.
+        "recordAfterCore": {"commentsInView": 4, "pendingAtPaint": True},
         # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
         "ages": ["186 min", "185 min", "4 min"],
         # A stale record paints the list's state when the list saw a later update.
@@ -922,14 +1181,14 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # cancelled (review E1); before, the diff was shown and the wait recorded as met.
         | {"cancelled": {"held": True, "keptOutOfSight": True, "outcome": "cancelled"}},
         "bounded": True,
-        # The header does not wait with the held body (exp-099), so all three tab keys, the
+        # The header does not wait with the held body (exp-099), so all four tab keys, the
         # stack menu, and the stack keys are live while it waits, as at release (review E2).
         "tabKeysWhileHeld": {
             "whileHeld": {
                 "holding": True,
                 "tabColumn": "live",
-                "live": ["conversation", "files", "checks"],
-                "badges": "Conversation C, Changes G, Checks E",
+                "live": ["conversation", "docs", "files", "checks"],
+                "badges": "Conversation C, Docs D, Changes G, Checks E",
                 "g": "opened the files route",
                 "stackMenus": 1,
                 "stackKeys": "pulls.stack.top, pulls.stack.base",
@@ -939,8 +1198,8 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
             "released": {
                 "holding": False,
                 "tabColumn": "live",
-                "live": ["conversation", "files", "checks"],
-                "badges": "Conversation C, Changes G, Checks E",
+                "live": ["conversation", "docs", "files", "checks"],
+                "badges": "Conversation C, Docs D, Changes G, Checks E",
                 # Nothing went inert, so focus never left the Changes link to be given back.
                 "focus": "none",
                 "g": "opened the files route",
@@ -960,11 +1219,11 @@ def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -
     """A cold selected page retains prior content until its honest core is ready."""
 
     assert run_session("github-pull-core-preview-behavior.js") == {
-        "description": "plain preview before full conversation",
+        "description": "rendered preview before full conversation",
         "pendingParts": ["discussion", "checks"],
         "checkResults": {"route": "/pull/7/checks", "links": 2, "empty": True, "pending": True},
         "waitCorePost": {"number": 7, "retry": True, "wait_core": True},
-        "previewMarkdownRequests": 0,
+        "previewMarkdownRequests": 1,
         "fullMarkdownRequests": 1,
         "fullRecordWins": True,
         "crossOwnerRetirement": True,

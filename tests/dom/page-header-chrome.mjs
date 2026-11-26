@@ -190,6 +190,11 @@ const MEASURE = `async (which, width) => {
     await frames();
     header = container.querySelector(".github-pull-header");
     summary = diff.mountDiffSummary(header.querySelector(".github-pull-summary"), changes, mb, mounts);
+    // The size line above it, drawn as the page draws it once its summary is (pull-page.js,
+    // paintSize), since this draws the summary in place of the page's own read.
+    header
+      .querySelector(".github-pull-size")
+      .replaceChildren(...mb.changeSizeLineNodes(mb.changeSizeLine({ commits: 8, files: 28, pushedBytes: 64_410, diffBytes: 217_600 })));
   }
   await document.fonts.ready;
   await frames();
@@ -197,8 +202,35 @@ const MEASURE = `async (which, width) => {
     const style = getComputedStyle(node);
     return { size: style.fontSize, lineHeight: style.lineHeight, weight: style.fontWeight, color: style.color };
   };
-  // What a run of text is: a chip keeps its own size, and a revision its one step down; any
-  // other run is the line's text.
+  const diffSizePaint = [];
+  if (which === "pull") {
+    const line = header.querySelector(".github-pull-size");
+    const visible = line.cloneNode(true);
+    for (const hidden of visible.querySelectorAll(".visually-hidden")) hidden.remove();
+    const fileRow = document.createElement("div");
+    fileRow.className = "tree-item tree-file";
+    fileRow.innerHTML = [64_410, 217_600]
+      .map((bytes) => window.metabrowser.sizeHtml(bytes, "tree-item-size")).join("");
+    document.body.append(fileRow);
+    const readSize = (container) => [...container.querySelectorAll(".size")].map((element) => {
+      const { color, fontWeight, fontVariantNumeric } = getComputedStyle(element);
+      return { text: element.textContent, color, fontWeight, fontVariantNumeric };
+    });
+    for (const theme of ["light", "dark"]) {
+      document.documentElement.dataset.theme = theme;
+      diffSizePaint.push({
+        theme,
+        text: visible.textContent.replace(/\\s+/g, " ").trim(),
+        painted: readSize(line),
+        files: readSize(fileRow),
+        spoken: [...line.querySelectorAll(".visually-hidden")].map((element) => element.textContent),
+      });
+    }
+    delete document.documentElement.dataset.theme;
+    fileRow.remove();
+  }
+  // What a run of text is: a chip keeps its own size, and a revision takes the line's in its
+  // own face; any other run is the line's text.
   const kindOf = (element) =>
     element.closest(".git-ref") ? "ref chip"
       : element.closest(".file-header-badge") ? "badge"
@@ -223,7 +255,12 @@ const MEASURE = `async (which, width) => {
   };
   const headerBox = header.getBoundingClientRect();
   const contentLeft = headerBox.left + parseFloat(getComputedStyle(header).paddingLeft);
-  const lines = [...header.children].filter((child) => getComputedStyle(child).display !== "none");
+  // The header's corner, which holds the View on GitHub button, is placed out of the flow in
+  // the page's upper right, so it is no line (docs/design-system.md, "View on GitHub").
+  const lines = [...header.children].filter(
+    (child) =>
+      getComputedStyle(child).display !== "none" && !child.classList.contains("view-header-end"),
+  );
   const title = lines[0];
   // Each line's top is read from the title's, since the commit's header is padded by its
   // view and the pull request's by itself.
@@ -250,12 +287,26 @@ const MEASURE = `async (which, width) => {
     nameLeft: name ? round(name.getBoundingClientRect().left - contentLeft) : null,
     name: name ? { text: name.textContent, ...type(name) } : null,
   });
+  const sizeIndex = lines.findIndex((line) => line.matches(".git-commit-size, .github-pull-size"));
+  const sizeBox = lines[sizeIndex].getBoundingClientRect();
+  const lineSpace = {
+    sizeHeight: round(sizeBox.height),
+    aboveSize: round(sizeBox.top - lines[sizeIndex - 1].getBoundingClientRect().bottom),
+    belowSize: round(lines[sizeIndex + 1].getBoundingClientRect().top - sizeBox.bottom),
+    afterSummary: round(header.nextElementSibling.getBoundingClientRect().top - lines.at(-1).getBoundingClientRect().bottom),
+    regular: parseFloat(getComputedStyle(header).rowGap),
+    contentPadding: parseFloat(getComputedStyle(header).getPropertyValue("--content-padding-y")),
+  };
   const out = {
+    lineSpace,
     title: { cls: title.className, height: round(title.getBoundingClientRect().height), ...type(title) },
     gap: getComputedStyle(header).rowGap,
+    // The space under the title, a page title's gap to its metadata (mb-wcbc).
+    titleGap: getComputedStyle(document.documentElement).getPropertyValue("--page-title-gap").trim(),
     body: getComputedStyle(document.documentElement).getPropertyValue("--body-font-size").trim(),
     lines: read(),
     author: author(),
+    diffSizePaint,
   };
   // An avatar arriving in the box, in the glyph's place: a data image, so nothing is asked of
   // the network. Nothing moves: the name starts where it did, and every line keeps its place.
@@ -320,12 +371,16 @@ async function main() {
         const where = `at ${width} px`;
         const body = commit.body;
         check(`${where}: the body size is 14 px`, body === "14px", body);
-        // One title: the same size, weight, and line on both pages, two lines tall.
+        // One title: the same size, weight, and line on both pages, each as tall as its own
+        // lines, with no line held empty under it (mb-wcbc).
+        const lines = (title) => title.height / Number.parseFloat(title.lineHeight);
         check(
           `${where}: both titles are one treatment`,
-          ["size", "weight", "lineHeight", "height"].every(
-            (key) => commit.title[key] === pull.title[key],
-          ) && commit.title.size === "24px",
+          ["size", "weight", "lineHeight"].every((key) => commit.title[key] === pull.title[key]) &&
+            commit.title.size === "24px" &&
+            [commit.title, pull.title].every(
+              (title) => Number.isInteger(lines(title)) && lines(title) >= 1,
+            ),
           JSON.stringify({ commit: commit.title, pull: pull.title }),
         );
         check(
@@ -334,8 +389,8 @@ async function main() {
           JSON.stringify([commit.gap, pull.gap]),
         );
         // One size: every line under the title computes to the body size, and every run of
-        // text in it, the Diff summary's included; a chip keeps its own size and a revision
-        // its one step down (docs/design-system.md, "Page Headers").
+        // text in it, the Diff summary's included; a chip keeps its own size, and a revision
+        // is the line's (docs/design-system.md, "Page Headers", "Short Commit IDs").
         for (const [name, page] of [
           ["commit", commit],
           ["pull request", pull],
@@ -369,16 +424,46 @@ async function main() {
             `${where}: the ${name}'s Diff summary is its last line, at the body size`,
             /(git-commit|github-pull)-(diff-)?summary/.test(summary.cls) &&
               summary.size === body &&
-              summary.runs.some((run) => run.text === "files changed" && run.size === body),
+              summary.runs.length > 0 &&
+              summary.runs.every((run) => run.size === body),
             JSON.stringify(summary),
+          );
+          // The size line is the line above it, and says the file count, at the body size
+          // (docs/design-system.md, "Change Size Line").
+          const size = page.lines.at(-2);
+          check(
+            `${where}: the ${name}'s size line is above its Diff summary, saying its file count`,
+            /(git-commit|github-pull)-size/.test(size?.cls ?? "") &&
+              size.size === body &&
+              size.runs.some((run) => run.text === "files changed" && run.size === body),
+            JSON.stringify(size),
           );
           const revision = page.lines
             .flatMap((line) => line.runs)
             .filter((run) => run.kind === "revision");
           check(
-            `${where}: the ${name}'s revision, if any, is one step down, 13 px`,
-            revision.every((run) => run.size === "13px"),
+            `${where}: the ${name}'s revision, if any, is at the body size, its line's`,
+            revision.every((run) => run.size === body),
             JSON.stringify(revision),
+          );
+        }
+        for (const size of pull.diffSizePaint) {
+          check(
+            `${where} in ${size.theme}: the pull request byte values match the Files size style`,
+            JSON.stringify(size.painted) === JSON.stringify(size.files) &&
+              size.painted.length === 2 &&
+              size.painted.every(
+                (value) =>
+                  value.fontWeight === "400" && value.fontVariantNumeric === "tabular-nums",
+              ),
+            JSON.stringify(size),
+          );
+          check(
+            `${where} in ${size.theme}: the visible line has dots and the spoken separators are commas`,
+            size.text === "8 commits · 28 files changed · 62.9 KB compressed (212.5 KB raw diff)" &&
+              size.spoken.length === 2 &&
+              size.spoken.every((separator) => separator === ", "),
+            JSON.stringify(size),
           );
         }
         const commitSizes = new Set(textRuns(commit).map((run) => run.size));
@@ -403,38 +488,61 @@ async function main() {
             [...commit.lines, ...pull.lines].map((line) => [line.cls, line.lineHeight]),
           ),
         );
-        // One structure: the author first under the title, the age before the Diff summary,
-        // which is last; the commit's revision where the pull request has its branches.
+        check(
+          `${where}: Commit keeps the reference gaps while Pull adds equal room around the size`,
+          commit.lineSpace.aboveSize === commit.lineSpace.regular &&
+            commit.lineSpace.belowSize === commit.lineSpace.regular &&
+            pull.lineSpace.sizeHeight === commit.lineSpace.sizeHeight &&
+            pull.lineSpace.aboveSize === pull.lineSpace.regular * 1.5 &&
+            pull.lineSpace.belowSize === pull.lineSpace.aboveSize &&
+            pull.lineSpace.afterSummary === pull.lineSpace.contentPadding - pull.lineSpace.regular,
+          JSON.stringify({ commit: commit.lineSpace, pull: pull.lineSpace }),
+        );
+        // The pull request puts its state and ages first. A commit puts its author and
+        // revision before its age. The size line and Diff summary end both headers.
         const order = (page, parts) =>
           parts.map((part) => page.lines.findIndex((line) => line.cls.includes(part)));
         const commitOrder = order(commit, [
           "git-commit-byline",
           "git-commit-revision-line",
           "git-commit-ages",
+          "git-commit-size",
           "git-commit-diff-summary",
         ]);
         const pullOrder = order(pull, [
+          "github-pull-opened",
           "github-pull-meta",
           "github-pull-branches",
-          "github-pull-opened",
+          "github-pull-size",
           "github-pull-summary",
         ]);
         check(
-          `${where}: the commit's lines are its author, revision, age, and Diff summary`,
-          JSON.stringify(commitOrder) === "[0,1,2,3]" && commit.lines.length === 4,
+          `${where}: the commit's lines are its author, revision, age, size, and Diff summary`,
+          JSON.stringify(commitOrder) === "[0,1,2,3,4]" && commit.lines.length === 5,
           JSON.stringify(commit.lines.map((line) => line.cls)),
         );
         check(
-          `${where}: the pull request's are its author, branches, ages, ..., and Diff summary`,
+          `${where}: the pull request's lines are its state and ages, author, branches, ..., size, and Diff summary`,
           JSON.stringify(pullOrder.slice(0, 3)) === "[0,1,2]" &&
-            pullOrder[3] === pull.lines.length - 1,
+            pullOrder[3] === pull.lines.length - 2 &&
+            pullOrder[4] === pull.lines.length - 1,
           JSON.stringify(pull.lines.map((line) => line.cls)),
         );
+        // The first line is a page title's gap under the title, the gap a view header leaves
+        // between its title and its metadata line, on both pages (mb-wcbc).
         check(
-          `${where}: each header's first line is 6 px under its title`,
-          commit.lines[0].top === pull.lines[0].top &&
-            commit.lines[0].top === commit.title.height + 6,
-          JSON.stringify([commit.lines[0].top, pull.lines[0].top, commit.title.height]),
+          `${where}: each header's first line is --page-title-gap under its title`,
+          Number.parseFloat(commit.titleGap) > 0 &&
+            pull.titleGap === commit.titleGap &&
+            commit.lines[0].top === commit.title.height + Number.parseFloat(commit.titleGap) &&
+            pull.lines[0].top === pull.title.height + Number.parseFloat(pull.titleGap),
+          JSON.stringify([
+            commit.lines[0].top,
+            pull.lines[0].top,
+            commit.title.height,
+            pull.title.height,
+            commit.titleGap,
+          ]),
         );
         // One identity: the box, the same size on both pages, holding the person glyph for an
         // author with no avatar, then the bold name, starting at the same x on both.
@@ -444,8 +552,8 @@ async function main() {
         ]) {
           const author = page.author;
           check(
-            `${where}: the ${name}'s author is the first line's, an 18 px box holding the glyph`,
-            author.line === 1 &&
+            `${where}: the ${name}'s author starts its line with an 18 px box holding the glyph`,
+            author.line === (name === "commit" ? 1 : 2) &&
               author.box?.width === 18 &&
               author.box.height === 18 &&
               author.box.left === 0 &&

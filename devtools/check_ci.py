@@ -12,19 +12,27 @@ verdict. The fast CI plan (``docs/project/specs/active/plan-2026-11-16-fast-ci.m
   (``build``), ``admitted-git`` (``test-admitted-git``), ``stack-integration`` (``make
   ${{ matrix.part }}`` on the head merged with ``main``), and ``ci-ok`` exist, and the
   four tier targets each run.
-- **Interpreters.** ``test-parallel``, ``test-serial``, and ``test-goldens`` run on every
-  interpreter: the Python releases ``pyproject.toml``'s classifiers name and the
-  free-threaded build of the newest, which is also the ``plan`` job's ``PYTHONS``, and
-  ``PR_CHROME_PYTHON`` is one of them. The ``chrome`` matrix is the ``plan`` job's
-  ``chrome-pythons``.
-- **Shards.** A tier step takes ``SHARD`` only as ``${{ matrix.shard }}/N`` with a shard
-  matrix of ``1`` through ``N``, or from a matrix list that deals each part ``1``
-  through ``N``; no matrix has ``include`` or ``exclude``.
+- **Interpreters.** Every tier's ``python-version`` matrix is the ``plan`` job's
+  ``pythons`` output, and that job's ``PYTHONS`` is every interpreter: the Python
+  releases ``pyproject.toml``'s classifiers name and the free-threaded build of the
+  newest. ``PR_CHROME_PYTHON`` is one of them. ``devtools/ci_plan.sh`` gives a push to
+  ``main``, and a pull request while ``main`` is red, all of ``PYTHONS`` and a pull
+  request while it is green ``PR_CHROME_PYTHON`` alone (the owner's direction of
+  2026-11-22, in the plan).
+- **Shards.** A tier step, and ``test-admitted-git``, takes ``SHARD`` only as
+  ``${{ matrix.shard }}``, with the job's ``shard`` matrix the ``plan`` output
+  ``SHARD_OUTPUTS`` names for it, which ``devtools/ci_plan.sh`` writes as ``1/N``
+  through ``N/N``; a ``stack-integration`` matrix list deals each part ``1`` through
+  ``N``; no matrix has ``include`` or ``exclude``.
+- **The Chrome tier.** The ``chrome`` job's one ``make`` step is ``CHROME_RUN``, whose
+  target is the ``plan`` output ``chrome-target``, and its only condition is
+  ``CHROME_IF``. ``devtools/ci_plan.sh`` gives a push to ``main`` the whole tier
+  (``make test-chrome``) and never ``none``.
 - **Nothing silenced.** A ``make`` step is that one command, with no shell around it,
-  and its words are ``make``, target names, and ``SHARD=${{ matrix.shard }}/N``, so no
+  and its words are ``make``, target names, and ``SHARD=${{ matrix.shard }}``, so no
   option ignores a failure or runs nothing; a ``stack-integration`` part's are ``-k``,
-  target names, and ``SHARD=I/N``. No job or step has ``continue-on-error``. A job's
-  ``if:`` is one of ``JOB_IFS``. A step's is ``SERIAL_IF`` on the step that runs ``make
+  target names, and ``SHARD=I/N``. No other ``make`` step takes an expression. No job
+  or step has ``continue-on-error``. A job's ``if:`` is one of ``JOB_IFS``. A step's is ``SERIAL_IF`` on the step that runs ``make
   test-serial``, or ``CACHE_MISS_IF`` on an ``admitted-git`` step that runs no ``make``,
   and no other. ``ci-ok`` needs every other job, runs ``always()``, and runs only
   ``VERDICT_RUN`` with ``RESULTS: ${{ toJSON(needs) }}``.
@@ -51,11 +59,18 @@ And of every workflow file:
   An expression ends where the runner ends it, so a ``}}`` in a quoted string does not
   hide the rest;
 - no ``run:`` line has an expression that reads ``env``: the shell reads a variable as
-  ``"$NAME"``, which the runner does not paste into the script.
+  ``"$NAME"``, which the runner does not paste into the script;
+- every setup-uv step comes just after ``INSTALL_UV`` with its own version and
+  checksum, which puts that uv where setup-uv finds it without fetching anything.
+- every setup-node step comes just after ``INSTALL_NODE`` with its own version, which
+  unpacks that Node where setup-node finds it without downloading or copying it.
+  Both rules read the action's name in any case, as GitHub does.
 
-``devtools/check_supply_chain.py`` holds the ``admitted-git`` matrix to both Git floors
-and ``publish.yml`` to trusted publishing, and ``tests/test_ci_plan.py`` holds that a
-push to main, and a pull request while main is red, get all of ``PYTHONS``.
+``devtools/check_supply_chain.py`` holds the ``plan`` job's ``ADMITTED_GITS`` to both
+Git floors and ``publish.yml`` to trusted publishing, and ``tests/test_ci_plan.py``
+holds what this file leaves to ``devtools/ci_plan.sh``: that a push to main, and a pull
+request while main is red, get all of ``PYTHONS``, every part of every tier, the whole
+Chrome tier, and every admitted Git.
 
     python -m devtools.check_ci
 """
@@ -78,11 +93,36 @@ CI: Final = WORKFLOWS / "ci.yml"
 NIGHTLY: Final = WORKFLOWS / "nightly.yml"
 
 TIER_TARGETS: Final = ("test-parallel", "test-serial", "test-chrome", "test-goldens")
-# The tiers a pull request checks on every interpreter. Only the Chrome tier may run on
-# one interpreter before the merge (the plan's Q3), and only through the plan job.
-EVERY_INTERPRETER: Final = ("test-parallel", "test-serial", "test-goldens")
 CHROME_TARGET: Final = "test-chrome"
-CHROME_MATRIX: Final = "${{ fromJSON(needs.plan.outputs.chrome-pythons) }}"
+# The targets a job's shard matrix deals: the tiers, and the admitted Git's tests.
+SHARDED_TARGETS: Final = frozenset(
+    {"test-parallel", "test-serial", "test-chrome", "test-goldens", "test-admitted-git"}
+)
+# Every tier's interpreters: the plan job's decision, which is PYTHONS for main.
+PLAN_PYTHONS: Final = "${{ fromJSON(needs.plan.outputs.pythons) }}"
+# The plan output that holds each sharded job's parts, and the Gits of admitted-git.
+SHARD_OUTPUTS: Final = {
+    "unit": "unit-shards",
+    "goldens": "goldens-shards",
+    "chrome": "chrome-shards",
+    "admitted-git": "admitted-git-shards",
+}
+PLAN_LIST: Final = "${{{{ fromJSON(needs.plan.outputs.{output}) }}}}"
+PLAN_GITS: Final = PLAN_LIST.format(output="admitted-gits")
+# The outputs the tier jobs read, each of which the plan job passes on by its own name.
+PLAN_OUTPUTS: Final = (
+    "pythons",
+    "chrome",
+    "chrome-target",
+    "admitted-gits",
+    *SHARD_OUTPUTS.values(),
+)
+STEP_OUTPUT: Final = "${{{{ steps.decide.outputs.{output} }}}}"
+# The Chrome job's one make step: the plan job names the target, test-chrome for the
+# whole tier or test-chrome-fast for a pull request's. And the one condition it may
+# carry, under which ci-ok accepts its skip (devtools/ci_verdict.sh).
+CHROME_RUN: Final = "make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}"
+CHROME_IF: Final = "needs.plan.outputs.chrome != 'none'"
 MATRIX_PYTHON: Final = "${{ matrix.python-version }}"
 PLAN_JOB: Final = "plan"
 VERDICT_JOB: Final = "ci-ok"
@@ -111,6 +151,7 @@ REQUIRED_JOBS: Final = {
 VERDICT_IF: Final = frozenset({"always()", "${{ always() }}"})
 JOB_IFS: Final = {
     STACK_JOB: frozenset({"needs.plan.outputs.integration == 'needed'"}),
+    CHROME_JOB: frozenset({CHROME_IF}),
     VERDICT_JOB: VERDICT_IF,
 }
 SERIAL_IF: Final = "${{ !cancelled() }}"
@@ -137,6 +178,8 @@ CANCEL_IN_PROGRESS: Final = "${{ github.event_name == 'pull_request' }}"
 CLASSIFIER: Final = re.compile(r"Programming Language :: Python :: (3\.\d+)")
 OPEN_EXPRESSION: Final = "${{"
 MATRIX_SHARD: Final = re.compile(r"SHARD=\$\{\{\s*matrix\.shard\s*\}\}/(\d+)")
+# A part from the job's shard matrix, which the plan job writes as I/N.
+PLAN_SHARD: Final = re.compile(r"SHARD=\$\{\{\s*matrix\.shard\s*\}\}(?![/\w])")
 LITERAL_SHARD: Final = re.compile(r"(?P<part>.*?)\s*SHARD=(?P<index>\d+)/(?P<count>\d+)")
 # The words of a make step and of a stack-integration part, beside `make` itself: a
 # target's name, a shard the matrix deals, and, in a part, make's `-k`. Any other word,
@@ -162,6 +205,17 @@ ENVIRONMENT: Final = re.compile(r"(?<![\w.])env(?:[.\[),]|$)", re.IGNORECASE)
 SHELL: Final = re.compile(r"[;&|<>`$()\n]")
 # A word that runs make, wherever it is in a step's command.
 MAKE_WORD: Final = re.compile(r"\bmake\b")
+# The step every setup-uv step follows, with setup-uv's own version and checksum: it puts
+# that uv in the tool cache, because setup-uv otherwise fetches a manifest once with a
+# fixed 5 s limit, and one slow answer failed a job (devtools/install_uv.sh).
+SETUP_UV: Final = "astral-sh/setup-uv@"
+INSTALL_UV: Final = "bash devtools/install_uv.sh {version} {checksum}"
+# The step every setup-node step follows, with setup-node's own version: it unpacks that
+# Node into the tool cache, because setup-node otherwise downloads it with no limit on a
+# slow transfer and copies it in file by file, and each has stalled for over a minute
+# (devtools/install_node.sh).
+SETUP_NODE: Final = "actions/setup-node@"
+INSTALL_NODE: Final = "bash devtools/install_node.sh {version}"
 
 Json = dict[str, object]
 
@@ -372,10 +426,10 @@ def _may_carry(job_name: str, condition: str, command: str) -> bool:
 
 
 def _plain_make(command: str) -> bool:
-    """Whether *command* is ``make``, target names, and ``SHARD=${{ matrix.shard }}/N``."""
+    """Whether *command* is ``make``, target names, and ``SHARD=${{ matrix.shard }}``."""
 
     shard = "\0"
-    words = MATRIX_SHARD.sub(shard, command).split()
+    words = PLAN_SHARD.sub(shard, command).split()
     return words[:1] == ["make"] and all(
         word == shard or TARGET.fullmatch(word) for word in words[1:]
     )
@@ -406,6 +460,12 @@ def _check_steps(found: dict[str, Json]) -> list[str]:
             if condition is not None and not _may_carry(name, str(condition), command):
                 errors.append(f"ci.yml job {name} has a step under if: {condition}")
             if not make_targets(command):
+                # A make whose target is an expression names none: only these two may.
+                given = {CHROME_JOB: CHROME_RUN, STACK_JOB: STACK_RUN}.get(name)
+                if MAKE_WORD.search(command) and command.strip() != given:
+                    errors.append(
+                        f"ci.yml job {name} runs `{command.strip()}`, a make with no target named"
+                    )
                 continue
             plain = _blanked(command.strip(), "EXPR")
             if not plain.startswith("make ") or SHELL.search(plain):
@@ -413,13 +473,13 @@ def _check_steps(found: dict[str, Json]) -> list[str]:
             elif not _plain_make(command):
                 errors.append(
                     f"ci.yml job {name} runs `{command.strip()}`; a make step's words are "
-                    "make, targets, and SHARD=${{ matrix.shard }}/N"
+                    "make, targets, and SHARD=${{ matrix.shard }}"
                 )
-            tier = bool(make_targets(command) & set(TIER_TARGETS))
-            if tier and "SHARD=" in command and not MATRIX_SHARD.search(command):
+            sharded = bool(make_targets(command) & SHARDED_TARGETS)
+            if sharded and name in SHARD_OUTPUTS and not PLAN_SHARD.search(command):
                 errors.append(
-                    f"ci.yml job {name} runs a tier with a fixed SHARD; it takes "
-                    "SHARD=${{ matrix.shard }}/N"
+                    f"ci.yml job {name} runs `{command.strip()}` without its part; it takes "
+                    "SHARD=${{ matrix.shard }}"
                 )
     return errors
 
@@ -472,6 +532,13 @@ def _check_plan(plan: Json, expected: list[str]) -> list[str]:
     chrome_python = environment.get("PR_CHROME_PYTHON")
     if not isinstance(pythons, list) or chrome_python not in cast(list[object], pythons):
         errors.append(f"ci.yml PR_CHROME_PYTHON {chrome_python!r} must be one of PYTHONS")
+    outputs = _mapping(plan.get("outputs"))
+    for output in PLAN_OUTPUTS:
+        if outputs.get(output) != STEP_OUTPUT.format(output=output):
+            errors.append(
+                f"ci.yml {PLAN_JOB} job's output {output} must be "
+                f"{STEP_OUTPUT.format(output=output)}"
+            )
     checkouts = [
         step for step in steps(plan) if str(step.get("uses", "")).startswith("actions/checkout@")
     ]
@@ -504,25 +571,38 @@ def check_ci(workflow: Json, expected: list[str]) -> list[str]:
 
     # The tiers, and the interpreters each runs on.
     tiered = {name: _targets_of(runs(job)) for name, job in found.items() if name != STACK_JOB}
+    if CHROME_JOB in tiered:
+        # Its target is the plan job's, which make_targets cannot read.
+        tiered[CHROME_JOB] |= {CHROME_TARGET}
     for target in TIER_TARGETS:
         if not any(target in targets for targets in tiered.values()):
             errors.append(f"ci.yml runs no `make {target}`")
     for name, targets in sorted(tiered.items()):
         job = found[name]
-        for target in sorted(targets & set(EVERY_INTERPRETER)):
+        for target in sorted(targets & set(TIER_TARGETS)):
             pythons = matrix(job).get("python-version")
-            if pythons != expected:
+            if pythons != PLAN_PYTHONS:
                 errors.append(
-                    f"ci.yml job {name} runs {target} on {pythons}, not on every interpreter "
-                    f"{expected}"
+                    f"ci.yml job {name} runs {target} on {pythons}, not on the plan job's "
+                    f"interpreters {PLAN_PYTHONS}"
                 )
-            elif _uv_python(job) != MATRIX_PYTHON:
-                errors.append(f"ci.yml job {name} must install {MATRIX_PYTHON} for {target}")
-        if CHROME_TARGET in targets:
-            if matrix(job).get("python-version") != CHROME_MATRIX:
-                errors.append(f"ci.yml job {name}'s python-version matrix must be {CHROME_MATRIX}")
-            if PLAN_JOB not in _needs(job) or _uv_python(job) != MATRIX_PYTHON:
-                errors.append(f"ci.yml job {name} must need {PLAN_JOB} and install {MATRIX_PYTHON}")
+            elif PLAN_JOB not in _needs(job) or _uv_python(job) != MATRIX_PYTHON:
+                errors.append(
+                    f"ci.yml job {name} must need {PLAN_JOB} and install {MATRIX_PYTHON} "
+                    f"for {target}"
+                )
+    for name, output in sorted(SHARD_OUTPUTS.items()):
+        job = found.get(name, {})
+        wanted = PLAN_LIST.format(output=output)
+        if matrix(job).get("shard") != wanted or PLAN_JOB not in _needs(job):
+            errors.append(
+                f"ci.yml job {name}'s shard matrix must be {wanted}, and it needs {PLAN_JOB}"
+            )
+    chrome = found.get(CHROME_JOB, {})
+    if [command.strip() for command in runs(chrome) if MAKE_WORD.search(command)] != [CHROME_RUN]:
+        errors.append(f"ci.yml job {CHROME_JOB} must run `{CHROME_RUN}` and no other make")
+    if matrix(found.get(CACHE_JOB, {})).get("git") != PLAN_GITS:
+        errors.append(f"ci.yml job {CACHE_JOB}'s git matrix must be {PLAN_GITS}")
 
     plan = found.get(PLAN_JOB)
     errors += [f"ci.yml has no {PLAN_JOB} job"] if plan is None else _check_plan(plan, expected)
@@ -634,8 +714,24 @@ def check_workflow(name: str, workflow: Json) -> list[str]:
                 errors.append(
                     f"{where} deals {part} into shards {sorted(parts)}, not 1 through N of one N"
                 )
-        for step in steps(job):
+        job_steps = steps(job)
+        for index, step in enumerate(job_steps):
             inputs = step.get("with")
+            given = _mapping(inputs)
+            before = job_steps[index - 1].get("run") if index else None
+            ran = before.strip() if isinstance(before, str) else None
+            # GitHub finds an action's owner and repository whatever their case.
+            uses = str(step.get("uses", "")).lower()
+            if uses.startswith(SETUP_UV):
+                wanted = INSTALL_UV.format(
+                    version=given.get("version"), checksum=given.get("checksum")
+                )
+                if ran != wanted:
+                    errors.append(f"{where} must run `{wanted}` just before setup-uv")
+            if uses.startswith(SETUP_NODE):
+                wanted = INSTALL_NODE.format(version=given.get("node-version"))
+                if ran != wanted:
+                    errors.append(f"{where} must run `{wanted}` just before setup-node")
             checkout = str(step.get("uses", "")).startswith("actions/checkout@")
             if checkout and _mapping(inputs).get("persist-credentials") is not False:
                 errors.append(f"{where} must check out with persist-credentials: false")

@@ -165,7 +165,7 @@ def test_recording_is_what_the_application_answers(
         "docs": ["o", "m"],
         "README.md": ["v", "s"],
         "data.json": ["v", "s"],
-        "session.jsonl": ["v", "c", "s"],
+        "session.jsonl": ["e", "v", "c", "s"],
         "page.html": ["v", "s"],
     }
     assert [view["id"] for view in recorded["folder"]["inactive_html"]["body"]["views"]] == [
@@ -361,16 +361,18 @@ def test_the_session_runs_on_the_recording() -> None:
     assert age["trigger"] == "By age"
     for quick in (
         "with the menu closed, T is Quick Search",
-        "with focus outside the open menu, T is Quick Search",
+        "with focus outside the open menu, T is Quick Search, which closes it",
     ):
         assert by_name[quick]["pressed"] == {"key": "t", "handled": True}, quick
         assert by_name[quick]["focus"] == "combobox", quick
     by_type = by_name["1 focuses By age, the checked row, and T chooses By file type"]
     assert by_type["focus"]["row"] == "By age" and by_type["focus"]["checked"] == "true"
     assert by_type["trigger"] == "By file type"
-    assert by_name["with focus outside the open menu, T is Quick Search"]["trigger"] == (
-        "By file type"
-    )
+    outside = by_name["with focus outside the open menu, T is Quick Search, which closes it"]
+    assert outside["trigger"] == "By file type"
+    # Quick Search's box taking focus closes the menu, as focus arriving outside any menu
+    # does (docs/design-system.md, "Every Menu Closes Alike").
+    assert outside["did"] == ["opened the group menu", "closed the group menu"]
     assert by_name["N chooses No grouping"]["trigger"] == "No grouping"
 
     # What a navigation and a key cost: one publication, and while revealed one pass.
@@ -397,3 +399,60 @@ def test_the_session_runs_on_the_recording() -> None:
         "afterCancel": "Tree",
     }
     assert by_name["the keymap after a pageshow rebuild"]["sameAsBefore"] is True
+
+
+def test_backslash_hides_the_navigation_pane_and_its_keys() -> None:
+    """`\\` hides the pane: its keys leave the keymap, focus leaves it, and `|` undoes it.
+
+    ``tests/dom/nav-collapse-session.js`` runs the production static/nav-collapse.js under
+    the shell keymap (``cli-ui-nav-collapse.tryscript.md``; docs/design-system.md, "Hiding
+    the Navigation Pane").
+    """
+    steps = {step["step"]: step for step in run_session("nav-collapse-session.js")["steps"]}
+    shown, hidden, back, other_key, turned, menu = steps.values()
+    commands = {
+        name: [command for _key, command, _target in step["keys"]] for name, step in steps.items()
+    }
+    shown_nav = {
+        "inert": False,
+        "inLayout": True,
+        "expanded": "true",
+        "label": "Hide navigation",
+    }
+    hidden_nav = {
+        "inert": True,
+        "inLayout": False,
+        "expanded": "false",
+        "label": "Show navigation",
+        "focus": "preview-pane",
+    }
+
+    assert shown["nav"] == shown_nav
+    assert ["\\", "shell.nav-toggle", "Hide navigation"] in shown["keys"]
+    assert hidden["pressed"] == {"key": "\\", "handled": True}
+    assert hidden["nav"] == hidden_nav
+    # The slide runs the pane's whole width over --motion-reveal's time.
+    assert (hidden["slide"]["from"], hidden["slide"]["to"]) == (300, 0)
+    assert ["\\", "shell.nav-toggle", "Show navigation"] in hidden["keys"]
+    hidden_commands = commands[hidden["step"]]
+    # The pane's own keys are gone while it is hidden; the main page's stay.
+    for gone in ("shell.home", "main-tabs.files", "numbered"):
+        assert gone in commands[shown["step"]] and gone not in hidden_commands, gone
+    assert {"help.open", "view-tabs.v", "header.parent"} <= set(hidden_commands)
+    # Shift-\, which types `|`, shows it again with every key it had: the pane is live as
+    # the slide starts and back in the layout when it ends.
+    assert back["pressed"] == {"key": "|", "handled": True}
+    assert back["sliding"]["nav"] == {**shown_nav, "inLayout": False}
+    assert back["nav"] == shown_nav
+    assert commands[back["step"]] == commands[shown["step"]]
+    # The ISO key in US `\`'s place types `#`, which is not `\`.
+    assert other_key["pressed"] == {"key": "#", "handled": False}
+    assert other_key["slide"] is None and other_key["nav"] == shown_nav
+    # Turned back halfway, the slide runs from where the frame is, for half the time.
+    assert turned["slide"]["from"] == 150 and turned["slide"]["to"] == 300
+    assert turned["slide"]["duration"] * 2 == hidden["slide"]["duration"]
+    assert turned["slide"]["cancelled"] == 1
+    assert turned["nav"] == shown_nav
+    # Hiding the pane closes the menu it held open.
+    assert menu["menu"] == {"before": "group", "after": None}
+    assert menu["nav"] == hidden_nav

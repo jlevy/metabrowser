@@ -5,8 +5,6 @@
    system; the title is styled as a filename, not a heading. */
 
 .metabrowser-diff-host {
-  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
-  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
   --diff-add-refined-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);
   --diff-del-refined-row-bg: color-mix(in srgb, var(--status-error) 3%, transparent);
   --diff-add-inner-bg: color-mix(in srgb, var(--status-success) 20%, transparent);
@@ -14,6 +12,13 @@
   --diff-add-gutter: var(--status-success);
   --diff-del-gutter: var(--status-error);
   --diff-change-gutter-width: 3px;
+  /* How far a Markdown change's band reaches past its text, above and below: the 4 px a
+     row padded its block by before the band was drawn rather than laid out (mb-6d1s).
+     Half the least space KPress puts between two blocks (8 px, from an h5 or h6 to its
+     paragraph), so where a removed run meets an added one their bands meet at most and
+     never overlap, which would draw a darker seam where their translucent grounds cross.
+     Within a run there is no seam to draw: one box draws its band (mb-zkmy). */
+  --diff-markdown-band-extent: 4px;
   /* Held bodies and their eventual chrome use the same token-based dimensions. */
   --diff-code-row-height: calc(1.5 * var(--mono-block-font-size));
   --diff-header-padding-y: 4px;
@@ -26,30 +31,55 @@
   );
   --diff-fold-row-height: max(var(--ui-row-height), calc(1.5 * var(--ui-small-font-size) + 2px));
   --diff-notice-row-height: calc(1.5 * var(--body-font-size) + 2 * var(--diff-notice-padding-y));
-  /* How far the Diff summary's header pulls left of where it is placed, so its hover ground
-     reaches past its chevron (`.diff-summary-toggle`). Its tree's rows take it back out, so
-     their first level starts one --tree-indent in from the header (below). */
+  /* How far the Diff summary's header pulls left of where it is placed, and pads back in, so
+     its words start where it is placed and its hover ground reaches a little past them
+     (`.diff-summary-toggle`). */
   --diff-summary-toggle-pull: 4px;
+  /* The file bar's space before its View file control, beyond the bar's gap and the
+     control's pad: at rest the stats end 44 px before View file's text and start 28 px
+     after the name's, past Copy path's slot, so they read with the name. And the least
+     the name's group keeps before View file moves to the next line, on a bar without a
+     view chooser (`.diff-file-lead`): the rest of the group beside the name
+     took 106 px with stats of +1 -0 and 174 px with +12,345 -12,345, so stats that wide
+     never run under View file. Measured in headless Chrome, design-rule-measurements.md
+     "Diff File Bar Widths". */
+  --diff-file-actions-gap: 32px;
+  --diff-file-lead-basis: 176px;
 }
 
 /* The toolbar draws no rule under itself (mb-a073): the first file card's own border, its
    12 px margin below, is the line between the toolbar and the files, and on a commit's or a
-   pull request's page, where the toolbar holds the layout control alone, a rule there would
+   pull request's page, where the toolbar holds the diff's choosers alone, a rule there would
    draw a second line 12 px above it. Where the toolbar leads with the Diff summary, its
    header is the tree's root, and the tree opens under it as it does at a page's top, with
-   no line between them. The toolbar is not sticky, so nothing scrolls under it. */
+   no line between them. The toolbar is not sticky, so nothing scrolls under it.
+
+   It wraps rather than run past its pane: its controls end each line, and what leads it, the
+   Diff summary, keeps the first line's start. The choosers are one group
+   (`.diff-toolbar-end`), so where they do not fit beside the File type control they take the
+   next line together, at its end. Measured in Chrome 152 at 1,063, 900, 600, 380 and 320 px
+   with each state the File type control paints (tests/dom/diff-current-chrome.mjs): nothing
+   scrolls sideways. Without the wrap, Split | Unified ran up to 200 px past the toolbar at
+   380 px (mb-dcc2). */
 .metabrowser-diff-host .diff-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   min-height: var(--ui-row-height);
 }
 
+.metabrowser-diff-host .diff-toolbar > :not(.diff-type-control, .diff-toolbar-end) {
+  margin-inline-end: auto;
+}
+
 /* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
    set holds and is the disclosure toggle of its files as a tree by folder. The header is a
-   row-like trigger, so it leads with the registry's chevron in the tree's icon slot. Its text
+   row-like trigger whose words come first: the registry's chevron, in the tree's icon slot,
+   follows them, as on every toggle that expands a diff summary, where a folder's toggle and a
+   stack's lead with theirs (docs/design-system.md, "Diff Summary"; mb-f0pz). Its text
    is one size, so its parts share a line box and need no baseline opt-in. That size is the
    body's, the size of every line under a page's title it is drawn among (docs/design-system.md,
    "Page Headers"), and the same in a patch's toolbar: it was the navigation rows' 13 px, a
@@ -72,7 +102,7 @@
   flex: 0 1 auto;
   min-height: var(--ui-row-height);
   margin: 0 0 0 calc(-1 * var(--diff-summary-toggle-pull));
-  padding: 0 6px 0 0;
+  padding: 0 6px 0 var(--diff-summary-toggle-pull);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -86,8 +116,8 @@
 }
 
 .metabrowser-diff-host .diff-summary-toggle:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   background: var(--hover-bg);
 }
 
@@ -164,27 +194,70 @@
    tab's tree's too, so the two trees draw one row; here is only its depth's indent. The
    header is the tree's root, so its first level starts one --tree-indent in from it, as a
    folder's rows start one step in from the folder, and each level adds the step. A row's
-   content starts on the row inset, --pane-header-padding-x past the row's edge; the header
-   starts --diff-summary-header-inset in and pulls --diff-summary-toggle-pull left of that;
-   so the rows give back the difference. Measured in Chrome
-   (tests/test_changed_file_rows_chrome.py, tests/test_git_commit_summary_chrome.py,
-   tests/test_github_pull_header_chrome.py): in a patch's toolbar, under a commit's identity,
-   and in a pull request's header, a first-level row's chevron and name start 16px right of
-   the header's chevron and words, and each level 16px further. Before, they started 4px
-   right of them in the toolbar, and already 16px right of them at the top of a page. */
+   content starts on the row inset, --pane-header-padding-x past the row's edge, and the
+   header's words start --diff-summary-header-inset in, so the rows give back the difference.
+   Measured in Chrome (tests/test_changed_file_rows_chrome.py,
+   tests/test_git_commit_summary_chrome.py, tests/test_github_pull_header_chrome.py): in a
+   patch's toolbar, under a commit's identity, and in a pull request's header, a first-level
+   row's chevron starts 16px right of the header's words, and each level 16px further. While
+   the header led with its chevron, a row's chevron and name started 16px right of the
+   header's chevron and words (mb-f0pz). */
 .metabrowser-diff-host .diff-summary-row {
   --changed-file-indent: calc(
     (var(--diff-summary-depth, 0) + 1) *
     var(--tree-indent) +
     var(--diff-summary-header-inset) -
-    var(--diff-summary-toggle-pull) -
     var(--pane-header-padding-x)
   );
 }
 
-.metabrowser-diff-host .diff-layout-control {
+/* The diff's choosers end the toolbar, on one line at its right: Diff | Current
+   (`renderShowControl` in diff-view.js), then Split | Unified, or Diff | Current alone
+   where the host fixes the layout, as a pull request's Docs tab does. Where the group alone
+   is wider than the toolbar, it wraps too, each of its lines at the end, as a file bar's end
+   group does. */
+.metabrowser-diff-host .diff-toolbar-end {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.metabrowser-diff-host :is(.diff-show-control, .diff-layout-control) {
   flex: none;
-  margin-left: auto;
+}
+
+/* The File type filter (diff-type-filter.js) leads the choosers at the toolbar's end:
+   the menu, how many files it keeps, and Clear. Wider than the toolbar, as its failed load's
+   notice is at 320 px, it wraps, each of its lines at the end. */
+.metabrowser-diff-host .diff-type-control {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.metabrowser-diff-host .diff-type-note {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}
+
+/* The shared notice's identity, at the toolbar's height. */
+.metabrowser-diff-host .diff-type-note.notice {
+  padding: 2px 8px;
+  color: var(--status-error-text);
+  line-height: inherit;
+}
+
+.metabrowser-diff-host .diff-type-empty {
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
 }
 
 .metabrowser-diff-host .diff-file {
@@ -199,6 +272,7 @@
   position: sticky;
   top: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   min-height: var(--ui-row-height);
   gap: 4px;
@@ -216,19 +290,81 @@
   border-bottom: none;
 }
 
+/* The bar's parts. It leads with the group that names the file: the
+   disclosure, the copy control right after the name, and the change's stats
+   and notes. The View file control follows it, and the bar ends with a file's
+   view chooser, at its far end. The name's group and the end group
+   are each one flex item, so nothing parts the copy control or the stats from
+   the name, and the end group moves whole. The end group's start margin takes
+   the bar's free space, which stays part of the bar's one activation surface.
+
+   Where the parts do not fit one line, the bar wraps them in order, and the
+   name's group keeps the first. A bar with a view chooser
+   (`.diff-file-bar-markdown`) wraps before its name is cut at all: the group
+   takes its whole width when laid out, so View file and then the end group move
+   to the next line first. Any other bar cuts a long path short on one line, the
+   group giving way down to `--diff-file-lead-basis`, and below that moves View
+   file to the next line rather than cutting it off or covering the stats.
+   `max-width` stops the group growing past its content, so View file follows
+   the name rather than the bar's end. */
+.metabrowser-diff-host .diff-file-lead {
+  display: flex;
+  align-items: center;
+  flex: 1 1 var(--diff-file-lead-basis);
+  min-width: 0;
+  max-width: max-content;
+  gap: 4px;
+}
+
+.metabrowser-diff-host .diff-file-bar-markdown .diff-file-lead {
+  flex: 0 1 auto;
+}
+
+/* The space before View file: wider than the copy control's slot, which sits
+   between the name and the stats, so the stats read with the name and View file
+   apart from both. It is the first thing to give way where the bar is short,
+   before the name: a flex item of the name's group that shrinks a million times
+   as fast as the toggle does. A bar that wraps View file to the next line keeps
+   the space at the end of the first, where it is unseen, so the control starts
+   its own line at the bar's start pad. */
+.metabrowser-diff-host .diff-file-lead:has(+ .diff-file-view)::after {
+  content: "";
+  flex: 0 1000000 auto;
+  width: var(--diff-file-actions-gap);
+  min-width: 0;
+}
+
+.metabrowser-diff-host .diff-file-end {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+
+/* A bar with no chooser has nothing at its end, and an empty group there could
+   still take a line of its own where the bar wraps. */
+.metabrowser-diff-host .diff-file-end:empty {
+  display: none;
+}
+
 .metabrowser-diff-host .diff-file-chevron {
   display: inline-flex;
   align-items: center;
   flex: none;
 }
 
+/* The toggle's box is its content, so its end padding is the room the inset focus ring
+   takes past the path's last letter, which the ring otherwise covered (seen in Chrome on
+   2026-11-24, mb-2t80); the end margin gives it back, so the bar lays out as before. */
 .metabrowser-diff-host .diff-file-toggle {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0;
+  padding: 0 4px 0 0;
+  margin-inline-end: -4px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -262,11 +398,30 @@
   flex: none;
 }
 
-/* The note, the change letter, and the stats share the path's baseline,
-   as a nav tree row's text does ("Row Text Shares a Baseline" in the
-   design system); the chevron is a box and stays centered. */
-.metabrowser-diff-host .diff-file-toggle
-  > :is(.diff-file-kind, .diff-file-path, .diff-file-stats, .diff-file-note) {
+/* The change letter shares the path's baseline, as a nav tree row's text
+   does ("Row Text Shares a Baseline" in the design system); the chevron is a
+   box and stays centered. */
+.metabrowser-diff-host .diff-file-toggle > :is(.diff-file-kind, .diff-file-path) {
+  align-self: baseline;
+}
+
+/* The change's stats and notes, after the copy control: a box in the name's
+   group, set at the path's own size and line height, as the View file control
+   is, so centering puts their text on the path's baseline, and their own text
+   shares one baseline inside it. They keep their width: the path gives way
+   first. */
+.metabrowser-diff-host .diff-file-facts {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  line-height: normal;
+  white-space: nowrap;
+}
+
+.metabrowser-diff-host .diff-file-facts > :is(.diff-file-stats, .diff-file-note) {
   align-self: baseline;
 }
 
@@ -279,30 +434,20 @@
   flex: none;
 }
 
-.metabrowser-diff-host .diff-stat-add {
-  color: var(--status-success);
-  font-weight: var(--weight-bold);
-}
-
-.metabrowser-diff-host .diff-stat-del {
-  color: var(--status-error);
-  font-weight: var(--weight-bold);
-}
-
-/* View file, or View on branch on a pull request: a quiet text action at
-   the end of the bar, the same whether
+/* View file, or View on branch on a pull request: a quiet text action
+   after the name and its stats, the same whether
    it is a link (the page has the file's address) or a button (following
    it switches the served pin first). It stays visible, since it is how a
    reader leaves the diff for the file, and takes the link color on hover
    and focus like every other text action.
-   Set at the path's own size and line height, the toggle's: the control is
-   a centered box beside the toggle, and only text of the path's size and
-   line height centers onto the path's baseline. The toggle and the button
-   form take a button's `normal` line height; the link form inherited the
-   bar's 1.5 and sat 0.5px above the path's baseline at 14px, at device
-   pixel ratios of 1 and 2, where the button form sat on it ("Row Text
-   Shares a Baseline" in the design system; Design Rule Measurements, "Row
-   Baselines"). */
+   Set at the path's own size and line height, the toggle's: the control and
+   the toggle are centered boxes, each in its group and each group in the
+   bar, and only text of the path's size and line height centers onto the
+   path's baseline. The toggle and the button form take a button's `normal`
+   line height; the link form inherited the bar's 1.5 and sat 0.5px above
+   the path's baseline at 14px, at device pixel ratios of 1 and 2, where the
+   button form sat on it ("Row Text Shares a Baseline" in the design system;
+   Design Rule Measurements, "Row Baselines"). */
 .metabrowser-diff-host .diff-file-view {
   flex: none;
   padding: 0 4px;
@@ -324,8 +469,8 @@
 }
 
 .metabrowser-diff-host .diff-file-view:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .metabrowser-diff-host .diff-file-view[aria-busy="true"] {
@@ -342,6 +487,9 @@
   display: none;
 }
 
+/* Copy path, right after the name and before its stats and notes, as the
+   file header's follows its path ("Copyable Identifiers Use One Delegate" in
+   the design system). */
 .metabrowser-diff-host .diff-file-copy {
   /* A 20px hit target keeps the 24px row exact under its 1px border;
      the token re-scope leaves the icon-btn primitive untouched. */
@@ -349,12 +497,24 @@
   flex: none;
 }
 
-/* The reveal contract: the copy control appears while its row is
-   hovered or holds focus, like every other revealed icon button. */
+/* The reveal contract: the copy control appears while its row is hovered
+   or the keyboard's focus is in it, like every other revealed icon button.
+   The focus is asked for as `:focus-visible`, not `:focus-within`: a press
+   on the name focuses the disclosure in Chrome, and `:focus-within` then
+   held the control shown beside that name, the pointer long gone, until
+   the focus moved on. After a copy it stays shown, in the success ink,
+   until the shared delegate takes its "Copied" back, as the file header's
+   does. At rest it keeps its place, unseen, so nothing in the bar moves
+   when it shows. */
 .metabrowser-diff-host .diff-file-bar:hover .diff-file-copy,
-.metabrowser-diff-host .diff-file-bar:focus-within .diff-file-copy {
+.metabrowser-diff-host .diff-file-bar:has(:focus-visible) .diff-file-copy,
+.metabrowser-diff-host .diff-file-copy.copied {
   opacity: 1;
   pointer-events: auto;
+}
+
+.metabrowser-diff-host .diff-file-copy.copied {
+  color: var(--status-success-text);
 }
 
 /* The disclosure-motion recipe from the core stylesheet: bodies travel
@@ -391,6 +551,12 @@
   font-family: var(--font-mono);
   font-size: var(--mono-block-font-size);
   line-height: 1.5;
+}
+
+/* Current draws the new file's lines in one column, at their new numbers alone
+   (`renderCurrentLine` in diff-view.js), so the row has one number column. */
+.metabrowser-diff-host .diff-hunk-current .diff-line {
+  grid-template-columns: 3.5em 1.25em 1fr;
 }
 
 .metabrowser-diff-host .diff-hunk-split {
@@ -506,10 +672,20 @@
   white-space: nowrap;
 }
 
-.metabrowser-diff-host .diff-fold-chevron {
-  display: inline-flex;
-  align-items: center;
+/* A gap's bar stands where its hunk's `@@` separator stood and keeps it after the label, in
+   the plain separator's muted tone, size, and sans face (`.diff-hunk-header`; chrome is sans,
+   tests/test_chrome_typography.py), as `renderGapFold` in diff-view.js draws it; a long
+   heading ends in an ellipsis before the label gives way. */
+.metabrowser-diff-host .diff-gap-control .diff-fold-label {
   flex: none;
+}
+
+.metabrowser-diff-host .diff-fold-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--mono-block-font-size);
 }
 
 .metabrowser-diff-host .diff-fold-group {
@@ -542,9 +718,14 @@
   padding: 0 12px;
 }
 
-.metabrowser-diff-host .diff-availability {
+.metabrowser-diff-host .diff-availability:not(.notice) {
   padding: var(--diff-notice-padding-y) 12px;
   color: var(--muted);
+}
+
+/* A notice box inside the diff: only its spacing is the diff's. */
+.metabrowser-diff-host .diff-notice {
+  margin-block: 8px;
 }
 
 /* Patch chrome remains complete on one line in the existing horizontal scroller.
@@ -555,12 +736,14 @@
   white-space: nowrap;
 }
 
-.metabrowser-diff-host .diff-file-bar-markdown {
-  flex-wrap: wrap;
-}
-
-.metabrowser-diff-host .diff-file-bar-markdown .diff-file-toggle {
+/* Where a bar with a view chooser wraps (`.diff-file-lead`), the chooser's
+   group takes a line after the name's, at the bar's end (`.diff-file-end`). Where that
+   group alone is wider than the bar, it wraps too, each of its lines at the bar's end, so
+   no control is cut off. */
+.metabrowser-diff-host .diff-file-bar-markdown .diff-file-end {
   flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .metabrowser-diff-host .diff-markdown-control {
@@ -569,13 +752,9 @@
   margin-block: 2px;
 }
 
-.metabrowser-diff-host .diff-markdown-progress + .diff-file-view,
-.metabrowser-diff-host .diff-markdown-progress + .diff-file-copy {
-  margin-inline-start: auto;
-}
-
-/* Keeps its place in the bar, so it never moves the controls, and appears only after
-   the loading-state delay (.mb-delayed-loading). */
+/* Leads the chooser, toward the bar's free space. Keeps its place in the bar, so it
+   never moves the controls, and appears only after the loading-state delay
+   (.mb-delayed-loading). */
 .metabrowser-diff-host .diff-markdown-progress {
   display: inline-flex;
   flex: none;
@@ -583,22 +762,51 @@
   visibility: hidden;
 }
 
-.metabrowser-diff-host
-  :is(.diff-markdown-control, .diff-markdown-progress, .diff-markdown, .diff-file-body)[hidden] {
+.metabrowser-diff-host :is(.diff-markdown, .diff-structured, .diff-file-body)[hidden] {
   display: none;
+}
+
+/* What Current leaves out of rendered Markdown, its removed runs and blocks and front
+   matter keys, which the format controller hides by the attribute (`removedParts` in
+   diff-markdown.js): hidden whatever display a block's own styles give it. */
+.metabrowser-diff-host
+:is(.diff-markdown-run, .diff-markdown-block, .diff-markdown-frontmatter :is(dt, dd))[hidden] {
+  display: none;
+}
+
+/* Every rendered row fills the diff box so the change gutter stays at its edge.
+   The reading column inside it uses equal insets measured from that same box. */
+.metabrowser-diff-host :is(.diff-markdown, .diff-structured) {
+  container-type: inline-size;
+  --diff-rendered-inset: max(
+    calc(var(--content-padding-x) + var(--diff-change-gutter-width)),
+    calc((100cqi - var(--doc-measure)) / 2)
+  );
+  padding-block: 4px;
 }
 
 /* The comparison's article is a KPress fragment outside the document host; the shell's
    bridge (static/styles.css) gives every `.kpress` the app's colors and corners, so its
-   quotes and code draw as a document's do. */
+   quotes and code draw as a document's do. It isolates its paint, so a changed block's
+   band (below) is drawn behind every block's text and in front of the article's ground. */
 .metabrowser-diff-host .diff-markdown {
-  max-inline-size: calc(var(--doc-measure) + 2 * var(--content-padding-x));
-  padding-block: 4px;
   overflow-wrap: anywhere;
+  isolation: isolate;
 }
 
+/* Each block is a row of its own, and a row sets no block padding or border, so its
+   block's margins pass through it and collapse with the next row's as two blocks of a
+   document do: the space from one block's text to the next is the Document view's
+   (docs/design-system.md, "Rendered Diff Spacing"). The zero padding also undoes the
+   padding KPress gives a `<details>`'s content (`.kpress details > :not(summary)`),
+   which a fold's rows are. With 4 px of padding each, a row kept its block's margins and
+   added them to the next row's: 52 px from a paragraph to an h2 where the document has
+   32 (explorations/performance-loop/design-rule-measurements.md, "Rendered Diff Block
+   Spacing"; tests/test_diff_markdown_spacing_chrome.py). */
 .metabrowser-diff-host .diff-markdown-block {
-  padding: 4px var(--content-padding-x);
+  padding-block: 0;
+  padding-inline: calc(var(--diff-rendered-inset) - var(--diff-change-gutter-width))
+    var(--diff-rendered-inset);
   border-inline-start: var(--diff-change-gutter-width) solid transparent;
 }
 
@@ -606,9 +814,22 @@
   margin: 0;
 }
 
-/* One list item or quoted paragraph per row reads as one list or quote. */
-.metabrowser-diff-host .diff-markdown-block .kpress-prose > :is(ul, ol, blockquote) {
-  margin-block: 0;
+/* The changed rows are in changes and runs (`changeRuns` in diff-markdown.js), which set
+   no block padding or border and start no formatting context either, so a row's margins
+   collapse through them as they do through the row.
+
+   KPress spaces some blocks by the block before them: a list or a quote continued gives
+   way its margins, and a paragraph straight under an h4, h5, or h6 sits close under it. A
+   row's block has no block before it in its row, so `markJoins` in diff-markdown.js marks
+   each row by the rows shown before and after it, whatever changes, runs, hidden removed
+   runs, or chunk edges lie between them, and these rules give way the margins it marks
+   (docs/design-system.md, "Rendered Diff Spacing"). */
+.metabrowser-diff-host .diff-markdown-block[data-join~="start"] > .kpress-prose > :first-child {
+  margin-block-start: 0;
+}
+
+.metabrowser-diff-host .diff-markdown-block[data-join~="end"] > .kpress-prose > :last-child {
+  margin-block-end: 0;
 }
 
 .metabrowser-diff-host .diff-markdown-block img {
@@ -616,14 +837,46 @@
   block-size: auto;
 }
 
-.metabrowser-diff-host .diff-markdown-added {
-  border-inline-start-color: var(--diff-add-gutter);
-  background: var(--diff-add-row-bg);
+/* A change's band: its change gutter at the diff box's edge and its ground across the
+   box, from `--diff-markdown-band-extent` above its first row's text to as far below its
+   last row's. One box draws each band, a run of one kind's (`changeRuns` in
+   diff-markdown.js), so consecutive blocks of one kind are one band, across the space
+   between them, and no seam or gap can fall inside it. Where Current hides a change's
+   removed runs, the change itself draws one added band across the runs left, which draw
+   none. The band is drawn, not laid out, so it moves no text: the space between two blocks
+   stays the document's whether or not either changed. A run of one kind meets a run of the
+   other only across the space between two blocks, and the extent is half the least of
+   those, so two bands never overlap into a darker seam. */
+.metabrowser-diff-host :is(.diff-markdown-run, .diff-markdown-change) {
+  position: relative;
 }
 
-.metabrowser-diff-host .diff-markdown-removed {
-  border-inline-start-color: var(--diff-del-gutter);
-  background: var(--diff-del-row-bg);
+.metabrowser-diff-host
+  :is(
+    .diff-markdown-run,
+    .diff-markdown-change:has(> [hidden]):has(> .diff-markdown-run-added)
+  )::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-block: calc(-1 * var(--diff-markdown-band-extent));
+  inset-inline: 0;
+  border-inline-start: var(--diff-change-gutter-width) solid var(--diff-markdown-band-gutter);
+  background: var(--diff-markdown-band-bg);
+}
+
+.metabrowser-diff-host .diff-markdown-change:has(> [hidden]) > .diff-markdown-run::before {
+  content: none;
+}
+
+.metabrowser-diff-host :is(.diff-markdown-change, .diff-markdown-run-added) {
+  --diff-markdown-band-gutter: var(--diff-add-gutter);
+  --diff-markdown-band-bg: var(--diff-add-row-bg);
+}
+
+.metabrowser-diff-host .diff-markdown-run-removed {
+  --diff-markdown-band-gutter: var(--diff-del-gutter);
+  --diff-markdown-band-bg: var(--diff-del-row-bg);
 }
 
 .metabrowser-diff-host .diff-markdown-added ins {
@@ -637,8 +890,102 @@
   text-decoration-color: var(--diff-del-gutter);
 }
 
+/* A changed YAML or JSON file's tree is the file view's (structured/styles.css), at its
+   own height, with each added or removed row in the change gutter Markdown blocks use. */
+.metabrowser-diff-host .diff-structured.structured-tree,
+.metabrowser-diff-host .diff-structured .tree-viewport-flat {
+  height: auto;
+  overflow: visible;
+}
+
+.metabrowser-diff-host .diff-structured .srow {
+  padding-inline-end: var(--diff-rendered-inset);
+  border-inline-start: var(--diff-change-gutter-width) solid transparent;
+}
+
+/* The tree sets each row's nesting as inline padding. The chevron comes after that
+   padding, so an extra margin offsets the whole row's content without replacing it. */
+.metabrowser-diff-host .diff-structured .srow-chevron {
+  margin-inline-start: calc(var(--diff-rendered-inset) - var(--diff-change-gutter-width));
+}
+
+.metabrowser-diff-host :is(.diff-structured .srow-change-added, .diff-frontmatter-added) {
+  border-inline-start-color: var(--diff-add-gutter);
+  background: var(--diff-add-row-bg);
+}
+
+.metabrowser-diff-host :is(.diff-structured .srow-change-removed, .diff-frontmatter-removed) {
+  border-inline-start-color: var(--diff-del-gutter);
+  background: var(--diff-del-row-bg);
+}
+
+/* A changed value's row wraps, so a long value shows where it changed. The file view's
+   row is one clipped line, and an old and a new string that differ past the clip read
+   the same there (mb-8274 review C8). A newline in the value breaks its line, as the
+   file holds it. A container's row keeps the one line its preview is written for.
+   tests/test_diff_structured_chrome.py measures a long changed string. */
+.metabrowser-diff-host .diff-structured
+  :is(.srow-change-added, .srow-change-removed):not(.srow-container, .srow-more) {
+  height: auto;
+  min-height: var(--tree-row-height);
+  align-items: flex-start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.metabrowser-diff-host
+  .diff-structured
+  :is(.srow-change-added, .srow-change-removed):not(.srow-container, .srow-more)
+  .srow-content {
+  overflow: visible;
+}
+
+/* The row that stands for the children a page leaves out draws the next page. */
+.metabrowser-diff-host .diff-structured .srow-more {
+  cursor: pointer;
+}
+
+.metabrowser-diff-host .diff-structured .srow-more:hover {
+  background: var(--hover-bg);
+}
+
+/* The one line above a tree whose rows are all unchanged though the file's text changed
+   (`source_only`): chrome, quiet as a fold's label is, at the size of the rows it notes. */
+.metabrowser-diff-host .diff-structured-note {
+  margin: 0;
+  padding-block: 2px 4px;
+  padding-inline: var(--diff-rendered-inset);
+  font-family: var(--font-sans);
+  color: var(--muted);
+}
+
+/* A changed key of front matter: its term carries the gutter, and its value the row's
+   ground, across the disclosure's two columns. */
+.metabrowser-diff-host .diff-markdown-frontmatter dl {
+  column-gap: 0;
+}
+
+/* The disclosure's column gap, as the term's padding, so a changed key's band is one. */
+.metabrowser-diff-host .diff-markdown-frontmatter dt {
+  border-inline-start: var(--diff-change-gutter-width) solid transparent;
+  padding-inline: 4px 0.75rem;
+}
+
+.metabrowser-diff-host .diff-markdown-frontmatter .kpress-frontmatter {
+  margin: 0;
+}
+
 @media (forced-colors: active) {
-  .metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed) {
+  .metabrowser-diff-host :is(.diff-markdown-change, .diff-markdown-run) {
+    --diff-markdown-band-gutter: CanvasText;
+  }
+  .metabrowser-diff-host
+    :is(
+      .diff-structured .srow-change-added,
+      .diff-structured .srow-change-removed,
+      .diff-frontmatter-added,
+      .diff-frontmatter-removed
+    ) {
     border-inline-start-color: CanvasText;
   }
   .metabrowser-diff-host .diff-markdown-removed del {
@@ -646,39 +993,16 @@
   }
 }
 
-/* A fold of unchanged blocks is a place in the document, not a box in it: one quiet line
-   that opens to the blocks it holds, set as the blocks around them are. It is a
-   `<details>` inside the comparison's `article.kpress`, so KPress's document disclosure box
-   (a border, a block margin, and a rule under an open summary) is undone here, and the
-   face it sets is given back to the article, so the blocks the fold holds inherit what
-   their neighbours do. KPress's stylesheets may load before or after this one (a pull
-   request's description or an earlier Markdown document loads them first; a direct
-   visit to Changes loads them after), so these selectors outrank KPress's in either
-   order, its hover colour included. Context rows also carry `.diff-markdown-context`,
-   hence `details`. The label's chevron starts on the blocks' text edge, past their
-   change gutter, and the label brightens to the text colour under the pointer, as the
-   shell's document disclosures do (docs/design-system.md, "Fold Expanders").
-   tests/test_diff_markdown_fold_chrome.py measures it closed, open, and hovered. */
-.metabrowser-diff-host .diff-markdown details.diff-markdown-context {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  background: none;
-  color: inherit;
-  font-family: inherit;
-  font-feature-settings: inherit;
-}
-
-.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary {
-  cursor: pointer;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  padding: 4px var(--content-padding-x);
-  padding-inline-start: calc(var(--content-padding-x) + var(--diff-change-gutter-width));
-}
-
-.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:hover {
-  color: var(--text);
+/* A run of unchanged blocks folds behind the diff's fold bar (diff-fold.js), the bar a
+   code file's long run of changed lines folds behind, so it draws, opens, and closes as
+   that one does (docs/design-system.md, "Fold Expanders"). Its group holds blocks of the
+   document, so it clips with `clip` rather than the group's `hidden`: `hidden` also starts
+   a formatting context, which kept the last block's margin inside an open fold, adding it
+   to the next block's (24 px from the last block the fold holds to the paragraph after
+   it, where the document has 12). `clip` clips the same and starts none, so that margin
+   collapses with the next block's as the document's does. The bar is a `button` inside
+   the comparison's `article.kpress`; tests/test_diff_markdown_fold_chrome.py holds that it
+   computes as a code file's bar does, closed, open, and hovered. */
+.metabrowser-diff-host .diff-markdown .diff-markdown-fold {
+  overflow: clip;
 }

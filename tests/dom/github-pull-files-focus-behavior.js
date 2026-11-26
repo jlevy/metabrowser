@@ -135,13 +135,15 @@ async function run() {
     };
     document.body = new Element("body");
     document.activeElement = document.body;
+    // A pull request's item: its row owns the tree and its change line controls it.
     const parent = new Element("li"),
       owner = new Element("a"),
+      changeLine = new Element("div"),
       elsewhere = new Element("button");
     owner.dataset.id = "owner";
     elsewhere.dataset.id = "elsewhere";
     document.body.append(parent, elsewhere);
-    parent.append(owner);
+    parent.append(owner, changeLine);
     let generation = 0;
     let reads = 0;
     let releaseRetry = null;
@@ -156,6 +158,7 @@ async function run() {
       shown: true,
       scrollRoot: document.body,
       chevron: () => null,
+      changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
       href: (file) => `/${file}`,
       request: async (_method, route) => {
         if (scenario.startsWith("retry")) {
@@ -221,7 +224,7 @@ async function run() {
       leave: () => owner.focus(),
       focusedIn() {},
     });
-    view.attach(parent, owner);
+    view.attach(parent, owner, changeLine);
     view.controller.expand();
     await settle();
     if (scenario.startsWith("retry")) {
@@ -324,9 +327,10 @@ async function offerFocus(mountFileTree, detail) {
     document.activeElement = document.body;
     const parent = new Element("li");
     const owner = new Element("a");
+    const changeLine = new Element("div");
     owner.dataset.id = "owner";
     document.body.append(parent);
-    parent.append(owner);
+    parent.append(owner, changeLine);
     /** The reads of the list not yet answered, oldest first. */
     const reads = [];
     const view = mountFileTree({
@@ -340,6 +344,7 @@ async function offerFocus(mountFileTree, detail) {
       shown: true,
       scrollRoot: document.body,
       chevron: () => null,
+      changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
       href: (file) => `/${file}`,
       request: () =>
         new Promise((resolve) => {
@@ -397,7 +402,7 @@ async function offerFocus(mountFileTree, detail) {
         },
       };
     };
-    view.attach(parent, owner);
+    view.attach(parent, owner, changeLine);
     view.controller.expand();
     await settle();
     // The opening's bound passes: the tree opens on its loading line, and the list comes late.
@@ -499,8 +504,9 @@ async function refreshingPaint(mountFileTree) {
   document.activeElement = document.body;
   const parent = new Painted("li");
   const owner = new Painted("a");
+  const changeLine = new Painted("div");
   document.body.append(parent);
-  parent.append(owner);
+  parent.append(owner, changeLine);
   const listing = (state, refreshing, rows) => ({
     state,
     reason: null,
@@ -548,6 +554,7 @@ async function refreshingPaint(mountFileTree) {
     shown: true,
     scrollRoot: document.body,
     chevron: () => null,
+    changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
     href: (file) => `/${file}`,
     request: (method) =>
       method === "POST"
@@ -561,7 +568,7 @@ async function refreshingPaint(mountFileTree) {
     leave() {},
     focusedIn() {},
   });
-  view.attach(parent, owner);
+  view.attach(parent, owner, changeLine);
   view.controller.expand();
   await settle();
   const [line, , list] = view.group.children;
@@ -582,15 +589,21 @@ async function refreshingPaint(mountFileTree) {
   };
   const asked = painted();
   // A folder row ends with the line counts of its files, rolled up, in the shell's number
-  // format, and says them to a screen reader (mb-epw2).
+  // format, and says them to a screen reader (mb-epw2), as the shell's brief change line
+  // paints them: each total but a zero one (mb-ox6a).
   const folder = list.children.find((row) => row.dataset.id === "src/");
   const stats = folder?.children.find((part) => part.classes.has("github-pull-file-stats"));
+  /** @param {Painted} node @returns {string[]} */
+  const sides = (node) =>
+    node.className === "diff-stat-add" || node.className === "diff-stat-del"
+      ? [node.textContent]
+      : node.children.flatMap(sides);
   assert.deepEqual(
-    stats?.children.map((part) => part.children.map((text) => text.textContent).join("")),
-    ["+2", "\u22120"],
-    "a folder row shows its files' line counts rolled up",
+    stats === undefined ? null : sides(stats),
+    ["+2"],
+    "a folder row shows its files' line counts rolled up, a zero total left out",
   );
-  assert.equal(folder?.getAttribute("aria-label"), "src, 2 files, 2 added, 0 deleted");
+  assert.equal(folder?.getAttribute("aria-label"), "src, 2 files, 2 lines added");
   answerAsk({ status: 202, etag: null, body: { files: listing("stale", true, false) } });
   await settle();
   const running = painted();
@@ -622,8 +635,9 @@ async function walkClaims(mountFileTree) {
   document.activeElement = document.body;
   const parent = new Element("li");
   const owner = new Element("a");
+  const changeLine = new Element("div");
   document.body.append(parent);
-  parent.append(owner);
+  parent.append(owner, changeLine);
   const files = ["a.py", "b.py", "c\\d.py"];
   const claims = [];
   const view = mountFileTree({
@@ -636,6 +650,7 @@ async function walkClaims(mountFileTree) {
     shown: true,
     scrollRoot: document.body,
     chevron: () => null,
+    changeLineNodes: require("./changed-files-tree-fixture.js").shellPainters().changeLineNodes,
     // As the route's encoder answers: no address for a segment with a backslash.
     href: (file) => (file.includes("\\") ? null : `/${file}`),
     request: async () => ({
@@ -686,7 +701,7 @@ async function walkClaims(mountFileTree) {
     leave() {},
     focusedIn() {},
   });
-  view.attach(parent, owner);
+  view.attach(parent, owner, changeLine);
   view.controller.expand();
   await settle();
   view.controller.focused("a.py");

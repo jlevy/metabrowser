@@ -141,13 +141,14 @@ def _parse_jsonl_stream(
             events.append(
                 LogEvent(
                     kind="system",
-                    summary=f"[parse_error] line {line_number}: {type(exc).__name__}: {exc}",
+                    # The reader's sentence; the parser's own account is the raw record's.
+                    summary=f"Line {line_number} could not be read.",
                     adapter=adapter,
                     is_error=True,
                     raw={
                         "line_number": line_number,
                         "error_type": type(exc).__name__,
-                        "error": str(exc),
+                        "detail": str(exc),
                         "line_preview": stripped[:1000],
                     },
                 )
@@ -214,7 +215,9 @@ def _parse_jsonl_stream(
 
     tool_calls = sum(1 for e in events if e.kind == "tool_call")
     errors = sum(1 for e in events if e.is_error)
-    result_event = next((e for e in events if e.kind == "result"), None)
+    # The last result is the run's state: a multi-turn log (a Codex rollout, or a
+    # `codex exec --json` stream) writes one per turn, and a one-shot log writes one.
+    result_event = next((e for e in reversed(events) if e.kind == "result"), None)
 
     summary: dict[str, Any] = {
         "adapter": adapter,

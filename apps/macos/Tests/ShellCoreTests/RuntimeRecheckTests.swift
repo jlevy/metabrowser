@@ -135,7 +135,7 @@ import Testing
     }
 
     @Test func aRuntimeIsCurrentOnlyWithItsOwnFileAndAnAcceptedVersion() {
-        let runtime = Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin, fingerprint: stamp(1))
+        let runtime = Runtime(executable: "/opt/metab", version: "0.13.0", source: .localBin, fingerprint: stamp(1))
         #expect(runtime.isCurrent(fingerprint: stamp(1)))
         #expect(!runtime.isCurrent(fingerprint: stamp(2)))
         #expect(!runtime.isCurrent(fingerprint: nil))
@@ -143,7 +143,7 @@ import Testing
         unknown.fingerprint = nil  // as saved by a build that took none
         #expect(!unknown.isCurrent(fingerprint: nil))
         var old = runtime
-        old.version = "0.12.0"  // as saved by a build with a lower minimum
+        old.version = "0.12.1"  // as saved by a build with a lower minimum
         #expect(!old.isCurrent(fingerprint: stamp(1)))
     }
 
@@ -155,7 +155,7 @@ import Testing
             canonicalPath: { $0 },
             run: { spec, _ in
                 order.append("run")
-                return CommandResult(status: 0, output: ["metab 0.12.1"])
+                return CommandResult(status: 0, output: ["metab 0.13.0"])
             },
             fingerprint: { path in
                 order.append("fingerprint")
@@ -202,7 +202,7 @@ import Testing
         }
     }
 
-    /// mb-2mpn: Find Again during a recheck kept the changed file's hold only until
+    /// mb-2mpn: Refresh during a recheck kept the changed file's hold only until
     /// the search started, so a folder opened meanwhile started the unchecked file.
     @Test func aSearchStartedDuringARecheckKeepsFoldersWaiting() {
         let old = RuntimeSetup(

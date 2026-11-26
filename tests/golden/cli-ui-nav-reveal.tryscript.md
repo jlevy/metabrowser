@@ -40,8 +40,13 @@ drawn in its place if it was drawn again; an endless animation holds no scroll.
 `pulls list` runs the Pulls tab’s controller over the recorded lists and stack snapshot:
 an address naming a pull request in a closed stack opens the stack, the same pull
 request named again moves nothing unless it was opened again, which reveals it and ends
-a tab landing’s kept place, one the list does not hold is named under the band, and
-under All the list reads on for one past the rows it has read.
+a tab landing’s kept place, and under All the list reads on for one past the rows it has
+read. A pull request Open or Closed leaves out moves the list to a filter that draws it,
+which reveals it, when a navigation names it; when the reader picks the filter, the list
+says nothing of it. The catalog’s one-row lookups say where the pull request is.
+Only one the list still cannot show is named under the band: one the catalog, read to
+its end, lacks, or one further down than the list draws.
+The lists that run past what the panel draws are in the next section.
 
 ```console
 $ node tests/dom/nav-reveal-session.js
@@ -907,54 +912,693 @@ $ node tests/dom/nav-reveal-session.js
         ]
       },
       {
-        "step": "under Open, the list does not hold closed #8, and says so",
+        "step": "the reader picks Open, which leaves out closed #8: the list says nothing of it",
         "stack": "Stack #286 open",
         "told": [
-          "note: #8 is not listed under Open."
+          "filter open"
         ]
       },
       {
-        "step": "#10 named: listed, so revealed, and the note goes",
+        "step": "Quick Search for #8 again: Open leaves it out, so the list goes to All and reveals it",
         "stack": "Stack #286 open",
         "told": [
-          "revealed #10",
-          "note gone"
+          "filter all",
+          "revealed #8"
         ]
       },
       {
-        "step": "#4000 named under Open: not listed",
+        "step": "the reader picks Open",
         "stack": "Stack #286 open",
         "told": [
-          "note: #4000 is not listed under Open."
+          "filter open"
         ]
       },
       {
-        "step": "under All, #4000 is still not listed, and the note names All",
+        "step": "#10 named: listed, so revealed",
+        "stack": "Stack #286 open",
+        "told": [
+          "revealed #10"
+        ]
+      },
+      {
+        "step": "the reader picks Closed while open #10 is shown: Closed leaves it out, and the list says nothing of it",
+        "stack": "Stack #286 open",
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "#8 named under Closed: listed, so revealed",
+        "stack": "Stack #286 open",
+        "told": [
+          "revealed #8"
+        ]
+      },
+      {
+        "step": "open #10 named under Closed, by Back: the list goes to All and reveals it",
+        "stack": "Stack #286 open",
+        "told": [
+          "filter all",
+          "revealed #10"
+        ]
+      },
+      {
+        "step": "the reader picks Open",
+        "stack": "Stack #286 open",
+        "told": [
+          "filter open",
+          "revealed #10"
+        ]
+      },
+      {
+        "step": "#4000 named under Open: the catalog, read in full, lacks it, so the list stays and says so",
         "stack": "Stack #286 open",
         "told": [
           "note: #4000 is not in this list."
         ]
       },
       {
+        "step": "the reader picks All: the filter is theirs, and the note goes",
+        "stack": "Stack #286 open",
+        "told": [
+          "note gone",
+          "filter all"
+        ]
+      },
+      {
         "step": "#6 named under All, past the rows read: the list reads on, and reveals it",
         "stack": "Stack #286 open",
         "told": [
-          "revealed #6",
-          "note gone"
+          "revealed #6"
         ]
       }
     ],
     "notes": {
-      "Open, read past #8": "#8 is not listed under Open.",
-      "Closed, read past #8": "#8 is not listed under Closed.",
-      "All, read past #8": "#8 is not in this list.",
-      "any list, not read as far as #8": "#8 is not among the pull requests loaded."
+      "in the catalog, further down than the list draws": "#8 is not among the pull requests loaded.",
+      "not in the catalog, which has been read in full": "#8 is not in this list."
     }
   },
   "invariants": {
     "no route moves focus": true,
     "a reveal never leaves another row selected": true,
     "a step within the pull request shown reveals no row, and Quick Search for it does": true
+  }
+}
+? 0
+```
+
+## Beyond the Rows Read
+
+The part `pulls-depth` serves lists longer than the panel draws, in the route’s windows,
+and the catalog’s one-row lookups.
+Closed reads on for one past its first window; an open pull request among All’s first
+500 rows moves the list to All, and an older one to Open, which draws it, from All too;
+and a closed one further down than Closed draws stays, and is noted, as it is once the
+list has moved to Closed from All; the pages the reader scrolls in keep the note, with
+no flicker, until the page that brings the row, which reveals it.
+`crawling` names a pull request the catalog has not read from GitHub yet: the list stays
+and says nothing, and once the catalog has it, the next poll reveals it under Closed.
+One opened since the catalog’s last read is noted until a poll brings its row, which
+reveals it; under the other filter, the list asks again only after a poll says the
+catalog has read more than the lookup that lacked it saw, though the read of the newest
+row saw it read in, and then goes to All and reveals it.
+A catalog that starts again drops what the old one lacked: the note goes, and comes back
+only once the new catalog, read to its end, lacks it too.
+`failing` has the Closed list fail, which the catalog’s lookups do not need, then the
+lookups fail, which leaves the list where it is until the next poll asks again, and then
+the list the navigation moved to fails its first read, so its next poll reveals the row.
+`answers that come late` holds the lookups until a newer navigation, a filter the reader
+picks, or hiding the panel has let them go: their answers are ignored, and a panel shown
+again asks again. `focus` moves the list for a pull request while focus is on a row, as
+Control-N does: when its read arrives, the row takes focus if focus is still in the list
+or on no element, where the move left it, and not if the reader moved it elsewhere.
+`a number the route refuses` names the largest number a pull request may have, which the
+route refuses as the start of a read: the newest row says the catalog lacks it, and no
+poll asks again.
+
+```console
+$ node tests/dom/nav-reveal-session.js pulls-depth
+{
+  "beyond the rows read": {
+    "past what the list draws": [
+      {
+        "step": "the reader picks Closed, and a link names closed #2700 before its rows arrive: Closed holds it past its first window, so the list stays, reads on, and reveals it",
+        "read": [
+          "closed",
+          "lookup: #2700 or the next older",
+          "lookup: the newest",
+          "closed after #2801",
+          "closed after #2701",
+          "closed after #2601",
+          "closed after #2501"
+        ],
+        "told": [
+          "filter closed",
+          "revealed #2700"
+        ]
+      },
+      {
+        "step": "open #2950 named under Closed: the catalog says it is open and among All's first 500, so the list goes to All and reveals it",
+        "read": [
+          "lookup: #2950 or the next older",
+          "lookup: the newest",
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "filter all",
+          "revealed #2950"
+        ]
+      },
+      {
+        "step": "the reader picks Closed",
+        "read": [
+          "closed"
+        ],
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "open #1000 named under Closed: All's 500 rows do not reach it, so the list goes to Open, which draws it, and reveals it",
+        "read": [
+          "lookup: #1000 or the next older",
+          "lookup: the newest",
+          "open"
+        ],
+        "told": [
+          "filter open",
+          "revealed #1000"
+        ]
+      },
+      {
+        "step": "the reader picks Closed",
+        "read": [
+          "closed"
+        ],
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "closed #1500 named under Closed: it is further down than Closed draws, so the list stays and says so",
+        "read": [
+          "lookup: #1500 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #1500 is not among the pull requests loaded."
+        ]
+      },
+      {
+        "step": "the reader picks Open: the filter is theirs, and the note goes",
+        "read": [
+          "open"
+        ],
+        "told": [
+          "note gone",
+          "filter open"
+        ]
+      },
+      {
+        "step": "the reader picks Closed, and a link names open #2950: the list goes to All and reveals it",
+        "read": [
+          "closed",
+          "lookup: #2950 or the next older",
+          "lookup: the newest",
+          "all"
+        ],
+        "told": [
+          "filter closed",
+          "filter all",
+          "revealed #2950"
+        ]
+      },
+      {
+        "step": "a link from #2950 names open #1000: All's 500 rows do not reach it, so the list goes on to Open, which draws it, and reveals it",
+        "read": [
+          "lookup: #1000 or the next older",
+          "lookup: the newest",
+          "open"
+        ],
+        "told": [
+          "filter open",
+          "revealed #1000"
+        ]
+      },
+      {
+        "step": "the reader picks All",
+        "read": [
+          "all"
+        ],
+        "told": [
+          "filter all"
+        ]
+      },
+      {
+        "step": "closed #1500 named under All: All's rows do not reach it, so the list goes to Closed, which reaches furthest, and says it is further down than Closed draws too",
+        "read": [
+          "lookup: #1500 or the next older",
+          "lookup: the newest",
+          "closed"
+        ],
+        "told": [
+          "note: #1500 is not among the pull requests loaded.",
+          "filter closed"
+        ]
+      },
+      {
+        "step": "the reader scrolls to the list's end: Closed reads a page of 100 more, and the note stays as it was",
+        "read": [
+          "closed after #2401"
+        ],
+        "told": []
+      },
+      {
+        "step": "the reader scrolls on, nine pages more: the note stays until the page that brings #1500, which reveals it, and then goes",
+        "read": [
+          "closed after #2301",
+          "closed after #2201",
+          "closed after #2101",
+          "closed after #2001",
+          "closed after #1901",
+          "closed after #1801",
+          "closed after #1701",
+          "closed after #1601",
+          "closed after #1501"
+        ],
+        "told": [
+          "note gone",
+          "revealed #1500"
+        ]
+      }
+    ],
+    "crawling": [
+      {
+        "step": "a link names closed #2700 while the catalog has read 200 of 2,001 from GitHub: where it is is not known yet, so the list stays and says nothing",
+        "read": [
+          "lookup: #2700 or the next older",
+          "lookup: the newest"
+        ],
+        "told": []
+      },
+      {
+        "step": "the catalog reads to its end, and time passes: the next poll finds #2700 closed, so the list stays, reads on, and reveals it",
+        "read": [
+          "closed",
+          "lookup: #2700 or the next older",
+          "lookup: the newest",
+          "closed after #2801",
+          "closed after #2701",
+          "closed after #2601",
+          "closed after #2501"
+        ],
+        "told": [
+          "revealed #2700"
+        ]
+      },
+      {
+        "step": "a link names open #2995, opened since the catalog's last read: the catalog, read to its end, lacks it, so the list says so",
+        "read": [
+          "lookup: #2995 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #2995 is not in this list."
+        ]
+      },
+      {
+        "step": "the catalog reads it, and time passes: the next poll brings its row, so the note goes and the row is revealed",
+        "read": [
+          "open",
+          "open after #2901"
+        ],
+        "told": [
+          "note gone",
+          "revealed #2995"
+        ]
+      },
+      {
+        "step": "a link names open #2995 under Closed, opened since the catalog's last read: the catalog, read to its end, lacks it, so the list stays and says so",
+        "read": [
+          "lookup: #2995 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #2995 is not in this list."
+        ]
+      },
+      {
+        "step": "time passes, and the catalog has read nothing new: the next poll does not ask again",
+        "read": [
+          "closed"
+        ],
+        "told": []
+      },
+      {
+        "step": "the catalog reads #2995, and time passes: Closed's next poll says the catalog has read more, so the list asks again, goes to All, and reveals it",
+        "read": [
+          "closed",
+          "lookup: #2995 or the next older",
+          "lookup: the newest",
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "note gone",
+          "filter all",
+          "revealed #2995"
+        ]
+      },
+      {
+        "step": "a link names open #2995 under Closed as the catalog reads it in: the lookup of #2995 answers before, and that of the newest row after, so the catalog as the first saw it lacks #2995, and the list says so",
+        "read": [
+          "lookup: #2995 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #2995 is not in this list."
+        ]
+      },
+      {
+        "step": "time passes: Closed's next poll says the catalog has read more than the lookup of #2995 saw, so the list asks again, goes to All, and reveals it",
+        "read": [
+          "closed",
+          "lookup: #2995 or the next older",
+          "lookup: the newest",
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "note gone",
+          "filter all",
+          "revealed #2995"
+        ]
+      },
+      {
+        "step": "a link names #4000 under Closed: the catalog, read to its end, lacks it, so the list says so",
+        "read": [
+          "lookup: #4000 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #4000 is not in this list."
+        ]
+      },
+      {
+        "step": "the catalog starts again, as for a new reader, and has read 200 so far; time passes: what the old catalog lacked is not known of the new one yet, so the note goes and the list says nothing",
+        "read": [
+          "closed",
+          "lookup: #4000 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note gone"
+        ]
+      },
+      {
+        "step": "the catalog reads to its end, and time passes: it lacks #4000 too, so the list says so again",
+        "read": [
+          "closed",
+          "lookup: #4000 or the next older",
+          "lookup: the newest",
+          "closed after #2801",
+          "closed after #2701",
+          "closed after #2601",
+          "closed after #2501"
+        ],
+        "told": [
+          "note: #4000 is not in this list."
+        ]
+      }
+    ],
+    "failing": [
+      {
+        "step": "the Closed list answers HTTP 500, and a link names open #2950: the catalog still says where it is, so the list goes to All and reveals it",
+        "read": [
+          "lookup: #2950 or the next older",
+          "lookup: the newest",
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "filter all",
+          "revealed #2950"
+        ]
+      },
+      {
+        "step": "the reader picks Closed, which answers again",
+        "read": [
+          "closed",
+          "closed after #2801",
+          "closed after #2701",
+          "closed after #2601",
+          "closed after #2501"
+        ],
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "the catalog's lookups fail as a link names open #2940: where it is is not known, so the list stays and says nothing",
+        "read": [
+          "lookup: #2940 or the next older",
+          "lookup: the newest"
+        ],
+        "told": []
+      },
+      {
+        "step": "the lookups answer again, and time passes: the next poll asks again, so the list goes to All and reveals #2940",
+        "read": [
+          "closed",
+          "lookup: #2940 or the next older",
+          "lookup: the newest",
+          "all"
+        ],
+        "told": [
+          "filter all",
+          "revealed #2940"
+        ]
+      },
+      {
+        "step": "open #2950 named under Closed while All answers HTTP 500: the list goes to All, whose first read fails, so nothing is revealed and nothing noted",
+        "read": [
+          "lookup: #2950 or the next older",
+          "lookup: the newest",
+          "all"
+        ],
+        "told": [
+          "filter all"
+        ]
+      },
+      {
+        "step": "All answers again, and time passes: the next poll brings #2950's row, and reveals it",
+        "read": [
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "revealed #2950"
+        ]
+      },
+      {
+        "step": "time passes again: #2950 is revealed once, not at every poll",
+        "read": [
+          "all"
+        ],
+        "told": []
+      }
+    ],
+    "answers that come late": [
+      {
+        "step": "a link names open #1000 under Closed while the catalog is slow to answer: the list waits and says nothing",
+        "read": [
+          "lookup: #1000 or the next older",
+          "lookup: the newest"
+        ],
+        "told": []
+      },
+      {
+        "step": "a second link names open #2950 before that answer: the first lookup is let go, and the second waits",
+        "read": [
+          "lookup: #2950 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [],
+        "let go": [
+          "lookup: #1000 or the next older",
+          "lookup: the newest"
+        ]
+      },
+      {
+        "step": "both answers come: the one for #1000 is ignored, and #2950 is among All's first 500, so the list goes to All and reveals it",
+        "read": [
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "filter all",
+          "revealed #2950"
+        ]
+      },
+      {
+        "step": "the reader picks Closed, and a link names open #1000 while the catalog is slow again",
+        "read": [
+          "closed",
+          "lookup: #1000 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "the reader picks All before the answer: the lookup is let go, and the filter is theirs",
+        "read": [
+          "all"
+        ],
+        "told": [
+          "filter all"
+        ],
+        "let go": [
+          "lookup: #1000 or the next older",
+          "lookup: the newest"
+        ]
+      },
+      {
+        "step": "the answer comes: it is ignored, so the list stays under All and says nothing",
+        "read": [],
+        "told": []
+      },
+      {
+        "step": "the reader picks Closed, and a link names open #2950 while the catalog is slow",
+        "read": [
+          "closed",
+          "lookup: #2950 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "the panel is hidden before the answer: its reads end, the lookups among them",
+        "read": [],
+        "told": [],
+        "let go": [
+          "lookup: #2950 or the next older",
+          "lookup: the newest"
+        ]
+      },
+      {
+        "step": "the answer comes while the panel is hidden: it is ignored",
+        "read": [],
+        "told": []
+      },
+      {
+        "step": "the panel is shown again: its next poll asks again, so the list goes to All and reveals #2950",
+        "read": [
+          "closed",
+          "lookup: #2950 or the next older",
+          "lookup: the newest",
+          "all"
+        ],
+        "told": [
+          "filter all",
+          "revealed #2950"
+        ]
+      }
+    ],
+    "focus": [
+      {
+        "step": "with focus on a row, open #2950 named under Closed, as Control-N names it: the list goes to All, whose rows are slow",
+        "read": [
+          "lookup: #2950 or the next older",
+          "lookup: the newest",
+          "all"
+        ],
+        "told": [
+          "filter all"
+        ]
+      },
+      {
+        "step": "the reader moves focus out of the list, and All's rows come: #2950 is revealed, and focus stays where the reader put it",
+        "read": [
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "revealed #2950"
+        ]
+      },
+      {
+        "step": "the reader picks Closed, and puts focus on a row",
+        "read": [
+          "closed"
+        ],
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "open #2940 named, as Control-N names it: the list goes to All, whose rows are slow again",
+        "read": [
+          "lookup: #2940 or the next older",
+          "lookup: the newest",
+          "all"
+        ],
+        "told": [
+          "filter all"
+        ]
+      },
+      {
+        "step": "All's rows come with focus where the move left it, on no element: #2940 is revealed, and takes focus",
+        "read": [],
+        "told": [
+          "revealed #2940",
+          "focused #2940"
+        ]
+      }
+    ],
+    "a number the route refuses": [
+      {
+        "step": "a link names #9999999999, the largest number a pull request may have: the route refuses a read from above it, and the newest pull request is older, so the catalog lacks it and the list says so",
+        "read": [
+          "lookup: #9999999999 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #9999999999 is not in this list."
+        ]
+      },
+      {
+        "step": "time passes: the next poll does not ask again",
+        "read": [
+          "closed"
+        ],
+        "told": []
+      }
+    ]
   }
 }
 ? 0

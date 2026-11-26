@@ -10,12 +10,14 @@ The WebKit measurement gate failed on 2026-11-11 (`mb-gvtw`), and its rerun is o
 (`mb-76nv`).
 
 The app finds a command-line install of `metab`, starts one server per folder or GitHub
-repository the user opens, and shows each in a native window or tab.
-Everything a window shows comes from that server: the page talks to it over HTTP and
-server-sent events and never calls into the app, so any shell can replace another.
+repository the user opens, and shows each in a native window of its own.
+Everything a window shows comes from that server, apart from its web pane, the popover
+View on GitHub opens ([Web Panes and View on GitHub](#web-panes-and-view-on-github)):
+the page talks to the server over HTTP and server-sent events and never calls into the
+app, so any shell can replace another.
 The app adds what a browser tab cannot: a Dock icon, folders opened with Open With or
-dropped on it, native menus, windows, and tabs, a session that comes back at the next
-launch, and server lifetimes it controls.
+dropped on it, native menus and windows, a session that comes back at the next launch,
+and server lifetimes it controls.
 [Using the app](../../macos-app.md) is a user guide, and building, testing, and
 releasing it is [the app’s README](../../../apps/macos/README.md).
 
@@ -25,12 +27,12 @@ Paths are under `apps/macos/`.
 
 | Path | Holds |
 | --- | --- |
-| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, and stopping it |
+| `Sources/ShellCore/Supervision/` | Spawning a server, what it says as it starts, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
-| `Sources/ShellCore/Setup/` | The version floor, the first-run steps, file watches, the restart offer after an upgrade, and the launch notice |
-| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, and downloads |
+| `Sources/ShellCore/Setup/` | The version floor, the first-run discovery status, the doctor’s report for Check Setup…, file watches, the restart offer after an upgrade, and the launch notice |
+| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, and the saved session; the navigation policy, web view configuration, background page discards, reloads, downloads, the host descriptor, Open links and the files they open, and the web panes’ sites, policy, state, popover layout, and data store |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
-| `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views |
+| `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views, and `TitleLineMenuItem`, the chooser’s menu item, which the tests reach here because `ShellCore` imports no AppKit |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views |
 | `webkit-gate/` | The WebKit measurement gate and its driver, which no product ships |
 
@@ -46,7 +48,7 @@ before one exists, windows, menus, the Dock, and file events.
 
 1. **Open.** File > Open Folder…, Open Recent, the Dock menu, a drop, Open With,
    `open -a`, and the restore all reach one `FolderSession` per folder, keyed by its
-   canonical path, so a root has one server however many windows and tabs show it.
+   canonical path, so a root has one server however many windows show it.
    That path is also the folder’s key among the
    [recent targets](arch-recent-targets.md).
    [Open Modes](arch-open-modes.md#what-keys-on-the-root) designs that key as the open
@@ -76,16 +78,18 @@ before one exists, windows, menus, the Dock, and file events.
    so a first clone holds up no folder.
 4. **Show.** The window’s `WKWebView` uses the persistent default data store
    (`WebConfiguration.make`), since Metabrowser keeps preferences in host-only cookies.
-   A status view covers it until the page commits, and only the navigation the window
-   submitted last can reveal the page (`PageReveal`), so a late commit cannot hide a
-   server’s failure.
+   The web panes use a store of their own
+   ([Web Panes and View on GitHub](#web-panes-and-view-on-github)). A status view covers
+   it until the page commits, and only the navigation the window submitted last can
+   reveal the page (`PageReveal`), so a late commit cannot hide a server’s failure.
 5. **Check.** A window that joins a running server first asks for the entry page within
    `SupervisorPolicy.healthDeadline`, since a hung server keeps its pid; one that does
    not answer is stopped, and fails.
 6. **Fail.** Every window of the folder shows the reason, the last lines of output, and
-   Retry. Nothing restarts by itself; after Retry, each window returns to its page on the
-   new port.
-7. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
+   Retry. Nothing restarts by itself, except a repository whose start failed on GitHub,
+   when the app becomes active ([GitHub Links](#github-links)); after Retry, each window
+   returns to its page on the new port.
+7. **Stop.** Closing a folder’s last page stops its server: SIGTERM to the process
    group, `SupervisorPolicy.shutdownGrace`, SIGKILL, `killWait`, then SIGKILL to
    anything left in the group.
    The leader is reaped only after that, so its pid, which is the group’s id, cannot
@@ -133,7 +137,7 @@ fetches nothing, and the app acts on the answer (`PresentAnswer`):
 
 | Answer | What the app does |
 | --- | --- |
-| Exit 0 with `kind`, `root`, and `handoff` | Opens `root`’s session on `handoff` |
+| Exit 0 with `kind`, `root`, and `handoff` | Opens `handoff` in `root`’s session |
 | A nonzero exit with a `refusal` | Shows `refusal.message`, which names the fix |
 | Anything else | Shows the reason and the command’s last lines |
 
@@ -151,47 +155,48 @@ and the server, which resolves the link against its mirror, announces the right 
 - **Which session.** The repository’s canonical URL keys its session
   (`SessionRoot.repository`), never the pin, which a page can switch while the server
   runs, as [Open Modes](arch-open-modes.md#what-keys-on-the-root) has it.
-  A new session starts `metab HANDOFF`, so `metab` pins what the link selects and reads
-  a pull request it names, and its window loads the entry page the server announces;
-  Retry and Restart Server run the session’s latest link again.
-- **A link into an open repository.** The window may show another branch, commit, or
-  pull request’s head than the link names, and the app cannot tell, since the dry run
-  reports no ref, so it never only navigates: `FolderSession.open(link:)` starts the
-  server again on the link, and the front window loads the new entry page
-  (`NextPage.requestEntry`), as the owner decided on 2026-11-17 and
-  [Open Modes](arch-open-modes.md#the-file-menu) states for Open URL…. What a link does
-  to the session is `RepositoryLinks`, a table of the link, the server’s state, and the
-  link it starts on: a start under way runs to its end first, so a first clone is not
-  thrown away, and the newest link sent meanwhile waits for it; the link that start
-  already runs on joins it, so sending a link twice during its first clone clones once
-  and does not restart, and the window still loads that start’s entry page, the link’s,
-  whoever began the start (Retry, Restart Server, and an upgrade’s restart run on the
-  same link); a failed or stopped server starts again at once.
+  One mirror serves a repository, as the owner decided on 2026-11-19: its server is
+  started on the repository itself, `metab ROOT`, never on a link, so a window shows the
+  repository and not the pull request or branch it was first opened for.
+  Retry and Restart Server start it on the root again.
+- **Every link opens in that server.** Once the server is ready, the app sends the link
+  to `POST /api/source/link` (`SourceLink`), the first link of a new session and every
+  later one alike, and the front window goes to the `href` it answers
+  (`FolderSession.open(link:)`). The route starts a refresh of the mirror, so a link
+  always brings the repository up to date, and then reads the link as `metab LINK` reads
+  it, against the mirror, which alone knows where a ref that holds a `/` ends: a pull
+  request opens at `/pull/<n>` on the tab it names and a commit at `/commit/<id>`, and
+  neither switches the pin; a branch, a folder, a file, or the repository serves the
+  revision the link names, under its ref, and opens at its `/view/` address.
+  So a second pull request of a repository opens in the window and server already
+  showing the first, and a window never shows a link’s page at another revision than the
+  link’s
+  ([Switching the Pin](arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard)).
+  What a link does to the session is `RepositoryLinks`: a ready server opens it at once;
+  during a start, such as a first clone, or a restart waiting at the launch gate, it
+  waits for the server to be ready, the newest link winning; a failed or stopped server
+  starts again, and the link opens once it is ready.
   A restart of a ready server waits for the launch gate before it stops anything
   (`ServerSupervisor.restart`), so while another repository’s first clone holds the gate
-  the repository’s other tabs go on with the old server, and the window that asked for
-  the restart says it waits instead of showing the old revision (`RestartWait`): the
-  window a link brought forward, the one File > Restart Server was chosen in, or the
-  front window for an upgrade’s restart.
-  The supervisor reports only its first waiter (`onGateWait`), so a restart asked for
-  while another waits shows its window at once.
-  The pin switch View on branch makes (`POST /api/source/pin`) would keep the port and
-  the server, but it takes a ref or a commit, which the app does not have for a link
-  whose ref holds a `/`.
-- **A selection the mirror lacks.** `metab` serves a link whose branch, tag, or commit
-  its mirror does not have yet from the default branch, and fetches once; the page goes
-  to the link’s address by itself if the fetch finds it.
-  So the windows can show the default branch for as long as that fetch runs, which the
-  page’s fetch chip says.
-  After each start of a repository’s server the app asks `/api/source/status` while its
-  `selection_state` is `pending` (`LinkSelection`), and says in an alert when the fetch
-  did not find the link’s selection (`not_found`) or could not run (`fetch_failed`),
-  naming the revision the windows show instead.
-- **Asking before a clone.** A link that would start a new session asks first unless
-  `metab`’s cache holds the repository (`RepositoryCache`), which the app learns from
-  `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the app’s
-  support folder; a published source whose `identity.display_url` is the root, with no
-  problems, is one `metab URL` serves from without cloning.
+  the repository’s other windows go on with the old server, and the window that asked
+  for the restart says it waits instead of showing the old revision (`RestartWait`): the
+  window File > Restart Server was chosen in, or the front window for an upgrade’s
+  restart. The supervisor reports only its first waiter (`onGateWait`), so a restart
+  asked for while another waits shows its window at once.
+- **A selection the mirror lacks.** A ref or commit the mirror does not have yet answers
+  `202 selection_pending` while the refresh the link started runs.
+  The app asks `/api/source/status` until `refreshing` is false, at most
+  `SourceLink.attempts` times, and then the link route once more with `"fetch": false`,
+  which opens the page or answers `404`. A link the mirror still lacks is said in the
+  burst’s alert (`LinkAlert.linkNotFound`), and the window stays where it was.
+- **A window of its own.** A new session’s window is placed as any new folder’s
+  (`FolderWindows.place`), also while a window shows a checkout of the same repository.
+  An earlier build put it in a tab of that checkout’s window, which no window takes now.
+- **Asking before a clone.** An external link that would start a new session asks first
+  unless `metab`’s cache holds the repository (`RepositoryCache`), which the app learns
+  from `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the
+  app’s support folder; a published source whose `identity.display_url` is the root,
+  with no problems, is one `metab URL` serves from without cloning.
   An answer it cannot read asks; `tests/test_macos_app_pins.py` holds the keys and the
   value the app reads to what the route prints.
   The confirmation names the repository and says that it clones and reads with the
@@ -203,6 +208,9 @@ and the server, which resolves the link against its mirror, announces the right 
   A repository found or agreed to is not asked about again while the app runs; one
   declined is not asked about again until the burst ends, and the links it turned away
   are counted in the burst’s alert.
+  A submitted Open URL… or a selected recent repository opens directly.
+  When its window is shown, it supersedes an older question about the same repository
+  without authorizing a later external request.
 - **A burst.** One `metab` resolves at a time, a link equal to one waiting or being
   resolved is dropped, and past `LinkQueue.limit` waiting links the rest are counted, as
   are links past `CloneQuestions.limit` repositories waiting for a question and past
@@ -228,12 +236,58 @@ and the server, which resolves the link against its mirror, announces the right 
   the CI jobs that run on every change.
   A start waiting on another process’s acquisition of the same source writes one note
   and then nothing, so it is given up on after `startupTimeout`.
+- **Progress.** While a repository’s server starts, its windows show the newest line of
+  `metab`’s clone report (`StartProgress`): where the clone goes, how far it has got,
+  that it is done, that the cache held it, or that `metab` is reading the pull request
+  the link names. The supervisor reads the log’s newest lines each
+  `SupervisorPolicy.progressInterval` that the output grew
+  (`ServerSupervisor.startProgress`), which for a clone is once per
+  `MetabAcquisition.progressLineInterval`, and only for a start with a `startupLimit`;
+  what a line means is the launch’s (`ServerLaunch.startProgress(in:)`). The lines are
+  `metab`’s words around Git’s numbers, never text Git or the origin wrote, so the
+  window shows them as written, less the repository’s URL.
+- **A failure on GitHub.** A start that fails ends with `metab`’s `Error:` line, and
+  when that line names a state of reaching or reading GitHub (`GitHubFailure.kinds`),
+  the windows say which it is: the repository was not found or its account cannot read
+  it (`not_found_or_private`); the same with no GitHub CLI found, which the provider’s
+  hint to install it marks, so the window names both causes; the connection failed;
+  GitHub is limiting requests (`rate_limited`); or GitHub answered with an error
+  (`server_error`). The table also maps the GitHub plugin’s `not_logged_in` and
+  `gh_missing`, which no start names yet: the plugin’s messages carry no state and reach
+  no start’s `Error:` line, so the Swift samples of both are placeholders until the
+  status check (`mb-si2g`) decides how a start reports them.
+  They show `metab`’s message, the `gh` commands that fix it or show what is wrong, each
+  with Copy, and Retry; Copy Message copies the failure, the message, and the commands
+  together. Any other failure, `too_large` among them, shows its summary and the server’s
+  output. `tests/test_macos_app_pins.py` holds the states the app maps, and the lines its
+  tests diagnose, to what `metab` prints.
+  A clone cannot tell a signed-out `gh`, an account without access, or a sign-in without
+  the `repo` scope from a repository that does not exist, since GitHub answers all four
+  alike, so today each is `not_found_or_private`, and its steps start with
+  `gh auth status`. Telling them apart is the GitHub status check’s (`mb-si2g`).
+- **Back from Terminal.** When the app becomes active, each repository whose server
+  failed in a way a sign-in in Terminal can fix starts again, as Retry does: GitHub
+  showed no repository while `gh` was found (`GitHubFailure.Kind.rechecksOnActivation`,
+  `ServerFailure.rechecksOnActivation`, `FolderSession.recheckAfterActivation`), so the
+  sign-in clears the failure once the user switches back, and only then does the window
+  say it tries again. Nothing else changes: a folder, a server that is ready or starting,
+  and every other failure wait for Retry.
+  A network failure can come minutes into a first clone’s fetch (`timed_out`), which a
+  retry would start again from zero while holding the repository launch gate; a rate
+  limit asks for fewer requests; a server error is GitHub’s to fix; and without `gh`
+  nothing changes until Refresh in Settings > Runtime, which restarts nothing.
+  The recheck runs the start again, since no route reports the sign-in yet, so each
+  switch back to the app while a not-found failure stands costs GitHub that failure’s
+  requests: the provider’s size check, when `gh` is found, and the probe of the origin,
+  which `REMOTE_PROBE_TIMEOUT_S` in `src/metabrowser/cache/origin.py` bounds and whose
+  comment holds its measurement; the not-found answer comes from those, before any
+  object is fetched. Reading the sign-in instead, and rechecking without a start, is
+  `mb-1rl3`’s, once the status check (`mb-si2g`) reports it.
 - **Titles.** Until the server answers `/api/identity`, the window is named for the
   repository (`FolderIdentity.repository`), a cached mirror.
   Only a local folder’s window gets a path menu, whatever identity its port answers.
-- **Not restored.** `FolderWindows.snapshot` leaves a repository’s tabs out of the saved
-  session, whose roots are paths that the restore admits again (`RootAdmission`); a tab
-  group whose shown tab is a repository’s is saved showing its first folder tab.
+- **Not restored.** `FolderWindows.snapshot` leaves a repository’s windows out of the
+  saved session, whose roots are paths that the restore admits again (`RootAdmission`).
 - **The version floor.** `RuntimeDiscovery.validate` probes `--present` with
   `--exit-on-eof`, so a `metab` without it is too old at setup
   ([The Version Floor](#the-version-floor)).
@@ -246,12 +300,19 @@ only shows its state and passes on edits, Open, and Cancel.
 
 - **The text is checked first.** `OpenURLEntry` hands `metab` only a link `GitHubLink`
   accepts, the check every link sent to the app passes.
-  `metab TARGET --present --dry-run` reads a target with no scheme as a local path, so a
-  shorthand such as `owner/repo` would name a folder under its working directory: the
-  panel takes none, as the owner decided on 2026-11-18, and asks for the full URL. Its
-  other messages, for a scheme other than `https`, a user name or password, a port,
-  another host, and a character it does not send, are the app’s own words about what was
-  typed; `metab` would refuse each of those too.
+- **GitHub URLs and repository shortcuts are written in full.** `OpenURLEntry.corrected`
+  puts `https://` in front of a GitHub host with no scheme or after `//`, and upgrades
+  `http://` on a GitHub host.
+  It expands a bare `owner/repo` to `https://github.com/owner/repo` using
+  `PresentPlan.repositoryURL`’s repository grammar.
+  A bare pair matching that grammar always refers to GitHub in this panel.
+  Open puts the expanded URL in the field so any refusal refers to what the field shows.
+  `metab` gets only the full URL: `metab TARGET --present --dry-run` reads text with no
+  scheme as a local path, and completes only a GitHub host that names nothing on disk
+  (`_root_in_full` in `cli/main.py`). The panel’s other messages, for text it cannot
+  complete, a scheme other than `https`, a user name or password, a port, another host,
+  and a character it does not send, are the app’s own words about what was typed;
+  `metab` would refuse each of those too.
 - **Sent as a browser sends it.** The scheme and host are checked as typed.
   The path, query, and fragment are then encoded as a browser sends them, each as UTF-8
   escapes: a space and a character outside ASCII that shows, as `metab`’s GitHub reducer
@@ -262,24 +323,22 @@ only shows its state and passes on edits, Open, and Cancel.
   may not show, such as U+3164 HANGUL FILLER, are refused, as `metab` refuses them.
   `LiveMetabTests` gives `metab` both the text as typed and the link the panel sends,
   and expects one plan.
-- **`metab` decides.** Open runs the dry run `resolveLink` runs (`askMetab`), outside
-  the link queue, so that a refusal is said in the panel and not in the alert that ends
-  a burst. A plan closes the panel and goes to `open(_:with:)`, so from there it is a
-  link sent to the app: the question before a clone, one window per repository, and
-  always the mirror, never a checkout.
-  A refusal shows `refusal.message`; an answer the app cannot read names the `metab` and
-  the reason, never its output, which goes to the app’s log.
-  Either way the panel stays open with the text.
-- **One dry run at a time.** An edit, Cancel, or closing the panel drops the answer
-  still awaited, and the app cancels the task that awaits it
-  (`stopCheckingEnteredLink`), which kills the dry run’s process group at once
-  (`CommandRunner.finish`). So the panel has at most one `metab` running, and Open,
-  enabled again by the edit, starts the next.
-- **With no `metab` the app can run now,** as while it finds `metab` or checks it again
-  after its file changed, the panel closes and the link goes to the link queue
-  (`requestLink`), which waits for one as it does for any link: the link is checked once
-  `metab` is ready, and a refusal comes as the alert at the end of the burst, not under
-  the field.
+- **Checking and opening.** The panel runs the same `askMetab` dry run as incoming links
+  and shows any refusal under the field.
+  An unreadable response identifies `metab` and the failure in the panel and sends its
+  output to the app log.
+  When the dry run returns a plan, the panel shows “Opening repository…” until
+  `openEntered` places a new window or brings the existing one forward.
+  The repository window shows its own progress while the server starts, clones, or
+  resolves the link.
+- **Waiting for the runtime.** When runtime discovery or verification is in progress,
+  the panel shows that it is waiting.
+  It resumes the dry run when the app adopts a usable runtime.
+  If discovery ends without one, the panel explains how to retry.
+- **One request at a time.** An edit, Cancel, or closing the panel invalidates the
+  current request. The app cancels its dry run (`stopCheckingEnteredLink`), which
+  terminates the process group (`CommandRunner.finish`). The next Open has a new request
+  identifier even when its URL is the same.
 - **Not built.** The offer of a known checkout, “borrow from the checkout” and “open the
   checkout instead”, which [Open Modes](arch-open-modes.md#the-file-menu) designs, waits
   for a way to tell that an open folder is a checkout of the URL’s repository:
@@ -333,8 +392,8 @@ orderly quit still ends with SIGKILL, and descendants in other process groups.
 
 ## Choosing a metab
 
-`RuntimeDiscovery.discover` runs on the first launch and from Settings > Find Again.
-It tries, in order, the path a previous setup saved, `METABROWSER_METAB`,
+`RuntimeDiscovery.discover` runs on the first launch and from Settings > Runtime >
+Refresh. It tries, in order, the path a previous setup saved, `METABROWSER_METAB`,
 `~/.local/bin/metab`, uv’s tool bin directory, the Homebrew prefixes, and last the login
 shell’s `PATH`, which runs only when the earlier places miss `metab`, `git`, or `gh`,
 because it runs the user’s shell startup files in the app’s name.
@@ -372,8 +431,17 @@ alone does not prove the flags, and `RuntimeDiscovery.validate` runs
 number; exit status 2 naming any of the flags means a build that predates it, which is
 too old whatever its number; anything else rejects the `metab` with the probe’s last
 line. Below the floor, discovery tries the next place.
-`MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
-keeps the requirement in the tool’s receipt.
+Setup identifies incompatible runtimes and links to the README for installation and
+troubleshooting. `MetabRequirement.isReleased` determines whether the first-run status
+says the required version is pending on PyPI. The app’s `Info.plist` declares the floor
+as `MetabrowserMinimumMetab`, which the same test holds to `minimumRelease`, so the
+doctor in a terminal can compare its `metab` with the app `--present` would open, and
+Check Setup… with the app that runs it.
+
+The floor is a minor release, raised as
+[Choosing a Version](../../publishing.md#choosing-a-version) says.
+`accepts` compares only the release segments, so a checkout’s development build of the
+floor, `X.Y.0.devN`, counts as `X.Y.0`.
 
 The app notices an upgrade by the executable’s fingerprint (`FileFingerprint`: device,
 inode, size, modification time, and mode), compared every `SetupWatch.interval` and when
@@ -386,22 +454,52 @@ running servers’ environment before the app notices.
 
 ### First Run
 
-When a search finds no usable `metab`, Settings shows only the missing steps, each a
-command to copy (`SetupGuide`):
-
-| Found | Steps shown |
-| --- | --- |
-| No uv | uv’s installer, then the `metab` step in a new Terminal window |
-| uv, no `metab` | `RuntimeDiscovery.installCommand` |
-| A `metab` in uv’s tool directory that does not run | A reinstall |
-| A `metab` below the floor, or built before the flag | `MetabRequirement.upgradeCommand` |
-
-Until the floor is on PyPI (`MetabRequirement.isReleased`), every case ends instead in
-`make install` at the source checkout the app was built from, then Choose metab…. The
+When a search finds no usable `metab`, Settings > Runtime shows the required version,
+any discovery issues, and a link to the README (`SetupGuide` and `ProjectLinks`). The
 app asks a uv that passes `ExecutableTrust` where `metab` will appear
 (`uv tool dir --bin`), watches there and every place discovery looks, and when `metab`
 appears searches again and opens the folders that were waiting.
-It never runs an installer itself.
+
+### Check Setup…
+
+Help > Check Setup… opens Settings at its Check Setup tab, and each time that tab comes
+on screen it runs `metab --doctor --json` from the accepted runtime in a server’s
+environment (`DoctorRun`, `ChildEnvironment`), bounded by
+`RuntimeDiscovery.doctorTimeout`. It reads the report as rows (`DoctorReport`): each
+entry of `checks`, the plugins and `open_in` among them, then the `github` object, whose
+shapes `cli/doctor.py` documents.
+The app decodes these objects and their `remedy` fields using `CodingKeys`. The runtime
+row uses the README link for setup.
+The tab also offers that link when a check cannot run or an older runtime provides no
+checks. It shows the rows as one block of plain text (`DoctorReport.text(after:)`, the
+text Copy Report copies), each row as `metab --doctor` prints a check, in a read-only,
+selectable `NSTextView` (`ReportTextView`), so the text wraps and scrolls as text does
+and any part of it copies as plain text.
+It was a grid of rows, in which a detail that wrapped drew taller than the space the
+grid gave it and ran over the next check; a text view lays out and draws the same lines.
+`DoctorRun.spec` names the app’s own bundle in `METABROWSER_DOCTOR_APP`, so the `metab`
+row compares with this build’s floor rather than the app LaunchServices finds first.
+The doctor reads only that bundle’s `Info.plist`; the `open_in` row keeps a terminal’s
+lookup.
+The app reads `gh`’s and `git`’s path, version, and minimum only from the report,
+which ran with the tool directories first on `PATH`, so they are the tools its servers
+run; it never runs either itself.
+The tab adds what only the app knows: its build, its floor, and the `metab` it ran and
+how it found it, which head the report’s text.
+
+- **Unknown keys** are ignored and an unknown state is shown as named, so a newer
+  `metab`’s report still reads.
+- **An entry that does not decode,** a check or `github`, is one unreadable row with its
+  `id` when it has one, and the rest of the report still shows.
+- **No `checks`:** a development build of the floor from before the setup checks meets
+  the floor, so the tab lists its `problems` as it words them in one row, says the
+  checks are missing, and links to the README.
+- **No report:** a `metab` that cannot start, runs out the deadline, or prints no single
+  JSON object (`JSONAnswer`) is shown with the reason and its output.
+
+`DoctorReportTests` reads the doctor’s own transcript,
+`tests/golden/cli-doctor.tryscript.md`, so a change to the report’s shape fails there as
+well, and `LiveMetabTests` runs a real `metab`.
 
 A copy opened from its disk image, or translocated by Gatekeeper, cannot be replaced in
 place. macOS has no API for either, so `LaunchLocation` reads the bundle’s path and
@@ -410,19 +508,76 @@ Applications.
 
 ## Windows
 
+- **Pages and windows.** A folder’s page (`FolderPage`) holds its web view and
+  everything per page: the navigation policy, the loads, the status view, sheets, find,
+  print, and downloads.
+  It belongs to the folder’s session, which counts its pages, not its windows, so the
+  server stops when the last page closes.
+  The session and the window’s controller hold the page, and the page holds its window
+  weakly. AppKit holds a window’s controller and delegate weakly too (`NSWindow.h`), so
+  each controller keeps itself in `BrowserWindowController.open` from its creation until
+  its window closes. Without that, the controller is released as soon as its window is
+  made: closing the window then closes no page and stops no server, and the saved
+  session finds no windows.
+  The menus’ page actions are nil-targeted, and while the focus is in the page they
+  reach it along the responder chain, in which the page follows its view.
+  A window (`BrowserWindowController`) holds only the window and its chrome, and shows
+  one page; while the window itself is first responder, as it is before its page first
+  loads, the menus’ page actions still reach the page it shows through the window
+  controller (`supplementalTarget(forAction:sender:)`).
+- **Open folders.** A folder is open from when its session is made until its last page
+  closes, and **in the background** while its one page has no window, because a window
+  switched away from it.
+  `OpenFolders` keeps the order folders opened in and when each was last shown, by the
+  session’s one key, `SessionRoot.key`, which the open servers and the restore use too.
+  A window switches to a folder by showing its background page, or a new page of it, in
+  place of the page it showed (`FolderWindows.switchWindow`); the window stays the same
+  `NSWindow`. The page left behind stays in the background, or closes if its folder has
+  another page (`SwitchedAwayPage`), so a folder has at most one background page.
+  Every switch goes through `switchWindow`, which `FolderSwitch` decides: a window with
+  a sheet open keeps its page, and a minimized window switches without counting its new
+  folder as shown until it is brought forward.
+  File > Close Folder switches each window showing the folder to the next background
+  folder, the one shown most recently first, or closes it, then closes the folder’s
+  pages (`OpenFolders.closing`); a sheet open on any of those windows holds it all up,
+  and the menu item is off while the key window has one.
+  A folder in the background that is opened again, from Finder, `open -a`, or a link,
+  gets a window of its own, placed as a new folder’s is, and so does the folder shown
+  most recently when a click on the Dock icon finds no window on screen.
+  A page no window shows opens no dialog: it answers its own `alert` with OK, `confirm`
+  and `prompt` with Cancel, and a file input with no file, and a download it starts
+  saves nothing.
 - **Title.** The folder’s short name, from `GET /api/identity` once the server is ready
   and from the path until then (`FolderIdentity.localFolder`). `window.title` is the
   short name too, or the full name while two open folders share a short name
   (`WindowTitle.windowTitles`). The page’s own `<title>` is for a browser’s tab.
-- **Size.** `NewWindowFrame` sizes a new window as a share of its screen’s visible frame
-  and cascades the next one from the window placed last.
+- **Size.** `NewWindowFrame` sizes new windows to 92% of the screen’s visible height and
+  cascades the next window from the window placed last.
+- **Settings.** One window (`SettingsWindowController`) whose `NSTabViewController`
+  shows General, Runtime, Plugins, and Check Setup as toolbar tabs (`SettingsTab`), each
+  a SwiftUI pane in its own hosting controller.
+  A pane’s size sets the window’s, which AppKit changes from a fixed top edge; the
+  window is first placed for the tallest pane, Check Setup.
+  Settings… shows the tab it showed last; Help > Check Setup… and a status view’s
+  Runtime Settings… name theirs.
+  The Plugins pane runs `metab --plugins --json` (`PluginInventory`) when it first shows
+  a runtime and on Refresh, and keeps the answer while other tabs show
+  (`PluginListModel`). `SettingsWindowTests` opens the window, presses its tabs through
+  accessibility, and copies part of the setup report.
 - **Navigation.** `NavigationPolicy` keeps the server’s origin in the window.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, or history is cancelled, and so are
   `file://` and other schemes.
+  A link the page marks for a web pane, as View on GitHub’s is, and a link it marks to
+  open a file in its default app, as a PDF’s Open is, are the links the app answers
+  itself, with a popover ([Web Panes and View on GitHub](#web-panes-and-view-on-github))
+  or with Launch Services
+  ([Open Links and the Host Descriptor](#open-links-and-the-host-descriptor)).
 - **Downloads.** `WKDownload` with a save panel.
-  A confirmed Replace downloads to a staging file on the same volume and renames it over
-  the original only when it finishes (`StagedDownload`).
+  An Open link’s copy of a file with no folder on disk downloads without one, into the
+  app’s caches (`OpenFileDownloads`). A confirmed Replace downloads to a staging file on
+  the same volume and renames it over the original only when it finishes
+  (`StagedDownload`).
 - **Crashes.** If the web content process dies, the window reloads within
   `RecoveryBudget.webContent`, and then shows the status view.
 - **Reload.** Command-R reloads in every state a folder window can be in (`PageReload`,
@@ -430,33 +585,51 @@ Applications.
   server, as Retry does.
   A sheet the page opened is cancelled first (`PageSheets`).
 
-### Tabs, Files, and Recents
+### Windows, Files, and Recents
 
-- **Tabs.** Every folder window shares one tabbing identifier, so Merge All Windows and
-  tab dragging combine any folders.
-  `FolderPlacement` puts a new folder in a tab, a window, or as System Settings prefers.
-- **Background tabs.** Each window’s shown tab keeps its page, and so do the most
-  recently shown background tabs up to
-  [`TabDiscardPolicy`](../../../apps/macos/Sources/ShellCore/Web/TabDiscardPolicy.swift)’s
+- **A window per folder.** Every way a folder opens reaches `AppDelegate.showOpened`,
+  which brings an open folder’s window forward, switches the window the user chose, or
+  places a new window (`FolderWindows.place`): File > Open Folder…, `open -a`, a Dock
+  drop, Open With, `metab --present`, a sent GitHub link, File > Open URL…, Open Recent,
+  the Dock menu, and the folder chooser and Switch Folder panel.
+  Three ways a window appears open no folder and do not pass through it: the restore
+  puts the saved windows back (`FolderWindows.restore`), a Dock click with no window on
+  screen brings an open folder forward, and a page’s Command-click or `target=_blank`
+  opens another window of the same folder, sharing its server
+  (`FolderSession.openWindow(at:)`). Every new window but the restore’s is placed by
+  `FolderWindows.place`, alone.
+- **No tabs.** Each folder window sets `tabbingMode = .disallowed` and names no tabbing
+  identifier, and the app sets `NSWindow.allowsAutomaticWindowTabbing` to false before
+  it builds its menus (`BrowserWindowController.refuseTabs`), so AppKit offers no Merge
+  All Windows, tab bar, or tab items, and System Settings’ “Prefer tabs when opening
+  documents” does not apply.
+  No code adds a tabbed window (`NoFolderTabsSourceTests`); `FolderWindowTests` pins the
+  windows on screen. An earlier build saved a placement preference, `newFolderPlacement`,
+  in the app’s user defaults, which nothing reads now.
+- **Background pages.** Each window keeps its page, minimized or not, and so do the most
+  recently shown pages of folders in the background, up to
+  [`PageDiscardPolicy`](../../../apps/macos/Sources/ShellCore/Web/PageDiscardPolicy.swift)’s
   limit, whose comment holds its measurement.
-  Every other background tab gives up its web view, which ends its WebContent process,
-  and reloads from the running server when shown, keeping only its address.
+  Every other background page gives up its web view, which ends its WebContent process,
+  and reloads from the running server when a window shows it, keeping only its address.
 - **Files.** A file opens in the most specific open folder that contains it, or else in
   its own folder, as `metab FILE` does (`OpenTarget`), at the view route `metab` spells
   (`PageAddress.view`). A page requested while the server is not ready loads once it is
   (`NextPage`). By design the open folder that takes a file never lies above the file’s
   repository root, and a file with no such folder opens its open root
   ([Open Modes](arch-open-modes.md#what-keys-on-the-root)).
-- **Recents.** File > Open Recent lists `metab`’s
-  [recent targets](arch-recent-targets.md#the-macos-app), which every server records as
-  it starts, so the app decides nothing about the list and keeps none of its own.
-  The Dock menu lists the same targets (`applicationDockMenu`), and a restored folder’s
-  server, like any restart, is told not to record.
+- **Recents.** File > Open Recent, and the folder chooser’s Recent section, list
+  `metab`’s [recent targets](arch-recent-targets.md#the-macos-app).
+  The app keeps none of its own: it records each open once, as `showOpened` shows it,
+  with `metab ROOT --recent-add`, and tells every server it starts not to record, so a
+  restored folder, a restart, and a server nobody opened leave the list as it was.
+  The Dock menu lists the same targets (`applicationDockMenu`).
 
 ### Session Restore
 
-`SessionStore` saves the folder windows, front first, with each window’s tabs, shown
-tab, and frame and each tab’s folder and page, to `session.json` in
+`SessionStore` saves the folder windows, front first, then the minimized ones, with each
+window’s frame, folder, and page, then the folders open in the background with their
+pages, the one shown most recently first, to `session.json` in
 `AppIdentity.supportDirectory`, `FolderWindows.saveDelay` after a change and at quit
 before the servers stop.
 Each save renames a private temporary file over the old one, so a launch after a crash
@@ -466,10 +639,19 @@ A launch reads the file once, as a regular file of at most `SessionStore.byteLim
 rebuilds at most
 [`RestoreBudget.standard`](../../../apps/macos/Sources/ShellCore/Folders/SavedSession.swift),
 whose comment holds its measurement.
-Only each window’s shown tab loads its page.
+The file keeps an earlier build’s names for a window’s pages, `tabs` and `selected`
+(`SavedWindow`), so the same reader reads a window that an earlier build saved with
+several folder tabs: it reopens as a window per tab, the one it showed at the saved
+frame and in front, and only that one loads its page at launch; each of the others loads
+when it is brought forward.
+A folder in the background reopens with its page and no window, and its server waits, as
+a protected folder’s does, until a window shows it.
+A session with background folders and no window, as a quit after the last window closed
+saves, shows the first of them in a window of its own (`SavedSession.withFrontWindow`),
+so a launch never opens to nothing.
 Servers start one at a time, each after the one before is ready or has failed: the front
-tab’s first, then the tabs the other windows show, then the rest (`RestoreQueue`,
-`RestoreRun`). A tab selected meanwhile starts next.
+window’s first, then the other windows’ shown pages, then the rest (`RestoreQueue`,
+`RestoreRun`). A window brought forward meanwhile starts next.
 
 The file may have been edited, and a folder on a path replaced or relinked, so every
 root is admitted again before anything starts (`RootAdmission`). Only a root whose
@@ -477,13 +659,223 @@ identity is certain warms in the background: a walk from `/` opens each componen
 `O_NOFOLLOW`, enters no mount but the system’s and the Data volume’s, and never opens a
 protected location (`ProtectedLocations`); the folder it reaches must be on the home
 folder’s volume, and the kernel’s name for it is the root’s identity.
-Anything less certain waits for its tab under its saved spelling, and selecting the tab
-resolves the path then (`RootActivation`), moving its tabs to the folder it now leads
-to. A folder in a protected location starts only when one of its tabs is selected, so a
-launch raises no privacy prompt for a folder nobody is looking at.
-A background root is admitted again at its turn and just before its server spawns; a
-process that changes the path after that check can still win, and macOS enforces its
-privacy grants regardless.
+Anything less certain waits for its window to be brought forward under its saved
+spelling, which resolves the path then (`RootActivation`), moving its pages to the
+folder it now leads to; its page in the background moves too, unless that folder has one
+or is shown (`MovedPage`). A folder in a protected location starts only when one of its
+windows is brought forward, so a launch raises no privacy prompt for a folder nobody is
+looking at. A background root is admitted again at its turn and just before its server
+spawns; a process that changes the path after that check can still win, and macOS
+enforces its privacy grants regardless.
+
+### Web Panes and View on GitHub
+
+The app shows a site’s own pages in a web pane of its own, in a native popover over the
+window, without leaving Metabrowser’s page.
+Nothing in the pane is GitHub’s: a site is a profile (`WebSite`) of the domains whose
+pages stay in the pane and the hosts a marked link may open, and `WebSite.known` lists
+the sites the app knows (bead `mb-730z`). GitHub is the first, for View on GitHub: a
+page whose file, folder, pull request, or commit has a page on github.com carries a View
+on GitHub button in its upper right, and in the app its main link opens that page in the
+pane (bead `mb-4wqh`, which replaced the in-window GitHub view first built for
+`mb-lxgw`).
+
+- **The page’s contract.** A page marks a link the pane opens `data-web-view="open"`,
+  with the site’s page as its `href` and `target=_blank`, and may mark a link that
+  always opens in the browser `data-web-view="external"`. The View on GitHub button
+  marks its main link `open` and its menu’s Open in Browser `external`, and its root
+  `data-view-on-github`, which names the button.
+  Only the `open` link is the app’s: Copy Link is the page’s own, and the `external`
+  link is a link to another site, which `NavigationPolicy` opens in the default browser.
+  The marker names no site; the link’s host chooses it.
+- **Only the marked link.** `WebViewRequests` installs a user script in the page’s main
+  frame, in the app’s own content world, that takes a trusted primary click with no
+  modifier key on an `open` link, cancels the link’s new window, and posts its `href`,
+  its client rectangle, and the viewport’s width to a handler in that world, which the
+  page’s scripts cannot reach.
+  It takes only an `href` the window opens as it is (`WebViewRequests.opensHere`, built
+  from every known site’s page hosts), and leaves any other, such as one longer than
+  `WebSite.maximumPageLength` or on a site the app does not know, to the link, which
+  opens in the default browser, rather than cancel a click the window would drop.
+  The window opens the pane only for the main frame of a document of the server’s own
+  origin (`WebViewRequests.allows`, the check the page’s Print button has) and only for
+  an `https` page on a known site’s page hosts (`WebSite.page`). A modified click on the
+  link, and any other link to a site in a page, opens in the default browser.
+- **The inverse direction.** A github.com link handed to the app (`open -b`, File > Open
+  URL…, `metab --present`) resolves to the Metabrowser view of its repository
+  ([GitHub Links](#github-links)), never to the pane, and closes the popover of the page
+  it shows in.
+- **The pane and its host.** `WebPane` is a view controller that holds the web view
+  below a one-line header of Back, Forward, the page’s location (`WebLocation.text`),
+  Copy Link, and Open in Browser.
+  It holds nothing of what shows it: its host (`WebPaneHost`) closes it and holds itself
+  open while the pane shows a panel, so a window could host it as well as a popover.
+  It follows the policy of the site of the page it was last opened on, and opening it on
+  another site’s page starts a new web view (`WebPaneState.open`), so Back never leaves
+  that site. Its controller is in its host’s responder chain, ahead of the window behind
+  it, so Back, Forward, Reload Page, zoom, Open in Default Browser, and Command-W act on
+  the pane, and Print and Find are off rather than acting on the hidden page.
+- **The popover.** `WebPopover` hosts the pane in a transient `NSPopover`, which Escape,
+  Command-W, or a click outside closes.
+  Each folder page (`FolderPage`) has its own, made at a marked link’s first use, which
+  closes when the page leaves its window, as a window switched to another folder does.
+  It points at the link: `WebPopoverLayout.anchor` scales the link’s CSS rectangle by
+  the web view’s width over the viewport’s, which takes in page zoom, and clips it to
+  the web view. It takes most of the window, and no less than
+  `WebPopoverLayout.minimumSize` where the screen allows (`contentSize`); `NSPopover`
+  has no resize handle, so the size follows the window’s each time it opens.
+  `NSPopover` keeps itself on the screen, not in its window, so a popover from the
+  window’s upper right extends past the window’s right edge, with its arrow on the link.
+- **Its web view.** `WebConfiguration.makeWebPaneView` makes a plain `WKWebView`, not a
+  `DropAwareWebView`, so a file dropped on it reaches the site, such as a screenshot on
+  a GitHub comment box; a dropped file outside a drop zone would navigate to `file://`,
+  which the policy cancels.
+  Its zoom is its own, starts at 100%, and is never saved.
+  Its UI delegate, `WebViewUI`, answers the page’s file panel and its `alert`,
+  `confirm`, and `prompt`, which the pane shows as app-modal panels while its popover
+  holds itself open (`NSPopover.Behavior.applicationDefined`), and sends a new window to
+  the pane’s `WebViewPolicy.decideNewWindow`.
+- **Navigation.** `WebViewPolicy`, for the pane’s site, keeps a main-frame `https` page
+  on one of the site’s domains, with their subdomains, in the pane: for GitHub
+  (`WebSite.gitHub`), github.com, githubusercontent.com, and githubassets.com; GitHub
+  Pages (`github.io`) runs anyone’s script and is not one of them.
+  A link clicked or a form sent to anything else opens in the default browser, and the
+  same URL reached by script is cancelled.
+  A `target=_blank` link to the site loads in place, and a download opens in the default
+  browser rather than as a save panel over a popover.
+- **One store, as a browser profile.** Every pane’s web view, for every site, uses
+  `WebDataStore.shared`, one persistent `WKWebsiteDataStore` named by a fixed
+  identifier, the one GitHub’s popover had, so signing in to a site once holds in every
+  window and after a relaunch.
+  WebKit keeps each site’s cookies and storage apart within it, as a browser does.
+  The pages keep the default store, whose host-only cookies hold Metabrowser’s
+  preferences across ports and whose local storage stays per origin, so a page a
+  folder’s server serves never shares a cookie jar with a site.
+  WebKit keeps the store under `~/Library/WebKit/<bundle identifier>/WebsiteDataStore/`,
+  so each variant has its own.
+  Anyone using the Mac account can use a sign-in, as in a browser.
+  Metabrowser > Clear Website Data… lists every site that stored something
+  (`WebDataStore.sites`, by WebKit’s record names, as `github.com`) under All Websites,
+  and removes what the chosen site, or every site, stored (`WebDataStore.clear`) after a
+  confirmation whose default is Cancel (`WebDataClearing`), then reloads each popover
+  whose site’s data it cleared (`WebPaneState.reloads(after:)`), so clearing another
+  site’s data never loses text the user has not sent.
+- **Lifetime.** A closed popover’s pane keeps its web view for
+  `WebPaneState.keptAfterClosing`, so opening it again on the same page shows it as it
+  was left, and then lets it go, unless the page holds text the user has not sent
+  (`WebPaneState.unsentTextProbe`, evaluated in the app’s content world), which keeps it
+  for another while; a page that gives up its web view, and a page that closes, let it
+  go at once. A page that never committed, such as one asked for offline, loads again
+  when the pane opens or reloads (`WebPaneState.pageToLoad`), since WebKit’s reload does
+  nothing without a committed page.
+  The `NSPopover` holds its content, the pane, so `WebPopover` makes one each time the
+  popover opens and lets it go when it closes, and a closed page frees both.
+  The pane’s WebContent process is outside `PageDiscardPolicy`. Unsent text keeps it
+  again and again, so time alone does not bound it: there is at most one per live page,
+  as a page the policy discards, or that closes, lets its pane’s web view go.
+  The constant’s comment holds what one github.com page costs, measured, and notes that
+  WebKit, not the app, decides when a released view’s process ends.
+- **Tests.** `WebViewTests` cover a marked link’s page and site, the message’s shape,
+  the anchor and the size, each site’s policy, the pane’s state and reloads, and the
+  location; `WebViewWebKitTests` cover the shared persistent store, the pages’ default
+  store, a cookie one pane’s web view sets reaching another and not the pages, clearing
+  one site’s data and not another’s, the web view’s own drops and zoom, its dialogs,
+  file panel, and new windows, the unsent-text probe, and the script in a real
+  `WKWebView`: a user’s click on the button reaches the handler with where the button is
+  and cancels the link’s new window, and a scripted click, a Command-click, the menu’s
+  Open in Browser, a plain link to the same page, and a button whose `href` the window
+  would not open do not; every `href` the script takes is one `WebSite.page` accepts as
+  it is; and the page cannot see the handler.
+  [The hand checks](../qa/qa-macos-app-hand-checks.md#view-on-github) cover the popover
+  and signing in.
+
+### Open Links and the Host Descriptor
+
+A page can ask the app to open a file in the app macOS assigns to its type, as the `pdf`
+plugin’s Open does for a PDF, which opens in Preview unless the user chose another
+([the PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)).
+The page asks for a download, which a browser carries out by its own rule for the type,
+and never asks which host it is in.
+
+- **The host descriptor.** `HostDescriptor` installs a user script in the page’s own
+  world and main frame that defines `window.metabrowserHost`, frozen and neither
+  writable nor configurable, which lists the actions the app’s handlers answer:
+  `open-file` (`OpenFileRequests.action`) while `OpenFileRequests` is installed.
+  The SDK’s `mb.host.supports(action)` reads it, and a browser defines none.
+  It names actions, never the host, and a document with an opaque origin, such as a
+  sandboxed `/raw` document, gets none.
+  It is a hint for what the page draws; each handler checks every request itself.
+- **The page’s contract.** A page marks an Open link `data-metabrowser-open-file`, with
+  the file’s `/raw?path=<identity>` as its `href`, the file’s name as its `download`,
+  and its subject as the marker’s value: `filesystem` for a path relative to the folder,
+  or `git_revision` for a pinned revision’s or a mirror’s identity.
+  Everywhere else it is a download.
+  The [contract](arch-app-contract.md) declares it as the behavior `open-file-link`.
+- **Only the marked link.** `OpenFileRequests` installs a capture-phase click listener
+  in the app’s own content world, as `WebViewRequests` does, that takes a trusted
+  primary click with no modifier key on a marked link in a document whose origin is not
+  opaque, cancels the link’s download, and posts its `href`, subject, and name to a
+  handler the page’s scripts cannot reach.
+  The window answers only the main frame of the server’s own origin, for an `href` on
+  that origin (`OpenFileRequests.allows`). A modified click, a scripted one, and a click
+  in a sandboxed document are left to the link, and a `download` link without the marker
+  always goes to the save panel.
+- **What opens.** `OpenFilePlan` decides from what the window serves (`SessionRoot`),
+  which only the app knows.
+  A `filesystem` path in a folder’s window opens the file itself, once its real path is
+  a regular file inside the folder’s real path, so no `..` or symbolic link reaches
+  outside the folder. A `git_revision` path, or any path in a repository’s window, which
+  has no file on disk, opens a copy (`OpenFileDownloads`): the page’s own web view
+  downloads the `href`, with the page’s cookies, to
+  `Caches/<bundle identifier>/Opened/<unique>/<name>`, and the copy is quarantined as a
+  web download and made read-only.
+  The app sets no `LSFileQuarantineEnabled`, so it marks each copy itself.
+  Each launch removes copies older than `OpenFileDownloads.kept`.
+- **A copy’s name.** The copy is named by the link, and by the `Content-Type` `/raw`
+  answers where the link’s name gives no type or another one (`OpenFileTypes.copyName`):
+  the name keeps its own extension when it agrees with the served type and otherwise
+  takes the served type’s after it, so a PDF named `untitled`, which `/raw` types by its
+  leading bytes, is kept as `untitled.pdf`. A served type the app does not open, or one
+  the system does not know, never renames a copy.
+  The [contract](arch-app-contract.md) declares this reading of `/raw` as the behavior
+  `raw-media-type`.
+- **Which types.** A file opens only if its type conforms to PDF, image, or audiovisual
+  content and is not SVG (`OpenFileTypes`): the default handler of a script, an
+  application, an installer package, a disk image, or an internet location runs or
+  mounts something, and an SVG’s is often a browser, which runs its scripts.
+  A copy is checked before it downloads by the link’s name, when that name gives a type
+  the system knows, and after by the type Launch Services gives the name it is kept
+  under. Any other type is refused with an alert, which offers Reveal in Finder for a
+  file on disk, and every other failure shows an alert that names the file and why.
+- **Opening, or saving to Downloads.** Launch Services opens the file
+  (`NSWorkspace.open`) when an app is assigned to its type
+  (`NSWorkspace.urlForApplication(toOpen:)`, decided in `OpenFileHandoff`). Where none
+  is, opening it would only fail, so the app saves a copy in the user’s Downloads folder
+  instead (`OpenFileSaves`), as a browser downloads what it cannot show.
+  The copy takes the file’s name, or the first free one of `name 2`, `name 3`, and so
+  on, up to `OpenFileSaves.attempts`; each is created exclusively, so no file is
+  replaced. It keeps the file’s quarantine, and its owner may write it.
+  A short alert names the copy and offers Show in Finder.
+  The copy is made off the main thread, and the first write to Downloads raises macOS’s
+  privacy prompt in the app’s name, which `NSDownloadsFolderUsageDescription` explains;
+  a refusal’s alert says where to allow it.
+- **Tests.** `OpenFileTests` cover the message’s shape, the origin check, the plan
+  against a real folder (`..`, a link out of the folder, a folder, a missing file, an
+  absolute path, a repository, a pinned revision, a name that gives no type), the type
+  policy, a copy’s name from its served type (an extensionless PDF, an agreeing name, a
+  disagreeing one, an unknown type, a refused type, a name too long), sealing a copy,
+  the sweep, the handoff with and without a default app, and a save to a folder standing
+  in for Downloads (a taken name, every name taken, quarantine kept, the copy by bytes,
+  a folder it cannot write, and the privacy refusal’s wording); `OpenFileWebKitTests`
+  cover, in a real `WKWebView`, a user’s click reaching the handler with no download, a
+  Command-click, the Download link, and a scripted click left to the link, a sandboxed
+  `/raw` document’s marked link and a message posted from it refused, the handler out of
+  the page’s reach, the descriptor frozen in the page and absent from a frame, a
+  sandboxed document, and a configuration without the handler, and a copy quarantined
+  and read-only, a server’s error, a refused type, an extensionless copy named by its
+  served type, and a copy served as a page left its name and removed.
+  `tests/test_macos_app_pins.py` holds the attribute, the action, and the link’s shape
+  to the plugin’s.
 
 ## The Title-Bar Accessory
 
@@ -497,8 +889,79 @@ mark in a trailing one (`TitleBarMarkController`).
   A centered toolbar item would make the title bar taller and center the title, which
   macOS 26 puts at the leading edge.
 - **No proxy icon.** AppKit drops the proxy icon when a leading accessory is present, so
-  Command-click, right-click, or VoiceOver’s Show Menu on a local folder’s title opens
-  its path menu, from `representedURL`.
+  Command-click, right-click, or VoiceOver’s Show Path action on a local folder’s title
+  opens its path menu, from `representedURL`.
+- **The folder chooser.** The title is a pop-up control (`TitleBarTitleView`): an
+  always-shown `chevron.down` after it, and on hover the system’s fill for a control
+  under the pointer, resolved as the mark’s is.
+  Only that surface is the control: the title bar above and below it keeps its own drag
+  and double-click. Like the mark, the control takes the press that makes its window key,
+  since neither is a window-drag region, and that press opens or drags as in a key
+  window. A click opens `FolderChooserMenu` under it, and a press that moves
+  `TitleBarPressInteraction.dragDistance` drags the window instead; VoiceOver reads a
+  pop-up button whose Press and Show Menu open the chooser.
+  `FolderChooser` decides the rows (the open folders in the order they opened, then the
+  recent targets not open), each row’s check mark and subtitle, and what each choice
+  does, which `AppDelegate.choose` carries out; Option alternates open a choice in a new
+  window. The menu is native chrome, so it is an `NSMenu` with section headers and
+  subtitles.
+- **The Switch Folder panel.** View > Switch Folder… opens
+  `SwitchFolderWindowController`, an `NSPanel` with a search field and a table over the
+  window, the chooser’s keyboard route.
+  Its rows are `FolderChooser.panelRows` (the open folders most recently shown first,
+  this window’s last), and its search, selection, and where it opens are
+  `FolderSwitcher`’s; a choice goes through `AppDelegate.choose`, as the chooser’s does.
+  The search field keeps the focus, since the table refuses it, and passes each key
+  command to `FolderSwitcher.command`, which decides what the key does: Command-Delete,
+  for one, deletes typed text as in any field, and closes the selected open folder only
+  with the field empty.
+  The field shares its focus with the table for VoiceOver, and each row reads as one
+  cell by its label. View > Switch Folder… is disabled, and the panel does not open, over
+  a window with a sheet; the panel lists the folders again when they change under it
+  (`foldersChanged`).
+- **Shared marks.** The menus that list roots (the chooser, File > Open Recent, and the
+  Dock menu) draw each root’s `RootMark` as a template image: the page’s own Lucide
+  glyph for the root’s kind, copied from `static/source-kind-glyphs.json`, which the
+  server writes into the page’s first paint, and held to it by `RootMarkTests`; the
+  ordinary folder’s is copied from `static/icons.js`. There are three kinds of root,
+  each with a mark of its own, a cloud for a mirror, a folder with Git’s branch for a
+  Git checkout, and a folder with a dot for a plain folder, and the ordinary folder’s
+  outline is the mark of a folder above the root in the title’s path menu
+  ([Source Kinds](../../design-system-icons.md#source-kinds)). A window’s kind is `kind`
+  in its server’s `GET /api/identity` (`FolderKind`), and a recent entry’s is its `mode`
+  and its `git`, which `metab` records when it serves the folder, so no menu looks at a
+  listed folder. A folder whose server has not answered yet is a plain folder, and a
+  recent entry from before `git` is one until it is opened again.
+  The Switch Folder panel draws the same marks.
+  On a row with a subtitle the mark stands on the title’s line.
+  AppKit centers a menu item’s image on its title and subtitle together, so
+  `NSMenuItem.setMark`, which sets an item’s mark and subtitle together, gives such an
+  item the mark at the top of a taller image (`RootMark.TitleLineLayout`, whose comment
+  holds the measurement), and the item stays a native one, its highlight, alternates,
+  and keys AppKit’s; the panel centers its mark on the title’s label.
+  AppKit wraps a subtitle at about 300 points, or the title’s width where that is wider,
+  which would put the mark between lines again, so `setMark` cuts a subtitle that would
+  wrap in the middle (`FolderChooser.oneLine`), measured by `NSMenu` itself, and puts
+  the whole of it in the item’s tooltip.
+- **The check mark.** AppKit also centers an item’s check mark on both lines, so the
+  chooser’s rows are `TitleLineMenuItem`s, which give a row with a subtitle a check
+  raised as the mark is: AppKit’s own `checkmark` symbol, drawn at the size and column
+  width of AppKit’s check, at the top of a taller image (`TitleLineMenuItem.CheckMark`;
+  its [icon catalog](../../design-system-icons.md#ui-chrome-and-actions) row is the
+  second `checkmark`). A custom `onStateImage` costs a stock item its
+  `AXMenuItemMarkChar`, the “✓” VoiceOver hears as “checked”, so the item answers that
+  attribute itself, with what a stock item in the same state answers.
+  `TitleLineCheckTests` holds the check’s position, size, and slot, and that the item is
+  reported checked as a stock one is.
+  Three other ways were tried on macOS 26.5 and dropped:
+  `NSMenu.showsStateColumn = false` still draws the check; an `NSMenuItem.view` draws
+  the whole row itself, so the highlight and the tint are the view’s to redo, and never
+  becomes its Option alternate; and the check is no part of the title, so no paragraph
+  or baseline setting reaches it.
+  The accessibility answer rests on the legacy `accessibilityAttributeValue(_:)`, which
+  Swift marks deprecated, since the `NSAccessibility` protocol has no mark character;
+  the override is marked so as well.
+  What reads it, VoiceOver, is hand-checked (step 17 of the hand checks).
 - **The mark.** The partial M and the B, drawn as paths from the icon masters’ glyph
   group, which `AppIcon/make-glyphs.swift` copies into `AppIconMarkGeometry.swift`; a
   test checks the copy against both masters.
@@ -506,8 +969,8 @@ mark in a trailing one (`TitleBarMarkController`).
   bar deeper tints that meet WCAG contrast for graphics; both comments hold their
   measurements.
 - **A link.** A click opens `ProjectLinks.repository` in the default browser, and a
-  press that moves `TitleBarMarkInteraction.dragDistance` drags the window instead.
-  `TitleBarMarkInteraction` decides each pointer event and is tested event by event.
+  press that moves `TitleBarPressInteraction.dragDistance` drags the window instead.
+  `TitleBarPressInteraction` decides each pointer event and is tested event by event.
 - **System behavior.** The title dims when its window is not main in the active app,
   AppKit dims the mark with it, and both follow light and dark mode.
 
@@ -520,14 +983,22 @@ The page is the one any browser opens, and the app handles what WebKit does diff
   prints only for a document whose security origin is the server’s own.
   It checks the origin, not the URL, because a `/raw` response’s CSP sandbox gives it an
   opaque origin.
+- **A link marked for a web pane**, as View on GitHub’s is, would take the page to
+  github.com, which the app sends to the default browser, so a user script in the app’s
+  own content world takes the user’s click on it and opens the pane’s popover instead
+  (`WebViewRequests`).
+- **A link marked to open a file in its default app**, as a PDF’s Open is, is a download
+  in WebKit as in any browser, and no web API reaches a native handler, so a user script
+  in the app’s own content world takes the user’s click on it and the app opens the file
+  with Launch Services (`OpenFileRequests`). The page learns that it may draw the link
+  from a descriptor the app defines (`HostDescriptor`), which no browser has.
 - **A dropped file** would make WebKit navigate to its `file://` URL, so
   `DropAwareWebView` takes file and folder drops before WebKit sees them and hands them
   to the app (`FileDrop`).
 - **`javaScriptCanOpenWindowsAutomatically`** defaults to on in macOS, so
   `WebConfiguration.restrict` turns it off and a previewed HTML file cannot open tabs by
   itself.
-- **Printing** runs modally for the window, which `BrowserWindowController.printPage`
-  explains.
+- **Printing** runs modally for the window, which `FolderPage.printPage` explains.
 
 ### Measured in WebKit
 
@@ -540,12 +1011,18 @@ Its run of 2026-11-11 failed: layout is where WebKit falls behind, most in the s
 and binary views.
 [QA: WebKit Measurement Gate](../qa/qa-2026-11-11-webkit-measurement-gate.md) records
 the method, every figure, and the print and drop checks.
+Its treemap case, first run on 2026-11-23 and recorded in that document’s addendum, held
+the Treemap’s layout within 1.3 times Chrome at every cell cap and failed its family
+hover, at 1.4 to 2.6 times; with palette keys looked up once an extension a layout, a
+second run that day passed every metric.
 
 ## Why It Lives in This Repository
 
 The host protocol is a contract between the app and `metab`, so a change to it lands in
 both in one commit, as [AGENTS.md](../../../AGENTS.md#compatibility-and-legacy-code)
 asks of internal contracts.
+[The App’s Contract with metab](arch-app-contract.md) declares everything the app reads
+of `metab` today, and the checks there fail a change that only one side makes.
 Nothing in `apps/` ships to PyPI: `devtools/check_distribution.py` fails the build if an
 `apps` path reaches the sdist or wheel.
 A separate repository would make sense if the app gained its own release cadence, needed

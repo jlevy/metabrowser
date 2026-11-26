@@ -5,6 +5,8 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
+import tempfile
+import types
 from collections.abc import Generator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -13,8 +15,20 @@ from urllib.parse import urljoin
 
 import pytest
 
+import metabrowser.builtin_plugins.agents.adapters  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
+from tests import (
+    chrome_starts,
+    suite_gates,
+    suite_tiers,
+    suite_timing,
+    suite_workers,
+    transient_output,
+)
+from tests.file_ages_git import (  # noqa: F401
+    file_ages_git,  # pyright: ignore[reportUnusedImport]
+    fixed_file_ages_git,  # pyright: ignore[reportUnusedImport]
+)
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
@@ -27,8 +41,38 @@ os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 # module- or session-scoped fixture that starts before any test's exists, in the list of
 # whoever runs the suite. A test of the record itself turns it back on.
 os.environ["METABROWSER_RECORD_RECENT"] = "0"
+# Nor does anything a test runs read or write the configuration directory of whoever runs
+# the suite, where the recent targets live beside `config.yml`: a forget or a clear would
+# change that list whatever the variable above says. Each test gets a directory of its own
+# (`_isolated_configuration`); a fixture that starts before one exists gets the run's.
+os.environ["METABROWSER_CONFIG_DIR"] = os.path.join(
+    os.path.realpath(tempfile.gettempdir()), f"metabrowser-test-config-{os.getpid()}"
+)
+# Nor does any server a test starts write an event log (metabrowser.event_log) into the
+# state directory of whoever runs the suite; and a read of the log, as `/api/event-log`
+# does, reads an empty directory of the suite's own. A test of the log opens one itself.
+os.environ["METABROWSER_EVENT_LOG"] = "0"
+# Nor does a gh that fails make a test probe the network (metabrowser.network_cause): a
+# test of the probe names a local target itself.
+os.environ["METABROWSER_NETWORK_PROBE"] = "0"
+# Nor does a `metab` a test starts, as a process or in process, keep a store of a
+# checkout's origin (metabrowser.checkout_store), which would fetch that origin, a GitHub
+# address in most fixtures, from the network (bead mb-i4x0). A test of the store keeps
+# one in process with the `keeps_origin_store` fixture, and `remote_url_for` naming a
+# local origin.
+os.environ["METABROWSER_ORIGIN_STORE"] = "0"
+os.environ["METABROWSER_STATE_DIR"] = os.path.join(
+    tempfile.gettempdir(), f"metabrowser-test-state-{os.getpid()}"
+)
 for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_EDITS"):
     os.environ.pop(_capability_env, None)
+# Where `--present` opens a target is the operator's preference; a test that reads one
+# sets it.
+os.environ.pop("METABROWSER_OPEN_IN", None)
+# Nor does the reserve a first clone leaves free (metabrowser.cache.free_space) come from
+# whoever runs the suite: with a large one exported, every `file://` first clone a test
+# makes was refused (review C2 on #768). A test of the reserve sets it.
+os.environ.pop("METABROWSER_CACHE_RESERVE_MB", None)
 
 # The pre-push gate runs this suite inside a githook, and from a linked worktree git
 # exports GIT_DIR there. It outranks the working directory and `git -C`, so a fixture
@@ -70,6 +114,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=suite_tiers.BY_TEST,
         help="deal --shard's parts by single test, or by whole file (tests/suite_tiers.py)",
     )
+    parser.addoption(
+        "--skip-slow",
+        action="store_true",
+        help="drop the tests measured at SLOW_TEST_S or more, before --shard (tests/suite_tiers.py)",
+    )
     suite_timing.add_option(parser)
 
 
@@ -107,6 +156,14 @@ def fresh_markdown_child() -> Generator[None]:
     of #527, A13), and a worker a test left running would carry its child into the next.
     A test that runs the serve path in-process marks the process as serving pages, which
     starts the child ahead of documents; the next test begins as a one-shot command.
+
+    A test whose event loop ended while the worker was still starting a child fails: it
+    skipped the close the server's lifespan always makes (``ProjectionWorker.aclose``),
+    which cancels the start on its own. ``asyncio.run`` cancels it together with the task
+    connecting its pipes instead, and on CPython 3.12 and 3.13 a start cancelled while it
+    spawns never finishes, so the run never returns (mb-4g7f). A run that escaped the hang
+    leaves the start cancelled, which this reads. A child that was ready when its loop
+    ended is only stopped here, as before.
     """
 
     from metabrowser.diff import markdown_projection_worker as worker_module
@@ -118,10 +175,28 @@ def fresh_markdown_child() -> Generator[None]:
     yield
     serving.pages = False
     if shared.cache_info().currsize:
+        worker = shared()
+        loop = worker._loop  # pyright: ignore[reportPrivateUsage]
+        # The worker's own close and stop forget their start, so a start still kept was
+        # ended, if at all, by its loop's end.
+        start = worker._starting  # pyright: ignore[reportPrivateUsage]
+        cut_off = (
+            loop is not None
+            and loop.is_closed()
+            and start is not None
+            and (not start.done() or start.cancelled())
+        )
         # Its event loop may be closed by now; stopping kills the child by its process.
         with contextlib.suppress(RuntimeError):
-            shared().stop()
+            worker.stop()
         shared.cache_clear()
+        if cut_off:
+            pytest.fail(
+                "The event loop that used the shared Markdown child worker ended while it"
+                " was starting a child: end that loop with `await shared_worker().aclose()`,"
+                " as the server's lifespan does",
+                pytrace=False,
+            )
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
@@ -216,6 +291,22 @@ def _no_real_gh(  # pyright: ignore[reportUnusedFunction]
         yield
 
 
+@pytest.fixture(autouse=True)
+def _fresh_github_status() -> Generator[None]:  # pyright: ignore[reportUnusedFunction]
+    """Start each test with no kept GitHub status answer.
+
+    The status check keeps an answer for a few seconds per gh and configuration
+    (``gh_status.GH_STATUS_TTL_S``), and tests swap what one fake gh answers between
+    commands, which that key cannot see.
+    """
+
+    from metabrowser.builtin_plugins.github.gh_status import forget_github_status
+
+    forget_github_status()
+    yield
+    forget_github_status()
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, object]:
     """Warm Chrome up once before a run with a test that drives it, so the runner's cold
@@ -242,24 +333,105 @@ def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, objec
     return (yield)
 
 
-def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
-    """Say which tests would have run gh, so a new one is noticed, and how the run's
-    Chrome starts went (``tests/chrome_starts.py``)."""
+_SUMMARY_LINES = pytest.StashKey[list[str]]()
+_TMP_PATH = pytest.StashKey[Path]()
+_FAILED = pytest.StashKey[bool]()
 
-    basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+
+@pytest.hookimpl(wrapper=True)
+def pytest_fixture_setup(
+    fixturedef: pytest.FixtureDef[object], request: pytest.FixtureRequest
+) -> Generator[None, object, object]:
+    """Note the test's ``tmp_path``, however it was asked for, for its reports below."""
+
+    result = yield
+    if fixturedef.argname == "tmp_path" and isinstance(result, Path):
+        request.node.stash[_TMP_PATH] = result
+    return result
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_makereport(item: pytest.Item) -> Generator[None, pytest.TestReport, object]:
+    """Empty the test's ``tmp_path`` after its teardown report, unless one of its reports
+    failed (``tests/transient_output.py``).
+
+    The teardown report is made after every fixture's teardown, so a test whose setup
+    errored, or whose teardown failed after its call passed, keeps its directory, as one
+    whose call failed does. Outermost, so that the report seen is the one pytest records,
+    after an expected failure is marked as one.
+    """
+
+    report = yield
+    failed = item.stash.get(_FAILED, False) or report.failed
+    item.stash[_FAILED] = failed
+    path = item.stash.get(_TMP_PATH, None)
+    if report.when == "teardown" and path is not None and not failed:
+        transient_output.empty(path)
+    return report
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Read what the terminal summary reports from the run's base directory, then release
+    the locks of sessions whose process has gone and remove a passing run's base directory
+    (``tests/transient_output.py``).
+
+    First, because pytest's own ``pytest_sessionfinish`` then prunes older sessions'
+    directories, and the terminal summary is written only after that. A base directory
+    given with ``--basetemp``, as pytest-xdist gives each worker its own, is not this
+    session's to remove. Nothing here raises: from this hook an exception would replace the
+    run's report, its failures included, with pytest's internal error.
+    """
+
+    config = session.config
+    try:
+        basetemp = config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+    except OSError as error:
+        config.stash[_SUMMARY_LINES] = [f"transient output: no base directory: {error}"]
+        return
+    config.stash[_SUMMARY_LINES] = _summary_lines(basetemp)
+    if config.option.basetemp is None:
+        transient_output.end_session(basetemp, passed=exitstatus == 0)
+
+
+def _summary_lines(basetemp: Path) -> list[str]:
+    try:
+        return [*_gh_guard_lines(basetemp), *chrome_starts.summary(basetemp)]
+    except Exception as error:
+        # An error in reading the logs would otherwise replace the run's whole report
+        # (pytest_sessionfinish above), which matters more than these lines.
+        return [f"summary: the run's logs could not be read: {error!r}"]
+
+
+def _gh_guard_lines(basetemp: Path) -> list[str]:
     # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
     # Under pytest-xdist each worker's base is ``popen-gw<N>`` in this one, with its own
     # stand-in and log, and the summary this process prints reads them all.
     patterns = ("no-real-gh*/calls.log", "popen-gw*/no-real-gh*/calls.log")
     logs = {log.resolve() for pattern in patterns for log in basetemp.glob(pattern)}
-    calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
+    lines: list[str] = []
+    calls: list[str] = []
+    for log in sorted(logs):
+        try:
+            # The stand-in logs a call's arguments as they were given, in any encoding.
+            calls += log.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as error:
+            lines.append(f"gh guard: {log} could not be read: {error}")
     if calls:
         tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
-        terminalreporter.write_line(
+        lines.append(
             f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
             f"from {len(tests)} test(s): " + ", ".join(tests)
         )
-    for line in chrome_starts.summary(basetemp):
+    return lines
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Say which tests would have run gh, so a new one is noticed, and how the run's
+    Chrome starts went (``tests/chrome_starts.py``), as ``pytest_sessionfinish`` read
+    them."""
+
+    for line in terminalreporter.config.stash.get(_SUMMARY_LINES, []):
         terminalreporter.write_line(line)
 
 
@@ -271,6 +443,16 @@ def _reset_capabilities() -> Generator[None, None, None]:  # pyright: ignore[rep
     set_capabilities(DEFAULT_CAPABILITIES)
     yield
     set_capabilities(DEFAULT_CAPABILITIES)
+
+
+@pytest.fixture
+def keeps_origin_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let an application in process keep a store of its checkout's origin, as one does
+    outside the suite, which keeps none (``METABROWSER_ORIGIN_STORE`` above). A test
+    that uses it points ``remote_url_for`` at a local origin, or fetches nothing."""
+    from metabrowser.checkout_store import ORIGIN_STORE_ENV
+
+    monkeypatch.delenv(ORIGIN_STORE_ENV, raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -316,11 +498,15 @@ def _reset_rate_budget() -> Generator[None, None, None]:  # pyright: ignore[repo
     The governor keeps them per process, so a refusal one test replays would otherwise hold
     background work in every test after it until the replayed reset time.
     """
-    from metabrowser.builtin_plugins.github import gh_budget
+    from metabrowser.builtin_plugins.github import gh, gh_budget
 
+    # The account check's last answer is per process too (gh.gh_account): a test starts
+    # with none, so its first check is unconditional whatever ran before it.
     gh_budget.forget()
+    gh.forget_account()
     yield
     gh_budget.forget()
+    gh.forget_account()
 
 
 @pytest.fixture(autouse=True)
@@ -340,6 +526,75 @@ def _reset_label_sets() -> Generator[None, None, None]:  # pyright: ignore[repor
     forget()
     yield
     forget()
+
+
+@pytest.fixture(autouse=True)
+def _reset_probe_turns() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no probe in flight and none refused, as a new process.
+
+    ``served_pull`` keeps both per process, by a pull request's refresh key, and the
+    fixtures share one repository and one clock, so a refusal one test left would hold
+    back the next test's probe. A process that never imported it holds neither.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.served_pull")
+        if loaded is not None:
+            loaded.forget_probes()
+
+    forget()
+    yield
+    forget()
+
+
+@pytest.fixture(autouse=True)
+def _reset_prefetch_lanes() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no prefetch lane, as a new process.
+
+    ``pull_prefetch`` keeps one lane per repository a process serves, and an idle lane a
+    page asked for lately keeps a scan's records from the cores walk (``reserved``), so a
+    lane one test left, asked for at the shared clock, would hold back the next test's
+    walk. A process that never imported it holds none.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.pull_prefetch")
+        if loaded is not None:
+            loaded.forget_lanes()
+
+    forget()
+    yield
+    forget()
+
+
+@pytest.fixture(scope="session")
+def _no_server_command(tmp_path_factory: pytest.TempPathFactory) -> str:  # pyright: ignore[reportUnusedFunction]
+    refuser = tmp_path_factory.mktemp("no-detached-server") / "metab"
+    refuser.write_text(
+        "#!/bin/sh\necho 'no metab server starts in a test; set present.server_command' >&2\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    refuser.chmod(0o755)
+    return str(refuser)
+
+
+@pytest.fixture(autouse=True)
+def _no_detached_server(_no_server_command: str) -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start no real server from ``metab --present``, unless a test names its own.
+
+    A browser delivery starts ``metab ROOT`` detached, which outlives the test and opens
+    the page in the browser of whoever runs the suite. Every test starts with
+    ``present.server_command`` set to a program that exits 1 at once, as a server that
+    cannot start does; a test that needs a server sets its own. Its own ``MonkeyPatch``,
+    as ``_no_real_gh`` explains.
+    """
+
+    from metabrowser.cli import present
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(present, "server_command", (_no_server_command,))
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -403,6 +658,11 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     events_route._CATALOG_BODY_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_ETAG_BY_CHECKPOINT.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_REVISION.update(identity=None, value=0)  # pyright: ignore[reportPrivateUsage]
+    # Kept by commit IDs alone, which the fixtures share, so one test's measurement would
+    # answer another's without the store bank the second one checks.
+    from metabrowser.git.change_size import clear_kept_sizes
+
+    clear_kept_sizes()
 
 
 class DocumentReference(NamedTuple):
@@ -514,3 +774,29 @@ def _reset_delivery() -> Generator[None, None, None]:  # pyright: ignore[reportU
     delivery.serve_locally(False)
     yield
     delivery.serve_locally(False)
+
+
+@pytest.fixture(autouse=True)
+def _one_module_per_name() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """A test leaves each ``metabrowser`` module as one object, however it is reached.
+
+    Importing a submodule sets it as an attribute of its package, so a test that forgot a
+    module from ``sys.modules`` and imported it again leaves the package holding the new
+    one when the old is put back, and ``from metabrowser.git import content_routes`` (a
+    test's patch) then reaches a module the server's own import does not (mb-6byq).
+    `tests/forgotten_module.py` forgets a module and leaves no such trace.
+    """
+
+    yield
+    split: list[str] = []
+    for name, module in list(sys.modules.items()):
+        if not name.startswith("metabrowser."):
+            continue
+        parent_name, _, child = name.rpartition(".")
+        held = getattr(sys.modules.get(parent_name), child, None)
+        if isinstance(held, types.ModuleType) and held is not module:
+            split.append(name)
+    assert not split, (
+        f"after this test {split} is one module in sys.modules and another as its package's "
+        "attribute: a test that forgets a module must put both back (tests/forgotten_module.py)"
+    )

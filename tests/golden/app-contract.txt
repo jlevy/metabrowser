@@ -1,0 +1,957 @@
+# metab --exit-on-eof --present --recent --version
+exit: 0
+--- stdout ---
+metab <VERSION>
+--- stderr ---
+--- contract ---
+version-probe
+# metab --version
+exit: 0
+--- stdout ---
+metab <VERSION>
+--- stderr ---
+--- contract ---
+version
+# metab --no-such-option-for-the-app-contract --version
+exit: 2
+--- stdout ---
+--- stderr ---
+<text>--no-such-option-for-the-app-contract<text>
+--- contract ---
+unknown-option
+# metab --plugins --json
+exit: 0
+--- stdout ---
+{
+  "plugins": [
+    {
+      "name": "agents",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "structured"
+      ]
+    },
+    {
+      "name": "binary",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "delimited",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "table"
+      ]
+    },
+    {
+      "name": "diff",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "structured",
+        "pdf"
+      ]
+    },
+    {
+      "name": "event-log",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "agents"
+      ]
+    },
+    {
+      "name": "folder",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "markdown"
+      ]
+    },
+    {
+      "name": "fsqlite",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "sqlite",
+        "table"
+      ]
+    },
+    {
+      "name": "github",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "markdown",
+        "diff"
+      ]
+    },
+    {
+      "name": "html",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "image",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "markdown",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "pdf"
+      ]
+    },
+    {
+      "name": "pdf",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "sqlite",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "table"
+      ]
+    },
+    {
+      "name": "structured",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "table"
+      ]
+    },
+    {
+      "name": "table",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "text",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "unknown-jsonl",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "agents"
+      ]
+    }
+  ],
+  "errors": []
+}
+--- stderr ---
+--- contract ---
+plugins
+# METABROWSER_RECORD_RECENT=0 metab <ROOT>/served --no-open --exit-on-eof --host 127.0.0.1 --port 8411
+exit: 0
+--- stdout ---
+Serving <ROOT>/served at http://127.0.0.1:8411/view/  [dev build: <STATE>]
+--- stderr ---
+--- contract ---
+serve/folder
+# metab --recent --json
+exit: 0
+--- stdout ---
+{
+  "targets": [],
+  "problem": null
+}
+--- stderr ---
+--- contract ---
+recent-list/empty
+# metab <ROOT>/served/ --recent-add
+exit: 0
+--- stdout ---
+--- stderr ---
+--- contract ---
+recent-add/folder
+# metab --recent --json
+exit: 0
+--- stdout ---
+{
+  "targets": [
+    {
+      "mode": "folder",
+      "root": "<ROOT>/served",
+      "opened_at": "<opaque>",
+      "git": false
+    }
+  ],
+  "problem": null
+}
+--- stderr ---
+--- contract ---
+recent-list/after-an-open
+# metab https://github.com/Octo/Demo/pull/12 --recent-add
+exit: 0
+--- stdout ---
+--- stderr ---
+--- contract ---
+recent-add/repository
+# metab <ROOT>/checkout --recent-add
+exit: 0
+--- stdout ---
+--- stderr ---
+--- contract ---
+recent-add/checkout
+# metab --recent --json
+exit: 0
+--- stdout ---
+{
+  "targets": [
+    {
+      "mode": "folder",
+      "root": "<ROOT>/checkout",
+      "opened_at": "<opaque>",
+      "git": true
+    },
+    {
+      "mode": "mirror",
+      "root": "https://github.com/octo/demo",
+      "opened_at": "<opaque>",
+      "git": false
+    },
+    {
+      "mode": "folder",
+      "root": "<ROOT>/served",
+      "opened_at": "<opaque>",
+      "git": false
+    }
+  ],
+  "problem": null
+}
+--- stderr ---
+--- contract ---
+recent-list/listed
+# metab <ROOT>/served --recent-forget
+exit: 0
+--- stdout ---
+--- stderr ---
+--- contract ---
+recent-forget/folder
+# metab --recent-clear
+exit: 0
+--- stdout ---
+--- stderr ---
+--- contract ---
+recent-clear
+# metab --recent --json
+exit: 0
+--- stdout ---
+{
+  "targets": [],
+  "problem": "<text>"
+}
+--- stderr ---
+--- contract ---
+recent-list/problem
+# metab <ROOT>/served --no-open --exit-on-eof --host 127.0.0.1 --port 8411 --path 'sub dir/résumé notes #1~ (draft)?.md'
+exit: 0
+--- stdout ---
+Serving <ROOT>/served at http://127.0.0.1:8411/view/sub%20dir/r%C3%A9sum%C3%A9%20notes%20%231~%20%28draft%29%3F.md  [dev build: <STATE>]
+--- stderr ---
+--- contract ---
+serve-path/file
+# metab <ROOT>/served --api /api/identity
+exit: 0
+--- stdout ---
+status: 200
+{
+  "short_name": "served",
+  "full_name": "<SERVED>",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "served • Metabrowser"
+}
+--- stderr ---
+--- contract ---
+identity/folder
+# HOME=<ROOT> metab <ROOT>/served --api /api/identity
+exit: 0
+--- stdout ---
+status: 200
+{
+  "short_name": "served",
+  "full_name": "~/served",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "served • Metabrowser"
+}
+--- stderr ---
+--- contract ---
+identity/under-home
+# metab <ROOT>/checkout --api /api/identity
+exit: 0
+--- stdout ---
+status: 200
+{
+  "short_name": "checkout",
+  "full_name": "<SERVED>",
+  "kind": "git",
+  "kind_label": "Local Git checkout",
+  "title": "checkout • Metabrowser"
+}
+--- stderr ---
+--- contract ---
+identity/checkout
+# metab <ROOT>/served --api /api/source/status
+exit: 0
+--- stdout ---
+status: 200
+{
+  "refreshing": false
+}
+--- stderr ---
+--- contract ---
+source-status/folder
+# metab file://<ROOT>/origin.git --no-open --exit-on-eof --host 127.0.0.1 --port 8475
+exit: 0
+--- stdout ---
+Serving file://<ROOT>/origin.git at http://127.0.0.1:8475/view/  [dev build: <STATE>]
+--- stderr ---
+cloning file://<ROOT>/origin.git into <text>
+cloned file://<ROOT>/origin.git in <text>
+--- contract ---
+serve/repository-cloned
+# metab file://<ROOT>/origin.git --no-open --exit-on-eof --host 127.0.0.1 --port 8475
+exit: 0
+--- stdout ---
+Serving file://<ROOT>/origin.git at http://127.0.0.1:8475/view/  [dev build: <STATE>]
+--- stderr ---
+using the clone of file://<ROOT>/origin.git cached in <text>
+--- contract ---
+serve/repository-cached
+# metab file://<ROOT>/origin.git --api /api/identity
+exit: 0
+--- stdout ---
+status: 200
+{
+  "short_name": "origin",
+  "full_name": "<ROOT>/origin.git@main",
+  "kind": "mirror",
+  "kind_label": "Cloud mirror",
+  "title": "origin • Metabrowser"
+}
+--- stderr ---
+--- contract ---
+identity/mirror
+# metab file://<ROOT>/origin.git --api /api/source/status
+exit: 0
+--- stdout ---
+status: 200
+{
+  "refreshing": false
+}
+--- stderr ---
+--- contract ---
+source-status/mirror
+# metab file://<ROOT>/origin.git --api /api/source/link --data <ROOT>/link.json
+exit: 0
+--- stdout ---
+status: 200
+{
+  "href": "/view/",
+  "code": null
+}
+--- stderr ---
+--- contract ---
+source-link/repository
+# metab file://<ROOT>/origin.git --api /api/source/link --data <ROOT>/elsewhere.json
+exit: 1
+--- stdout ---
+status: 409
+{
+  "href": null,
+  "code": "<other>"
+}
+--- stderr ---
+--- contract ---
+source-link/elsewhere
+# metab file://<ROOT>/origin.git --no-serve
+exit: 0
+--- stdout ---
+<shown as written, not read>
+--- stderr ---
+--- contract ---
+acquire/in-terminal
+# metab https://github.com/Octo/Demo.git --present --dry-run --format json
+exit: 0
+--- stdout ---
+{
+  "kind": "repository",
+  "root": "https://github.com/octo/demo",
+  "handoff": [
+    "https://github.com/octo/demo"
+  ],
+  "refusal": null
+}
+--- stderr ---
+--- contract ---
+present-dry-run/repository
+# metab https://github.com/octo/demo/pull/12/files --present --dry-run --format json
+exit: 0
+--- stdout ---
+{
+  "kind": "pull_request",
+  "root": "https://github.com/octo/demo",
+  "handoff": [
+    "https://github.com/octo/demo/pull/12/files"
+  ],
+  "refusal": null
+}
+--- stderr ---
+--- contract ---
+present-dry-run/pull-request
+# metab https://github.com/octo/demo/commit/523f476b --present --dry-run --format json
+exit: 0
+--- stdout ---
+{
+  "kind": "commit",
+  "root": "https://github.com/octo/demo",
+  "handoff": [
+    "https://github.com/octo/demo/commit/523f476b"
+  ],
+  "refusal": null
+}
+--- stderr ---
+--- contract ---
+present-dry-run/commit
+# metab https://github.com/octo/demo/tree/main/docs --present --dry-run --format json
+exit: 0
+--- stdout ---
+{
+  "kind": "tree",
+  "root": "https://github.com/octo/demo",
+  "handoff": [
+    "https://github.com/octo/demo/tree/main/docs"
+  ],
+  "refusal": null
+}
+--- stderr ---
+--- contract ---
+present-dry-run/tree
+# metab 'https://raw.githubusercontent.com/octo/demo/main/README.md?token=dropped' --present --dry-run --format json
+exit: 0
+--- stdout ---
+{
+  "kind": "file",
+  "root": "https://github.com/octo/demo",
+  "handoff": [
+    "https://github.com/octo/demo/blob/main/README.md"
+  ],
+  "refusal": null
+}
+--- stderr ---
+--- contract ---
+present-dry-run/file
+# metab https://github.com/octo/demo/issues/1 --present --dry-run --format json
+exit: 3
+--- stdout ---
+{
+  "kind": null,
+  "root": null,
+  "handoff": null,
+  "refusal": {
+    "code": "unsupported_github_url",
+    "message": "<text>"
+  }
+}
+--- stderr ---
+--- contract ---
+present-dry-run/refused
+# metab <ROOT>/support --api '/api/cache/sources?limit=100' --format json
+exit: 0
+--- stdout ---
+{
+  "sources": [],
+  "next_after": null
+}
+--- stderr ---
+--- contract ---
+cache-sources/none
+# metab <ROOT>/support --api '/api/cache/sources?limit=100' --format json
+exit: 0
+--- stdout ---
+{
+  "sources": [
+    {
+      "identity": {
+        "display_url": "https://github.com/octo/alpha"
+      },
+      "publication": "<other>",
+      "problems": []
+    },
+    {
+      "identity": {
+        "display_url": "https://github.com/octo/beta"
+      },
+      "publication": "published",
+      "problems": []
+    },
+    {
+      "identity": {
+        "display_url": "git@github.com:octo/demo.git"
+      },
+      "publication": "published",
+      "problems": []
+    },
+    {
+      "identity": {
+        "display_url": "https://github.com/octo/demo"
+      },
+      "publication": "published",
+      "problems": []
+    }
+  ],
+  "next_after": null
+}
+--- stderr ---
+--- contract ---
+cache-sources/held
+# metab <ROOT>/support --api '/api/cache/sources?limit=2' --format json
+exit: 0
+--- stdout ---
+{
+  "sources": [
+    {
+      "identity": {
+        "display_url": "https://github.com/octo/alpha"
+      },
+      "publication": "<other>",
+      "problems": []
+    },
+    {
+      "identity": {
+        "display_url": "https://github.com/octo/beta"
+      },
+      "publication": "published",
+      "problems": []
+    }
+  ],
+  "next_after": "<opaque>"
+}
+--- stderr ---
+--- contract ---
+cache-sources/first-page
+# metab <ROOT>/support --api '/api/cache/sources?limit=2&after=<opaque>' --format json
+exit: 0
+--- stdout ---
+{
+  "sources": [
+    {
+      "identity": {
+        "display_url": "git@github.com:octo/demo.git"
+      },
+      "publication": "published",
+      "problems": []
+    },
+    {
+      "identity": {
+        "display_url": "https://github.com/octo/demo"
+      },
+      "publication": "published",
+      "problems": []
+    }
+  ],
+  "next_after": null
+}
+--- stderr ---
+--- contract ---
+cache-sources/next-page
+# METABROWSER_STATE_DIR=<ROOT>/events-state metab <ROOT>/support --api '/api/event-log?limit=1' --format json
+exit: 0
+--- stdout ---
+{
+  "directory": "<ROOT>/events-state/events",
+  "files": [
+    {
+      "name": "events-20261119T210201Z-p4242-000.jsonl"
+    },
+    {
+      "name": "events-20261118T090000Z-p17-000.jsonl"
+    }
+  ]
+}
+--- stderr ---
+--- contract ---
+event-log/found
+# METABROWSER_STATE_DIR=<ROOT>/quiet-state metab <ROOT>/support --api '/api/event-log?limit=1' --format json
+exit: 0
+--- stdout ---
+{
+  "directory": "<ROOT>/quiet-state/events",
+  "files": []
+}
+--- stderr ---
+--- contract ---
+event-log/empty
+# metab --doctor --json
+exit: 0
+--- stdout ---
+{
+  "ok": true,
+  "problems": [],
+  "checks": [
+    {
+      "id": "plugins",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "open_in",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "metab",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "git",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "config",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "cache",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "event_log",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    }
+  ],
+  "github": {
+    "state": "ok",
+    "message": "<text>",
+    "remedy": null,
+    "gh_path": "<text>",
+    "gh_version": "<text>",
+    "gh_minimum": "<text>",
+    "account": "<text>"
+  }
+}
+--- stderr ---
+--- contract ---
+doctor/clean
+# METABROWSER_DOCTOR_APP=<ROOT>/Metabrowser.app FAKE_GH_STATUS=signed-out metab --doctor --json
+exit: 1
+--- stdout ---
+{
+  "ok": false,
+  "problems": [
+    "<text>"
+  ],
+  "checks": [
+    {
+      "id": "plugins",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "open_in",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "metab",
+      "title": "<text>",
+      "state": "warning",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": {
+        "text": "<text>",
+        "command": "<text>",
+        "url": null
+      }
+    },
+    {
+      "id": "git",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "config",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "cache",
+      "title": "<text>",
+      "state": "problem",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "event_log",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    }
+  ],
+  "github": {
+    "state": "<other>",
+    "message": "<text>",
+    "remedy": {
+      "text": "<text>",
+      "command": "<text>",
+      "url": null
+    },
+    "gh_path": "<text>",
+    "gh_version": "<text>",
+    "gh_minimum": "<text>",
+    "account": null
+  }
+}
+--- stderr ---
+--- contract ---
+doctor/as-the-app

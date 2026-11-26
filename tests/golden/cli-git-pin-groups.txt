@@ -10,6 +10,7 @@ status: 200
     {
       "id": "docs",
       "label": "Documentation",
+      "icon": "doc",
       "files": 7,
       "size": 100,
       "entries": 7,
@@ -60,6 +61,7 @@ status: 200
     {
       "id": "code",
       "label": "Code",
+      "icon": "alignLeft",
       "files": 2,
       "size": 28,
       "entries": 2,
@@ -87,6 +89,7 @@ status: 200
     {
       "id": "data",
       "label": "Data",
+      "icon": "list",
       "files": 1,
       "size": 25,
       "entries": 1,
@@ -105,6 +108,7 @@ status: 200
     {
       "id": "media",
       "label": "Media",
+      "icon": "monitor",
       "files": 1,
       "size": 67,
       "entries": 1,
@@ -123,6 +127,7 @@ status: 200
     {
       "id": "other",
       "label": "Other",
+      "icon": "file",
       "files": 5,
       "size": 16777254,
       "entries": 5,
@@ -480,7 +485,8 @@ exit: 1
 api: /api/tree?group_by=age&depth=0
 status: 409
 {
-  "error": "source does not support recency",
+  "error": "This is not available here.",
+  "detail": "source does not support recency",
   "code": "unsupported_for_subject",
   "capability": "recency"
 }
@@ -492,7 +498,8 @@ exit: 1
 api: /api/tree?group=age:live&depth=1
 status: 409
 {
-  "error": "source does not support recency",
+  "error": "This is not available here.",
+  "detail": "source does not support recency",
   "code": "unsupported_for_subject",
   "capability": "recency"
 }

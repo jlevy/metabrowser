@@ -1,15 +1,16 @@
 import Foundation
 
-/// What File > Open URL… takes: a full GitHub URL, which the panel hands to `metab` only
-/// once `GitHubLink` accepts it, the check every link sent to the app passes first.
+/// What File > Open URL… takes: a GitHub URL, which the panel hands to `metab` only once
+/// `GitHubLink` accepts it, the check every link sent to the app passes first.
 ///
-/// `metab TARGET --present --dry-run` reads a target with no scheme as a local path, so
-/// `owner/repo` or `github.com/owner/repo` would name a folder under its working
-/// directory: the panel takes no shorthand, and says so. Every other problem here is one
-/// `metab` would refuse as well (`insecure_http`, `credentials_in_url`,
-/// `unsupported_source`, `control_or_whitespace`, `non_ascii`, `backslash`,
-/// `invalid_percent_encoding`); the panel says it first, in its own words, since `metab`'s
-/// answer for another site is about the command line's `--present`.
+/// The panel writes GitHub URLs without `https://` and bare `owner/repo` shortcuts in
+/// full before checking them (`corrected(_:)`). It passes the full URL to `metab`
+/// because `metab TARGET --present --dry-run` reads bare `owner/repo` as a local path.
+/// Other text without a scheme is refused. Every other problem here is one `metab`
+/// would refuse as well (`insecure_http`,
+/// `credentials_in_url`, `unsupported_source`, `control_or_whitespace`, `non_ascii`,
+/// `backslash`, `invalid_percent_encoding`); the panel says it first, in its own words,
+/// since `metab`'s answer for another site is about the command line's `--present`.
 ///
 /// The path, query, and fragment are encoded as a browser sends them, so the panel opens
 /// what `metab URL` opens, a file named with a space or a letter outside ASCII among
@@ -23,7 +24,7 @@ public nonisolated enum OpenURLEntry {
         case empty
         /// Longer than `GitHubLink.maximumLength`, as typed or once encoded.
         case tooLong
-        /// No scheme: a shorthand such as `owner/repo`, or a URL without `https://`.
+        /// No scheme and no GitHub URL or repository shortcut that `corrected(_:)` can expand.
         case notAFullURL
         /// A scheme other than `https`.
         case notHTTPS
@@ -50,7 +51,7 @@ public nonisolated enum OpenURLEntry {
             case .tooLong:
                 "This URL is longer than Metabrowser opens."
             case .notAFullURL:
-                "Enter the full URL, starting with https://github.com/: a repository, a pull request, a commit, or a file or folder."
+                "Enter a GitHub URL or an owner/repo shortcut."
             case .notHTTPS:
                 "Metabrowser opens only https URLs, such as https://github.com/owner/repo."
             case .credentials:
@@ -78,11 +79,44 @@ public nonisolated enum OpenURLEntry {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The link `text` names, if `GitHubLink` accepts it, else why not. The scheme and the
-    /// host are checked as typed; the rest is encoded as a browser sends it
-    /// (`encoded(_:)`), and that encoded text is the link `metab` is given.
-    public static func link(_ text: String) -> Result<URL, Problem> {
+    /// `text`, trimmed and expanded when it is a GitHub URL or a repository shortcut.
+    /// The app checks the result as it would a full URL.
+    ///
+    /// - `github.com/owner/repo`: no scheme, and a GitHub host (`GitHubLink.hosts`, in any
+    ///   letter case) before the first `/`, `?`, or `#`, gets `https://`.
+    /// - `http://github.com/owner/repo` becomes `https://`, which is all GitHub serves.
+    /// - `//github.com/owner/repo`, a URL with its scheme left out, gets `https:`.
+    /// - `owner/repo` gets `https://github.com/` if it matches the repository URL grammar.
+    ///
+    /// The panel shows the corrected text in its field (`OpenURLPanel.open()`).
+    public static func corrected(_ text: String) -> String {
         let text = trimmed(text)
+        if let scheme = text.firstMatch(of: schemePattern)?.output.1 {
+            guard scheme.lowercased() == "http", startsWithGitHubHost(text.dropFirst(scheme.count + 3)) else {
+                return text
+            }
+            return "https" + text.dropFirst(scheme.count)
+        }
+        if text.hasPrefix("//") {
+            return startsWithGitHubHost(text.dropFirst(2)) ? "https:" + text : text
+        }
+        if startsWithGitHubHost(text[...]) { return "https://" + text }
+        let repository = "https://github.com/" + text
+        return PresentPlan.repositoryURL(repository) != nil ? repository : text
+    }
+
+    /// Whether `rest`, a URL after its `scheme://`, or text with none, begins with a GitHub
+    /// host and nothing else before its path, query, or fragment.
+    private static func startsWithGitHubHost(_ rest: Substring) -> Bool {
+        GitHubLink.hosts.contains(rest.prefix { !"/?#".contains($0) }.lowercased())
+    }
+
+    /// The link `text` names, written in full (`corrected(_:)`), if `GitHubLink` accepts
+    /// it, else why not. The scheme and the host are checked as typed; the rest is encoded
+    /// as a browser sends it (`encoded(_:)`), and that encoded text is the link `metab` is
+    /// given.
+    public static func link(_ text: String) -> Result<URL, Problem> {
+        let text = corrected(text)
         if text.isEmpty { return .failure(.empty) }
         if text.utf8.count > GitHubLink.maximumLength { return .failure(.tooLong) }
         guard let scheme = text.firstMatch(of: schemePattern)?.output.1 else { return .failure(.notAFullURL) }
@@ -218,24 +252,27 @@ public nonisolated enum OpenURLEntry {
 ///
 /// Open checks the text (`OpenURLEntry`) and asks `metab` about the link with the command
 /// every link sent to the app is resolved with, `metab LINK --present --dry-run --format
-/// json` (`PresentDryRun`). A plan closes the panel, and the app opens it as it opens such
-/// a link (`AppDelegate.open(_:with:)`): in the repository's mirror, always, never a
-/// checkout of it, as The File Menu in `docs/project/architecture/arch-open-modes.md`
-/// designs it. A problem with the text, a refusal, or an answer the app cannot read is
-/// said under the field, and the panel stays open so the text can be fixed. An edit
-/// while `metab` is asked drops its answer, and so do Cancel and closing the panel:
-/// each returns the link it stopped awaiting, whose dry run the app then stops, so the
-/// panel's dry runs run one at a time.
+/// json` (`PresentDryRun`). A plan leaves the panel open until the app presents the
+/// repository's window. A problem stays under the field so the text can be fixed. Edits,
+/// Cancel, and closing the panel drop the active submission and stop its pending work.
 public nonisolated struct OpenURLPanel: Equatable, Sendable {
+    /// Identifies one press of Open. The same URL can be submitted again after cancellation.
+    public struct Request: Equatable, Sendable {
+        public let link: URL
+        fileprivate let id = UUID()
+
+        fileprivate init(link: URL) { self.link = link }
+    }
+
     public enum Phase: Equatable, Sendable {
-        /// The field takes text, and Open checks it.
         case editing
-        /// `metab` is asked about this link.
-        case checking(URL)
-        /// It opened a plan, handed its link on, or was cancelled: nothing more happens.
+        case checking(Request)
+        case waitingForRuntime(Request)
+        case opening(Request)
         case closed
     }
 
+    /// The field's text: as typed, until Open writes a GitHub URL in full.
     public private(set) var text = ""
     public private(set) var phase = Phase.editing
     /// Why the text was not opened, said under the field until the next edit.
@@ -243,22 +280,36 @@ public nonisolated struct OpenURLPanel: Equatable, Sendable {
 
     public init() {}
 
-    /// Whether Open does anything: some text, and no answer awaited.
     public var canOpen: Bool { phase == .editing && !OpenURLEntry.trimmed(text).isEmpty }
 
-    public var isChecking: Bool { awaited != nil }
-
-    /// The link `metab` is asked about, whose answer the panel awaits.
-    public var awaited: URL? {
-        if case .checking(let link) = phase { return link }
-        return nil
+    public var canEdit: Bool {
+        switch phase {
+        case .editing, .checking, .waitingForRuntime: true
+        case .opening, .closed: false
+        }
     }
 
-    /// The field now holds `newText`. Any message goes, and an answer awaited is dropped:
-    /// the link it was for, whose dry run the app stops, or nil if none was awaited.
+    public var progress: String? {
+        switch phase {
+        case .checking: "Checking URL…"
+        case .waitingForRuntime: "Waiting for the server runtime…"
+        case .opening: "Opening repository…"
+        case .editing, .closed: nil
+        }
+    }
+
+    /// The submission whose outcome the panel awaits.
+    public var awaited: Request? {
+        switch phase {
+        case .checking(let request), .waitingForRuntime(let request), .opening(let request): request
+        case .editing, .closed: nil
+        }
+    }
+
+    /// Editing drops the submission it replaces, so the app can stop its work.
     @discardableResult
-    public mutating func edit(_ newText: String) -> URL? {
-        guard phase != .closed, newText != text else { return nil }
+    public mutating func edit(_ newText: String) -> Request? {
+        guard canEdit, newText != text else { return nil }
         let dropped = awaited
         text = newText
         message = nil
@@ -266,53 +317,67 @@ public nonisolated struct OpenURLPanel: Equatable, Sendable {
         return dropped
     }
 
-    /// Open was pressed: the link to ask `metab` about, which the panel now awaits, or nil,
-    /// with `message` saying why the text is not one.
-    public mutating func open() -> URL? {
+    /// Open was pressed: the submission to check, or nil with a reason under the field.
+    public mutating func open() -> Request? {
         guard canOpen else { return nil }
+        let corrected = OpenURLEntry.corrected(text)
+        if corrected != OpenURLEntry.trimmed(text) { text = corrected }
         switch OpenURLEntry.link(text) {
         case .success(let link):
-            phase = .checking(link)
+            let request = Request(link: link)
+            phase = .checking(request)
             message = nil
-            return link
+            return request
         case .failure(let problem):
             message = problem.message
             return nil
         }
     }
 
-    /// `metab` answered about `link`: the plan to open, which closes the panel, or nil.
-    /// A refusal or an unreadable answer is said under the field; an answer the panel no
-    /// longer awaits changes nothing. `metab` names the `metab` that answered.
-    public mutating func answered(_ answer: PresentAnswer, for link: URL, metab: String) -> PresentPlan? {
-        guard phase == .checking(link) else { return nil }
+    /// Marks a check as waiting for a runtime, or running on one. A stale request does nothing.
+    @discardableResult
+    public mutating func setWaitingForRuntime(_ waiting: Bool, for request: Request) -> Bool {
+        let mayWaitAgain = waiting && phase == .opening(request)
+        guard phase == .checking(request) || phase == .waitingForRuntime(request) || mayWaitAgain else { return false }
+        phase = waiting ? .waitingForRuntime(request) : .checking(request)
+        return true
+    }
+
+    /// Returns the plan to present. A refusal or unreadable answer stays under the field.
+    public mutating func answered(_ answer: PresentAnswer, for request: Request, metab: String) -> PresentPlan? {
+        guard phase == .checking(request) else { return nil }
         switch answer {
         case .plan(let plan):
-            phase = .closed
+            phase = .opening(request)
             return plan
         case .refused(let refusal):
-            message = GitHubLink.shortened(refusal.message, to: PresentAnswer.shownLineLength)
+            failed(GitHubLink.shortened(refusal.message, to: PresentAnswer.shownLineLength), for: request)
         case .unreadable(let reason, _):
             // The output stays in the app's log: it can hold a traceback.
-            message = "Metabrowser could not check this URL: \(metab) \(GitHubLink.shortened(reason, to: PresentAnswer.shownLineLength))."
+            failed(
+                "Metabrowser could not check this URL: \(metab) \(GitHubLink.shortened(reason, to: PresentAnswer.shownLineLength)).",
+                for: request)
         }
-        phase = .editing
         return nil
     }
 
-    /// The link being checked goes to the link queue instead, as when no `metab` can run
-    /// now, which closes the panel: the queue waits for one, as it does for a link sent to
-    /// the app.
-    public mutating func handOff() -> URL? {
-        guard case .checking(let link) = phase else { return nil }
-        phase = .closed
-        return link
+    /// The app could not check the submission or present its window. The field can be edited again.
+    public mutating func failed(_ reason: String, for request: Request) {
+        guard awaited == request else { return }
+        message = reason
+        phase = .editing
     }
 
-    /// Cancel, or the panel closed: nothing more happens. Returns the link whose answer was
-    /// awaited, whose dry run the app stops, or nil if none was.
+    /// The destination window is on screen and will show the rest of the work.
+    public mutating func presented(for request: Request) -> Bool {
+        guard phase == .opening(request) else { return false }
+        phase = .closed
+        return true
+    }
+
+    /// Cancel, or closing the panel, ends the pending submission.
     @discardableResult
-    public mutating func cancel() -> URL? {
+    public mutating func cancel() -> Request? {
         let dropped = awaited
         phase = .closed
         return dropped

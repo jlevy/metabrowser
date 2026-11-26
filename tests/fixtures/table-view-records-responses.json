@@ -1,0 +1,295 @@
+{
+  "answers": {
+    "schema?path=records.json": {
+      "status": 200,
+      "body": {
+        "type": "table_schema",
+        "path": "records.json",
+        "table": "",
+        "generation": "G",
+        "key": [],
+        "default_columns": [
+          "name",
+          "age",
+          "tags",
+          "meta",
+          "active"
+        ],
+        "fields": [
+          {
+            "name": "name",
+            "title": null,
+            "type": "text",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "age",
+            "title": null,
+            "type": "unknown",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": "values of several types: nulls first, then numbers, then text, then nested values; a filter value that reads as a number matches numbers only",
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "tags",
+            "title": null,
+            "type": "json",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": false,
+            "sort_note": "a nested mapping or list has no order",
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "meta",
+            "title": null,
+            "type": "json",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": false,
+            "sort_note": "a nested mapping or list has no order",
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "active",
+            "title": null,
+            "type": "boolean",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          }
+        ],
+        "references": [],
+        "referenced_by": []
+      }
+    },
+    "rows?limit=200&path=records.json": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "records.json",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "tags",
+          "meta",
+          "active"
+        ],
+        "rows": [
+          {
+            "key": "@1",
+            "cells": {
+              "name": "Ada",
+              "age": 36,
+              "tags": {
+                "json": [
+                  "math",
+                  "engines"
+                ]
+              },
+              "meta": {
+                "json": {
+                  "born": 1815,
+                  "notes": {
+                    "first": true
+                  }
+                }
+              }
+            }
+          },
+          {
+            "key": "@2",
+            "cells": {
+              "name": "Bob",
+              "age": "unknown",
+              "tags": {
+                "json": []
+              },
+              "active": true
+            }
+          },
+          {
+            "key": "@3",
+            "cells": {
+              "name": "Cy",
+              "age": 41.5,
+              "meta": null
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 3,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
+      }
+    },
+    "record?generation=G&key=%401&path=records.json": {
+      "status": 200,
+      "body": {
+        "type": "table_record",
+        "path": "records.json",
+        "table": "",
+        "key": "@1",
+        "positional": true,
+        "generation": "G",
+        "generation_moved": false,
+        "cells": {
+          "name": "Ada",
+          "age": 36,
+          "tags": {
+            "json": [
+              "math",
+              "engines"
+            ]
+          },
+          "meta": {
+            "json": {
+              "born": 1815,
+              "notes": {
+                "first": true
+              }
+            }
+          }
+        },
+        "referenced_by": []
+      }
+    },
+    "rows?limit=200&order=asc&path=records.json&sort=age": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "records.json",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "tags",
+          "meta",
+          "active"
+        ],
+        "rows": [
+          {
+            "key": "@1",
+            "cells": {
+              "name": "Ada",
+              "age": 36,
+              "tags": {
+                "json": [
+                  "math",
+                  "engines"
+                ]
+              },
+              "meta": {
+                "json": {
+                  "born": 1815,
+                  "notes": {
+                    "first": true
+                  }
+                }
+              }
+            }
+          },
+          {
+            "key": "@3",
+            "cells": {
+              "name": "Cy",
+              "age": 41.5,
+              "meta": null
+            }
+          },
+          {
+            "key": "@2",
+            "cells": {
+              "name": "Bob",
+              "age": "unknown",
+              "tags": {
+                "json": []
+              },
+              "active": true
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 3,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
+      }
+    },
+    "schema?path=mixed.json": {
+      "status": 422,
+      "body": {
+        "type": "table_error",
+        "path": "mixed.json",
+        "code": "source_unreadable",
+        "error": "This document is not a list of records: item 2 of its list is text, not a mapping."
+      }
+    }
+  }
+}

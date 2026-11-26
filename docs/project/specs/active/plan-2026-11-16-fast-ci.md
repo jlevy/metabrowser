@@ -136,6 +136,7 @@ It becomes four targets that CI can also run one at a time:
     ([How Coverage Is Kept](#how-coverage-is-kept)). `tests/conftest.py` gives it to
     every test that uses the `chrome_profile` fixture, so the Chrome tier needs no list,
     and that fixture is its only source.
+
 - **The three pytest targets partition the suite.** Their expressions cover every
   combination of the two markers, so no test is in none of them or in two.
   `tests/suite_gates.py` holds each marker to its meaning, as it fails a module that
@@ -144,13 +145,30 @@ It becomes four targets that CI can also run one at a time:
   - a test marked `chrome` that does not use `chrome_profile` fails, so no test reaches
     one interpreter by being marked;
   - a `serial` marker without a reason fails.
+
 - **`--dist loadfile`** keeps a module’s tests on one worker and in order, so
   module-scoped fixtures behave as they do today.
   The longest module is 56 seconds, so it does not limit the balance.
+
 - **`--shard=I/N`**, a new option in `tests/`, keeps the collected tests whose index, in
   node-ID order, is `I` modulo `N`. The parts are disjoint and their union is the tier
   by construction, and a unit test holds that for the option itself.
   It needs no record of durations and no dependency.
+
+  *2026-11-22: superseded (bead `mb-j5j2`).* Both reasons stopped holding.
+  One Chrome test grew to 94 seconds, so rank in node-ID order put 360 of the Chrome
+  tier’s 790 seconds of tests in one part of four (run 45062416967), and the nightly
+  soak’s `make ci-report --check` failed on that part, on the first goldens part, which
+  a golden’s size no longer balanced (568 seconds of 844), and on a `unit` part.
+  A stand-in for a unit’s time drifts from it as the suite changes, so the parts are now
+  dealt by the seconds CI measured: `devtools/shard_weights.py` deals each tier heaviest
+  first to the lightest part, from a committed record that `make shard-weights`
+  refreshes from a run’s logs.
+  The parts are still disjoint and cover the tier by construction, and the same in every
+  process, since they depend only on the tests selected and the committed record.
+  Replaying that run’s times through the new deal gives Chrome parts of 196 to 200
+  seconds of tests where they were 120 to 328.
+
 - **`devtools/run_goldens.py`** runs one `tryscript run <file>` per golden from a queue
   of four workers, prints each file’s output whole, records each file’s time, and fails
   unless every file of the glob reported a verdict.
@@ -162,6 +180,9 @@ either.
 
 ### Jobs
 
+*2026-11-22: for a pull request while `main` is green,
+[The Pull-Request Path](#the-pull-request-path) supersedes this table.*
+
 For a pull request to `main`:
 
 | Job | Count | What it runs | Minutes each |
@@ -170,12 +191,12 @@ For a pull request to `main`:
 | `lint` | 1 | `make lint-check audit` | 1.5 (measured) |
 | `distribution` | 1 | `make build` | 0.7 (measured) |
 | `unit` | 8 | `make test-parallel SHARD=I/2` on 3.12, 3.13, 3.14, and 3.14t | 1.9 to 4.7 (measured; proposed as 4 unsharded jobs at 3.1 to 5.0, est.) |
-| `goldens` | 4 | `make test-goldens`, then `make test-serial`, on the same four | 2.5 to 3.2 (est.) |
+| `goldens` | 8 | `make test-goldens SHARD=I/2`, then `make test-serial SHARD=I/2`, on the same four | 3.4 (est.; one job per interpreter took 5.0 to 5.8 at the 90th percentile once the goldens grew to 119 files) |
 | `chrome` | 4 | `make test-chrome SHARD=I/4` on 3.13 | 1.9 to 2.4 (est.) |
 | `admitted-git` | 2 | `make test-admitted-git` on Git 2.43.7 and 2.50.1 | 2.5 to 3.0 (est.) |
 | `ci-ok` | 1 | fails unless every job above succeeded | 0.1 (est.) |
 
-That is 22 jobs, against 9 today.
+That is 26 jobs, against 9 today.
 The proposal had 18, with `unit` unsharded at an estimated wall clock of 4 to 5 minutes;
 Phase 1’s measurement split it in two, by the rule in [Time Limits](#time-limits), and
 [Phase 2 Measurements](#phase-2-measurements) has the times.
@@ -403,6 +424,11 @@ tier whole at a median over the 4.5 minutes that splits it, on every interpreter
 (`--shard-by=file`), as a worker does.
 
 ### Path Classes
+
+*2026-11-22: decided for the Chrome tier, differently.*
+[The Pull-Request Path](#the-pull-request-path) skips the Chrome tier by the paths a
+change touches; the light class below, which would also skip `admitted-git` and three
+interpreters, was not built, since every pull request now runs one interpreter.
 
 Phase 3, and only if the owner wants it (Q7). The `plan` job classes a pull request as
 **light** when every changed path is under `docs/`, `apps/macos/`, or `.tbd/`, or is a
@@ -964,6 +990,91 @@ result the state rule gives:
   The shard count and the time limits are how the design absorbs that.
 - **A developer machine under xdist** runs one worker per processor, which is heavy
   where several agents share a machine; `PYTEST_WORKERS` lowers it.
+
+### The Pull-Request Path
+
+*Added 2026-11-22 (bead `mb-j5j2`).* A pull request’s run took 7.0 minutes (run
+45063672769), and the owner gave three directions that day, which this section carries
+out. They supersede [Jobs](#jobs) and the pull-request column of
+[How Coverage Is Kept](#how-coverage-is-kept) for a pull request while `main` is green,
+and they decide [Path Classes](#path-classes) for the Chrome tier.
+
+> We should aim to have a much faster routine CI cycle.
+> 6 minutes is too long.
+> It should be, ideally, more like 3. unless There’s a really strong reason that that’s
+> difficult.
+
+> can you be sure these longer-lived tests are only run occasionally, not blocking CI on
+> a routine basis?
+
+> we should not be paying Chrome testing costs on CI in terms of time if all we’re
+> changing is the CLI or backend things that may not need Chrome testing.
+
+The `plan` job now decides a **path** for the whole run, where before it decided only
+the Chrome tier’s interpreters:
+
+|  | Main path | Pull-request path |
+| --- | --- | --- |
+| When | a push to `main`; a pull request while `main` is red | a pull request while `main` is green |
+| Interpreters, every tier | `PYTHONS` | `PR_CHROME_PYTHON` |
+| Chrome tier | whole (`make test-chrome`) | without its slow tests (`make test-chrome-fast`), and only when the change touches a browser path |
+| `admitted-git` | every admitted release | the lowest, which is the security floor |
+| Parts | fewer, longer | more, shorter, on the one interpreter |
+
+- **Slow Chrome tests** are those measured at `SLOW_TEST_S` or more in
+  `devtools/shard_weights.json` (`tests/suite_tiers.py`, `--skip-slow`). The owner chose
+  that they run on every push to `main`, in the nightly soak, and in the release gate
+  (`make test`, `make verify`), and not on a pull request.
+  They are derived from the measurements, not marked, so a refresh keeps the set
+  current, and a test with no measurement yet runs on its own pull request.
+- **Browser paths** are `BROWSER_PATHS` in `devtools/ci_plan.sh`, each with its reason:
+  what the browser loads, the Python that builds the shell page and what it writes into
+  it, the Chrome tests and the support they share, and what decides and runs the tier.
+  A pull request that touches none of them runs no Chrome job, and `ci-ok` accepts that
+  skip only on the `plan` job’s `chrome=none`. A backend change can still break a Chrome
+  test, because each drives a real server.
+  The net is the one [The browser tier’s interpreters](#decisions-and-open-questions)
+  already relies on: every push to `main` runs the whole tier on every interpreter, and
+  while `main` is red every pull request does.
+- **One interpreter** for the unit, goldens, and serial tiers follows the precedent of
+  decision 3 for the Chrome tier, and for the same reason.
+  A break only another interpreter shows is found on `main`, as a Chrome one was.
+- **The parts** each path deals a tier into are constants in `devtools/ci_plan.sh`,
+  beside the measurements that set them.
+
+`devtools/check_ci.py` holds every tier’s interpreters, parts, and Gits to the `plan`
+job’s outputs and the Chrome job to the plan’s target and condition, and
+`tests/test_ci_plan.py` holds that the main path narrows nothing: all of `PYTHONS`,
+every part, the whole Chrome tier, and every admitted Git.
+
+**What it reaches, and what three minutes needs.** A run’s wall clock is about 30
+seconds to start, 10 for the `plan` job the tiers now wait for, its slowest job, and 10
+of `ci-ok`. On the pull-request path’s first run (45069289704, with `unit` in three
+parts):
+
+| Job | Seconds, each part | Was, per job (run 45063672769) |
+| --- | --- | --- |
+| `unit` | 150 to 189 | up to 316 |
+| `goldens and serial` | 115 to 133 | up to 279 |
+| `chrome`, without the slow tests | 148 to 160; none when no browser path changed | up to 372 |
+| `admitted-git`, lowest release | 146 and 163 | up to 250 |
+| `lint` | 136 | the same |
+
+That is about four minutes where it was seven, when no job waits for a runner.
+A job spends 45 to 60 seconds before its first test: 16 to 30 on checkout and setup,
+then `make install` and pytest’s collection of the whole suite, which each pytest job
+repeats.
+Two things keep the slowest job above the 130 seconds that three minutes leaves:
+
+- One file, `tests/test_github_pulls.py`, takes about 112 seconds on its worker, in both
+  the `unit` and `admitted-git` jobs, and a file runs on one worker, in order.
+  No number of parts brings its part under about 175 seconds; splitting the file would
+  bring `unit` to about 140.
+- Collection costs each pytest job 27 to 40 seconds.
+  Passing a part only its own files would need the plan to know every file a tier’s
+  tests live in before collecting, which only collection says; it is not done here.
+
+`make ci-report` gives the times the path reaches as they change.
 
 ## Decisions and Open Questions
 

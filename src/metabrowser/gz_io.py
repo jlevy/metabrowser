@@ -46,6 +46,7 @@ class ArtifactCompressionError(ContentReadError, OSError):
 
     code = "content_unreadable"
     http_status = 422
+    reader_message = "This compressed file is damaged."
 
 
 class ArtifactDecompressionLimitError(ArtifactCompressionError):
@@ -53,6 +54,7 @@ class ArtifactDecompressionLimitError(ArtifactCompressionError):
 
     code = "content_too_large"
     http_status = 413
+    reader_message = "This compressed file is too large to read here."
 
 
 class ArtifactDecompressionTimeoutError(ArtifactDecompressionLimitError):
@@ -60,6 +62,7 @@ class ArtifactDecompressionTimeoutError(ArtifactDecompressionLimitError):
 
     code = "content_timeout"
     http_status = 504
+    reader_message = "This compressed file took too long to read."
 
 
 class _BoundedCompressedReader(io.RawIOBase):

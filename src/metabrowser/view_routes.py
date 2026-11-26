@@ -20,8 +20,16 @@ COMMIT_ROUTE_PREFIX = "/commit/"
 PULL_ROUTE_PREFIX = "/pull/"
 # The list of a repository's pull requests, with `?state=` for a filter, as on GitHub.
 PULLS_ROUTE = "/pulls"
-# Conversation is the PR page itself. Changes and Checks have their own addresses.
-PULL_ROUTE_TABS = ("", "files", "checks")
+# `/pull/<n>` is the PR's front page: Guided Review when its description carries a guide,
+# Conversation otherwise. Every tab also has its own address, Conversation's among them,
+# so a link to a guided review's Conversation names it (pull-page.js, `shownTab`).
+PULL_ROUTE_TABS = ("", "conversation", "docs", "files", "guided", "checks")
+# A native stack's page: `/stack/<n>` is its front page, Guided Review when a member's
+# description carries the stack's guide and Changes otherwise; Changes names one file as
+# `/stack/<n>/changes/<path>` (stack-page.js, `shownTab`). Its files are the header's Diff
+# summary, as on a pull request's page, so it has no Files tab.
+STACK_ROUTE_PREFIX = "/stack/"
+STACK_ROUTE_TABS = ("", "guided", "docs", "changes")
 # A pull-request number as the GitHub URL reducer admits one.
 _PULL_NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _VIEW_ROUTE_PREFIX_BYTES = VIEW_ROUTE_PREFIX.encode()
@@ -214,7 +222,7 @@ def _pull_file_segments(file: str) -> list[str]:
 
 
 def format_pull_href(number: int, tab: str = "", file: str = "") -> str:
-    """Return the address of a PR's Conversation, Changes or Checks tab.
+    """Return the address of a PR's Conversation, Changes, Guided Review or Checks tab.
 
     A changed file has an address under ``/pull/<n>/files/`` with each segment
     percent-encoded.
@@ -237,18 +245,18 @@ def format_pull_href(number: int, tab: str = "", file: str = "") -> str:
     return head + "/" + "/".join(encoded)
 
 
-def decode_safe_pull_route(raw_path: bytes) -> PullRoute | None:
-    """Decode a pull-request page address into a :class:`PullRoute`, or ``None``.
+def _decode_tabbed(
+    raw_path: bytes, prefix: str, tabs: tuple[str, ...], file_tab: str
+) -> tuple[int, str, str] | None:
+    """A number, a tab of *tabs*, and a path under *file_tab*, as a page address spells them.
 
-    Whether the pull request is cached, or the server has any, is the pull route's
-    answer, not this gate's, and whether its files include *path* is the file list's: a
-    path is never looked up on disk. A trailing slash names the same page, but not a
-    file, which has no trailing slash. The number and the tab are spelled literally.
+    A trailing slash names the same page, but not a file, which has no trailing slash. The
+    number and the tab are spelled literally; each path segment is percent-decoded once.
     """
 
-    if not raw_path.startswith(PULL_ROUTE_PREFIX.encode()):
+    if not raw_path.startswith(prefix.encode()):
         return None
-    segments = raw_path[len(PULL_ROUTE_PREFIX) :].split(b"/")
+    segments = raw_path[len(prefix) :].split(b"/")
     if len(segments) in (2, 3) and segments[-1] == b"":
         segments.pop()
     try:
@@ -258,9 +266,9 @@ def decode_safe_pull_route(raw_path: bytes) -> PullRoute | None:
         return None
     if (
         _PULL_NUMBER.fullmatch(number) is None
-        or tab not in PULL_ROUTE_TABS
+        or tab not in tabs
         or (len(segments) >= 2 and not tab)
-        or (len(segments) > 2 and tab != "files")
+        or (len(segments) > 2 and tab != file_tab)
     ):
         return None
     inner: list[str] = []
@@ -275,7 +283,63 @@ def decode_safe_pull_route(raw_path: bytes) -> PullRoute | None:
         file = "/".join(_pull_file_segments("/".join(inner))) if inner else ""
     except (UnicodeDecodeError, ValueError):
         return None
-    return PullRoute(int(number), tab, file)
+    return int(number), tab, file
+
+
+def decode_safe_pull_route(raw_path: bytes) -> PullRoute | None:
+    """Decode a pull-request page address into a :class:`PullRoute`, or ``None``.
+
+    Whether the pull request is cached, or the server has any, is the pull route's
+    answer, not this gate's, and whether its files include *path* is the file list's: a
+    path is never looked up on disk. A trailing slash names the same page, but not a
+    file, which has no trailing slash. The number and the tab are spelled literally.
+    """
+
+    decoded = _decode_tabbed(raw_path, PULL_ROUTE_PREFIX, PULL_ROUTE_TABS, "files")
+    return None if decoded is None else PullRoute(*decoded)
+
+
+class StackRoute(NamedTuple):
+    """A native stack's page, its selected tab, and an optional path within its changes."""
+
+    number: int
+    tab: str
+    file: str
+
+
+def format_stack_href(number: int, tab: str = "", file: str = "") -> str:
+    """Return the address of a stack's front page, Guided Review, Docs, or Changes tab.
+
+    A file of its comparison has an address under ``/stack/<n>/changes/`` with each segment
+    percent-encoded, as a pull request's has under ``/pull/<n>/files/``.
+    """
+
+    if _PULL_NUMBER.fullmatch(str(number)) is None or tab not in STACK_ROUTE_TABS:
+        raise ValueError("stack route requires a stack number and a known tab")
+    head = f"{STACK_ROUTE_PREFIX}{number}" + (f"/{tab}" if tab else "")
+    if not file:
+        return head
+    if tab != "changes":
+        raise ValueError("stack route names a file only in Changes")
+    try:
+        encoded = [
+            quote_from_bytes(segment.encode("utf-8"), safe="")
+            for segment in _pull_file_segments(file)
+        ]
+    except UnicodeEncodeError as exc:
+        raise ValueError("stack route names a file by a normalized path") from exc
+    return head + "/" + "/".join(encoded)
+
+
+def decode_safe_stack_route(raw_path: bytes) -> StackRoute | None:
+    """Decode a stack page address into a :class:`StackRoute`, or ``None``.
+
+    The grammar is the pull-request page's (:func:`decode_safe_pull_route`) with the stack's
+    tabs, a file named only in Changes. Whether the stack exists is the stack route's answer.
+    """
+
+    decoded = _decode_tabbed(raw_path, STACK_ROUTE_PREFIX, STACK_ROUTE_TABS, "changes")
+    return None if decoded is None else StackRoute(*decoded)
 
 
 def parse_pulls_selection(selection: str) -> str | None | Literal[False]:

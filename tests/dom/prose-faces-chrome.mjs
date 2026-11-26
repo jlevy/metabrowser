@@ -65,6 +65,8 @@ const check = (label, ok, detail = "") => {
 // the move, which ends the node ID Chrome gave the node, came between DOM.querySelector
 // and CSS.getPlatformFontsForNode ("Could not find node with given id", in CI). So a probe
 // waits for its text outside any inert subtree, where the shell leaves it.
+// A commit body also holds hidden plain text in the pane while its Markdown arrives.
+// Wait for the visible text holder, which can replace that placeholder.
 const MARK = `async (probes, waitMs, pollMs) => {
   const unstaged = (node) => node.closest("[inert]") === null;
   const holder = (probe) => {
@@ -73,7 +75,7 @@ const MARK = `async (probes, waitMs, pollMs) => {
     return [scope, ...scope.querySelectorAll("*")].find((node) =>
       [...node.childNodes].some(
         (child) => child.nodeType === 3 && child.textContent.includes(probe.text),
-      ),
+      ) && getComputedStyle(node).visibility === "visible",
     ) ?? null;
   };
   // The probe's h2, by its text, when the probe names one.
@@ -140,7 +142,9 @@ const PLACE = `(async () => {
   await mb.ensureKindAssets("diff");
   await mb.ensureAsset("inert-html");
   const inert = window.MetabrowserInertHtml;
-  const { appendBlocks, sanitizeBlock } = await import("/plugin-static/diff/diff-markdown.js");
+  const { blockRow, changeRuns, sanitizeBlock } = await import(
+    "/plugin-static/diff/diff-markdown.js"
+  );
   const place = (name, chain, content) => {
     const outer = document.createElement("div");
     outer.setAttribute("data-face-place", name);
@@ -167,19 +171,20 @@ const PLACE = `(async () => {
     }
   }
   place("chrome-prose", [["div", "github-pull-text chrome-prose"], ["div", "metabrowser-kpress-host"]], article);
-  // A Markdown file in Changes: diff-markdown.js's article and block rows, in its section
-  // of the diff view, in the pull request page.
+  // A Markdown file in Changes: diff-markdown.js's article and block rows, in their change
+  // and run, in its section of the diff view, in the pull request page.
   const rendered = document.createElement("article");
   rendered.className = "kpress kpress-inert diff-markdown";
   const blocks = document.createDocumentFragment();
   const template = document.createElement("template");
-  appendBlocks(
-    blocks,
-    [
-      { kind: "added", html: "<h2>A section among the changes</h2>" },
-      { kind: "added", html: "<p>A Markdown file among a pull request's changes.</p>" },
-    ],
-    (html) => sanitizeBlock(html, inert, template, document, () => false),
+  const build = (html) => sanitizeBlock(html, inert, template, document, () => false);
+  blocks.append(
+    ...changeRuns(
+      [
+        { kind: "added", html: "<h2>A section among the changes</h2>" },
+        { kind: "added", html: "<p>A Markdown file among a pull request's changes.</p>" },
+      ].map((block) => blockRow(block, build)),
+    ),
   );
   rendered.append(blocks);
   place(
@@ -205,7 +210,7 @@ const PLACE = `(async () => {
   place(
     "md-body-message",
     [],
-    view('<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>'),
+    view('<div class="preview-empty" role="alert">Could not display this view. Reload the page to try again.</div>'),
   );
   place(
     "md-body-chrome-prose",

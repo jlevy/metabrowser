@@ -20,10 +20,11 @@ Before the shared rows the Diff summary's content started 2 px left of the Pulls
 ``tests/dom/diff-summary-chrome.mjs`` opens the Diff summary in the running app, on a served
 patch five folders deep and on one of 600 files, and this holds (mb-hi4l):
 
-- the tree's first level starts one indentation step, ``--tree-indent``, in from the header,
-  its chevron from the header's chevron and its name from the header's words, and each level
-  one step more, at every depth to five, in a patch's toolbar (the commit page's and the pull
-  request header's are held by ``tests/test_git_commit_summary_chrome.py`` and
+- the header's chevron comes after its words, as on every toggle that expands a diff summary
+  (mb-f0pz), and the tree's first level starts one indentation step, ``--tree-indent``, in
+  from the header, its chevron from the header's words, and each level one step more, at
+  every depth to five, in a patch's toolbar (the commit page's and the pull request header's
+  are held by ``tests/test_git_commit_summary_chrome.py`` and
   ``tests/test_github_pull_header_chrome.py``);
 - opened, the tree has no scroll bar and no scroll of its own: it is as tall as its rows, in
   the page's flow;
@@ -32,11 +33,12 @@ patch five folders deep and on one of 600 files, and this holds (mb-hi4l):
 - the header starts collapsed with no tree, and the arrows move the focus ring along the rows.
 
 Before, the first level started 4 px in from the header, with nested levels 16 px apart, and
-the tree scrolled in a box at most 60vh tall.
+the tree scrolled in a box at most 60vh tall. While the header led with its chevron, a row's
+chevron and name started one step in from the header's chevron and words.
 
 The served folder is a Git repository too, and on the patch and on a commit's page, where
-the diff's toolbar holds the layout control alone, the session reads the chrome around the
-diff, and this holds:
+the diff's toolbar ends with its choosers' group after the Diff summary or the File type
+control, the session reads the chrome around the diff, and this holds:
 
 - the toolbar draws no rule under itself, and the first file card, with its own border,
   starts the cards' gap, 12 px, below it (docs/design-system.md, "Diff Layout Control";
@@ -320,7 +322,6 @@ def _header_inks(paint: dict[str, Any]) -> list[str]:
                 f"{where}: {count['text']!r} at {count['contrast']}:1 on {count['ground']}"
             )
     if [(text, hidden) for text, hidden, _, _ in paint["marks"]] != [
-        ("·", "true"),
         (",", None),
         (",", None),
         ("·", "true"),
@@ -331,15 +332,15 @@ def _header_inks(paint: dict[str, Any]) -> list[str]:
             broken.append(f"{where}: {text!r} at {color}, not --muted")
     if paint["words"] != tokens["--text"]:
         broken.append(f"{where}: the words at {paint['words']}, not --text")
-    if [(text, weight) for text, _, weight in paint["numbers"]] != [("4", BOLD)]:
+    # The file count leads the page's size line, above the header ("Change Size Line"), bold
+    # in the line's ink, as the size's numbers after it are once the size is known.
+    numbers = paint["numbers"]
+    if not numbers or numbers[0][0] != "4" or any(weight != BOLD for _, _, weight in numbers):
         broken.append(f"{where}: the file count {paint['numbers']}")
     for text, color, _ in paint["numbers"]:
         if color != tokens["--text"]:
             broken.append(f"{where}: number {text} at {color}, not --text")
-    if (
-        paint["label"]
-        != "4 files changed: 1 added, 1 deleted, 2 modified; 3 lines added, 1 deleted"
-    ):
+    if paint["label"] != "1 added, 1 deleted, 2 modified; 3 lines added, 1 deleted":
         broken.append(f"{where}: label {paint['label']!r}")
     return broken
 
@@ -418,15 +419,13 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     step = opened["step"]
     header = opened["header"]
     rows = opened["rows"]
-    # Every depth from one to five, each one step in from the one above it, and the first one
-    # step in from the header: its chevron from the header's chevron, its name from its words.
+    # The header's chevron comes after its words (mb-f0pz). Every depth from one to five,
+    # each one step in from the one above it, and the first one step in from the header: its
+    # chevron from the header's words.
+    assert header["chevron"] >= header["wordsEnd"] - TOLERANCE, header
     assert {row["level"] for row in rows} >= {1, 2, 3, 4, 5}, rows
     for row in rows:
-        assert abs(row["lead"] - header["chevron"] - step * row["level"]) <= TOLERANCE, (
-            row,
-            header,
-        )
-        assert abs(row["name"] - header["words"] - step * row["level"]) <= TOLERANCE, (
+        assert abs(row["lead"] - header["words"] - step * row["level"]) <= TOLERANCE, (
             row,
             header,
         )
@@ -461,12 +460,16 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
 
     # The diff's toolbar draws no rule under itself: the first card's border, the cards' gap
     # below it, is the line, on a patch, where the toolbar leads with the Diff summary, and
-    # on a commit's page, where it holds the layout control alone (mb-a073). Before, both
-    # drew a 1px rule 12 px above the card's.
+    # on a commit's page, where it holds the File type control, for a commit of more than
+    # one file (mb-axjt), and the layout control (mb-a073). Before, both drew a 1px rule
+    # 12 px above the card's. The choosers are one group at the toolbar's end, Diff | Current
+    # before Split | Unified.
     patch = measured["nested"]["collapsed"]["chrome"]
     commit_page = measured["commit"]
-    assert patch["toolbar"]["holds"] == ["diff-summary", "diff-layout-control"], patch
-    assert commit_page["toolbar"]["holds"] == ["diff-layout-control"], commit_page
+    assert patch["toolbar"]["holds"] == ["diff-summary", "diff-toolbar-end"], patch
+    assert commit_page["toolbar"]["holds"] == ["diff-type-control", "diff-toolbar-end"], commit_page
+    for toolbar in (patch["toolbar"], commit_page["toolbar"]):
+        assert toolbar["ends"] == ["diff-show-control", "diff-layout-control"], toolbar
     broken = _toolbar_draws_no_rule(patch["toolbar"], "patch") + _toolbar_draws_no_rule(
         commit_page["toolbar"], "commit"
     )
@@ -478,18 +481,18 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     broken += _counts_read_bold(commit_page["counts"]["summary"], "commit's Diff summary")
     broken += _counts_read_bold(commit_page["counts"]["commits"], "Commits tally")
     assert broken == [], (broken, patch, commit_page)
-    # The commit's header bolds its file count and each status's: 4 files changed, 1 A, 1 D,
-    # 2 M.
+    # The commit's header bolds each status's count, 1 A, 1 D, 2 M; its file count is on the
+    # page's size line above it ("Change Size Line").
     numbers = [run["text"] for run in commit_page["counts"]["summary"] if run["number"]]
-    assert numbers == ["4", "1", "1", "2"], commit_page["counts"]["summary"]
-    # It reads "4 files changed · 1 A, 1 D, 2 M · +3 −1", each status count bold in its
+    assert numbers == ["1", "1", "2"], commit_page["counts"]["summary"]
+    # It reads "1 A, 1 D, 2 M · +3 −1", each status count bold in its
     # status's ink, number and letter, and its dots and commas muted, in both themes (mb-vb51,
     # mb-8iwn). Before, it read "4 changed files (1 added, 1 removed, 2 modified)", its
     # statuses in words and all of them muted, and then each count in the line's ink and
     # each letter at the line's weight.
     paints = commit_page["paint"]
     assert [paint["theme"] for paint in paints] == ["light", "dark"], paints
-    assert all(paint["text"] == "4 files changed·1 A, 1 D, 2 M·+3−1" for paint in paints), paints
+    assert all(paint["text"] == "1 A, 1 D, 2 M·+3−1" for paint in paints), paints
     inks = [problem for paint in paints for problem in _header_inks(paint)]
     assert inks == [], (inks, paints)
     # The two themes ink the status counts apart, so each was read in its own.

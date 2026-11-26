@@ -171,10 +171,11 @@ async function importSource(relative) {
       { id: "media", label: "Media" },
       { id: "other", label: "Other" },
     ],
-    // The order a view lists groups in; the same as the registry's here.
+    // The order a view lists groups in; the same as the registry's here. Each group's
+    // icon is its category's (file_type_filters.py, _REPRESENTATIVE_FAMILIES).
     displayGroups: [
-      { id: "media", label: "Media" },
-      { id: "other", label: "Other" },
+      { id: "media", label: "Media", icon: "monitor" },
+      { id: "other", label: "Other", icon: "file" },
     ],
     families: [
       { id: "images", label: "Images", groupId: "media", extensions: [".png"] },
@@ -234,6 +235,12 @@ async function importSource(relative) {
     breakdownModel.groups.map((group) => group.id).join(",") === "media,other" &&
       breakdownModel.rows.map((row) => row.key).join(",") ===
         "family:images,,family:log-files,(none)",
+  );
+  // Each group's heading names its category and carries the category's icon by name.
+  check(
+    "each group carries its category's icon",
+    breakdownModel.groups.map((group) => `${group.id}:${group.icon}`).join(",") ===
+      "media:monitor,other:file",
   );
   check(
     "singleton file-type families are disclosable",
@@ -691,7 +698,7 @@ async function importSource(relative) {
   check(
     "the legend states the route's families by name and share, then Other",
     legendText(byFilesLegend) ===
-      "JSON 24% | YAML 17% | Markdown 15% | TypeScript 6% | Python 3.3% | Other 34.7%",
+      "JSON 24% | YAML 17% | Markdown 15% | TypeScript 6% | Python 3.3% | JavaScript 2.5% | Log files 2.1% | Other 30.1%",
     legendText(byFilesLegend),
   );
   check(
@@ -721,14 +728,32 @@ async function importSource(relative) {
   check(
     "the legend follows the measure",
     legendText(legendOf(legendRollup, true, "size")) ===
-      "Markdown 30% | TypeScript 20% | Python 15% | JavaScript 12% | JSON 10% | Other 13%",
+      "Markdown 30% | TypeScript 20% | Python 15% | JavaScript 12% | JSON 10% | YAML 5% | Log files 2.5% | Other 5.5%",
     legendText(legendOf(legendRollup, true, "size")),
   );
   check(
     "the legend follows Show ignored",
     legendText(legendOf(legendRollup, false, "files")) ===
-      "YAML 21.3% | Markdown 18.8% | TypeScript 7.5% | JSON 5% | Python 4.1% | Other 43.4%",
+      // Rust is 8 of the 800 unignored files, exactly the floor, so it is named here alone.
+      "YAML 21.3% | Markdown 18.8% | TypeScript 7.5% | JSON 5% | Python 4.1% | JavaScript 3.1% | Log files 2.6% | Rust 1% | Other 36.6%",
     legendText(legendOf(legendRollup, false, "files")),
+  );
+  // The floor is inclusive on both sides, since the legend never names what Details folds:
+  // Rust, 8 of the 800 unignored files, is named and is a row of its own, where it is 0.8%
+  // of all 1,000 files and folded.
+  const unignoredLegend = legendOf(legendRollup, false, "files");
+  const unignoredRows = new Set(
+    unignoredLegend.rows.filter((row) => row.kind === "family").map((row) => row.key),
+  );
+  const namedAtTheFloor = unignoredLegend.legend.filter((entry) => entry.key.includes("rust"));
+  check(
+    "a family at exactly the share floor is named by the legend and is a row Details shows",
+    namedAtTheFloor.length === 1 &&
+      unignoredLegend.legend
+        .filter((entry) => entry.kind === "family")
+        .every((entry) => unignoredRows.has(entry.key)) &&
+      !byFilesLegend.rows.some((row) => row.key === namedAtTheFloor[0].key),
+    JSON.stringify({ named: namedAtTheFloor, rows: [...unignoredRows] }),
   );
   const withLegend = (legend) =>
     modelModule.normalizeRollupEnvelope({ ...manyTypesRollup, file_type_legend: legend });

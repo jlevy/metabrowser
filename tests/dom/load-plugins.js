@@ -115,6 +115,7 @@ load(
   path.join(repoRoot, "src", "metabrowser", "static", "filter-controls.js"),
   "filter-controls.js",
 );
+load(path.join(repoRoot, "src", "metabrowser", "static", "menus.js"), "menus.js");
 load(path.join(repoRoot, "src", "metabrowser", "static", "icons.js"), "icons.js");
 
 if (typeof sandbox.metabrowser?.registerView !== "function") {
@@ -124,44 +125,6 @@ if (sandbox.metabrowser.foreignHostValue) {
   fail("plugin-sdk.js retained a foreign namespace collision");
 }
 
-// ── 1b. Install a tracking Proxy on mb.builtins ───────────────────
-//
-// Enforces the "render-time-only namespace rule" from
-// docs/plugins.md: a plugin's top-level IIFE MUST NOT
-// dereference another plugin's mb.builtins.<other> namespace unless
-// <other> has already loaded. Anything that violates the rule
-// resolves to `undefined` during shim load, and we record the bad
-// access so the Python test can fail.
-//
-// Reads inside renderView callbacks happen at render time (never
-// triggered by this shim), so they pass through silently — exactly
-// matching the rule.
-const _builtinReads = []; // {plugin, key, hadValue}
-let _currentLoadingPlugin = null;
-const _builtinsTarget = {};
-const _builtinsProxy = new Proxy(_builtinsTarget, {
-  get(target, key) {
-    if (_currentLoadingPlugin !== null && typeof key === "string" && key !== "constructor") {
-      _builtinReads.push({
-        plugin: _currentLoadingPlugin,
-        key: key,
-        hadValue: target[key] !== undefined,
-      });
-    }
-    return target[key];
-  },
-  set(target, key, value) {
-    target[key] = value;
-    return true;
-  },
-  has(target, key) {
-    return key in target;
-  },
-});
-sandbox.metabrowser.builtins = _builtinsProxy;
-
-// Wrap the existing load() so we know which plugin is executing.
-const _rawLoad = load;
 const _moduleCache = new Map();
 
 // One module per file, created unlinked. Linking the entry module links its whole graph:
@@ -192,8 +155,7 @@ function linkImport(specifier, referencingModule) {
   return moduleFor(path.resolve(path.dirname(referencingModule.identifier), specifier));
 }
 
-async function loadPlugin(filepath, label, pluginName) {
-  _currentLoadingPlugin = pluginName;
+async function loadPlugin(filepath, label) {
   try {
     const module = moduleFor(filepath);
     if (module.status === "unlinked") {
@@ -202,8 +164,6 @@ async function loadPlugin(filepath, label, pluginName) {
     await module.evaluate();
   } catch (err) {
     errors.push({ file: label, error: String(err?.message ? err.message : err) });
-  } finally {
-    _currentLoadingPlugin = null;
   }
 }
 
@@ -289,9 +249,9 @@ async function main() {
       if (!fs.existsSync(extraPath)) {
         continue;
       }
-      loadPlugin(extraPath, `builtin/${name}/${extra}`, name);
+      loadPlugin(extraPath, `builtin/${name}/${extra}`);
     }
-    await loadPlugin(indexPath, `builtin/${name}/index.js`, name);
+    await loadPlugin(indexPath, `builtin/${name}/index.js`);
     loadedPlugins.push(name);
   }
 
@@ -312,7 +272,7 @@ async function main() {
       if (!fs.existsSync(indexPath) || !fs.existsSync(manifestPath)) {
         continue;
       }
-      await loadPlugin(indexPath, `extra/${sub}/index.js`, sub);
+      await loadPlugin(indexPath, `extra/${sub}/index.js`);
       loadedPlugins.push(sub);
     }
   }
@@ -386,21 +346,11 @@ async function main() {
     });
   }
 
-  // Violations of the render-time-only namespace rule: a plugin's top-level
-  // IIFE read mb.builtins.<key> and got undefined. Anything that resolved
-  // to a real value (e.g. unknown_jsonl reading agentLog after agent_log
-  // loaded) is fine — load-order happens to satisfy the read. The foot-gun
-  // is the undefined case, so flag only that.
-  const namespaceViolations = _builtinReads
-    .filter((r) => !r.hadValue)
-    .map((r) => ({ plugin: r.plugin, key: r.key }));
-
   process.stdout.write(
     `${JSON.stringify({
       plugins: loadedPlugins,
       registrations: registrations,
       errors: errors,
-      namespace_violations: namespaceViolations,
     })}\n`,
   );
 }

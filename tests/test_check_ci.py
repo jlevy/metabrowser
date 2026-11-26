@@ -65,6 +65,8 @@ def test_the_interpreters_are_the_classifiers_and_the_newest_free_threaded_build
     [
         ("make lint-check audit", {"lint-check", "audit"}),
         ("make test-chrome SHARD=${{ matrix.shard }}/4", {"test-chrome"}),
+        ("make test-parallel SHARD=${{ matrix.shard }}", {"test-parallel"}),
+        ("make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}", set()),
         ("make -k test-goldens test-serial", {"test-goldens", "test-serial"}),
         ("make ${{ matrix.part }}", set()),
         ("git config user.name bot\nmake test-goldens", {"test-goldens"}),
@@ -78,32 +80,40 @@ def test_make_targets(command: str, targets: set[str]) -> None:
 # ── Tiers and interpreters ─────────────────────────────────────────────────────────
 
 
+PLAN_PYTHONS = "python-version: ${{ fromJSON(needs.plan.outputs.pythons) }}"
+
+
 @pytest.mark.parametrize(
     ("occurrence", "job", "targets"),
-    [(1, "unit", ["test-parallel"]), (2, "goldens", ["test-goldens", "test-serial"])],
+    [
+        (1, "unit", ["test-parallel"]),
+        (2, "goldens", ["test-goldens", "test-serial"]),
+        (3, "chrome", ["test-chrome"]),
+    ],
 )
-def test_a_matrix_short_of_an_interpreter_fails(
+def test_a_tier_whose_interpreters_are_not_the_plan_s_fails(
     tmp_path: Path, occurrence: int, job: str, targets: list[str]
 ) -> None:
-    errors = _errors(
-        tmp_path,
-        f"python-version: {EVERY}",
-        'python-version: ["3.12", "3.13", "3.14"]',
-        occurrence=occurrence,
-    )
+    """Every interpreter written out would pass on main and cost a pull request its
+    short path; one short of them would drop coverage. Only the plan job decides."""
 
-    for target in targets:
-        assert f"job {job} runs {target} on ['3.12', '3.13', '3.14'], not on every" in errors
+    for written in (EVERY, '["3.12", "3.13", "3.14"]'):
+        errors = _errors(
+            tmp_path / written,
+            PLAN_PYTHONS,
+            f"python-version: {written}",
+            occurrence=occurrence,
+        )
+
+        for target in targets:
+            assert f"job {job} runs {target} on [" in errors
+            assert "not on the plan job's interpreters" in errors
 
 
 @pytest.mark.parametrize("target", ["test-serial", "test-goldens", "test-parallel"])
 def test_a_tier_no_job_runs_fails(tmp_path: Path, target: str) -> None:
-    old = (
-        f"make {target} SHARD=${{{{ matrix.shard }}}}/2"
-        if target == "test-parallel"
-        else f"make {target}\n"
-    )
-    errors = _errors(tmp_path, old, "make build\n" if old.endswith("\n") else "make build")
+    old = f"make {target} SHARD=${{{{ matrix.shard }}}}"
+    errors = _errors(tmp_path, old, "make build", occurrence=1)
 
     assert f"ci.yml runs no `make {target}`" in errors
 
@@ -116,7 +126,7 @@ def test_a_tier_job_that_installs_another_python_fails(tmp_path: Path) -> None:
         occurrence=2,
     )
 
-    assert "job goldens must install ${{ matrix.python-version }}" in errors
+    assert "job goldens must need plan and install ${{ matrix.python-version }}" in errors
 
 
 def test_a_new_classifier_is_missing_from_every_list(tmp_path: Path) -> None:
@@ -132,8 +142,7 @@ def test_a_new_classifier_is_missing_from_every_list(tmp_path: Path) -> None:
     )
     errors = "\n".join(verify(root))
 
-    assert "job unit runs test-parallel on" in errors
-    assert "job goldens runs test-serial on" in errors
+    # The tiers' matrices are the plan job's, so its list is the one that is short.
     assert "plan job's PYTHONS" in errors
     assert "'3.15t'" in errors
 
@@ -154,22 +163,84 @@ def test_a_pull_request_chrome_python_outside_pythons_fails(tmp_path: Path) -> N
     assert "PR_CHROME_PYTHON '3.11' must be one of PYTHONS" in errors
 
 
-def test_a_chrome_matrix_that_is_not_the_plan_output_fails(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("job", "after"),
+    [
+        ("unit", "name: unit ("),
+        ("goldens", "name: goldens and serial ("),
+        ("chrome", "if: needs.plan.outputs.chrome != 'none'"),
+    ],
+)
+def test_a_tier_job_that_does_not_need_the_plan_fails(tmp_path: Path, job: str, after: str) -> None:
+    errors = _errors(tmp_path, f"    needs: plan\n    {after}", f"    needs: lint\n    {after}")
+
+    assert f"job {job} must need plan" in errors
+
+
+@pytest.mark.parametrize(
+    "output",
+    ["pythons", "chrome", "chrome-target", "admitted-gits", "unit-shards", "chrome-shards"],
+)
+def test_a_plan_output_that_is_not_the_step_s_own_fails(tmp_path: Path, output: str) -> None:
     errors = _errors(
         tmp_path,
-        "python-version: ${{ fromJSON(needs.plan.outputs.chrome-pythons) }}",
-        'python-version: ["3.13"]',
+        f"      {output}: ${{{{ steps.decide.outputs.{output} }}}}\n",
+        f"      {output}: ${{{{ steps.decide.outputs.path }}}}\n",
     )
 
-    assert "job chrome's python-version matrix must be" in errors
+    assert f"plan job's output {output} must be ${{{{ steps.decide.outputs.{output} }}}}" in errors
 
 
-def test_a_chrome_job_that_does_not_need_the_plan_fails(tmp_path: Path) -> None:
+# ── The Chrome tier ────────────────────────────────────────────────────────────────
+
+CHROME_STEP = "run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        # The fast target written in would leave main without the slow tests.
+        (
+            CHROME_STEP,
+            "run: make test-chrome-fast SHARD=${{ matrix.shard }}",
+            "job chrome must run `make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ "
+            "matrix.shard }}` and no other make",
+        ),
+        (
+            CHROME_STEP,
+            "run: make ${{ needs.plan.outputs.chrome-target }}",
+            "job chrome must run `make ${{ needs.plan.outputs.chrome-target }} SHARD=",
+        ),
+        # Any condition but the plan's own could skip the tier on main.
+        (
+            "    if: needs.plan.outputs.chrome != 'none'\n",
+            "    if: github.event_name == 'push'\n",
+            "job chrome must not run under if: github.event_name == 'push'",
+        ),
+        (
+            "    if: needs.plan.outputs.chrome != 'none'\n",
+            "    if: needs.plan.outputs.chrome == 'whole'\n",
+            "job chrome must not run under if: needs.plan.outputs.chrome == 'whole'",
+        ),
+    ],
+    ids=["the fast target", "no part", "another condition", "only when whole"],
+)
+def test_the_chrome_job_runs_the_plan_s_target_under_the_plan_s_condition(
+    tmp_path: Path, old: str, new: str, message: str
+) -> None:
+    assert message in _errors(tmp_path, old, new)
+
+
+def test_no_other_job_may_take_its_make_target_from_an_expression(tmp_path: Path) -> None:
     errors = _errors(
-        tmp_path, "    needs: plan\n    name: chrome", "    needs: lint\n    name: chrome"
+        tmp_path,
+        "run: make test-parallel SHARD=${{ matrix.shard }}",
+        "run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}",
     )
 
-    assert "job chrome must need plan" in errors
+    assert "job unit runs `make ${{ needs.plan.outputs.chrome-target }} SHARD=" in errors
+    assert "a make with no target named" in errors
+    assert "ci.yml runs no `make test-parallel`" in errors
 
 
 # ── Shards ─────────────────────────────────────────────────────────────────────────
@@ -178,14 +249,55 @@ def test_a_chrome_job_that_does_not_need_the_plan_fails(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("old", "new", "message"),
     [
-        ("shard: [1, 2, 3, 4]", "shard: [1, 2, 3]", "SHARD=…/4, so its shard matrix must be"),
-        ("shard: [1, 2]", "shard: [1]", "SHARD=…/2, so its shard matrix must be"),
+        # A list written in is one the plan job's parts can outgrow or fall short of.
+        (
+            "shard: ${{ fromJSON(needs.plan.outputs.chrome-shards) }}",
+            'shard: ["1/4", "2/4", "3/4"]',
+            "job chrome's shard matrix must be ${{ fromJSON(needs.plan.outputs.chrome-shards) }}",
+        ),
+        (
+            "shard: ${{ fromJSON(needs.plan.outputs.unit-shards) }}",
+            "shard: ${{ fromJSON(needs.plan.outputs.goldens-shards) }}",
+            "job unit's shard matrix must be ${{ fromJSON(needs.plan.outputs.unit-shards) }}",
+        ),
+        (
+            "shard: ${{ fromJSON(needs.plan.outputs.admitted-git-shards) }}",
+            'shard: ["1/2"]',
+            "job admitted-git's shard matrix must be",
+        ),
+        (
+            "git: ${{ fromJSON(needs.plan.outputs.admitted-gits) }}",
+            'git: ["2.43.7"]',
+            "job admitted-git's git matrix must be",
+        ),
+        # A step without its part runs the whole tier in every part, or, with the
+        # matrix gone too, hides that the parts are no longer dealt.
+        (
+            "run: make test-serial SHARD=${{ matrix.shard }}",
+            "run: make test-serial",
+            "job goldens runs `make test-serial` without its part",
+        ),
+        (
+            "run: make test-admitted-git SHARD=${{ matrix.shard }}",
+            "run: make test-admitted-git",
+            "job admitted-git runs `make test-admitted-git` without its part",
+        ),
         ("          - test-chrome SHARD=4/4\n", "", "deals test-chrome into shards"),
         ("test-parallel SHARD=2/2", "test-parallel SHARD=2/3", "deals test-parallel into shards"),
     ],
 )
 def test_a_missing_shard_fails(tmp_path: Path, old: str, new: str, message: str) -> None:
     assert message in _errors(tmp_path, old, new)
+
+
+def test_a_static_shard_matrix_elsewhere_still_has_to_be_1_through_n(tmp_path: Path) -> None:
+    """The nightly soak deals its parts in its own file, where the count is written."""
+
+    nightly = (ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8")
+    assert "shard: [1, 2, 3, 4]" in nightly
+    root = _repository(tmp_path, nightly=nightly.replace("shard: [1, 2, 3, 4]", "shard: [1, 2, 3]"))
+
+    assert "SHARD=…/4, so its shard matrix must be" in "\n".join(verify(root))
 
 
 def test_the_stack_parts_must_run_lint_and_every_tier(tmp_path: Path) -> None:
@@ -273,21 +385,23 @@ def _without_job(text: str, name: str, following: str) -> str:
 DROPS = {
     "a fixed SHARD": (
         CI_TEXT.replace(
-            "make test-parallel SHARD=${{ matrix.shard }}/2", "make test-parallel SHARD=1/2"
+            "make test-parallel SHARD=${{ matrix.shard }}", "make test-parallel SHARD=1/2"
         ),
-        "ci.yml job unit runs a tier with a fixed SHARD",
+        "ci.yml job unit runs `make test-parallel SHARD=1/2`; a make step's words are",
     ),
     "an excluded interpreter": (
         CI_TEXT.replace(
-            "        shard: [1, 2]\n",
-            '        shard: [1, 2]\n        exclude:\n          - python-version: "3.14t"\n',
+            "        shard: ${{ fromJSON(needs.plan.outputs.unit-shards) }}\n",
+            "        shard: ${{ fromJSON(needs.plan.outputs.unit-shards) }}\n"
+            '        exclude:\n          - python-version: "3.14t"\n',
         ),
         "ci.yml job unit's matrix must have no include or exclude",
     ),
     "an excluded shard": (
         CI_TEXT.replace(
-            "        shard: [1, 2, 3, 4]\n",
-            "        shard: [1, 2, 3, 4]\n        exclude:\n          - shard: 2\n",
+            "        shard: ${{ fromJSON(needs.plan.outputs.chrome-shards) }}\n",
+            "        shard: ${{ fromJSON(needs.plan.outputs.chrome-shards) }}\n"
+            '        exclude:\n          - shard: "2/4"\n',
         ),
         "ci.yml job chrome's matrix must have no include or exclude",
     ),
@@ -307,8 +421,8 @@ DROPS = {
     ),
     "a job allowed to fail": (
         CI_TEXT.replace(
-            "    name: unit (${{ matrix.python-version }}, ${{ matrix.shard }}/2)\n",
-            "    name: unit (${{ matrix.python-version }}, ${{ matrix.shard }}/2)\n"
+            "    name: unit (${{ matrix.python-version }}, ${{ matrix.shard }})\n",
+            "    name: unit (${{ matrix.python-version }}, ${{ matrix.shard }})\n"
             "    continue-on-error: true\n",
         ),
         "ci.yml job unit must not set continue-on-error",
@@ -358,10 +472,10 @@ DROPS = {
     ),
     "a tier whose failure is swallowed": (
         CI_TEXT.replace(
-            "run: make test-parallel SHARD=${{ matrix.shard }}/2",
-            "run: make test-parallel SHARD=${{ matrix.shard }}/2 || true",
+            "run: make test-parallel SHARD=${{ matrix.shard }}",
+            "run: make test-parallel SHARD=${{ matrix.shard }} || true",
         ),
-        "ci.yml job unit must run `make test-parallel SHARD=${{ matrix.shard }}/2 || true` alone",
+        "ci.yml job unit must run `make test-parallel SHARD=${{ matrix.shard }} || true` alone",
     ),
     # C1 of review C on #504: a condition on the wrong step, a make option, and ci-ok's
     # own step.
@@ -382,18 +496,19 @@ DROPS = {
     ),
     "a tier whose failure make ignores": (
         CI_TEXT.replace("run: make test-goldens", "run: make -i test-goldens"),
-        "ci.yml job goldens runs `make -i test-goldens`; a make step's words are make,",
+        "ci.yml job goldens runs `make -i test-goldens SHARD=${{ matrix.shard }}`; a make step's words are make,",
     ),
     "a tier make only prints": (
         CI_TEXT.replace(
-            "run: make test-chrome SHARD=${{ matrix.shard }}/4",
-            "run: make -n test-chrome SHARD=${{ matrix.shard }}/4",
+            "run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}",
+            "run: make -n ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}",
         ),
-        "ci.yml job chrome runs `make -n test-chrome SHARD=${{ matrix.shard }}/4`; a make",
+        "ci.yml job chrome runs `make -n ${{ needs.plan.outputs.chrome-target }} SHARD=${{ "
+        "matrix.shard }}`, a make with no target named",
     ),
     "a tier whose pytest a make variable replaces": (
         CI_TEXT.replace("run: make test-serial", "run: make test-serial PYTEST=true"),
-        "ci.yml job goldens runs `make test-serial PYTEST=true`; a make step's words are",
+        "ci.yml job goldens runs `make test-serial PYTEST=true SHARD=${{ matrix.shard }}`; a make step's words are",
     ),
     "a stack part make only prints": (
         CI_TEXT.replace(
@@ -474,6 +589,106 @@ def test_every_checkout_drops_its_credentials(tmp_path: Path) -> None:
     errors = verify(_repository(tmp_path, other=_workflow("push", checkout="fetch-depth: 1")))
 
     assert errors == ["other.yml job job must check out with persist-credentials: false"]
+
+
+LINUX_UV_SHA256 = "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
+INSTALL_UV_STEP = f"      - name: Install uv\n        run: bash devtools/install_uv.sh 0.11.26 {LINUX_UV_SHA256}\n"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "version"),
+    [
+        pytest.param(INSTALL_UV_STEP + "\n", "", "0.11.26", id="dropped"),
+        pytest.param(
+            INSTALL_UV_STEP + "\n",
+            INSTALL_UV_STEP + "\n      - name: Between\n        run: true\n\n",
+            "0.11.26",
+            id="not-just-before",
+        ),
+        # setup-uv moved on to a release the step before it does not install.
+        pytest.param(
+            '          version: "0.11.26"\n',
+            '          version: "0.11.27"\n',
+            "0.11.27",
+            id="another-version",
+        ),
+    ],
+)
+def test_every_setup_uv_follows_the_install_of_its_own_uv(
+    tmp_path: Path, old: str, new: str, version: str
+) -> None:
+    """Without it setup-uv fetches its manifest once, with a fixed 5 s limit, and can fail."""
+
+    wanted = f"bash devtools/install_uv.sh {version} {LINUX_UV_SHA256}"
+
+    assert _errors(tmp_path, old, new) == (
+        f"ci.yml job lint must run `{wanted}` just before setup-uv"
+    )
+
+
+INSTALL_NODE_STEP = (
+    "      - name: Install Node\n        run: bash devtools/install_node.sh 24.18.0\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "version"),
+    [
+        pytest.param(INSTALL_NODE_STEP + "\n", "", "24.18.0", id="dropped"),
+        pytest.param(
+            INSTALL_NODE_STEP + "\n",
+            INSTALL_NODE_STEP + "\n      - name: Between\n        run: true\n\n",
+            "24.18.0",
+            id="not-just-before",
+        ),
+        # setup-node moved on to a release the step before it does not install.
+        pytest.param(
+            '          node-version: "24.18.0"\n',
+            '          node-version: "24.19.0"\n',
+            "24.19.0",
+            id="another-version",
+        ),
+    ],
+)
+def test_every_setup_node_follows_the_install_of_its_own_node(
+    tmp_path: Path, old: str, new: str, version: str
+) -> None:
+    """Without it setup-node downloads and copies Node itself, and either can stall."""
+
+    wanted = f"bash devtools/install_node.sh {version}"
+
+    assert _errors(tmp_path, old, new) == (
+        f"ci.yml job lint must run `{wanted}` just before setup-node"
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "wanted", "action"),
+    [
+        pytest.param(
+            INSTALL_UV_STEP + "\n      - name: Set up uv\n        uses: astral-sh/setup-uv@",
+            "      - name: Set up uv\n        uses: Astral-SH/Setup-UV@",
+            f"bash devtools/install_uv.sh 0.11.26 {LINUX_UV_SHA256}",
+            "setup-uv",
+            id="setup-uv",
+        ),
+        pytest.param(
+            INSTALL_NODE_STEP + "\n      - name: Set up Node\n        uses: actions/setup-node@",
+            "      - name: Set up Node\n        uses: Actions/Setup-Node@",
+            "bash devtools/install_node.sh 24.18.0",
+            "setup-node",
+            id="setup-node",
+        ),
+    ],
+)
+def test_a_setup_action_named_in_another_case_still_follows_its_install(
+    tmp_path: Path, old: str, new: str, wanted: str, action: str
+) -> None:
+    """GitHub runs ``Actions/Setup-Node@`` as ``actions/setup-node@``, so the rule does too."""
+
+    assert _errors(tmp_path, old, new) == (
+        f"ci.yml job lint must run `{wanted}` just before {action}"
+    )
 
 
 @pytest.mark.parametrize(

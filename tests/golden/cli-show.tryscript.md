@@ -12,20 +12,23 @@ before: >-
   printf '# Sample\n\nHello.\n' > showroot/README.md &&
   printf 'plain text\n' > showroot/notes.txt &&
   printf '{"name": "sample", "version": 1}\n' > showroot/data.json &&
+  printf 'name,n\nada,1\n' > showroot/table.csv &&
   printf -- '--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n' > showroot/change.patch &&
   printf '{"type":"system","subtype":"init","session_id":"s1","model":"m1"}\n' > showroot/session.jsonl &&
   printf '{"event":"start"}\n{"event":"stop"}\n' > showroot/events.jsonl &&
   printf '\000\001\002binary\n' > showroot/blob.bin &&
   printf '\211PNG\r\n\032\n' > showroot/pixel.png &&
+  printf '%%PDF-1.4\n%%\342\343\317\323\n' > showroot/paper.pdf &&
   printf '<!doctype html>\n<title>Page</title>\n<p>Hello</p>\n' > showroot/page.html &&
   printf '<div class="card">hello</div>\n' > showroot/card.html &&
   printf 'nested\n' > showroot/docs/a.md &&
   printf '# First\n' > 'showroot/%41.md' &&
   printf '# Second sibling\n' > 'showroot/%2541.md' &&
   printf 'nested percent\n' > 'showroot/docs%1/note%.txt' &&
-  touch -t 202311142213.20 showroot/README.md showroot/notes.txt showroot/data.json
+  printf 'flowchart LR\n  A --> B\n' > showroot/flow.mmd &&
+  touch -t 202311142213.20 showroot/README.md showroot/notes.txt showroot/data.json showroot/table.csv showroot/flow.mmd
   showroot/change.patch showroot/session.jsonl showroot/events.jsonl showroot/blob.bin
-  showroot/pixel.png showroot/page.html showroot/card.html showroot/docs/a.md
+  showroot/pixel.png showroot/paper.pdf showroot/page.html showroot/card.html showroot/docs/a.md
   'showroot/%41.md' 'showroot/%2541.md' 'showroot/docs%1/note%.txt' showroot/docs
   'showroot/docs%1' showroot
 ---
@@ -50,6 +53,21 @@ model: text envelope; size=17 content_bytes=17 content_truncated=False
 ? 0
 ```
 
+## Test: Mermaid diagram file
+
+A `.mmd` or `.mermaid` file opens on its Diagram view, which draws the file as one
+diagram, as GitHub’s Preview does, with its Source a key away.
+
+```console
+$ metab showroot --show flow.mmd
+show: flow.mmd
+route: /view/flow.mmd
+kind: mermaid
+views: diagram (default, key V), source (key S)
+model: text envelope; size=23 content_bytes=23 content_truncated=False
+? 0
+```
+
 ## Test: plain text
 
 ```console
@@ -64,6 +82,9 @@ model: text envelope; size=11 content_bytes=11 content_truncated=False
 
 ## Test: structured data
 
+A JSON mapping has no Table view: the structured kind offers it only on a file that
+starts as a list of records (`cli-api-table-records.tryscript.md`).
+
 ```console
 $ metab showroot --show data.json
 show: data.json
@@ -71,6 +92,21 @@ route: /view/data.json
 kind: structured
 views: tree (default, key V), source (key S)
 model: text envelope; size=33 content_bytes=33 content_truncated=False
+? 0
+```
+
+## Test: delimited text
+
+A `.csv` or `.tsv` file is one table, which the `table/*` routes serve
+(`cli-api-table.tryscript.md`); its one view is its source text.
+
+```console
+$ metab showroot --show table.csv
+show: table.csv
+route: /view/table.csv
+kind: delimited
+views: table (default, key V), source (key S)
+model: text envelope; size=13 content_bytes=13 content_truncated=False
 ? 0
 ```
 
@@ -93,7 +129,7 @@ $ metab showroot --show session.jsonl
 show: session.jsonl
 route: /view/session.jsonl
 kind: agent-log
-views: log (default, key V), charts (key C), raw (key S)
+views: session (default, key E), log (key V), charts (key C), raw (key S)
 model: jsonl envelope; size=66
 ? 0
 ```
@@ -131,6 +167,18 @@ route: /view/pixel.png
 kind: image
 views: preview (default)
 model: image envelope; size=8
+? 0
+```
+
+## Test: PDF
+
+```console
+$ metab showroot --show paper.pdf
+show: paper.pdf
+route: /view/paper.pdf
+kind: pdf
+views: preview (default)
+model: binary envelope; size=15
 ? 0
 ```
 

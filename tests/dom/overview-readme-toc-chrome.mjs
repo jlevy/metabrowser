@@ -241,6 +241,44 @@ const EDGES = `(() => {
     surfaces: [
       ...view.querySelectorAll(".folder-overview-panel-surface > .folder-overview-panel-body"),
     ].map(right),
+    legend: (() => {
+      const legend = view.querySelector(".file-overview-body .file-type-summary-legend");
+      const body = view.querySelector(".file-overview-body").getBoundingClientRect();
+      const toc = view.querySelector(".kpress-toc").getBoundingClientRect();
+      const items = [...legend.querySelectorAll(".file-type-summary-legend-item")].map(
+        (item) => item.getBoundingClientRect(),
+      );
+      const box = legend.getBoundingClientRect();
+      const track = legend.parentElement.getBoundingClientRect();
+      const first = legend.querySelector(".file-type-summary-legend-item");
+      const entry = view.querySelector(".kpress-toc .kpress-toc-level-1 > a");
+      const entryText = document.createRange();
+      entryText.selectNodeContents(entry);
+      const leftOf = (selector) => first.querySelector(selector).getBoundingClientRect().left;
+      return {
+        rail: getComputedStyle(legend.parentElement).position === "absolute",
+        left: box.left,
+        width: box.width,
+        trackLeft: track.left,
+        trackWidth: track.width,
+        swatchLeft: leftOf(".file-type-summary-legend-swatch"),
+        labelLeft: leftOf(".file-type-summary-legend-label"),
+        tocEntryLeft: entry.getBoundingClientRect().left,
+        tocTextLeft: entryText.getBoundingClientRect().left,
+        shareRights: [...legend.querySelectorAll(".file-type-summary-legend-percent")].map(
+          (percent) => percent.getBoundingClientRect().right,
+        ),
+        tocEntryRight: entry.getBoundingClientRect().right,
+        top: box.top,
+        bodyLeft: body.left,
+        bodyRight: body.right,
+        bodyTop: body.top,
+        tocLeft: toc.left,
+        tocWidth: toc.width,
+        items: items.length,
+        lines: new Set(items.map((item) => Math.round(item.top))).size,
+      };
+    })(),
   };
 })()`;
 
@@ -339,6 +377,41 @@ async function checkEdges(page, label, band) {
     ends.length >= 3 && ends.every((edge) => Math.abs(edge - edges.card) < TOLERANCE_PX),
     edges,
   );
+  // File Overview's legend: in the wide band, a rail where the README's table of contents
+  // is, from the section's top, one entry to a line, each swatch on the line of the
+  // contents' entry marks, each name on a level-1 entry's text edge, and each share ending
+  // where the entries do; in every other band,
+  // inside the section's body under the bars, as it was.
+  const legend = edges.legend;
+  if (band === "wide") {
+    check(
+      `${label}: File Overview's legend is a rail on the table of contents' track, aligned with its entries`,
+      legend.rail &&
+        Math.abs(legend.trackLeft - legend.tocLeft) < TOLERANCE_PX &&
+        Math.abs(legend.trackWidth - legend.tocWidth) < TOLERANCE_PX &&
+        Math.abs(legend.swatchLeft - legend.tocEntryLeft) < TOLERANCE_PX &&
+        Math.abs(legend.labelLeft - legend.tocTextLeft) < TOLERANCE_PX &&
+        legend.shareRights.length > 1 &&
+        legend.shareRights.every(
+          (right) => Math.abs(right - legend.tocEntryRight) < TOLERANCE_PX,
+        ) &&
+        Math.abs(legend.top - legend.bodyTop) < TOLERANCE_PX &&
+        legend.items > 1 &&
+        legend.lines === legend.items,
+      legend,
+    );
+  } else {
+    check(
+      `${label}: File Overview's legend stays in its body, below the bars`,
+      !legend.rail &&
+        legend.left >= legend.bodyLeft - TOLERANCE_PX &&
+        legend.left + legend.width <= legend.bodyRight + TOLERANCE_PX &&
+        legend.top > legend.bodyTop &&
+        legend.items > 1 &&
+        legend.lines < legend.items,
+      legend,
+    );
+  }
 }
 
 async function checkProfile(label, anchorPrefix) {
@@ -504,6 +577,12 @@ async function checkProfile(label, anchorPrefix) {
       [reading.rail, file.rail],
     );
     await checkEdges(page, `${label} ${WIDE}px`, "wide");
+    // At a 20px root the legend's names still meet the contents' entries: at 16px the
+    // rail's rem-based gap and a fixed 6px one are equal, so only a larger root tells them
+    // apart. The pane stays in the wide band.
+    await page.evaluate(`document.documentElement.style.fontSize = "20px"`);
+    await checkEdges(page, `${label} ${WIDE}px at a 20px root`, "wide");
+    await page.evaluate(`document.documentElement.style.fontSize = ""`);
 
     // An entry, clicked through Chrome's input, scrolls the Overview to its heading: a middle
     // one, whose heading the pane can scroll to its top.

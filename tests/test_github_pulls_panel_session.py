@@ -43,7 +43,11 @@ from metabrowser import server
 from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_refresh, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION
-from metabrowser.builtin_plugins.github.pull_list import ListedRepository, write_list_refresh
+from metabrowser.builtin_plugins.github.pull_list import (
+    ListedRepository,
+    read_list_refresh,
+    write_list_refresh,
+)
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.cache.acquire import acquire_source
@@ -61,8 +65,10 @@ from tests.github_pull_fixture import (
     DEFAULT_BRANCH,
     FETCHED_AT,
     Origin,
+    catalog_entries,
     generated_item,
     install_fake_gh,
+    list_page,
     logged_gh_calls,
     scenario,
     seed_catalog,
@@ -250,6 +256,48 @@ def _record(
             provider_calls["due metadata refresh"] = logged_gh_calls(tmp_path)
             assert read() == recorded["refreshed"]
             provider_calls["fresh cached revisit"] = logged_gh_calls(tmp_path)
+
+            # The list probe, inside the window of that scan: an automatic ask that finds
+            # GitHub's newest pull request in the catalog starts nothing and moves
+            # `checked_at`, and one that finds a change starts the delta scan at once. The
+            # catalog, its stamp, and the clock are then put back for the stories that follow.
+            probed_catalog = home / "sources" / published.slug / "pulls" / "catalog.sqlite3"
+            before_probes = probed_catalog.read_bytes()
+            stamp_before = read_list_refresh(home, published.slug, "all")
+            assert stamp_before is not None
+            scanned_at = clock[0]
+            clock[0] = scanned_at + timedelta(seconds=10)
+            recorded["probe_unchanged"] = ask(state="all", target=500, background=True)
+            unchanged = recorded["probe_unchanged"]["body"]
+            assert (unchanged["refresh"], unchanged["pulls"]["checked_at"]) == (
+                "not_due",
+                utc_stamp(clock[0]),
+            )
+            clock[0] = scanned_at + timedelta(seconds=20)
+            listed = [
+                *online["api"][list_page("all")]["body"],
+                *online["api"][list_page("all", 2)]["body"],
+            ]
+            retitled = [
+                {**item, "title": "Retitled between scans", "updated_at": utc_stamp(clock[0])}
+                if item["number"] == 106
+                else item
+                for item in listed
+            ]
+            answering({**online, "api": {**online["api"], **catalog_entries(retitled)}})
+            recorded["probe_changed"] = ask(state="all", target=500, background=True)
+            assert recorded["probe_changed"]["body"]["refresh"] == "started"
+            settled()
+            recorded["probe_scanned"] = read()
+            recorded["probe_scanned_more"] = read(
+                after=str(recorded["probe_scanned"]["body"]["next_after"]), limit="2"
+            )
+            assert recorded["probe_scanned"]["body"]["rows"][0]["title"] == "Retitled between scans"
+            provider_calls["list probes"] = logged_gh_calls(tmp_path)
+            answering(online)
+            probed_catalog.write_bytes(before_probes)
+            write_list_refresh(home, published.slug, "all", stamp_before)
+            clock[0] = scanned_at
 
             # Two refusals the real worker reaches before asking GitHub anything: a catalog a
             # newer release wrote, and one whose versions cannot be read. Each is asked for
@@ -557,7 +605,7 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
 def test_pulls_landing_leaves_connection_status_to_the_sidebar() -> None:
     paint = run_session("github-pulls-panel-session.js", "--part", "all")["paint"]
     assert paint["landing"] == "Select a pull request."
-    assert paint["ready action"] == "Reload"
+    assert paint["ready action"] == "Refresh"
 
 
 def test_catalog_windows_and_late_request_ownership() -> None:
@@ -620,7 +668,7 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
     assert result == {
         "case": "viewport-height-increase",
         "before": 43,
-        "after": 90,
+        "after": 78,
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
@@ -631,12 +679,12 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         # start time ("Refreshing Content" in docs/design-system.md; review A on #354).
         "titleBreathing": {
             "admitted": {
-                "asked": [438, 437, 436, 435],
-                "breathing": [438, 437, 436, 435],
+                "asked": [454, 453, 452, 451],
+                "breathing": [454, 453, 452, 451],
                 "busyRows": 0,
             },
             "settled": [],
-            "moved": {"asked": [372, 371, 370], "breathing": [372, 371, 370]},
+            "moved": {"asked": [404, 403, 402], "breathing": [404, 403, 402]},
             "offline": [],
             "beat": [100, 100, 50, 100],
         },
@@ -648,7 +696,7 @@ def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> Non
         "setupStates": 3,
         "views": 3,
         "nullMessageFallbacks": True,
-        "backendTextPreserved": True,
+        "backendTextWithheld": True,
         "cachedRecordPreserved": True,
         "authUsesNormalizedGuidance": True,
         "otherFailureKindsPreserved": True,
@@ -683,6 +731,21 @@ def test_optional_native_stack_state_is_shared_and_owned() -> None:
     }
 
 
+def test_a_pull_requests_absent_field_draws_neither_itself_nor_its_dot() -> None:
+    # stackMemberRow's two layouts (docs/design-system.md, "One Order for a Pull Request's
+    # Fields"), over members with and without a place and an author, drawn so or changed to
+    # so: the session asserts each invariant and says which it held.
+    session = run_session("github-stack-member-row-behavior.js")
+    assert session.pop("drawings") == 2 * session.pop("cases")
+    assert session == {
+        "dotsSitBetweenFields": True,
+        "absentFieldsDrawNothing": True,
+        "fieldsKeepTheOneOrder": True,
+        "changedRowsReadAsDrawn": True,
+        "layoutsAgree": True,
+    }
+
+
 def test_native_stack_navigation_and_cold_page_skeleton_preserve_cached_content() -> None:
     assert run_session("github-pull-stack-mount-behavior.js") == {
         "coldSkeleton": True,
@@ -695,6 +758,8 @@ def test_native_stack_navigation_and_cold_page_skeleton_preserve_cached_content(
         "fileCleared": True,
         "explicitReaderIntent": True,
         "disposedWorkReleased": True,
+        "memberStateTakenBack": True,
+        "recordNotedBack": True,
     }
 
 
@@ -917,6 +982,16 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
         ],
         # Failures per batch in five virtual minutes, none retried before its deadline.
         "staggeredFailures": [2, 11, 10],
+        # Two minutes of `held` answers back off to SLOW_POLL_MS whatever failure they name,
+        # a rate limit whose reset has passed too, which was waited for a second at a time,
+        # 119 asks (review B1 of #761). A reset still ahead is woken at once, then the same.
+        "heldBackoff": {
+            **{
+                failure: {"asks": 8, "gapsMs": [1000, 2000, 4000, 8000, 16000, 30000, 30000]}
+                for failure in ("none", "lapsedRateLimit", "staleNetworkError")
+            },
+            "rateLimitAhead": {"asks": 6, "gapsMs": [59000, 2000, 4000, 8000, 16000]},
+        },
     }
 
 

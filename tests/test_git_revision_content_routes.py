@@ -31,6 +31,7 @@ from httpx2 import ASGITransport, AsyncClient
 
 from metabrowser import frontmatter_yaml, jsonl_view, kpress_adapter
 from metabrowser.capabilities import Capabilities, set_capabilities
+from metabrowser.commit_ids import short_commit
 from metabrowser.diff.format import validate_document
 from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 from metabrowser.git.content_routes import split_git_container_wire
@@ -254,7 +255,7 @@ def test_git_directory_with_no_blob_and_rollup_of_a_subtree(tmp_path: Path) -> N
             assert [view["id"] for view in folder["views"]] == ["overview", "treemap"]
             assert (await client.get("/raw", params={"path": dep})).status_code == 404
             # Nor is it content for a hook, though the store holds the commit it names.
-            for hook in ("binary/chunk", "structured/parsed", "agent-log/charts"):
+            for hook in ("binary/chunk", "structured/parsed", "agents/charts"):
                 refused = await client.get(f"/api/plugin/{hook}", params={"path": dep})
                 assert refused.status_code == 404, hook
             # The index counts the directories its blobs are in: docs/, and not vendor/.
@@ -300,6 +301,12 @@ def test_git_rollup_names_use_the_tree_display_escaping(tmp_path: Path) -> None:
             names = {child["path"]: child["name"] for child in directory["children"]}
             assert names == {child["path"]: child["name"] for child in tree_directory["children"]}
             assert sorted(names.values()) == ["new�line.txt", "x�.txt"]
+            # A wire path is not the folder's path, a `/`, and the display name, so a
+            # compact entry could not carry the path; a pin answers the JSON encoding.
+            compact = await client.get("/api/rollup", params={"depth": "2", "encoding": "compact"})
+            assert compact.status_code == 200
+            assert "encoding" not in compact.json()
+            assert compact.json()["node"] == node
 
     asyncio.run(_run())
 
@@ -534,7 +541,8 @@ def test_git_kpress_render_honors_gitpath_without_mtime(
                 params={"path": _wire(b"nul.bin"), "view": "rendered"},
             )
             assert binary.status_code == 415
-            assert binary.json()["error"] == "KPress render supports text-like files only"
+            assert binary.json()["error"] == "Only a text file can be rendered as a document."
+            assert binary.json()["detail"] == "KPress render supports text-like files only"
 
             symlink = await client.get(
                 "/api/kpress/render",
@@ -608,6 +616,102 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
     asyncio.run(_run())
 
 
+# An invented note of the shape a reader reported: plain keys, the last one an ID.
+_HARBOR_FRONT_MATTER = (
+    '---\ntitle: "Tide Tables for a Small Harbor"\n'
+    "description: A working note on how the harbor office reads its tide tables and posts"
+    " them for skippers each morning\n"
+    'author: Harbor Office\ndate: 2026-03-02\nas_of: "2026-03-02"\nstatus: draft\n'
+    "bead: tide-k7m2\n---\n"
+)
+_HARBOR_NOTE = _HARBOR_FRONT_MATTER + "\n# Tide Tables\n\nThe office posts the table by eight.\n"
+# What the wiki preprocessor sent for that note before it left front matter alone: the
+# last key, over the closing `---`, read as a setext heading, so its anchor led the line.
+_HARBOR_PREPARED = _HARBOR_NOTE.replace(
+    "bead: tide-k7m2\n",
+    '<span class="metabrowser-wiki-heading" id="obsidian-heading-bead: tide-k7m2"></span>'
+    "bead: tide-k7m2\n",
+).replace(
+    "# Tide Tables",
+    '# <span class="metabrowser-wiki-heading" id="obsidian-heading-Tide Tables"></span>Tide Tables',
+)
+
+
+def test_git_kpress_render_reads_front_matter_from_the_blob_not_the_sent_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Text a page sends to render in a blob's place never stands for its front matter.
+
+    The Document view posts the text it prepared (``wiki-parser.js``) as ``source_text``.
+    A pin parsed that text's front matter, so markup the page wrote into it was reported
+    as the file's YAML error, quoting the markup, while the file parsed cleanly. The
+    filesystem route reads the file; a pin reads the blob, whatever the page sent.
+    """
+
+    store, commit = fast_import_store(
+        tmp_path,
+        {
+            b"harbor.md": _HARBOR_NOTE.encode(),
+            b"broken.md": b"---\ntitle: [unclosed\n---\n\nBody.\n",
+            b"plain.md": b"# Plain\n\nNo front matter.\n",
+        },
+    )
+    seen = _capture_pin_renders(monkeypatch)
+    mapping = {
+        "title": "Tide Tables for a Small Harbor",
+        "description": (
+            "A working note on how the harbor office reads its tide tables and posts them"
+            " for skippers each morning"
+        ),
+        "author": "Harbor Office",
+        "date": "2026-03-02",
+        "as_of": "2026-03-02",
+        "status": "draft",
+        "bead": "tide-k7m2",
+    }
+
+    async def _render(client: AsyncClient, name: bytes, source_text: str) -> dict[str, Any]:
+        seen.clear()
+        rendered = await client.post(
+            "/api/kpress/render",
+            json={
+                "path": _wire(name),
+                "view": "rendered",
+                "profile": "document",
+                "source_text": source_text,
+            },
+        )
+        assert rendered.status_code == 200, rendered.text
+        return rendered.json()
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            envelope = (await client.get("/api/file", params={"path": _wire(b"harbor.md")})).json()
+            assert envelope["frontmatter"] == mapping
+            assert "frontmatter_error" not in envelope
+
+            body = await _render(client, b"harbor.md", _HARBOR_PREPARED)
+            assert seen["frontmatter"] == mapping
+            assert seen["frontmatter_error"] is None
+            assert [d for d in body["diagnostics"] if d.get("type") == "frontmatter_error"] == []
+            assert "frontmatter_error_detail" not in body
+            assert "</span>bead" not in body["html"]
+            assert "tide-k7m2" in body["html"]
+
+            # The blob's own error stands, though the text sent parses.
+            broken = await _render(client, b"broken.md", "---\ntitle: Fine\n---\n\nBody.\n")
+            assert seen["frontmatter"] is None
+            assert seen["frontmatter_error"] == frontmatter_yaml.FRONTMATTER_ERROR_MESSAGE
+            assert broken["frontmatter_error_detail"].startswith("Error parsing YAML metadata:")
+
+            # And a blob without front matter has none, though the text sent does.
+            await _render(client, b"plain.md", "---\ntitle: Sent\n---\n\n# Plain\n")
+            assert seen["frontmatter"] is None
+            assert seen["frontmatter_error"] is None
+
+    asyncio.run(_run())
+
+
 BOMBS_ON_A_PIN = ("alias-12", "merge-12", "duplicate-key-12")
 
 
@@ -670,7 +774,8 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 assert (body["type"], body["kind"]) == ("text", "markdown")
                 assert body["content"].startswith("---\n" + OVER_BUDGET)
                 assert "frontmatter" not in body
-                assert "without its YAML aliases" in body["frontmatter_error"]
+                assert body["frontmatter_error"] == "The frontmatter could not be read."
+                assert "without its YAML aliases" in body["frontmatter_error_detail"]
                 assert plain.json()["frontmatter"] == {"title": "Plain"}
 
                 seen.clear()
@@ -680,7 +785,8 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 assert rendered.status_code == 200, shape
                 assert "lol" not in rendered.json()["html"]
                 assert seen["frontmatter"] is None
-                assert "without its YAML aliases" in seen["frontmatter_error"]
+                assert seen["frontmatter_error"] == "The frontmatter could not be read."
+                assert "without its YAML aliases" in rendered.json()["frontmatter_error_detail"]
 
             odd = (await client.get("/api/file", params={"path": _wire(b"odd.md")})).json()
             assert "frontmatter_error" not in odd
@@ -692,7 +798,7 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 path = _wire(f"fails-{case}.md".encode())
                 failed = await client.get("/api/file", params={"path": path})
                 assert failed.status_code == 200, case
-                assert failed.json()["frontmatter_error"].startswith(
+                assert failed.json()["frontmatter_error_detail"].startswith(
                     f"Error parsing YAML metadata: {reason}"
                 ), case
 
@@ -968,7 +1074,7 @@ def test_git_plugin_sidekicks_follow_in_tree_symlinks(tmp_path: Path) -> None:
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
             charts = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": _wire(b"log")},
             )
             assert charts.status_code == 200
@@ -1027,7 +1133,7 @@ def test_git_plugin_sidekicks_follow_in_tree_symlinks(tmp_path: Path) -> None:
 
             dangling = _wire(b"dangling")
             assert (
-                await client.get("/api/plugin/agent-log/charts", params={"path": dangling})
+                await client.get("/api/plugin/agents/charts", params={"path": dangling})
             ).status_code == 404
             assert (
                 await client.get("/api/plugin/structured/parsed", params={"path": dangling})
@@ -1298,7 +1404,7 @@ def test_git_agent_log_charts_and_adapter_kind(tmp_path: Path) -> None:
             assert any(view["id"] == "charts" for view in body["views"])
 
             charts = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": log_wire},
             )
             assert charts.status_code == 200
@@ -1307,20 +1413,20 @@ def test_git_agent_log_charts_and_adapter_kind(tmp_path: Path) -> None:
             assert str(store) not in charts.text
 
             relative = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": "session.jsonl"},
             )
             assert relative.status_code == 404
 
             unsupported = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": _wire(b"README.md")},
             )
             assert unsupported.status_code == 400
             assert unsupported.json()["error"] == "Not a JSONL file"
 
             missing = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": _wire(b"absent.jsonl")},
             )
             assert missing.status_code == 404
@@ -1558,7 +1664,7 @@ def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path:
             assert root.status_code == 200
             assert "text/html" in root.headers.get("content-type", "")
             assert str(store) not in root.text
-            assert commit[:12] in root.text
+            assert short_commit(commit) in root.text
             assert "METABROWSER_REPOSITORY_CONTEXT=null" in root.text
             assert 'METABROWSER_SOURCE_KIND="git_revision"' in root.text
             blob = await client.get(f"/view/{readme}")

@@ -58,8 +58,12 @@ const perf = {
     return value;
   },
 };
-// About two and a half rows of 61 px, so three rows touch the view, as at the panel's scale.
-let viewHeight = 150;
+// A closed row's height, the panel's `ROW_ESTIMATE_PX` once its module is read: a run of three
+// lines and its last line, the height an unmeasured row is placed at.
+let rowHeight = 0;
+// About two and a half rows of 80.5 px, so three rows touch the view, as at the panel's scale.
+const VIEW_HEIGHT = 200;
+let viewHeight = VIEW_HEIGHT;
 const body = new FakeElement("body"),
   scroll = new FakeElement("div"),
   container = new FakeElement("div");
@@ -84,9 +88,9 @@ function height(node) {
   if (node.classList?.contains("github-pulls-spacer")) {
     return Number.parseFloat(node.style.height) || 0;
   }
-  // A closed row: its link's two lines and its change line (`ROW_ESTIMATE_PX`).
+  // A closed row (`ROW_ESTIMATE_PX`).
   if (node.classList?.contains("github-pulls-item")) {
-    return 61;
+    return rowHeight;
   }
   if (node.classList?.contains("github-pulls-list")) {
     return node.childNodes.reduce((n, c) => n + height(c), 0);
@@ -94,9 +98,14 @@ function height(node) {
   return 0;
 }
 FakeElement.prototype.getBoundingClientRect = function () {
-  if (this.classList.contains("github-pulls-row")) {
+  // A pull request's zone, its link, is its item's top (`.github-pulls-entry`, mb-1z7j,
+  // mb-pw8t): the run and its last line.
+  if (
+    this.classList.contains("github-pulls-entry") ||
+    this.classList.contains("github-pulls-row")
+  ) {
     const { top, left, right, width } = this.parentNode.getBoundingClientRect();
-    return { top, bottom: top + 41, height: 41, left, right, width };
+    return { top, bottom: top + rowHeight, height: rowHeight, left, right, width };
   }
   let h = height(this),
     top = 0;
@@ -115,6 +124,11 @@ FakeElement.prototype.getBoundingClientRect = function () {
   }
   return { top, bottom: top + h, height: h, left: 0, right: 800, width: 800 };
 };
+/** A list item's pull request row: the link, first in its zone (mb-1z7j). */
+const rowOfItem = (item) => item?.firstElementChild.firstElementChild;
+// A row's link holds its title's flow: the state icon, a stack member's place, and the title
+// (pulls-panel.js, `buildRow`).
+const headingOf = (row) => row.childNodes[0];
 const frames = new Map(),
   timers = new Map(),
   observers = [];
@@ -280,6 +294,7 @@ async function paint() {
   const panel = await import(
     pathToFileURL(`${root}/src/metabrowser/builtin_plugins/github/pulls-panel.js`)
   );
+  rowHeight = panel.ROW_ESTIMATE_PX;
   const handle = panel.mountPullsPanel(
     container,
     {
@@ -304,7 +319,10 @@ async function paint() {
       perf,
       filterControls: { groupHtml: () => "", bind: () => () => {} },
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "",
+      })),
       formatTimestamp: () => "",
     },
   );
@@ -376,7 +394,7 @@ async function paint() {
   scroll.listeners.get("scroll")();
   await paint();
   const visible = items().find((item) => item.getBoundingClientRect().bottom > 0);
-  const focused = visible.firstElementChild;
+  const focused = rowOfItem(visible);
   focused.focus();
   scroll.scrollTop = 18000;
   scroll.listeners.get("scroll")();
@@ -397,12 +415,12 @@ async function paint() {
     Number(focused.getAttribute("aria-posinset")) > 1,
     "ARIA position remains absolute in the catalog",
   );
-  viewHeight = 150;
+  viewHeight = VIEW_HEIGHT;
   document.activeElement = body;
   scroll.scrollTop = 0;
   scroll.listeners.get("scroll")();
   await paint();
-  const row = items()[0].firstElementChild;
+  const row = rowOfItem(items()[0]);
   list.listeners.get("focusin")({ target: row });
   await settle();
   assert.deepEqual(detailReads, [500]);
@@ -515,7 +533,7 @@ async function paint() {
     await paint();
   };
   const rowFor = (number) =>
-    items().find((item) => item.dataset.number === String(number))?.firstElementChild;
+    rowOfItem(items().find((item) => item.dataset.number === String(number)));
   const publish = async () => {
     catalogTop += 1;
     created.set(catalogTop, new Date(Date.now() + catalogTop).toISOString());
@@ -530,8 +548,8 @@ async function paint() {
   assert.equal(scroll.scrollTop, 0, "a new leading PR stays visible when at the top");
   assert.equal(rowFor(500), retained);
   assert.equal(document.activeElement, retained);
-  assert.equal(retained.childNodes[1].textContent, retitled);
-  assert.equal(retained.childNodes[0].dataset.state, "draft");
+  assert.equal(headingOf(retained).childNodes[1].textContent, retitled);
+  assert.equal(headingOf(retained).childNodes[0].dataset.state, "draft");
   const flash = "tree-item-flash-in";
   assert.equal(retained.classList.contains(flash), false);
   const arriving = rowFor(501);
@@ -570,10 +588,15 @@ async function paint() {
   assert.equal(preview.tab, "");
   handle.setCurrent(preview.number);
   await settle();
-  // The row's files hang from its change line, which an arrow and a route leave closed.
-  const changeFor = (number) =>
-    items().find((item) => item.dataset.number === String(number))?.childNodes[1].firstElementChild;
-  assert.equal(changeFor(preview.number).getAttribute("aria-expanded"), "false");
+  // The row's files open from its toggle, which an arrow and a route leave closed.
+  const changeFor = (number) => {
+    const found = (node) =>
+      node.classList?.contains("github-pulls-change")
+        ? node
+        : (node.childNodes ?? []).reduce((hit, child) => hit ?? found(child), null);
+    return found(rowOfItem(items().find((item) => item.dataset.number === String(number))));
+  };
+  assert.ok(changeFor(preview.number).classList.contains("collapsed"));
   assert.deepEqual(fileReads, [], "arrow and route selection read no changed-file metadata");
 
   // Which titles breathe ("Refreshing Content" in docs/design-system.md): those of the rows
@@ -581,13 +604,13 @@ async function paint() {
   // receipt ends it, a replaced window moves it, and so does losing the network (A1 of review
   // A on #354: offline cancelled the retry but left the titles breathing). Titles are paint
   // only: no row is marked busy. A title drawn into a breathing window joins its beat.
-  const titleOf = (item) => item.firstElementChild.childNodes[1];
+  const titleOf = (item) => headingOf(rowOfItem(item)).childNodes[1];
   const breathingTitles = () =>
     items()
       .filter((item) => titleOf(item).classList.contains("mb-refreshing"))
       .map((item) => Number(item.dataset.number));
   const busyRows = () =>
-    items().filter((item) => item.firstElementChild.getAttribute("aria-busy") !== null).length;
+    items().filter((item) => rowOfItem(item).getAttribute("aria-busy") !== null).length;
   const titleBreathing = {};
   // The stand-in has no Web Animations API; count the panel's calls to align the beat.
   let aligned = 0;

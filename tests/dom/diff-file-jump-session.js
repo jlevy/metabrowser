@@ -73,6 +73,11 @@ class LaidOutElement {
     const owner = this;
     this.classList = {
       contains: (name) => owner.className.split(" ").includes(name),
+      add(...names) {
+        for (const name of names) {
+          this.toggle(name, true);
+        }
+      },
       toggle(name, force) {
         const names = new Set(owner.className.split(" ").filter(Boolean));
         const want = force === undefined ? !names.has(name) : force;
@@ -494,8 +499,11 @@ async function main() {
       ...require("./changed-files-tree-fixture.js").shellPainters(),
       filterControls: {
         groupHtml: () => "",
-        bind(_control, options) {
-          changeLayout = (layout) => options.onChange("diff-layout", layout, "one");
+        bind(control, options) {
+          // The layout control's own binding; Diff | Current binds its own chooser.
+          if (control.classList.contains("diff-layout-control")) {
+            changeLayout = (layout) => options.onChange("diff-layout", layout, "one");
+          }
           return () => {};
         },
       },
@@ -722,6 +730,24 @@ async function main() {
     step: "fileForPath: a rename's new path, its old path, a deleted file's, and one it lacks",
     answers: [fromRename, fromOld, fromDeleted, fromElsewhere],
   });
+  // The section a path names and the path a section is known by, with which a pull
+  // request's page keeps a reader's place in its file across two comparisons (A4 of review
+  // A on #745): a rename by either path, known by its new one; a deleted file by its old
+  // one; nothing for a path or an element the comparison lacks.
+  const renamedSection = paths.handle.sectionForPath("src/moved.py");
+  const deletedSection = paths.handle.sectionForPath("src/gone.py");
+  assert(
+    renamedSection !== null &&
+      renamedSection === paths.sectionOf("src/moved.py") &&
+      paths.handle.sectionForPath("src/was.py") === renamedSection &&
+      paths.handle.pathForSection(renamedSection) === "src/moved.py" &&
+      deletedSection !== null &&
+      deletedSection === paths.sectionOf("src/gone.py") &&
+      paths.handle.pathForSection(deletedSection) === "src/gone.py" &&
+      paths.handle.sectionForPath("only/on/github.py") === null &&
+      paths.handle.pathForSection(paths.pane) === null,
+    "a section is found by its file's paths and names its file",
+  );
 
   const absent = paths.handle.scrollToFile("only/on/github.py");
   const topBefore = paths.pane.scrollTop;
@@ -732,10 +758,16 @@ async function main() {
   truncated.manifest.truncated = true;
   truncated.manifest.cursor = "manifest-cap";
   const capped = mount(truncated);
+  // Mounting another comparison disposed the view above, which then answers neither.
+  assert(
+    paths.handle.sectionForPath("src/moved.py") === null &&
+      paths.handle.pathForSection(renamedSection) === null,
+    "a disposed view still names its sections",
+  );
   const pastCap = capped.handle.scrollToFile("past/the/cap.py");
   const truncation = capped.pane
     .find("diff-availability")
-    .find((notice) => notice.textContent.startsWith("The change list was truncated"));
+    .find((notice) => notice.textContent.startsWith("The change list is too long"));
   assert(truncation, "missing comparison truncation notice");
   say("the same in a list that stopped at its bound says so", capped, pastCap, {
     warning: truncation.textContent,

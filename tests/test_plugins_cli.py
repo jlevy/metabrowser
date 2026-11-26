@@ -11,6 +11,7 @@ its view key report on operator plugins.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
@@ -23,6 +24,14 @@ from metabrowser.cache.records import CACHE_LAYOUT_CONTRACT_ID
 from metabrowser.cli.main import _app
 
 _runner = CliRunner()
+# `--doctor` ends with the GitHub status check, which runs gh; this fake answers it as a
+# signed-in account, so no doctor run here reaches conftest's failing stand-in.
+_STATUS_GH = Path(__file__).parent / "fixtures" / "github-status"
+
+
+@pytest.fixture(autouse=True)
+def _fake_status_gh(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    monkeypatch.setenv("PATH", f"{_STATUS_GH}{os.pathsep}{os.environ.get('PATH', '')}")
 
 
 def test_plugins_list_table_includes_builtin_plugins() -> None:
@@ -51,7 +60,7 @@ def test_plugins_list_json_emits_structured_output() -> None:
 def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> None:
     broken = tmp_path / "broken"
     broken.mkdir()
-    (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\nsdk_version = "0.7"\n')
+    (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\nsdk_version = "0.8"\n')
 
     table_result = _runner.invoke(
         _app,
@@ -75,7 +84,7 @@ def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> No
 def test_plugins_show_builtin_dumps_manifest() -> None:
     result = _runner.invoke(_app, ["--plugin", "markdown"])
     assert result.exit_code == 0
-    assert "name:         markdown" in result.stdout
+    assert "name:            markdown" in result.stdout
     assert "markdown/rendered" in result.stdout
     assert "static_root:" in result.stdout
 
@@ -153,7 +162,7 @@ def test_plugins_doctor_json_reports_a_damaged_cache_contract(damaged_cache_sche
 
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
-    assert set(payload) == {"ok", "plugin_count", "problems"}
+    assert set(payload) == {"ok", "plugin_count", "problems", "open_in", "github", "checks"}
     assert payload["ok"] is False
     assert any(problem.startswith("cache record contracts:") for problem in payload["problems"])
     assert any(damaged_cache_schemas in problem for problem in payload["problems"])
@@ -167,7 +176,7 @@ def test_plugins_doctor_rejects_local_python_data_hook(tmp_path: Path) -> None:
         """
 [plugin]
 name = "broken"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "x"
@@ -212,7 +221,7 @@ def test_plugins_doctor_reports_a_duplicate_view_key_across_manifests(tmp_path: 
         """
 [plugin]
 name = "alpha"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"
@@ -232,7 +241,7 @@ key = "m"
         """
 [plugin]
 name = "beta"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[view]]
 kind = "myk"
@@ -246,7 +255,7 @@ key = "M"
 
     assert result.exit_code == 1
     assert result.stdout == ""
-    [problem] = [line for line in result.stderr.splitlines() if "key" in line]
+    [problem] = [line for line in result.stderr.splitlines() if line.startswith("  • ")]
     assert "plugin 'beta'" in problem
     assert "view 'alt' of kind 'myk'" in problem
     assert "view 'main' (plugin 'alpha') already holds it" in problem
@@ -272,7 +281,7 @@ def test_plugins_doctor_names_the_override_that_takes_a_built_in_views_key(
         """
 [plugin]
 name = "steal"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[view]]
 kind = "markdown"
@@ -286,7 +295,7 @@ default = true
     result = _runner.invoke(_app, ["--doctor", "--plugins-dir", str(tmp_path)])
 
     assert result.exit_code == 1
-    assert [line for line in result.stderr.splitlines() if "key" in line] == [
+    assert [line for line in result.stderr.splitlines() if line.startswith("  • ")] == [
         "  • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view"
         " 'rendered' (plugin 'steal') already holds it; the view is served without a key"
     ]
@@ -299,7 +308,7 @@ def test_plugins_diagnostics_do_not_advertise_disabled_local_hooks(tmp_path: Pat
         """
 [plugin]
 name = "local-demo"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "x"

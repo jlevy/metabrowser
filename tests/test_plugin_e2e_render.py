@@ -53,15 +53,21 @@ def shim_output() -> dict[str, Any]:
 def test_shim_loads_every_builtin_plugin(shim_output: dict[str, Any]) -> None:
     """The generic built-in plugin set loads and runs each ``index.js``."""
     assert set(shim_output["plugins"]) == {
-        "agent_log",
+        "agents",
         "diff",
+        "event_log",
         "binary",
+        "delimited",
         "folder",
+        "fsqlite",
         "github",
         "html",
         "image",
         "markdown",
+        "pdf",
+        "sqlite",
         "structured",
+        "table",
         "text",
         "unknown_jsonl",
     }
@@ -85,65 +91,6 @@ def test_every_declared_view_has_a_registration(shim_output: dict[str, Any]) -> 
     ]
     assert missing == [], (
         "manifests declare these views but no registerView fired:\n  " + "\n  ".join(missing)
-    )
-
-
-def test_no_render_time_namespace_violations(shim_output: dict[str, Any]) -> None:
-    """The render-time-only namespace rule: a plugin's top-level IIFE
-    MUST NOT dereference mb.builtins.<other> unless <other> already
-    loaded. The shim tracks every load-time read of mb.builtins.<X>;
-    a read that resolved to undefined is a foot-gun (the consumer will
-    explode the moment it tries to use the value). See
-    docs/plugins.md → "Render-time-only namespace rule".
-    """
-    violations = shim_output.get("namespace_violations", [])
-    assert violations == [], (
-        "plugins read another plugin's mb.builtins namespace at script-load "
-        "time and got undefined; move the access inside a render() callback. "
-        f"Violations: {violations!r}"
-    )
-
-
-def test_namespace_rule_is_enforced(tmp_path: Path) -> None:
-    """The enforcement actually trips on a violating fixture: a plugin
-    that reads mb.builtins.nonexistent at top level should produce a
-    namespace_violations entry.
-    """
-    require_node()
-    bad = tmp_path / "bad_plugin"
-    bad.mkdir()
-    (bad / "manifest.toml").write_text(
-        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.7"\n'
-        '[[kind]]\nid = "bad"\n'
-        'match = { ext = ".bad" }\n[[view]]\nkind = "bad"\nid = "v"\nlabel = "V"\n'
-    )
-    (bad / "index.js").write_text(
-        "(function() {\n"
-        "  var mb = window.metabrowser;\n"
-        "  // Top-level read of an unloaded namespace — the foot-gun.\n"
-        "  var probe = mb.builtins.nonexistent;\n"
-        "  void probe;\n"
-        "  mb.registerView('bad', 'v', { render: function () {} });\n"
-        "})();\n"
-    )
-    result = subprocess.run(
-        [
-            "node",
-            "--experimental-vm-modules",
-            str(LOADER_JS),
-            str(REPO_ROOT),
-            str(tmp_path),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-    assert result.returncode == 0, f"shim failed: {result.stderr!r}"
-    payload = json.loads(result.stdout.strip().splitlines()[-1])
-    violations = payload.get("namespace_violations", [])
-    assert any(v["plugin"] == "bad_plugin" and v["key"] == "nonexistent" for v in violations), (
-        f"expected to flag bad_plugin reading mb.builtins.nonexistent; got {violations!r}"
     )
 
 

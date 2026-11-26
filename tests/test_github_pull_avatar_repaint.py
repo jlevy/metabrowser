@@ -42,15 +42,20 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "header": "first",
                 "rebuilt": "first",
                 # The header: the branches (mb-fon5) and the state and its ages (mb-4ydo) have
-                # rows of their own, and the author's row ends in the stack's slot, not a strut
-                # of its own (mb-cf0l); the Diff summary's row ends it, built once and kept
-                # by every repaint below (mb-pb35), with its pending placeholder, a reveal and
-                # its block, built once at mount and kept across the waits (mb-onr2). The
-                # author is the shell's identity, its avatar in a box of its own (mb-nunw).
+                # rows of their own, and the row of ages ends in the stack's slot (mb-646g), no
+                # row in a strut of its own (mb-cf0l); the Diff summary's row ends it, built once
+                # and kept by every repaint below (mb-pb35), with its pending placeholder, a
+                # reveal and its block, built once at mount and kept across the waits (mb-onr2).
+                # The author is the shell's identity, its avatar in a box of its own (mb-nunw).
                 # The author's row's lead holds the sentence and the freshness note, its dot,
-                # slot, and sizer (mb-ne91); the row of ages its ages and its links, each a span
-                # of its own, so the ages give way before the links (B4 of review B on #506).
-                "built": 53,
+                # slot, and sizer (mb-ne91); the row of ages its ages, a span of their own so
+                # they give way before Browse code's span, which this record has none of (B4 of
+                # review B on #506). The View on GitHub button's corner is an empty span here:
+                # the SDK draws the button (mb-4wqh), and this page has none to draw it with.
+                # The size line's row, its placeholder, and the placeholder's block are three
+                # (docs/design-system.md, "Change Size Line"). The page has no Refresh of its
+                # own (mb-ablv), which a hidden button in the row of ages was.
+                "built": 54,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,
@@ -75,7 +80,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "created": {"header": 0, "conversation": 0},
                 "shown": 7,
             },
-            # Refresh hides while the refresh runs; it is the same button.
+            # A refresh running builds and moves nothing.
             {
                 "step": "a poll finds a refresh running",
                 **UNCHANGED,
@@ -101,7 +106,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
             {
                 "step": "the head branch is renamed",
                 "header": "kept",
-                "rebuilt": ["branches", "copy buttons"],
+                "rebuilt": ["branches", "ref menu triggers"],
                 "built": 8,
                 "detached": 0,
                 "created": {"header": 0, "conversation": 0},
@@ -119,7 +124,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
             },
             # A merge changes the state and the actor: the title's icon, the badge, the
             # sentence, and the row of ages, which gains the merge's. The branches, the
-            # badge's sizers, the labels, and Refresh are kept.
+            # badge's sizers, and the labels are kept.
             {
                 "step": "another actor merges it",
                 "header": "new",
@@ -130,11 +135,9 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                     "identity",
                     "action",
                     "opened row",
-                    "GitHub link",
                 ],
-                # The row of ages is its ages and its links, a span each (B4 of review B on
-                # #506), two of these.
-                "built": 19,
+                # The row of ages is its ages, a span of their own (B4 of review B on #506).
+                "built": 17,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,

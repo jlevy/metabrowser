@@ -46,7 +46,8 @@ const context = {
   document,
   location: { pathname: "/view/", assign() {} },
   metabrowser: {
-    mountRefCopies: () => () => {},
+    formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+    mountRefMenus: () => () => {},
     refChip: (name) => element(document, "span", { class: "ref-chip" }, name),
   },
   METABROWSER_SOURCE_PIN: { ref: recorded.branches.body.ref, ref_name: "topic" },
@@ -65,7 +66,9 @@ const context = {
 context.window = context;
 context.globalThis = context;
 vm.createContext(context);
-for (const name of ["filter-controls.js", "source-ref-selector.js"]) {
+// formatters.js gives each row's commit its short ID and age, as the shell's startup
+// scripts do, and menus.js closes the list as every menu closes.
+for (const name of ["formatters.js", "filter-controls.js", "menus.js", "source-ref-selector.js"]) {
   vm.runInContext(fs.readFileSync(path.join(staticDir, name), "utf8"), context, {
     filename: path.join(staticDir, name),
   });
@@ -89,6 +92,9 @@ function describe(node) {
   }
   if (node.classList.contains("source-ref-selector-filter")) {
     return "the filter";
+  }
+  if (node.classList.contains("source-ref-selector-toggle")) {
+    return node.getAttribute("aria-label");
   }
   if (node.classList.contains("source-ref-selector-row")) {
     return `the row ${node.querySelector(".ref-chip")?.textContent ?? "?"}`;
@@ -177,7 +183,10 @@ async function main() {
   plainKey(rows()[0], "Escape");
   check("↓ from the filter moves to a row", plain[0].taken && plain[0].focus.startsWith("the row"));
   check("Tab and Option-Tab wrap from the last stop", plain[1].taken && plain[2].taken);
-  check("Escape closes the list", plain[3].taken && !plain[3].listOpen);
+  check(
+    "Escape closes the list and restores focus to the chooser button",
+    plain[3].taken && !plain[3].listOpen && focused() === selector.button,
+  );
   selector.dispose();
 
   process.stdout.write(

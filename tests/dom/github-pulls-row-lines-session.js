@@ -1,8 +1,10 @@
-// Browserless session: each Pulls row's third line, its brief change line (mb-d0a3), which
-// carries the chevron for its changed files (mb-h0ml), and the keys that reach it (mb-1l4i),
-// through the production code.
+// Browserless session: each Pulls row's run and last line (mb-d0a3, mb-lqkb, mb-pw8t,
+// mb-rb3n): the title, the place, the number, and the author, then the lines the pull request
+// changes, its brief change line of its line totals alone, with the chevron for its changed
+// files after them (mb-h0ml, mb-f0pz), and the age at the row's end, and the presses and keys
+// that reach it (mb-1l4i), through the production code.
 //
-// builtin_plugins/github/row-lines.js decides what a row's third line shows: the shell's
+// builtin_plugins/github/row-lines.js decides what lines a row's toggle shows: the shell's
 // pending placeholder while the line is read or the row's list is being listed, the line once
 // it is, and nothing where its list is not cached and nothing lists it. The line is what the
 // row's own cached list of changed files sums to, which the server answers for every row the
@@ -14,11 +16,22 @@
 // `lane` drives the lane alone over those answers, with the browser's idle time and its clock
 // in the session's hands, and prints what each row shows at each step and what was asked.
 // `row` mounts the production panel over a stand-in for the DOM with the SDK's own painters
-// (tests/dom/sdk-ref-fixture.js) and prints each row's third line in its three states, then
-// what a press and each key do: a press on the row opens it and expands nothing, a press on
-// its change line toggles its files, Up and Down walk the rows and expand nothing, Right goes
-// to a row's change line, and there Enter and Space toggle its files, Left closes them and
-// goes back, and Up and Down leave it. `invariants` are the relations every step holds.
+// (tests/dom/sdk-ref-fixture.js) and prints each row's run and last line in its three states.
+// `totals` mounts it again on rows whose totals are zero or not known, and prints the lines
+// they show: a total of zero is left out, and a change of no lines is "0 lines" (mb-efum). `tree`
+// goes on in that panel and prints what a press and each key do on a pull request, one item
+// (mb-1z7j): a press on its lines or its chevron toggles its files and opens no page, a press
+// anywhere else on it, the title, the number, the author, or the age, opens it and expands
+// nothing, Up and Down walk whole
+// items and expand nothing, Space toggles the files, Right opens them, Left closes them, and
+// Enter opens the pull request. `focus` goes on from there: every key acts on the item with
+// focus, even after a poll has moved the list's Tab stop to the current pull request.
+// `window` mounts it in a pane whose rows lay out shorter than `ROW_ESTIMATE_PX`, with the
+// browser's frames, its resize notifications, and its idle time in the session's hands: the
+// first window, placed at the estimate, draws fewer rows than the window the rows' heights
+// place, and the one read of their lines names every row that window draws, whether the browser
+// is idle after the frame that measured the rows or before it (mb-hb4a).
+// `invariants` are the relations every step holds.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -98,6 +111,9 @@ async function laneStory(lines, prefetch) {
   const asked = [];
   let answers = (numbers) => answerFor(recordedRows("summed"), numbers);
   const repaints = [];
+  // What the panel's window does when a read is about to name its rows: nothing, but where a
+  // step says its rows' measures move it.
+  let settleWindow = () => {};
   const deps = () => ({
     keep,
     index,
@@ -116,6 +132,7 @@ async function laneStory(lines, prefetch) {
     cancel(handle) {
       idle = idle.filter((callback) => callback !== handle);
     },
+    settle: () => settleWindow(),
     isVisible: () => true,
     now: () => now,
     changed: (numbers) => repaints.push(numbers === null ? "every row" : numbers.join(",")),
@@ -281,6 +298,29 @@ async function laneStory(lines, prefetch) {
     await runIdle();
   });
   assert.equal(steps.at(-1).asked.length, 0, "the same refresh's list is not read again");
+  // The panel's first window is placed at `ROW_ESTIMATE_PX`, and the rows' measures move it;
+  // the browser can be idle between the frame that measured them and the frame that draws the
+  // window they place. The read settles the window before it names its rows, so the rows that
+  // window adds are in the one read, not a second one (mb-hb4a).
+  index.clear();
+  settleWindow = () => {
+    settleWindow = () => {};
+    rows = [...rows, { number: 102, head: "7".repeat(40) }];
+    lane.want(rows, SOURCE);
+  };
+  await step(
+    "read again from nothing, the window drawing #102 too once its rows are measured: one read names all five",
+    async () => {
+      lane.want(rows, SOURCE);
+      await runIdle();
+    },
+  );
+  assert.deepEqual(
+    steps.at(-1).asked,
+    [`GET ${ROUTE}?numbers=106,105,104,103,102`],
+    "one read names every row the settled window draws",
+  );
+  rows = rows.filter((row) => row.number !== 102);
   // A server that serves no GitHub repository has no row's list: one answer says so.
   index.clear();
   lane.dispose();
@@ -295,13 +335,38 @@ async function laneStory(lines, prefetch) {
   return steps;
 }
 
+/** The rows the list draws first, which each story reads. */
+const SHOWN = [106, 105, 104, 103];
+
 /**
  * Mount the production panel over a stand-in for the DOM on the recorded All list, with the
- * SDK's own painters and idle time in the session's hands, and print each row's third line
- * at each step, then what a press and each key do.
+ * SDK's own painters and idle time in the session's hands, and print each row's run and last
+ * line at each step, then what a press and each key do. Given *totals*, each drawn row's line
+ * totals in `SHOWN`'s order, its rows are a recorded listed row with those totals, and the
+ * story ends when their lines arrive, with what each shows.
+ *
+ * @param {{additions: number | null, deletions: number | null}[] | null} [totals]
  */
-async function rowStory(lines) {
+async function rowStory(lines, totals = null) {
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
+  const rowSummaries = recordedRows("summed");
+  // A comparison already has its measured size when the navigation reads its totals.
+  rowSummaries.set(106, {
+    ...rowSummaries.get(106),
+    size: { state: "measured", pushed_bytes: 22_528, diff_bytes: 60_314 },
+  });
+  for (const [at, total] of (totals ?? []).entries()) {
+    const number = SHOWN[at];
+    // A change of no lines renames a file; any other modifies one.
+    const status = total.additions === 0 && total.deletions === 0 ? "renamed" : "modified";
+    rowSummaries.set(number, {
+      ...rowSummaries.get(105),
+      number,
+      generation: String(number).padStart(32, "0"),
+      statuses: [{ status, count: 1 }],
+      ...total,
+    });
+  }
   let filterOptions = [];
   class PanelElement extends FakeElement {
     set innerHTML(markup) {
@@ -334,11 +399,19 @@ async function rowStory(lines) {
     Promise.resolve({ status, headers: { get: () => null }, json: async () => body });
   const requests = [];
   const opened = [];
+  // The panel's timers, kept and never run on their own, each with where it was set: the
+  // story fires the list's next poll when it says (`firePoll`), as the poll's delay ending
+  // would. A tree of changed files polls its own list too, so a timer is told by the stack
+  // that set it, the list's `scheduleNext` in pulls-panel.js.
+  const timers = [];
   const globals = {
     document,
     window: {
       addEventListener() {},
-      setTimeout: () => 0,
+      setTimeout: (callback) => {
+        timers.push({ callback, from: new Error().stack ?? "" });
+        return 0;
+      },
       clearTimeout() {},
       requestAnimationFrame(callback) {
         frames.push(callback);
@@ -364,7 +437,7 @@ async function rowStory(lines) {
       if (route.startsWith(`${ROUTE}?`)) {
         requests.push(route);
         const numbers = new URL(route, "http://x").searchParams.get("numbers").split(",");
-        const answer = answerFor(recordedRows("summed"), numbers.map(Number));
+        const answer = answerFor(rowSummaries, numbers.map(Number));
         return respond(answer.body, answer.status);
       }
       if (route.startsWith("/api/plugin/github/pull-files?")) {
@@ -436,7 +509,10 @@ async function rowStory(lines) {
           },
           bind: () => () => {},
         },
-        formatAge: () => ({ label: "1m", className: "age-min" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "1m",
+          className: "age-min",
+        })),
         formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
         whenIdle(callback) {
           idle.push(callback);
@@ -447,7 +523,6 @@ async function rowStory(lines) {
       },
     );
     const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
-    const SHOWN = [106, 105, 104, 103];
     const item = (number) =>
       list.childNodes.find(
         (node) =>
@@ -455,10 +530,33 @@ async function rowStory(lines) {
       );
     const childByClass = (node, name) =>
       node.childNodes.find((child) => child.classList?.contains(name));
-    const rowOf = (number) => item(number).childNodes[0];
-    const changeOf = (number) =>
-      childByClass(item(number), "github-pulls-change-group").firstElementChild;
+    /** The first element under *node*, at any depth, with the class *name*. */
+    const findByClass = (node, name) => {
+      for (const child of node.childNodes) {
+        if (child.classList?.contains(name)) {
+          return child;
+        }
+        const found = child.childNodes === undefined ? undefined : findByClass(child, name);
+        if (found !== undefined) {
+          return found;
+        }
+      }
+      return undefined;
+    };
+    // The item is one zone (`.github-pulls-entry`, mb-1z7j), its link, the row of the tree:
+    // its run, the title, the place, the number, and the author, and its last line, its
+    // toggle, the lines and the chevron after them, and the age at the row's end (mb-rb3n).
+    const zoneOf = (number) => childByClass(item(number), "github-pulls-entry");
+    const rowOf = (number) => zoneOf(number).childNodes[0];
+    const headingOf = (number) => childByClass(rowOf(number), "github-pulls-heading");
+    const tailOf = (number) => childByClass(rowOf(number), "github-pulls-tail");
+    const changeOf = (number) => findByClass(rowOf(number), "github-pulls-change");
     const lineOf = (number) => childByClass(changeOf(number), "github-pulls-change-line");
+    // The line's words, hidden, which describe the row (`aria-describedby`).
+    const wordsOf = (number) => childByClass(changeOf(number), "github-pulls-change-words");
+    /** Which way the line's chevron points: `.expanded` or `.collapsed`. */
+    const turnOf = (number) =>
+      changeOf(number).classList.contains("expanded") ? "expanded" : "collapsed";
     /** Nodes as data: text as its string, an element its class, attributes, and content. */
     const shape = (nodes) =>
       nodes.map((node) =>
@@ -476,46 +574,84 @@ async function rowStory(lines) {
       );
     const textOf = (node) =>
       node.data !== undefined ? node.data : node.childNodes.map(textOf).join("");
-    /** Each row's third line as drawn: its parts, its text, and its item's name and state,
-     * and #106's line part for part. */
-    const thirdLines = () =>
+    /** The text *node* shows: its text but what is hidden. */
+    const shownOf = (node) =>
+      node.data !== undefined
+        ? node.data
+        : node.getAttribute("hidden") !== null
+          ? ""
+          : node.childNodes.map(shownOf).join("");
+    /** A part of a row's run: its class, and the parts of the author. */
+    const runPart = (node) =>
+      node.className === "github-pulls-by"
+        ? { [node.className]: node.childNodes.map(runPart) }
+        : (node.className ?? node.data);
+    /** Each row as drawn: its run's parts, its last line's parts, the text its run shows, the
+     * lines' text, and its item's name and state, and #106's lines part for part; and what
+     * the item says for its number, its author, and its age, in its link's hidden text
+     * (`spoken`). */
+    const rowsDrawn = () =>
       Object.fromEntries(
         SHOWN.map((number) => {
-          const change = changeOf(number);
+          const heading = headingOf(number);
           return [
             `#${number}`,
             {
-              parts: change.childNodes.map((node) => node.className),
+              run: heading.childNodes.map(runPart),
+              last: tailOf(number).childNodes[0].childNodes.map((node) => node.className),
+              end: tailOf(number).childNodes.at(-1).className,
+              shown: shownOf(heading).replaceAll("\u00a0", " "),
+              spoken: textOf(childByClass(rowOf(number), "sr-only")),
               text: textOf(lineOf(number)),
               ...(number === 106 ? { line: shape(lineOf(number).childNodes) } : {}),
-              name: change.getAttribute("aria-label"),
-              expanded: change.getAttribute("aria-expanded"),
+              words: textOf(wordsOf(number)),
+              chevron: turnOf(number),
             },
           ];
         }),
       );
-    /** One item as drawn: its name, role, level, place, expansion, Tab stop, and focus. */
-    const said = (element, name) =>
-      [
+    /** One element as drawn: its name, role, level, place, expansion, what it owns, describes,
+     * or controls, whether it is a stop of the tree's, and focus. */
+    const said = (element, name) => {
+      const attribute = (label, attr) =>
+        element.getAttribute(attr) === null ? null : `${label} ${element.getAttribute(attr)}`;
+      const tabindex = element.getAttribute("tabindex");
+      return [
         name,
         element.getAttribute("role"),
-        `level ${element.getAttribute("aria-level")}`,
-        `${element.getAttribute("aria-posinset")}/${element.getAttribute("aria-setsize")}`,
-        `expanded ${element.getAttribute("aria-expanded")}`,
-        element.getAttribute("aria-owns") === null
+        attribute("level", "aria-level"),
+        element.getAttribute("aria-posinset") === null
           ? null
-          : `owns ${element.getAttribute("aria-owns")}`,
-        element.getAttribute("tabindex") === "0" ? "Tab stop" : null,
+          : `${element.getAttribute("aria-posinset")}/${element.getAttribute("aria-setsize")}`,
+        `expanded ${element.getAttribute("aria-expanded")}`,
+        attribute("owns", "aria-owns"),
+        attribute("described by", "aria-describedby"),
+        attribute("controls", "aria-controls"),
+        tabindex === "0" ? "Tab stop" : tabindex === null ? "no stop" : null,
         document.activeElement === element ? "focused" : null,
       ]
         .filter(Boolean)
         .join(" · ");
-    /** The tree as drawn for the four rows: each row, then its change line, the row's child. */
+    };
+    /** A row's toggle, its lines and chevron: hidden from assistive technology or not, which
+     * way its chevron points, whether it is a stop of the tree's, and focus. */
+    const saidLine = (number) => {
+      const line = changeOf(number);
+      return [
+        `  #${number}'s toggle`,
+        line.getAttribute("aria-hidden") === "true" ? "hidden" : "exposed",
+        line.getAttribute("role"),
+        `chevron ${turnOf(number)}`,
+        line.getAttribute("tabindex") === null ? "no stop" : "a stop",
+        document.activeElement === line ? "focused" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    };
+    /** The tree as drawn for the four rows: each item's row, then the line under it that
+     * carries its toggle. */
     const tree = () =>
-      SHOWN.flatMap((number) => [
-        said(rowOf(number), `#${number}`),
-        said(changeOf(number), `  #${number}'s change line`),
-      ]);
+      SHOWN.flatMap((number) => [said(rowOf(number), `#${number}`), saidLine(number)]);
     const runIdle = async () => {
       while (idle.length > 0) {
         idle.shift()();
@@ -525,13 +661,13 @@ async function rowStory(lines) {
     const steps = [];
     await paint();
     steps.push({
-      step: "mounted: each row's third line holds the pending placeholder; the browser is not idle yet",
-      lines: thirdLines(),
+      step: "mounted: each row's toggle holds the pending placeholder; the browser is not idle yet",
+      lines: rowsDrawn(),
       requests: requests.splice(0),
     });
-    // The placeholder, the chevron, and the change line are the nodes the arrival keeps.
+    // The placeholder, the chevron, and the toggle are the nodes the arrival keeps.
     const changeBefore = changeOf(106);
-    const toggleBefore = childByClass(changeBefore, "github-pulls-toggle");
+    const toggleBefore = childByClass(changeOf(106), "github-pulls-toggle");
     const pendingBefore = lineOf(106).childNodes[0];
     await paint();
     assert.equal(
@@ -540,40 +676,118 @@ async function rowStory(lines) {
       "the placeholder is one node across paints, so its quiet period and pulse run once",
     );
     await runIdle();
-    const arrived = thirdLines();
+    const arrived = rowsDrawn();
+    if (totals !== null) {
+      // Each row draws the component built with its zero totals left out, after the dot
+      // before it, and is described by its words (mb-efum).
+      const drawn = SHOWN.map((number, at) => {
+        const said = sdk.changeLine(lines.rowLineInput(rowSummaries.get(number), null));
+        const line = shape(lineOf(number).childNodes);
+        assert.deepEqual(
+          line,
+          shape([...sdk.changeLineNodes(said)]),
+          `#${number} draws the component with its zero totals left out`,
+        );
+        assert.equal(arrived[`#${number}`].words, `Changed files: ${said.label}`);
+        assert.ok(!/[+−]0\b/.test(arrived[`#${number}`].text), `#${number} shows no zero total`);
+        // The totals the line shows, each its class and text.
+        const stats = findByClass(lineOf(number), "change-line-stats").childNodes;
+        return {
+          row: `#${number}`,
+          totals: totals[at],
+          text: arrived[`#${number}`].text,
+          words: arrived[`#${number}`].words,
+          shows: stats.map((node) => `${node.className}: ${textOf(node)}`),
+        };
+      });
+      handle.dispose();
+      restore();
+      return { drawn };
+    }
     steps.push({
       step: "idle: one read for the rows drawn; #106's and #105's lines arrive, and #104 and #103 have none",
       lines: arrived,
       requests: requests.splice(0).map((route) => `${route.split("&")[0].slice(0, 80)}…`),
     });
-    assert.equal(changeOf(106), changeBefore, "the change line stays");
+    assert.equal(changeOf(106), changeBefore, "the toggle stays");
     assert.equal(childByClass(changeOf(106), "github-pulls-toggle"), toggleBefore);
-    // The line is the shell's one component, through the SDK: the same nodes, part for part.
+    // The lines are the shell's one component, through the SDK, of the line totals alone,
+    // with no file statuses (mb-lqkb): the separator, then the same nodes, part for part.
     const { rowLineInput } = lines;
-    const tree106 = await sdk.loadChangedFilesTree();
     const summary106 = summaries.summed.body.rows.find((row) => row.number === 106);
-    const said106 = sdk.changeLine(rowLineInput(summary106, tree106.statusBreakdown));
+    const said106 = sdk.changeLine(rowLineInput(summary106, null));
+    assert.deepEqual(said106.statusParts, [], "the lines name no file statuses");
     assert.deepEqual(
       arrived["#106"].line,
       // Spread into this realm's array: the SDK's own is its sandbox's.
       shape([...sdk.changeLineNodes(said106)]),
-      "the row draws the component",
+      "the row draws the component, after the dot before it",
     );
-    assert.equal(arrived["#106"].name, `Changed files: ${said106.label}`);
-    // No file total: the brief line alone (its spaces between items are the layout's gap).
+    // The run holds the title, the place, the number, and the author, a dot before each part
+    // after the title (mb-rb3n); the last line holds the toggle, the lines and the chevron
+    // after them, the summary it expands (mb-f0pz), and the age at the row's end, one line
+    // tall whatever it holds, so a row with no lines, whose chevron is alone there, moves
+    // nothing when its lines are read after all.
+    for (const number of SHOWN) {
+      const run = arrived[`#${number}`].run;
+      assert.deepEqual(
+        run.slice(1, 5),
+        ["github-pulls-title", "github-pulls-place", "github-pulls-sep", "github-pulls-number"],
+        `#${number}'s run is the title, the place, and the number`,
+      );
+      assert.deepEqual(
+        arrived[`#${number}`].last,
+        ["github-pulls-change-line", "github-pulls-toggle", "github-pulls-change-words"],
+        `#${number}'s last line is the toggle, the lines then the chevron`,
+      );
+      assert.equal(
+        arrived[`#${number}`].end,
+        "github-pulls-age age-min",
+        `#${number}'s age ends it`,
+      );
+    }
+    for (const number of SHOWN.map((shown) => `#${shown}`)) {
+      assert.deepEqual(
+        arrived[number].run.slice(5),
+        ["github-pulls-sep", { "github-pulls-by": ["actor-identity github-pull-identity"] }],
+        `${number}'s run ends with the dot and the author`,
+      );
+    }
+    // The link is the run, the last line, and the number, the author, and the age said for
+    // its name alone.
+    assert.deepEqual(
+      rowOf(106).childNodes.map((node) => node.className),
+      ["github-pulls-heading", "github-pulls-tail", "sr-only"],
+    );
+    assert.equal(textOf(childByClass(rowOf(106), "sr-only")), "#106 · contributor · 1m");
+    // Each item says its number and its last line in words, whatever its toggle shows: the
+    // number, the author, and the age, read with the title as the item's name.
+    for (const number of SHOWN) {
+      assert.equal(arrived[`#${number}`].spoken, `#${number} · contributor · 1m`);
+    }
+    assert.equal(arrived["#106"].words, `Changed files: ${said106.label}`);
+    assert.equal(
+      rowOf(106).getAttribute("aria-describedby"),
+      wordsOf(106).getAttribute("id"),
+      "the row is described by its line's words",
+    );
+    // No file total and no file statuses: the totals alone (the spaces between items are the
+    // layout's gap).
     assert.equal(arrived["#106"].text.replace(/\s/g, ""), said106.text.replace(/\s/g, ""));
     assert.ok(!/file/.test(arrived["#106"].text), "the line names no file total");
+    assert.ok(!/\d [ADMR]\b/.test(arrived["#106"].text), "the line names no file status");
     // Collapsed by default, and nothing opens on its own.
     steps.push({
       step: "the collapsed default: no row's files are open, and no list was read",
       tree: tree(),
       requests: requests.splice(0),
     });
-    const keyStep = (what, act) => {
+    const keyStep = (what, act, pressed) => {
       const handled = act();
       return paint().then(() => {
         steps.push({
           step: what,
+          ...(pressed === undefined ? {} : { pressed }),
           ...(handled === undefined ? {} : { handled }),
           tree: tree(),
           ...(opened.length > 0 ? { opened: opened.splice(0) } : {}),
@@ -581,53 +795,202 @@ async function rowStory(lines) {
         });
       });
     };
-    const title = childByClass(rowOf(106), "github-pulls-title");
-    await keyStep("a press on #106's title opens it, and its files stay closed", () =>
-      list.listeners.get("click")({ target: title, button: 0, preventDefault() {} }),
+    /** A press on *target*, a part of #*number*'s item named *part*, by *type* ("click", or
+     * "auxclick" for a middle press): whether the panel kept the browser from following the
+     * item's link (`defaultPrevented`). */
+    const press = (what, number, part, target, type = "click") =>
+      keyStep(
+        what,
+        () => {
+          const event = {
+            target,
+            button: type === "click" ? 0 : 1,
+            defaultPrevented: false,
+            preventDefault() {
+              this.defaultPrevented = true;
+            },
+          };
+          list.listeners.get(type)(event);
+          return { defaultPrevented: event.defaultPrevented };
+        },
+        { item: number, on: part, ...(type === "click" ? {} : { type }) },
+      );
+    // Every part of the item but its toggle, the lines and the chevron after them, is the
+    // item's link's: a press opens the pull request and expands nothing (docs/design-system.md,
+    // "A Click on the Toggle's Line Toggles"; mb-pw8t).
+    await press(
+      "a press on #106's title opens it, and its files stay closed",
+      106,
+      "title",
+      findByClass(rowOf(106), "github-pulls-title"),
     );
-    assert.equal(changeOf(106).getAttribute("aria-expanded"), "false");
-    const chevron = childByClass(changeOf(106), "github-pulls-toggle");
-    await keyStep("a press on its chevron opens its files, and opens no page", () => {
-      chevron.focus();
-      list.listeners.get("click")({ target: chevron, button: 0, preventDefault() {} });
-    });
-    assert.equal(changeOf(106).getAttribute("aria-expanded"), "true");
-    await keyStep("a press on its change line closes them", () =>
-      list.listeners.get("click")({ target: lineOf(106), button: 0, preventDefault() {} }),
+    await press(
+      "a press on #105's number, after its title, opens it, and its files stay closed",
+      105,
+      "number",
+      findByClass(rowOf(105), "github-pulls-number"),
     );
+    await press(
+      "a press on #105's author, in its run, opens it too",
+      105,
+      "author",
+      findByClass(rowOf(105), "github-pulls-author"),
+    );
+    await press(
+      "a press on #105's age opens it too",
+      105,
+      "age",
+      findByClass(rowOf(105), "github-pulls-age"),
+    );
+    await press(
+      "a press on #105's last line, past its toggle, opens it too",
+      105,
+      "last line",
+      tailOf(105),
+    );
+    // A modified press, which on a link opens a new tab, toggles nothing on the toggle and
+    // opens no page; off it, on the item's link, it is the browser's, which opens the pull
+    // request in a new tab (`defaultPrevented` false).
+    const modifiedPress = (what, number, part, target, modifier) =>
+      keyStep(
+        what,
+        () => {
+          const event = Object.assign(new globalThis.MouseEvent(), {
+            target,
+            button: 0,
+            [modifier]: true,
+            defaultPrevented: false,
+            preventDefault() {
+              this.defaultPrevented = true;
+            },
+          });
+          list.listeners.get("click")(event);
+          return { defaultPrevented: event.defaultPrevented };
+        },
+        { item: number, on: part, modifier },
+      );
+    await modifiedPress(
+      "a Cmd-press on #105's number is the browser's, a new tab: nothing opens or toggles here",
+      105,
+      "number",
+      findByClass(rowOf(105), "github-pulls-number"),
+      "metaKey",
+    );
+    await modifiedPress(
+      "a Ctrl-press on #105's chevron toggles nothing and opens no page",
+      105,
+      "chevron",
+      childByClass(changeOf(105), "github-pulls-toggle"),
+      "ctrlKey",
+    );
+    await press(
+      "a middle press on #105's lines opens no tab, and toggles nothing",
+      105,
+      "lines",
+      lineOf(105),
+      "auxclick",
+    );
+    await modifiedPress(
+      "a Cmd-press on #106's title is the browser's, a new tab: nothing opens here",
+      106,
+      "title",
+      findByClass(rowOf(106), "github-pulls-title"),
+      "metaKey",
+    );
+    await press(
+      "a press on #106's state icon opens it again, and its files stay closed",
+      106,
+      "state icon",
+      findByClass(rowOf(106), "github-pull-state-icon"),
+    );
+    assert.equal(rowOf(106).getAttribute("aria-expanded"), "false");
+    // The toggle, the lines or the chevron: a press toggles, opens no page, and leaves the
+    // focus on the item, the tree's one stop, so Space and the arrows go on from it.
+    await press(
+      "a press on #106's chevron opens its files, opens no page, and focuses its item",
+      106,
+      "chevron",
+      childByClass(changeOf(106), "github-pulls-toggle"),
+    );
+    assert.equal(turnOf(106), "expanded");
+    assert.equal(rowOf(106).getAttribute("aria-expanded"), "true");
+    assert.equal(document.activeElement, rowOf(106), "the item takes the focus, not its line");
+    await press(
+      "a press on its lines, before the chevron, closes them: the lines are the toggle too",
+      106,
+      "lines",
+      lineOf(106),
+    );
+    await press(
+      "a press on the toggle itself, between its lines and its chevron, opens them again",
+      106,
+      "toggle",
+      changeOf(106),
+    );
+    await press("and closes them", 106, "toggle", changeOf(106));
     rowOf(106).focus();
     list.listeners.get("focusin")({ target: rowOf(106) });
-    await keyStep("Down walks to #105, which opens, and expands nothing", () => handle.move(1));
+    await keyStep("Down walks to #105, a whole item, which opens and expands nothing", () =>
+      handle.move(1),
+    );
     await keyStep("Down again to #104: nothing expands", () => handle.move(1));
     await keyStep("Up back to #105", () => handle.move(-1));
-    await keyStep("Right on #105 goes to its change line, and opens nothing", () =>
-      handle.expand(),
-    );
-    await keyStep("Enter on the change line opens its files", () => handle.activateAnchor());
-    await keyStep("Enter again closes them", () => handle.activateAnchor());
-    await keyStep("Space on it (the handle's toggleFiles) opens them", () =>
-      handle.toggleFiles(105),
-    );
-    await keyStep("Left closes them, and keeps the change line", () => handle.collapse());
-    await keyStep("Right opens them again", () => handle.expand());
     await keyStep(
-      "Down from the open change line, its files not yet listed, goes on to #104, which opens",
+      "Space on #105 (the handle's toggleFiles) opens its files in place, and keeps the focus",
+      () => handle.toggleFiles(105),
+    );
+    await keyStep("Space again closes them", () => handle.toggleFiles(105));
+    await keyStep("Enter opens #105, and expands nothing", () => handle.activateAnchor());
+    await keyStep("Right opens #105's files, as on a folder", () => handle.expand());
+    await keyStep(
+      "Right again, its files not yet listed, has no file to go to: the focus stays",
+      () => handle.expand(),
+    );
+    await keyStep(
+      "Down from #105, its files open, goes on to #104, a whole item: the files are Right's",
       () => handle.move(1),
     );
-    await keyStep("Up back to #105, which opens", () => handle.move(-1));
-    await keyStep("Right to its change line, then Left: its files close", () => {
-      handle.expand();
-      return handle.collapse();
-    });
-    await keyStep("Left again goes back to #105's row", () => handle.collapse());
-    await keyStep("Right, then Up from the change line: back to #105's row", () => {
-      handle.expand();
-      return handle.move(-1);
-    });
-    await keyStep("Right, then Down from its closed change line: on to #104, which opens", () => {
-      handle.expand();
-      return handle.move(1);
-    });
+    await keyStep("Up back to #105, its files still open", () => handle.move(-1));
+    await keyStep("Left closes #105's files, as on a folder", () => handle.collapse());
+    await keyStep(
+      "Left again, on a pull request in no stack, goes nowhere, and is the list's",
+      () => handle.collapse(),
+    );
+    // A press on #103's chevron focuses #103, whose page is not the one open. A poll then
+    // settles the list's anchor, its Tab stop, on #105, the current pull request, and leaves
+    // focus on #103; each key still acts on #103, the item with focus (mb-1z7j).
+    const focusFrom = steps.length;
+    const firePoll = () => {
+      const poll = timers.filter(({ from }) => /scheduleNext .*pulls-panel\.js/.test(from)).at(-1);
+      assert.ok(poll !== undefined, "the list has a poll waiting");
+      timers.length = 0;
+      poll.callback();
+    };
+    const drifted = (step) =>
+      step.tree.some((line) => /^#105 .*· Tab stop/.test(line)) &&
+      step.tree.some((line) => /^#103 .*· focused$/.test(line));
+    await press(
+      "a press on #103's chevron opens its files and focuses #103, while #105's page is open",
+      103,
+      "chevron",
+      childByClass(changeOf(103), "github-pulls-toggle"),
+    );
+    await keyStep("a poll: the Tab stop goes back to #105, and focus stays on #103", firePoll);
+    assert.ok(drifted(steps.at(-1)), "the poll moves the Tab stop and leaves the focus");
+    await keyStep("Left closes #103's files: the item with focus, not the Tab stop", () =>
+      handle.collapse(),
+    );
+    assert.equal(rowOf(103).getAttribute("aria-expanded"), "false", "Left closes #103's files");
+    assert.equal(rowOf(105).getAttribute("aria-expanded"), "false", "and leaves #105's");
+    await keyStep("a poll again: the Tab stop goes back to #105", firePoll);
+    assert.ok(drifted(steps.at(-1)), "the poll moves the Tab stop again");
+    await keyStep("Right opens #103's files again", () => handle.expand());
+    assert.equal(rowOf(103).getAttribute("aria-expanded"), "true", "Right opens #103's files");
+    assert.equal(rowOf(105).getAttribute("aria-expanded"), "false", "and not #105's");
+    await keyStep("a poll again", firePoll);
+    assert.ok(drifted(steps.at(-1)), "and again");
+    await keyStep("Enter opens #103, the item with focus", () => handle.activateAnchor());
+    assert.deepEqual(steps.at(-1).opened, ["#103"], "Enter opens the focused item");
     await keyStep("Tab reaches #103's row, and Enter opens it: nothing expands", () => {
       rowOf(103).focus();
       list.listeners.get("focusin")({ target: rowOf(103) });
@@ -635,7 +998,280 @@ async function rowStory(lines) {
     });
     handle.dispose();
     restore();
-    return { steps, said: { text: said106.text, label: said106.label } };
+    return { steps, focusFrom, said: { text: said106.text, label: said106.label } };
+  } catch (error) {
+    restore();
+    throw error;
+  }
+}
+
+/** Rows by number in words: the first and the last of them and how many, or "none". */
+const span = (numbers) =>
+  numbers.length === 0
+    ? "none"
+    : numbers.length === 1
+      ? `#${numbers[0]}`
+      : `#${numbers[0]} to #${numbers.at(-1)}, ${numbers.length} rows`;
+
+/**
+ * Mount the production panel in a pane `PANE_PX` tall whose rows each lay out `ROW_PX` tall,
+ * shorter than `ROW_ESTIMATE_PX`, with the browser's frames, its layout's resize
+ * notifications, and its idle time in the session's hands. The first window is placed at the
+ * estimate, and the window the rows' heights place draws more of them. The browser is idle
+ * once between the frame that drew the first window and the next: after that frame laid the
+ * rows out and measured them, the window's frame waiting (`measured`), or before it
+ * (`unmeasured`). Either way the one read of their lines names every row the window draws
+ * (mb-hb4a): the lane settles the window before its read names the rows.
+ *
+ * @param {"measured" | "unmeasured"} idleAfter
+ */
+async function windowStory(idleAfter) {
+  const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
+  const PANE_PX = 600;
+  // A closed row whose run is two lines, as most are at 380 px: the 2 px pad, two 19.5 px
+  // lines, and 20 px of last line (`ROW_ESTIMATE_PX` in pulls-panel.js).
+  const ROW_PX = 61;
+  /** @type {FakeElement | null} */
+  let pane = null;
+  const heightOf = (node) =>
+    node.classList?.contains("github-pulls-item")
+      ? ROW_PX
+      : node.classList?.contains("github-pulls-spacer")
+        ? Number.parseFloat(node.style.height) || 0
+        : 0;
+  // The list at the pane's top, scrolled with it, and its items and spacers laid out in its
+  // order.
+  class WindowElement extends FakeElement {
+    getBoundingClientRect() {
+      const box = (top, height) => ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 300,
+        width: 300,
+      });
+      if (this === pane) {
+        return box(0, PANE_PX);
+      }
+      if (this.classList.contains("github-pulls-list")) {
+        return box(-pane.scrollTop, 0);
+      }
+      if (
+        !this.classList.contains("github-pulls-item") &&
+        !this.classList.contains("github-pulls-spacer")
+      ) {
+        return super.getBoundingClientRect();
+      }
+      let top = -pane.scrollTop;
+      for (const node of this.parentNode?.childNodes ?? []) {
+        if (node === this) {
+          break;
+        }
+        top += heightOf(node);
+      }
+      return box(top, heightOf(this));
+    }
+  }
+  /** Each ResizeObserver the panel makes, and the height it was last told of each target. */
+  const observers = [];
+  class ResizeObserverStandIn {
+    constructor(callback) {
+      this.callback = callback;
+      this.told = new Map();
+      observers.push(this);
+    }
+    observe(target) {
+      this.told.set(target, null);
+    }
+    unobserve(target) {
+      this.told.delete(target);
+    }
+    disconnect() {
+      this.told.clear();
+    }
+  }
+  /** A frame's layout: each observer is told of the boxes whose height changed since it was
+   * last told, a box observed anew among them, as a browser tells it after layout. */
+  const layout = () => {
+    for (const observer of observers) {
+      const entries = [];
+      for (const [target, told] of observer.told) {
+        const height = target.getBoundingClientRect().height;
+        if (height !== told) {
+          observer.told.set(target, height);
+          entries.push({ target, borderBoxSize: [{ blockSize: height, inlineSize: 300 }] });
+        }
+      }
+      if (entries.length > 0) {
+        observer.callback(entries, observer);
+      }
+    }
+  };
+  /** @type {Map<number, () => void>} */
+  const frames = new Map();
+  let frameIds = 0;
+  /** @type {(() => void)[]} */
+  let idle = [];
+  const requests = [];
+  const document = {
+    activeElement: null,
+    visibilityState: "visible",
+    addEventListener() {},
+    createElement: (tag) => new WindowElement(tag),
+    createDocumentFragment: () => new FakeNode("#fragment"),
+    importNode: (node) => new WindowElement(node.localName),
+  };
+  const respond = (body, status = 200) =>
+    Promise.resolve({ status, headers: { get: () => null }, json: async () => body });
+  const globals = {
+    document,
+    window: {
+      addEventListener() {},
+      setTimeout: () => 0,
+      clearTimeout() {},
+      requestAnimationFrame(callback) {
+        frameIds += 1;
+        frames.set(frameIds, callback);
+        return frameIds;
+      },
+      cancelAnimationFrame(id) {
+        frames.delete(id);
+      },
+    },
+    getComputedStyle: () => ({ getPropertyValue: () => "24" }),
+    HTMLElement: FakeElement,
+    Element: FakeElement,
+    MouseEvent: class {},
+    DOMParser: class {
+      parseFromString() {
+        return { body: { firstElementChild: new WindowElement("svg") } };
+      }
+    },
+    IntersectionObserver: class {
+      takeRecords() {}
+      observe() {}
+      disconnect() {}
+    },
+    ResizeObserver: ResizeObserverStandIn,
+    fetch(route) {
+      if (route.startsWith(`${ROUTE}?`)) {
+        const numbers = new URL(route, "http://x").searchParams.get("numbers").split(",");
+        requests.push(numbers.map(Number));
+        const answer = answerFor(recordedRows("summed"), numbers.map(Number));
+        return respond(answer.body, answer.status);
+      }
+      if (route.startsWith("/api/plugin/github/pulls?")) {
+        return respond(listed);
+      }
+      if (route === "/api/plugin/github/pulls-prefetch") {
+        return respond({ prefetch: "not_due" });
+      }
+      return respond(null, 404);
+    },
+  };
+  const saved = {};
+  for (const [name, value] of Object.entries(globals)) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  }
+  const restore = () => {
+    for (const [name, descriptor] of Object.entries(saved)) {
+      if (descriptor === undefined) {
+        delete globalThis[name];
+      } else {
+        Object.defineProperty(globalThis, name, descriptor);
+      }
+    }
+  };
+  /** A frame: its animation callbacks, then its layout and the resize notifications. */
+  const frame = async () => {
+    await settle();
+    const due = [...frames.values()];
+    frames.clear();
+    for (const callback of due) {
+      callback();
+    }
+    layout();
+    await settle();
+  };
+  /** An idle period: the idle callbacks asked for before it. */
+  const idlePeriod = async () => {
+    await settle();
+    for (const callback of idle.splice(0)) {
+      callback();
+    }
+    await settle();
+  };
+  try {
+    pane = new WindowElement("div");
+    pane.scrollTop = 0;
+    const container = new WindowElement("div");
+    pane.append(container);
+    const handle = panel.mountPullsPanel(
+      container,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          scrollRoot: pane,
+          open() {},
+          file: null,
+          fileHref: (number, file) => `/pull/${number}/files/${file}`,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      {
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+        filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "1m",
+          className: "age-min",
+        })),
+        formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+        whenIdle(callback) {
+          idle.push(callback);
+          return () => {
+            idle = idle.filter((queued) => queued !== callback);
+          };
+        },
+      },
+    );
+    const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
+    const drawn = () =>
+      list.childNodes
+        .filter((node) => node.classList?.contains("github-pulls-item"))
+        .map((node) => Number(node.dataset.number));
+    // The list answers, and its first window is drawn at the estimate.
+    await settle();
+    const first = drawn();
+    if (idleAfter === "measured") {
+      await frame();
+    }
+    await idlePeriod();
+    for (let turn = 0; turn < 4; turn += 1) {
+      await frame();
+      await idlePeriod();
+    }
+    const last = drawn();
+    handle.dispose();
+    restore();
+    return {
+      idle:
+        idleAfter === "measured"
+          ? "after the frame that measured the first window's rows, before the next"
+          : "before the first window's rows were laid out",
+      "drawn at the estimate": span(first),
+      "drawn at the rows' heights": span(last),
+      asked: requests.map(span),
+      oneRead: requests.length === 1 && requests[0].join() === last.join(),
+    };
   } catch (error) {
     restore();
     throw error;
@@ -662,31 +1298,156 @@ async function rowStory(lines) {
     }
   }
   const row = await rowStory(lines);
-  // No step of the row story expands a row's files but a press on its change line, Enter or
-  // Space on it, or Right from it.
+  // Each story of the zero and unknown totals mounts the panel afresh: nothing it is shown
+  // was read before in the document.
+  const totals = [];
+  for (const cases of [
+    [
+      { additions: 1093, deletions: 0 },
+      { additions: 0, deletions: 493 },
+      { additions: 3, deletions: 1 },
+      { additions: 0, deletions: 0 },
+    ],
+    [
+      { additions: 0, deletions: null },
+      { additions: null, deletions: 2 },
+      { additions: null, deletions: null },
+      { additions: 1, deletions: 0 },
+    ],
+  ]) {
+    lines.documentRowLines.clear();
+    prefetch.documentComparisons.clear();
+    totals.push(...(await rowStory(lines, cases)).drawn);
+  }
+  // The window placed at the estimate and drawn again at its rows' heights: one read names
+  // every row it draws, whenever the browser is idle between the two frames (mb-hb4a).
+  const windows = [];
+  for (const idleAfter of ["measured", "unmeasured"]) {
+    lines.documentRowLines.clear();
+    prefetch.documentComparisons.clear();
+    const story = await windowStory(idleAfter);
+    assert.ok(story.oneRead, `${story.idle}: one read names every row drawn`);
+    assert.notEqual(
+      story["drawn at the estimate"],
+      story["drawn at the rows' heights"],
+      `${story.idle}: the rows' heights move the window`,
+    );
+    windows.push(story);
+  }
+  // Every step of the row story holds the item's one zone (mb-1z7j) and the rule for a row
+  // with a disclosure toggle (docs/design-system.md, "A Click on the Toggle's Line Toggles"):
+  // a press on the toggle, a Pulls row's lines and the chevron after them (mb-pw8t), toggles
+  // that item's files and opens no page, and a press anywhere else on the item opens it and
+  // toggles nothing. Only those presses and Space, Right, and Left change what is open; a
+  // walk, Enter, Tab, or a line's arrival opens nothing.
+  const expansionOf = (tree) =>
+    Object.fromEntries(
+      tree.flatMap((line) => {
+        const found = /^#(\d+) · .* · expanded (\w+)/.exec(line);
+        return found === null ? [] : [[found[1], found[2]]];
+      }),
+    );
+  let before = null;
   for (const step of row.steps) {
-    const opens = /chevron|Enter on the change line|Space on it|Right opens/.test(step.step);
-    if (!opens && step.tree !== undefined) {
-      const before = row.steps[row.steps.indexOf(step) - 1]?.tree ?? [];
-      for (const [at, line] of step.tree.entries()) {
-        if (line.includes("change line") && line.includes("expanded true")) {
-          assert.ok(
-            before[at]?.includes("expanded true"),
-            `${step.step}: nothing opens a row's files on its own`,
-          );
-        }
+    if (step.tree === undefined) {
+      continue;
+    }
+    const now = expansionOf(step.tree);
+    for (const [at, line] of step.tree.entries()) {
+      if (line.startsWith("  ")) {
+        // Each item's toggle turns its chevron with the item's one state, is hidden from
+        // assistive technology with no role, so the tree holds only its items and their
+        // groups, and is never a stop of its own.
+        const number = /#(\d+)/.exec(line)[1];
+        const turn = now[number] === "true" ? "expanded" : "collapsed";
+        assert.ok(line.includes(`· chevron ${turn}`), `${step.step}: ${line}`);
+        assert.ok(
+          line.includes("· hidden · chevron") && line.endsWith("no stop"),
+          `${step.step}: ${line}`,
+        );
+      } else {
+        assert.ok(step.tree[at + 1].startsWith("  "), "each item's row has its toggle");
       }
     }
+    if (before !== null) {
+      const changed = Object.keys(now).filter((number) => now[number] !== before[number]);
+      if (step.pressed !== undefined) {
+        // A modified or a middle press toggles nothing, wherever it lands, and opens no page
+        // here; on the toggle the browser follows no link either, and off it the browser's
+        // new tab is its own.
+        const onToggle = ["chevron", "lines", "toggle"].includes(step.pressed.on);
+        const plain = step.pressed.modifier === undefined && step.pressed.type === undefined;
+        if (!plain) {
+          assert.equal(step.opened, undefined, `${step.step}: a modified press opens no page`);
+          assert.deepEqual(step.handled, { defaultPrevented: onToggle }, step.step);
+        }
+        assert.deepEqual(
+          changed,
+          onToggle && plain ? [String(step.pressed.item)] : [],
+          `${step.step}: a press on the toggle toggles, and on the item's other parts does not`,
+        );
+        if (onToggle) {
+          assert.equal(step.opened, undefined, `${step.step}: the toggle opens no page`);
+          assert.deepEqual(step.handled, { defaultPrevented: true }, step.step);
+        } else if (plain) {
+          assert.ok(step.opened?.length > 0, `${step.step}: the item's link opens it`);
+        }
+      } else if (/^(Space|Right|Left)\b/.test(step.step)) {
+        // A key toggles at most the item with focus.
+        const focusedItem = step.tree.find((line) => / · focused$/.test(line));
+        const focusedNumber = focusedItem === undefined ? null : /^#(\d+)/.exec(focusedItem)?.[1];
+        assert.ok(
+          changed.every((number) => number === focusedNumber),
+          `${step.step}: a key acts on the item with focus`,
+        );
+      } else {
+        assert.deepEqual(changed, [], `${step.step}: nothing opens a row's files on its own`);
+      }
+    }
+    before = now;
   }
-  // One part a run, so each transcript block stays one reviewable size: `lane` or `row`.
-  // With neither, the run holds every part's invariants and says how many steps each took.
+  const pressedParts = new Set(row.steps.flatMap((step) => step.pressed?.on ?? []));
+  assert.deepEqual(
+    [...pressedParts].sort(),
+    ["age", "author", "chevron", "last line", "lines", "number", "state icon", "title", "toggle"],
+    "the story presses every part of an item",
+  );
+  // One part a run, so each transcript block stays one reviewable size: `lane`, `row`,
+  // `totals`, `tree`, `focus`, or `window`. (A block also has to stay under the size at which
+  // the transcript runner's matcher, a regular expression built from the block, is too large
+  // to compile.)
+  // With none, the run holds every part's invariants and says how many steps each took.
+  const lineSteps = row.steps.filter((step) => "lines" in step);
+  const treeSteps = row.steps.slice(lineSteps.length, row.focusFrom);
+  const focusSteps = row.steps.slice(row.focusFrom);
+  assert.ok(
+    [...treeSteps, ...focusSteps].every((step) => !("lines" in step)),
+    "the row's line steps come first",
+  );
   const part = process.argv[2];
   const printed =
     part === "lane"
       ? { lane }
       : part === "row"
-        ? { row }
-        : { steps: { lane: lane.length, row: row.steps.length } };
+        ? { row: { steps: lineSteps, said: row.said } }
+        : part === "totals"
+          ? { totals }
+          : part === "tree"
+            ? { tree: treeSteps }
+            : part === "focus"
+              ? { focus: focusSteps }
+              : part === "window"
+                ? { window: windows }
+                : {
+                    steps: {
+                      lane: lane.length,
+                      row: lineSteps.length,
+                      totals: totals.length,
+                      tree: treeSteps.length,
+                      focus: focusSteps.length,
+                      window: windows.length,
+                    },
+                  };
   process.stdout.write(`${JSON.stringify({ ...printed, invariants: true }, null, 2)}\n`);
 })().catch((error) => {
   process.stderr.write(`${error.stack || error}\n`);

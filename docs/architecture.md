@@ -19,9 +19,11 @@ Each aim ships in part today; the planned rest links its plan.
   the macOS app, or serve it and hand you the page.
   `metab --api`, `--show`, and `--walk` give an agent the same data the page draws,
   which the [Parity Registry](project/architecture/arch-parity-registry.md) enforces,
-  and the `agent-log` plugin draws coding-agent logs as timelines.
-  `metab --present` hands a folder, a file, or a GitHub URL to the macOS app; planned: a
-  reply from the app, and a browser when there is no app
+  the `agents` plugin draws coding-agent logs as timelines, and the `event-log` plugin
+  draws Metabrowser’s own event log as spans, latencies, and failures
+  ([Real-Time Debugging](realtime-debugging.md#browsing-the-log)). `metab --present`
+  hands a folder, a file, or a GitHub URL to the macOS app; planned: a reply from the
+  app, and a browser when there is no app
   ([native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md),
   Phase 3).
 - **Local, in your browser or a Mac app.** `metab` serves on `127.0.0.1` by default to
@@ -81,7 +83,7 @@ Module paths are under `src/metabrowser/` unless they start with `apps/`.
 | Browser shell and SDK | `static/` (`app.js`, `navigation.js`, `main-tabs.js`, `plugin-sdk.js`, `asset-loader.js`) | Own navigation, the tree, tabs, client stores, view mounting and disposal, asset loading, and the `window.metabrowser` SDK | [Browser Shell](project/architecture/arch-browser-shell.md), [Plugins](plugins.md) |
 | Renderers | `builtin_plugins/*/` views; KPress for Markdown | Draw each kind within the bounds of the large-content rules | [the map](project/architecture/arch-views-models-routes.md), [Rendering Large Content](large-content-rendering.md), [Design System](design-system.md) |
 | Recent targets | `recent_targets.py`, `cli/recent_cli.py` | Keep the one list of folders and repositories the user opened lately, which every shell reads through `metab` | [Recent Targets](project/architecture/arch-recent-targets.md) |
-| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, tabs, recent items, and restore | [macOS App](project/architecture/arch-macos-app.md) |
+| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, recent items, and restore | [macOS App](project/architecture/arch-macos-app.md) |
 
 ## Rules That Cross Layers
 
@@ -149,6 +151,7 @@ In `docs/project/architecture/`:
 | --- | --- |
 | [arch-cli.md](project/architecture/arch-cli.md) | Modes, the serve lifecycle, in-process `--api` dispatch, remote tunnels, and process exit |
 | [arch-server-and-content.md](project/architecture/arch-server-and-content.md) | Request flow, safe paths, validators, and the content-trust model |
+| [arch-threat-model.md](project/architecture/arch-threat-model.md) | Assets, adversaries, trust boundaries, and each threat’s policy, evidence, and accepted risk |
 | [arch-views-models-routes.md](project/architecture/arch-views-models-routes.md) | Kinds, views, formats, the URL grammar, and the route index |
 | [arch-parity-registry.md](project/architecture/arch-parity-registry.md) | The route and functional-aspect tables `devtools/check_parity.py` reads |
 | [arch-inventory-provider.md](project/architecture/arch-inventory-provider.md) | The engine-independent contract: queries, lifecycle, the cap, and change feeds |
@@ -162,8 +165,10 @@ In `docs/project/architecture/`:
 | [arch-github-pull-requests.md](project/architecture/arch-github-pull-requests.md) | Pull-request records, the catalog, files, checks, stacks, and routes |
 | [arch-plugin-system.md](project/architecture/arch-plugin-system.md) | Manifests, discovery, classification, the SDK gate, containers, and adding a file type |
 | [arch-browser-shell.md](project/architecture/arch-browser-shell.md) | Shell modules, stores, lifecycle, and asset loading tiers |
-| [arch-macos-app.md](project/architecture/arch-macos-app.md) | Server supervision, windows and tabs, restore, and WebKit differences |
+| [arch-macos-app.md](project/architecture/arch-macos-app.md) | Server supervision, windows, restore, and WebKit differences |
+| [arch-app-contract.md](project/architecture/arch-app-contract.md) | What the macOS app reads of `metab`: the declaration, the golden of the whole surface, and the checks on both sides |
 | [arch-recent-targets.md](project/architecture/arch-recent-targets.md) | The recent targets store, what records an open, its `metab` modes, and the app’s Open Recent |
+| [arch-collection-format.md](project/architecture/arch-collection-format.md) | Collections: ordered annotated items, the format guided reviews carry |
 | [file-diff-format/](project/architecture/file-diff-format/file-diff-format.md) | File Diff Format v1, a tool-neutral change-set format |
 | [file-rollup-format/](project/architecture/file-rollup-format/file-rollup-format.md) | File Rollup Format, file classification and directory totals |
 

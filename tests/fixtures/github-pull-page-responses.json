@@ -16,11 +16,13 @@
       "checks_pending": false,
       "record_revision": null,
       "fresh_for_s": 60.0,
+      "probe_every_s": null,
       "refreshing": false,
       "last_refresh": null,
       "comparison_route": null,
       "image_route": null,
       "rendered_route": null,
+      "size_route": null,
       "record": null,
       "core_preview": null,
       "repository_labels": [],
@@ -46,11 +48,13 @@
         "checks_pending": false,
         "record_revision": null,
         "fresh_for_s": 60.0,
+        "probe_every_s": null,
         "refreshing": true,
         "last_refresh": null,
         "comparison_route": null,
         "image_route": null,
         "rendered_route": null,
+        "size_route": null,
         "record": null,
         "core_preview": null,
         "repository_labels": [],
@@ -76,11 +80,13 @@
       "checks_pending": false,
       "record_revision": null,
       "fresh_for_s": 60.0,
+      "probe_every_s": null,
       "refreshing": true,
       "last_refresh": null,
       "comparison_route": null,
       "image_route": null,
       "rendered_route": null,
+      "size_route": null,
       "record": null,
       "core_preview": null,
       "repository_labels": [],
@@ -104,6 +110,7 @@
       "checks_pending": true,
       "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -114,6 +121,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "record": {
         "schema_version": 2,
         "projection_version": 2,
@@ -385,6 +393,7 @@
       "checks_pending": true,
       "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -395,6 +404,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "record": {
         "same_as": "current"
       },
@@ -420,6 +430,7 @@
       "checks_pending": true,
       "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -430,6 +441,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "record": {
         "same_as": "current"
       },
@@ -457,6 +469,7 @@
         "checks_pending": true,
         "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
         "fresh_for_s": 60.0,
+        "probe_every_s": 5.0,
         "refreshing": true,
         "last_refresh": {
           "outcome": "succeeded",
@@ -467,6 +480,7 @@
         "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
         "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
         "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+        "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
         "record": {
           "same_as": "current"
         },
@@ -494,6 +508,7 @@
       "checks_pending": true,
       "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": true,
       "last_refresh": {
         "outcome": "succeeded",
@@ -504,6 +519,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "record": {
         "same_as": "current"
       },
@@ -529,6 +545,7 @@
       "checks_pending": true,
       "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -539,6 +556,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "record": {
         "schema_version": 2,
         "projection_version": 2,
@@ -736,6 +754,7 @@
       "checks_pending": true,
       "record_revision": "582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -746,6 +765,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "record": {
         "schema_version": 2,
         "projection_version": 2,
@@ -943,252 +963,83 @@
       "fetched_at": "2026-09-17T12:06:00Z",
       "record_revision": "582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a",
       "part": "issue_comment/3341937856",
-      "html": "\n<div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n</div></div>"
+      "html": "\n<div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/badge.png\" alt=\"build badge\"> <span class=\"mb-image-fallback\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p></div></div>"
     }
   },
-  "kpress added": {
+  "probed": {
     "status": 200,
     "etag": null,
     "body": {
-      "tree": [
-        {
-          "tag": "p",
-          "attrs": [],
-          "children": [
-            "Rebased on ",
-            {
-              "tag": "code",
-              "attrs": [],
-              "children": [
-                "topic"
-              ]
-            },
-            "; see ",
-            {
-              "tag": "a",
-              "attrs": [
-                [
-                  "href",
-                  "docs/new.md"
-                ]
-              ],
-              "children": [
-                "the docs"
-              ]
-            },
-            "."
-          ]
+      "refresh": "not_due",
+      "pull": {
+        "state": "current",
+        "reason": null,
+        "source": "https://github.com/octo/demo",
+        "number": 7,
+        "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "pin_ref": "refs/pull/7/head",
+        "fetched_at": "2026-09-17T12:06:00Z",
+        "verified_at": "2026-09-17T12:06:10Z",
+        "verified_by": "probe",
+        "head_moved": false,
+        "checks_pending": true,
+        "record_revision": "582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a",
+        "fresh_for_s": 60.0,
+        "probe_every_s": 5.0,
+        "refreshing": false,
+        "last_refresh": {
+          "outcome": "succeeded",
+          "message": null,
+          "reset_at": null,
+          "at": "2026-09-17T12:06:00Z"
         },
-        "\n",
-        {
-          "tag": "link",
-          "attrs": [
-            [
-              "rel",
-              "stylesheet"
-            ],
-            [
-              "href",
-              "http://127.0.0.1:9/evil.css"
-            ]
-          ],
-          "children": []
-        },
-        "\n",
-        {
-          "tag": "img",
-          "attrs": [
-            [
-              "src",
-              "https://example.com/badge.png"
-            ],
-            [
-              "alt",
-              "build badge"
-            ],
-            [
-              "class",
-              "kpress-image"
-            ],
-            [
-              "data-kpress-image",
-              "true"
-            ],
-            [
-              "loading",
-              "lazy"
-            ]
-          ],
-          "children": []
-        },
-        " ",
-        {
-          "tag": "img",
-          "attrs": [
-            [
-              "class",
-              "kpress-image"
-            ],
-            [
-              "data-kpress-image",
-              "true"
-            ],
-            [
-              "loading",
-              "lazy"
-            ]
-          ],
-          "children": []
-        },
-        "\n",
-        {
-          "tag": "a",
-          "attrs": [
-            [
-              "id",
-              "metabrowser"
-            ],
-            [
-              "href",
-              "https://example.com/x"
-            ],
-            [
-              "target",
-              "_blank"
-            ],
-            [
-              "rel",
-              "noopener noreferrer"
-            ]
-          ],
-          "children": [
-            "x"
-          ]
-        },
-        "\n",
-        {
-          "tag": "svg",
-          "attrs": [
-            [
-              "width",
-              "10"
-            ],
-            [
-              "height",
-              "10"
-            ]
-          ],
-          "children": [
-            {
-              "tag": "rect",
-              "attrs": [
-                [
-                  "width",
-                  "10"
-                ],
-                [
-                  "height",
-                  "10"
-                ],
-                [
-                  "fill",
-                  "url(http://e.x/f#p)"
-                ],
-                [
-                  "stroke",
-                  "url(http://e.x/s#p)"
-                ],
-                [
-                  "marker-start",
-                  "url(http://e.x/m#p)"
-                ]
-              ],
-              "children": []
-            },
-            {
-              "tag": "use",
-              "attrs": [
-                [
-                  "href",
-                  "#kpress-icon-copy"
-                ]
-              ],
-              "children": []
-            },
-            {
-              "tag": "a",
-              "attrs": [
-                [
-                  "href",
-                  "#x"
-                ]
-              ],
-              "children": [
-                "s"
-              ]
-            }
-          ]
-        },
-        "\n",
-        {
-          "tag": "div",
-          "attrs": [
-            [
-              "data-kpress-video-id",
-              "dQw4w9WgXcQ"
-            ]
-          ],
-          "children": [
-            "video"
-          ]
-        },
-        {
-          "tag": "span",
-          "attrs": [
-            [
-              "data-mb-copy",
-              "evil"
-            ],
-            [
-              "data-nav-dir",
-              "up"
-            ]
-          ],
-          "children": [
-            "copy"
-          ]
-        },
-        {
-          "tag": "div",
-          "attrs": [
-            [
-              "class",
-              "modal-overlay"
-            ]
-          ],
-          "children": [
-            "fake dialog"
-          ]
-        },
-        {
-          "tag": "p",
-          "attrs": [],
-          "children": [
-            "styled"
-          ]
-        },
-        "\n",
-        {
-          "tag": "input",
-          "attrs": [
-            [
-              "src",
-              "https://e.x/i.png"
-            ]
-          ],
-          "children": []
-        }
-      ]
+        "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+        "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+        "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+        "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+        "core_preview": null,
+        "repository_labels": [],
+        "labels_pending": false,
+        "record_held": true
+      },
+      "status_route": "/api/plugin/github/pull?number=7"
+    }
+  },
+  "probed_current": {
+    "status": 200,
+    "etag": "\"pull-8\"",
+    "body": {
+      "state": "current",
+      "reason": null,
+      "source": "https://github.com/octo/demo",
+      "number": 7,
+      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
+      "fetched_at": "2026-09-17T12:06:00Z",
+      "verified_at": "2026-09-17T12:06:10Z",
+      "verified_by": "probe",
+      "head_moved": false,
+      "checks_pending": true,
+      "record_revision": "582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a",
+      "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
+      "refreshing": false,
+      "last_refresh": {
+        "outcome": "succeeded",
+        "message": null,
+        "reset_at": null,
+        "at": "2026-09-17T12:06:00Z"
+      },
+      "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+      "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "record": {
+        "same_as": "refreshed"
+      },
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "merged": {
@@ -1208,6 +1059,7 @@
       "checks_pending": false,
       "record_revision": "bf216a4270ac3d6d3a5e23a0e7b42928b1687a9d8299db066d9aaf8d09ce8187",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -1218,6 +1070,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
       "record": {
         "schema_version": 2,
         "projection_version": 2,
@@ -1335,6 +1188,7 @@
       "checks_pending": false,
       "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -1345,6 +1199,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE>",
       "record": {
         "schema_version": 2,
         "projection_version": 2,
@@ -1468,6 +1323,7 @@
       "checks_pending": false,
       "record_revision": "6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -1478,6 +1334,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
       "record": {
         "schema_version": 2,
         "projection_version": 2,
@@ -1595,16 +1452,18 @@
       "checks_pending": false,
       "record_revision": "6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "network_error",
-        "message": "gh could not reach api.github.com",
+        "message": "GitHub could not be reached because the connection to api.github.com timed out",
         "reset_at": null,
         "at": "2026-09-17T12:30:00Z"
       },
       "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
       "record": {
         "same_as": "merged_unattributed"
       },
@@ -1632,16 +1491,18 @@
         "checks_pending": false,
         "record_revision": "6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5",
         "fresh_for_s": 60.0,
+        "probe_every_s": 5.0,
         "refreshing": false,
         "last_refresh": {
           "outcome": "network_error",
-          "message": "gh could not reach api.github.com",
+          "message": "GitHub could not be reached because the connection to api.github.com timed out",
           "reset_at": null,
           "at": "2026-09-17T12:30:00Z"
         },
         "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
         "image_route": "/api/plugin/github/pull-image?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
         "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
+        "size_route": "/api/plugin/github/pull-size?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
         "record": {
           "same_as": "merged_unattributed"
         },
@@ -1671,16 +1532,18 @@
         "checks_pending": false,
         "record_revision": "6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5",
         "fresh_for_s": 60.0,
+        "probe_every_s": 5.0,
         "refreshing": true,
         "last_refresh": {
           "outcome": "network_error",
-          "message": "gh could not reach api.github.com",
+          "message": "GitHub could not be reached because the connection to api.github.com timed out",
           "reset_at": null,
           "at": "2026-09-17T12:30:00Z"
         },
         "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
         "image_route": "/api/plugin/github/pull-image?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
         "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
+        "size_route": "/api/plugin/github/pull-size?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
         "record": {
           "same_as": "merged_unattributed"
         },
@@ -1691,7 +1554,7 @@
       "status_route": "/api/plugin/github/pull?number=8"
     }
   },
-  "behind_head": {
+  "followed_head": {
     "status": 200,
     "etag": "\"pull-13\"",
     "body": {
@@ -1699,7 +1562,7 @@
       "reason": null,
       "source": "https://github.com/octo/demo",
       "number": 7,
-      "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
+      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:41:00Z",
       "verified_at": "2026-09-17T12:41:00Z",
@@ -1708,6 +1571,7 @@
       "checks_pending": false,
       "record_revision": "df8695a2b3c9e24b138b0b4a1b1a8b79ccdf99f6cfce090aaee881b59b67f019",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -1718,6 +1582,7 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
       "record": {
         "schema_version": 2,
         "projection_version": 2,
@@ -1891,7 +1756,7 @@
       "reason": "not_cached",
       "source": "https://github.com/octo/demo",
       "number": 14,
-      "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
+      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": null,
       "verified_at": null,
@@ -1900,11 +1765,13 @@
       "checks_pending": false,
       "record_revision": null,
       "fresh_for_s": 60.0,
+      "probe_every_s": null,
       "refreshing": false,
       "last_refresh": null,
       "comparison_route": null,
       "image_route": null,
       "rendered_route": null,
+      "size_route": null,
       "record": null,
       "core_preview": null,
       "repository_labels": [],
@@ -1921,7 +1788,7 @@
         "reason": "not_cached",
         "source": "https://github.com/octo/demo",
         "number": 14,
-        "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
         "pin_ref": "refs/pull/7/head",
         "fetched_at": null,
         "verified_at": null,
@@ -1930,11 +1797,13 @@
         "checks_pending": false,
         "record_revision": null,
         "fresh_for_s": 60.0,
+        "probe_every_s": null,
         "refreshing": false,
         "last_refresh": null,
         "comparison_route": null,
         "image_route": null,
         "rendered_route": null,
+        "size_route": null,
         "record": null,
         "core_preview": null,
         "repository_labels": [],
@@ -1962,11 +1831,13 @@
       "checks_pending": false,
       "record_revision": null,
       "fresh_for_s": 60.0,
+      "probe_every_s": null,
       "refreshing": false,
       "last_refresh": null,
       "comparison_route": null,
       "image_route": null,
       "rendered_route": null,
+      "size_route": null,
       "record": null,
       "core_preview": null,
       "repository_labels": [],

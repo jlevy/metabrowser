@@ -12,6 +12,8 @@
 //     getRegisteredView(kindId, viewId)
 //     listViewsForKind(kindId)
 //
+//   plugins.load(name)                   — a required plugin's index.js exports
+//
 //   View lifecycle ("Registration and Lifecycle" in docs/plugins.md):
 //     render(container, ctx)             — own container; may return a Promise, or a
 //                                          handle with ready and dispose()
@@ -64,9 +66,9 @@
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
 //                                          commit prefix in span.title-prefix, then the rest
-//     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
-//                                          marks muted, and its status counts, "21 A",
-//                                          bold in their statuses' ink: the shell's one
+//     shortCommit(commit)                — a commit ID as every line names one, for an
+//                                          element of class git-commit-sha
+//     countPartsNodes(parts)             — a count summary's nodes: the shell's one
 //                                          painter of them
 //     changeLine(change)                 — a brief change line, "10 A, 5 D, 4 M · +1,234
 //                                          −567", from statuses and line totals
@@ -82,14 +84,19 @@
 //   Visual:
 //     icons.<name>                       — raw SVG strings for built-in icons
 //     icons.withClass(name, cls)         — returns SVG with extra class applied
-//     refChip/refChipHtml(name, opts?)    — structured refs with owned copy controls
+//     refChip/refChipHtml(name, opts?)    — structured refs with action menus
 //     mergeRefs(source, target, opts?)    — a merge as source → target, left to right
-//     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
+//     mountRefMenus(primary, host)        — sibling controls; caller owns returned disposer
 //     actorIdentity(name, opts?)          — a person: an avatar's box, then the bold name,
 //                                          the person glyph in the box without an avatar
 //     actorIdentityHtml(name, opts?)      — its markup, the box holding the glyph
+//     mountCounterpart(corner, page)      — a page's View on GitHub button in a corner
+//     prefetchCounterpart(page)           — ask for it before the header is drawn
+//     counterpartButton(counterpart)      — the button, from the server's answer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
+//     filterControls.typeMenu             — File type menu rows from a tally
+//                                          for the Files tab and diffs
 //     class="disclosure-toggle"           — on any control that shows or hides
 //                                          content: the host stylesheet keeps it from
 //                                          selecting text, even on a double or triple
@@ -107,8 +114,9 @@
 //     debug                              — console-only shell troubleshooting helpers
 //
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
-// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies,
-// actorIdentity/actorIdentityHtml, ageBucket/ageLabelHtml,
+// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefMenus,
+// actorIdentity/actorIdentityHtml, counterpartButton/mountCounterpart,
+// ageBucket/ageLabel/ageLabelHtml/retellAge,
 // renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
@@ -159,9 +167,12 @@
   });
   /** @type {{snapshot: () => unknown, subscribe: (listener: () => void) => () => void} | null} */
   let _attachedFileCatalog = null;
-  /** @type {Map<string, Array<{name: string, module: string, scripts: string[], styles: string[]}>>} */
-  const _pluginAssetsByKind = new Map();
-  /** @type {Map<string, Promise<void>>} */
+  // The server's plugin table (`_build_plugin_asset_config_block`), by name and by kind.
+  /** @type {Map<string, MetabrowserPluginAssets>} */
+  let _plugins = new Map();
+  /** @type {Map<string, string[]>} */
+  let _pluginKinds = new Map();
+  /** @type {Map<string, Promise<object>>} */
   const _pluginLoads = new Map();
 
   const fileCatalog = Object.freeze({
@@ -301,16 +312,16 @@
     });
   }
 
-  function configureAssets(assetsByKind) {
-    if (!assetsByKind || typeof assetsByKind !== "object") {
-      throw new TypeError("configureAssets: expected a kind-to-assets object");
-    }
-    _pluginAssetsByKind.clear();
-    for (const [kind, descriptors] of Object.entries(assetsByKind)) {
-      if (!Array.isArray(descriptors)) {
-        throw new TypeError(`configureAssets: ${kind} must contain an array`);
+  /** @param {{plugins: Record<string, MetabrowserPluginAssets>, kinds: Record<string, string[]>}} config */
+  function configureAssets(config) {
+    _plugins = new Map(Object.entries(config.plugins));
+    _pluginKinds = new Map(Object.entries(config.kinds));
+    for (const [kind, names] of _pluginKinds) {
+      for (const name of names) {
+        if (!_plugins.has(name)) {
+          throw new TypeError(`configureAssets: ${kind} names no plugin ${name}`);
+        }
       }
-      _pluginAssetsByKind.set(kind, descriptors);
     }
   }
 
@@ -353,9 +364,10 @@
         });
       }
       try {
-        await import(descriptor.module);
+        return await import(descriptor.module);
       } catch (error) {
         console.error(`metabrowser plugin failed to load: ${descriptor.name}`, error);
+        throw error;
       }
     })();
     _pluginLoads.set(descriptor.name, loading);
@@ -376,7 +388,7 @@
   // The helpers gate each plugin's code, not its transfer. Rejects when they cannot
   // be loaded: no plugin's code has run then, and the next call tries again.
   async function loadPluginsForKind(kind) {
-    const descriptors = _pluginAssetsByKind.get(kind) || [];
+    const descriptors = (_pluginKinds.get(kind) || []).flatMap((name) => _plugins.get(name) || []);
     const helpers = _ensureViewHelpers();
     for (const descriptor of descriptors) {
       if (!_pluginLoads.has(descriptor.name)) {
@@ -385,8 +397,18 @@
     }
     await helpers;
     for (const descriptor of descriptors) {
-      await _loadPlugin(descriptor);
+      await _loadPlugin(descriptor).catch(() => {});
     }
+  }
+
+  // "Declared Dependencies" in docs/plugins.md.
+  async function loadPluginExports(name) {
+    const descriptor = _plugins.get(name);
+    if (!descriptor) {
+      throw new Error(`plugins.load: no plugin ${name}`);
+    }
+    await _ensureViewHelpers();
+    return _loadPlugin(descriptor);
   }
 
   // Load more actions by name. A partial-content notice's button names one; the SDK's
@@ -543,8 +565,12 @@
     );
     if (params && typeof params === "object") {
       for (const [k, v] of Object.entries(params)) {
-        if (v !== undefined && v !== null) {
-          url.searchParams.set(k, String(v));
+        // An array repeats its parameter, one value each (`cols=a&cols=b`), so a value
+        // may hold any character, a comma among them.
+        for (const item of Array.isArray(v) ? v : [v]) {
+          if (item !== undefined && item !== null) {
+            url.searchParams.append(k, String(item));
+          }
         }
       }
     }
@@ -578,15 +604,16 @@
         : await decode();
     if (data && data.type === "plugin_error") {
       /** @type {Error & {status?: number, payload?: unknown}} */
-      const err = new Error(
-        (data.error || "Plugin data hook failed") + (data.detail ? `: ${data.detail}` : ""),
-      );
+      const err = new Error(data.error || PLUGIN_DATA_FAILED);
       err.status = resp.status;
       err.payload = data;
       throw err;
     }
     return data;
   }
+
+  const PLUGIN_DATA_FAILED = "Could not load this view's data.";
+  const KPRESS_RENDER_FAILED = "This document could not be rendered.";
 
   async function fetchJsonl(path, opts) {
     // Plugins fetch JSONL content through the same /api/file endpoint the
@@ -853,9 +880,8 @@
 
   async function fetchRollup(path, opts) {
     // Core rollup endpoint for directory subtrees (see /api/rollup).
-    // ``path`` may be "" for the served root. Optional opts:
-    // depth / top / ext_top / filename_top / remaining_top query overrides
-    // plus ``signal``.
+    // ``path`` may be "" for the served root; opts may set the keys below,
+    // over the settings' defaults, and ``signal``.
     if (typeof path !== "string") {
       throw new Error("fetchRollup: path must be a string");
     }
@@ -863,7 +889,8 @@
     const options = opts && typeof opts === "object" ? opts : {};
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
-    for (const key of ["depth", "top", "ext_top", "filename_top", "remaining_top", "ext_rank"]) {
+    const keys = "depth top nodes ext_top filename_top remaining_top ext_rank ignored encoding";
+    for (const key of keys.split(" ")) {
       const value = options[key] !== undefined ? options[key] : defaults[key];
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));
@@ -951,6 +978,32 @@
     };
   }
 
+  // Hear when *path* changes, through the page's one event stream (static/file-watches.js,
+  // fetched on first use); returns a disposer. A pin's page has no stream: never called.
+  function watchFile(path, options) {
+    let dispose = null;
+    let disposed = false;
+    if (global.METABROWSER_SOURCE_KIND !== "git_revision") {
+      ensureAsset("file-watches").then(
+        () => {
+          if (!disposed) {
+            dispose = global.MetabrowserFileWatches.shared().watch(
+              path,
+              options,
+              options.generation,
+            );
+          }
+        },
+        (error) => console.warn("metabrowser.watchFile:", error),
+      );
+    }
+    return () => {
+      disposed = true;
+      dispose?.();
+      dispose = null;
+    };
+  }
+
   // Plugins can observe directory totals but cannot mutate the host-owned
   // inventory projection. The fallback keeps partial SDK harnesses usable
   // without weakening the production ownership boundary.
@@ -1023,11 +1076,9 @@
     };
   }
 
-  function formatKpressError(payload, status) {
+  function formatKpressError(payload) {
     const body = payload && typeof payload === "object" ? payload : {};
-    const base = body.error || "KPress render failed";
-    const detail = body.detail || "";
-    return `${base + (detail ? `: ${detail}` : "")} (HTTP ${status})`;
+    return typeof body.error === "string" && body.error ? body.error : KPRESS_RENDER_FAILED;
   }
 
   function _headOrBody() {
@@ -1285,6 +1336,13 @@
         await _loadKpressTocModule(url);
         continue;
       }
+      // The Markdown plugin imports KPress's diagram module itself, with the figures and
+      // the Mermaid it supplies (builtin_plugins/markdown/diagrams.js, through the
+      // `kpress-diagrams` module bundle at this same URL). Loaded here, it would bind its
+      // zero-configuration behavior, which draws nothing without `globalThis.mermaid`.
+      if (asset?.id === "js/diagrams.js" || url.endsWith("/diagrams.js")) {
+        continue;
+      }
       await _loadScript(url, asset.loading);
     }
   }
@@ -1346,6 +1404,17 @@
       return Promise.reject(new Error("metabrowser.ensureAsset: asset loader is not available"));
     }
     return assets.ensureAsset(name);
+  }
+
+  // The namespace of an on-demand module bundle (asset-loader.js), such as the
+  // vendored Mermaid entry, imported the first time a consumer asks for it.
+  /** @param {string} name @returns {Promise<unknown>} */
+  function ensureModule(name) {
+    const assets = global.MetabrowserAssets;
+    if (!assets || typeof assets.ensureModule !== "function") {
+      return Promise.reject(new Error("metabrowser.ensureModule: asset loader is not available"));
+    }
+    return assets.ensureModule(name);
   }
 
   // Load the plugins that declare support for a file kind. This is public so
@@ -1452,11 +1521,11 @@
     try {
       payload = await resp.json();
     } catch (_e) {
-      payload = { error: "KPress render returned non-JSON response" };
+      payload = { error: KPRESS_RENDER_FAILED };
     }
     if (!resp.ok) {
       /** @type {Error & {status?: number, payload?: unknown}} */
-      const err = new Error(formatKpressError(payload, resp.status));
+      const err = new Error(formatKpressError(payload));
       err.status = resp.status;
       err.payload = payload;
       throw err;
@@ -1476,98 +1545,6 @@
     return payload;
   }
 
-  function _resolveChartThemeValue(value) {
-    if (typeof value === "string") {
-      const match = value.match(/^var\(\s*(--[\w-]+)\s*\)$/);
-      if (!match || typeof global.getComputedStyle !== "function") {
-        return value;
-      }
-      const resolved = global
-        .getComputedStyle(global.document.documentElement)
-        .getPropertyValue(match[1])
-        .trim();
-      return resolved || value;
-    }
-    if (Array.isArray(value)) {
-      return value.map(_resolveChartThemeValue);
-    }
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Object.prototype.toString.call(value) !== "[object Object]"
-    ) {
-      return value;
-    }
-    var resolvedObject = {};
-    for (var key of Object.keys(value)) {
-      resolvedObject[key] = _resolveChartThemeValue(value[key]);
-    }
-    return resolvedObject;
-  }
-
-  function _hasChartThemeValue(value) {
-    if (typeof value === "string") {
-      return /^var\(\s*--[\w-]+\s*\)$/.test(value);
-    }
-    if (Array.isArray(value)) {
-      return value.some(_hasChartThemeValue);
-    }
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Object.prototype.toString.call(value) !== "[object Object]"
-    ) {
-      return false;
-    }
-    return Object.values(value).some(_hasChartThemeValue);
-  }
-
-  function chart(container, type, data, options) {
-    if (typeof global.Chart === "undefined") {
-      throw new Error(
-        'metabrowser.chart: Chart.js is on the on-demand tier; await metabrowser.ensureAsset("chart") first',
-      );
-    }
-    // Container can be either a <canvas> or a <div> we'll create a canvas in.
-    let canvas;
-    if (container instanceof HTMLCanvasElement) {
-      canvas = container;
-    } else {
-      canvas = global.document.createElement("canvas");
-      container.appendChild(canvas);
-    }
-    var dataTemplate = data;
-    var optionsTemplate = options || {};
-    var followsTheme = _hasChartThemeValue(dataTemplate) || _hasChartThemeValue(optionsTemplate);
-    var instance = new global.Chart(canvas, {
-      type: type,
-      data: followsTheme ? _resolveChartThemeValue(dataTemplate) : dataTemplate,
-      options: followsTheme ? _resolveChartThemeValue(optionsTemplate) : optionsTemplate,
-    });
-    if (!followsTheme || !global.MetabrowserTheme) {
-      return instance;
-    }
-    var destroyed = false;
-    var unsubscribeTheme = global.MetabrowserTheme.subscribe(() => {
-      if (destroyed) {
-        return;
-      }
-      instance.data = _resolveChartThemeValue(dataTemplate);
-      instance.options = _resolveChartThemeValue(optionsTemplate);
-      instance.update("none");
-    });
-    var destroyChart = instance.destroy.bind(instance);
-    instance.destroy = () => {
-      if (destroyed) {
-        return;
-      }
-      destroyed = true;
-      unsubscribeTheme();
-      destroyChart();
-    };
-    return instance;
-  }
-
   function formatSize(bytes) {
     return global.MetabrowserFormatters.formatBytes(Number(bytes) || 0);
   }
@@ -1582,7 +1559,7 @@
 
   // The one age primitive (docs/design-system.md, "Age"): the abbreviation and the
   // freshness class that owns its hue, weight, size, and numerals.
-  /** @param {number} secondsSinceEpoch @param {{style?: "compact" | "relative"}} [options] */
+  /** @param {number} secondsSinceEpoch @param {MetabrowserAgeOptions} [options] */
   function formatAge(secondsSinceEpoch, options) {
     return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0, options);
   }
@@ -1595,6 +1572,14 @@
     return global.MetabrowserFormatters.titleNodes(global.document, title);
   }
 
+  // A commit ID as every line names one: its first characters, the shell's one length
+  // (docs/design-system.md, "Short Commit IDs"). Shown, it is in the commit-ID face,
+  // `.git-commit-sha`, and its full ID is a copy or a link away.
+  /** @param {string} commit @returns {string} */
+  function shortCommit(commit) {
+    return global.MetabrowserFormatters.shortCommit(commit);
+  }
+
   // The shell's painters of a count summary and a brief change line, into the page's
   // document (docs/design-system.md, "Count Summaries Bold Their Numbers", "Brief Change
   // Line").
@@ -1603,7 +1588,7 @@
     return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
   }
 
-  /** @param {MetabrowserChangeLineInput} change @returns {MetabrowserChangeLine} */
+  /** @param {MetabrowserChangeLineInput} change */
   function changeLine(change) {
     const formatters = global.MetabrowserFormatters;
     return formatters.changeLine(change, formatters.formatInteger);
@@ -1738,7 +1723,7 @@
       }, 1500);
     }
     clipboard.writeText(text).then(
-      () => feedback("Copied!", true),
+      () => feedback("Copied", true),
       () => feedback("Copy failed", false),
     );
   }
@@ -1800,7 +1785,7 @@
   });
 
   global.metabrowser = {
-    builtins: {},
+    plugins: Object.freeze({ load: loadPluginExports }),
     registerView: registerView,
     getRegisteredView: getRegisteredView,
     listViewsForKind: listViewsForKind,
@@ -1813,6 +1798,7 @@
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
     onInventoryChange: onInventoryChange,
+    watchFile: watchFile,
     errors: global.MetabrowserRequestErrors,
     folderContext: folderContext,
     directoryTotals: directoryTotals,
@@ -1829,17 +1815,22 @@
     fetchKpressRender: fetchKpressRender,
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
+    ensureModule: ensureModule,
     ensureKindAssets: ensureKindAssets,
     whenIdle: whenIdle,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,
-    chart: chart,
+    // static/charts.js, in the `chart` bundle the wrapper needs, replaces this.
+    chart() {
+      throw new Error('metabrowser.chart: await metabrowser.ensureAsset("chart") first');
+    },
     formatSize: formatSize,
     formatInteger: formatInteger,
     formatFileCount: formatFileCount,
     formatAge: formatAge,
     formatTimestamp: formatTimestamp,
     titleNodes: titleNodes,
+    shortCommit: shortCommit,
     countPartsNodes: countPartsNodes,
     changeLine: changeLine,
     changeLineNodes: changeLineNodes,

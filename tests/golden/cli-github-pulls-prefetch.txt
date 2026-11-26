@@ -20,15 +20,16 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-gh api repos/octo/demo --jq .size
 gh auth status
+gh api repos/octo/demo --jq .size
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -62,14 +63,14 @@ status: 200
 --- body ---
 {"number": 8, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/8
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -101,7 +102,7 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
@@ -137,7 +138,7 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=8'
 exit: 0
@@ -193,11 +194,11 @@ status: 200
     "per_scan": 8,
     "scan": "<CATALOG_EPOCH_1>:2026-09-17T14:00:00Z",
     "scan_used": 1,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 1
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -211,6 +212,14 @@ status: 200
         "remaining": 4999,
         "reset_at": "2026-09-23T16:46:00Z"
       }
+    },
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 6,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 6,
+      "prefetch_reserved": 48,
+      "walk_hour_used": 0
     }
   },
   "recent": [
@@ -244,15 +253,15 @@ status: 200
 --- body ---
 {"records": [7, 8, 10], "files": [8]}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/10
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
-gh auth status
-## 7's page asks for its automatic refresh, which reads its checks on their own: the pull, its check runs, and its status, each with its ETag, and no fetch into the store.
+gh api user (If-None-Match)
+## 7's page asks for its automatic refresh. Its checks alone are due, but its last full read was two hours ago, past FULL_REFRESH_S, and a visible page's record is read in full that often: every part is asked with its ETag, and GitHub answers 304 for all that did not change. A record read in full within that interval reads its checks alone. The same ask probes the repository's list, one read of the row updated last, as a visible Pulls tab's ask would.
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -286,11 +295,15 @@ status: 200
 --- body ---
 {"number": 7}
 --- gh ---
-gh auth status
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
 exit: 0
 --- stdout ---
@@ -340,7 +353,7 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
 exit: 0
@@ -378,11 +391,11 @@ status: 200
     "per_scan": 8,
     "scan": "<CATALOG_EPOCH_1>:2026-09-17T14:01:01Z",
     "scan_used": 1,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 1
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -396,6 +409,14 @@ status: 200
         "remaining": 4999,
         "reset_at": "2026-09-23T16:46:00Z"
       }
+    },
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 3,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 3,
+      "prefetch_reserved": 48,
+      "walk_hour_used": 0
     }
   },
   "recent": [
@@ -417,14 +438,14 @@ status: 200
 --- body ---
 {"records": [7], "files": [7]}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
 exit: 0
 --- stdout ---
@@ -456,6 +477,69 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+## This server's cores walk has spent the whole of speculative work's share of the ceiling this hour, before any page asked for the prefetch, so the lane kept nothing back from it. The ceiling itself has two thirds left, which what is on screen keeps. A visible page asks for 9 and for 10's and 9's changed files. The record is refused at once with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub nothing, and 9's, which GitHub would give, is refused when its turn comes. From this ask on, the lane keeps a scan's records from the walk.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-prefetch
+status: 202
+{
+  "prefetch": "started",
+  "queued": 2,
+  "reason": "self_ceiling",
+  "status_route": "/api/plugin/github/pulls-prefetch"
+}
+after: /api/plugin/github/pulls-prefetch
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "running": null,
+  "queued": [],
+  "records": {
+    "per_scan": 8,
+    "scan": null,
+    "scan_used": 0,
+    "per_hour": 12,
+    "hour_used": 0
+  },
+  "files": {
+    "per_hour": 20,
+    "hour_used": 0
+  },
+  "governor": {
+    "floor": 0.25,
+    "admits": false,
+    "reason": "self_ceiling",
+    "held_until": null,
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 100,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 100,
+      "prefetch_reserved": 48,
+      "walk_hour_used": 100
+    }
+  },
+  "recent": [
+    {
+      "kind": "files",
+      "number": 10,
+      "outcome": "refreshed",
+      "at": "2026-09-17T14:01:01Z"
+    },
+    {
+      "kind": "files",
+      "number": 9,
+      "outcome": "deferred:self_ceiling",
+      "at": "2026-09-17T14:01:01Z"
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{"records": [9], "files": [10, 9]}
+--- gh ---
 ## Every REST answer now reports 1,000 of 5,000 core points left, below the 25% floor. Nothing was observed when the lane started, so 9 is read; its answers stop the lane before 106.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
 exit: 0
@@ -477,11 +561,11 @@ status: 200
     "per_scan": 8,
     "scan": "<CATALOG_EPOCH_1>:2026-09-17T14:01:01Z",
     "scan_used": 1,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 1
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -495,6 +579,14 @@ status: 200
         "remaining": 1000,
         "reset_at": "2026-09-23T16:46:00Z"
       }
+    },
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 6,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 6,
+      "prefetch_reserved": 48,
+      "walk_hour_used": 0
     }
   },
   "recent": [
@@ -516,16 +608,61 @@ status: 200
 --- body ---
 {"records": [9, 106]}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/9
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1
 gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
+## The clock moves on 5 s, to 2026-09-17T14:01:06Z.
+## 7 is retitled on GitHub while the budget is that low, and its page's automatic ask probes it. The probe's own answer shows the budget below the floor, and the change it found is read in full all the same: the floor stops the reads the clock asks for, not a change found on the page the reader is looking at.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "number": 7,
+    "state": "current",
+    "fetched_at": "2026-09-17T14:01:01Z",
+    "verified_at": "2026-09-17T14:01:06Z",
+    "verified_by": "catalog",
+    "head_moved": false,
+    "checks_pending": false
+  },
+  "status_route": "/api/plugin/github/pull?number=7"
+}
+after: /api/plugin/github/pull?number=7
+status: 200
+{
+  "number": 7,
+  "state": "current",
+  "fetched_at": "2026-09-17T14:01:06Z",
+  "verified_at": "2026-09-17T14:01:06Z",
+  "verified_by": "catalog",
+  "head_moved": false,
+  "checks_pending": false
+}
+--- stderr ---
+--- body ---
+{"number": 7}
+--- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api repos/octo/demo/issues/7
+gh api user
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh api user (If-None-Match)
 ## GitHub refuses the catalog's next scan with its rate limit exhausted. The hold it leaves beside the catalog defers any prefetch until it lifts, in this process or another.
-## The clock moves on 61 s, to 2026-09-17T14:02:02Z.
+## The clock moves on 61 s, to 2026-09-17T14:02:07Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -550,7 +687,7 @@ status: 200
     "outcome": "rate_limited",
     "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
     "reset_at": "2026-09-23T16:46:00Z",
-    "at": "2026-09-17T14:02:02Z"
+    "at": "2026-09-17T14:02:07Z"
   }
 }
 --- stderr ---
@@ -558,7 +695,7 @@ Error: the refresh ended with rate_limited
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
 exit: 0

@@ -9,20 +9,22 @@ window titles itself from the same route, so a browser tab, an app window, and
 Each subject the source session can hold (:mod:`metabrowser.source`) is named this way:
 
 - **A local folder** (``attached_filesystem``): ``metab <dir>``, and ``metab <file>``,
-  which serves the file's folder, so its identity is that folder's. ``kind`` is
-  ``folder``. ``short_name`` is the folder's own name, ``/`` for the filesystem root and
-  ``~`` for the home folder itself; ``full_name`` is its absolute path with the home
-  folder as ``~``. A checkout is a folder like any other, and a pull-request page a
-  checkout's Pulls tab opens (``/pull/<n>``) is a view of that folder, not another
-  subject, so it keeps the folder's name. A ``metab --remote`` folder is named by the
-  server running on the remote host, so its ``~`` is that host's home folder.
+  which serves the file's folder, so its identity is that folder's. ``kind`` is ``git``
+  when the folder is a checkout, one that holds a ``.git`` entry, as the Commits tab's
+  test has it (:func:`~metabrowser.repository_context.is_checkout_root`), and ``folder``
+  otherwise, a plain folder. ``short_name`` is the folder's own name, ``/`` for the
+  filesystem root and ``~`` for the home folder itself; ``full_name`` is its absolute
+  path with the home folder as ``~``. A pull-request page a checkout's Pulls tab opens
+  (``/pull/<n>``) is a view of that folder, not another subject, so it keeps the
+  folder's name. A ``metab --remote`` folder is named by the server running on the remote
+  host, so its ``~`` is that host's home folder.
 - **A cached Git mirror** (``git_revision``): ``metab <git-url>``, a pinned revision of a
   mirror in the repository cache. ``kind`` is ``mirror``. ``short_name`` is the
   repository's name, as a checkout would be called (``MirrorDisplay.name``).
   ``full_name`` is the origin abbreviated by :func:`abbreviate_origin`, never the cache
   path, then what the pin is: ``@<ref>`` for a branch or tag, by the name the origin
-  knows it by, as in ``github.com/jlevy/tbd@main``, and ``@<the commit's first 12 hex
-  digits>`` for a commit with no ref.
+  knows it by, as in ``github.com/jlevy/tbd@main``, and ``@<its short commit>``
+  (:func:`~metabrowser.commit_ids.short_commit`) for a commit with no ref.
 - **A pull request's head** is a mirror pinned to ``refs/pull/<n>/head``, which a
   pull-request URL serves and a pin switch onto its head serves again. It is named as
   GitHub writes a pull request: ``short_name`` ``tbd #123`` and ``full_name``
@@ -31,11 +33,11 @@ Each subject the source session can hold (:mod:`metabrowser.source`) is named th
 - **An overlay mirror** (``--checkout``), which borrows objects from a checkout, is a
   mirror of its origin like any other and is named by that origin, not by the checkout.
 - **A revision of a checkout**, which a folder's server shows of its own repository
-  (:mod:`metabrowser.checkout_revisions`), is still that folder: ``kind`` stays ``folder``,
-  since the mode is how the root was opened, and ``short_name`` is the folder's name.
+  (:mod:`metabrowser.checkout_revisions`), is still that folder: ``kind`` stays ``git``,
+  since the kind is how the root was opened, and ``short_name`` is the folder's name.
   ``full_name`` is the folder's path and then what is shown, as a mirror's is its origin
   and then its pin: ``~/src/tbd@topic``, with a remote-tracking branch as ``@origin/topic``
-  and a commit with no ref as its first 12 hex digits.
+  and a commit with no ref as its short commit.
 - **A pin with no mirror** has no origin to take a name from, and is named as the
   navigation heading names it: by its ref's short name, or by its short commit when it
   has no ref. Every CLI mode serves a pin with its mirror, so only an in-process caller
@@ -55,6 +57,7 @@ the life of a document, and no page fetches this route.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -70,6 +73,7 @@ from metabrowser.checkout_revisions import (
     checkout_ref_name,
     checkout_revisions,
 )
+from metabrowser.commit_ids import short_commit
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     MirrorDisplay,
@@ -78,6 +82,7 @@ from metabrowser.mirror_refresh import (
     pull_head_number,
 )
 from metabrowser.paths_safe import tilde_path
+from metabrowser.repository_context import RepositoryContext, discover_repository_context
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
@@ -89,14 +94,20 @@ from metabrowser.source import (
 APP_NAME: Final = "Metabrowser"
 # U+2022 BULLET between single spaces, as in ``fdu • Metabrowser``.
 TITLE_SEPARATOR: Final = " \u2022 "
-# How much of a commit ID a commit pin's full name shows, as the navigation heading does.
-SHORT_COMMIT_CHARS: Final = 12
 
-type IdentityKind = Literal["folder", "mirror"]
 
+type IdentityKind = Literal["folder", "git", "mirror"]
+
+# The kinds of root that are a folder on this computer: a plain folder and a checkout.
+LOCAL_KINDS: Final[frozenset[IdentityKind]] = frozenset({"folder", "git"})
+
+# The words for each kind of root. They name the kind wherever a shell says one: a window's
+# subtitle in the macOS app, and the tooltip on the mark beside the root's name
+# (:func:`kind_tip`), which docs/design-system-icons.md, "Source Kinds", draws a glyph for.
 KIND_LABELS: Final[dict[IdentityKind, str]] = {
     "folder": "Local folder",
-    "mirror": "Cached mirror",
+    "git": "Local Git checkout",
+    "mirror": "Cloud mirror",
 }
 
 # ``scheme://`` at the start of an origin.
@@ -111,11 +122,12 @@ _NO_NAME: Final = frozenset({"", ".", ".."})
 
 
 class RootIdentity(TypedDict):
-    """The envelope of ``GET /api/identity``.
+    """What the served subject is called, which ``GET /api/identity`` answers.
 
     ``short_name`` is what a window is called, ``full_name`` the longer name that tells
-    two of the same short name apart, and ``kind`` whether the subject is a local
-    ``folder`` or a cached ``mirror``, with ``kind_label`` the words for it.
+    two of the same short name apart, and ``kind`` whether the subject is a local plain
+    ``folder``, a local ``git`` checkout, or a cached ``mirror`` (the three kinds of root
+    the browser and the macOS app draw a mark for), with ``kind_label`` the words for it.
     ``title`` is ``<short_name> • Metabrowser``, the shell's ``<title>``.
     """
 
@@ -156,8 +168,11 @@ def user_home() -> Path | None:
         return None
 
 
-def folder_identity(root: Path, *, home: Path | None) -> RootIdentity:
-    """What a served folder is called. *root* and *home* are resolved, as a served root is."""
+def folder_identity(root: Path, *, home: Path | None, checkout: bool = False) -> RootIdentity:
+    """What a served folder is called. *root* and *home* are resolved, as a served root is.
+
+    *checkout* is whether the folder is a checkout, which makes its ``kind`` ``git``.
+    """
 
     if home is not None and root == home:
         short_name = "~"
@@ -167,7 +182,7 @@ def folder_identity(root: Path, *, home: Path | None) -> RootIdentity:
     else:
         short_name = root.name
     full_name = tilde_path(root, home) if home is not None else str(root)
-    return _identity(short_name, full_name, "folder")
+    return _identity(short_name, full_name, "git" if checkout else "folder")
 
 
 def _local_path(spelled: str, *, home: Path | None, encoded: bool) -> str:
@@ -240,16 +255,16 @@ def mirror_identity(
     # is a pin's module, and a folder's server never loads it.
     from metabrowser.git.tree_source import ref_short_name
 
-    short_commit = commit[:SHORT_COMMIT_CHARS]
+    shown_commit = short_commit(commit)
     ref_name = ref_short_name(ref)
     pull = pull_head_number(ref)
     if display is None:
-        label = ref_name if ref_name is not None else short_commit
-        return _identity(label, label if ref_name is None else f"{label}@{short_commit}", "mirror")
+        label = ref_name if ref_name is not None else shown_commit
+        return _identity(label, label if ref_name is None else f"{label}@{shown_commit}", "mirror")
     origin = abbreviate_origin(display.origin, home=home)
     if pull is not None:
         return _identity(f"{display.name} #{pull}", f"{origin}#{pull}", "mirror")
-    pinned = ref_name if ref_name is not None else short_commit
+    pinned = ref_name if ref_name is not None else shown_commit
     return _identity(display.name, f"{origin}@{pinned}", "mirror")
 
 
@@ -258,9 +273,9 @@ def checkout_revision_identity(
 ) -> RootIdentity:
     """What a revision of the checkout at *root* is called: the folder, and what is shown."""
 
-    folder = folder_identity(root, home=home)
-    shown = checkout_ref_name(ref) or commit[:SHORT_COMMIT_CHARS]
-    return _identity(folder["short_name"], f"{folder['full_name']}@{shown}", "folder")
+    folder = folder_identity(root, home=home, checkout=True)
+    shown = checkout_ref_name(ref) or short_commit(commit)
+    return _identity(folder["short_name"], f"{folder['full_name']}@{shown}", "git")
 
 
 def root_identity(
@@ -286,17 +301,133 @@ def root_identity(
             commit=pin.commit_oid,
             home=user_home(),
         )
-    return folder_identity(session_filesystem_root(), home=user_home())
+    return folder_identity(
+        session_filesystem_root(), home=user_home(), checkout=checkout is not None
+    )
+
+
+def kind_tip(kind: IdentityKind, subject: str | None) -> str:
+    """The sentence the mark beside a root's name carries as its name and its tooltip.
+
+    The kind's words (:data:`KIND_LABELS`) and what the root is of: a mirror "of
+    owner/repo", and a checkout "(GitHub: owner/repo)" when its ``origin`` is on
+    github.com. *subject* is :func:`kind_subject`'s, and a plain folder, or a root with no
+    subject to name, is the words alone.
+    """
+
+    label = KIND_LABELS[kind]
+    if subject is None:
+        return label
+    if kind == "mirror":
+        return f"{label} of {subject}"
+    if kind == "git":
+        return f"{label} (GitHub: {subject})"
+    return label
+
+
+def kind_subject(kind: IdentityKind, repository: RepositoryContext | None) -> str | None:
+    """What a root of *kind* is of, as :func:`kind_tip` words it, or ``None`` for nothing.
+
+    The repository's own ``owner/repo`` as its spelling writes it, for a checkout whose
+    ``origin`` is on github.com and a mirror whose provider knows it. A plain folder is of
+    nothing, and so is a mirror no provider knows, a ``file://`` source's for one: its
+    origin is the source's address as given, which a route says in the places
+    ``tests/test_serve_pin.py`` allows and no other.
+    """
+
+    if kind == "folder" or repository is None:
+        return None
+    return f"{repository['owner']}/{repository['name']}"
+
+
+class IdentityEnvelope(RootIdentity):
+    """The envelope of ``GET /api/identity``: the subject's names, and its repository.
+
+    ``kind_tip`` is the sentence that names the root's kind and what it is of, which the
+    page draws as the tooltip and the accessible name of the mark beside the root's name
+    (:func:`kind_tip`). The page writes it into its first paint from the same words, so the
+    mark and this route cannot disagree.
+
+    ``repository`` is the GitHub repository the subject belongs to, as the canonical URL
+    ``https://github.com/<owner>/<repo>`` in lowercase, which is how
+    ``metab URL --present --dry-run`` names a link's ``root``, or ``None`` when it has none
+    on github.com. A folder belongs to the repository its checkout's ``origin`` names,
+    found by :func:`~metabrowser.repository_context.discover_repository_context`, which
+    walks up from a folder below the checkout's root, so a subfolder's window belongs to
+    it too. A mirror belongs to the repository it mirrors. It is a name to compare, not a
+    promise: a checkout's ``.git/config`` can name any repository.
+    """
+
+    kind_tip: str
+    repository: str | None
+
+
+def canonical_repository_url(context: RepositoryContext | None) -> str | None:
+    """*context*'s repository as ``github/urls.py``'s ``repository_url`` spells it."""
+
+    if context is None:
+        return None
+    return f"https://{context['host']}/{context['owner'].lower()}/{context['name'].lower()}"
+
+
+async def served_repository_context(
+    mirror: MirrorSession | None, checkout: CheckoutRevisions | None = None
+) -> RepositoryContext | None:
+    """The GitHub repository the active session's subject belongs to, or ``None``.
+
+    A folder's is read from its checkout's Git files, bounded and off the event loop, as
+    the shell's repository context is; a mirror's is its provider's, which runs no Git.
+    """
+
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is None:
+        root = session_filesystem_root()
+        return await asyncio.to_thread(discover_repository_context, root)
+    if checkout is not None and checkout.serves(pin):
+        return await asyncio.to_thread(discover_repository_context, checkout.root)
+    if mirror is None:
+        return None
+    return mirror.mirror.repository_context(revision=pin.commit_oid, branch=None)
+
+
+async def served_repository(
+    mirror: MirrorSession | None, checkout: CheckoutRevisions | None = None
+) -> str | None:
+    """:func:`served_repository_context` as the canonical URL ``repository`` carries."""
+
+    return canonical_repository_url(await served_repository_context(mirror, checkout))
+
+
+def identity_kind_tip(identity: RootIdentity, repository: RepositoryContext | None) -> str:
+    """The tip for *identity*'s mark, from the repository its subject belongs to.
+
+    One function for both places that say it, ``GET /api/identity`` and the shell's first
+    paint, so the page's mark and the route's ``kind_tip`` are the same sentence.
+    """
+
+    kind = identity["kind"]
+    return kind_tip(kind, kind_subject(kind, repository))
 
 
 async def api_identity(request: Request) -> JSONResponse:
-    """``GET /api/identity`` -- what this server's subject is called, as a window titles it."""
+    """``GET /api/identity`` -- what this server's subject is called, as a window titles it,
+    what kind of root it is and what that is of, and the GitHub repository it belongs to."""
 
+    mirror, checkout = mirror_session(request.app), checkout_revisions()
     try:
-        identity = root_identity(mirror_session(request.app), checkout_revisions())
+        identity = root_identity(mirror, checkout)
+        context = await served_repository_context(mirror, checkout)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
-    return JSONResponse(dict(identity))
+    return JSONResponse(
+        dict(
+            IdentityEnvelope(
+                **identity,
+                kind_tip=identity_kind_tip(identity, context),
+                repository=canonical_repository_url(context),
+            )
+        )
+    )
 
 
 IDENTITY_ROUTES = [Route("/api/identity", api_identity)]
@@ -306,7 +437,7 @@ __all__ = [
     "APP_NAME",
     "IDENTITY_ROUTES",
     "KIND_LABELS",
-    "SHORT_COMMIT_CHARS",
+    "LOCAL_KINDS",
     "TITLE_SEPARATOR",
     "IdentityKind",
     "RootIdentity",
@@ -314,6 +445,9 @@ __all__ = [
     "api_identity",
     "checkout_revision_identity",
     "folder_identity",
+    "identity_kind_tip",
+    "kind_subject",
+    "kind_tip",
     "mirror_identity",
     "root_identity",
     "user_home",

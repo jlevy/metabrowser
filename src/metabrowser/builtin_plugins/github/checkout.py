@@ -1,9 +1,10 @@
-"""A checkout served as a folder: which GitHub repository its pull requests are of.
+"""Which GitHub repository a served checkout's pull requests are of.
 
-A folder server has no mirror session, so the pull routes ask this module instead. The
+A checkout's server has no mirror session, so the pull routes ask this module. The
 repository is the one :func:`~metabrowser.repository_context.discover_repository_context`
-reads from the served root's checkout, a subdirectory's included: the ``origin`` remote,
-read from files with no Git process. It is reduced through this plugin's URL grammar to
+reads for the working tree, a subdirectory, or a revision the checkout serves.
+The reader gets the ``origin`` remote directly from the checkout's files. The plugin's URL
+grammar reduces it to
 ``https://github.com/<owner>/<repo>``, lowercased, so an HTTPS and an SSH remote of one
 repository, and a mirror of it, share one identity and one set of records. A remote the
 grammar refuses is not one the routes list: they answer ``not_github``. On a fork,
@@ -44,7 +45,8 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, overload
 
-from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+from metabrowser import event_log
+from metabrowser.builtin_plugins.github.gh_lists import PullDataError, PullDataState
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, StoreTurn, mirror_session
 from metabrowser.source import get_source_session
@@ -96,7 +98,9 @@ class _EagerComparison:
 @dataclass
 class _CheckoutPulls:
     pulls: ServedPulls
-    turn: StoreTurn = field(default_factory=StoreTurn)
+    # The store's one turn in this server, which core keeps: the folder's own fetch of the
+    # store takes it too (``metabrowser/checkout_store.py``).
+    turn: StoreTurn
     eager: _EagerComparison | None = None
     # The revision each pull request's idle comparison last failed for, so it is not
     # tried again; as many as the pull states a set holds.
@@ -114,9 +118,15 @@ def _served_key(app: Any) -> tuple[str, str] | None:
 
     if mirror_session(app) is not None:
         return None
-    root = get_source_session().subject.filesystem_root
+    subject = get_source_session().subject
+    root = subject.filesystem_root
     if root is None:
-        return None
+        from metabrowser.checkout_revisions import checkout_revisions
+
+        checkout = checkout_revisions()
+        if checkout is None or not checkout.serves(subject):
+            return None
+        root = checkout.root
     from metabrowser.home import StorageDirectoryError, application_cache
 
     try:
@@ -182,7 +192,7 @@ async def ensure_resolved(app: Any) -> None:
 
 
 def served_checkout(app: Any) -> CheckoutRepository | None:
-    """The served checkout's repository, or ``None``: a mirror, a pin, or a plain folder.
+    """The served checkout's repository, or ``None`` when the subject has no checkout.
 
     From memory once :func:`ensure_resolved` has run, which every route does first.
     """
@@ -198,7 +208,7 @@ def served_checkout(app: Any) -> CheckoutRepository | None:
 def _cached_store(source: GitSource, home: Path) -> PublishedSource | None:
     from metabrowser.cache.acquire import AcquisitionError, cached_source
     from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.home import PrivateStorageError, StorageDirectoryError
 
@@ -208,6 +218,7 @@ def _cached_store(source: GitSource, home: Path) -> PublishedSource | None:
         AcquisitionError,
         RecordError,
         SlugCollisionError,
+        StoreKeyCollisionError,
         LayoutError,
         FutureLayoutFormatError,
         PrivateStorageError,
@@ -225,6 +236,7 @@ def _checkout_key(repository: CheckoutRepository) -> tuple[str, str, str]:
 
 def _checkout_state(repository: CheckoutRepository) -> _CheckoutPulls:
     from metabrowser.builtin_plugins.github.served_pull import ServedPulls
+    from metabrowser.checkout_store import store_turn
 
     key = _checkout_key(repository)
     with _LOCK:
@@ -232,7 +244,10 @@ def _checkout_state(repository: CheckoutRepository) -> _CheckoutPulls:
         if held is None:
             if len(_PULLS) >= _MAX_RESOLVED:
                 _PULLS.pop(next(iter(_PULLS)))
-            held = _PULLS[key] = _CheckoutPulls(ServedPulls(repository.cached or repository))
+            held = _PULLS[key] = _CheckoutPulls(
+                ServedPulls(repository.cached or repository),
+                store_turn(repository.home, repository.git_source),
+            )
         return held
 
 
@@ -288,7 +303,7 @@ def _claim_source(repository: CheckoutRepository) -> CheckoutRepository:
     """Blocking publication only; held pull state belongs to the caller's event loop."""
     from metabrowser.cache.acquire import AcquisitionError, publish_unattached_source
     from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.cache.locks import LockBusyError
     from metabrowser.home import PrivateStorageError, StorageDirectoryError
@@ -304,6 +319,7 @@ def _claim_source(repository: CheckoutRepository) -> CheckoutRepository:
         RecordError,
         LockBusyError,
         SlugCollisionError,
+        StoreKeyCollisionError,
         AcquisitionError,
     ) as exc:
         # Each is the cache refusing the write, which is all a job can say of it.
@@ -398,26 +414,35 @@ def start_pull_refresh(
     same pull request, which fetches and compares, is promoted and joined instead. Every
     other start is a reader's, and ends the optional job: one for the same pull request
     promotes it, and cancels its idle phase when it asks for metadata; one for another
-    cancels it.
+    cancels it while it is still optional, and otherwise leaves the promoted job to run
+    on as the reader's it now is.
 
     A *background* start, a prefetch's, is a metadata refresh that counts toward no bound,
     takes no network slot, and gives way at the checkout's turn (:class:`StoreTurn`); it
-    is ``not_due`` while the optional comparison job runs. A reader's start that joins it
-    promotes it to the reader's, and from then on it counts.
+    is ``not_due`` while the optional comparison job runs and is still optional, and starts
+    beside one a reader's start has promoted, as beside any reader's job. A reader's start
+    that joins it promotes it to the reader's, and from then on it counts, and a background
+    job holding the turn it waits for is stopped, as on a mirror.
+
+    A reader's start that joins a job already told to stop, a prefetch's that gave way at
+    the turn or the optional job another reader's start ended, has the reader's job
+    started once that one has unwound (:func:`_start_again_when_stopped`), so ``joined``
+    is never an answer for work that is then dropped.
     """
 
     key = checkout_job_key(repository, number)
     state = _checkout_state(repository)
-    eager = state.eager
-    if eager is not None and not coordinator.running(checkout_job_key(repository, eager.number)):
-        state.eager = eager = None
+    eager = _live_eager(coordinator, repository, state)
     if eager_revision is not None:
         _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
         if key in state.background and coordinator.running(key):
             # The open pull request's own prefetch. With a store its read fetches and
-            # compares, so it is promoted to the reader's, which nothing preempts.
+            # compares, so it is promoted to the reader's, which nothing preempts, and
+            # which stops a background job holding the turn it waits for.
             state.background.discard(key)
+            state.turn.promoted()
             _PULL_JOBS.add(key)
+            _start_again_when_stopped(coordinator, repository, number, key)
             return "joined"
         if (
             eager is not None
@@ -435,12 +460,42 @@ def start_pull_refresh(
     if background:
         if coordinator.running(key):
             return "joined"
-        if eager is not None:
+        if eager is not None and eager.mode == "idle":
             return "not_due"
         state.background.add(key)
         return coordinator.start(
             key, partial(_pull_job, coordinator, repository, number, key), network=False
         )
+    return _readers_start(coordinator, repository, number, comparison=comparison, bounded=True)
+
+
+def _live_eager(
+    coordinator: RefreshCoordinator, repository: CheckoutRepository, state: _CheckoutPulls
+) -> _EagerComparison | None:
+    """The checkout's optional comparison job, forgotten once it has ended."""
+    eager = state.eager
+    if eager is not None and not coordinator.running(checkout_job_key(repository, eager.number)):
+        state.eager = eager = None
+    return eager
+
+
+def _readers_start(
+    coordinator: RefreshCoordinator,
+    repository: CheckoutRepository,
+    number: int,
+    *,
+    comparison: bool,
+    bounded: bool,
+) -> PullJobStart:
+    """A reader's start of pull request *number*'s job, or their join of the one running.
+
+    A job joined counts among the reader's jobs from then on, in the place it takes now.
+    Only *bounded* starts count against :data:`MAX_PULL_JOBS`: a restart of a job the
+    reader joined took its place when they joined it.
+    """
+    key = checkout_job_key(repository, number)
+    state = _checkout_state(repository)
+    eager = _live_eager(coordinator, repository, state)
     if eager is not None:
         if eager.number == number:
             eager.mode = "foreground"
@@ -449,24 +504,52 @@ def start_pull_refresh(
                 # phase would only delay it.
                 eager.work.cancel()
         else:
-            coordinator.cancel(checkout_job_key(repository, eager.number))
+            # Ended only while it is still optional: once a reader's start promoted it, it
+            # is that reader's job, which was answered ``joined``, and it runs on as any
+            # reader's does. Either way it is no longer the checkout's optional job.
+            if eager.mode == "idle":
+                coordinator.cancel(checkout_job_key(repository, eager.number))
             state.eager = None
     if coordinator.running(key):
+        # A prefetch's job counts from here, and stops a background job holding the turn
+        # it waits for (:meth:`StoreTurn.promoted`). The optional one, the other a reader
+        # can find stopping, has counted since it started.
         if key in state.background:
             state.background.discard(key)
+            state.turn.promoted()
             _PULL_JOBS.add(key)
         if comparison:
             _COMPARISON_WANTED.add(key)
+        _start_again_when_stopped(coordinator, repository, number, key)
         return "joined"
-    _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
-    if len(_PULL_JOBS) >= MAX_PULL_JOBS:
-        return "too_many"
+    if bounded:
+        _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
+        if len(_PULL_JOBS) >= MAX_PULL_JOBS:
+            return "too_many"
     _PULL_JOBS.add(key)
     if comparison:
         _COMPARISON_WANTED.add(key)
     return coordinator.start(
         key, partial(_pull_job, coordinator, repository, number, key), network=False
     )
+
+
+def _start_again_when_stopped(
+    coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int, key: str
+) -> None:
+    """Start the reader's job for *number* once its job, if it was told to stop, has unwound.
+
+    Cancellation is delivered a loop step after it is asked for, so a job a reader joins
+    can already be stopping (:meth:`RefreshCoordinator.start_again_when_stopped`). The
+    reader's job then starts as their own start would have, in the place it took when
+    they joined. A comparison any start that joined asked for is kept for it in
+    ``_COMPARISON_WANTED``, which the stopped job leaves as it ends (:func:`_pull_job`).
+    """
+
+    def restart() -> None:
+        _readers_start(coordinator, repository, number, comparison=False, bounded=False)
+
+    coordinator.start_again_when_stopped(key, restart)
 
 
 async def _wait_for_cold_open(repository: CheckoutRepository) -> None:
@@ -484,54 +567,36 @@ async def _wait_for_cold_open(repository: CheckoutRepository) -> None:
         log.debug("could not wait for another cold open", exc_info=True)
 
 
+# What a reader's comparison is told for each way core's acquisition of the store fails
+# (``metabrowser/checkout_store.py``). ``refreshing_elsewhere`` keeps core's own words,
+# which can name the reservation's lock file for a reader to find the holder.
+_ACQUISITION_FAILURE: Final[dict[str, str]] = {
+    "lender_missing": "the checkout cannot supply this comparison",
+    "not_found_or_private": "the repository could not be read from its origin",
+    "network_error": "the repository could not be read from its origin",
+    "git_failed": "Git could not prepare this comparison",
+    "fetch_failed": "the comparison store could not be prepared",
+}
+
+
 async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource:
-    from metabrowser.cache.acquire import (
-        AcquiringElsewhereError,
-        AcquisitionError,
-        LenderMissingError,
-        RemoteAccessError,
-        acquire_source,
-    )
-    from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
-    from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
-    from metabrowser.cache.lender import CheckoutRefusedError
-    from metabrowser.cache.locks import LockBusyError
-    from metabrowser.git.process import GitError
-    from metabrowser.home import PrivateStorageError, StorageDirectoryError
+    """The checkout's store, acquired by core, which owns it and its turn.
+
+    The store is the one a folder's server lists its origin's branches from, so core
+    makes it (:func:`~metabrowser.checkout_store.acquire_checkout_store`) and this only
+    words its failures for a comparison. The caller holds the store's turn.
+    """
+    from metabrowser.checkout_store import CheckoutStoreError, acquire_checkout_store
 
     try:
-        return await acquire_source(
-            repository.git_source,
-            home=repository.home,
-            checkout=repository.checkout_root,
-            allow_clone_fallback=False,
+        return await acquire_checkout_store(
+            repository.git_source, home=repository.home, checkout=repository.checkout_root
         )
-    except (LenderMissingError, CheckoutRefusedError) as exc:
-        raise PullDataError("lender_missing", "the checkout cannot supply this comparison") from exc
-    except RemoteAccessError as exc:
-        state = "not_found_or_private" if exc.state == "not_found_or_private" else "network_error"
-        raise PullDataError(state, "the repository could not be read from its origin") from exc
-    except GitError as exc:
-        raise PullDataError("git_failed", "Git could not prepare this comparison") from exc
-    except LockBusyError as exc:
-        raise PullDataError(
-            "refreshing_elsewhere", "another refresh is preparing the store"
-        ) from exc
-    except AcquiringElsewhereError as exc:
-        # Its message names the reservation's lock file, for a reader to find the holder.
-        raise PullDataError("refreshing_elsewhere", str(exc)) from exc
-    except (
-        AcquisitionError,
-        RecordError,
-        SlugCollisionError,
-        LayoutError,
-        FutureLayoutFormatError,
-        PrivateStorageError,
-        StorageDirectoryError,
-        OSError,
-    ) as exc:
-        raise PullDataError("fetch_failed", "the comparison store could not be prepared") from exc
+    except CheckoutStoreError as exc:
+        # A comparison has no state of its own for an acquisition that ran out its
+        # deadline, which core tells apart for its timer: it is the Git failure it was.
+        state: PullDataState = "git_failed" if exc.code == "timed_out" else exc.code
+        raise PullDataError(state, _ACQUISITION_FAILURE.get(state, str(exc))) from exc
 
 
 async def _keep_comparison_failure(
@@ -661,7 +726,13 @@ async def _idle_phase(
     state: _CheckoutPulls, companion: ServedPull, eager: _EagerComparison
 ) -> _IdleFailure | None:
     """Run :func:`_prepare_idle` as a task a reader's metadata request can cancel."""
-    work = asyncio.get_running_loop().create_task(_prepare_idle(state, companion, eager))
+    work = asyncio.get_running_loop().create_task(
+        event_log.job(
+            _prepare_idle(state, companion, eager),
+            "checkout.prepare_idle",
+            attrs={"pull": companion.number},
+        )
+    )
     eager.work = work
     try:
         await asyncio.wait((work,))
@@ -723,7 +794,9 @@ ATTACH_WAIT_S: Final = 30.0
 
 async def attach_store_for_lists(repository: CheckoutRepository) -> PublishedSource | None:
     """The checkout's store, attached now if it has none, for the prefetch to list changed
-    files from (:mod:`.pull_prefetch`); ``None`` when it could not be attached.
+    files from (:mod:`.pull_prefetch`); ``None`` when it could not be attached, or when no
+    store of the checkout's origin is to be kept
+    (:func:`~metabrowser.checkout_store.origin_store_wanted`).
 
     The caller holds the checkout's store turn (:func:`checkout_store_turn`), as a reader's
     comparison does when it attaches the same store (:func:`_attach_store`), so the two
@@ -731,7 +804,13 @@ async def attach_store_for_lists(repository: CheckoutRepository) -> PublishedSou
     after :data:`ATTACH_WAIT_S`, and a failure is only logged, since each list then goes to
     GitHub as it would have, and a reader's comparison reports its own.
     """
+    from metabrowser.checkout_store import origin_store_wanted
 
+    if not origin_store_wanted():
+        # Nothing a reader asked for: the prefetch neither makes the store nor fetches the
+        # pull requests' heads into one a reader's comparison made, and each list goes to
+        # GitHub. The reader's comparison is the one thing that still makes the store.
+        return None
     state = _checkout_state(repository)
     if state.pulls.git_dir is None:
         try:
@@ -868,7 +947,9 @@ async def _pull_job(
             finally:
                 state.pulls.active = None
     finally:
-        _COMPARISON_WANTED.discard(key)
+        # A comparison a reader asked for after the job was told to stop is the restart's.
+        if not coordinator.restarting(key):
+            _COMPARISON_WANTED.discard(key)
         state.background.discard(key)
         if eager is not None and state.eager is eager:
             state.eager = None

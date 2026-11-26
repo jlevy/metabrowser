@@ -11,13 +11,15 @@ alone in the admitted-Git CI job.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
 import subprocess
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -28,25 +30,36 @@ from typer.testing import CliRunner
 from metabrowser import server
 from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.locks import repository_store_lock, store_fetch_lock
+from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
 from metabrowser.cache.paths import store_record
 from metabrowser.cache.records import (
     REPOSITORY_STORE_STATE_CONTRACT_ID,
     RepositoryStoreState,
     StoreOperation,
 )
-from metabrowser.cache.update import RefreshOutcome, StoreUpdate
+from metabrowser.cache.served_mirror import StoreMirror
+from metabrowser.cache.update import RefreshOutcome, StoreUpdate, update_store
 from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
 from metabrowser.mirror_refresh import (
+    FRESHNESS_WINDOW_S,
+    PROBED_REF_PREFIX,
+    STORE_PROBE_FLOOR_S,
+    STORE_PROBE_S,
     LastOutcome,
     MirrorDisplay,
     MirrorRef,
     MirrorSession,
+    OriginProbeError,
     RecordedFreshness,
     RefKind,
     RefreshCoordinator,
     RefreshResult,
     followed_outcome,
+    follows_moves,
+    mirror_session,
+    probes_origin,
+    refresh_coordinator,
 )
 from metabrowser.repository_context import RepositoryContext
 from metabrowser.source import (
@@ -209,7 +222,8 @@ def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -
     assert status["latest"] is None and status["last_outcome"] is None
     assert refresh.status_code == 409
     assert refresh.json() == {
-        "error": "source does not support refresh",
+        "error": "This is not available here.",
+        "detail": "source does not support refresh",
         "code": "unsupported_for_subject",
         "capability": "refresh",
     }
@@ -220,9 +234,44 @@ def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -
 # ── Refresh ──────────────────────────────────────────────────────────
 
 
-def test_a_refresh_shows_the_newer_revision_and_switching_serves_it(
+def test_every_ref_a_mirror_pins_under_follows_and_nothing_else_does() -> None:
+    """Which pins move when a fetch moves their ref: every ref a mirror serves one under.
+
+    Held to the pin resolver's own rule, so a namespace a mirror learns to pin under is
+    one this test asks about (A9 of review A on #745). A pull request's head follows as
+    GitHub names it and nothing like it does. A commit asked for by its ID is another
+    matter: the session never moves it, whatever ref names it (``MirrorSession._by_id``).
+    """
+
+    from metabrowser.cache.resolve import MIRROR_REFS, is_pinnable_ref
+
+    refs = (
+        "refs/remotes/origin/trunk",
+        "refs/remotes/origin/release/v1",
+        "refs/tags/v1",
+        "refs/pull/7/head",
+        "refs/pull/7/merge",
+        "refs/pull/0/head",
+        "refs/pull/7/head/x",
+        "refs/heads/m",
+        "refs/notes/commits",
+        "refs/stash",
+    )
+    for ref in refs:
+        assert follows_moves(ref) == is_pinnable_ref(ref, MIRROR_REFS), ref
+    assert [ref for ref in refs if follows_moves(ref)] == list(refs[:4])
+    assert not follows_moves(None)
+
+
+def test_a_refresh_that_moves_the_served_branch_is_followed(
     served: TestClient, origin: _Origin
 ) -> None:
+    """A mirror is browsed as github.com is: a branch is served at its newest commit.
+
+    The refresh moves the branch in the mirror, and the server serves the new tip itself
+    under a new generation, with no switch asked for. A commit opened by its ID stays.
+    """
+
     newer = _push_commit(origin, "NEW.md", "# New\n", "third")
     before = served.get("/api/source/status").json()
 
@@ -235,22 +284,19 @@ def test_a_refresh_shows_the_newer_revision_and_switching_serves_it(
     assert status["last_outcome"]["operation"] == "refresh"
     assert status["last_outcome"]["outcome"] == "succeeded"
     assert status["last_fetch_at"] >= before["last_fetch_at"]
-    # The page keeps its pin; the ref moved in the mirror, which is the offer.
-    assert status["pin"] == origin.second
+    # The server followed the branch: its new tip is served, under the same ref.
+    assert (before["follows"], status["follows"]) == (True, True)
+    assert status["pin"] == newer
     assert status["latest"] == newer
-    assert status["generation"] == before["generation"]
-    readme = served.get("/api/file", params={"path": _wire("README.md")})
-    assert readme.status_code == 200
-    assert served.get("/api/file", params={"path": _wire("NEW.md")}).status_code == 404
+    assert status["ref"] == "refs/remotes/origin/topic"
+    assert status["generation"] == before["generation"] + 1
 
-    switched = _post(served, "/api/source/pin", {"ref": status["ref"]})
-    assert switched.status_code == 200
-    payload = switched.json()
-    assert payload["changed"] is True
-    assert payload["status"]["pin"] == newer
-    assert payload["status"]["latest"] == newer
-    assert payload["status"]["ref"] == "refs/remotes/origin/topic"
-    assert payload["status"]["generation"] == before["generation"] + 1
+    # A page still drawn for the commit before asks for its ref, which changes nothing.
+    followed = _post(served, "/api/source/pin", {"ref": status["ref"], "view": "/view/"})
+    assert followed.status_code == 200
+    payload = followed.json()
+    assert (payload["changed"], payload["view_href"]) == (False, "/view/")
+    assert payload["status"]["generation"] == status["generation"]
     new_file = served.get("/api/file", params={"path": _wire("NEW.md")})
     assert new_file.status_code == 200
     assert new_file.json()["content"] == "# New\n"
@@ -261,6 +307,7 @@ def test_a_refresh_shows_the_newer_revision_and_switching_serves_it(
     assert back.json()["status"]["pin"] == origin.second
     assert back.json()["status"]["ref"] is None
     assert back.json()["status"]["latest"] is None
+    assert back.json()["status"]["follows"] is False
     again = _post(served, "/api/source/pin", {"oid": origin.second})
     assert again.json()["changed"] is False
     assert again.json()["status"]["generation"] == back.json()["status"]["generation"]
@@ -270,6 +317,8 @@ def test_a_refresh_shows_the_newer_revision_and_switching_serves_it(
     readme = served.get("/api/file", params={"path": _wire("README.md")}).json()
     assert "Second revision." not in readme["content"]
     assert served.get("/api/file", params={"path": _wire("data.json")}).status_code == 404
+    # The Commits tab shows the commit Files shows, and that commit's history.
+    assert served.get("/api/git/repo").json()["head"]["revision"] == origin.first
     history = served.get("/api/git/log", params={"limit": "10"}).json()
     assert [commit["id"] for commit in history["commits"]] == [origin.first]
 
@@ -353,8 +402,9 @@ def test_a_stale_mirror_is_refreshed_once_when_the_server_starts(
     assert status["last_outcome"]["operation"] == "refresh"
     assert status["last_outcome"]["outcome"] == "succeeded"
     assert status["stale"] is False
-    # The server opened the pin it announced; the refresh only moved the mirror.
-    assert status["pin"] == origin.second
+    # The server opened the pin it announced, and then followed the branch the refresh
+    # moved.
+    assert status["pin"] == newer
     assert status["latest"] == newer
 
 
@@ -447,35 +497,54 @@ def test_a_commit_id_at_the_tip_of_the_ref_last_served_keeps_the_ref(
     """A switch by commit ID to another commit and back stays on the ref it left.
 
     View file on a diff switches by commit ID. Without this the way back to the branch
-    tip left the server on no ref: the selector read "Commit: …" and freshness stopped
-    following the branch.
+    tip left the server on no ref: the selector read "Commit: …" and freshness no longer
+    said when the branch moved on. The commit is still one opened by its ID, so it stays
+    put when the branch moves, and status reports the branch's new tip as ``latest``,
+    which the row offers; asking for the branch by name follows it again (mb-cww9).
     """
 
     topic = "refs/remotes/origin/topic"
-    # The tip of the ref served is what is served already.
-    same = _post(served, "/api/source/pin", {"oid": origin.second}).json()
-    assert (same["changed"], same["status"]["ref"]) == (False, topic)
-    away = _post(served, "/api/source/pin", {"oid": origin.first}).json()
+
+    def pin(body: dict[str, Any]) -> Any:
+        return _post(served, "/api/source/pin", body)
+
+    # The tip of the ref served is what is served already, and the page still follows it.
+    same = pin({"oid": origin.second}).json()
+    assert (same["changed"], same["status"]["ref"], same["status"]["follows"]) == (
+        False,
+        topic,
+        True,
+    )
+    away = pin({"oid": origin.first}).json()
     assert (away["changed"], away["status"]["pin"], away["status"]["ref"]) == (
         True,
         origin.first,
         None,
     )
-    back = _post(served, "/api/source/pin", {"oid": origin.second[:12]}).json()["status"]
+    back = pin({"oid": origin.second[:12]}).json()["status"]
     assert (back["pin"], back["ref"], back["ref_name"]) == (origin.second, topic, "topic")
-    # Freshness follows the ref again.
-    assert (back["latest"], back["ref_on_origin"]) == (origin.second, True)
-    # A commit that is not the tip of the ref last served has no ref, as before.
-    again = _post(served, "/api/source/pin", {"oid": origin.first}).json()["status"]
-    assert again["ref"] is None
-    # After the branch moves in the mirror, its old tip is only a commit.
+    # Freshness reads the ref again, and the commit asked for by its ID does not follow it.
+    assert (back["latest"], back["ref_on_origin"], back["follows"]) == (origin.second, True, False)
+    # The same commit asked for by the branch's name is the same pin, which follows now.
+    named = pin({"ref": "topic"}).json()
+    assert (named["changed"], named["status"]["follows"]) == (False, True)
+
+    # Back by ID again: when the branch moves in the mirror, the pin stays, and status
+    # reports the branch's new tip.
+    assert pin({"oid": origin.first}).json()["status"]["ref"] is None
+    assert pin({"oid": origin.second}).json()["status"]["follows"] is False
     newer = _push_commit(origin, "later.txt", "later\n", "third")
     assert _post(served, "/api/source/refresh").status_code == 202
-    _settle(served)
-    old_tip = _post(served, "/api/source/pin", {"oid": origin.second}).json()["status"]
-    assert (old_tip["pin"], old_tip["ref"]) == (origin.second, None)
-    tip = _post(served, "/api/source/pin", {"oid": newer}).json()["status"]
-    assert (tip["pin"], tip["ref"]) == (newer, topic)
+    stayed = _settle(served)
+    assert (stayed["pin"], stayed["ref"], stayed["follows"]) == (origin.second, topic, False)
+    assert stayed["latest"] == newer
+    taken = pin({"ref": "topic"}).json()["status"]
+    assert (taken["pin"], taken["ref"], taken["follows"]) == (newer, topic, True)
+    # After the branch moved, its old tip is only a commit.
+    old_tip = pin({"oid": origin.second}).json()["status"]
+    assert (old_tip["pin"], old_tip["ref"], old_tip["follows"]) == (origin.second, None, False)
+    tip = pin({"oid": newer}).json()["status"]
+    assert (tip["pin"], tip["ref"], tip["follows"]) == (newer, topic, False)
 
 
 def test_a_branch_pushed_after_serving_began_is_fetched_once_and_served(
@@ -529,7 +598,7 @@ def test_a_refresh_that_moves_a_ref_makes_an_open_all_branch_cursor_stale(
     stale = served.get("/api/git/log", params={"limit": "1", "scope": "all", "cursor": cursor})
     assert stale.status_code == 409
     assert stale.json()["code"] == "history_stale"
-    # The default walk is the pin alone, so a moved ref does not disturb it.
+    # The default walk is the served commit's, which a new branch does not move.
     default = served.get("/api/git/log", params={"limit": "1"}).json()
     assert (
         served.get("/api/git/log", params={"limit": "1", "cursor": default["cursor"]}).status_code
@@ -623,6 +692,425 @@ def test_a_malformed_refresh_request_is_refused_and_starts_nothing(
     assert served.get("/api/source/status").json()["refreshing"] is False
 
 
+# ── A visible page's own asks ────────────────────────────────────────
+
+
+class _Clock:
+    """The monotonic clock the probe intervals are kept on, moved by the test."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> _Clock:
+    moved = _Clock()
+    monkeypatch.setattr("metabrowser.mirror_refresh._monotonic", moved)
+    return moved
+
+
+@pytest.fixture
+def probes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every ref the server asked the origin about, in order."""
+
+    asked: list[str] = []
+    real = StoreMirror.origin_tip
+
+    async def counted(self: StoreMirror, ref: str) -> str | None:
+        asked.append(ref)
+        return await real(self, ref)
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", counted)
+    return asked
+
+
+def _page_ask(client: TestClient) -> Any:
+    return _post(client, "/api/source/refresh", {"for": "page"})
+
+
+def test_a_page_ask_probes_the_served_branch_and_fetches_at_once_when_it_moved(
+    served: TestClient, origin: _Origin, clock: _Clock, probes: list[str]
+) -> None:
+    """A push to the branch a visible page is on is served seconds later, not a
+    freshness window and a poll later: the page's ask has the server run one
+    ``ls-remote`` of that branch, and the fetch starts when it moved."""
+
+    status = served.get("/api/source/status").json()
+    assert status["probe_every_s"] == STORE_PROBE_S
+
+    unchanged = _page_ask(served)
+    assert unchanged.status_code == 200
+    assert unchanged.json()["refresh"] == "probed"
+    assert probes == ["refs/remotes/origin/topic"]
+    # Nothing was fetched: the mirror is inside its window and the branch had not moved.
+    assert unchanged.json()["status"]["refreshing"] is False
+    assert unchanged.json()["status"]["last_outcome"]["operation"] == "acquire"
+
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    # An ask inside the floor asks the origin nothing, however many pages send one.
+    clock.now += STORE_PROBE_FLOOR_S - 0.5
+    early = _page_ask(served)
+    assert (early.status_code, early.json()["refresh"]) == (200, "not_due")
+    assert len(probes) == 1
+
+    clock.now += 1.0
+    moved = _page_ask(served)
+    assert moved.status_code == 202
+    assert moved.json()["refresh"] == "started"
+    # The fetch the page asked for because its branch moved is one the row shows.
+    assert moved.json()["status"]["refresh_quiet"] is False
+    assert len(probes) == 2
+    after = _settle(served)
+    assert after["last_outcome"] == {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": after["last_fetch_at"],
+    }
+    assert (after["pin"], after["latest"]) == (newer, newer)
+
+    # The mirror has the branch where the origin does again, so the next probe fetches nothing.
+    clock.now += STORE_PROBE_S
+    again = _page_ask(served)
+    assert (again.status_code, again.json()["refresh"]) == (200, "probed")
+    assert served.get("/api/source/status").json()["last_fetch_at"] == after["last_fetch_at"]
+
+
+def test_a_pin_that_is_not_a_branch_of_the_origin_is_never_probed(
+    served: TestClient, origin: _Origin, clock: _Clock, probes: list[str]
+) -> None:
+    _git(_work(origin), "tag", "v9", origin.second)
+    _git(_work(origin), "push", "-q", str(origin.path), "v9")
+    assert _post(served, "/api/source/refresh").status_code == 202
+    _settle(served)
+    for selection in ({"oid": origin.first}, {"ref": "v9"}):
+        pinned = _post(served, "/api/source/pin", selection)
+        assert pinned.status_code == 200, selection
+        assert pinned.json()["status"]["probe_every_s"] is None
+        clock.now += STORE_PROBE_S
+        answer = _page_ask(served)
+        assert (answer.status_code, answer.json()["refresh"]) == (200, "not_due"), selection
+    assert probes == []
+
+
+def test_a_probe_that_fails_is_tried_again_only_after_a_window(
+    served: TestClient, origin: _Origin, clock: _Clock, probes: list[str]
+) -> None:
+    """An origin that is gone, or a machine that is offline, is asked once a freshness
+    window, not every few seconds, and a failed probe is no failed refresh."""
+
+    shutil.rmtree(origin.path)
+    failed = _page_ask(served)
+    assert (failed.status_code, failed.json()["refresh"]) == (200, "not_due")
+    assert failed.json()["status"]["last_outcome"]["operation"] == "acquire"
+    for _ in range(3):
+        clock.now += STORE_PROBE_S
+        assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(probes) == 1
+    clock.now += FRESHNESS_WINDOW_S
+    assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(probes) == 2
+
+
+def test_a_page_ask_fetches_a_stale_mirror_and_not_again_inside_a_window_of_a_failure(
+    served: TestClient, origin: _Origin, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While a page is visible the whole mirror is fetched once it is older than the
+    freshness window, and a fetch that failed is tried again only a window later."""
+
+    assert _page_ask(served).json()["refresh"] == "probed"
+    later = datetime.now(UTC) + timedelta(seconds=FRESHNESS_WINDOW_S + 5)
+    monkeypatch.setattr("metabrowser.mirror_refresh._now_utc", lambda: later)
+
+    release = threading.Event()
+    real = update_store
+
+    async def held_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        await held_until(release, 30)
+        return await real(home, store_key, remote_url=remote_url)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", held_update)
+    stale = _page_ask(served)
+    assert (stale.status_code, stale.json()["refresh"]) == (202, "started")
+    # Nobody pressed for this fetch, so status calls it quiet and the row says nothing
+    # (review A2 of #721), until a reader's own Refresh joins it.
+    running = stale.json()["status"]
+    assert (running["refreshing"], running["refresh_quiet"]) == (True, True)
+    pressed = _post(served, "/api/source/refresh").json()
+    assert (pressed["refresh"], pressed["status"]["refresh_quiet"]) == ("joined", False)
+    release.set()
+    after = _settle(served)
+    assert (after["last_outcome"]["outcome"], after["refresh_quiet"]) == ("succeeded", False)
+
+    shutil.rmtree(origin.path)
+    monkeypatch.setattr(
+        "metabrowser.mirror_refresh._now_utc",
+        lambda: later + timedelta(seconds=2 * FRESHNESS_WINDOW_S),
+    )
+    assert _page_ask(served).json()["refresh"] == "started"
+    failed = _settle(served)
+    assert (failed["stale"], failed["last_outcome"]["outcome"]) == (True, "origin_unavailable")
+    # Stale still, but the failure holds the page's asks; a reader's own click does not wait.
+    clock.now += STORE_PROBE_S
+    held = _page_ask(served)
+    assert (held.status_code, held.json()["refresh"]) == (200, "not_due")
+    clock.now += FRESHNESS_WINDOW_S
+    assert _page_ask(served).json()["refresh"] == "started"
+    _settle(served)
+    assert _post(served, "/api/source/refresh").json()["refresh"] == "started"
+    _settle(served)
+
+
+def test_a_fetch_that_does_not_bring_the_probed_tip_is_not_started_again_by_each_probe(
+    served: TestClient, origin: _Origin, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fetches: list[str] = []
+
+    async def brings_nothing(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        fetches.append(store_key)
+        return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", brings_nothing)
+    _push_commit(origin, "NEW.md", "# New\n", "third")
+    assert _page_ask(served).json()["refresh"] == "started"
+    _settle(served)
+    for _ in range(3):
+        clock.now += STORE_PROBE_S
+        assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(fetches) == 1
+    clock.now += FRESHNESS_WINDOW_S
+    assert _page_ask(served).json()["refresh"] == "started"
+    _settle(served)
+    assert len(fetches) == 2
+
+
+def test_page_asks_while_a_probe_runs_start_no_second_one(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One probe in flight per mirror, however many tabs ask, and a slow origin holds no
+    request longer than the probe's wait."""
+
+    asked: list[str] = []
+    release = threading.Event()
+
+    async def slow_tip(self: StoreMirror, ref: str) -> str | None:
+        asked.append(ref)
+        await held_until(release, 30)
+        return None
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", slow_tip)
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_PROBE_WAIT_S", 0.05)
+    answers = [_page_ask(served).json()["refresh"] for _ in range(3)]
+    assert answers == ["not_due", "not_due", "not_due"]
+    assert len(asked) == 1
+    release.set()
+
+
+def test_a_probe_that_outlives_its_request_still_starts_the_fetch(
+    served: TestClient, origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The request stops waiting after the probe's wait, and the probe ends on its own:
+    when it finds the push, the fetch starts with no request asking (review A5 of #721)."""
+
+    release = threading.Event()
+    real = StoreMirror.origin_tip
+
+    async def slow_tip(self: StoreMirror, ref: str) -> str | None:
+        await held_until(release, 30)
+        return await real(self, ref)
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", slow_tip)
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_PROBE_WAIT_S", 0.05)
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    answer = _page_ask(served)
+    assert (answer.status_code, answer.json()["refresh"]) == (200, "not_due")
+    assert answer.json()["status"]["pin"] == origin.second
+    release.set()
+    deadline = time.monotonic() + 30
+    # A GET starts no work, so only the probe can have started the fetch.
+    while served.get("/api/source/status").json()["pin"] != newer:
+        assert time.monotonic() < deadline, "the probe never started the fetch"
+        time.sleep(0.05)
+    assert _settle(served)["last_outcome"]["outcome"] == "succeeded"
+
+
+def test_the_hold_after_a_failed_probe_runs_from_when_it_failed(
+    served: TestClient, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review A6 of #721: a probe that ran to its deadline had used up half its hold by
+    the time it failed, so an origin that does not answer was being asked half the time."""
+
+    asked: list[float] = []
+
+    async def unanswered(self: StoreMirror, ref: str) -> str | None:
+        asked.append(clock.now)
+        clock.now += 30.0
+        raise OriginProbeError("the origin did not answer the probe")
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", unanswered)
+    assert _page_ask(served).json()["refresh"] == "not_due"
+    # 50 s after it failed, 80 s after it began: still held.
+    clock.now += FRESHNESS_WINDOW_S - 10
+    assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(asked) == 1
+    clock.now += 11
+    assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(asked) == 2
+
+
+def test_a_fetch_that_did_not_run_holds_no_probe_of_the_tip_it_was_started_for(
+    served: TestClient, origin: _Origin, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review A7 of #721: the fetch a probe started found another process fetching, so it
+    brought nothing, and every probe for a window then answered that the tip was tried.
+    The push showed a window late, which is the delay the probe is there to remove."""
+
+    real = update_store
+    answers = [StoreUpdate(RefreshOutcome.refreshing_elsewhere, _FUTURE)]
+
+    async def busy_once(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        if answers:
+            return answers.pop()
+        return await real(home, store_key, remote_url=remote_url)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", busy_once)
+    monkeypatch.setattr("metabrowser.mirror_refresh.ELSEWHERE_POLL_S", 0.01)
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    assert _page_ask(served).json()["refresh"] == "started"
+    assert _settle(served)["pin"] == origin.second
+    clock.now += STORE_PROBE_S
+    again = _page_ask(served)
+    assert (again.status_code, again.json()["refresh"]) == (202, "started")
+    assert _settle(served)["pin"] == newer
+
+
+def test_a_probe_that_joins_a_fetch_says_so_and_holds_nothing(
+    served: TestClient, origin: _Origin, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reviews A10 and A7 of #721: a fetch that began while the origin was asked may have
+    read it before the push. The ask answers ``joined``, not ``started``, and the next
+    probe fetches for the tip, which that fetch did not bring."""
+
+    release = threading.Event()
+    real_tip = StoreMirror.origin_tip
+    real_update = update_store
+    held = [True]
+
+    async def held_first(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        if held:
+            held.pop()
+            await held_until(release, 30)
+            return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
+        return await real_update(home, store_key, remote_url=remote_url)
+
+    async def refreshed_meanwhile(self: StoreMirror, ref: str) -> str | None:
+        session = mirror_session(server.app)
+        if held and session is not None:
+            # A reader pressed Refresh while the origin was being asked.
+            assert session.request_refresh() == "started"
+        return await real_tip(self, ref)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", held_first)
+    monkeypatch.setattr(StoreMirror, "origin_tip", refreshed_meanwhile)
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    joined = _page_ask(served)
+    assert (joined.status_code, joined.json()["refresh"]) == (202, "joined")
+    # The reader's own fetch, so the row says so.
+    assert joined.json()["status"]["refresh_quiet"] is False
+    release.set()
+    assert _settle(served)["pin"] == origin.second
+    clock.now += STORE_PROBE_S
+    assert _page_ask(served).json()["refresh"] == "started"
+    assert _settle(served)["pin"] == newer
+
+
+def test_the_probed_refs_are_the_refs_the_cache_fetches_branches_under() -> None:
+    """Review A8 of #721: what the status advertises as probed, and what the mirror
+    accepts and strips, is one constant, held here to the cache's own."""
+
+    assert PROBED_REF_PREFIX == BRANCH_MIRROR_PREFIX
+    assert probes_origin(f"{BRANCH_MIRROR_PREFIX}topic")
+    assert not probes_origin("refs/tags/v1") and not probes_origin("refs/pull/7/head")
+
+
+def test_the_shutdown_stops_a_running_probe_before_it_closes_the_jobs(
+    origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lifespan stops the probe itself, which kills its Git, while the server is
+    still whole. Closing the client's loop cancels whatever is left on it too, so the
+    probe says whether the refresh jobs were already closed when it was stopped: with no
+    ``stop_probe`` they are (review A5 of #721)."""
+
+    stopped: list[bool] = []
+
+    async def endless_tip(self: StoreMirror, ref: str) -> str | None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            jobs = refresh_coordinator(server.app)
+            assert jobs is not None
+            stopped.append(jobs._closed)
+            raise
+        return None
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", endless_tip)
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_PROBE_WAIT_S", 0.05)
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        assert _page_ask(client).json()["refresh"] == "not_due"
+    assert stopped == [False]
+
+
+# ── The idle refresh ─────────────────────────────────────────────────
+
+
+def test_a_server_no_page_is_looking_at_fetches_its_mirror_by_itself(
+    origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A server left running behind a hidden tab keeps its mirror from growing old: its
+    own timer fetches, and the served branch follows, with no request asking."""
+
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_IDLE_REFRESH_S", 0.5)
+    monkeypatch.setattr("metabrowser.mirror_refresh.IDLE_CHECK_FLOOR_S", 0.05)
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+        deadline = time.monotonic() + 30
+        # A GET starts no work, so only the server's own timer can have fetched.
+        while (status := client.get("/api/source/status").json())["pin"] != newer:
+            assert time.monotonic() < deadline, "the idle refresh never fetched"
+            time.sleep(0.05)
+    assert status["latest"] == newer
+    assert status["last_outcome"]["operation"] == "refresh"
+
+
+def test_only_a_server_runs_the_idle_timer(
+    tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A command reads the mirror as it is and fetches only what it asks for, however
+    old the mirror is. What is counted is the timer itself: a command ends before a timer
+    started beside it would fetch, so counting fetches proves nothing (review A5 of #721)."""
+
+    _backdate_last_fetch(tmp_path, origin)
+    timers: list[str] = []
+
+    async def recorded(self: MirrorSession) -> None:
+        timers.append("started")
+
+    monkeypatch.setattr(MirrorSession, "run_idle_refresh", recorded)
+    for route in ("/api/source/status", "/api/git/repo"):
+        result = runner.invoke(_app, [origin.url, "--api", route])
+        assert result.exit_code == 0, result.output
+    assert timers == []
+
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        _settle(client)
+    assert timers == ["started"]
+
+
 # ── The coordinator ──────────────────────────────────────────────────
 
 
@@ -663,6 +1151,98 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
     assert answers == ["started", "started", "started", "joined", "started"]
 
 
+def test_a_job_joined_as_it_stops_is_started_again_once_and_never_once_the_coordinator_closes() -> (
+    None
+):
+    """``start_again_when_stopped`` and ``restarting``, which a mirror and a folder's
+    checkout share (review A5 of #762). A job told to stop and joined twice is started
+    again once, after it has unwound. One still unwinding when the coordinator closes is
+    not, and is no longer said to be restarting once the close has begun."""
+
+    async def scenario() -> dict[str, object]:
+        coordinator = RefreshCoordinator()
+        errors: list[dict[str, Any]] = []
+        asyncio.get_running_loop().set_exception_handler(
+            lambda _loop, context: errors.append(context)
+        )
+        restarted: list[str] = []
+        seen: dict[str, object] = {}
+
+        def unwinding(entered: asyncio.Event, release: asyncio.Event) -> Any:
+            async def job() -> None:
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    # Unwinding takes until the test lets it end, however often it is told.
+                    while not release.is_set():
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await release.wait()
+                    raise
+
+            return job
+
+        async def again() -> None:
+            return None
+
+        def restart(key: str) -> Any:
+            def start() -> None:
+                restarted.append(key)
+                coordinator.start(key, again, network=False)
+
+            return start
+
+        # Every job unwinds, and the coordinator closes, however the scenario ends.
+        releases: list[asyncio.Event] = []
+        try:
+            entered, release = asyncio.Event(), asyncio.Event()
+            releases.append(release)
+            assert coordinator.start("a", unwinding(entered, release), network=False) == "started"
+            await asyncio.wait_for(entered.wait(), 5)
+            seen["not stopping"] = coordinator.start_again_when_stopped("a", restart("a"))
+            stopped = coordinator.cancel("a")
+            assert stopped is not None
+            seen["joined"] = [coordinator.start_again_when_stopped("a", restart("a")) for _ in "12"]
+            seen["restarting"] = coordinator.restarting("a")
+            release.set()
+            await asyncio.wait({stopped}, timeout=5)
+            seen["after it unwound"] = (list(restarted), coordinator.restarting("a"))
+            await coordinator.drain(timeout_s=5)
+
+            entered, release = asyncio.Event(), asyncio.Event()
+            releases.append(release)
+            assert coordinator.start("b", unwinding(entered, release), network=False) == "started"
+            await asyncio.wait_for(entered.wait(), 5)
+            stopping = coordinator.cancel("b")
+            assert stopping is not None
+            assert coordinator.start_again_when_stopped("b", restart("b"))
+            closing = asyncio.create_task(coordinator.aclose())
+            # The close's first step, which closes the coordinator and tells every job to stop,
+            # runs before this resumes.
+            await asyncio.sleep(0)
+            assert coordinator.closed
+            seen["closing"] = (stopping.done(), coordinator.restarting("b"))
+            release.set()
+            await closing
+            seen["after the close"] = list(restarted)
+            seen["errors"] = [context.get("message") for context in errors]
+        finally:
+            for each in releases:
+                each.set()
+            await coordinator.aclose()
+        return seen
+
+    assert asyncio.run(scenario()) == {
+        "not stopping": False,
+        "joined": [True, True],
+        "restarting": True,
+        "after it unwound": (["a"], False),
+        "closing": (False, False),
+        "after the close": ["a"],
+        "errors": [],
+    }
+
+
 class _BusyMirror:
     """A mirror whose store another process refreshed and recorded in the same second."""
 
@@ -682,10 +1262,19 @@ class _BusyMirror:
     async def recorded_freshness(self) -> RecordedFreshness:
         return RecordedFreshness(self.at, "refresh", "succeeded", self.at)
 
+    async def origin_tip(self, ref: str) -> str | None:
+        raise AssertionError("not reached")
+
     async def ref_tip(self, ref: str) -> str | None:
         return None
 
-    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
+    async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
+        return {}
+
+    async def default_ref(self) -> str | None:
+        return None
+
+    async def list_refs(self, kind: RefKind, *, default_ref: str | None) -> tuple[MirrorRef, ...]:
         raise AssertionError("not reached")
 
     async def refresh_running_elsewhere(self) -> bool:
@@ -731,6 +1320,8 @@ def test_a_pin_shell_has_a_freshness_row_loaded_on_demand(
 ) -> None:
     shell = served.get("/view/").text
     assert '<div class="source-freshness" id="source-freshness" hidden></div>' in shell
+    # Above the keyboard shortcut strip, which stays the pane's last row (owner, 2026-11-20).
+    assert shell.index('id="source-freshness"') < shell.index('id="nav-shortcut-hints"')
     bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]
     bundles = bundles[: bundles.index("</script>")]
     assert '"source-freshness": [{"src": "/static/source-freshness.js' in bundles
@@ -942,6 +1533,8 @@ def test_a_server_follows_a_refresh_another_process_is_running(
         )
     followed = _settle(served)
     assert followed["latest"] == newer
+    # Once the other process's fetch ended, the served branch followed it too.
+    assert followed["pin"] == newer
     assert followed["refreshing"] is False
     # The other refresh has ended and wrote no record, so the busy result is gone and
     # the record reports what was there before.

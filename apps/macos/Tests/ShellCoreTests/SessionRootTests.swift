@@ -5,11 +5,14 @@ import Testing
 private let repository = URL(string: "https://github.com/jlevy/tbd")!
 
 @Suite struct SessionRootTests {
-    /// A folder keeps the key the app has always given it, so nothing about opening folders
-    /// changes; a repository's is its URL, which no path can equal.
+    /// A folder is keyed by its path as the saved session and `OpenTarget` spell it, without
+    /// a trailing slash, so a root read from either finds its session; a repository's is its
+    /// URL, which no path can equal.
     @Test func aFolderIsKeyedByItsPathAndARepositoryByItsURL() {
         let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
-        #expect(SessionRoot.folder(folder).key == folder.path(percentEncoded: false))
+        #expect(SessionRoot.folder(folder).key == "/tmp/notes")
+        #expect(SessionRoot.folder(URL(filePath: "/tmp/notes/")).key == "/tmp/notes")
+        #expect(SessionRoot.folder(URL(filePath: "/", directoryHint: .isDirectory)).key == "/")
         #expect(SessionRoot.repository(repository).key == "https://github.com/jlevy/tbd")
         #expect(SessionRoot.folder(URL(filePath: "/jlevy/tbd", directoryHint: .isDirectory)).key != SessionRoot.repository(repository).key)
     }
@@ -36,7 +39,7 @@ private let repository = URL(string: "https://github.com/jlevy/tbd")!
     @Test func aRepositoryIsNamedByItsRepositoryUntilItsServerAnswers() {
         let identity = SessionRoot.repository(repository).identity()
         #expect(identity == FolderIdentity(
-            shortName: "tbd", fullName: "github.com/jlevy/tbd", kind: .mirror, kindLabel: "Cached mirror",
+            shortName: "tbd", fullName: "github.com/jlevy/tbd", kind: .mirror, kindLabel: "Cloud mirror",
             title: "tbd • Metabrowser"))
         // A mirror's title opens no path menu.
         #expect(!WindowTitle(identity).hasPathMenu)
@@ -70,15 +73,16 @@ private let repository = URL(string: "https://github.com/jlevy/tbd")!
     private let setup = RuntimeSetup(
         runtime: Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin), tools: ToolPaths())
 
-    /// The server is started with the link `metab` handed back, not the cache's path for it
-    /// nor the URL's path (`/jlevy/tbd/pull/12`, which `root.path` would give), and runs in
+    /// The server is started on the repository's URL, never on a link into it, which the
+    /// ready server opens instead (`SourceLink`, bead mb-30xb), and not on the cache's path
+    /// for it nor the URL's path (`/jlevy/tbd`, which `root.path` would give); it runs in
     /// the home folder.
-    @Test func aRepositoryServerIsStartedWithTheLinkInTheHomeFolder() {
-        let link = URL(string: "https://github.com/jlevy/tbd/pull/12")!
-        let launch = CLIServeLaunch(basePort: SessionRoot.repository(repository).lane.basePort)
-        let spec = launch.spec(serving: link, with: setup, inherited: [:], logURL: nil, home: "/tmp/account")
+    @Test func aRepositoryServerIsStartedOnTheRepositoryInTheHomeFolder() {
+        let root = SessionRoot.repository(repository)
+        let launch = CLIServeLaunch(basePort: root.lane.basePort)
+        let spec = launch.spec(serving: root.url, with: setup, inherited: [:], logURL: nil, home: "/tmp/account")
         #expect(spec.arguments == [
-            "https://github.com/jlevy/tbd/pull/12", "--no-open", "--exit-on-eof", "--host", "127.0.0.1",
+            repository.absoluteString, "--no-open", "--exit-on-eof", "--host", "127.0.0.1",
             "--port", String(CLIServeLaunch.repositoryBasePort),
         ])
         #expect(spec.workingDirectory == "/tmp/account")

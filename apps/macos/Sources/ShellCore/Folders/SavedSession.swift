@@ -1,30 +1,53 @@
 import Darwin
 import Foundation
 
-/// The folder windows open when the app last saved, front window first, which the next
-/// launch recreates.
+/// The folder windows open when the app last saved, front window first, and the folders
+/// open in the background, which the next launch recreates.
+///
+/// Each window shows one folder's page. The file's names for a window's pages, `tabs` and
+/// `selected`, are an earlier build's, which could put several folders in one window's
+/// tabs (`SavedWindow`).
 public nonisolated struct SavedSession: Codable, Equatable, Sendable {
     public var windows: [SavedWindow]
+    /// The folders no window showed, the one shown most recently first
+    /// (`OpenFolders.byRecency`), each with its one page. A launch reopens them without a
+    /// window or a server, in this order; each starts when a window first shows it.
+    public var background: [SavedPage]
 
-    public init(windows: [SavedWindow]) {
+    public init(windows: [SavedWindow], background: [SavedPage] = []) {
         self.windows = windows
+        self.background = background
     }
 
-    /// The session with each tab's root admitted (`RootAdmission`): an open root takes its
+    private enum CodingKeys: String, CodingKey {
+        case windows, background
+    }
+
+    /// A file saved before folders could be open in the background has no `background`,
+    /// and the release that wrote it is on users' Macs: it reads as none.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        windows = try container.decode([SavedWindow].self, forKey: .windows)
+        background = try container.decodeIfPresent([SavedPage].self, forKey: .background) ?? []
+    }
+
+    /// The session with each page's root admitted (`RootAdmission`): an open root takes its
     /// canonical identity, so aliases of one folder share one session and one server, a
-    /// deferred root keeps the identity it resolved to, and a tab whose root is gone or
-    /// invalid is dropped, as is a window left with no tab. Each window's selection stays
-    /// on its tab, or moves to the nearest one kept. Each distinct root is admitted once.
+    /// deferred root keeps the identity it resolved to, and a page whose root is gone or
+    /// invalid is dropped, as is a window left with no page. Each window's selection stays
+    /// on its page, or moves to the nearest one kept. Each distinct root is admitted once.
+    /// A background folder is admitted the same way, and dropped if a window shows it or
+    /// an earlier background folder is the same one.
     public func admitted(_ admit: (String) -> RootAdmission) -> AdmittedSession {
         var admissions: [String: RootAdmission] = [:]
         var deferred: Set<String> = []
         var windows: [SavedWindow] = []
         for window in self.windows {
-            var tabs: [SavedTab] = []
+            var pages: [SavedPage] = []
             var selected = 0
-            for (index, tab) in window.tabs.enumerated() {
-                let admission = admissions[tab.root] ?? admit(tab.root)
-                admissions[tab.root] = admission
+            for (index, page) in window.pages.enumerated() {
+                let admission = admissions[page.root] ?? admit(page.root)
+                admissions[page.root] = admission
                 let root: String
                 switch admission {
                 case .open(let canonical):
@@ -35,43 +58,82 @@ public nonisolated struct SavedSession: Codable, Equatable, Sendable {
                 case .gone, .invalid:
                     continue
                 }
-                if index <= window.selected { selected = tabs.count }
-                tabs.append(SavedTab(root: root, page: tab.page))
+                if index <= window.selected { selected = pages.count }
+                pages.append(SavedPage(root: root, page: page.page))
             }
-            guard !tabs.isEmpty else { continue }
-            windows.append(SavedWindow(tabs: tabs, selected: selected, frame: window.frame))
+            guard !pages.isEmpty else { continue }
+            windows.append(SavedWindow(pages: pages, selected: selected, frame: window.frame))
         }
-        return AdmittedSession(session: SavedSession(windows: windows), deferred: deferred)
-    }
-
-    /// The session cut to `budget`: its front windows, and in each its first tabs and the
-    /// one it shows, until the budget's windows or tabs run out.
-    public func limited(to budget: RestoreBudget) -> SavedSession {
-        var windows: [SavedWindow] = []
-        var tabsLeft = budget.tabs
-        for window in self.windows.prefix(budget.windows) where tabsLeft > 0 {
-            guard window.tabs.count > tabsLeft else {
-                windows.append(window)
-                tabsLeft -= window.tabs.count
+        var seen = Set(windows.flatMap { $0.pages.map(\.root) })
+        var background: [SavedPage] = []
+        for page in self.background {
+            let admission = admissions[page.root] ?? admit(page.root)
+            admissions[page.root] = admission
+            let root: String
+            switch admission {
+            case .open(let canonical):
+                root = canonical
+            case .deferred(let resolved):
+                root = resolved
+                deferred.insert(resolved)
+            case .gone, .invalid:
                 continue
             }
-            var tabs = Array(window.tabs.prefix(tabsLeft))
-            var selected = window.selected
-            if !tabs.indices.contains(selected), window.tabs.indices.contains(selected) {
-                tabs[tabs.count - 1] = window.tabs[selected]
-                selected = tabs.count - 1
-            }
-            windows.append(SavedWindow(tabs: tabs, selected: selected, frame: window.frame))
-            tabsLeft = 0
+            guard seen.insert(root).inserted else { continue }
+            background.append(SavedPage(root: root, page: page.page))
         }
-        return SavedSession(windows: windows)
+        return AdmittedSession(session: SavedSession(windows: windows, background: background), deferred: deferred)
     }
 
-    public var tabCount: Int { windows.reduce(0) { $0 + $1.tabs.count } }
+    /// The session cut to `budget`: its front windows, and in each its first pages and the
+    /// one it shows, until the budget's windows or pages run out; then the background
+    /// folders shown most recently, each a page, while pages remain.
+    public func limited(to budget: RestoreBudget) -> SavedSession {
+        var windows: [SavedWindow] = []
+        var pagesLeft = budget.pages
+        for window in self.windows.prefix(budget.windows) where pagesLeft > 0 {
+            guard window.pages.count > pagesLeft else {
+                windows.append(window)
+                pagesLeft -= window.pages.count
+                continue
+            }
+            var pages = Array(window.pages.prefix(pagesLeft))
+            var selected = window.selected
+            if !pages.indices.contains(selected), window.pages.indices.contains(selected) {
+                pages[pages.count - 1] = window.pages[selected]
+                selected = pages.count - 1
+            }
+            windows.append(SavedWindow(pages: pages, selected: selected, frame: window.frame))
+            pagesLeft = 0
+        }
+        return SavedSession(windows: windows, background: Array(background.prefix(pagesLeft)))
+    }
+
+    /// Every page of every window, and every background folder's page.
+    public var pageCount: Int { windows.reduce(background.count) { $0 + $1.pages.count } }
+
+    /// Every root once, in the order the restore opens their folders (`OpenFolders`): each
+    /// window's pages, front window first, then the background folders.
+    public var roots: [String] {
+        var seen = Set<String>()
+        return (windows.flatMap { $0.pages.map(\.root) } + background.map(\.root)).filter { seen.insert($0).inserted }
+    }
+
+    /// The session as the restore builds it. One with folders in the background and no
+    /// window, which a quit after the last window closed saves, or a launch finds when
+    /// every saved window's folder is gone, would open to nothing: neither a window nor
+    /// the Open panel, since folders are open. Its first background folder, the one shown
+    /// most recently, gets a window of its own instead, placed as a new folder's is, and
+    /// is the front window's page, which starts first (`RestoreQueue`).
+    public var withFrontWindow: SavedSession {
+        guard windows.isEmpty, let front = background.first else { return self }
+        return SavedSession(
+            windows: [SavedWindow(pages: [front], selected: 0, frame: nil)], background: Array(background.dropFirst()))
+    }
 }
 
 /// A saved session after admission, and the roots in it whose servers wait for one of
-/// their tabs to be selected.
+/// their windows to be brought forward.
 public nonisolated struct AdmittedSession: Equatable, Sendable {
     public var session: SavedSession
     public var deferred: Set<String>
@@ -82,48 +144,61 @@ public nonisolated struct AdmittedSession: Equatable, Sendable {
 /// Measured on macOS 26.5.2 by building windows that each hold a never-loaded web view,
 /// as a restore builds them, as main-thread time and the footprint added to the app:
 ///
+/// - 20 separate windows: 187 ms, 16 MB
 /// - 20 tabs in one window: 588 ms, 23 MB
 /// - 50 tabs in one window: 1.76 s, 55 MB
 /// - 100 tabs in one window: 4.47 s, 113 MB
-/// - 20 separate windows: 187 ms, 16 MB
 ///
-/// Each window's shown tab then loads its page, one WebContent process of 111 to 143 MB
-/// (`TabDiscardPolicy`), and each distinct root starts a server of about 65 MB (the
-/// server-topology brief). The standard budget keeps a launch under two seconds of
-/// building and under 3 GB of pages at the measured upper figure: far past an everyday
-/// session, and a bound on an edited or corrupted file.
+/// The tabs are an earlier build's, which could put pages in one window's tabs; each page
+/// now has a window of its own. Each window's shown page then loads, one WebContent
+/// process of 111 to 143 MB (`PageDiscardPolicy`), and each distinct root starts a server
+/// of about 65 MB (the server-topology brief). The standard budget keeps a launch under
+/// two seconds of building and under 3 GB of pages at the measured upper figure: far past
+/// an everyday session, and a bound on an edited or corrupted file. An earlier build's
+/// window of tabs reopens as a window per tab, of which only the one it showed loads at
+/// launch (`FolderWindows.restore`), so the bound holds for its file too.
 public nonisolated struct RestoreBudget: Equatable, Sendable {
-    public static let standard = RestoreBudget(windows: 20, tabs: 50)
+    public static let standard = RestoreBudget(windows: 20, pages: 50)
 
     public var windows: Int
-    public var tabs: Int
+    public var pages: Int
 
-    public init(windows: Int, tabs: Int) {
+    public init(windows: Int, pages: Int) {
         self.windows = windows
-        self.tabs = tabs
+        self.pages = pages
     }
 }
 
-/// One window and its tabs.
+/// One window and the page it shows.
+///
+/// An earlier build could put several folders in one window's tabs, and saved them here
+/// in tab-bar order, under the keys `tabs` and `selected`, which this build keeps: it saves
+/// one page per window, and reopens each page of an earlier build's window in a window of
+/// its own (`FolderWindows.restore`).
 public nonisolated struct SavedWindow: Codable, Equatable, Sendable {
-    /// In tab-bar order; a window without a tab bar has one.
-    public var tabs: [SavedTab]
-    /// The index of the tab the window shows.
+    /// The window's page: one, as this build saves it.
+    public var pages: [SavedPage]
+    /// The index of the page the window shows.
     public var selected: Int
     /// `NSWindow.frameDescriptor`, which `NSWindow.setFrame(from:)` reads back.
     public var frame: String?
 
-    public init(tabs: [SavedTab], selected: Int, frame: String?) {
-        self.tabs = tabs
+    public init(pages: [SavedPage], selected: Int, frame: String?) {
+        self.pages = pages
         self.selected = selected
         self.frame = frame
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case pages = "tabs"
+        case selected, frame
+    }
 }
 
-public nonisolated struct SavedTab: Codable, Equatable, Sendable {
-    /// The canonical path of the folder the tab's server serves.
+public nonisolated struct SavedPage: Codable, Equatable, Sendable {
+    /// The canonical path of the folder whose server serves the page.
     public var root: String
-    /// The page the tab showed, or nil for the folder's entry page.
+    /// The page shown, or nil for the folder's entry page.
     public var page: PageAddress?
 
     public init(root: String, page: PageAddress?) {
@@ -134,19 +209,23 @@ public nonisolated struct SavedTab: Codable, Equatable, Sendable {
 
 /// The order a restored session's servers start in, one at a time.
 ///
-/// The front window's tab starts first, then the tabs the other windows show, front to
-/// back, then every other tab, window by window. Each root starts once, however many
-/// tabs show it. A root in a protected location starts only once one of its tabs is
-/// selected, so a restore raises no privacy prompt for a folder nobody is looking at;
-/// the front tab is selected, so it starts even there. A selected tab starts next.
-/// A background root is checked again when its turn comes (`next(stillOpen:)`), since
-/// its folder can change while the roots before it start.
+/// The front window's page starts first, then the pages the other windows show, front to
+/// back, then every other page, window by window: an earlier build's tabs that their
+/// window did not show. Each root starts once, however many windows show it. A root is
+/// **selected** once a window showing it becomes key, as the front window does at launch
+/// and any other does when it is brought forward. A root in a protected location starts
+/// only once it is selected, so a restore raises no privacy prompt for a folder nobody is
+/// looking at; the front window's root is selected, so it starts even there. A selected
+/// root starts next. A background root is checked again when its turn comes
+/// (`next(stillOpen:)`), since its folder can change while the roots before it start. A
+/// folder open in the background (`SavedSession.background`) has no window: it waits, as
+/// a protected root does, until a window shows it.
 public nonisolated struct RestoreQueue: Equatable, Sendable {
     /// The roots to start, in order.
     public private(set) var pending: [String] = []
-    /// The roots waiting for one of their tabs to be selected.
+    /// The roots waiting to be selected.
     public private(set) var deferred: [String] = []
-    /// The roots whose tab was selected, the front tab's among them: they start as the
+    /// The roots selected, the front window's among them: they start as the
     /// user's choice, without the background check, before their turn or after it.
     public private(set) var selected: Set<String> = []
     /// The roots whose restored start launched, which a later selection still marks as
@@ -161,9 +240,9 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
 
     public init(_ session: SavedSession, isProtected: (String) -> Bool) {
         let shown = session.windows.compactMap { window in
-            window.tabs.indices.contains(window.selected) ? window.tabs[window.selected].root : nil
+            window.pages.indices.contains(window.selected) ? window.pages[window.selected].root : nil
         }
-        let rest = session.windows.flatMap { $0.tabs.map(\.root) }
+        let rest = session.windows.flatMap { $0.pages.map(\.root) }
         for (index, root) in (shown + rest).enumerated() where !pending.contains(root) && !deferred.contains(root) {
             if index > 0, isProtected(root) {
                 deferred.append(root)
@@ -171,6 +250,9 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
                 pending.append(root)
                 if index == 0 { selected.insert(root) }
             }
+        }
+        for root in session.background.map(\.root) where !pending.contains(root) && !deferred.contains(root) {
+            deferred.append(root)
         }
     }
 
@@ -180,7 +262,7 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     public func isOutstanding(_ root: String) -> Bool { outstanding == root }
 
     /// The next root to start, outstanding until its start is settled. A background root
-    /// that `stillOpen` no longer admits waits for its tab instead, and the next one is
+    /// that `stillOpen` no longer admits waits to be selected instead, and the next one is
     /// tried.
     public mutating func next(stillOpen: (String) -> Bool = { _ in true }) -> String? {
         settle()
@@ -195,7 +277,7 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
         return nil
     }
 
-    /// A tab of `root` was selected: it starts next. Returns false if `root` is not
+    /// `root` was selected: it starts next. Returns false if `root` is not
     /// waiting to start, because its start is outstanding, it has started, or it is not
     /// part of the restore. A root whose start is outstanding, or that has started, is
     /// recorded as selected, so if it is put back or requeued it starts as the user's
@@ -220,7 +302,7 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     }
 
     /// `root`'s launch was refused at the last check before spawning, at its turn or at a
-    /// later restart: it waits for its tab, unless a tab of it was selected.
+    /// later restart: it waits to be selected, unless it was.
     public mutating func hold(_ root: String) {
         if root == outstanding { settle() }
         guard !selected.contains(root), !deferred.contains(root) else { return }
@@ -229,7 +311,7 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     }
 
     /// `root`, just taken with `next`, found no runtime to start from: it is next again,
-    /// after any root selected while it waited, unless its own tab was selected after
+    /// after any root selected while it waited, unless it was itself selected after
     /// those. Once a runtime is accepted it is admitted again in its turn, keeps its
     /// place, and a selection can still put another root before it.
     public mutating func putBack(_ root: String) {
@@ -245,7 +327,7 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     }
 
     /// `root`, taken with `next`, started. A start that `remove` (or another settle)
-    /// already ended is not this one: a root whose tabs all closed while its start waited
+    /// already ended is not this one: a root whose pages all closed while its start waited
     /// is forgotten, even if that start then reports it launched.
     public mutating func finish(_ root: String) {
         guard root == outstanding else { return }
@@ -255,14 +337,14 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
 
     /// `root`, selected, had a later start refused at the moment of spawning, as a restart
     /// whose saved path now leads to another folder is: it starts next again, as the
-    /// user's choice, so it is resolved again. One not selected waits for its tab (`hold`).
+    /// user's choice, so it is resolved again. One not selected waits to be selected (`hold`).
     public mutating func requeue(_ root: String) {
         guard selected.contains(root), root != outstanding, !pending.contains(root) else { return }
         deferred.removeAll { $0 == root }
         pending.insert(root, at: 0)
     }
 
-    /// Every tab of `root` closed, before its server started or after.
+    /// Every page of `root` closed, before its server started or after.
     public mutating func remove(_ root: String) {
         if root == outstanding { settle() }
         pending.removeAll { $0 == root }
@@ -272,9 +354,9 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     }
 
     /// The user chose to start `saved`, whose path now leads to the folder `canonical`
-    /// (`RootActivation`), and its tabs moved to that folder's session: `saved` leaves the
+    /// (`RootActivation`), and its pages moved to that folder's session: `saved` leaves the
     /// restore, and `canonical` starts next as the user's choice, whether it waited to
-    /// start or for its tab, or has no session yet. One that is open already (`isOpen`)
+    /// start or to be selected, or has no session yet. One that is open already (`isOpen`)
     /// and not waiting here is left as it is: starting, running, failed, or waiting for a
     /// runtime.
     public mutating func redirect(_ saved: String, to canonical: String, isOpen: Bool) {
@@ -302,7 +384,7 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
 /// only the windows of that moment.
 public nonisolated struct SessionStore: Sendable {
     public static let fileName = "session.json"
-    /// A session of a hundred tabs is about 20 KB; a file past this is not one.
+    /// A session of a hundred pages is about 20 KB; a file past this is not one.
     public static let byteLimit = 1 << 20
 
     public enum LoadError: Error, Equatable {

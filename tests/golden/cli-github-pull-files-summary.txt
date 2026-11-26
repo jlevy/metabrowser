@@ -21,7 +21,8 @@ status: 200
       "additions": null,
       "deletions": null,
       "exact": false,
-      "statuses": []
+      "statuses": [],
+      "size": null
     },
     {
       "number": 7,
@@ -37,7 +38,8 @@ status: 200
       "additions": null,
       "deletions": null,
       "exact": false,
-      "statuses": []
+      "statuses": [],
+      "size": null
     }
   ]
 }
@@ -45,6 +47,7 @@ status: 200
 cloning https://github.com/octo/demo into <HOME>
 cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 ## 106's list read from GitHub's pages, the one step here that asks.
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
@@ -117,13 +120,13 @@ status: 200
 --- body ---
 {"number": 106}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=2
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=3
-gh auth status
+gh api user (If-None-Match)
 ## Summed from the cache: 106's files by GitHub's status words, and its lines; 7 has no list yet.
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull-files-summary?numbers=106,7'
 exit: 0
@@ -164,7 +167,8 @@ status: 200
           "status": "renamed",
           "count": 2
         }
-      ]
+      ],
+      "size": null
     },
     {
       "number": 7,
@@ -180,7 +184,8 @@ status: 200
       "additions": null,
       "deletions": null,
       "exact": false,
-      "statuses": []
+      "statuses": [],
+      "size": null
     }
   ]
 }
@@ -191,7 +196,7 @@ status: 200
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -200,14 +205,14 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -309,7 +314,16 @@ status: 200
           "status": "modified",
           "count": 1
         }
-      ]
+      ],
+      "size": {
+        "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+        "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "state": "measured",
+        "reason": null,
+        "commits": 2,
+        "pushed_bytes": <PUSHED>,
+        "diff_bytes": 265
+      }
     },
     {
       "number": 106,
@@ -342,7 +356,8 @@ status: 200
           "status": "renamed",
           "count": 2
         }
-      ]
+      ],
+      "size": null
     }
   ]
 }

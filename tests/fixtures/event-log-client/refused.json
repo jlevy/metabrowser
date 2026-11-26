@@ -1,0 +1,45 @@
+{
+  "page": "k3v9q2zx",
+  "path": "/pull/7",
+  "reports": [
+    {
+      "type": "fetch",
+      "event": "open",
+      "name": "GET /api/plugin/github/pull-comparison",
+      "client": "k3v9q2zx-7",
+      "dur_ms": 2000,
+      "attrs": {"threshold_ms": 2000}
+    },
+    {
+      "type": "fetch",
+      "event": "open",
+      "name": "GET /api/tree",
+      "client": "otherpg1-1",
+      "dur_ms": 2000
+    },
+    {
+      "type": "wait",
+      "event": "open",
+      "name": "githubPull:diffSummary",
+      "dur_ms": 10000,
+      "outcome": "ok"
+    },
+    {
+      "type": "wait",
+      "event": "end",
+      "name": "githubPull:diffSummary",
+      "dur_ms": 12000,
+      "outcome": "ok",
+      "attrs": {"cause": "dns"}
+    },
+    {
+      "type": "fetch",
+      "event": "end",
+      "name": "GET /api/tree?token=ghp_EXAMPLEEXAMPLEEXAMPLE",
+      "dur_ms": 2400,
+      "outcome": "failed",
+      "attrs": {"status": 0, "error": "TypeError: Authorization: Bearer abc.def"}
+    }
+  ],
+  "dropped": 3
+}

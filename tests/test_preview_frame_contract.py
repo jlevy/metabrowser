@@ -21,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import re
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
 from kpress.runtime import get_static_asset
@@ -71,6 +70,7 @@ _SAFE_VALUES = frozenset({"none", "initial", "unset", "revert", "revert-layer", 
 _ANY_VALUE = frozenset(
     {"transform", "translate", "rotate", "scale", "perspective", "filter", "backdrop-filter"}
 )
+from tests.shell_request import shell_request
 
 
 def _makes_containing_block(name: str, value: str) -> bool:
@@ -143,12 +143,7 @@ def _declarations(selector: str) -> list[tuple[str, str]]:
 
 
 def _shell_html() -> str:
-    class _Request:
-        def __init__(self) -> None:
-            self.query_params: dict[str, str] = {}
-            self.headers: dict[str, str] = {}
-
-    response = asyncio.run(server.index(cast(Any, _Request())))
+    response = asyncio.run(server.index(shell_request()))
     return bytes(response.body).decode()
 
 

@@ -38,7 +38,9 @@ _PACKAGE = Path(server.__file__).parent
 _REPO = Path(__file__).resolve().parents[1]
 _SESSION = "tests/dom/key-reveal-session.js"
 # A listener registered by name, or through a list of event types it loops over.
-_KEYDOWN_LISTENER = re.compile(r'addEventListener\(\s*"keydown"|\[[^\]\[]*"keydown"[^\]\[]*\]')
+_KEYDOWN_LISTENER = re.compile(
+    r'addEventListener(?:\?\.)?\(\s*"keydown"|\[[^\]\[]*"keydown"[^\]\[]*\]'
+)
 _ADD_LISTENER = re.compile(r"addEventListener(?:\?\.)?\(")
 _GUARD = "if (event.altKey || event.ctrlKey || event.metaKey) { return; }"
 
@@ -79,11 +81,13 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             via=("onKeyDown",),
             checks=("tests/dom/filter-controls-behavior.js", _SESSION),
         ),
+    ),
+    "static/menus.js": (
         Listener(
-            "Escape closing an open menu",
-            'ev.key !== "Escape" || ev.altKey || ev.ctrlKey || ev.metaKey',
-            via=("onDocumentEscape",),
-            checks=(_SESSION,),
+            "Escape closing the menu opened last, every menu's",
+            "!(key.defaultPrevented || key.altKey || key.ctrlKey || key.metaKey)",
+            via=("onEscape",),
+            checks=("tests/dom/menu-dismissal-session.js", _SESSION),
         ),
     ),
     "static/overlay-layer.js": (
@@ -96,7 +100,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
     ),
     "static/source-ref-selector.js": (
         Listener(
-            "the open list's Escape and Tab trap, which keeps Option-Tab",
+            "the open list's Tab trap, which keeps Option-Tab",
             'parts.panel.hidden || event.ctrlKey || event.metaKey || (event.altKey && event.key !== "Tab")',
             checks=("tests/dom/source-ref-selector-keys-session.js",),
         ),
@@ -107,16 +111,6 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         ),
     ),
     "static/app.js": (
-        Listener(
-            "Escape closing the settings menu",
-            'e.key === "Escape" && !(e.altKey || e.ctrlKey || e.metaKey) && isOpen()',
-            cancels=False,
-            unmounted=(
-                "app.js is a legacy module no session loads whole, and this listener cancels "
-                "no key, which the test checks, so a chord always reaches the browser; the "
-                "guard only keeps Command-Escape from closing the menu"
-            ),
-        ),
         Listener(
             "the reader's key ending a tooltip's focus repair, which only notes it",
             None,
@@ -138,6 +132,27 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             via=("handleGutterKey",),
             unmounted="the gutter's own guard, which this PR did not change",
         ),
+        Listener(
+            "the ref menu's navigation; Tab and Option-Tab leave it",
+            _GUARD,
+            checks=("tests/dom/checkout-ref-selector-chrome.mjs",),
+        ),
+        Listener(
+            "ArrowDown and ArrowUp opening a ref's action menu",
+            _GUARD,
+            checks=("tests/dom/checkout-ref-selector-chrome.mjs",),
+        ),
+        Listener(
+            "the View on GitHub chevron's ArrowDown and ArrowUp, which open its menu",
+            _GUARD,
+            checks=("tests/dom/counterpart-session.js",),
+        ),
+        Listener(
+            "the View on GitHub menu's arrows, Home, and End, and Tab and Option-Tab "
+            "closing it, which cancel nothing",
+            _GUARD,
+            checks=("tests/dom/counterpart-session.js",),
+        ),
     ),
     "static/plugin-sdk.js": (Listener("the idle-work input clock", None),),
     "static/perf.js": (
@@ -145,7 +160,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             "the interaction probe, which only counts inputs", None, via=("recordInteractionInput",)
         ),
     ),
-    "builtin_plugins/agent_log/index.js": (
+    "builtin_plugins/agents/agent-log.js": (
         Listener(
             "an event row's Enter and Space toggle",
             "const plain = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);",
@@ -153,14 +168,16 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             unmounted="the row's own guard, which this PR did not change",
         ),
     ),
-    "builtin_plugins/folder/treemap.js": (
+    "builtin_plugins/folder/treemap-map.js": (
         Listener(
-            "the tree map's cells",
+            "the tree map's cells, in the Treemap view",
             "if (e.altKey || e.ctrlKey || e.metaKey) { return; }",
+            via=("onKeyDown",),
             checks=("tests/dom/folder-plugin-behavior.js",),
         ),
     ),
     "builtin_plugins/diff/diff-view.js": (
+        Listener("a Diff | Current choice's held row, released", None, via=("releaseHold",)),
         Listener("a file jump's pin release", None, via=("release",)),
     ),
     "builtin_plugins/diff/diff-summary.js": (
@@ -171,18 +188,25 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         ),
     ),
     "builtin_plugins/github/pulls-panel.js": (Listener("the reader's last input time", None),),
+    "builtin_plugins/table/table-view.js": (
+        Listener(
+            "a table's rows and cells, and Escape in a record",
+            _GUARD,
+            via=("onKeyDown",),
+            checks=("tests/dom/table-view-session.js",),
+        ),
+        Listener("Enter in a table's Search, which asks at once", None, via=("onSearchKey",)),
+    ),
     "builtin_plugins/github/pull-page.js": (
         Listener(
             "the stack menu's trigger and rows",
             _GUARD,
             checks=("tests/dom/github-pull-stack-mount-behavior.js",),
         ),
-        Listener(
-            "Escape closing the open stack menu",
-            'root.open && event.key === "Escape" && !(event.altKey || event.ctrlKey || event.metaKey)',
-            checks=("tests/dom/github-pull-stack-mount-behavior.js",),
-        ),
         Listener("the files pane's scroll keeper, which only notes a key", None),
+    ),
+    "builtin_plugins/github/stack-page.js": (
+        Listener("a stack's page noting the reader's first key, which only notes it", None),
     ),
 }
 
@@ -359,10 +383,11 @@ def test_the_app_menus_leave_control_n_and_control_p_to_the_page() -> None:
     took one would never fire, since the web view hands the page each key first.
 
     A key equivalent is Command unless its item's modifier mask says otherwise, and the app
-    sets a mask in one place, ``MainMenu.item``, so every Control equivalent is a key
-    passed with its modifiers beside it. Those pairs are read with the source's whitespace
-    removed, so an item written over several lines is read too, and in either case, since
-    AppKit reads ``"N"`` as Shift-N and the page takes Control-Shift-N as Control-N.
+    sets a mask in one place, ``MainMenu.item``, which the main menu and the folder
+    chooser call, so every Control equivalent is a key passed with its modifiers beside it.
+    Those pairs are read from every app source, with the source's whitespace removed, so an
+    item written over several lines is read too, and in either case, since AppKit reads
+    ``"N"`` as Shift-N and the page takes Control-Shift-N as Control-N.
     """
     sources = _REPO / "apps" / "macos" / "Sources"
     masks = [
@@ -374,7 +399,9 @@ def test_the_app_menus_leave_control_n_and_control_p_to_the_page() -> None:
     assert masks == [("MainMenu.swift", "menuItem.keyEquivalentModifierMask = modifiers")], (
         "a modifier mask set outside MainMenu.item is a Control equivalent this cannot read"
     )
-    menu = _squeezed((sources / "Metabrowser" / "MainMenu.swift").read_text(encoding="utf-8"))
+    menu = "".join(
+        _squeezed(path.read_text(encoding="utf-8")) for path in sorted(sources.rglob("*.swift"))
+    )
     # Each one-character key with the modifiers after it: an `item(` call's arguments, or a
     # row of the Find menu's table.
     equivalents = re.findall(r'"([^"\\])",(\[[^\]]*\]|[\w.]+)', menu)

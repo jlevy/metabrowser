@@ -428,7 +428,26 @@ function bars(container) {
   const shown = {};
   for (const section of container.find("diff-file")) {
     const bar = section.find("diff-file-bar")[0];
-    shown[barLabel(bar)] = bar.find("diff-file-view").map(describeControl);
+    const controls = bar.find("diff-file-view");
+    // The controls follow the name's group, which ends with its copy control and any
+    // stats or notes, as parts of the bar of their own, so a bar that wraps moves them to
+    // the next line before the name gives way; the group at the bar's end is left to a
+    // Rendered | Source chooser. A change that knows neither line count and has no note
+    // draws no stats (`renderFileBar`), so the group then ends with Copy path.
+    const [lead, ...rest] = bar.children;
+    const end = rest.at(-1);
+    const order = lead.children.map((child) => String(child.className).split(" ").at(-1));
+    assert(
+      lead.classList.contains("diff-file-lead") &&
+        end?.classList.contains("diff-file-end") === true &&
+        rest.length === controls.length + 1 &&
+        controls.every((each, index) => rest[index] === each) &&
+        ["expanded,diff-file-copy,diff-file-facts", "expanded,diff-file-copy"].includes(
+          order.join(","),
+        ),
+      `${barLabel(bar)}: a View file control does not follow the name, Copy path, and stats`,
+    );
+    shown[barLabel(bar)] = controls.map(describeControl);
   }
   return shown;
 }
@@ -482,7 +501,9 @@ function busy(container) {
   return container
     .find("diff-file-view")
     .filter((candidate) => candidate.getAttribute("aria-busy") === "true")
-    .map((candidate) => `${barLabel(candidate.parentNode)} [${candidate.textContent}]`);
+    .map(
+      (candidate) => `${barLabel(candidate.closest(".diff-file-bar"))} [${candidate.textContent}]`,
+    );
 }
 
 /** The path a `/view/` address names on a pin, by the production decoder. */

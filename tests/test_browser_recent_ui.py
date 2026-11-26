@@ -17,11 +17,11 @@ from __future__ import annotations
 import asyncio
 import re
 from pathlib import Path
-from typing import Any, cast
 
 from metabrowser import __version__
 from metabrowser import server as proc_browser
 from metabrowser.build_version import display_version_line
+from tests.shell_request import shell_request
 
 
 def _read_app_js() -> str:
@@ -62,16 +62,7 @@ def _read_styles_css() -> str:
 def _render_index_html() -> str:
     """Render the / route once and return the HTML body."""
 
-    class _FakeQuery:
-        def get(self, key: str, default: str = "") -> str:
-            return default
-
-    class _FakeReq:
-        def __init__(self) -> None:
-            self.query_params = _FakeQuery()
-            self.headers: dict[str, str] = {}
-
-    resp = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
+    resp = asyncio.run(proc_browser.index(shell_request()))
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)
 
 
@@ -159,6 +150,7 @@ def test_index_template_versions_core_static_assets() -> None:
         "/static/overlay-layer.js",
         "/static/keyboard-help.js",
         "/static/key-reveal.js",
+        "/static/nav-collapse.js",
         "/static/shell-keymap.js",
         "/static/plugin-shortcuts.js",
         "/static/tree-keyboard-navigation.js",
@@ -225,6 +217,38 @@ def test_dom_contract_filter_bar_sits_outside_the_scrolling_tree() -> None:
     html = _render_index_html()
     assert html.index('id="nav-filter-bar"') < html.index('id="tree-content"')
     assert html.index('class="tab-bar nav-tab-bar"') < html.index('id="nav-filter-bar"')
+
+
+def _div_end(html: str, start: int) -> int:
+    """Where the div whose opening tag ends at *start* ends, just past its own ``</div>``.
+
+    On a checkout the Files toolbar ships its row, with the branch and tag chooser in it,
+    so the bar does not end at the first ``</div>`` after it.
+    """
+
+    depth = 1
+    for tag in re.finditer(r"<div\b|</div>", html[start:]):
+        depth += 1 if tag.group(0) == "<div" else -1
+        if depth == 0:
+            return start + tag.end()
+    raise AssertionError(f"a div that is never closed: {html[start : start + 200]}")
+
+
+def test_dom_contract_files_totals_band_sits_under_the_bar_outside_the_scroller() -> None:
+    """The Files totals and their remarks are a metadata band directly under the filter bar,
+    outside #tree-content: that scroller reserves its scrollbar's gutter and clips what it
+    holds at its padding box, so a line inside it drew its rule short of the pane's edge
+    (docs/design-system.md, "Navigation Metadata Line"). The band follows the bar with
+    nothing between them, which is how it shows only while the bar does
+    (`[data-nav-toolbar][hidden] + .nav-metadata-band` in styles.css), and it ships empty
+    for app.js to fill, so its scroll shadow waits for its lines (`:not(:empty)`)."""
+
+    html = _render_index_html()
+    bar_end = _div_end(html, html.index(">", html.index('id="nav-filter-bar"')) + 1)
+    band = html.index('<div class="nav-metadata-band" id="nav-metadata-files"></div>')
+    assert bar_end <= band < html.index('id="tree-content"')
+    assert html[bar_end:band].strip() == ""
+    assert 'getElementById("nav-metadata-files")' in _read_app_js()
 
 
 # ── Client wiring ──────────────────────────────────────────────
@@ -657,7 +681,7 @@ def test_ambiguous_recent_count_downgrades_to_a_safe_bounded_lower_bound() -> No
     lower_bound = _function_source(js, "markRecentTotalAsRetainedLowerBound")
     assert "recentTotalMatching = lowerBound" in lower_bound
     assert "recentTotalMatchingExact = false" in lower_bound
-    assert "_renderFilteredTally(panel, state, recentTotalMatching)" in lower_bound
+    assert "_renderFilteredTally(filterState.get(), recentTotalMatching)" in lower_bound
     assert "for (" not in lower_bound
 
     change = _function_source(js, "fileStoreApplyChangeInner")
@@ -730,7 +754,7 @@ def test_background_recent_failure_retries_with_visible_stale_state() -> None:
     status = _function_source(js, "setRecentContinuityStatus")
     assert 'note.setAttribute("role", "status")' in status
     assert "Recent files may be out of date; retrying…" in status
-    assert "Change the filter or refresh to try again." in status
+    assert "Recent files may be out of date. Reload the page to try again." in status
     # A muted remark of the metadata band under the totals, as the filtered count is.
     assert 'note.className = "recent-stale-note nav-metadata nav-metadata-note";' in status
 
@@ -782,7 +806,7 @@ def test_recent_recompute_called_from_fs_change_handler() -> None:
 def test_render_recent_list_uses_dir_metric_count_mode() -> None:
     js = _read_app_js()
     fn_start = js.index("function renderRecentList(data)")
-    fn_block = js[fn_start : fn_start + 1200]
+    fn_block = js[fn_start : js.index("\n}\n", fn_start)]
     # isRoot=true so Recent uses the same viewport-bounded expansion
     # planner as the Files panel.
     assert "renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT })" in fn_block

@@ -20,6 +20,9 @@ Older module names, routes, and core-placement discussion below record the origi
 design. Working-tree and index comparisons and their staleness are the
 [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) (`mb-097x`).
 Broader presets, `/compare/`, and patch anchoring remain outside this delivered subset.
+A stack’s combined comparison, two commits restricted to the files the stack’s layers
+change, is planned in
+[Whole-Stack Review](plan-2026-11-24-stack-review.md#the-combined-comparison).
 
 ## Overview
 
@@ -464,14 +467,12 @@ so a block’s source range is the token map that rendered it; a test checks the
 blocks against KPress’s `parse_markdown`. One changed list item or quoted paragraph is
 shown on its own, and changed words are marked by a bounded word diff whose span must
 occur exactly once in the changed source lines.
-These remain readable only in Source:
-
-- raw HTML, including inline tags such as `<br>` (HTML comments are allowed),
-- task lists, whose checkbox the inert render drops,
-- footnotes, and
-- documents past the projection’s budgets: 48 KiB of Markdown across both sides, 256 `[`
-  per side, 2,000 tokens per side, 2,400 rendered nodes, and nesting 32 deep, each
-  measured beside its constant in `diff/markdown_projection.py`.
+Documents past the projection’s budgets, each measured beside its constant in
+`diff/markdown_projection.py`, remain readable only in Source.
+A footnote’s note renders where its definition is written, numbered as the Document view
+numbers it.
+Each side reads as the Document view reads it, so bytes that are not UTF-8, a
+NUL, and lines that end at a carriage return alone render too.
 
 Math (`$…$`) and Mermaid sources render as literal text, because the projection renders
 with math and diagrams off, and code blocks are not highlighted, because the inert
@@ -775,7 +776,9 @@ No Git involvement.
 - [x] `src/metabrowser/builtin_plugins/diff/diff-model.js` and
   `src/metabrowser/builtin_plugins/diff/diff-view.js`: unified rendering, sticky file
   headers, every availability state (`mb-snkb`, `mb-ao1d`)
-- [ ] Hunk context expansion (`mb-hhmb`)
+- [x] Hunk context expansion: a hunk’s separator opens the unchanged lines between hunks
+  ([Context Between Hunks](../../architecture/arch-diff-pipeline.md#context-between-hunks),
+  `mb-zz81`)
 - [x] Golden fixtures: a corpus of patches including pathological and malformed cases
   (`tests/test_diff_patch_file.py`)
 
@@ -850,9 +853,9 @@ Those results retain the shared byte bound and do not justify an aggregate cap o
 worker. `@pierre/diffs` and `@git-diff-view/core` still offer material advantages for
 virtualization and worker tokenization, not for this completed slice.
 Phase 4 now uses a focused VS Code algorithm port for intraline refinement.
-Context expansion, whitespace controls, and virtualization remain on this plan and
-`mb-hhmb`; they can trigger another measured dependency review if their implementation
-cost justifies one.
+Whitespace controls and virtualization remain on this plan and `mb-hhmb`, and context
+expansion has landed (`mb-zz81`); they can trigger another measured dependency review if
+their implementation cost justifies one.
 
 [Historical Diff View Spike Results](../../research/archive/research-2026-07-18-diff-view-spike-results.md)
 preserves an earlier prototype comparison of both libraries, server-rendered HTML, and

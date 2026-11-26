@@ -20,11 +20,13 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -49,6 +51,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -59,6 +62,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -136,14 +140,14 @@ status: 200
 --- body ---
 {"number": 10, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/10
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab checkout --api /api/plugin/github/pull-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -165,6 +169,7 @@ status: 200
     "checks_pending": false,
     "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "succeeded",
@@ -175,6 +180,7 @@ status: 200
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -276,11 +282,13 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -305,6 +313,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "cd15a702bdcdc37e0222186aa4b0ad6802c58a77ffba0751e3dd4134c8f9f932",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -315,6 +324,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -422,14 +432,14 @@ status: 200
 --- body ---
 {"number": 9, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/9
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1
 gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab checkout --api /api/plugin/github/pull-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -451,6 +461,7 @@ status: 202
     "checks_pending": false,
     "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -461,6 +472,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -552,6 +564,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "a802fa0d92fc0d5d65848c9e80d4c36afd66288ff612ab334e07d2c0bcb43d52",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -562,6 +575,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
   "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
+  "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -663,6 +677,7 @@ status: 200
     "checks_pending": false,
     "record_revision": "cd15a702bdcdc37e0222186aa4b0ad6802c58a77ffba0751e3dd4134c8f9f932",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "succeeded",
@@ -673,6 +688,7 @@ status: 200
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -802,6 +818,7 @@ status: 202
     "checks_pending": false,
     "record_revision": "cd15a702bdcdc37e0222186aa4b0ad6802c58a77ffba0751e3dd4134c8f9f932",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -812,6 +829,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -933,6 +951,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -943,6 +962,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
   "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+  "size_route": "/api/plugin/github/pull-size?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -1073,6 +1093,7 @@ status: 200
     "checks_pending": false,
     "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "succeeded",
@@ -1083,6 +1104,7 @@ status: 200
     "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
     "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+    "size_route": "/api/plugin/github/pull-size?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -1216,6 +1238,7 @@ status: 202
     "checks_pending": false,
     "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -1226,6 +1249,7 @@ status: 202
     "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
     "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+    "size_route": "/api/plugin/github/pull-size?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -1349,6 +1373,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1359,6 +1384,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
   "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+  "size_route": "/api/plugin/github/pull-size?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,

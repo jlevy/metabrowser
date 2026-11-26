@@ -28,14 +28,24 @@ what a reader does with them is in
 ## The Provider Boundary
 
 Core names no provider.
-It asks the providers `cache/providers.py` lists, through `RepositoryProvider`, for
-seven things: URL reducers, Git configuration for a remote (the credential helper), what
-to say when a source was not found or needs credentials (`credential_hint`), a check
-before a first clone, a mirror’s `repository_context`, the commit a pull-request URL
-pins, and the set of pull requests a server keeps fresh.
-`GithubProvider` in `provider.py` answers all seven.
+It asks the providers `cache/providers.py` lists, through `RepositoryProvider`, for: URL
+reducers, Git configuration for a remote (the credential helper), what to say when a
+source was not found or needs credentials (`credential_hint`), a check before a first
+clone, a mirror’s `repository_context`, the commit a pull-request URL pins, the changed
+file a Changes tab URL’s anchor names (`pull_request_file`), the set of pull requests a
+server keeps fresh, and the pull requests a branch is the head of, from the cache alone
+(`ref_pulls`, [By head branch](#the-catalog)). `GithubProvider` in `provider.py` answers
+each. `provider_statuses` in the same module collects each provider’s section of
+`metab --doctor`, and `PullRequestUnavailableError.blocking` tells the command line that
+a pull request can open only once a tool is installed or signed in, without naming the
+tool; both come from [the GitHub status check](#the-github-status-check).
 The URL reducer in `urls.py` claims github.com and raw.githubusercontent.com; its
 docstring tabulates every URL shape it accepts and what each selects.
+GitHub’s `#diff-<hash>` anchor, on a `/pull/<n>/files` or `/pull/<n>/changes` URL, is
+the SHA-256 of a changed file’s path, so `pull_file_anchor.py` names the file from the
+cached list of changed files and then the record’s comparison, offline, and the URL
+opens at `/pull/<n>/files/<path>`, or at the Changes tab with the reason when neither
+names one or the Changes tab has no address for its path.
 
 `gh.py` is the only way the plugin reaches GitHub.
 `gh` owns authentication, and Metabrowser never reads, stores, or logs a token.
@@ -44,10 +54,19 @@ redirect it cleared, a deadline and an output cap (`GH_API_TIMEOUT_S`,
 `GH_API_MAX_BYTES`), and its own process group, registered with Git’s so a Ctrl-C or
 hangup kills it too.
 `gh_api` issues one REST request and returns status, headers, and body; `gh_graphql`
-runs only a read-only query document, checked by its structure; `gh_account` reads the
-active login.
-Nothing there paginates or caches, because `--paginate` and `--cache` would
-hide page caps, ETags, and rate-limit headers.
+runs only a read-only query document, checked by its structure; `gh_active_account`
+reads the active account, its token source, and its scopes from `gh auth status`, and
+`gh_version` the version.
+`gh_account` is every job’s account check (`gh_lists.active_account`): a conditional
+`gh api user` carrying the ETag of this process’s last answer, which GitHub answers
+`304` without spending rate limit while the login is the same, where `gh auth status`
+spent one `core` call each time.
+When it finds no account it asks `gh auth status` why, so a failure still names a
+refused environment token or the sign-in command; when it cannot reach GitHub it takes
+the account `gh auth status` names from what gh has saved, so a switch of account is
+still seen offline. `gh_api` reads `user` and paths under `repos/` and nothing else.
+Nothing there paginates or caches, because `--paginate` and `--cache` would hide page
+caps, ETags, and rate-limit headers.
 `gh api` refuses every request while signed out, so every record is read by an account
 and names its reader as `gh:<login>`.
 
@@ -55,9 +74,83 @@ and names its reader as `gh:<login>`.
 resource every response carries, and holds every resource after a `rate_limited` refusal
 until its `reset_at`. Background work is admitted only while each resource it spends has
 more than `BACKGROUND_FLOOR` of its limit left and no hold applies; a reader’s own work
-is never asked. The observations belong to the account the last account check named, and
-another account forgets them; since `remaining` is the account’s, several servers on one
-account stop together.
+is never asked. Everything automatic asks: the catalog’s backfill and its periodic scan,
+the prefetch, the background walk that prepares cores, the periodic reads of stacks and
+of a files list, the label set, and Conversation’s timeline.
+Held, each waits and is asked for again, and none records a failure.
+Below the floor a visible page’s pull request and a visible list are still probed, and a
+change a probe or the catalog finds is still read in full, while the reads a clock alone
+asks for stop (`ServedPull.below_floor`); cores for rows on screen are read too, held
+only by a rate-limit hold and the process’s ceiling.
+The module’s docstring has the rule.
+The observations belong to the account the last account check named, and another account
+forgets them; since `remaining` is the account’s, several servers on one account stop
+together.
+
+The same module keeps a ceiling on the process’s own automatic work,
+`AUTOMATIC_CORE_PER_HOUR`, counted from what the process spends itself: one for each
+REST answer that is not `304` and each GraphQL query’s reported `rateLimit.cost`, over
+the last hour.
+The account’s `x-ratelimit-used` cannot count it, since every other client
+moves it. A reader’s own action is not counted: its route starts the job inside
+`readers_own`, and the job’s task inherits that.
+Past the ceiling background work is not admitted (`self_ceiling`), probes slow to
+`FULL_REFRESH_S`, and the full reads of what is visible to `CEILING_FULL_READ_S`, until
+the hour rolls. Speculative work, which nobody is looking at, has its own share of that
+ceiling, `SPECULATIVE_CORE_PER_HOUR`: the prefetch, the backfill past every reader’s
+prefix, the cores walk past the rows on screen, and the label set’s periodic read run
+inside `gh_budget.speculative`, which counts what they spend toward the share too, and
+are refused with `self_ceiling` once it is spent.
+Inside the share the backfill and the prefetch go before the cores walk, whose cost
+grows with the catalog.
+The walk asks with part of the share reserved (`pull_prefetch.reserved`): what the
+prefetch’s caps can still spend this hour while a lane has work queued or running, a
+scan’s records while a page has asked for the lane within `ASKED_WITHIN_S`, and nothing
+for a lane no page asks for, so it cannot take that part between a page’s asks.
+It also waits while the backfill has pages the budget admits
+(`pull_cores._backfill_first`). The backfill past every reader’s prefix reserves
+nothing, since Quick Search across every state and the ref chooser’s pull requests by
+branch are complete only once it is, and it costs a point a page once per catalog epoch.
+What is on screen is never refused for the share, so it keeps the rest of the ceiling.
+`GET pulls-prefetch` reports the ceiling and the share and what the hour has used of
+each under `governor.ceiling`, beside the governor’s other state.
+
+### The GitHub Status Check
+
+`gh_status.py` answers what GitHub work needs from `gh`: its path and version, the
+active account, the account’s token scopes, and one state with the step that fixes it.
+Its docstring tabulates the states.
+The step is `fix`, a command, page, or sentence for the text output, and `remedy`, the
+same step in the doctor checks’ `{text, command, url}` shape, which names a command only
+for one that runs as written, so a reader never parses `fix`. These read it:
+
+- `metab --doctor` prints it after the plugin verdict, and `--doctor --json` carries it
+  as `github`. It never changes the exit status, since a machine without `gh` has
+  nothing wrong with its plugins.
+- `POST status` serves the same object, a `POST` because it runs `gh`; `{"fresh": true}`
+  asks `gh` again rather than reuse a recent answer or join a check already running.
+- `check_first_clone` reads it before the size check, without the version.
+  A pull-request URL stops before anything is cloned when the state is `gh_missing`,
+  `gh_too_old`, or `not_logged_in` (`SIGN_IN_STATES`), since only `gh` reads a pull
+  request; a repository URL goes on, since a public one clones anonymously.
+  The size check is skipped only for `gh_missing`, `not_logged_in`, and `network_error`,
+  where its read cannot succeed; a `gh` too old for the status check may still read the
+  size. A clone that then fails as not found takes its hint from the kept answer
+  (`credential_hint`), so a token without the `repo` scope is named.
+- `GithubProvider.pull_request` asks it when GitHub does not show a pull request, which
+  on a cached mirror no first-clone check preceded, and names a missing `repo` scope.
+
+A pull request with no usable cached record whose read fails in one of those states also
+stops the command, with `PullRequestUnavailableError.blocking`, rather than fall back to
+the default branch, since the fallback would show something other than what the URL
+asked for. A page already open shows the reason and offers **Fetch**, as for any other.
+
+The answer is kept for `GH_STATUS_TTL_S` per `gh` path and configuration, and callers in
+one event loop share a check in flight; `GH_STATUS_TIMEOUT_S` bounds a `gh` that hangs.
+A token GitHub refuses in `GH_TOKEN` or `GITHUB_TOKEN` is `not_logged_in` with a fix
+that names the variable, since `gh auth login` refuses to run while it is set.
+A token whose scopes `gh` does not report, such as a fine-grained one from `GH_TOKEN`,
+is `ok`, since only a repository’s own read can tell what it reaches.
 
 ## Files Beside a Source
 
@@ -80,10 +173,11 @@ Every file is disposable and carries its own schema version.
 | `<n>.core.json`, `cores.refresh.json` | Its lightweight core, and the repository’s core holds | `pull_core_cache.py` |
 | `<n>.files.json`, `<n>.files.refresh.json` | Its changed files, and how their refresh ended | `pull_list.py` |
 | `<n>.snapshots.json` | Earlier comparison pairs a revision link may open | `pull_snapshot_cache.py` |
+| `stack-<n>.snapshots.json` | A native stack’s earlier comparison pairs, which its page keeps drawn | `pull_stack_retained.py` |
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
 | `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, and how its refreshes ended | `pull_catalog.py`, `pull_list.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
-| `repository-stores/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
+| `repos/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
 
 `cache/paths.py` spells the source-side names.
 
@@ -164,10 +258,49 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   Within a server, these jobs and the mirror’s fetch take turns at the store
   (`StoreTurn` in `mirror_refresh.py`).
 - **What starts one:** a reader’s own action (`"retry": true`); a visible page whose
-  record is stale and not tried within the window; and a
-  [prefetch](#background-prefetch) that names it.
+  record is stale and not tried within the window; a probe that finds a change; a
+  visible record last read in full `FULL_REFRESH_S` ago, a read of the checks alone not
+  counting; and a [prefetch](#background-prefetch) that names it.
   A failed refresh is tried again after a window, and after `rate_limited` not before
   `reset_at`. A branch or tag pin never runs `gh`.
+- **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
+  current record the server answers with a probe (`ServedPull.probe`), a conditional
+  read of the pull request’s issue (`pulls.probe_path`) that GitHub answers `304`
+  without spending its rate limit, and, while checks are pending, of their first pages
+  every `CHECKS_PROBE_S`. The issue’s `updated_at` is the pull request’s own, and its
+  ETag does not move with the repository as the pull’s does; `PROBE_RESOURCE` records
+  the measurement. It carries neither `mergeable` nor the head, which the full read a
+  change starts reads.
+  GitHub computes `mergeable` after the read that first asks, so while an open record
+  holds `unknown` the probe asks the pull too, for `MERGEABLE_SETTLE_S`, and an answer
+  reads the checks alone; past that time no probe vouches for the record.
+  An issue answer older than the record is one that lags, and starts nothing.
+  The page’s ask names the record it shows (`"held"`, its `record_revision`), and an
+  answer about that record says `record_held` in place of `record`, so the page keeps
+  the one it has under the verdict the answer brings; `refresh_answer_pull` in
+  `pull_route.py` records what the whole envelope cost at that cadence.
+  A page that no longer holds that record reads the route instead.
+  An unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it
+  current until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once,
+  a change to checks alone reads only them, and a failed probe waits a window.
+  Settling checks a probe cannot see (`checks_probe_paths`) leave the record to the
+  window, unvouched. However many pages ask, probes of one pull request are one at a time
+  and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
+  A server runs at most `MAX_PROBES_IN_FLIGHT` at once across its pull requests, each
+  one to four `gh` processes, and an ask past that answers `not_due`; one refused goes
+  ahead of those probed since, for `PROBE_TURN_S`, so askers take turns; the list’s
+  probe keeps its place for twice its own interval, since it asks half as often.
+  A probe is a coordinator job under the pull request’s key with `:probe`, taking no
+  network slot and no turn at the store, so shutdown cancels it.
+- **Below `BACKGROUND_FLOOR`:** probes go on, since a `304` is free, and a change one
+  finds, or the catalog reports, still starts its read.
+  The `FULL_REFRESH_S` read and an open record’s once-a-window checks read wait until
+  the budget is back above the floor, and meanwhile an unchanged probe keeps vouching
+  for a record whose full read is overdue, so the page keeps asking every
+  `probe_every_s`. What a probe cannot see is that much later below the floor.
+  The same ask keeps the repository’s list probed (see [The Catalog](#the-catalog)). The
+  [update cadence plan](../specs/active/plan-2026-11-22-pull-request-update-cadence.md)
+  records the measurements and the design.
 - **One-shot commands:** the CLI fetches a pull request only when it has no usable
   record or its commit URL names a commit only `refs/pull/<n>/head` can bring;
   `--no-serve` refreshes it.
@@ -177,17 +310,20 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
 `pull_route.py` builds the pull envelope from the cache and memory alone; its docstring
 lists the states. The envelope’s `pin` is the commit the server serves and can differ
 from the record’s head: a pull request opened from the list moves no pin, a commit URL
-inside the pull request pins that commit, and a refresh can find a newer head, which the
-page offers as `latest` rather than switching under a reader.
+inside the pull request pins that commit, and a refresh can find a newer head.
+A pin served under the pull request’s own `refs/pull/<n>/head` follows that head, as a
+branch’s pin follows its branch
+([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), so
+the envelope names an earlier head only until the refresh job has observed the mirror.
 **Browse code** is a link to the served root when the pin is the record’s head, and
 otherwise a button that posts the head’s commit to `/api/source/pin`, naming the pull
 request’s `refs/pull/<n>/head` as the ref to serve it under, and then opens the root, so
 what moves the pin is never a link a modified click could open without moving it; a
 checkout has no pin and no Browse code.
-**View on branch** is Browse code for one file, on each file bar of Changes while the
-diff shows the pull request’s head: a link to the file’s `/view/` address when the pin
-is the head, otherwise a button that serves the head the same way first, and, beside a
-checkout whose `HEAD` is the head, a link to the working-tree file.
+**View on branch** is Browse code for one file, on each file bar of Changes and Docs
+while the diff shows the pull request’s head: a link to the file’s `/view/` address when
+the pin is the head, otherwise a button that serves the head the same way first, and,
+beside a checkout whose `HEAD` is the head, a link to the working-tree file.
 For a checkout, [Open Modes](arch-open-modes.md#pull-requests-in-a-repository-folder)
 designs both controls going to the head as a revision view in the repository folder,
 with the working-tree copy a separate, labelled action; that is not built.
@@ -206,8 +342,12 @@ names another head, **current** while the scan that published the row is recent,
 **checks** when an open record is past the window that its row still vouches for, since
 `updated_at` does not move for check runs, statuses, or mergeability, and **unverified**
 otherwise; the module docstring states each rule.
+A [list probe](#the-catalog) that found the catalog unchanged counts as a scan run when
+it asked, so the catalog vouches between scans.
 `verified_at` and `verified_by` say when and how the record was last known to describe
-GitHub. They move with every scan, so the entity tag leaves them out and
+GitHub: by the catalog’s scan or list probe, by its own fetch, or by a
+[probe](#serving-pull-requests) of the served pull request.
+They move with every scan and probe, so the entity tag leaves them out and
 `x-metabrowser-verified` carries them.
 `cli-github-pulls-prefetch.txt` pins each verdict.
 
@@ -238,6 +378,42 @@ Each page commits its rows, counts, and cursor in one short transaction under th
 source-alias lock, a checkpoint revision rejects a superseded publisher, and no network
 work runs under the lock.
 
+**Probing.** `pull_list_probe.py` asks GitHub whether the catalog is behind with one
+conditional request for the issue or pull request updated last (`probe_path`), which
+GitHub answers `304` without spending its rate limit.
+It asks the issues list, which includes pull requests, because a pull request’s own row
+embeds its repositories and its ETag moves on every push; the measurements are beside
+`LIST_PROBE_S`. When an issue is the newest row, the one-row pulls page (`pulls_path`)
+says which pull request is.
+GitHub’s lists run behind a change, so that page is asked by every probe until one asks
+it `PULLS_LAG_S` after the issue’s update, and until then an unchanged probe vouches
+only for what GitHub had that long before it asked.
+A `200` is a hint: the newest pull request is compared with the catalog’s row of that
+number, and the catalog is behind only when it lacks that row as GitHub has it.
+An unchanged probe moves the probe’s `checked_at`, and for a freshness window the
+catalog vouches as a scan run then would, so the list stays `current` and its records
+[verified](#freshness-verdicts) between scans.
+A change starts the job with its delta scan first, once for each row; a row still
+missing after its scan, as when GraphQL lags REST, leaves the scan to the window.
+A visible Pulls tab asks every `probe_every_s` of the list’s envelope (`LIST_PROBE_S`),
+and a visible pull request page’s own ask does the same for its repository
+(`attend_list` in `pull_list_route.py`), so the list is probed while either is on
+screen. `refresh_wanted` decides each automatic ask: the catalog job when the list is
+absent, failed and due, or wanted for a reader’s prefix or the backfill; the delta scan
+once every `FULL_REFRESH_S` while probes vouch and once a freshness window otherwise;
+and else the probe, one at a time for a repository and `LIST_PROBE_FLOOR_S` apart
+however many tabs ask.
+A change a probe found is asked for before the periodic scan, so the job that scans for
+it is the one the probe is told of.
+Two asks that both found the probe due in their worker threads start one probe: the
+later finds it no longer due on the loop and starts nothing.
+A list probe counts toward the server’s `MAX_PROBES_IN_FLIGHT` with its pull requests’
+probes and is a coordinator job as theirs are.
+Probes that each pay for a `200` and find no pull request changed, as in a repository
+whose issues never rest, grow further apart, up to `MAX_PAID_PROBE_S`. The module
+docstring gives each outcome, `tests/test_github_pull_list_probe.py` pins them, and
+`cli-github-pulls-probe.txt` shows an ask answered by a probe.
+
 **Admission.** Reads open the database read-only and run neither Git nor `gh`. Readers
 and writers admit only the exact tables and index, and refuse a write-ahead-log database
 before SQLite opens it.
@@ -259,6 +435,32 @@ With `q`, the same route is Quick Search’s completion list across every state
 scans titles within `_SEARCH_TITLE_ROWS` and an instruction budget, saying `limited`
 when it stopped there.
 
+**By head branch.** The ref chooser lists a branch’s pull requests on its row, and its
+filter finds a branch by them (`GET /api/source/refs`,
+[Source Sessions and Pins](arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard)).
+Core asks the provider, through `ref_pulls_for` in `cache/providers.py`, which names no
+provider, and `ref_pulls.py` answers from the catalog alone: `catalog_heads` reads the
+cached rows whose `head_repository` is the repository itself, a fork’s or a deleted
+fork’s never, within the newest `_HEADS_SCAN_ROWS`, and the answer is kept for each
+`(epoch, revision)` of the catalog, so a chooser that asks on every keystroke reads no
+row. While a job is filling the catalog each page it writes moves the revision, and a
+scan holds off the next page’s write, so the answer is read again at most once in
+`RESCAN_WHILE_FILLING_S`, and a scan reads its rows inside the transaction and makes
+them pull requests after it; the measurements are beside the constants.
+A branch several pull requests name lists the open ones first and then the newest first.
+The repository’s own are told from a fork’s by the head repository’s name the catalog
+recorded, compared, ignoring case, with the name in the served repository’s address, so
+a repository renamed or transferred since its rows were cached reads as a fork’s until
+the catalog records its new name (`mb-n3hm`: compare the repository’s id).
+A catalog not yet cached answers as absent, with whether a job is filling it, which the
+chooser asks again while it is; nothing here starts a job or reaches GitHub.
+A checkout’s local branches and its `origin/` remote branches are named as the
+repository names them.
+A checkout served at one of its own revisions is not the folder the plugin resolves, and
+has no Pulls tab
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)),
+so its listing has no pull requests.
+
 ## Lightweight Cores
 
 A **core** is a pull request’s validated header and description, prepared ahead of
@@ -273,6 +475,9 @@ generation, one core job per source, a `visible` batch preempting a `background`
 `pull_cores.py`’s docstring gives its outcomes, retries, and waits.
 A reader who selects a pull request with no record may ask its refresh to wait for the
 core, and the envelope then carries a `core_preview` until the full record lands.
+The page renders the preview’s description through `GET pull-markdown` as it renders the
+record’s, so the description shows rendered from its first paint, and the record that
+follows with the same text reuses that render.
 
 ## Changed Files
 
@@ -303,6 +508,9 @@ rule. A local list from the record is current while the record names its exact
 comparison; a GitHub list, or a local list from a head and base branch, while the head
 and base branch it was read for are the newest known, and for the local one while the
 pull request is open.
+A GitHub list with no catalog row to check it against ages by `FULL_REFRESH_S`; one the
+row vouches for is not read again on a clock, since it is a function of the head and
+base it names and is read at once when either moves.
 When source admission refuses the cache, no stamp can be written, so the outcome
 `cache_unwritable` is kept in bounded memory and holds automatic retries without
 contacting GitHub or touching the refused cache; it does not survive a restart.
@@ -335,23 +543,118 @@ store, so its answer is immutable and a browser asks for it no more.
 as a record whose head moved does, is computed.
 In the page, what was read is kept for the document rather than for one page
 ([The Comparison Keep](#the-comparison-keep)). `GET pull-rendered-diff`
-(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`,
-computed in a projection worker process, for a pair the record or its snapshot file
-admits (`pull_snapshot.py`). Its images load from `GET pull-image`, which serves an
-image at the head of an admitted pair without changing the pin or the checkout; its
-links to a file of the head are that file’s `/view/` address, the same in every answer,
-which the page keeps only while its pin is the head and leaves as plain text otherwise.
+(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`, and
+one changed YAML or JSON file as `structured-diff-v1`, each computed in a projection
+worker process, for a pair the record or its snapshot file admits (`pull_snapshot.py`).
+Its images load from `GET pull-image`, which serves an image at the head of an admitted
+pair without changing the pin or the checkout; its links to a file of the head are that
+file’s `/view/` address, the same in every answer, which the page keeps only while its
+pin is the head and leaves as plain text otherwise.
 `pull_snapshot.py`’s docstring lists every outcome code.
-`GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
-in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`, both in
-the server’s Markdown child under its deadline, the same child as the projections, which
-a served page’s first `GET pull` starts; a text past the deadline answers `422`
-`render_deadline`, one that arrives while the child has as many renders as it takes
-answers `503` `renderer_busy`, and the page keeps its plain text with a line saying why,
-which it keeps for that text until the text renders.
+`GET pull-markdown` (`pull_markdown.py`) renders one text of the record, or with no
+record cached the core preview’s description, through KPress in sanitized mode, then
+reduces it to the inert allowlist of `inert_html.py`, both in the server’s Markdown
+child under its deadline, the same child as the projections, which a served page’s first
+`GET pull` starts; a text past the deadline answers `422` `render_deadline`, one that
+arrives while the child has as many renders as it takes answers `503` `renderer_busy`,
+and the page shows its plain text with a line saying why, which it keeps for that text
+until the text renders.
+The page asks for the description, and for every text within `MARKDOWN_AHEAD`
+(`pull-page.js`) of the view, before the frame that first shows it, and until its render
+answers shows a placeholder in its place, never its Markdown source.
+A text farther off keeps its plain text, which find in page reaches, and is asked for as
+it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
+A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
+through the Markdown plugin’s exported `drawDiagrams` with `isolated: true`
+(`drawTextDiagrams` in `pull-page.js`): the page then loads Metabrowser’s own KPress
+diagram modules and vendored Mermaid, none of which the text names.
+Mermaid lays a diagram out in a document before it becomes an image, and there the
+diagram’s own CSS is live: its image shape, a `themeCSS` directive or front matter, a
+`fontFamily` directive, a `cursor: url()`, a state diagram’s `classDef`, a class
+diagram’s `style`, and a `block-beta` `style` (from the page’s own origin) each loaded
+its URL on a page with no policy, as a folder’s page served trusted has.
+So a text’s diagrams are laid out in the diagram frame
+(`builtin_plugins/markdown/diagram-frame.js`), an `about:srcdoc` frame sandboxed to
+scripts and its own origin, whose own Content-Security-Policy admits its entry and the
+Mermaid directory as scripts, its stylesheet (`diagram-frame.css`) and inline style, and
+`data:` images, and nothing else, under either profile; the page shows the SVG text it
+returns as an image.
+The stylesheet gives a label the box the app page’s reset gives it, which the frame
+needs under `--untrusted`: the frame inherits the page’s policy, which refuses the
+`<style>` Mermaid zeroes a label’s margins with.
+One frame serves every text on the page, opened with the first diagram and removed with
+the last binding; if it goes any other way, taken out of the page or navigated away, a
+render in flight fails rather than holding KPress’s page-wide queue of Mermaid calls,
+and the next render opens a new frame.
+A diagram drawn around an image, Mermaid’s image shape, cannot get it, so it shows its
+source with a message that images in diagrams from untrusted text are not loaded.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
+
+## Changes Follows the Head
+
+Changes shows the record’s comparison, so a record read at a newer head, or against a
+base that moved, replaces the diff on screen without the reader asking.
+The owner set this on 2026-11-22 (bead `mb-6a6w`), replacing the diff that stayed until
+**Show the newer changes**: with a visible page probed every few seconds, that offer
+appeared seconds after every push of a review.
+The served code follows the same head
+([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)). Docs
+draws the same comparison, its documents alone, through the same `paintFiles`: it
+follows and notes a moved head and keeps the reader’s place as Changes does, and its
+history entry remembers what it showed (bead `mb-mzcj`).
+
+- **The decision:** `filesAction` in `pull-page.js` answers `follow` for a mounted diff
+  whose comparison is no longer the record’s. A refresh the reader asked for that finds
+  another head is followed too, not repaired first.
+- **The note:** the diff that was replaced is kept (`followedFrom`), and `followedNote`
+  says what the line above the new diff names: both heads, or, for the same head from
+  another merge base, that the comparison changed.
+  **Show the earlier changes** mounts the replaced diff from its own routes, which name
+  two immutable commits.
+  That diff is the reader’s choice, so `filesAction` answers `offer` for it and it stays
+  until **Show the newer changes**, also through a reload, since the history entry
+  remembers the choice (`chosenEarlier`). A move between Changes and Docs draws the diff
+  the reader chose, or else the record’s comparison as read now (bead `mb-825n`);
+  leaving both for another tab ends the choice, since that tab’s paint disposes the diff
+  and the next one mounts the record’s.
+- **Across a reload:** on a repository URL the page reloads when the served pin follows
+  the head, because a page names its pin on every data request
+  ([Source Sessions and Pins](arch-source-sessions-and-pins.md)). So the history entry,
+  on Changes or Docs, remembers the comparison last shown and the one its note named
+  (`rememberedChanges`), and whether the reader chose the earlier one, beside the
+  reader’s place. A page loaded again on an entry that showed another comparison says so
+  in the same line, and one whose reader chose the earlier diff shows it again with the
+  offer of the newer. An entry reached by Back after the head moved says it too.
+  The page writes the memory when it mounts a diff and when the page host lands it on an
+  address of its own (`setTab`, `land`, `showFile`), since the shell writes each entry
+  it makes with no state.
+  A key’s walk of the Pulls tab’s changed files replaces the entry once it stops, and a
+  click on a file pushes one, neither mounting a diff (bead `mb-eg5f`). Writing the
+  memory in the page, rather than having the shell keep a replaced entry’s state, covers
+  the push too, and keeps the page the only writer of what it put there.
+- **The reader’s place:** a place in Changes names its file (`PanePlace`), which the
+  mounted diff maps to a block and back, so the place held through a replacement, or
+  landed on after a reload, is in the same file, at the same offset, where the new diff
+  has that file. A file the new diff lacks puts the reader at the top of the block at the
+  place’s index, since the offset was a line of a file that is gone.
+  The place is held and written to the entry before the old diff is taken away, so the
+  emptied pane’s clamp to its top, which arrives as a scroll, writes nothing while the
+  new comparison is read, and a reload in that time lands on the reader’s file.
+  From the new diff’s arrival the hold is a landing’s: it lasts until the page is still
+  or the reader moves.
+
+`tests/dom/github-pull-page-session.js` pins the decision, the note, the entry’s memory,
+and the place; `tests/dom/github-pull-repair-lifecycle-behavior.js` and
+`tests/dom/github-pull-page-mount-behavior.js` drive them through the mounted page.
+`tests/dom/github-pull-changes-follow-behavior.js` drives the join: a mounted page with
+a history entry, whose diff view answers `sectionForPath` and `pathForSection` from its
+own sections, follows a head, keeps the place through the emptied pane, and is mounted
+again on the entry, on Changes and on Docs, moves between the two, and is landed on a
+file through the production page host by a walk and by a click;
+`tests/dom/diff-file-jump-session.js` pins the two accessors of the production diff
+view.
 
 ## Conversation Timeline
 
@@ -362,8 +665,10 @@ in `<n>.timeline.json`, bound to the inputs it orders (`_discussion_revision`): 
 source, number, reader, base branch, head, and the discussion’s identifiers.
 An advance of the base branch keeps it usable; a retarget or a new head needs a new one.
 It answers `complete`, `partial` with a retryable verified prefix, or `unavailable`,
-asks for no patch or Git object, and runs only after the selected Conversation paints,
-in a provider slot of its own once any metadata refresh settles.
+retryable with `retry_after_s` when the budget held the read, which the page asks again
+after for as long as the budget holds it; it asks for no patch or Git object, and runs
+only after the selected Conversation paints, in a provider slot of its own once any
+metadata refresh settles.
 
 ## Native Stacks
 
@@ -376,6 +681,9 @@ name no reader; it never runs `gh stack view` or a checkout, sync, or tracking c
 The snapshot is bounded, a page past its bounds is omitted and marks it incomplete, and
 membership missing from a partial or unavailable snapshot never means a pull request is
 unstacked. A failure keeps the preceding snapshot.
+Nothing reports a stack’s change, so a snapshot that was read is read again
+`FULL_REFRESH_S` later while a view asks for it, one conditional page when nothing
+changed; a failed attempt waits `STACK_FRESHNESS_S`.
 
 ## Stack Change Lines
 
@@ -427,9 +735,9 @@ It never asks GitHub, runs no Git, and reads nothing but each list’s file.
 The envelope has `source`, null with no `rows` on a server with no GitHub repository,
 and `rows` in the request’s order, each with `number`, `state` (`listed` or `absent`),
 `reason`, `listing`, `listed_from`, `generation`, `head`, `files`, `additions`,
-`deletions`, `exact`, and `statuses`, each a status and its count, sorted by the status.
-The reasons are `not_cached`, `schema_mismatch`, and `unreadable`, no usable list;
-`filling`, a list still being read or stopped part-way; `too_large`, a list GitHub
+`deletions`, `exact`, `statuses`, each a status and its count, sorted by the status, and
+`size`. The reasons are `not_cached`, `schema_mismatch`, and `unreadable`, no usable
+list; `filling`, a list still being read or stopped part-way; `too_large`, a list GitHub
 capped or one an item was left out of; and `deferred`, a list past the request’s byte
 budget, which a later request reads.
 A `filling` or `too_large` answer still names its list’s `listed_from`, `generation`,
@@ -441,6 +749,16 @@ numbers; anything else is refused 400 `invalid_request`. One request reads at mo
 `MAX_SUMMARY_BYTES` of lists it has not summed, the first whatever its size, and a sum
 is kept by its file’s inode, modification time, and size, at most `MAX_KEPT_SUMMARIES`
 of them, the least recently used out first, so an unchanged list is read once.
+
+`size` is the size the list’s comparison pushes and its patch’s
+([Change Sizes](arch-git.md#change-sizes)), when it is kept: in memory or beside the
+store, so the route still runs no Git.
+The refresh that makes a list from the store measures it right after listing it
+(`pull_files_refresh.py`), so a row’s size arrives with its counts; a list GitHub gave
+names no merge base and has none.
+A pull request’s page asks `GET pull-size` with the envelope’s `size_route`, which names
+the record’s comparison as `rendered_route` does and is admitted the same way
+(`pull_size.py`); it measures the head against the pair’s merge base once, and keeps it.
 
 ## Label Sets
 
@@ -484,13 +802,18 @@ for that if no reader has yet.
 Those lists cost no GitHub request and go first; the rest alternate records and file
 lists from GitHub.
 The lane rereads each item from disk before it runs and stops when the
-governor refuses; the module docstring works out its caps, the GitHub points they cost,
-and the measurements behind the order.
+governor refuses, except for the lists the store gives, which cost GitHub nothing and
+are listed whatever the governor says; the module docstring works out its caps, the
+GitHub points they cost, and the measurements behind the order.
 A background job takes no network slot, waits behind every other job at a store turn and
 is cancelled when one starts waiting, and is joined and promoted by a reader’s request
 for the same pull request.
-`GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
-`pulls-panel.js` chooses what to name and when.
+A reader who joins a pull job that was already told to stop, a background one or a
+checkout’s optional comparison, has it started again as theirs once the stopped one has
+unwound, on a mirror and on a folder’s checkout alike
+(`RefreshCoordinator.start_again_when_stopped`). `GET pulls-prefetch` reports the lane,
+the caps, the governor, and recent outcomes, and `pulls-panel.js` chooses what to name
+and when.
 
 ## The Comparison Keep
 
@@ -541,7 +864,8 @@ no store.
 
 - **Comparisons need a store.** Without one, the envelope withholds a record’s
   comparison as `no_store`. Opening **Changes** sends
-  `"retry": true, "comparison": true`, which acquires an overlay with the checkout as
+  `"retry": true, "comparison": true`, which asks core for the checkout’s store
+  (`acquire_checkout_store` in `checkout_store.py`), an overlay with the checkout as
   lender
   ([The Lending Checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout))
   or reuses a healthy store, and leaves the served folder and its Commits tab unchanged.
@@ -550,14 +874,16 @@ no store.
   current record’s comparison as optional work (`"prepare_comparison"` with the record
   revision). It fetches only that pull request’s head and base, never deepens, holds no
   network slot, and records no outcome; a reader’s Changes request promotes it, and
-  another pull request’s refresh cancels it.
+  another pull request’s refresh cancels it while it is still optional.
+  Once a reader’s request has promoted it, it runs on as theirs.
 - **Repair:** Changes offers Refresh for a displayed comparison even while the record is
   fresh. The request carries `"recovery": {"base": …, "head": …}`, which the server
   accepts only for a pair this session issued for that pull request (the last
   `MAX_ISSUED_COMPARISONS`), then runs the
   [object recovery](arch-mirror-acquisition-and-refresh.md#object-recovery).
   A successful repair remounts the same comparison once, and a failed one leaves it in
-  place.
+  place. A refresh that finds another head is followed instead
+  ([Changes Follows the Head](#changes-follows-the-head)).
 
 `GET` routes never acquire or fetch.
 What a reader sees for each failure name, and what to do, is in
@@ -565,10 +891,10 @@ What a reader sees for each failure name, and what to do, is in
 
 ## Drawn From Disk
 
-Everything a mirror’s pull request page and Pulls tab draw from GitHub’s data is read
-from a file beside the source or the store, so a server started on an existing cache
-answers it before anything asks GitHub, and a page paints it before it starts a refresh.
-`tests/test_github_drawn_from_disk.py` holds the inventory.
+Everything a mirror’s pull request page, stack page, and Pulls tab draw from GitHub’s
+data is read from a file beside the source or the store, so a server started on an
+existing cache answers it before anything asks GitHub, and a page paints it before it
+starts a refresh. `tests/test_github_drawn_from_disk.py` holds the inventory.
 `ELEMENTS` names each drawn element, its route, and the Git commands the route runs in
 the local store, and runs each through `metab --api` over a cache home with `gh`
 failing, the remote unreachable, every Git transport command refused, and every socket
@@ -580,12 +906,17 @@ after the build’s tag changes, as an upgrade or an edit of an editable install
 changes it, and `test_every_pull_requests_diff_summary_answers_from_disk` reads several
 pull requests’ Diff summaries after each was prepared.
 
-Four routes compute from local data rather than read a stored answer: `pull-comparison`
-takes its manifest from the bank and runs Git only to check that the store answers for
-both commits and their merge base and to print the first files’ hunks; `pull-image`
-reads an image from the head’s tree; `pull-rendered-diff` renders both sides off the
-event loop; and `pull-markdown` renders the record’s text through KPress, which keeps
-the render for the process.
+Several routes compute from local data rather than read a stored answer:
+`pull-comparison` takes its manifest from the bank and runs Git only to check that the
+store answers for both commits and their merge base and to print the first files’ hunks;
+`pull-image` reads an image from the head’s tree; `pull-rendered-diff` renders both
+sides off the event loop; and `pull-markdown` renders the record’s text through KPress,
+which keeps the render for the process.
+`guided-review` reads the description and comparison manifest, then hydrates only the
+files whose excerpts the selected step needs.
+`stack` asks the store whether the top’s head holds the bottom’s merge base, then reads
+the stack’s kept manifest, and `stack-comparison` serves that manifest as
+`pull-comparison` serves a pull request’s.
 
 What a surface draws that does not answer from disk is in `GAPS`, a strict expected
 failure:
@@ -620,9 +951,11 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-cores-prepare` | `POST` | A batch of lightweight cores |
 | `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
 | `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
-| `pull-rendered-diff` | `GET` | One changed Markdown file, rendered |
+| `pull-rendered-diff` | `GET` | One changed Markdown, YAML, or JSON file, rendered |
+| `pull-size` | `GET` | The size the comparison pushes, against its merge base, and its patch’s |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
-| `pull-markdown` | `GET` | One text of the record, rendered inert |
+| `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
+| `guided-review` | `GET` | One ordered step and its excerpts from the cached PR description and pinned comparison |
 | `pulls` | `GET` | A catalog window, or a search with `q` |
 | `pulls-refresh` | `POST` | The catalog job |
 | `pull-files` | `GET` | A pull request’s changed files |
@@ -631,15 +964,351 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `stacks` | `GET` | The native stack snapshot |
 | `stacks-refresh` | `POST` | The stack job |
 | `stack-change` | `GET` | A native stack’s change line: its members’ lists accumulated |
+| `stack` | `GET` | A native stack’s page: its members, its combined comparison’s address, the members its top lacks, and each file’s layers; with `since`, how each member’s head moved from a comparison it answered before ([The Stack Page](#the-stack-page)) |
+| `stack-comparison` | `GET` | That combined comparison as a diff document |
 | `labels` | `GET` | The repository’s cached label set |
 | `labels-refresh` | `POST` | The label-set job |
 | `pulls-prefetch` | `GET`, `POST` | The background lane’s report, or a new queue for it |
 | `cache-clear` | `POST` | Removal of the plugin’s records for the repository |
+| `status` | `POST` | [The GitHub status check](#the-github-status-check): `gh`, the account, its scopes, and one state |
 
-The plugin registers two views: `pull-request`, which the shell mounts at `/pull/<n>`,
-`/pull/<n>/files`, and `/pull/<n>/checks` (`pull-page.js`), and `pull-request-list`, the
-Pulls tab and `/pulls` (`pulls-panel.js`). Their visual rules are in the
+The plugin registers three views: `pull-request`, which the shell mounts at `/pull/<n>`,
+`/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, and `/pull/<n>/checks`
+(`pull-page.js`); `pull-stack`, a native stack’s page at `/stack/<n>`,
+`/stack/<n>/guided`, `/stack/<n>/docs`, and `/stack/<n>/changes[/<path>]`
+(`stack-page.js`); and `pull-request-list`, the Pulls tab and `/pulls`
+(`pulls-panel.js`). Their visual rules are in the
 [design system](../../design-system.md#the-pulls-tab).
+
+### The Stack Page
+
+A native stack’s page shows the whole stack as one comparison
+([Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#phase-1-the-stack-page-mb-vad1)).
+`pull_stack.py` holds the rules, and its module docstring states them with the
+measurements that set them:
+
+- **The comparison** runs from the bottom member’s merge base to the top member’s head,
+  and keeps only the files some member’s own comparison names, on either side of a
+  rename. A member the top’s head does not contain, by its head or its merge commit, adds
+  no file and is named in `lacking`; a bottom merge base outside the top’s history
+  answers `absent` with `not_linear`.
+- **Its identity** is the store, both commits, and a digest of every member’s number,
+  merge base, and head in stack order (`stack_key`). The digest is in the comparison’s
+  address, its in-memory key (`scope` of the diff plugin’s `comparison_at`), its entity
+  tag, and its kept manifest beside the store (`load_stack_manifest` in
+  `pull_manifest.py`), so a member that moves names a new comparison and nothing is
+  invalidated by hand.
+- **Admission.** `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
+  `number` and admit the stack’s current pair, and `stack-comparison` lists it
+  (`_stack_admission` in `pull_snapshot.py`). Each keeps answering a pair the `stack`
+  route answered after the stack moves, since a page keeps the comparison it drew:
+  `pull_stack_retained.py` keeps a stack’s last `MAX_RETAINED_STACK_PAIRS` pairs in
+  `sources/<slug>/pulls/stack-<n>.snapshots.json`, for the store that computed them and
+  the reader whose records named them, as `pull_snapshot_cache.py` keeps a pull
+  request’s. A pair no longer kept answers `stack_moved` or `snapshot_expired`, and a
+  file that cannot be read now answers `snapshot_unavailable` (409).
+- **The page** (`stack-page.js`) is a pull request’s page for the whole stack
+  ([The Stack Page](../../design-system.md#the-stack-page)): a page header whose
+  members, top first, are the stack menu’s rows (`stack-member-row.js`) and whose last
+  line is the Diff summary, closed; then Docs with `DOCS_DRAWING` and Changes with
+  `CHANGES_DRAWING` (`diff-drawing.js`, which `pull-page.js` shares), with no layer
+  marks. Every header row but the status line is decided at first paint from the stack
+  snapshot (`stackHeader`), and Docs and Changes are laid out out of sight until their
+  first screen is ready, as a pull request’s are.
+  Its View on GitHub is the counterpart route’s, GitHub’s `stack/<n>`. It polls `stack`,
+  asks `pull-refresh` for each pending member at its head, a member with no record as
+  the reader’s own open of it (`retry`), since an automatic ask refreshes only a record
+  the server holds, and sends the top member’s automatic ask the answer’s `probe` names.
+  An ask the server refuses (429, past `MAX_PULL_JOBS`), that fails, or whose fetch ends
+  with the member still pending is sent again after `ASK_BACKOFF_MS`; each member’s
+  `fetching` says whether its fetch was running before its record was read (asked on the
+  loop first, as `PullView` asks), so the page tells one under way from one that ended.
+  A member with no record whose fetch ended without one is named as failed, with a
+  Retry, once a second read finds it so.
+  A hidden page does not poll.
+  A comparison the page drew stays while the stack is pending or refused, and when a new
+  one looks the same, the same two commits, files, and totals.
+  One that looks different is drawn in its place until the reader first moves on the
+  page; after the reader’s move, it is held while a member it waits on is fetched and
+  then offered, the notice saying what changed in each member (`answerAction` and
+  `changeText`). The poll asks `stack` with `since`, the key of the comparison drawn.
+  The write of a new pair keeps that one just before it (`retain_stack_pair`), and a
+  poll that names another pair than the last write kept writes again, so with two pages
+  open on one stack each keeps its own; the pair a page draws stays admitted unless more
+  than `MAX_RETAINED_STACK_PAIRS` moves come between two of its polls, as they can while
+  it is out of sight. An answer without `moved` says the pair drawn is gone: the page
+  draws the new comparison in its place if it looks the same and otherwise offers it at
+  once, and a guide step the route refuses as `stack_moved` makes the page read the
+  stack then rather than at its next poll.
+  The answer’s `moved` gives, for each member in both whose head moved, the commits its
+  new head adds that the comparison drawn did not show, in neither the earlier head’s
+  history nor its top’s, nor its merge base, or `null` when the earlier head is not in
+  its history, or 0 when the top drawn holds the new head and not the earlier one, a
+  record that caught up (`stack_moves`, read against the pair `pull_stack_retained.py`
+  keeps for that key and counted once each, `MAX_KEPT_COUNTS`). A file the reader opens
+  is scrolled to when its diff is drawn, never on a later answer (`bodyPlan`).
+- **The guide.** When a member’s description carries the stack’s guide, the answer’s
+  `guide` names that member and its record revision, Guided Review leads the tabs, and
+  `/stack/<n>` opens on it; without one the front page is Changes
+  ([The Stack’s Guide](#the-stacks-guide)).
+
+### Guided Review
+
+A guided review is the pull-request carrier of the
+[collection format](arch-collection-format.md): the format is general, and this section
+describes what the carrier adds.
+`guided_review.py` extracts a top-level fence from the raw, bounded PR description and
+validates its artifact against the installed `Collection/v1` SoftSchema
+(`metabrowser.collection:Collection/v1`), whose ordered `items` are the guide’s steps
+and groups of them, one level deep.
+The steps are numbered 1 to the step count in reading order, through the groups
+(`Collection.flat_items`), so `step=<k>`, the page’s step addresses, and a stale guide’s
+`changed_steps` count them alike.
+An undeclared key or a list past its bound is refused before the schema runs
+(`_outside_shape`), since softschema’s refusal costs time quadratic in the number of
+undeclared keys, and a record for each element of a long list.
+The request names a PR and an optional one-based step.
+The handler checks both comparison endpoints and a newer head GitHub’s list knows, and
+hydrates just the paths that the chosen step needs through the same manifest and diff
+adapter as Changes, at the pull request’s current comparison, whose manifest is the one
+the record keeps (`pull_manifest.py`). A stale guide’s steps are read there too, so a
+push, a rebase, or a force push leaves the guide readable whether or not the store still
+has the commits it was written for.
+Unresolved references are reported in place.
+Pins whose `merge_base` the store has and is not an ancestor of the guide’s head do not
+name a comparison and are answered `invalid` (`_pins_compare`); a head the store lacks
+is what a force push leaves, so it is stale, not invalid.
+A guide whose pins are not the pull request’s current comparison is answered `stale`
+with its step and a `stale` object (`_staleness` in `guided_review.py`): both
+comparisons, the first-parent commits after the guide’s head or that its head left the
+branch’s history, and the cited paths whose content changed between the two comparisons,
+compared path by path with no rename detection, and the steps that cite one, each with
+its bound beside its constant, or `null` when the store lacks the guide’s head.
+When GitHub reports a head this copy lacks, the guide is stale too, and what the newer
+commits changed is unknown, so neither list is answered.
+A `comparison_unavailable` answer for a stale guide carries the `stale` object too.
+Those details are for agents and the goldens; the page says less (`staleNotice` in
+`guided-review.js`): one warning and one remedy when a cited file changed or what
+changed is unknown, a quiet line when none did, and nothing when this copy matches the
+guide and only GitHub’s head is newer, since the page’s header already says new commits
+were pushed.
+It marks each changed step, in the step list and on the step, and says above
+a changed file’s excerpt, or in its place, that the file changed, and when what changed
+is unknown that it may have; it names no commit, head, merge base, path, or count.
+The limits in `guided_review.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`,
+and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps and groups together, the per-step
+hydration, the excerpt text, and a step’s whole files, each with the measurement that
+set it beside the constant.
+The parse is kept for each pull request by record revision, so a step click reads the
+guide the first request parsed and an edited description is parsed once, by the first of
+the requests that ask for it at once.
+An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
+the other side when it lies inside the range or touches either end of it.
+A note is Markdown, rendered as the description is: each answer with a step carries its
+note’s render as `note_html`, and the step that opens a group with a note carries that
+note’s as `group_note_html`, each produced by the description’s own path (`render_text`
+in `pull_text_render.py`: KPress in its sanitized mode, then `harden`, in the Markdown
+child under its deadline) and kept with the guide’s parse for the record revision within
+`_MAX_KEPT_NOTE_CHARS` (`_rendered_note` in `guided_review.py`). A refused render
+answers null, with the refusal’s code beside it as the pull-markdown route answers a
+text’s (`note_refusal`, `group_note_refusal`), and is not kept: the child keeps the
+refusals that are the note’s doing, and renders on the next read after a busy or
+unavailable renderer.
+The page shows a refused note as typed, with the line a description’s refusal says
+(`textRefusalNote` in `pull-page.js`), and keeps no answer whose renderer was busy or
+could not start, so the step is read again.
+The page inserts a render through the description’s allowlist (`inertProse` in
+`pull-page.js`), and draws no Mermaid diagram from a note.
+Titles and diff lines are inserted as text, in the design system’s existing parts: each
+step is a page card headed by the Guided Review badge and its place, as Conversation
+draws a comment, its title and note prose in a KPress article, as a description is, and
+each excerpt is drawn by the diff plugin’s own renderer (`mountFilePatch`, which the
+page loads with `plugins.load("diff")`; `renderReference` in `guided-review.js`), so its
+hunk bars, folds, type, row height, gutter, and change fills are Changes’.
+A range is one hunk in the diff model’s shape (`_rows_hunk` in `guided_review.py`), and
+a path alone is its file’s whole patch, within the step’s budget for whole files; a file
+past it, or past what the diff source reads in one run, is answered `patch_too_large`. A
+path alone of a file the rendered route renders, by that route’s own rule on both sides
+of the change (`rendered_format` in `pull_rendered_diff.py`: Markdown, YAML, JSON), is a
+document instead: the guided route answers its format as `rendered`, reads no patch for
+it, gives it no hunks, and charges it nothing against the step’s budget for whole files
+(`_step_references` in `guided_review.py`), so a large document is bounded only by the
+rendered route’s own bounds.
+The page draws it (`referenceDrawing` in `guided-review.js`) with the diff plugin’s own
+view of that file (`mountRenderedFile` in `diff/index.js`): a Markdown file with the
+options the Docs tab gives its documents (`DOCS_DRAWING` in `diff-drawing.js`), and a
+YAML or JSON file, which Docs does not list, with the options Changes draws with
+(`CHANGES_DRAWING`), so its file bar, its rendered layer and that layer’s chooser, and
+its Diff and Current are that tab’s, and whatever the tab learns to draw a file with,
+the step’s document draws with too.
+The view reads the comparison route’s one-file answer by path, whose manifest entry
+carries the id the rendered route asks for.
+The page draws a document only while its own comparison is the one the step was read at;
+at another, the reference says its file’s diff is unavailable, and with no rendered
+route the view draws the file without the rendered layer.
+A document the view could not draw keeps the guide’s bar for it, with its name and its
+Open full diff, above the view’s one-sentence notice.
+Each document is in the step’s list of drawn views, so a step change, or the page
+ending, disposes it and aborts its read.
+
+The page shows a step whole (`compose` and `present` in `guided-review.js`): it draws
+the step out of sight, beside the one shown, and replaces that one in a single change
+once the step’s answer, the text’s stylesheets, its drawers, each document’s first
+screen (`settled` of `mountRenderedFile`, held for its rendered layer for
+`GUIDE_DOCUMENT_HOLD_MS`), and on the overview the description’s Markdown are in hand,
+the last waited for at most `GUIDE_INTRODUCTION_HOLD_MS`. Its reads go through the
+document’s keep, `guide-reads.js`: one answer per step, record revision, and whether
+GitHub reported a head past that record when it was read (`show`’s *moved*, since the
+server then answers the steps as out of date with the same revision), a read in flight
+shared by whoever asks for it the same way, never kept when it holds what a later read
+answers otherwise (`retryable`: a note a busy renderer refused, or a reference
+`not_cached`, `comparison_unavailable`, or `diff_unavailable`), and let go oldest first
+past `GUIDE_KEPT_CHARS`. A pull request’s page reads the first step ahead, when it is
+idle on another tab or beside the module’s import on Guided Review’s own, a stack’s page
+at the comparison it draws, and the guide reads the steps next to the one shown when the
+page is idle (`createGuideNavigation`’s `prefetch` and `peek`), so a step one move away,
+or one read before, shows in the same task as the press.
+A step’s documents are not read ahead: they are drawn as it is composed, and the arrows’
+delayed mark shows while they are (mb-ukmm).
+A step can also cite past its pull request, with the format’s other
+[reference kinds](arch-collection-format.md#the-record), each answered with its `kind`
+and every field, null where its kind has none (`_references` in `guided_review.py`), and
+each read from this copy alone, never stale, and never counted in `changed_steps`
+(`_own_paths`), except a `{pull, path}` that names the guide’s own pull request, which
+is a `{path}` (`_carried`). A `{pull}` is that pull request’s title, state, and author,
+from its cached record or else its row in the list of pull requests, and its place in a
+stack from the stack snapshot, preferring the stack that holds the guide’s own pull
+request (`_pull_targets`), or `not_cached` when this copy knows neither; its address is
+the pull request’s page.
+A `{pull, path}` is that file at that pull request’s current comparison, read from its
+record’s kept manifest with one run of the diff source for each pull request the step
+cites, within the step’s one budget (`_pull_files`): the answer carries that
+comparison’s pins and the routes that answer it, which the page draws a document from,
+and is `comparison_unavailable` when this copy cannot read it, or `not_cached` when it
+has no record or no manifest kept for the record’s comparison, which a refresh keeps
+(`prepare_pull_manifest`) and this route never lists; its address is the file in that
+pull request’s Changes, which loads it.
+A `{commit}` is its subject and committer date, read for every commit of the step by one
+bounded `git log` in the store (`_commit_targets`), or `commit_unavailable`; its address
+is `/commit/<sha>`, which the page opens as a plain link, unless the server browses a
+checkout, whose Git that page reads instead of the store, and the checkout lacks the
+commit: one fetched only with a pull request then has no address, and its row says it is
+not in this checkout.
+`MAX_REFERENCES` records what each kind costs a step.
+The page draws a `{pull}` as the stack menu draws a member and a `{commit}` as the
+Commits tab draws a commit (`pullRow` and `commitRow` in `guided-review.js`), and a
+`{pull, path}` as a `{path}`, under a bar that names its pull request, whose Open full
+diff opens the file in that pull request’s Changes.
+A ready step carries KPress’s stylesheet manifest, as the description’s Markdown route
+does, and the page loads it and the diff plugin’s styles before drawing the step, so the
+tab reads the same when it is the first thing opened.
+Guided Review is the first tab when the description has a guide: it is the author’s
+reading order. `/pull/<n>` is then the guide, and Conversation is
+`/pull/<n>/conversation` (`shownTabFor` in `pull-page.js`); without a guide `/pull/<n>`
+is Conversation, and its `/conversation` address shows Conversation either way.
+The controller and the page resolve the front page from one text, the record’s
+description or before it the core preview’s (`textSource`), so a preview of a guided
+pull request opens on its guide.
+A tab’s link and key go to the front page when it shows that tab (`routeForTab`), so
+they never open a second history entry of the page on screen.
+The description introduces the guide, and a collection has no prose of its own:
+`render_part` in `pull_markdown.py` renders the description, a core preview’s too,
+without a guided-review block that reads as a guide (`guide_introduction` in
+`guided_review.py`, from the route’s kept parse, off the event loop), the Guided Review
+tab opens with that render, and Conversation puts a card that opens the guide in the
+block’s place. A block that cannot be read stays in the description, so its author sees
+it. The description is the guide’s step 0, its overview (`createGuideNavigation` in
+`guided-review.js`): the page draws it from the description it already has, under a list
+of the steps that a step answer’s `titles` fill, and it keeps the answer for step 1 that
+it read for those titles, so the first move reads nothing.
+Each answer with a step carries the guide’s `outline` (`_outline` in
+`guided_review.py`), a tree in reading order of group nodes, each a title, a note or
+null, and its steps, and step nodes, each its number and title; the step’s own `group`
+is the index of its group’s node, or null.
+The step list draws each group as the shell’s group heading, with no number and nothing
+to press, above its steps, which keep their flat numbers, built once for each outline as
+the rows are; a step’s card names its group before its place (`groupedPlace`), and a
+group’s note shows above its first step.
+A guide without groups is an outline of steps alone, which draws as it did before
+groups. A stack’s guide answers the same tree ([The Stack’s Guide](#the-stacks-guide)).
+Each answer with a step is kept for its record revision, and a new revision or a moved
+head drops them. A step whose read is refused or fails keeps the guide’s steps, so the
+reader can move on, and is read again when chosen again.
+`guided-review.js` loads on demand when the tab opens, aborts reads on disposal, and
+matches results to the page’s record revision.
+
+The tab is shown from a hint, not from the parse: `GUIDED_FENCE` in `pull-page.js`
+matches a line that opens a `guided-review` fence in the description, and the server’s
+reading, which counts only a top-level fence, decides what the tab shows.
+A description that documents the format inside another fence therefore shows a tab that
+says the pull request has no guide, and since the hint also picks the front page, that
+page is `/pull/<n>`, with Conversation one click away.
+Letting the server answer for the tab, with a `has_guide` on the `pull` envelope, would
+change an envelope the browser and every `--api` golden of the route share, so it is not
+done here; mb-y0en tracks it, with a way to check a guide before it is published.
+
+### The Stack’s Guide
+
+A native stack’s guide is the collection carrier of a whole stack
+([Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#phase-3-the-stack-guide-mb-ri96)):
+a top-level `stack-review` block in a member’s description, read by the parser that
+reads a `guided-review` block (`_guide_fence` takes the fence’s name).
+A description may hold one block of each name, and two of either is refused; a block
+that cannot be read does not keep the other from being read (`_read_description`). An
+edit of a description moves no head, so the guide costs no CI run and leaves the
+member’s own guide current.
+
+- **The carrier** is the top-most member whose cached description has a `stack-review`
+  block, readable or not, so a block that cannot be read is found and says why
+  (`stack_guide_carrier`); a member added above it leaves the guide found, and out of
+  date. The `stack` answer’s `guide` names it and its record revision while the stack is
+  current, and is null otherwise, since a member not read yet may carry a block.
+- **The route.** `guided-review?stack=<n>&step=<k>` (`stack_guided_review`) answers in
+  the envelope a pull request’s guide has, naming the `stack`, its `carrier`, and the
+  carrier’s page, `carrier_url`, which a note’s links are absolute against.
+  A stack this copy cannot pair is `stack_unavailable`, with the `stack` answer’s
+  `reason`, and one with a member not read yet is `not_cached`; both come before the
+  carrier is found, so they name no `record_revision`, and the page takes them as that
+  step’s refusal. `left`, `right`, and `key` name the comparison to read at, as
+  `stack-comparison` takes them: the current pair, or one the `stack` route gave before
+  and keeps (`retained_stack_pair`); one it never gave is `stack_moved`, and kept pairs
+  that cannot be read now are `stack_unavailable` with `snapshot_unavailable`. Without
+  them the route reads at the current pair.
+  A kept pair the guide’s pins are past, the current pair’s or a head after the kept
+  one, is `stack_moved` too (`_pinned_past`): the carrier moved and its author pinned
+  the guide again, so it was written for a later comparison, and read at the kept pair
+  it would be reported rewritten.
+  The guide’s pins are the stack’s base and top head; its `{path}` references read that
+  pair’s kept manifest (`combined` in `pull_stack.py`), each step’s address is the file
+  in the stack page’s Changes, and `_staleness` compares the pins with that pair, a
+  member’s newer known head counting as a newer head at the current pair alone.
+  `{pull}`, `{pull, path}`, and `{commit}` references read as in a pull request’s guide,
+  the carrier’s stack first for a `{pull}`’s place.
+- **The page.** `stack-page.js` mounts `mountGuidedReview` with no introduction: the
+  description that carries the guide introduces its member, not the stack, so the
+  navigation starts at step 1 (`first` in `createGuideNavigation`), and the refusals
+  speak of the stack (`STACK_MESSAGES` in `guided-review.js`). The guide is read at the
+  comparison the page draws, so it shows what the Diff summary, Docs, and Changes show,
+  and follows the offer and take they follow: it is mounted again only when the reader
+  takes the comparison offered.
+  The guide shown stays while the stack is pending or cannot be shown, as the drawn
+  comparison does (`guideShown`), and a step read then says so in its place, under the
+  guide’s steps. A new revision of the carrier’s record is read in place while the
+  comparison drawn is the current one.
+  While it is not, the navigation is held at the revision read there (`behind` in
+  `createGuideNavigation`): a step answer for another revision, which the carrier moving
+  with the stack gives, is that step’s `stack_moved`, never a new guide, and the guide’s
+  steps stay. A whole document a step cites is drawn from the comparison the page drew
+  while that is the one the step was read at.
+  `tests/dom/github-stack-guide-mount-session.js` runs this glue on the production page.
+- **The member’s page.** `render_part` leaves a block that reads as a stack’s guide out
+  of the description, as it leaves a guide’s, and Conversation puts a card in its place
+  that says it has a stack guide, not the stack’s, since a member above may carry the
+  one the stack shows, and links the page of each stack the pull request belongs to once
+  the stacks are known (`STACK_GUIDE_FENCE` in `pull-page.js`, a hint as `GUIDED_FENCE`
+  is).
+- **The command line.** `--show /stack/<n>` reports `guide=#<member>` and the tab the
+  front page shows.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

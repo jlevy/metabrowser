@@ -98,32 +98,26 @@ $ node tests/dom/pulls-nav-session.js
         "/pull/3900"
       ]
     },
-    "Space on a pull request's row toggles nothing": {
-      "handled": true,
-      "did": [],
-      "focus on": "/pull/3900",
-      "address": "/view/"
-    },
-    "Space on its change line expands changed files in place": {
+    "Space on a pull request's row expands its changed files in place": {
       "handled": true,
       "did": [
-        "expanded changed files"
+        "expanded #3900's changed files"
       ],
-      "focus on": "#3900's change line",
+      "focus on": "/pull/3900",
       "address": "/view/"
     },
     "holding Space leaves the tree open": {
       "handled": true,
       "did": [],
-      "focus on": "#3900's change line",
+      "focus on": "/pull/3900",
       "address": "/view/"
     },
     "Space again collapses changed files in place": {
       "handled": true,
       "did": [
-        "collapsed changed files"
+        "collapsed #3900's changed files"
       ],
-      "focus on": "#3900's change line",
+      "focus on": "/pull/3900",
       "address": "/view/"
     },
     "Space on a stack's row closes the stack": {
@@ -147,6 +141,20 @@ $ node tests/dom/pulls-nav-session.js
       ],
       "focus on": "Stack #286",
       "address": "/view/"
+    },
+    "Space on a stack's Whole stack row opens the stack's page": {
+      "handled": true,
+      "did": [
+        "the shell opened /stack/286, pushing"
+      ],
+      "focus on": "Whole stack of #286",
+      "address": "/stack/286"
+    },
+    "holding Space on it opens nothing more": {
+      "handled": true,
+      "did": [],
+      "focus on": "Whole stack of #286",
+      "address": "/stack/286"
     },
     "J on it is the list's": {
       "handled": true,
@@ -361,7 +369,8 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": null,
         "filter": "open",
-        "file": null
+        "file": null,
+        "stack": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -371,7 +380,8 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": null,
         "filter": "closed",
-        "file": null
+        "file": null,
+        "stack": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -381,7 +391,8 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": null,
         "filter": "open",
-        "file": null
+        "file": null,
+        "stack": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -391,7 +402,8 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": 7,
         "filter": null,
-        "file": null
+        "file": null,
+        "stack": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -401,7 +413,30 @@ $ node tests/dom/pulls-nav-session.js
       "names": {
         "page": 7,
         "filter": null,
-        "file": null
+        "file": null,
+        "stack": null
+      },
+      "from Files": "pulls",
+      "from Pulls": null,
+      "from Git": "pulls"
+    },
+    "/stack/70": {
+      "names": {
+        "page": null,
+        "filter": null,
+        "file": null,
+        "stack": 70
+      },
+      "from Files": "pulls",
+      "from Pulls": null,
+      "from Git": "pulls"
+    },
+    "/stack/70/changes": {
+      "names": {
+        "page": null,
+        "filter": null,
+        "file": null,
+        "stack": 70
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -530,6 +565,16 @@ $ node tests/dom/pulls-nav-session.js
       {
         "another pull request: the row follows": [
           "view told: current 8"
+        ]
+      },
+      {
+        "a stack's page: its Whole stack row is the current row": [
+          "view told: current null, Stack #70's page"
+        ]
+      },
+      {
+        "the Whole stack row's open is the shell's": [
+          "opened Stack #70's page"
         ]
       },
       {
@@ -710,32 +755,32 @@ $ node tests/dom/pulls-nav-session.js
       {
         "keys": "Up arrow or K",
         "action": "Previous pull request",
-        "description": "Open the previous pull request in the list, or go to a stack's row; from a change line, go back to its pull request."
+        "description": "Open the previous pull request in the list, or go to a stack's row."
       },
       {
         "keys": "Down arrow or J",
         "action": "Next pull request",
-        "description": "Open the next pull request in the list, or go to a stack's row; from a change line, into its open changed files."
+        "description": "Open the next pull request in the list, or go to a stack's row."
       },
       {
         "keys": "Enter",
         "action": "Open pull request",
-        "description": "Open the focused pull request; on its change line, show or hide its changed files; on a stack, open or close it."
+        "description": "Open the focused pull request, or open or close the focused stack."
       },
       {
         "keys": "Space",
         "action": "Toggle changed files",
-        "description": "Expand or collapse the changed files of the focused change line, or the focused stack."
+        "description": "Expand or collapse the changed files of the focused pull request, or the focused stack."
       },
       {
         "keys": "Right arrow",
         "action": "Show changed files",
-        "description": "Go to the focused pull request's change line; there, show its changed files or go to the first; on a stack, its pull requests."
+        "description": "Show the focused pull request's changed files, or go to the first; on a stack, its pull requests."
       },
       {
         "keys": "Left arrow",
         "action": "Hide changed files",
-        "description": "On a change line, hide its changed files or go back to its pull request; on a pull request, go to its stack; on a stack, close it."
+        "description": "Hide the focused pull request's changed files, or go to its stack; on a stack, close it."
       },
       {
         "keys": "Up arrow or K",

@@ -41,7 +41,6 @@ const ROLE = {
   "reading text": 14,
   tooltip: 14,
   "list text": 13,
-  revision: 13,
   control: 12,
   label: 12,
   "hint strip": 12,
@@ -146,19 +145,20 @@ try {
   await accompanies(pulls, "#tab-pulls .github-pulls-author", "#tab-pulls .github-pulls-number");
   await accompanies(pulls, "#tab-pulls .github-pulls-age", "#tab-pulls .github-pulls-title");
   await accompanies(pulls, ".github-pulls-connection-text", "#tab-pulls .github-pulls-title");
-  // The age's column is 5ch of the row's type, and the longest compact age is four
-  // characters, "12mo": written into a row's age, it is whole inside the column.
+  // The age's column is 5ch of the row's type, at the end of its last line (mb-lqkb, mb-rb3n),
+  // and the longest compact age is four characters, "12mo": written into a row's age, it is
+  // whole inside the column.
   const longestAge = await evaluate(`(async () => {
     const age = [...document.querySelectorAll("#tab-pulls .github-pulls-age")].find((e) => e.getClientRects().length);
     const saved = age.textContent;
     age.textContent = "12mo";
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const row = age.closest(".github-pulls-row").getBoundingClientRect();
+    const row = age.closest(".github-pulls-tail").getBoundingClientRect();
     const box = age.getBoundingClientRect();
     const range = document.createRange();
     range.selectNodeContents(age);
     const text = range.getBoundingClientRect();
-    const column = Number.parseFloat(getComputedStyle(age.closest(".github-pulls-row")).gridTemplateColumns.split(" ").pop());
+    const column = Number.parseFloat(getComputedStyle(age.closest(".github-pulls-tail")).gridTemplateColumns.split(" ").pop());
     const read = { text: Math.round(text.width * 100) / 100, box: Math.round(box.width * 100) / 100, column: Math.round(column * 100) / 100, cut: age.scrollWidth > age.clientWidth, inside: text.right <= row.right + 0.5 };
     age.textContent = saved;
     return read;
@@ -229,7 +229,7 @@ try {
   phase("conversation");
 
   // Checks: its summary and each check are the main view's secondary text.
-  await click("#preview-pane .tab-bar .tab-btn:nth-child(3)");
+  await click("#preview-pane .tab-bar .tab-btn[href$='/checks']");
   await waitFor("document.querySelector('.github-pull-checks li') !== null");
   const checksTab = "a pull request's Checks";
   await role(checksTab, "reading text", ".github-pull-checks li");
@@ -244,7 +244,8 @@ try {
   const files = "the Files panel";
   await role(files, "list text", "#tab-files .tree-item-name");
   await role(files, "list text", "#tab-files .tree-item-size");
-  await role(files, "list text", "#tab-files .tree-summary");
+  // The totals stand in the band over the panel (#nav-metadata-files), outside its scroller.
+  await role(files, "list text", "#nav-metadata-files .tree-summary");
   await accompanies(files, "#tab-files .tree-item-size", "#tab-files .tree-item-name");
   if (await evaluate("document.querySelector('#tab-files .tree-item-age:not(:empty)') !== null")) {
     await accompanies(files, "#tab-files .tree-item-age:not(:empty)", "#tab-files .tree-item-name");
@@ -275,37 +276,38 @@ try {
   );
   phase("files");
 
-  // A file's header and a folder's: the main view's reading text, its path and its
-  // metadata at one size.
+  // A file's view header and a folder's: the title at the page title's size, the eyebrow's
+  // address at the list size of the navigation's path row, its twin across the divider
+  // (mb-ch82), and the metadata line at the main view's reading size, the line's values at
+  // the size of the line they are on (docs/design-system.md, "View Headers").
   await evaluate(
     "[...document.querySelectorAll('#tab-files .tree-file')].find((row) => /README/.test(row.textContent)).click()",
   );
   await waitFor(
-    "/README/.test(document.querySelector('.file-header .folder-crumb-current')?.textContent ?? '')",
+    "/README/.test(document.querySelector('.file-header .view-header-title')?.textContent ?? '')",
   );
   const fileHeader = "a file's header";
-  await role(fileHeader, "reading text", ".file-header .folder-crumb-current");
+  await role(fileHeader, "page title", ".file-header .view-header-title");
+  await role(fileHeader, "list text", ".file-header .folder-crumb-root");
+  await role(fileHeader, "reading text", ".file-header .view-header-line");
   await role(fileHeader, "reading text", ".file-header .file-header-size");
-  await accompanies(
-    fileHeader,
-    ".file-header .file-header-size",
-    ".file-header .folder-crumb-current",
-  );
+  await accompanies(fileHeader, ".file-header .file-header-size", ".file-header .view-header-line");
   await click("#header-home");
   await waitFor("document.querySelector('.file-header .folder-header-count') !== null");
   const folderHeader = "a folder's header";
+  await role(folderHeader, "page title", ".file-header .view-header-title");
   await role(folderHeader, "reading text", ".file-header .folder-header-count");
   await role(folderHeader, "reading text", ".file-header .file-header-size");
   await accompanies(
     folderHeader,
     ".file-header .folder-header-count",
-    ".file-header .folder-crumb-root",
+    ".file-header .view-header-line",
   );
-  if (await evaluate("document.querySelector('.folder-header-age [class*=age-]') !== null")) {
+  if (await evaluate("document.querySelector('.view-header-age [class*=age-]') !== null")) {
     await accompanies(
       folderHeader,
-      ".folder-header-age [class*=age-]",
-      ".file-header .folder-crumb-root",
+      ".view-header-age [class*=age-]",
+      ".file-header .view-header-line",
     );
   }
   phase("headers");
@@ -343,13 +345,36 @@ try {
   );
   phase("commits");
 
-  // A commit's page: its header's lines at the body size, its revision one step down.
+  // A commit's page: its header's lines at the body size, its revision among them.
   await click(".git-graph-row .git-graph-body");
   await waitFor("document.querySelector('#preview-pane .git-commit-ages') !== null");
   const commitPage = "a commit's page";
   await role(commitPage, "page title", "#preview-pane .git-commit-subject");
   await role(commitPage, "reading text", "#preview-pane .git-commit-ages");
-  await role(commitPage, "revision", "#preview-pane .git-commit-sha");
+  // A short commit ID is the size of its line, and its monospace face's x-height the sans's
+  // (docs/design-system.md, "Short Commit IDs"): the width of 100ex in each, measured.
+  await accompanies(
+    commitPage,
+    "#preview-pane .git-commit-sha",
+    "#preview-pane .git-commit-revision-line",
+  );
+  const xHeights = await evaluate(`(() => {
+    const ex = (host) => {
+      const probe = document.createElement("span");
+      probe.style.cssText = "display: inline-block; position: absolute; width: 100ex; height: 0";
+      host.append(probe);
+      const width = probe.getBoundingClientRect().width / 100;
+      probe.remove();
+      return width;
+    };
+    const id = document.querySelector("#preview-pane .git-commit-sha");
+    return { id: ex(id), line: ex(id.closest(".git-commit-revision-line")) };
+  })()`);
+  check(
+    `${commitPage}: its revision's x-height is its line's`,
+    Math.abs(xHeights.id - xHeights.line) <= 0.01 * xHeights.line,
+    JSON.stringify(xHeights),
+  );
   await accompanies(commitPage, "#preview-pane .git-commit-age", "#preview-pane .git-commit-ages");
   // Its diff's file bars: a main-view path strip, at the body size, with its stats.
   await waitFor("document.querySelector('#preview-pane .diff-file-bar .diff-file-path') !== null");

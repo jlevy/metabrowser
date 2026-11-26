@@ -13,7 +13,7 @@ patterns:
   ROOTS: '[^\s"]+/roots'
   ROOT_ARG: '\[ROOT\]'
 before: >-
-  mkdir -p roots/alpha roots/beta roots/gamma/sub roots/leaving &&
+  mkdir -p roots/alpha roots/beta roots/gamma/sub roots/leaving roots/checkout/.git &&
   printf 'note\n' > roots/gamma/sub/note.txt
 ---
 # Golden tests: recent targets
@@ -93,6 +93,49 @@ folder  [TIMESTAMP]  [ROOTS]/alpha
 ? 0
 ```
 
+## Test: a checkout is recorded as one
+
+A folder that holds a `.git` entry is the `git` kind `GET /api/identity` reports, and
+its entry says so, `"git": true`, so a menu can draw the Git checkout’s mark for it
+without looking at the folder, which on macOS can raise a privacy prompt.
+Any other folder, and every repository opened by its address, is `"git": false`. The
+text listing is unchanged.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/checkouts metab roots/alpha --recent-add
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/checkouts metab roots/checkout --recent-add
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/checkouts metab --recent --json
+{
+  "limit": 50,
+  "targets": [
+    {
+      "mode": "folder",
+      "root": "[ROOTS]/checkout",
+      "opened_at": "[TIMESTAMP]",
+      "target": null,
+      "git": true
+    },
+    {
+      "mode": "folder",
+      "root": "[ROOTS]/alpha",
+      "opened_at": "[TIMESTAMP]",
+      "target": null,
+      "git": false
+    }
+  ],
+  "problem": null
+}
+? 0
+```
+
 ## Test: opening a root again moves its one entry to the front
 
 `roots/./alpha/` is the same folder, and another URL into the repository is the same
@@ -117,25 +160,29 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent --json
       "mode": "mirror",
       "root": "https://github.com/jlevy/tbd",
       "opened_at": "[TIMESTAMP]",
-      "target": null
+      "target": null,
+      "git": false
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/alpha",
       "opened_at": "[TIMESTAMP]",
-      "target": null
+      "target": null,
+      "git": false
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/gamma/sub",
       "opened_at": "[TIMESTAMP]",
-      "target": "[ROOTS]/gamma/sub/note.txt"
+      "target": "[ROOTS]/gamma/sub/note.txt",
+      "git": false
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/beta",
       "opened_at": "[TIMESTAMP]",
-      "target": null
+      "target": null,
+      "git": false
     }
   ],
   "problem": null
@@ -258,7 +305,7 @@ folder  [TIMESTAMP]  [ROOTS]/gamma/sub
 ## Test: a process told not to record
 
 `METABROWSER_RECORD_RECENT=0` is for a server nobody opened to read, such as a
-benchmark’s or one the macOS app restores: it records nothing, and neither does
+benchmark’s or any the macOS app starts: it records nothing, and neither does
 `--recent-add`. The list can still be read and changed.
 
 ```console
@@ -271,6 +318,66 @@ Not recorded: METABROWSER_RECORD_RECENT is off.
 $ METABROWSER_RECORD_RECENT=0 METABROWSER_CONFIG_DIR=$PWD/config metab --recent
 folder  [TIMESTAMP]  [ROOTS]/alpha
 folder  [TIMESTAMP]  [ROOTS]/gamma/sub
+? 0
+```
+
+## Test: a serve records only when someone opened it to read
+
+A serve records its root when it is told to, with `METABROWSER_RECORD_RECENT=1`, as
+`--present` tells the server it starts for a browser, or, with the variable unset, when
+its stdin is a terminal, as a person’s `metab ROOT` has.
+A serve that an agent, a test, or a tool starts has neither, as no command here has a
+terminal, so it serves and records nothing.
+Each server here reads a pipe held open until it has printed its address, and then stops
+by itself (`--exit-on-eof`).
+
+```console
+$ { for i in $(seq 300); do grep -q '^Serving' untold.out 2>/dev/null && break; sleep 0.1; done; } | env -u METABROWSER_RECORD_RECENT METABROWSER_CONFIG_DIR=$PWD/serves metab roots/alpha --no-open --exit-on-eof > untold.out 2>&1
+? 0
+```
+
+```console
+$ sed -n 's/ at http.*//p' untold.out
+Serving [ROOTS]/alpha
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/serves metab --recent
+No recent targets.
+? 0
+```
+
+Told to, the same serve records its root:
+
+```console
+$ { for i in $(seq 300); do grep -q '^Serving' told.out 2>/dev/null && break; sleep 0.1; done; } | METABROWSER_RECORD_RECENT=1 METABROWSER_CONFIG_DIR=$PWD/serves metab roots/beta --no-open --exit-on-eof > told.out 2>&1
+? 0
+```
+
+```console
+$ sed -n 's/ at http.*//p' told.out
+Serving [ROOTS]/beta
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/serves metab --recent
+folder  [TIMESTAMP]  [ROOTS]/beta
+? 0
+```
+
+`--recent-add` is itself a request to record, so it records with the variable unset too:
+
+```console
+$ env -u METABROWSER_RECORD_RECENT METABROWSER_CONFIG_DIR=$PWD/serves metab roots/alpha --recent-add
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/serves metab --recent
+folder  [TIMESTAMP]  [ROOTS]/alpha
+folder  [TIMESTAMP]  [ROOTS]/beta
 ? 0
 ```
 
@@ -433,7 +540,8 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent --json
       "mode": "mirror",
       "root": "https://github.com/jlevy/tbd",
       "opened_at": "[TIMESTAMP]",
-      "target": "https://github.com/jlevy/tbd/pull/12"
+      "target": "https://github.com/jlevy/tbd/pull/12",
+      "git": false
     }
   ],
   "problem": null

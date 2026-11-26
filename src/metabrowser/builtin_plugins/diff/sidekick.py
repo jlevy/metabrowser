@@ -20,7 +20,11 @@ a Git comparison at the active subject's ``GitLocation``, so the history
 view renders diffs through this plugin's view instead of growing a diff
 surface of its own. A pinned revision does not need a working tree. On a
 store, a request naming full commit IDs is kept and validated;
-``comparison_cache.py`` says what the answer depends on.
+``comparison_cache.py`` says what the answer depends on. ``&types=`` narrows
+the answer to the changed files of those types, the Files tab's File type
+vocabulary (``tree_filter.parse_types``, matched by ``file_type_match``), and
+``&group=type:<id>`` to those of one File type group, the Files tab's Group by
+vocabulary (``tree_groups.parse_group``).
 
 The patch handlers read through the content reader, which serves an attached
 folder and a pinned revision alike and keeps the blocking part off the event
@@ -58,11 +62,20 @@ from metabrowser.diff.format import (
     BasePolicy,
     ChangeSetDocument,
     ChangeSetManifest,
+    EntryType,
     FileChange,
     FilePatch,
     ResolvedComparison,
     Totals,
     dump_document,
+)
+from metabrowser.diff.side_lines import side_lines, side_lines_before
+from metabrowser.file_type_match import (
+    change_in_type_group,
+    change_matches_types,
+    change_sides,
+    semantic_extension_tokens,
+    type_tally,
 )
 from metabrowser.git.process import (
     GitError,
@@ -88,6 +101,9 @@ from metabrowser.plugin_api import (
     resolve_content,
     resolve_content_container,
 )
+from metabrowser.settings import DIFF_GAP_LINES, TEXT_PREVIEW_REQUEST_MAX_BYTES
+from metabrowser.tree_filter import parse_types
+from metabrowser.tree_groups import parse_group
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -108,6 +124,19 @@ MAX_HYDRATED_FILES = 50
 # A revision compares against its first parent; only two endpoints choose a base.
 _TWO_ENDPOINT_POLICIES = frozenset({BasePolicy.direct.value, BasePolicy.merge_base.value})
 
+# What a comparison request may answer instead of its document: "" is the document,
+# "types" the File type counts the diff view's menu reads, and "lines" a run of one file's
+# lines, which the diff view draws where a hunk's gap opens (`_lines_answer`).
+_COMPARISON_VIEWS = frozenset({"", "types", "lines"})
+
+# The most one `view=lines` answer reads of a side: the bound a pinned file's text view
+# reads one request within. Measured 2026-11-24 on a Mac at a load average near 230, an answer
+# of 1,000 lines from the middle of a 16,763,876-byte side took 832-1,048 ms, nearly all of it
+# Git's read (`phases=git`), beside 2.0-2.5 s for that file's comparison itself; cutting a
+# 16 MiB side into lines, and the answer into JSON, run in `asyncio.to_thread`, off the event
+# loop (`_lines_body`; `diff/side_lines.py` measures the cutting).
+MAX_LINES_SIDE_BYTES = TEXT_PREVIEW_REQUEST_MAX_BYTES
+
 # A commit ID in full: SHA-1 or SHA-256. Anything else names what it names now.
 _FULL_COMMIT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
@@ -120,8 +149,17 @@ async def shared_comparison_manifest(
     return await _COMPARISONS.manifest(key, load)
 
 
-def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
-    return JSONResponse({"error": kind, "message": message, "path": path}, status_code=status)
+def _error(
+    kind: str, message: str, status: int, *, path: str, detail: str = "", code: str = ""
+) -> JSONResponse:
+    """A refusal: *message* is the sentence the page shows (diff/index.js), *detail* and
+    *code* what an agent reads beside it (docs/design-system-messages.md)."""
+    body = {"error": kind, "message": message, "path": path}
+    if detail:
+        body["detail"] = detail
+    if code:
+        body["code"] = code
+    return JSONResponse(body, status_code=status)
 
 
 def _parse_bytes(data: bytes) -> ChangeSetDocument:
@@ -295,8 +333,20 @@ def _git_failure(exc: GitError, path: str) -> JSONResponse:
     for, hostile names included. The detail goes to the log."""
     log.warning("diff/comparison git failure: %s", failure_detail(exc))
     if isinstance(exc, GitTimeoutError):
-        return _error("diff_comparison", "git diff timed out", 504, path=path)
-    return _error("diff_comparison", "git diff failed", 502, path=path)
+        return _error(
+            "diff_comparison",
+            "Comparing these commits took too long. Try again.",
+            504,
+            path=path,
+            detail="git diff timed out",
+        )
+    return _error(
+        "diff_comparison",
+        "These changes could not be read from Git.",
+        502,
+        path=path,
+        detail="git diff failed",
+    )
 
 
 async def comparison_handler(request: Request) -> Response:
@@ -316,6 +366,7 @@ async def comparison_at(
         [GitDiffSource, dict[str, Any], tuple[str, ...]], Awaitable[ResolvedManifest]
     ]
     | None = None,
+    scope: tuple[str, ...] = (),
 ) -> Response:
     """A Git comparison at the supplied trusted location, as a ChangeSetDocument.
 
@@ -328,6 +379,26 @@ async def comparison_at(
     ``&file=<path>`` narrows to one change and hydrates it regardless of
     the bound — the deferred sections' on-demand loader. It is the path exactly, since
     a name can begin or end with a space.
+    ``&types=`` (repeated or comma-separated, as the Files tab sends it) keeps only
+    the changes of those types, either side of a rename counting, before the bound
+    is applied, so the hydrated files are the first matching ones. Totals are then the
+    kept files'; ``truncated`` still says the listing stopped at its own bound, past
+    which a matching file may exist.
+    ``&group=type:<id>`` keeps only the changes in one File type group, the registry's
+    display group either side classifies into (``file_type_match.change_in_type_group``),
+    by the same rule and with the same totals: ``type:docs`` is a change set's documents,
+    which a pull request's Docs tab shows. With ``types`` it keeps the changes both keep.
+    A group that is no File type group is refused: a comparison's files have no ages.
+    ``&view=types`` answers the comparison's File type counts instead of a document
+    (``_type_tally_answer``), for the diff view's File type menu: the rows the Files
+    tab's menu reads, over every listed change whatever ``types``, ``group`` and
+    ``file`` say, so the menu does not shrink as the reader narrows.
+    ``&view=lines&file=<path>&start=<n>&count=<m>`` answers lines *n* onward of that
+    file's new side, and ``&end=<n>&count=<m>`` in place of ``start`` the lines before line
+    *n* (``_lines_answer``): the unchanged lines between its hunks, which the diff view
+    asks for when a reader opens a hunk's gap, downward from a hunk or upward to one. At
+    most ``DIFF_GAP_LINES`` lines, and a short run where the side's lines are long, cut at
+    the end far from the line asked from; ``line_count`` says where the side ends.
     On a pinned revision, ``HEAD`` is that object id.
 
     A request naming two commit IDs on a store sends an entity tag that names the build
@@ -336,6 +407,12 @@ async def comparison_at(
     naming this store it is immutable as well, since the address then says everything
     its answer depends on; a folder's address names no store, and its answer carries
     neither header.
+
+    *scope* names a manifest that is not the two commits' whole comparison, as a native
+    stack's is restricted to the files its layers change (``github/pull_stack.py``). It
+    extends the key in memory, and so the entity tag and every kept answer, so such a
+    manifest never shares an entry with the whole comparison of the same two commits; only a
+    *manifest_loader* can answer for one.
     """
     if not 1 <= max_initial_files <= MAX_HYDRATED_FILES:
         raise ValueError(f"max_initial_files must be between 1 and {MAX_HYDRATED_FILES}")
@@ -344,6 +421,27 @@ async def comparison_at(
     left = request.query_params.get("left", "").strip()
     right = request.query_params.get("right", "").strip()
     base_policy = request.query_params.get("base_policy", "").strip()
+    types = parse_types(request.query_params.getlist("types"))
+    view = request.query_params.get("view", "")
+    if view not in _COMPARISON_VIEWS:
+        return _error(
+            "diff_comparison",
+            "view is types or lines, or absent for the comparison itself.",
+            400,
+            path=revision or f"{left}..{right}",
+        )
+    ask = _lines_ask(request) if view == "lines" else None
+    if isinstance(ask, str):
+        return _error("diff_lines", ask, 400, path=wanted_file)
+    wanted_group = request.query_params.get("group", "")
+    group = parse_group(wanted_group) if wanted_group else None
+    if wanted_group and (group is None or group.by != "type"):
+        return _error(
+            "diff_comparison",
+            "group is a File type group, type:<id>.",
+            400,
+            path=revision or f"{left}..{right}",
+        )
     if base_policy and (revision or base_policy not in _TWO_ENDPOINT_POLICIES):
         return _error(
             "diff_comparison",
@@ -370,6 +468,10 @@ async def comparison_at(
         else ""
     )
     kept_key = comparison_cache_key(location, intent, store)
+    if scope:
+        if manifest_loader is None or kept_key is None:
+            raise ValueError("a scoped comparison needs a store and its own manifest loader")
+        kept_key = (*kept_key, *scope)
     body_generation = _COMPARISONS.body_generation()
     answer_key: tuple[str, ...] | None = None
     headers: dict[str, str] = {}
@@ -377,7 +479,23 @@ async def comparison_at(
     # for the commits, so a store holding neither answers its plain refusal.
     revalidate = False
     if kept_key is not None:
-        answer_key = (*kept_key, wanted_file, str(max_initial_files))
+        # A narrowed answer is kept apart from the whole one. With no types and no group the
+        # key is the one it was, so a whole comparison's tag does not move. Each narrowing
+        # is named, since a type token may hold `=` or `:` and so spell the other one. The counts depend
+        # on the listing alone, so every request for them shares one key.
+        answer_key = (
+            (*kept_key, "", "view=types")
+            if view == "types"
+            else (*kept_key, wanted_file, "view=lines", *ask)
+            if ask is not None
+            else (
+                *kept_key,
+                wanted_file,
+                str(max_initial_files),
+                *((f"types={','.join(types)}",) if types else ()),
+                *((f"group={group.key}",) if group is not None else ()),
+            )
+        )
         # The body identity includes the initial hydration count: callers share the
         # manifest, but a PR page and a generic comparison can draw different prefixes.
         identity = hashlib.sha256("\0".join(answer_key[2:]).encode()).hexdigest()[:32]
@@ -432,10 +550,25 @@ async def comparison_at(
             else await shared_comparison_manifest(kept_key, listed)
         )
         resolved, manifest = comparison.resolved, comparison.manifest
+        if view == "types":
+            tally = await asyncio.to_thread(_type_tally_answer, resolved, manifest)
+            return await _send_body(
+                request, bytes(JSONResponse(tally).body), answer_key, headers, body_generation
+            )
+        if ask is not None:
+            answer = await _lines_answer(source, resolved, manifest, wanted_file, ask)
+            if isinstance(answer, JSONResponse):
+                return answer
+            return await _send_body(request, answer, answer_key, headers, body_generation)
         projected: list[FileChange] = []
         hydrate_ids: list[str] = []
+        semantic = semantic_extension_tokens(types)
         for change in manifest.files:
             if wanted_file and _change_display_path(change) != wanted_file:
+                continue
+            if types and not change_matches_types(change, types, semantic=semantic):
+                continue
+            if group is not None and not change_in_type_group(change, group.id):
                 continue
             if change.availability is not Availability.ready:
                 projected.append(change)
@@ -460,9 +593,16 @@ async def comparison_at(
             else PatchHydration({})
         )
     except DiffSourceError as exc:
-        # The source's own refusals carry user-facing messages: unknown
-        # revision, no such file in the comparison.
-        return _error("diff_comparison", str(exc), 404, path=revision)
+        # The source's own refusals: an unknown revision, no such file in the comparison.
+        # The page shows the reader's sentence; the one naming the revision is detail.
+        return _error(
+            "diff_comparison",
+            exc.reader_message,
+            404,
+            path=revision,
+            detail=str(exc),
+            code=exc.code,
+        )
     except GitError as exc:
         if isinstance(location.target, RepositoryStoreTarget):
             from metabrowser.git.object_failures import observed_object_failures
@@ -473,40 +613,31 @@ async def comparison_at(
                 if observed.state == "object_corrupt" and kept_key is not None:
                     _COMPARISONS.invalidate(kept_key)
                 if observed.state == "object_corrupt":
-                    message = "An object in this comparison does not match its ID."
+                    message = "Part of this comparison is damaged."
+                    detail = "An object in this comparison does not match its ID."
                 elif _reads_a_checkout():
                     # A revision of the served checkout, read in place: a partial clone
                     # names objects it does not hold, and nothing is fetched into it.
-                    message = (
+                    message = "Part of this comparison is not in this checkout."
+                    detail = (
                         "An object in this comparison is not in the checkout, "
                         "and nothing is fetched into it."
                     )
                 else:
-                    message = (
+                    message = "Part of this comparison is missing."
+                    detail = (
                         "An object in this comparison is missing. "
                         "Repair the repository cache, then retry."
                     )
-                return _error(observed.state, message, 409, path=revision)
+                return _error(observed.state, message, 409, path=revision, detail=detail)
         return _git_failure(exc, revision)
 
     if wanted_file:
-        counted = [c for c in projected if c.additions is not None or c.binary]
         manifest = manifest.model_copy(
-            update={
-                "totals": Totals.model_construct(
-                    files=len(projected),
-                    additions=sum(c.additions or 0 for c in projected)
-                    if len(counted) == len(projected)
-                    else None,
-                    deletions=sum(c.deletions or 0 for c in projected)
-                    if len(counted) == len(projected)
-                    else None,
-                    exact=len(counted) == len(projected),
-                ),
-                "truncated": False,
-                "cursor": None,
-            }
+            update={"totals": listed_totals(projected), "truncated": False, "cursor": None}
         )
+    elif types or group is not None:
+        manifest = manifest.model_copy(update={"totals": listed_totals(projected)})
     if hydration.left_out:
         projected, resolved = say_left_out(projected, resolved, hydration.left_out)
     projected = mark_past_the_bounds(projected, hydration)
@@ -514,11 +645,145 @@ async def comparison_at(
     # A large answer is seconds of serializing and compressing, so neither is done on the
     # event loop: 29 MB took 712 ms to serialize, measured in explorations/performance-loop.
     body = await asyncio.to_thread(_json_body, document)
+    return await _send_body(request, body, answer_key, headers, body_generation)
+
+
+async def _send_body(
+    request: Request,
+    body: bytes,
+    answer_key: tuple[str, ...] | None,
+    headers: dict[str, str],
+    generation: object,
+) -> Response:
+    """Send *body*, kept under *answer_key* when the comparison is one that is kept."""
+
     if answer_key is None:
         return Response(body, media_type="application/json")
     encoded = await asyncio.to_thread(encode_body, body)
-    _COMPARISONS.remember_body(answer_key, encoded, generation=body_generation)
+    _COMPARISONS.remember_body(answer_key, encoded, generation=generation)
     return await _encoded_response(request, encoded, headers)
+
+
+def _type_tally_answer(
+    resolved: ResolvedComparison, manifest: ChangeSetManifest
+) -> dict[str, object]:
+    """A comparison's File type counts: every listed change, once under each type either
+    of its sides has (``file_type_match.type_tally``). ``truncated`` says the listing
+    stopped at its bound, so the counts are of the listed files."""
+
+    return {
+        "comparison_id": resolved.comparison_id,
+        "files": len(manifest.files),
+        "truncated": manifest.truncated,
+        **type_tally(change_sides(change) for change in manifest.files),
+    }
+
+
+def _lines_ask(request: Request) -> tuple[str, str, str] | str:
+    """A ``view=lines`` request's anchor (``start`` or ``end``), the line it names, and its
+    count, the count at most ``DIFF_GAP_LINES``, or why the request is refused."""
+
+    if not request.query_params.get("file", ""):
+        return "view=lines names a file."
+    named = [key for key in ("start", "end") if request.query_params.get(key, "")]
+    if len(named) != 1:
+        return "view=lines names a start or an end, not both."
+    (anchor,) = named
+    line = _whole(request.query_params.get(anchor, ""))
+    count = _whole(request.query_params.get("count", ""))
+    if line is None or count is None:
+        return f"{anchor} and count are whole numbers from 1."
+    return anchor, str(line), str(min(count, DIFF_GAP_LINES))
+
+
+def _whole(value: str) -> int | None:
+    """*value* as a whole number from 1, in ASCII digits and short enough to be a line's
+    number, or None."""
+
+    if not (value.isascii() and value.isdigit() and len(value) <= 12) or int(value) < 1:
+        return None
+    return int(value)
+
+
+async def _lines_answer(
+    source: GitDiffSource,
+    resolved: ResolvedComparison,
+    manifest: ChangeSetManifest,
+    path: str,
+    ask: tuple[str, str, str],
+) -> bytes | JSONResponse:
+    """Lines of the new side of the change at *path* (``diff/side_lines.py``) as the
+    answer's body, or why they cannot be read.
+
+    A refusal is 409 with a ``code``: the change has no new side (``no_side``, a deleted
+    file), it is not a file's text (``not_text``: a binary change, a symbolic link, a
+    submodule), it is past :data:`MAX_LINES_SIDE_BYTES` (``blob_too_large``), or it is
+    diffed through a textconv driver, whose hunks number the conversion's lines
+    (``textconv``). The page shows the hunk's separator for it, as it does for a patch
+    file, which has no side to read.
+    """
+
+    change = next((c for c in manifest.files if _change_display_path(c) == path), None)
+    if change is None:
+        return _error("diff_lines", "This comparison has no entry for that path.", 404, path=path)
+    entry = change.new
+    refused: tuple[str, str] | None = None
+    if entry is None:
+        refused = ("no_side", "this change has no new side")
+    elif change.binary or entry.entry_type is not EntryType.file:
+        refused = ("not_text", "the new side is not a file's text")
+    elif await source.converts(entry.path):
+        refused = ("textconv", "this file is diffed through a textconv driver")
+    if refused is None and entry is not None:
+        try:
+            content = await source.side_bytes(entry, max_bytes=MAX_LINES_SIDE_BYTES)
+        except DiffSourceError as exc:
+            refused = (exc.code or "no_content", str(exc))
+        else:
+            head = {"comparison_id": resolved.comparison_id, "file_id": change.id, "path": path}
+            return await asyncio.to_thread(_lines_body, head, content, ask)
+    code, detail = refused or ("no_content", "")
+    return _error(
+        "diff_lines", "These lines cannot be shown.", 409, path=path, detail=detail, code=code
+    )
+
+
+def _lines_body(head: dict[str, str], content: bytes, ask: tuple[str, str, str]) -> bytes:
+    """The run *ask* names of a side's *content*, as a ``view=lines`` answer's JSON.
+
+    A run is at most ``MAX_LINES_ANSWER_BYTES`` of text but keeps one longer line whole,
+    up to the side's own bound, so this and its cutting run off the event loop.
+    """
+
+    anchor, line, count = ask
+    cut = (side_lines if anchor == "start" else side_lines_before)(content, int(line), int(count))
+    return bytes(
+        JSONResponse(
+            {
+                **head,
+                "start": cut.start,
+                "lines": list(cut.lines),
+                "line_count": cut.line_count,
+                "ends_with_newline": cut.ends_with_newline,
+            }
+        ).body
+    )
+
+
+def listed_totals(changes: list[FileChange]) -> Totals:
+    """The totals of a narrowed answer's own files, by the rule a listing follows.
+
+    A binary change contributes zero lines exactly; an uncounted text change (unmerged,
+    unsupported) makes the line counts unknown.
+    """
+    counted = [c for c in changes if c.additions is not None or c.binary]
+    exact = len(counted) == len(changes)
+    return Totals.model_construct(
+        files=len(changes),
+        additions=sum(c.additions or 0 for c in changes) if exact else None,
+        deletions=sum(c.deletions or 0 for c in changes) if exact else None,
+        exact=exact,
+    )
 
 
 def _json_body(document: ChangeSetDocument) -> bytes:

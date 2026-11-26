@@ -76,15 +76,35 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 [End-to-End Testing](e2e-testing.md) covers the test layers, the four parts of
 `make test` and the markers that choose them, the outer tiers (`make test-admitted-git`,
 `make test-macos`, and `make test-live-github`), the skips each tier allows, and
-`make test-report` and `make ci-report`. `tests/golden/cli-check-api.tryscript.md` pins
-a normalized transcript of the `--check-api` sequence against a small fixture.
+`make test-report`, `make ci-report`, and `make shard-weights`. Its
+[Transient Output](e2e-testing.md#transient-output) says where a run’s temporary files
+live and when they are removed.
+`tests/golden/cli-check-api.tryscript.md` pins a normalized transcript of the
+`--check-api` sequence against a small fixture.
 
 The quality, test, audit, and build targets install both locked environments first, and
 Make keeps the stages ordered under parallel jobs.
 `make lint` applies the ordinary auto-fixes and then runs the repository’s own checks
 (public hygiene, file-type colors, tooltips, supply chain, CI workflow coverage,
-artifact contracts, parity, and goldens); `make lint-check` runs the same checks without
-changing files, plus the startup-script budget and a Flowmark check.
+artifact contracts, parity, the macOS app’s contract, goldens, and changelog fragments);
+`make lint-check` runs the same checks without changing files, plus the startup-script
+budget and a Flowmark check.
+
+### Keeping an Active Preview Current
+
+Before handing off a change for interactive testing, update the development app or
+browser preview if it is already running.
+Leave it closed if it was closed.
+
+- For the macOS app, quit normally when replacing the
+  [development bundle](../apps/macos/README.md#build-test-and-run) so saved folder
+  windows can reopen. Select the updated `metab` in Settings, then use **File → Restart
+  Server** for any affected window still using an old server.
+  Check the app build in **About Metabrowser** and the runtime in **Settings**.
+- For a browser preview, restart `metab` from the checkout under test and reload the
+  existing tab at the new server’s URL.
+
+Confirm the affected page loads from the restarted server before handing it over.
 
 ### The Verify Gate
 
@@ -244,6 +264,12 @@ boundary:
   when one of `_GIT_SOURCE_MODULES` is loaded.
   A served pin imports its routes as it starts (`cli/git_pin_cli.py`), so its first
   request does not import them on the event loop.
+- **The file-ages service and the version check**, in `GitRevisionSubject.aclose` and
+  `GitRevisionSubject.capabilities`: `--present` imports `git/tree_source.py` for
+  `GitPath` alone, and they would load Git’s version check, the shallow-boundary reader,
+  and the event log with it.
+  `test_present_dry_run_loads_little_beyond_version` in
+  `tests/test_plugin_public_api.py` holds it.
 
 **Why KPress is deferred.** A CLI’s startup cost is paid on every invocation, by people
 waiting and by agents making many calls.
@@ -379,13 +405,17 @@ replacing a local server build; that reload boundary is not a separately version
 client contract. `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the
 plugin manifest, and the built-in plugin interfaces are therefore internal contracts.
 
-**The macOS app is internal too.** It runs the installed `metab` with the flags in
-`CLIServeLaunch` and `MetabRequirement.requiredFlags`, asks it what a GitHub link opens
-(`PresentDryRun`) and whether its cache holds a repository (`RepositoryCache`), and
-reads `GET /api/identity`. Metabrowser keeps no compatibility with an older app: change
-a flag or the route and the app in the same commit, and raise
-`MetabRequirement.minimumRelease` when the app needs the newer `metab`
-([the version floor](project/architecture/arch-macos-app.md#the-version-floor)).
+**The macOS app is internal too.** For example, it runs the installed `metab` with the
+flags in `CLIServeLaunch` and `MetabRequirement.requiredFlags`, asks it what a GitHub
+link opens (`PresentDryRun`) and whether its cache holds a repository
+(`RepositoryCache`), and reads `GET /api/identity`;
+[the app’s contract](project/architecture/arch-app-contract.md) is the whole list.
+Metabrowser keeps no compatibility with an older app: change a flag or the route and the
+app in the same commit, and raise `MetabRequirement.minimumRelease` when the app needs
+the newer `metab`
+([the version floor](project/architecture/arch-macos-app.md#the-version-floor)). The
+release that carries such a change follows
+[Choosing a Version](publishing.md#choosing-a-version).
 
 **The one external artifact** is an exported File Rollup Format packet, which leaves the
 repository for another implementation.
@@ -427,6 +457,38 @@ Raise it with the maintainers if a change needs a different answer, and revisit 
 table when the deciding question’s answer changes: a first external plugin author, a
 published format, or a client outside this repository.
 
+## Correct by Construction
+
+Prefer a construction that makes a mistake impossible to a test that catches it.
+A test that restates what the code says is a second copy of the code: every intended
+change must then be made twice, and the test still passes when both copies are wrong the
+same way.
+
+- **Single-source a rule the product repeats.** When several surfaces must look or
+  behave alike, such as an age’s freshness ink, the order of a pull request’s title,
+  stack place, number, and author, or the highlight on a diff’s changed blocks, give
+  them one helper, builder, or token, and remove the local overrides that let one
+  surface drift. Then nothing per-surface remains to test.
+- **Prefer a mechanism that cannot produce the bug.** For example, one background that
+  spans each run of changed blocks cannot leave gaps between them, whereas a background
+  on each block, corrected with margin fix-ups, can.
+- **Test invariants, not the source.** A test should state a property that must hold
+  whatever the implementation, such as first paint equals final layout, an address
+  round-trips, a count matches its list, or a route’s output survives a restart.
+  Avoid tests that only assert a colour, a class name, a CSS value, or an order that the
+  code already spells out.
+- **Guard the mechanism, not its output.** Where a construction can be bypassed, a cheap
+  structural check that every caller uses it (for instance, that no stylesheet colours
+  an age except the shared rule) is worth having.
+  It enforces one rule, rather than restating each result.
+- **Measure, then keep the number with its constant.** Measure layout and performance
+  while developing, and record the measurement beside the constant it sets, as
+  [Values live in code](../AGENTS.md#documentation-and-public-hygiene) asks.
+  Do not turn a measurement into a pixel or colour assertion.
+
+When a change makes an existing test purely duplicative, delete that test in the same
+change and say so in the pull request.
+
 ## Python
 
 [AGENTS.md](../AGENTS.md#python-and-dependencies) sets the Python rules.
@@ -456,6 +518,11 @@ do not combine an unrelated rewrite with a release fix.
   The registries in `file_extensions.py` and the bound in `settings.py` are injected
   together as the browser’s authority; `test_plugin_sdk_syntax_token_contracts` checks
   every mapping against the vendored grammar registry.
+- A message the page shows a reader, whether a notice, an empty state, or an error,
+  follows [Reader Messages](design-system-messages.md): one statement and at most one
+  remedy, with the detail left in the route’s JSON and the console.
+  `tests/test_reader_messages.py` holds what a machine can check of it, in the browser
+  scripts and in the server’s answers.
 - First-party JavaScript and TypeScript filenames use lowercase kebab-case, because the
   same names appear in imports, manifests, URLs, documents, and test shims.
   Standard dotted roles such as `types.d.ts` are valid, and vendored assets keep their
@@ -558,6 +625,48 @@ the same tbd release into every Node version used here, at least the manager’s
 and the one `.node-version` pins: a stale copy can revert caches and documents the newer
 one wrote.
 
+### Linear
+
+Linear shows the project’s efforts, and tbd holds the work inside them.
+An effort is a top-level epic: a feature, a body of improvement, or a class of defects
+someone would ask about in a status meeting.
+The board should hold a few dozen of them; the hundreds of beads beneath them (tasks,
+bugs, review findings, single pull requests) stay in tbd.
+A per-pull-request mapping was tried first and left 205 linked issues on 2026-11-20, too
+many to read as a board.
+
+A bead reaches Linear only when it carries the `linear` label, open or closed
+(`integrations.linear.policy` in `.tbd/config.yml`). It also carries one type label,
+`Feature`, `Improvement`, or `Bug`, the names of the workspace’s Linear labels, so the
+board can be filtered by type.
+tbd does not copy the type label yet: give the Linear issue the same label by hand.
+`labels.mirror: verbatim` would copy it, but it also copies `linear` and every other
+bead label, which Linear does not have and tbd may not create, so every sync retries
+them all and goes over tbd’s 40-update guard (2026-11-20; jlevy/tbd#342 asks for a kind
+or label mapping).
+
+**Keep the structure as you work:**
+
+- **Every bead in an effort is a descendant of its epic.** Create a bead with
+  `--parent`, and move a stray one under the epic it belongs to.
+  A one-off fix that belongs to no effort may stay unparented; it has no Linear issue.
+- **A new effort is a new top-level epic** with `linear` and a type label, and, when it
+  has one, its plan spec (`--spec`). Give it an issue with
+  `tbd integration sync --push --bead <epic>`, then set the issue’s type label.
+- **Record each pull request or stack on its epic** as well as on its bead:
+  `tbd ref add <epic> <pr-url> --kind pr`. One epic can carry many pull requests and
+  stacks; a pull request need not map to exactly one issue.
+- **An epic is `in_progress` while anything under it is**: a claimed bead, an open pull
+  request, or a session working on it.
+  When you start work, set the epic’s status too
+  (`tbd update <epic> --status in_progress`); when its last active work lands, set it
+  back to `open`, or close it when the effort is done.
+- **Run `tbd sync`.** It reconciles linked issues in both directions
+  (`integrations.on_tbd_sync`), so status, titles, and descriptions follow the beads.
+
+Never run `tbd integration sync --push` without `--bead` for a bead that is already
+linked: it overwrites Linear-side edits that a full sync would merge.
+
 ## Shared Working Tree
 
 Several agents and worktrees often work this repository at once, so files can appear
@@ -590,6 +699,18 @@ Start from current `main` on a focused branch, add the failing test before a reg
 fix where practical, keep implementation, documentation, and public-hygiene changes
 together when they describe one contract, and review the wheel contents as well as the
 diff for unintended files or private residue.
+
+**Changelog entries are fragments.** A change that a user or plugin author can observe
+writes its entry as `changelog.d/<bead>.md`, holding the bullets the Unreleased section
+would have had, and leaves `CHANGELOG.md` alone.
+When every pull request added its entry at the top of Unreleased, each merge to `main`
+left every other open pull request with a conflict there, and so a merge-up and a full
+CI run; GitHub’s server-side merge ignores the `merge=union` attribute that resolves
+such conflicts locally.
+`make lint-check` runs `devtools/changelog.py check` against `origin/main`, which
+validates the fragments and fails a branch whose Unreleased section gains an entry, and
+the [Release Checklist](publishing.md#release-checklist) runs its `assemble`.
+[The fragments README](../changelog.d/README.md) has the rules.
 
 **A reference pull request can read as merged.** GitHub marks a pull request merged, and
 deletes its branch, as soon as its head commit is reachable from `main`. A reference

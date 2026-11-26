@@ -16,11 +16,9 @@
 // file's Source view with the Files tab grouped, filtered, opened, and scrolled, Shift-0
 // from Commits, and `0` on the root itself showing another view. After Home, Pulls opens
 // its list rather than the pull request it last showed, and `0` from a Pulls list whose
-// Tab stop `J` moved and whose changed files Right opened, from its change line, leaves it as
+// Tab stop `J` moved and whose changed files Right opened, from its toggle, leaves it as
 // a fresh load draws it: `P` then focuses the first row, with no stack closed and no files
-// open. The
-// name's tooltip neither appears nor goes because of a click, and the name is called
-// "Home: <folder>".
+// open. The name is announced as "Home: <folder>".
 //
 // Each step writes `phase <name> <ms since start>` to stderr, and `measure <name> <json>`
 // for what Home cost: its time to the root's view, and any frame the pane was blank.
@@ -38,10 +36,6 @@ const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - start
 const measure = (name, value) => process.stderr.write(`measure ${name} ${JSON.stringify(value)}\n`);
 // Each wait's bound: a page load, a key, or the fake gh's answer for a pull request.
 const STEP_MS = 30000;
-// The tooltip's appear delay is 300 ms (TOOLTIP_APPEAR_DELAY in static/app.js), and its fade
-// 150 ms; this waits past both.
-const TIP_MS = 600;
-
 const failures = [];
 let checks = 0;
 const check = (label, ok, detail = "") => {
@@ -79,8 +73,8 @@ const STATE = `(() => {
 
 // In the page: what the Pulls list decides that a fresh load draws, as a reader sees it,
 // each row named as it reads: its stacks closed, the pull requests whose changed files are
-// open, which is their change line's to say (mb-d0a3), the row that takes Tab, and the row
-// or change line with focus.
+// open, which their rows say (mb-1z7j), the row that takes Tab, and the row with focus, or
+// a toggle, which never takes it.
 const PULLS = `(() => {
   const rows = [...document.querySelectorAll("#tab-pulls .github-pulls-row")];
   const name = (row) =>
@@ -91,10 +85,11 @@ const PULLS = `(() => {
     closedStacks: rows
       .filter((row) => row.dataset.stack && row.getAttribute("aria-expanded") === "false")
       .map(name),
-    filesOpen: [...document.querySelectorAll('#tab-pulls .github-pulls-change[aria-expanded="true"]')]
-      .map((change) => "#" + change.dataset.number),
+    filesOpen: rows
+      .filter((row) => !row.dataset.stack && row.getAttribute("aria-expanded") === "true")
+      .map(name),
     tabStop: name(rows.find((row) => row.getAttribute("tabindex") === "0")),
-    focused: line ? "#" + line.dataset.number + " change line" : name(document.activeElement?.closest?.(".github-pulls-row")),
+    focused: line ? "#" + line.dataset.number + " toggle" : name(document.activeElement?.closest?.(".github-pulls-row")),
   };
 })()`;
 
@@ -386,49 +381,13 @@ try {
   );
   phase("pull request");
   await shot("changes");
-  // The pointer rests on the name until its tooltip shows, then clicks it.
   const at = await heading();
-  await pointer("mouseMoved", AWAY);
-  await sleep(TIP_MS);
   await pointer("mouseMoved", at);
-  await sleep(TIP_MS);
-  const before = await evaluate(TIP);
-  check("the name's tooltip shows on hover", before.shown, JSON.stringify(before));
-  const served = await evaluate(`document.querySelector(".header-path").dataset.servedRoot`);
-  check(
-    "the tooltip adds details: the full path, and nothing about going home",
-    before.text.includes(served) && !before.text.toLowerCase().includes("go home"),
-    JSON.stringify({ served, text: before.text }),
-  );
-  // Who takes the tooltip away, if anything does: the call stack of each hide.
-  await evaluate(`(() => {
-    window.__tipHides = [];
-    const tip = document.querySelector(".custom-tooltip");
-    const remove = tip.classList.remove.bind(tip.classList);
-    tip.classList.remove = (...names) => {
-      window.__tipHides.push(new Error().stack.split("\\n").slice(2, 6).join(" < "));
-      return remove(...names);
-    };
-  })()`);
   await watchFrames();
   await pointer("mousePressed", at);
   await pointer("mouseReleased", at);
-  await frames();
-  const pressed = await evaluate(TIP);
-  const hides = () => evaluate("window.__tipHides");
-  check(
-    "a click leaves the tooltip shown",
-    pressed.shown,
-    JSON.stringify({ ...pressed, hides: await hides() }),
-  );
   await framesSeen("click from a pull request's Changes tab");
   await isFresh("a click from a pull request's Changes tab", fresh);
-  const after = await evaluate(TIP);
-  check(
-    "the tooltip is still shown once Home has drawn",
-    after.shown,
-    JSON.stringify({ ...after, hides: await hides() }),
-  );
   await shot("home-from-changes");
 
   // Every tab forgot where it was: Pulls opens its list, not the pull request it showed.
@@ -440,35 +399,30 @@ try {
 
   // ── 1b. `0` from the Pulls list, its rows worked on ───────────
   // The reader walks the list with `J`, which moves the Tab stop and opens the next pull
-  // request, and opens that one's changed files with Right twice: once to its change line,
-  // which opens nothing, and once there. Home then leaves the list as a fresh load draws
-  // it, so `P` afterwards focuses the first row, with no files open.
+  // request, and opens that one's changed files with Right, as on a folder's, focus staying
+  // on its row (mb-1z7j). Home then leaves the list as a fresh load draws it, so `P`
+  // afterwards focuses the first row, with no files open.
   await waitFor(PULL_ROWS, "the Pulls rows");
   await evaluate("document.activeElement?.blur?.()");
   await press("p", P_KEY);
   await waitFor(ROW_FOCUSED, "P focuses a Pulls row");
   await press("j", J_KEY);
   await waitFor(`location.pathname.startsWith("/pull/")`, "J opens the next pull request");
+  const walked = await evaluate(PULLS);
   await press("ArrowRight", RIGHT);
   await waitFor(
-    `document.activeElement?.matches?.("#tab-pulls .github-pulls-change") === true`,
-    "Right goes to the change line",
-  );
-  const onLine = await evaluate(PULLS);
-  await press("ArrowRight", RIGHT);
-  await waitFor(
-    `document.querySelector('#tab-pulls .github-pulls-change[aria-expanded="true"]') !== null`,
-    "Right on the change line opens its changed files",
+    `document.querySelector('#tab-pulls a.github-pulls-row[aria-expanded="true"]:not(.github-pulls-stack-row)') !== null`,
+    "Right on the row opens its changed files",
   );
   const workedPulls = await evaluate(PULLS);
-  measure("worked-on Pulls", { onLine, workedPulls });
+  measure("worked-on Pulls", { walked, workedPulls });
   check(
-    "the Pulls list is worked on before Home: the Tab stop moved, Right went to a change line and opened nothing, and Right there opened its files",
+    "the Pulls list is worked on before Home: the Tab stop moved, and Right on its row opened its files, focus staying on the row",
     workedPulls.tabStop !== freshPulls.first &&
-      onLine.focused === `${workedPulls.tabStop} change line` &&
-      onLine.filesOpen.length === 0 &&
+      walked.filesOpen.length === 0 &&
+      workedPulls.focused === workedPulls.tabStop &&
       JSON.stringify(workedPulls.filesOpen) === JSON.stringify([workedPulls.tabStop]),
-    JSON.stringify({ onLine, workedPulls }),
+    JSON.stringify({ walked, workedPulls }),
   );
   await shot("pulls-worked-on");
   await evaluate("document.activeElement?.blur?.()");
@@ -491,22 +445,11 @@ try {
   await shot("pulls-after-home");
   phase("0 from the Pulls list");
 
-  // A click that comes before the tooltip's delay does not cancel it: the pointer resting
-  // on the name shows it, as it would without the click.
-  await pointer("mouseMoved", AWAY);
-  await sleep(TIP_MS);
-  await evaluate("document.activeElement?.blur?.()");
-  const quiet = await evaluate(TIP);
-  check("the tooltip goes when the pointer leaves", !quiet.shown, JSON.stringify(quiet));
   await pointer("mouseMoved", at);
   await pointer("mousePressed", at);
   await pointer("mouseReleased", at);
-  await sleep(TIP_MS);
-  const quick = await evaluate(TIP);
-  check("a quick click neither cancels nor adds the tooltip", quick.shown, JSON.stringify(quick));
   await isFresh("a click from the Pulls list", fresh);
   await pointer("mouseMoved", AWAY);
-  await sleep(TIP_MS);
 
   // ── 2. `0` from a file's Source view, the Files tab worked on ─
   await evaluate(`document.querySelector('#tab-files .tree-item[data-path="README.md"]').click()`);

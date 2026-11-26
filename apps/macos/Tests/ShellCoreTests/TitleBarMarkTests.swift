@@ -11,10 +11,16 @@ import Testing
         #expect(ProjectLinks.repositoryLabel == "Metabrowser on GitHub")
     }
 
+    @Test func theCreditLeadsToTheAuthorsPage() {
+        #expect(ProjectLinks.authorName == "Joshua Levy")
+        #expect(ProjectLinks.author.absoluteString == "https://x.com/ojoshe")
+        #expect(ProjectLinks.author.scheme == "https")
+    }
+
     @Test func theOtherLinksAreUnderTheRepository() {
         #expect(ProjectLinks.readme.absoluteString == "https://github.com/jlevy/metabrowser#readme")
         #expect(ProjectLinks.installationGuide.absoluteString
-            == "https://github.com/jlevy/metabrowser/blob/main/docs/installation.md")
+            == "https://github.com/jlevy/metabrowser#installation")
     }
 }
 
@@ -64,11 +70,11 @@ import Testing
     }
 }
 
-@Suite struct TitleBarMarkInteractionTests {
+@Suite struct TitleBarPressInteractionTests {
     private let inside = CGPoint(x: 680, y: 16)
 
     @Test func aPressReleasedInsideOpensThePageOnce() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pointerEntered()
         mark.pressed(at: inside)
         #expect(mark.isPressed)
@@ -80,20 +86,20 @@ import Testing
     }
 
     @Test func anAccessibilityPressOpensThePageOnce() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         #expect(mark.accessibilityPressed() == .open)
         #expect(mark.released(inside: true) == nil)
     }
 
     @Test func aReleaseOutsideTheHighlightOpensNothing() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pressed(at: inside)
         #expect(mark.released(inside: false) == nil)
         #expect(!mark.isPressed)
     }
 
     @Test func aPressThatMovesThreePointsDragsAndNeverOpens() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pressed(at: inside)
         #expect(mark.moved(to: CGPoint(x: inside.x + 2.9, y: inside.y)) == nil)
         #expect(mark.moved(to: CGPoint(x: inside.x + 3, y: inside.y)) == .drag)
@@ -106,7 +112,7 @@ import Testing
     }
 
     @Test func deactivationMidPressOpensNothing() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pointerEntered()
         mark.pressed(at: inside)
         mark.deactivated()
@@ -116,15 +122,29 @@ import Testing
 
     @Test func aFirstClickInAWindowThatIsNotKeyOpensOnce() {
         // The key-window tracking area reports no hover there: the press comes unlit.
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         #expect(!mark.isHovered)
         mark.pressed(at: inside)
         #expect(mark.released(inside: true) == .open)
         #expect(mark.released(inside: true) == nil)
     }
 
+    /// A control drags a window that is not key from its first press, as the rest of the
+    /// title bar does: the title, which spans much of the title bar, is grabbed there most.
+    @Test func aFirstPressInAWindowThatIsNotKeyCanDrag() {
+        var title = TitleBarPressInteraction()
+        title.pressed(at: inside)
+        // The window becomes key under the held press, and its tracking area starts
+        // reporting the pointer; neither ends the press.
+        title.pointerEntered()
+        #expect(title.isPressed)
+        #expect(title.moved(to: CGPoint(x: inside.x, y: inside.y + 3)) == .drag)
+        #expect(title.released(inside: true) == nil)
+        #expect(!title.isPressed)
+    }
+
     @Test func theHoverGoesOutOnExitAndOnDeactivation() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pointerEntered()
         #expect(mark.isHovered)
         mark.pointerExited()

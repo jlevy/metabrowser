@@ -12,10 +12,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f01",
+  "supported_format": "f03",
   "state": "current",
   "layout": {
-    "format": "f01",
+    "format": "f03",
     "created_by": "<VERSION>"
   },
   "config": {
@@ -35,9 +35,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "stores": [
     {
+      "key": "<STORE_KEY-A>",
       "id": "<STORE-A>",
       "publication": "published",
       "mode": "full",
@@ -76,7 +77,7 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "sources": [],
   "unrecognized_entries": 0,
   "limit": 25,
@@ -101,10 +102,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f01",
+  "supported_format": "f03",
   "state": "current",
   "layout": {
-    "format": "f01",
+    "format": "f03",
     "created_by": "<VERSION>"
   },
   "config": {
@@ -124,9 +125,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "stores": [
     {
+      "key": "<STORE_KEY-A>",
       "id": "<STORE-A>",
       "publication": "published",
       "mode": "full",
@@ -170,7 +172,7 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f03",
   "sources": [
     {
       "slug": "<SLUG-A>",

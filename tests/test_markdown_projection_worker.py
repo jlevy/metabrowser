@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import io
 import json
 import os
@@ -13,8 +14,16 @@ from pathlib import Path
 import pytest
 
 from metabrowser.diff import markdown_projection_worker as worker_module
-from metabrowser.diff.markdown_projection import bind_markdown_diff, prepare_markdown_diff
+from metabrowser.diff.markdown_projection import (
+    MARKDOWN_DIFF_MAX_BYTES,
+    bind_markdown_diff,
+    prepare_markdown_diff,
+)
 from metabrowser.diff.markdown_projection_worker import ProjectionWorker, serve
+from metabrowser.diff.structured_projection import (
+    project_structured_diff,
+    unavailable_structured_diff,
+)
 from tests.test_markdown_diff_projection import (
     _patch,  # pyright: ignore[reportPrivateUsage]
 )
@@ -248,8 +257,105 @@ def test_an_overrunning_child_is_stopped_and_refuses_that_input(
             assert process is not None
             answer = await worker.prepare(old=OLD, new=NEW, patch=_patch(OLD, NEW), namespace="n")
             assert answer.projection["status"] == "too_large"
+            assert answer.projection.get("reason") == "deadline", "the page says why"
             assert answer.projection["blocks"] == []
             assert await process.wait() is not None
+            assert worker._process is None  # pyright: ignore[reportPrivateUsage]
+        finally:
+            await worker.aclose()
+
+    asyncio.run(run())
+
+
+# Past a thread's byte budget: 54 KB of prose, which the child projects.
+_LARGE = b"A line of prose.\n\n" * 3_000
+
+
+@pytest.mark.parametrize("processes", [True, False], ids=["a child build", "a thread build"])
+def test_a_pair_past_a_threads_budgets_waits_for_the_child(processes: bool) -> None:
+    """A thread projects only within its input budgets, since nothing stops it. A pair
+    past them is the child's, on every build, as an inert render is: there the deadline
+    bounds it. So the first request of a loop, which a thread answers and which starts no
+    child, starts one for such a pair and waits for it (mb-rm40)."""
+
+    assert len(_LARGE) > MARKDOWN_DIFF_MAX_BYTES
+    patch = _patch(None, _LARGE)
+
+    async def run() -> None:
+        worker = ProjectionWorker(processes=processes)
+        try:
+            async with asyncio.timeout(120):
+                answer = await worker.prepare(old=None, new=_LARGE, patch=patch, namespace="n")
+            assert answer.projection["status"] == "ready"
+            assert worker.ready, "the child was started and waited for"
+            process = worker._process  # pyright: ignore[reportPrivateUsage]
+            again = await worker.prepare(old=None, new=_LARGE, patch=patch, namespace="n")
+            assert again == answer
+            assert worker._process is process, "and it answers the next one"  # pyright: ignore[reportPrivateUsage]
+        finally:
+            await worker.aclose()
+        assert answer == prepare_markdown_diff(
+            old=None, new=_LARGE, patch=patch, namespace="n", stoppable=True
+        )
+        in_a_thread = prepare_markdown_diff(old=None, new=_LARGE, patch=patch, namespace="n")
+        assert in_a_thread.projection["status"] == "too_large"
+
+    asyncio.run(run())
+
+
+def test_a_pair_past_a_threads_budgets_keeps_its_refusal_where_no_child_starts(
+    tmp_path: Path,
+) -> None:
+    patch = _patch(None, _LARGE)
+
+    async def run() -> None:
+        worker = ProjectionWorker(command=(str(tmp_path / "absent-python"),))
+        try:
+            answer = await worker.prepare(old=None, new=_LARGE, patch=patch, namespace="n")
+        finally:
+            await worker.aclose()
+        assert answer.projection["status"] == "too_large"
+        assert "reason" not in answer.projection, "a route does not keep it"
+
+    asyncio.run(run())
+
+
+# A child that says it is ready, takes every request, and never answers.
+_DEAF = (
+    "import sys, json\n"
+    "body = json.dumps({'ready': True}).encode()\n"
+    "sys.stdout.buffer.write(len(body).to_bytes(4, 'big') + body)\n"
+    "sys.stdout.buffer.flush()\n"
+    "while sys.stdin.buffer.read(65536):\n"
+    "    pass\n"
+)
+
+
+@_needs_child
+@pytest.mark.parametrize(
+    ("script", "reason"),
+    [
+        pytest.param(_DEAF, "deadline", id="a child that never answers"),
+        # A frame longer than a pipe holds waits on a child that does not read it: the
+        # write has the deadline too, and that is no verdict on the pair.
+        pytest.param(_SILENT, None, id="a child that never reads"),
+    ],
+)
+def test_a_pair_past_a_threads_budgets_is_stopped_at_the_childs_deadline(
+    monkeypatch: pytest.MonkeyPatch, script: str, reason: str | None
+) -> None:
+    monkeypatch.setattr(worker_module, "_PROJECTION_TIMEOUT_S", 0.3)
+    patch = _patch(None, _LARGE)
+    frame = worker_module._frame(worker_module._encode(None, _LARGE, patch, "n"))  # pyright: ignore[reportPrivateUsage]
+    assert len(frame) > 256 * 1024, "longer than a pipe holds on any platform tested"
+
+    async def run() -> None:
+        worker = ProjectionWorker(command=(sys.executable, "-c", script))
+        try:
+            async with asyncio.timeout(60):
+                answer = await worker.prepare(old=None, new=_LARGE, patch=patch, namespace="n")
+            assert answer.projection["status"] == "too_large"
+            assert answer.projection.get("reason") == reason
             assert worker._process is None  # pyright: ignore[reportPrivateUsage]
         finally:
             await worker.aclose()
@@ -309,6 +415,9 @@ def test_a_new_event_loop_replaces_the_child_the_old_loop_started() -> None:
     asyncio.run(first())
     asyncio.run(second())
     for _ in range(50):
+        # The killed child is reaped when the closed loop's transport is finalized, which
+        # waits for the collector: the test does not depend on when that runs.
+        gc.collect()
         if not _alive(pids[0]):
             break
         time.sleep(0.05)
@@ -367,5 +476,39 @@ def test_a_child_no_projection_reaches_is_stopped_when_idle(
                 assert await process.wait() is not None
         finally:
             await worker.aclose()
+
+    asyncio.run(run())
+
+
+@_needs_child
+def test_the_child_answers_structured_projections_as_a_thread_would() -> None:
+    old, new = b"a: 1\nb: [x]\n", b"a: 2\nb: [x, y]\n"
+    expected = project_structured_diff(old=old, new=new, fmt="yaml")
+    assert worker_module._answer(  # pyright: ignore[reportPrivateUsage]
+        json.loads(
+            json.dumps(
+                {
+                    "op": "structured",
+                    "format": "yaml",
+                    "old": worker_module._blob(old),  # pyright: ignore[reportPrivateUsage]
+                    "new": worker_module._blob(new),  # pyright: ignore[reportPrivateUsage]
+                }
+            )
+        )
+    ) == {"structured": expected}
+
+    async def run() -> None:
+        worker = ProjectionWorker()
+        try:
+            assert await worker.project_structured(old=old, new=new, fmt="yaml") == expected
+            worker.start()
+            async with asyncio.timeout(60):
+                assert await worker.started()
+            assert await worker.project_structured(old=old, new=new, fmt="yaml") == expected
+            assert await worker.project_structured(old=None, new=b"{", fmt="json") == (
+                unavailable_structured_diff("unsupported")
+            )
+        finally:
+            worker.stop()
 
     asyncio.run(run())

@@ -18,8 +18,9 @@ function makeContainer() {
     },
     prepended: [],
     classList: { add() {} },
-    querySelector() {
-      return null;
+    // Only the diagram probe finds anything, and only in a render that holds a figure.
+    querySelector(selector) {
+      return selector.includes("mermaid") && this.innerHTML.includes("kpress-mermaid") ? {} : null;
     },
     prepend(node) {
       this.prepended.push(node);
@@ -144,12 +145,22 @@ class FakeWorker {
     "globalThis.__markdownInertTocs.push({article,options});" +
     "return ()=>globalThis.__markdownInertTocDisposals.push(article)}";
   const inertRenderUrl = `data:text/javascript;base64,${Buffer.from(inertRenderStub).toString("base64")}`;
+  // The diagram adapter, replaced by a double whose drawing never finishes: the view's
+  // `ready` must settle without it.
+  const diagramsStub =
+    "export function mountDiagrams(root,mb,options){" +
+    "globalThis.__markdownDiagramMounts.push({root,options});" +
+    "return {ready:new Promise(()=>{}),dispose(){globalThis.__markdownDiagramDisposals.push(root)}}}";
+  const diagramsUrl = `data:text/javascript;base64,${Buffer.from(diagramsStub).toString("base64")}`;
+  globalThis.__markdownDiagramMounts = [];
+  globalThis.__markdownDiagramDisposals = [];
   const placeRenderedSource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/place-rendered.js"),
       "utf8",
     )
-    .replaceAll('"./inert-render.js"', JSON.stringify(inertRenderUrl));
+    .replaceAll('"./inert-render.js"', JSON.stringify(inertRenderUrl))
+    .replaceAll('"./diagrams.js"', JSON.stringify(diagramsUrl));
   check(
     "the placement module imports the inert render on demand",
     placeRenderedSource.includes(`await import(${JSON.stringify(inertRenderUrl)})`),
@@ -525,6 +536,38 @@ class FakeWorker {
   check(
     "no Worker outlives the inert mounts",
     workers.every((worker) => worker.terminated),
+  );
+
+  // A document's diagrams draw after its prose: the view's `ready`, which the shell's
+  // stage and the folder Overview await, does not wait on Mermaid.
+  const diagramContainer = makeContainer();
+  const diagramMount = module.mountRenderedMarkdown(
+    diagramContainer,
+    { path: "diagram.md", raw: { content: "```mermaid\nflowchart LR\n```" } },
+    mb,
+  );
+  await flush();
+  requestFor("diagram.md").resolve({
+    html: '<figure class="kpress-mermaid" data-kpress-diagram="mermaid"></figure>',
+  });
+  const settled = await Promise.race([
+    diagramMount.ready.then(() => "ready"),
+    new Promise((resolve) => setTimeout(() => resolve("waiting"), 200)),
+  ]);
+  check("the view is ready before its diagrams are drawn", settled === "ready", settled);
+  await flush();
+  check(
+    "its diagrams are drawn in the document, after the prose",
+    globalThis.__markdownDiagramMounts.length === 1 &&
+      globalThis.__markdownDiagramMounts[0].root === diagramContainer &&
+      globalThis.__markdownDiagramMounts[0].options.mode === "document",
+    JSON.stringify(globalThis.__markdownDiagramMounts.map((mount) => mount.options)),
+  );
+  diagramMount.dispose();
+  check(
+    "disposing the view disposes its pending diagrams",
+    globalThis.__markdownDiagramDisposals.length === 1,
+    String(globalThis.__markdownDiagramDisposals.length),
   );
 
   if (failures.length) {

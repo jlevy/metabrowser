@@ -5,16 +5,19 @@
 //
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
-// heading), change notes, the inline +N −N stat pair, the View file
-// controls of diff-view-file.js when the page can open a file at a
-// commit, and a copy-path control riding the shared [data-mb-copy]
-// delegation. Sections start expanded; the bar collapses the body
-// without disposing it.
+// heading); right after the name a copy-path control riding the shared
+// [data-mb-copy] delegation; the inline +N −N stat pair and change
+// notes; then the View file controls of diff-view-file.js when the page
+// can open a file at a commit; and, at the bar's end, a rendered file's
+// view chooser (diff-markdown.js). The diff's own choosers,
+// Diff | Current and Split | Unified, end its toolbar. Sections start
+// expanded; the bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
 // deliberately dumber than the model: the data plane is tested by the
 // conformance corpus and CLI goldens, and this layer only projects it.
 
+import { foldExpander, shellIcon } from "./diff-fold.js";
 import { diffSummaryOf, fileChangeLabel, plainTotals, validateDocument } from "./diff-model.js";
 import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
 import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
@@ -29,6 +32,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Pick<MetabrowserPublicSdk["perf"], "measure" | "measureAsync"> | undefined} [perf]
  * @property {MetabrowserPublicSdk["ensureAsset"]} [ensureAsset]
  * @property {MetabrowserPublicSdk["loadKpressAssets"]} [loadKpressAssets]
+ * @property {MetabrowserPublicSdk["ensureKindAssets"]} [ensureKindAssets]
+ * @property {MetabrowserPublicSdk["plugins"]} [plugins]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  * @property {MetabrowserPublicSdk["shortcuts"]} [shortcuts]
  * @property {MetabrowserPublicSdk["formatInteger"]} [formatInteger]
@@ -43,11 +48,60 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Record<string, unknown>} change
  * @property {HTMLElement} body
  * @property {Set<string>} expandedFolds
+ * @property {boolean} unfold Whether every fold of the file opens as it is drawn, as a
+ *   pull request's Docs tab shows its documents whole (`mountDiffView`'s *unfold*).
+ * @property {Set<string>} foldsOpened The folds *unfold* has opened: each opens the first
+ *   time it is drawn, so one the reader closes stays closed when the file is drawn again.
  * @property {Map<string, {timer: number}>} foldTasks
  * @property {Record<string, unknown>} patch
  * @property {DiffViewApi} api
  * @property {ReturnType<typeof buildFileRenderModel>} renderModel
  * @property {{host: HTMLElement, line: ReturnType<typeof buildFileRenderModel>["hunks"][number]["lines"][number], side: "old" | "new"}[]} textHosts
+ * @property {Projection | null} drawn The projection its body draws now, null before the first.
+ * @property {GapSource | null} gaps Where the unchanged lines between hunks come from, or
+ *   null where this diff has none to read, so each hunk's separator is a plain header.
+ * @property {GapLines} gapLines What has been read of them.
+ */
+
+/**
+ * How a file's diff reads the unchanged lines its hunks leave out, and keeps the reader's
+ * place while it draws them: the comparison route's `view=lines`, through the loader the
+ * plugin sets (`setGapLoader`), for a diff whose document came from a comparison. A patch
+ * file names no snapshot, and a Guided Review excerpt draws no gaps, so both have none.
+ *
+ * @typedef {object} GapSource
+ * @property {(path: string, ask: GapAsk) => Promise<unknown>} load
+ * @property {(state: FileViewState, change: () => void) => void} keep Run *change*, which
+ *   draws rows, and hold the row at the pane's top where it was while they are drawn.
+ * @property {number} context The context lines Git wrote around each change, past which a
+ *   last hunk's trailing context may not be the end of the file.
+ * @property {string} comparisonId The comparison the diff drew, which every answer names:
+ *   one for another, as a ref that moved since answers, is refused (`gapAnswer`).
+ * @property {AbortSignal} signal The mounted view's, which ends its asks and highlighting.
+ */
+
+/**
+ * @typedef {{start: number, count: number} | {end: number, count: number}} GapAsk
+ *   At most *count* of the new side's lines from *start*, 1-based, for a gap opened downward
+ *   from a hunk, or before *end*, for one opened upward to a hunk, so an answer its byte
+ *   bound cuts short keeps the lines beside the hunk.
+ */
+
+/**
+ * What a file holds of the unchanged lines its hunks leave out, kept while its diff is
+ * mounted, so a fold drawn again, in another layout or after it closed, asks for nothing.
+ *
+ * @typedef {object} GapLines
+ * @property {Map<number, DiffLine>} byNumber Each line read, by its new number.
+ * @property {number | null} lineCount The new side's lines in all, once an answer says.
+ * @property {Map<string, Promise<void>>} asked Asks on their way, by range.
+ * @property {Map<string, number>} reach Where an open whose answer its byte bound cut short
+ *   stopped, by the end it opened from (`up:<end>` or `down:<start>`): the line past its
+ *   last, so it opens to the same lines again and its nested bar stands for the rest.
+ * @property {boolean} refused The route declined this file's lines, so its gaps draw as
+ *   plain headers.
+ * @property {number} syntaxBytes The bytes of gap lines highlighted so far, which count
+ *   against `SYNTAX_HIGHLIGHT_MAX_BYTES` beside the hunks' own.
  */
 
 /**
@@ -65,8 +119,10 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {FileViewState[]} files
  * @property {number} generation
  * @property {ReturnType<typeof createHydrationScheduler>} hydration
- * @property {{controller: ReturnType<import("./diff-markdown.js").createMarkdownViews>, supports: typeof import("./diff-markdown.js").supportsMarkdownChange} | null} markdown
+ * @property {{controller: ReturnType<import("./diff-markdown.js").createMarkdownViews>, format: typeof import("./diff-markdown.js").renderedFormat} | null} markdown
  * @property {IntersectionObserver | null} hydrationObserver
+ * @property {Set<string>} reached Held files whose section is within the hydration
+ *   lookahead, whether or not their body is to be drawn (`bodyWanted`).
  * @property {boolean} awaitingWidth Nothing is drawn until the first report of a width.
  * @property {"unified" | "split"} chosenLayout What the reader chose, whatever fits.
  * @property {boolean} insistedOnSplit The reader chose Split where it does not fit.
@@ -98,6 +154,40 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   summary is drawn on, or null where it could not be loaded.
  * @property {((path: string) => void) | null} openFile How the host opens one changed file
  *   at its own address, or null where a file has none in this diff.
+ * @property {boolean} unfold Whether folds open as they are drawn (*unfold*).
+ * @property {Shown} show What the diff shows, one choice for every file (`setShow`).
+ * @property {string} showPreference The preference the choice is remembered as: the
+ *   surface's own (*showPreference*), or `diff.show`.
+ * @property {HTMLElement | null} showControl The toolbar's Diff | Current chooser.
+ * @property {MetabrowserPublicPluginShortcutHandle | null} showKey `N`, on the chip it would
+ *   select in the toolbar's chooser (`attachShowKey`).
+ * @property {{dispose: () => void}[]} pdfCards The PDF cards binary changes drew, to
+ *   dispose with the view.
+ */
+
+/**
+ * What a diff shows: its changes, or the new version alone with its changes marked.
+ *
+ * @typedef {"diff" | "current"} Shown
+ */
+
+/**
+ * What a file's code rows are drawn as: its changes in one of the two layouts, or, in
+ * Current, its new version in one column whatever the layout (`projectionOf`).
+ *
+ * @typedef {"unified" | "split" | "current"} Projection
+ */
+
+/**
+ * A place on the screen a redraw keeps: the file at the pane's top, by its section's top in
+ * the viewport's coordinates, and, for a Diff | Current choice, a row of that file that both
+ * draw and where it is to be (`placeOfTopRow`). *find* answers the element that is that row
+ * now, or null where it is not drawn; *state* is the code file whose rows it is.
+ *
+ * @typedef {object} Place
+ * @property {HTMLElement} section
+ * @property {number} top
+ * @property {{find: () => HTMLElement | null, top: number, state: FileViewState | null}} [row]
  */
 
 /**
@@ -178,6 +268,68 @@ export function setChangeLoader(loader) {
   loadOneChange = loader;
 }
 
+/**
+ * Read a run of one changed file's unchanged lines from a comparison: the route's
+ * `view=lines` answer. Injected by the plugin, as `loadOneChange` is; until it is set, no
+ * diff reads its gaps and every hunk's separator is a plain header.
+ *
+ * @type {((revision: string, path: string, ask: GapAsk, options?: {signal?: AbortSignal}) => Promise<unknown>) | null}
+ */
+let loadGapLines = null;
+
+/** @param {(revision: string, path: string, ask: GapAsk, options?: {signal?: AbortSignal}) => Promise<unknown>} loader */
+export function setGapLoader(loader) {
+  loadGapLines = loader;
+}
+
+/**
+ * The context lines the comparison wrote around each change (`GapSource.context`), where
+ * its files read their gaps, else null.
+ *
+ * @param {MountedDiffState} view
+ * @param {string | undefined} revision
+ * @returns {number | null}
+ */
+function gapContextOf(view, revision) {
+  if (!revision || loadGapLines === null) {
+    return null;
+  }
+  const options = /** @type {{context?: unknown} | undefined} */ (view.resolved.options);
+  const context = Number(options?.context ?? 3);
+  return Number.isInteger(context) && context >= 0 ? context : 3;
+}
+
+/**
+ * Where a mounted comparison's files read their gaps, or null for a diff with no comparison
+ * to read them from (a patch file's) or no loader. Rows a gap draws keep the reader's place
+ * as a layout change does: the row at the pane's top stays where it is on the screen, or a
+ * jump's file stays at the top, while every batch of them is drawn.
+ *
+ * @param {MountedDiffState} view
+ * @param {string | undefined} revision
+ * @returns {GapSource | null}
+ */
+function gapSourceOf(view, revision) {
+  const loader = loadGapLines;
+  const context = gapContextOf(view, revision);
+  if (loader === null || context === null || !revision) {
+    return null;
+  }
+  const { signal } = view.controller;
+  return {
+    context,
+    comparisonId: String(view.resolved.comparison_id ?? ""),
+    load: (path, ask) => loader(revision, path, ask, { signal }),
+    keep(state, change) {
+      const anchor = view.pinned === null ? placeOfTopRow(view, view.show) : null;
+      change();
+      holdPlace(view, anchor);
+      settlePlace(view, anchor, state);
+    },
+    signal,
+  };
+}
+
 // Copy for states that are facts about the change, not steps the
 // reader can take. `deferred` is deliberately absent: it is progress,
 // and progress is a spinner, never prose.
@@ -186,15 +338,119 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   too_large: "This change is too large to show inline.",
   timed_out: "Producing this diff timed out.",
   failed: "Could not produce this diff.",
-  stale: "The comparison changed underneath this file. Refresh to reload it.",
+  stale: "The comparison changed underneath this file. Reload the page to see it as it is now.",
   unsupported: "This change cannot be shown as a text diff.",
 });
+
+/**
+ * The side of a binary change whose first page a PDF card shows: the new side, or the
+ * old one for a deletion, when its path ends in `.pdf` and its content is a blob of the
+ * repository the comparison was read from. Null for every other change.
+ *
+ * A PDF named without the extension is still a binary change with no card: the
+ * comparison does not sniff its sides, and the file bar's View file reaches its view.
+ *
+ * @param {Record<string, unknown>} change
+ * @returns {{path: string, oid: string} | null}
+ */
+export function pdfCardSide(change) {
+  const side = /** @type {Record<string, unknown> | undefined} */ (
+    change.kind === "deleted" ? change.old : change.new
+  );
+  const path = side?.path;
+  const content = /** @type {Record<string, unknown> | undefined} */ (side?.content);
+  if (typeof path !== "string" || !/\.pdf$/i.test(path)) {
+    return null;
+  }
+  if (content?.kind !== "git_object" || typeof content.oid !== "string") {
+    return null;
+  }
+  return { path, oid: content.oid };
+}
+
+/**
+ * Below a binary change's line, the PDF plugin's card for the side `pdfCardSide` names
+ * (`requires = ["pdf"]` in manifest.toml). The card holds an image the server drew,
+ * never a viewer; a page whose plugins cannot load leaves the line alone.
+ *
+ * The card carries the file bar's own View file controls (`renderViewFileControl`), so
+ * the PDF's page in Metabrowser, with its viewer, Open, and Download, is one press from
+ * the card and not only from the bar above it. They are registered with the bar's, so a
+ * pin change repaints both, and a refusal is said under the card. A deleted PDF's card
+ * has none, as its bar has none.
+ *
+ * @param {MountedDiffState} view
+ * @param {Record<string, unknown>} change
+ * @param {HTMLElement} body
+ */
+function appendPdfCard(view, change, body) {
+  const side = pdfCardSide(change);
+  const plugins = view.api?.plugins;
+  if (side === null || typeof plugins?.load !== "function") {
+    return;
+  }
+  const slot = el("div", "diff-pdf-card");
+  body.append(slot);
+  /** @type {{dispose: () => void} | null} */
+  let card = null;
+  let disposed = false;
+  view.pdfCards.push({
+    dispose() {
+      disposed = true;
+      card?.dispose();
+      // The card's View file notice goes with it.
+      slot.replaceChildren();
+      slot.remove();
+    },
+  });
+  // A load that throws at once is a page without the plugin, as one that rejects is.
+  void new Promise((resolve) => resolve(plugins.load("pdf")))
+    .then((pdf) => {
+      const mount = /** @type {{mountPdfCard?: Function} | undefined} */ (pdf)?.mountPdfCard;
+      if (disposed || view.disposed || typeof mount !== "function") {
+        return;
+      }
+      const name = side.path.slice(side.path.lastIndexOf("/") + 1) || side.path;
+      const controls = pdfCardControls(view, change);
+      card = mount(slot, { oid: side.oid, name, links: controls.links });
+      if (controls.notice !== null) {
+        slot.append(controls.notice);
+      }
+    })
+    .catch(() => slot.remove());
+}
+
+/**
+ * The View file controls a PDF card carries: the ones the file bar draws for *change*,
+ * registered with the bar's so a repaint reaches them, and the notice their refusals are
+ * said in, which goes under the card. No controls and no notice where the bar has none.
+ *
+ * @param {MountedDiffState} view
+ * @param {Record<string, unknown>} change
+ * @returns {{links: HTMLElement[], notice: HTMLElement | null}}
+ */
+function pdfCardControls(view, change) {
+  const actions = view.viewFile?.actions(change, view.resolved) ?? [];
+  if (actions.length === 0) {
+    return { links: [], notice: null };
+  }
+  const notice = el("div", "diff-availability diff-file-notice");
+  notice.setAttribute("role", "status");
+  notice.hidden = true;
+  const said = { element: notice, timer: 0 };
+  const links = actions.map((action) => renderViewFileControl(action, view, said));
+  view.viewFileBars.push({ change, controls: links, said });
+  return { links, notice };
+}
+
+// What a file whose availability the table does not name says.
+const UNAVAILABLE_COPY = "These changes are unavailable.";
 
 // A single file's answer owes the file or a reason. `deferred` there is neither, so it is
 // said as what it is and not as a failure of this page; in a document with no source to
 // ask, a deferred file is simply unavailable, which the table above's fallback says.
 const DEFERRED_AGAIN_COPY =
-  "The server did not load this file's changes. Reload the page to ask again.";
+  "The server did not load this file's changes. Reload the page to try again.";
 
 // Chrome 151, five runs of explorations/diff-intraline/benchmark.html:
 // ordinary edits completed in <= 1.2 ms, an 8 MiB mostly-equal line in
@@ -256,6 +512,9 @@ const SETTINGS = /** @type {Record<string, number>} */ (
 // build still folds sensibly. 0 disables folding.
 const FOLD_THRESHOLD = Number(SETTINGS.DIFF_FOLD_THRESHOLD ?? 40);
 const FOLD_VISIBLE = Number(SETTINGS.DIFF_FOLD_VISIBLE ?? 20);
+// The unchanged lines one open of a hunk's gap shows, the server's `DIFF_GAP_LINES`
+// (settings.py), whose comment holds the measurement.
+const GAP_LINES = Math.max(1, Number(SETTINGS.DIFF_GAP_LINES ?? 1000));
 // The existing measured layout projection batch creates at least three row
 // elements per file. Keeping fold expansion to 100 rows is the stricter of
 // the two projection budgets and gives the browser a task boundary between
@@ -279,6 +538,9 @@ const FILE_BORDER_PX = 2;
 export const SPLIT_RETURN_MARGIN_PX = 20;
 const SPLIT_TOO_NARROW_TIP =
   "Too narrow for Split, so this shows Unified. Choose Split to scroll sideways.";
+// Why the layout chips are unavailable while the diff shows Current (`renderLayoutControl`).
+const LAYOUT_IN_CURRENT_TIP =
+  "Current shows the new version in one column; choose Diff for Split or Unified.";
 
 /** @param {string} tag @param {string} className @param {string} [text] */
 function el(tag, className, text) {
@@ -291,16 +553,17 @@ function el(tag, className, text) {
 }
 
 /**
- * A glyph from the shell's shared registry, or "" outside the shell.
+ * A box saying something about the diff it sits in: `.notice`, the shell's one primitive,
+ * with the severity on its border. The plain availability reasons stay muted text.
  *
- * @param {string} name
- * @returns {string}
+ * @param {"warning" | "error"} severity
+ * @param {string} className
+ * @param {string} [text]
  */
-function shellIcon(name) {
-  const shell = /** @type {{metabrowser?: {icons?: Record<string, string>}}} */ (
-    /** @type {unknown} */ (globalThis)
-  );
-  return shell.metabrowser?.icons?.[name] ?? "";
+function noticeEl(severity, className, text) {
+  const node = el("div", `notice diff-notice diff-availability ${className}`.trim(), text);
+  node.setAttribute("data-severity", severity);
+  return node;
 }
 
 /**
@@ -416,14 +679,63 @@ function renderTextHost(state, line, side) {
   return host;
 }
 
-/** @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk */
-function renderHunkHeader(hunk) {
+/**
+ * A hunk's separator as Git writes it, its old and new ranges between `@@` marks and the
+ * heading after them, or in Current the new side's range alone. Git takes the heading
+ * from the old file, so it can be a line the change removed, which Current does not show.
+ *
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
+ * @param {boolean} current
+ */
+function hunkHeaderText(hunk, current) {
+  if (current) {
+    return `@@ +${hunk.newStart},${hunk.newCount} @@`;
+  }
   const heading = hunk.heading ? ` ${hunk.heading}` : "";
-  return el(
-    "div",
-    "diff-hunk-header",
-    `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@${heading}`,
-  );
+  return `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@${heading}`;
+}
+
+/**
+ * The top of hunk *hunkIndex*: where unchanged lines lie between it and the hunk above, or
+ * the file's start, and the diff can read them, the fold bar that opens to them with the
+ * hunk's separator beside its label (`renderGapFold`); otherwise the separator alone. A
+ * last hunk is followed by the bar for the lines after it, where the file may go on.
+ *
+ * @param {HTMLElement} section
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ * @param {boolean} current
+ * @param {(line: DiffLine) => HTMLElement} renderGapRow How this projection draws a gap's line.
+ */
+function appendHunkTop(section, state, hunkIndex, current, renderGapRow) {
+  const hunk = state.renderModel.hunks[hunkIndex];
+  const text = hunkHeaderText(hunk, current);
+  const gaps = gapsOf(state);
+  const gap = gaps?.[hunkIndex] ?? null;
+  if (gap === null) {
+    section.append(el("div", "diff-hunk-header", text));
+  } else {
+    const fold = renderGapFold(state, gap, "up", text, renderGapRow, null);
+    section.append(fold.control, fold.group);
+  }
+}
+
+/**
+ * The bar for the lines after the last hunk, at the end of its section, where the file may
+ * go on past it (`hunkGaps`).
+ *
+ * @param {HTMLElement} section
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ * @param {(line: DiffLine) => HTMLElement} renderGapRow
+ */
+function appendHunkEnd(section, state, hunkIndex, renderGapRow) {
+  const gaps = gapsOf(state);
+  const gap = gaps !== null && hunkIndex === gaps.length - 2 ? gaps[gaps.length - 1] : null;
+  if (gap !== null) {
+    const fold = renderGapFold(state, gap, "down", "", renderGapRow, null);
+    section.append(fold.control, fold.group);
+  }
 }
 
 /** @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk */
@@ -563,11 +875,21 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
     }
     section.append(...run.slice(0, FOLD_VISIBLE).map(renderRow));
     const key = `${String(state.change.id)}:${hunkIndex}:${changedRun}`;
-    const expanded = state.expandedFolds.has(key);
+    if (state.unfold && !state.foldsOpened.has(key)) {
+      // Drawn open, its rows materialized in batches as a reader's opening does; once,
+      // so a fold the reader closed stays closed when a layout change draws it again.
+      state.foldsOpened.add(key);
+      state.expandedFolds.add(key);
+    }
     foldSequence += 1;
-    const group = el("div", `diff-fold-group${expanded ? "" : " diff-fold-collapsed"}`);
-    group.setAttribute("id", `diff-fold-group-${foldSequence}`);
-    section.append(renderFoldControl(group, run.slice(FOLD_VISIBLE), renderRow, state, key), group);
+    const fold = renderFoldControl(
+      `diff-fold-group-${foldSequence}`,
+      run.slice(FOLD_VISIBLE),
+      renderRow,
+      state,
+      key,
+    );
+    section.append(fold.control, fold.group);
     index = end;
   }
 }
@@ -579,16 +901,12 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
  */
 function renderUnifiedHunk(hunk, state, hunkIndex) {
   const section = el("div", "diff-hunk diff-hunk-unified");
-  section.append(renderHunkHeader(hunk));
+  /** @param {DiffLine} line */
+  const renderLine = (line) => renderUnifiedLine(state, line);
+  appendHunkTop(section, state, hunkIndex, false, renderLine);
   const rows = projectUnifiedHunk(hunk);
-  appendFoldedRows(
-    section,
-    rows,
-    (line) => line.changedRun,
-    (line) => renderUnifiedLine(state, line),
-    state,
-    hunkIndex,
-  );
+  appendFoldedRows(section, rows, (line) => line.changedRun, renderLine, state, hunkIndex);
+  appendHunkEnd(section, state, hunkIndex, renderLine);
   return section;
 }
 
@@ -599,7 +917,10 @@ function renderUnifiedHunk(hunk, state, hunkIndex) {
  */
 function renderSplitHunk(hunk, state, hunkIndex) {
   const section = el("div", "diff-hunk diff-hunk-split");
-  section.append(renderHunkHeader(hunk));
+  /** @param {DiffLine} line An unchanged line, the same on both sides. */
+  const renderGapRow = (line) =>
+    renderSplitLine(state, { changedRun: null, new: line, old: line, refined: false });
+  appendHunkTop(section, state, hunkIndex, false, renderGapRow);
   const rows = projectSplitHunk(hunk);
   appendFoldedRows(
     section,
@@ -609,7 +930,99 @@ function renderSplitHunk(hunk, state, hunkIndex) {
     state,
     hunkIndex,
   );
+  appendHunkEnd(section, state, hunkIndex, renderGapRow);
   return section;
+}
+
+/**
+ * The rows a hunk draws in Current: its lines of the new file, context and added, in order.
+ * Pure.
+ *
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
+ */
+export function projectCurrentHunk(hunk) {
+  return hunk.lines.filter((line) => line.op !== "del");
+}
+
+/**
+ * A line of the new file: its new number alone, and its marker, so an added line says so
+ * by more than its color.
+ *
+ * @param {FileViewState} state
+ * @param {DiffLine} line
+ */
+function renderCurrentLine(state, line) {
+  const refined = line.intralineRefined ? " diff-line-refined" : "";
+  const row = el("div", `diff-line diff-line-${line.op}${refined}`);
+  row.append(
+    el("span", "diff-line-number", line.newNumber === null ? "" : String(line.newNumber)),
+    el("span", "diff-line-marker", line.op === "add" ? "+" : " "),
+    renderTextHost(state, line, "new"),
+  );
+  if (line.noNewline) {
+    row.append(el("span", "diff-line-no-newline", "⏎ absent"));
+    row.dataset.tipText = "No newline at end of file";
+  }
+  return row;
+}
+
+/**
+ * A hunk in Current: its header names the new side's range alone, and a changed run folds
+ * by the rows Current draws of it, under the key Diff's fold of that run has. The header
+ * has no heading: Git takes the function-context line it writes after `@@` from the old
+ * file, so it can be a line the change removed, which Current does not show. Diff keeps it.
+ *
+ * @param {DiffLine[]} rows `projectCurrentHunk`'s.
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ */
+function renderCurrentHunk(rows, state, hunkIndex) {
+  const section = el("div", "diff-hunk diff-hunk-current");
+  /** @param {DiffLine} line */
+  const renderLine = (line) => renderCurrentLine(state, line);
+  appendHunkTop(section, state, hunkIndex, true, renderLine);
+  appendFoldedRows(section, rows, (line) => line.changedRun, renderLine, state, hunkIndex);
+  appendHunkEnd(section, state, hunkIndex, renderLine);
+  return section;
+}
+
+/**
+ * What a file with no lines in its new version says in Current, or null for one that has
+ * lines: a deleted file, and a file left empty, whose one hunk ends at the new side's line
+ * 0. Pure.
+ *
+ * @param {Record<string, unknown>} change
+ * @param {{newStart: number, newCount: number}[]} hunks
+ * @returns {string | null}
+ */
+export function currentAbsence(change, hunks) {
+  if (String(change.kind) === "deleted") {
+    return "This file was deleted, so it has no current version.";
+  }
+  if (hunks.length > 0 && hunks.every((hunk) => hunk.newStart === 0 && hunk.newCount === 0)) {
+    return "This file is empty now.";
+  }
+  return null;
+}
+
+/**
+ * Draw a file's Current: each hunk's lines of the new file. A hunk that only removed lines,
+ * with no context around it, has none and is left out.
+ *
+ * @param {FileViewState} state
+ */
+function renderCurrentBody(state) {
+  const absence = currentAbsence(state.change, state.renderModel.hunks);
+  if (absence !== null) {
+    state.body.append(el("div", "diff-availability diff-current-absent", absence));
+    return;
+  }
+  for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
+    const rows = projectCurrentHunk(hunk);
+    if (rows.length > 0) {
+      state.body.append(renderCurrentHunk(rows, state, hunkIndex));
+    }
+  }
 }
 
 /**
@@ -618,16 +1031,30 @@ function renderSplitHunk(hunk, state, hunkIndex) {
  * @param {Record<string, unknown>} patch
  * @param {DiffViewApi} api
  * @param {HTMLElement} body
+ * @param {boolean} [unfold]
+ * @param {GapSource | null} [gaps] Where the lines between its hunks come from, if anywhere.
  * @returns {FileViewState}
  */
-export function createFileState(change, patch, api, body) {
+export function createFileState(change, patch, api, body, unfold = false, gaps = null) {
   const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
   return {
     api,
     body,
     change,
+    drawn: null,
     expandedFolds: new Set(),
     foldTasks: new Map(),
+    gapLines: {
+      asked: new Map(),
+      byNumber: new Map(),
+      reach: new Map(),
+      lineCount: null,
+      refused: false,
+      syntaxBytes: 0,
+    },
+    gaps,
+    unfold,
+    foldsOpened: new Set(),
     patch,
     renderModel: measureProjection(
       api,
@@ -648,7 +1075,7 @@ export function createFileState(change, patch, api, body) {
 /**
  * Render one active projection from cached source and token facts.
  * @param {FileViewState} state
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function renderFileBody(state, layout) {
   cancelFoldMaterializations(state);
@@ -658,20 +1085,26 @@ export function renderFileBody(state, layout) {
     () => {
       state.body.replaceChildren();
       state.textHosts = [];
-      for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
-        state.body.append(
-          layout === "split"
-            ? renderSplitHunk(hunk, state, hunkIndex)
-            : renderUnifiedHunk(hunk, state, hunkIndex),
-        );
+      state.drawn = layout;
+      if (state.gapLines.refused) {
+        // Its gaps are plain separators now; one line says why the bar the reader pressed
+        // went (docs/design-system-messages.md, "Degrade Gracefully").
+        state.body.append(noticeEl("warning", "diff-gap-refused", GAP_REFUSED_COPY));
+      }
+      if (layout === "current") {
+        renderCurrentBody(state);
+      } else {
+        for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
+          state.body.append(
+            layout === "split"
+              ? renderSplitHunk(hunk, state, hunkIndex)
+              : renderUnifiedHunk(hunk, state, hunkIndex),
+          );
+        }
       }
       if (state.patch.truncated) {
         state.body.append(
-          el(
-            "div",
-            "diff-availability diff-patch-truncated",
-            "This patch was truncated at its bounds.",
-          ),
+          noticeEl("warning", "diff-patch-truncated", "This patch is too long to show in full."),
         );
       }
     },
@@ -681,6 +1114,41 @@ export function renderFileBody(state, layout) {
       line_count: state.renderModel.hunks.reduce((total, hunk) => total + hunk.lines.length, 0),
     },
   );
+}
+
+/**
+ * One file's hunks, drawn as Changes draws a file's body: each hunk under its header bar,
+ * a long changed run behind its fold bar, and, after first paint, changed-run pairs and
+ * syntax. For another plugin that shows part of a change in its own place: Guided Review's
+ * excerpts (`mountFilePatch` in index.js). Unified only, since its host is a column.
+ *
+ * @param {HTMLElement} body The element the hunks are drawn into.
+ * @param {Record<string, unknown>} change A changed file: its `old` and `new` paths.
+ * @param {Record<string, unknown>} patch Its `hunks`, as the diff route answers them.
+ * @param {DiffViewApi} api
+ * @returns {{dispose: () => void}}
+ */
+export function mountFilePatch(body, change, patch, api) {
+  const controller = new AbortController();
+  const state = createFileState(change, patch, api, body);
+  renderFileBody(state, "unified");
+  const isCurrent = () => !controller.signal.aborted;
+  void (async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (!isCurrent()) {
+      return;
+    }
+    await enhanceFileIntraline(state, api, controller.signal, isCurrent, () => "unified");
+    if (isCurrent()) {
+      await enhanceFileSyntax(state, api, controller.signal, isCurrent);
+    }
+  })();
+  return {
+    dispose() {
+      controller.abort();
+      cancelFoldMaterializations(state);
+    },
+  };
 }
 
 /**
@@ -730,7 +1198,7 @@ function refreshTextHosts(state) {
  * @param {DiffViewApi} api
  * @param {AbortSignal} signal
  * @param {() => boolean} isCurrent
- * @param {() => "unified" | "split" | null} currentLayout `null` until a layout is drawn.
+ * @param {() => Projection | null} currentLayout `null` until a layout is drawn.
  */
 async function enhanceFileIntraline(state, api, signal, isCurrent, currentLayout) {
   try {
@@ -856,7 +1324,7 @@ function scheduleFileEnhancement(view, state) {
       api,
       view.controller.signal,
       () => mountIsCurrent(view, generation),
-      () => (view.awaitingWidth ? null : view.layout),
+      () => (view.awaitingWidth ? null : projectionOf(view)),
     );
     await enhanceFileSyntax(state, api, view.controller.signal, () =>
       mountIsCurrent(view, generation),
@@ -865,40 +1333,37 @@ function scheduleFileEnhancement(view, state) {
 }
 
 /**
- * The fold expander: the tree's disclosure vocabulary on a full-width
- * row, stating the count it holds so the reader knows what is hidden.
+ * A changed run's fold (`foldExpander` in diff-fold.js), stating the count it holds so the
+ * reader knows what is hidden. Its rows are drawn when it opens, in batches.
  *
  * @template T
- * @param {HTMLElement} group
+ * @param {string} id The group's id.
  * @param {T[]} hiddenRows
  * @param {(row: T) => HTMLElement} renderRow
  * @param {FileViewState} state
  * @param {string} key
- * @returns {HTMLElement}
+ * @returns {import("./diff-fold.js").FoldExpander}
  */
-function renderFoldControl(group, hiddenRows, renderRow, state, key) {
-  let expanded = state.expandedFolds.has(key);
+function renderFoldControl(id, hiddenRows, renderRow, state, key) {
   const hidden = hiddenRows.length;
-  const control = el("button", "fold-expander diff-fold-control disclosure-toggle");
-  control.setAttribute("type", "button");
-  control.setAttribute("aria-expanded", String(expanded));
-  control.setAttribute("aria-controls", group.getAttribute("id") || "");
-  control.classList.toggle("expanded", expanded);
-  const chevron = el("span", "diff-fold-chevron");
-  const svg = shellIcon("toggle");
-  if (svg) {
-    chevron.innerHTML = svg;
-  } else {
-    chevron.textContent = "›";
-  }
-  const label = el(
-    "span",
-    "diff-fold-label",
-    expanded
-      ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
-      : `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
-  );
-  control.append(chevron, label);
+  const fold = foldExpander({
+    id,
+    expanded: state.expandedFolds.has(key),
+    label: (expanded) =>
+      expanded
+        ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
+        : `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
+    onToggle(expanded) {
+      if (expanded) {
+        state.expandedFolds.add(key);
+        scheduleMaterialization();
+      } else {
+        state.expandedFolds.delete(key);
+        cancelMaterialization();
+      }
+    },
+  });
+  const { group } = fold;
 
   function cancelMaterialization() {
     const task = state.foldTasks.get(key);
@@ -931,29 +1396,10 @@ function renderFoldControl(group, hiddenRows, renderRow, state, key) {
     state.foldTasks.set(key, task);
   }
 
-  control.addEventListener("click", (event) => {
-    // The bar above owns clicks on the file section; a fold is its own
-    // control and must not also collapse the whole file.
-    event.stopPropagation();
-    expanded = !expanded;
-    if (expanded) {
-      state.expandedFolds.add(key);
-      scheduleMaterialization();
-    } else {
-      state.expandedFolds.delete(key);
-      cancelMaterialization();
-    }
-    control.setAttribute("aria-expanded", String(expanded));
-    control.classList.toggle("expanded", expanded);
-    group.classList.toggle("diff-fold-collapsed", !expanded);
-    label.textContent = expanded
-      ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
-      : `${hidden} more changed line${hidden === 1 ? "" : "s"}`;
-  });
-  if (expanded) {
+  if (fold.expanded()) {
     scheduleMaterialization();
   }
-  return control;
+  return fold;
 }
 
 /** @param {FileViewState} state */
@@ -962,6 +1408,623 @@ function cancelFoldMaterializations(state) {
     clearTimeout(task.timer);
   }
   state.foldTasks.clear();
+}
+
+// ── Gaps: the unchanged lines between hunks ──────────────────────────────────────────────
+
+// What a file whose lines the comparison declines to give says, above its hunks: a gap's
+// bar is then its plain separator (`refuseGaps`).
+const GAP_REFUSED_COPY = "The unchanged lines of this file cannot be shown.";
+
+/**
+ * Where a hunk's hidden lines lie, by the new side's numbers: from *start* to one before
+ * *end*, or to the file's end where *end* is null, which no answer has said yet. *offset* is
+ * what a new number adds for the old one, the change's net lines above the gap, so a gap's
+ * old and new numbers advance together.
+ *
+ * @typedef {{start: number, end: number | null, offset: number}} HunkGap
+ */
+
+/**
+ * The unchanged lines each hunk leaves out above it, and the last one below it. Pure.
+ *
+ * Entry *i* is the gap above hunk *i*, null where it touches the hunk above or the file's
+ * first line; the entry after the last hunk's is the gap below it, from the line after it to
+ * the file's end. A patch says where each hunk starts and not where the file ends, so that
+ * gap is open where *lineCount* is not known and the last hunk ends in a full *context* of
+ * unchanged lines, as Git writes up to that many after a change, and its last line ends
+ * with a newline: a shorter run, or none, ends the file there. A gap whose old and new
+ * spans disagree, which no patch Git writes has, is left out. A count of 0 starts a side
+ * after its line, as a hunk of `-3,0 +4,2` adds two lines after old line 3.
+ *
+ * @param {{oldStart: number, oldCount: number, newStart: number, newCount: number, lines: {op: string, noNewline: boolean}[]}[]} hunks
+ * @param {number} context
+ * @param {number | null} [lineCount] The new side's lines in all, where an answer said.
+ * @returns {(HunkGap | null)[]}
+ */
+export function hunkGaps(hunks, context, lineCount = null) {
+  if (hunks.length === 0) {
+    return [];
+  }
+  /** @type {(HunkGap | null)[]} */
+  const gaps = [];
+  let oldNext = 1;
+  let newNext = 1;
+  for (const hunk of hunks) {
+    const oldFirst = hunk.oldCount > 0 ? hunk.oldStart : hunk.oldStart + 1;
+    const newFirst = hunk.newCount > 0 ? hunk.newStart : hunk.newStart + 1;
+    const span = newFirst - newNext;
+    gaps.push(
+      span > 0 && oldFirst - oldNext === span
+        ? { start: newNext, end: newFirst, offset: oldNext - newNext }
+        : null,
+    );
+    oldNext = oldFirst + hunk.oldCount;
+    newNext = newFirst + hunk.newCount;
+  }
+  const last = hunks[hunks.length - 1];
+  let trailing = 0;
+  for (let index = last.lines.length - 1; index >= 0; index -= 1) {
+    if (last.lines[index].op !== "context") {
+      break;
+    }
+    trailing += 1;
+  }
+  const endsFile = last.lines.at(-1)?.noNewline === true;
+  const open =
+    lineCount === null ? context > 0 && trailing >= context && !endsFile : lineCount >= newNext;
+  gaps.push(
+    open
+      ? {
+          start: newNext,
+          end: lineCount === null ? null : lineCount + 1,
+          offset: oldNext - newNext,
+        }
+      : null,
+  );
+  return gaps;
+}
+
+/**
+ * A file's gaps as it draws them now, or null where its diff draws plain separators: no
+ * source of lines, a refusal, a change with no new file to read them from, or, below the
+ * last hunk, a patch cut short, whose last hunk is not the file's.
+ *
+ * @param {FileViewState} state
+ * @returns {(HunkGap | null)[] | null}
+ */
+function gapsOf(state) {
+  const side = /** @type {{entry_type?: unknown} | undefined} */ (state.change.new);
+  if (
+    state.gaps === null ||
+    state.gapLines.refused ||
+    state.change.binary === true ||
+    side?.entry_type !== "file"
+  ) {
+    return null;
+  }
+  const gaps = hunkGaps(state.renderModel.hunks, state.gaps.context, state.gapLines.lineCount);
+  if (state.patch.truncated && gaps.length > 0) {
+    gaps[gaps.length - 1] = null;
+  }
+  return gaps;
+}
+
+/**
+ * One unchanged line read for a gap, as the patch's own context lines are: both numbers,
+ * the same text on both sides, and no changes inside it.
+ *
+ * @param {number} number Its new number.
+ * @param {number} offset
+ * @param {string} text
+ * @param {boolean} noNewline The file's last line, with no newline after it.
+ * @returns {DiffLine}
+ */
+function gapLine(number, offset, text, noNewline) {
+  return {
+    changedRun: null,
+    intralineRefined: false,
+    newIntralineRanges: [],
+    newNumber: number,
+    newTokens: null,
+    noNewline,
+    oldIntralineRanges: [],
+    oldNumber: number + offset,
+    oldTokens: null,
+    op: "context",
+    text,
+  };
+}
+
+/**
+ * The route's `view=lines` answer to *ask*, or a throw for anything else: a run of at most
+ * its count, from its start, or ending before its end or at the side's last line. An answer
+ * for another comparison than the one drawn, as a ref that moved since it was drawn gives,
+ * would put another commit's lines between these hunks as unchanged; it is refused, as a
+ * declined file is, since asking again gets the same (`refusesGapLines`).
+ *
+ * @param {unknown} payload
+ * @param {GapAsk} ask
+ * @param {string} comparisonId
+ * @returns {{start: number, lines: string[], line_count: number, ends_with_newline: boolean}}
+ */
+function gapAnswer(payload, ask, comparisonId) {
+  const answer = /** @type {Record<string, unknown> | null} */ (
+    payload !== null && typeof payload === "object" ? payload : null
+  );
+  if (
+    answer === null ||
+    !Number.isInteger(answer.start) ||
+    !Array.isArray(answer.lines) ||
+    answer.lines.length > ask.count ||
+    !answer.lines.every((line) => typeof line === "string") ||
+    !Number.isInteger(answer.line_count) ||
+    typeof answer.ends_with_newline !== "boolean"
+  ) {
+    throw new Error("The comparison answered with something other than these lines.");
+  }
+  // Before the run's range: another comparison's file may end before the lines asked for, and
+  // its answer is still a refusal, not a failure a Retry gets past.
+  if (answer.comparison_id !== comparisonId) {
+    throw Object.assign(new Error("The comparison answered for another comparison."), {
+      refused: true,
+    });
+  }
+  const start = Number(answer.start);
+  const end = start + answer.lines.length;
+  if (
+    "start" in ask
+      ? start !== ask.start
+      : start < Math.max(1, ask.end - ask.count) ||
+        end !== Math.min(ask.end, Number(answer.line_count) + 1)
+  ) {
+    throw new Error("The comparison answered with something other than these lines.");
+  }
+  return /** @type {{start: number, lines: string[], line_count: number, ends_with_newline: boolean}} */ (
+    /** @type {unknown} */ (answer)
+  );
+}
+
+/**
+ * Whether a file holds every line from *from* to before *to* that its new side has, and,
+ * where *needsEnd*, knows where that side ends.
+ *
+ * @param {GapLines} lines
+ * @param {number} from
+ * @param {number} to
+ * @param {boolean} needsEnd
+ */
+function holdsGapLines(lines, from, to, needsEnd) {
+  if (needsEnd && lines.lineCount === null) {
+    return false;
+  }
+  const end = lines.lineCount === null ? to : Math.min(to, lines.lineCount + 1);
+  for (let number = from; number < end; number += 1) {
+    if (!lines.byNumber.has(number)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Read a gap's lines from *from* to before *to*, or to the side's end, into the file's
+ * keep, in one ask: from *from* for a gap opened downward (*toward* "down"), and up to *to*
+ * for one opened upward, so an answer its byte bound cuts short holds the lines nearest the
+ * hunk. Where it stops short of the range, before the side's end, the open's reach records
+ * where, and the open draws what came with its nested bar for the rest (`renderGapFold`):
+ * one press is one ask, of at most `MAX_LINES_ANSWER_BYTES` of text (diff/side_lines.py).
+ * One ask a range, however many folds wait for it. The lines are highlighted after they are
+ * drawn.
+ *
+ * @param {FileViewState} state
+ * @param {HunkGap} gap
+ * @param {number} from
+ * @param {number} to
+ * @param {"up" | "down"} toward
+ * @returns {Promise<void>}
+ */
+function readGapLines(state, gap, from, to, toward) {
+  const lines = state.gapLines;
+  const key = `${toward}:${from}-${to}`;
+  let asked = lines.asked.get(key);
+  if (asked !== undefined) {
+    return asked;
+  }
+  const source = /** @type {GapSource} */ (state.gaps);
+  const side = /** @type {{path?: unknown}} */ (state.change.new);
+  const path = String(side.path ?? "");
+  /** @type {GapAsk} */
+  const ask = toward === "up" ? { end: to, count: to - from } : { start: from, count: to - from };
+  asked = (async () => {
+    const answer = gapAnswer(await source.load(path, ask), ask, source.comparisonId);
+    lines.lineCount = answer.line_count;
+    /** @type {DiffLine[]} */
+    const fresh = [];
+    for (const [index, text] of answer.lines.entries()) {
+      const number = answer.start + index;
+      if (!lines.byNumber.has(number)) {
+        const record = gapLine(
+          number,
+          gap.offset,
+          text,
+          number === answer.line_count && !answer.ends_with_newline,
+        );
+        lines.byNumber.set(number, record);
+        fresh.push(record);
+      }
+    }
+    if (
+      toward === "up"
+        ? answer.start > from
+        : answer.start + answer.lines.length < Math.min(to, answer.line_count + 1)
+    ) {
+      lines.reach.set(
+        toward === "up" ? `up:${to}` : `down:${from}`,
+        toward === "up" ? answer.start : answer.start + answer.lines.length,
+      );
+    }
+    // After the folds waiting for these lines draw them plain, as a hunk's first paint is.
+    setTimeout(() => void highlightGapLines(state, fresh), 0);
+  })().finally(() => lines.asked.delete(key));
+  lines.asked.set(key, asked);
+  return asked;
+}
+
+/**
+ * Highlight lines read for a gap as one source, as each hunk side is (`highlightFileSyntax`),
+ * within the same whole-file bound: the hunks' bytes and every gap's highlighted so far
+ * count against `SYNTAX_HIGHLIGHT_MAX_BYTES`. Past it they stay plain, as a file past it
+ * does. The rows drawn of them take their tokens.
+ *
+ * @param {FileViewState} state
+ * @param {DiffLine[]} records
+ */
+async function highlightGapLines(state, records) {
+  const language = state.renderModel.newLanguage;
+  const source = state.gaps;
+  if (records.length === 0 || !language || source === null || source.signal.aborted) {
+    return;
+  }
+  const text = records.map((record) => record.text).join("\n");
+  const bytes = new TextEncoder().encode(text).byteLength;
+  state.renderModel.inputBytes ??= syntaxInputBytes(state.renderModel.hunks);
+  const total = state.renderModel.inputBytes + state.gapLines.syntaxBytes + bytes;
+  if (state.api.isLargeTextPreview({ size: total })) {
+    return;
+  }
+  state.gapLines.syntaxBytes += bytes;
+  try {
+    const tokens = await measureEnhancement(
+      state.api,
+      "diffSyntax:gap",
+      () => state.api.highlightSyntax(text, language, { inputBytes: bytes, signal: source.signal }),
+      { input_bytes: bytes, language, line_count: records.length },
+    );
+    if (
+      tokens === null ||
+      source.signal.aborted ||
+      tokens.length !== records.length ||
+      tokens.some((runs, index) => runs.map((run) => run.text).join("") !== records[index].text)
+    ) {
+      return;
+    }
+    for (const [index, record] of records.entries()) {
+      record.newTokens = tokens[index];
+      record.oldTokens = tokens[index];
+    }
+    const highlighted = new Set(records);
+    for (const { host, line, side } of state.textHosts) {
+      if (highlighted.has(line)) {
+        renderComposedText(
+          host,
+          line.text,
+          sideTokens(line, side),
+          sideIntralineRanges(line, side),
+        );
+      }
+    }
+  } catch (error) {
+    if (!source.signal.aborted) {
+      console.warn("metabrowser diff: a gap's syntax enhancement failed", error);
+    }
+  }
+}
+
+/**
+ * Whether a failed ask is the comparison declining these lines, which asking again will not
+ * change, rather than a failure a Retry may get past: a refusal of the request itself, or an
+ * answer for another comparison (`gapAnswer`).
+ *
+ * @param {unknown} error
+ */
+function refusesGapLines(error) {
+  const failed = /** @type {{status?: unknown, refused?: unknown} | null} */ (error);
+  const status = failed?.status;
+  return (
+    failed?.refused === true ||
+    (typeof status === "number" && status >= 400 && status < 500 && ![408, 429].includes(status))
+  );
+}
+
+/**
+ * The comparison declines this file's lines (a binary or converted file, a side past the
+ * read bound): draw it again with each gap as its plain separator, and one line saying so,
+ * where the reader is.
+ *
+ * @param {FileViewState} state
+ */
+function refuseGaps(state) {
+  if (state.gapLines.refused) {
+    return;
+  }
+  state.gapLines.refused = true;
+  const source = /** @type {GapSource} */ (state.gaps);
+  const drawn = state.drawn;
+  if (drawn !== null && !source.signal.aborted) {
+    source.keep(state, () => renderFileBody(state, drawn));
+  }
+}
+
+/**
+ * A gap's fold (`foldExpander` in diff-fold.js), the bar every fold of the diff draws.
+ *
+ * Closed, it says how many unchanged lines it holds, or, below the last hunk, before an
+ * answer has said where the file ends, that it holds the rest of the file. Opening it draws
+ * up to `GAP_LINES` of them, asking the comparison first, once, for any the file does not
+ * hold yet; a gap longer than that, or one whose answer its byte bound cut short, opens the
+ * lines nearest its hunk (*toward*: "up" above a hunk, "down" below the last), and a fold of
+ * the same kind stands for the rest, at the far end of the group, as one step more. Open, it
+ * says how many lines it shows, its open steps' among them. A gap whose lines do not load
+ * closes again saying so, and a press asks again. Every change of its height while the
+ * reader waits, its rows, the box that stood for them, and closing after a failure, is made
+ * where the reader keeps their place (`GapSource.keep`).
+ *
+ * @param {FileViewState} state
+ * @param {HunkGap} gap
+ * @param {"up" | "down"} toward
+ * @param {string} detail The hunk's separator, beside the label, for a gap above a hunk.
+ * @param {(line: DiffLine) => HTMLElement} renderRow
+ * @param {{relabel: () => void} | null} parent The fold this one is a step of.
+ * @returns {import("./diff-fold.js").FoldExpander & {shown: () => number, cancel: () => void}}
+ */
+function renderGapFold(state, gap, toward, detail, renderRow, parent) {
+  const key = `gap:${gap.start}-${toward === "down" ? "end" : gap.end}`;
+  const count = countFormatter(state.api);
+  const status = { failed: false };
+  /** @type {ReturnType<typeof renderGapFold> | null} */
+  let step = null;
+  let own = 0;
+  const shown = () => own + (step?.expanded() ? step.shown() : 0);
+  const end = () =>
+    gap.end ?? (state.gapLines.lineCount === null ? null : state.gapLines.lineCount + 1);
+
+  /** @param {boolean} expanded */
+  function label(expanded) {
+    const known = end();
+    if (expanded) {
+      const lines = shown() || (known === null ? 0 : Math.min(known - gap.start, GAP_LINES));
+      return lines > 0 ? `Hide ${count(lines)} line${lines === 1 ? "" : "s"}` : "Hide these lines";
+    }
+    if (known === null) {
+      return status.failed ? "Could not load the rest of the file. Retry" : "Rest of the file";
+    }
+    const held = known - gap.start;
+    const lines = `${count(held)} unchanged line${held === 1 ? "" : "s"}`;
+    return status.failed ? `Could not load ${lines}. Retry` : lines;
+  }
+
+  foldSequence += 1;
+  const fold = foldExpander({
+    id: `diff-gap-group-${foldSequence}`,
+    expanded: state.expandedFolds.has(key),
+    label,
+    detail,
+    groupClass: "diff-gap-group",
+    onToggle(expanded) {
+      if (expanded) {
+        state.expandedFolds.add(key);
+        status.failed = false;
+        open(true);
+      } else {
+        state.expandedFolds.delete(key);
+        // Its steps close with it, so it opens again to its first lines.
+        step?.set(false);
+        cancel();
+      }
+      parent?.relabel();
+    },
+  });
+  fold.control.classList.add("diff-gap-control");
+  const { group } = fold;
+  const view = { ...fold, shown, cancel, relabel };
+
+  function relabel() {
+    fold.relabel();
+    parent?.relabel();
+  }
+
+  /**
+   * The lines this fold draws itself, by the new side's numbers, from what is known: up to
+   * `GAP_LINES` nearest its hunk, or as far as an answer cut short reached (`GapLines.reach`).
+   */
+  function range() {
+    const known = end();
+    if (toward === "up" && known !== null) {
+      const reach = state.gapLines.reach.get(`up:${known}`) ?? gap.start;
+      return { from: Math.max(gap.start, known - GAP_LINES, reach), to: known };
+    }
+    const reach = state.gapLines.reach.get(`down:${gap.start}`) ?? Number.POSITIVE_INFINITY;
+    const to = Math.min(gap.start + GAP_LINES, reach);
+    return { from: gap.start, to: known === null ? to : Math.min(known, to) };
+  }
+
+  function cancel() {
+    const task = state.foldTasks.get(key);
+    if (task) {
+      clearTimeout(task.timer);
+      state.foldTasks.delete(key);
+    }
+    step?.cancel();
+    step = null;
+    own = 0;
+    state.textHosts = state.textHosts.filter(({ host }) => !group.contains(host));
+    group.replaceChildren();
+  }
+
+  /**
+   * @param {boolean} keep Whether the reader opened it, so its rows keep their place:
+   *   one drawn open with its file draws inside the redraw that holds it.
+   */
+  function open(keep) {
+    const { from, to } = range();
+    if (holdsGapLines(state.gapLines, from, to, toward === "down")) {
+      fill(keep);
+      return;
+    }
+    fold.control.setAttribute("aria-busy", "true");
+    // Its accessible name, never shown: what it reads, by count where the file's end is known.
+    const what = end() === null ? "the rest of the file" : `${count(to - from)} unchanged lines`;
+    const box = progressBox(`Loading ${what}`);
+    group.append(box);
+    const source = /** @type {GapSource} */ (state.gaps);
+    readGapLines(state, gap, from, to, toward).then(
+      () => {
+        fold.control.removeAttribute("aria-busy");
+        if (fold.expanded() && fold.control.isConnected && !source.signal.aborted) {
+          // Its rows take the box's place inside the change that holds the reader's.
+          fill(true);
+        } else {
+          box.remove();
+        }
+      },
+      (error) => {
+        fold.control.removeAttribute("aria-busy");
+        if (source.signal.aborted || isAbortError(error)) {
+          box.remove();
+          return;
+        }
+        if (refusesGapLines(error)) {
+          console.warn("metabrowser diff: the comparison declines this file's lines", error);
+          // The file is drawn again, the box with it, where the reader is.
+          refuseGaps(state);
+          box.remove();
+          return;
+        }
+        console.warn("metabrowser diff: a gap's lines did not load", error);
+        // Closed again, its bar says why, unless the reader closed it meanwhile.
+        if (fold.expanded() && fold.control.isConnected) {
+          source.keep(state, () => {
+            status.failed = true;
+            fold.set(false);
+          });
+        } else {
+          box.remove();
+        }
+      },
+    );
+  }
+
+  /** @param {boolean} keep Draw its rows where the reader keeps their place (`GapSource.keep`). */
+  function fill(keep) {
+    const source = /** @type {GapSource} */ (state.gaps);
+    const { from, to } = range();
+    const known = end();
+    const stop = known === null ? to : Math.min(to, known);
+    /** @type {DiffLine[]} */
+    const records = [];
+    for (let number = from; number < stop; number += 1) {
+      const record = state.gapLines.byNumber.get(number);
+      if (record !== undefined) {
+        records.push(record);
+      }
+    }
+    if (records.length === 0 && toward === "down") {
+      // The file ended at the last hunk after all: there was nothing below it. A reader who
+      // pressed the bar from the keyboard goes on from the file's own bar, not the page's top.
+      const leave = () => {
+        if (fold.control.contains(document.activeElement)) {
+          /** @type {HTMLElement | null | undefined} */ (
+            state.body.closest(".diff-file")?.querySelector(".diff-file-toggle")
+          )?.focus();
+        }
+        fold.control.remove();
+        group.remove();
+      };
+      if (keep) {
+        source.keep(state, leave);
+      } else {
+        leave();
+      }
+      return;
+    }
+    const rest =
+      toward === "up"
+        ? from > gap.start
+          ? { start: gap.start, end: from, offset: gap.offset }
+          : null
+        : known !== null && stop < known
+          ? { start: stop, end: known, offset: gap.offset }
+          : null;
+    const draw = () => {
+      // What it drew before, a loading box among it, goes in the same change.
+      cancel();
+      own = records.length;
+      if (rest !== null) {
+        step = renderGapFold(state, rest, toward, "", renderRow, view);
+        group.append(step.control, step.group);
+      }
+      materializeGapRows(state, key, group, records, renderRow, toward === "down" ? step : null);
+    };
+    if (keep) {
+      source.keep(state, draw);
+    } else {
+      draw();
+    }
+    relabel();
+  }
+
+  if (fold.expanded()) {
+    open(false);
+  }
+  return view;
+}
+
+/**
+ * Draw a gap's rows into its group in batches of `FOLD_MATERIALIZATION_BATCH_ROWS`, the
+ * first at once and the rest a task each, as an open changed run's are; before the bar of
+ * the next step where it comes after them. Closing, a redraw, and disposal cancel the rest.
+ *
+ * @param {FileViewState} state
+ * @param {string} key
+ * @param {HTMLElement} group
+ * @param {DiffLine[]} records
+ * @param {(line: DiffLine) => HTMLElement} renderRow
+ * @param {{control: HTMLElement} | null} before
+ */
+function materializeGapRows(state, key, group, records, renderRow, before) {
+  let index = 0;
+  const task = { timer: 0 };
+  const appendBatch = () => {
+    if (state.foldTasks.get(key) !== task) {
+      return;
+    }
+    const end = Math.min(index + FOLD_MATERIALIZATION_BATCH_ROWS, records.length);
+    const rows = records.slice(index, end).map(renderRow);
+    if (before === null) {
+      group.append(...rows);
+    } else {
+      before.control.before(...rows);
+    }
+    index = end;
+    if (index >= records.length) {
+      state.foldTasks.delete(key);
+      return;
+    }
+    task.timer = setTimeout(appendBatch, 0);
+  };
+  state.foldTasks.set(key, task);
+  appendBatch();
 }
 
 /**
@@ -1051,17 +2114,22 @@ function repaintViewFileControls(view) {
 }
 
 /**
- * The per-file bar: one disclosure trigger (kind, path, notes, stats)
- * plus sibling View file and copy controls, per the section-disclosure
- * and icon button primitives in the design system.
+ * The per-file bar, per the section-disclosure and icon button primitives in the design
+ * system. It leads with the group that names the file: one disclosure trigger (kind,
+ * path), the copy control right after the name, and the change's stats and notes, which
+ * describe the trigger. The View file controls follow that group, each a part of the bar
+ * of its own, so a bar that wraps moves them to the next line before the name gives way.
+ * Its end group holds a rendered file's view chooser alone (diff-markdown.js), at the
+ * bar's far end. Diff | Current is the whole diff's, in its toolbar (`renderShowControl`).
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
  * @param {string} bodyId
+ * @param {string} factsId The id of the stats and notes, which describe the trigger.
  * @param {MountedDiffState} view
- * @returns {{bar: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
+ * @returns {{bar: HTMLElement, end: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
  */
-function renderFileBar(change, toggleId, bodyId, view) {
+function renderFileBar(change, toggleId, bodyId, factsId, view) {
   const api = view.api;
   // The path is shown as the Diff summary shows it, by the server's display rule, and the
   // raw path stays for the copy control and the jump; without the shared tree it is raw.
@@ -1076,12 +2144,7 @@ function renderFileBar(change, toggleId, bodyId, view) {
   // The same disclosure glyph the nav tree leads with, rotated by the
   // same expanded/collapsed rules.
   const chevron = el("span", "diff-file-chevron");
-  const chevronSvg = shellIcon("toggle");
-  if (chevronSvg) {
-    chevron.innerHTML = chevronSvg;
-  } else {
-    chevron.textContent = "›";
-  }
+  chevron.innerHTML = shellIcon("toggle");
   toggle.append(chevron);
   const status = el("span", "diff-file-kind file-change-status", letter);
   status.dataset.fileStatus = String(change.kind);
@@ -1091,39 +2154,34 @@ function renderFileBar(change, toggleId, bodyId, view) {
   toggle.append(pathSpan);
   /** @param {unknown} value */
   const count = (value) => (typeof value === "number" ? value : null);
-  const counts =
-    model === null
-      ? change.additions !== null && change.additions !== undefined
-        ? { additions: `+${change.additions}`, deletions: `\u2212${change.deletions}` }
-        : null
-      : model.changeStats(
-          { additions: count(change.additions), deletions: count(change.deletions) },
-          countFormatter(api),
-        );
-  if (counts !== null) {
-    const stats = el("span", "diff-file-stats");
-    stats.append(el("span", "diff-stat-add", counts.additions));
-    stats.append(el("span", "diff-stat-del", counts.deletions));
-    toggle.append(stats);
-  }
-  for (const note of notes) {
-    toggle.append(el("span", "diff-file-note", note));
-  }
-  bar.append(toggle);
-
+  const additions = count(change.additions);
+  const deletions = count(change.deletions);
+  // Its lines as every lines summary says them, through the shell's one component (mb-ox6a).
+  const paint = additions === null && deletions === null ? null : shellPainters(api);
+  const counts = paint === null ? null : paint.changeLine({ statuses: [], additions, deletions });
+  // The change's stats and notes follow the copy control, which sits right after the name
+  // it copies, so they are not in the trigger: they describe it, and a click on them
+  // toggles the file as anywhere else on the bar does.
   /** @type {HTMLElement | null} */
-  let notice = null;
-  const actions = view.viewFile?.actions(change, view.resolved) ?? [];
-  if (actions.length > 0) {
-    notice = el("div", "diff-availability diff-file-notice");
-    notice.setAttribute("role", "status");
-    notice.hidden = true;
-    const said = { element: notice, timer: 0 };
-    const controls = actions.map((action) => renderViewFileControl(action, view, said));
-    bar.append(...controls);
-    view.viewFileBars.push({ change, controls, said });
+  let facts = null;
+  if (counts !== null || notes.length > 0) {
+    facts = el("span", "diff-file-facts");
+    facts.setAttribute("id", factsId);
+    toggle.setAttribute("aria-describedby", factsId);
+    if (counts !== null && paint !== null) {
+      const stats = el("span", "diff-file-stats");
+      stats.append(...paint.changeLineNodes(counts));
+      facts.append(stats);
+    }
+    for (const note of notes) {
+      facts.append(el("span", "diff-file-note", note));
+    }
   }
-
+  // Each group is one flex item: a bar that wraps or cuts a long path short never parts
+  // the copy control or the stats from the name, and its end group moves as one.
+  const lead = el("div", "diff-file-lead");
+  const end = el("div", "diff-file-end");
+  lead.append(toggle);
   const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
   if (side !== undefined) {
     const copy = el("button", "icon-btn icon-btn-reveal diff-file-copy");
@@ -1134,15 +2192,30 @@ function renderFileBar(change, toggleId, bodyId, view) {
     api?.ownDelegate?.(copy);
     copy.setAttribute("data-tip-text", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
-    const svg = shellIcon("copy");
-    if (svg) {
-      copy.innerHTML = svg;
-    } else {
-      copy.textContent = "⧉";
-    }
-    bar.append(copy);
+    copy.innerHTML = shellIcon("copy");
+    lead.append(copy);
   }
-  return { bar, toggle, notice };
+  if (facts !== null) {
+    lead.append(facts);
+  }
+
+  /** @type {HTMLElement | null} */
+  let notice = null;
+  /** @type {HTMLElement[]} */
+  let controls = [];
+  const actions = view.viewFile?.actions(change, view.resolved) ?? [];
+  if (actions.length > 0) {
+    notice = el("div", "diff-availability diff-file-notice");
+    notice.setAttribute("role", "status");
+    notice.hidden = true;
+    const said = { element: notice, timer: 0 };
+    controls = actions.map((action) => renderViewFileControl(action, view, said));
+    view.viewFileBars.push({ change, controls, said });
+  }
+  // The View file controls sit between the name's group and the end group, in neither:
+  // where the bar wraps, they take the next line, and the name keeps the first.
+  bar.append(lead, ...controls, end);
+  return { bar, end, toggle, notice };
 }
 
 /** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
@@ -1249,18 +2322,41 @@ function renderLayoutControl(view) {
   }
   // The control shows what the diff draws. While Split does not fit that is Unified, and
   // the reader's choice waits in `chosenLayout`, so Split says why it is not selected.
+  // While the diff shows Current, one column whatever the layout, it keeps its place and
+  // shows the layout Diff draws, and both chips say why neither can be chosen. They are
+  // `aria-disabled`, not `disabled`, so the pointer and the keyboard reach what they say.
+  // Focus in it stays on the chosen chip, as in Diff | Current: the markup is new, and a
+  // Diff | Current choice, `N` among them, draws it again with focus where it was.
+  const current = view.show === "current";
   const fellBack = view.chosenLayout === "split" && view.layout === "unified";
+  const splitTip = current ? LAYOUT_IN_CURRENT_TIP : fellBack ? SPLIT_TOO_NARROW_TIP : null;
+  const active = /** @type {Element | null | undefined} */ (globalThis.document?.activeElement);
+  const restore = active != null && control.contains?.(active) === true;
   control.innerHTML = filterControls.groupHtml({
     key: "diff-layout",
     label: "Diff layout",
     layout: "joined",
     options: [
-      { label: "Split", value: "split", ...(fellBack ? { tip: SPLIT_TOO_NARROW_TIP } : {}) },
-      { label: "Unified", value: "unified" },
+      { label: "Split", value: "split", ...(splitTip ? { tip: splitTip } : {}) },
+      { label: "Unified", value: "unified", ...(current ? { tip: LAYOUT_IN_CURRENT_TIP } : {}) },
     ],
     select: "one",
     value: view.layout,
   });
+  if (current) {
+    for (const chip of control.querySelectorAll("[data-chip-value]")) {
+      chip.setAttribute("aria-disabled", "true");
+      chip.setAttribute(
+        "aria-label",
+        `${chip.getAttribute("data-chip-value") === "split" ? "Split" : "Unified"}, unavailable. ${LAYOUT_IN_CURRENT_TIP}`,
+      );
+    }
+  }
+  if (restore) {
+    /** @type {HTMLElement | null} */ (
+      control.querySelector(`[data-chip-value="${view.layout}"]`)
+    )?.focus();
+  }
   // The markup is new, so `L`'s badge moves to the new chip it would select.
   const option = view.layoutKey ? layoutKeyOption(view) : null;
   if (option) {
@@ -1302,7 +2398,8 @@ export function toggleLayout(view) {
  * @param {boolean} [persist]
  */
 export function setLayout(view, value, persist = true) {
-  if (view.disposed) {
+  // Current is one column whatever the layout, so neither chip, nor `L`, changes anything.
+  if (view.disposed || view.show === "current") {
     return;
   }
   const layout = value === "split" ? "split" : "unified";
@@ -1315,6 +2412,165 @@ export function setLayout(view, value, persist = true) {
     view.api?.prefs?.set("diff.layout", layout);
   }
   drawLayout(view, layout);
+}
+
+// ── Diff | Current ──────────────────────────────────────────────
+//
+// One choice for the whole diff, as the layout is, in its toolbar beside Split | Unified:
+// choosing draws every file again. docs/project/specs/active/
+// plan-2026-11-23-diff-current-chooser.md has the reasons.
+
+/**
+ * Draw the toolbar's Diff | Current chooser from the diff's choice. Focus in it stays on the
+ * chosen chip: the markup is new. `N`'s badge moves to the new chip it would select.
+ *
+ * @param {MountedDiffState} view
+ */
+function renderShowControl(view) {
+  const control = view.showControl;
+  const filterControls = view.api?.filterControls;
+  if (!control || !filterControls) {
+    return;
+  }
+  const active = /** @type {Element | null | undefined} */ (globalThis.document?.activeElement);
+  const restore = active != null && control.contains?.(active) === true;
+  control.innerHTML = filterControls.groupHtml({
+    key: "diff-show",
+    label: "Diff or current version",
+    layout: "joined",
+    options: [
+      { label: "Diff", value: "diff", tip: "Show what changed, removals included" },
+      { label: "Current", value: "current", tip: "Show the new version alone, its changes marked" },
+    ],
+    select: "one",
+    value: view.show,
+  });
+  if (restore) {
+    /** @type {HTMLElement | null} */ (
+      control.querySelector(`[data-chip-value="${view.show}"]`)
+    )?.focus();
+  }
+  const option = view.showKey ? showKeyOption(view) : null;
+  if (option) {
+    view.showKey?.retarget(option);
+  }
+}
+
+/**
+ * What the diff shows when it opens: the reader's last choice on this surface, stored as
+ * *preference*, or the surface's own default (*fallback*) for a reader who never chose there
+ * or a stored value that is not a choice. A pull request's Docs tab opens on Current and
+ * remembers its choice apart; every other surface opens on Diff and shares `diff.show`.
+ *
+ * @param {DiffViewApi | undefined} api
+ * @param {string} [preference]
+ * @param {Shown} [fallback]
+ * @returns {Shown}
+ */
+export function readShowPreference(api, preference = "diff.show", fallback = "diff") {
+  const value = api?.prefs?.get(preference, /** @type {unknown} */ (fallback));
+  return value === "current" || value === "diff" ? value : fallback;
+}
+
+/**
+ * The reader's choice of what the diff shows: store it, so this surface's diffs open in it,
+ * and draw it. The row at the pane's top keeps its place on the screen, or the nearest row
+ * the choice still draws (`placeOfTopRow`); a file a jump pinned keeps the pane's top.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} value
+ */
+export function setShow(view, value) {
+  if (view.disposed) {
+    return;
+  }
+  const show = value === "current" ? "current" : "diff";
+  if (show === view.show) {
+    return;
+  }
+  const place = view.pinned === null ? placeOfTopRow(view, show) : null;
+  view.show = show;
+  view.api?.prefs?.set(view.showPreference, show);
+  drawShow(view, place);
+}
+
+/**
+ * `N`: switch the diff between Diff and Current, exactly as clicking the other chip does.
+ *
+ * @param {MountedDiffState} view
+ */
+export function toggleShow(view) {
+  setShow(view, view.show === "current" ? "diff" : "current");
+}
+
+/**
+ * The chip `N` would select, the one not checked: what its badge sits on.
+ *
+ * @param {MountedDiffState} view
+ * @returns {HTMLElement | null}
+ */
+function showKeyOption(view) {
+  const other = view.show === "current" ? "diff" : "current";
+  return /** @type {HTMLElement | null} */ (
+    view.showControl?.querySelector(`[data-chip-value="${other}"]`) ?? null
+  );
+}
+
+/**
+ * Give the diff its `N`, once, on the toolbar's chooser, drawn before this runs. Each later
+ * draw retargets it (`renderShowControl`), and dispose() detaches it.
+ *
+ * @param {MountedDiffState} view
+ */
+function attachShowKey(view) {
+  const shortcuts = view.api?.shortcuts;
+  const option = typeof shortcuts?.attach === "function" ? showKeyOption(view) : null;
+  if (!shortcuts || !option) {
+    return;
+  }
+  view.showKey = shortcuts.attach(option, {
+    activate: () => toggleShow(view),
+    copy: {
+      action: "Toggle Diff or Current",
+      description: "Switch the diff between what changed and the new version alone.",
+      hint: "Current",
+    },
+    group: "controls",
+    id: "diff.show",
+    key: "n",
+    order: 41,
+  });
+}
+
+/**
+ * What the diff's code rows are drawn as now: Current whatever the layout, or the layout.
+ *
+ * @param {MountedDiffState} view
+ * @returns {Projection}
+ */
+function projectionOf(view) {
+  return view.show === "current" ? "current" : view.layout;
+}
+
+/**
+ * Draw what the diff shows now: the toolbar's choosers, the code rows of every file, and the
+ * Rendered layer's files.
+ *
+ * @param {MountedDiffState} view
+ * @param {Place | null} anchor
+ */
+function drawShow(view, anchor) {
+  view.root.dataset.show = view.show;
+  renderShowControl(view);
+  renderLayoutControl(view);
+  view.markdown?.controller.show(view.show === "current");
+  if (view.awaitingWidth) {
+    // Nothing is drawn before the first width, which draws what is chosen then.
+    holdPlace(view, anchor);
+  } else {
+    reproject(view, anchor);
+  }
+  view.notifyCurrentFile();
 }
 
 /**
@@ -1346,31 +2602,52 @@ function fitLayout(view, width) {
 }
 
 /**
- * Reproject cached file state.
+ * Draw the diff in *layout*. In Current the rows are one column whatever the layout, so
+ * only the first width, before which nothing was drawn, draws them.
  *
  * @param {MountedDiffState} view
  * @param {"unified" | "split"} layout
  */
 function drawLayout(view, layout) {
+  const first = view.awaitingWidth;
   view.awaitingWidth = false;
   view.layout = layout;
   view.root.dataset.layout = layout;
   renderLayoutControl(view);
   view.notifyCurrentFile();
+  if (first || view.show !== "current") {
+    reproject(view);
+  }
+}
+
+/**
+ * Reproject cached file state as `projectionOf` says, in batches above 100 files. With an
+ * *anchor*, that file keeps its place after each batch; without one, as for a layout, the
+ * browser's scroll anchoring keeps it.
+ *
+ * @param {MountedDiffState} view
+ * @param {Place | null} [anchor]
+ */
+function reproject(view, anchor) {
+  const projection = projectionOf(view);
   for (const file of view.deferred.values()) {
-    reserveFileBody(file, layout);
+    reserveFileBody(file, projection, view);
   }
   view.layoutGeneration += 1;
   const layoutGeneration = view.layoutGeneration;
   if (view.files.length <= LAYOUT_PROJECTION_BATCH_FILES) {
     delete view.root.dataset.layoutPending;
     for (const state of view.files) {
-      renderFileBody(state, layout);
+      renderFileBody(state, projection);
+    }
+    if (anchor !== undefined) {
+      holdPlace(view, anchor);
+      settlePlace(view, anchor);
     }
     return;
   }
   view.root.dataset.layoutPending = "true";
-  projectLayoutBatch(view, layout, layoutGeneration, 0);
+  projectLayoutBatch(view, projection, layoutGeneration, 0, anchor);
 }
 
 /**
@@ -1378,11 +2655,12 @@ function drawLayout(view, layout) {
  * check makes a rapid second switch authoritative without cancelling shared
  * hydration or syntax work.
  * @param {MountedDiffState} view
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  * @param {number} layoutGeneration
  * @param {number} start
+ * @param {Place | null} [anchor] Held after each batch.
  */
-function projectLayoutBatch(view, layout, layoutGeneration, start) {
+function projectLayoutBatch(view, layout, layoutGeneration, start, anchor) {
   if (view.disposed || view.layoutGeneration !== layoutGeneration) {
     return;
   }
@@ -1390,13 +2668,19 @@ function projectLayoutBatch(view, layout, layoutGeneration, start) {
   for (let index = start; index < end; index += 1) {
     renderFileBody(view.files[index], layout);
   }
+  if (anchor !== undefined) {
+    holdPlace(view, anchor);
+  }
   if (end >= view.files.length) {
     delete view.root.dataset.layoutPending;
+    if (anchor !== undefined) {
+      settlePlace(view, anchor);
+    }
     return;
   }
   const timer = setTimeout(() => {
     view.timers.delete(timer);
-    projectLayoutBatch(view, layout, layoutGeneration, end);
+    projectLayoutBatch(view, layout, layoutGeneration, end, anchor);
   }, 0);
   view.timers.add(timer);
 }
@@ -1475,6 +2759,25 @@ function summaryFiles(parts, paint, separator) {
 }
 
 /**
+ * A summary's words without its file count, "2 A · +1 −1 (2 listed)" and "2 added; 1 line
+ * added, 1 deleted; 2 listed", for a header whose page says the count on its size line
+ * (docs/design-system.md, "Change Size Line"): the notes after the totals stay.
+ *
+ * @param {{filesParts: MetabrowserCountParts, text: string, label: string}} said
+ * @returns {{text: string, label: string}}
+ */
+function withoutFileCount(said) {
+  const files = said.filesParts
+    .map((part) => (typeof part === "string" ? part : "number" in part ? part.number : ""))
+    .join("");
+  const text = said.text.startsWith(`${files} · `) ? said.text.slice(files.length + 3) : said.text;
+  const label = said.label.startsWith(files)
+    ? said.label.slice(files.length).replace(/^[:;] /, "")
+    : said.label;
+  return { text, label };
+}
+
+/**
  * The note of a list cut short at its bound, "(2,000 listed)": its figure a bold number,
  * muted with the note, as a count summary's numbers are (docs/design-system.md, "Count
  * Summaries Bold Their Numbers").
@@ -1499,6 +2802,9 @@ function listedNote(listed, paint) {
  * @property {boolean} disposed
  * @property {MetabrowserChangedFilesTree | null} changedFiles
  * @property {(path: string) => void} jump
+ * @property {boolean} countsFiles Whether the header says the file count. A page header
+ *   says it on its size line above the summary (docs/design-system.md, "Change Size Line"),
+ *   so a summary drawn there is its statuses and line totals alone.
  */
 
 /**
@@ -1512,11 +2818,13 @@ function listedNote(listed, paint) {
  * A diff's view as its Diff summary reads it.
  *
  * @param {MountedDiffState} view
+ * @param {boolean} [countsFiles]
  * @returns {SummaryOwner}
  */
-function summaryOwnerOf(view) {
+function summaryOwnerOf(view, countsFiles = true) {
   return {
     api: view.api,
+    countsFiles,
     get disposed() {
       return view.disposed;
     },
@@ -1534,7 +2842,9 @@ function summaryOwnerOf(view) {
 /**
  * A multi-file diff's Diff summary: the header that says what the change set holds, "35
  * files changed · 2 A, 3 D, 30 M · +1,234 −3,423", and is the disclosure toggle of its files
- * as a tree by folder. Each status is its count and its rows' letter, both bold in the
+ * as a tree by folder, its chevron after its words, as every toggle that expands a diff
+ * summary has it (docs/design-system.md, "Diff Summary"; mb-f0pz). Each status is its
+ * count and its rows' letter, both bold in the
  * status's ink, and the dots between the groups, the commas, and the notes after the totals
  * are muted. It starts collapsed, and the tree is not mounted, or its module imported, until
  * the header is first opened; hovering or focusing the header asks for the module first.
@@ -1563,11 +2873,15 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   const named = rows.length > 0;
   /** @type {Array<Node | string>} */
   const parts = [
-    summaryFiles(
-      said.filesParts,
-      paint.countPartsNodes,
-      named ? SUMMARY_SEPARATOR : LINE_SEPARATOR,
-    ),
+    ...(view.countsFiles
+      ? [
+          summaryFiles(
+            said.filesParts,
+            paint.countPartsNodes,
+            named ? SUMMARY_SEPARATOR : LINE_SEPARATOR,
+          ),
+        ]
+      : []),
     ...paint.changeLineNodes(said.line, named ? {} : { spoken: ", " }),
   ];
   if (said.estimated) {
@@ -1584,16 +2898,13 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   const toggle = el("button", "diff-summary diff-summary-toggle disclosure-toggle collapsed");
   toggle.setAttribute("type", "button");
   toggle.setAttribute("aria-expanded", "false");
-  toggle.setAttribute("aria-label", said.label);
+  const words = view.countsFiles ? said : withoutFileCount(said);
+  toggle.setAttribute("aria-label", words.label);
   const chevron = el("span", "diff-summary-chevron");
   chevron.setAttribute("aria-hidden", "true");
   const chevronSvg = shellIcon("toggle");
-  if (chevronSvg) {
-    chevron.innerHTML = chevronSvg;
-  } else {
-    chevron.textContent = "›";
-  }
-  toggle.append(chevron, ...parts);
+  chevron.innerHTML = chevronSvg;
+  toggle.append(...parts, chevron);
 
   summaryIds += 1;
   const id = `diff-summary-tree-${summaryIds}`;
@@ -1628,7 +2939,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
       }
       const statuses = toggle.querySelector(".change-line-statuses");
       if (statuses !== null && statuses.scrollWidth > statuses.clientWidth) {
-        toggle.dataset.tipText = said.text;
+        toggle.dataset.tipText = words.text;
       } else {
         delete toggle.dataset.tipText;
       }
@@ -1666,6 +2977,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
               files: rows,
               id,
               formatCount,
+              changeLineNodes: paint.changeLineNodes,
               // The header's own chevron, for each folder row of the tree.
               chevron: () => {
                 if (!chevronSvg) {
@@ -1730,7 +3042,9 @@ function summaryOrTotals(totals, files, view, whole = null) {
   const said = plainTotals(whole ?? totals, formatCount);
   const line = el("div", "diff-summary");
   line.append(
-    summaryFiles(said.filesParts, paint.countPartsNodes, LINE_SEPARATOR),
+    ...(view.countsFiles
+      ? [summaryFiles(said.filesParts, paint.countPartsNodes, LINE_SEPARATOR)]
+      : []),
     ...paint.changeLineNodes(paint.changeLine(said.change), { spoken: ", " }),
   );
   if (said.estimated) {
@@ -1772,27 +3086,49 @@ function wholeTotalsOf(manifest, given) {
 }
 
 /**
- * The layout control is always present in the shell. A multi-file diff's toolbar leads with
- * its Diff summary; single-file views avoid repeating their file bar. A page that places the
- * summary at its own top passes the place (*summaryHost*), as a commit's page does
- * (mb-pb35): the summary is drawn there, for one file too, since there it stands for the
- * change set's totals, and the toolbar holds the layout control alone. *whole* is the
- * change set's whole totals, where its list was cut short and the page knows them
- * (`wholeTotalsOf`).
+ * The toolbar ends with the diff's choosers: Diff | Current, then the layout control, which
+ * is present in the shell unless the host fixes the layout (*chooseLayout* false), as a pull
+ * request's Docs tab does, where Diff | Current ends the toolbar alone. A multi-file diff's
+ * toolbar leads with its Diff summary; single-file views avoid repeating their file bar. A
+ * page that places the summary at its own top passes the place (*summaryHost*), as a
+ * commit's page does (mb-pb35): the summary is drawn there, for one file too, since there it
+ * stands for the change set's totals, and the toolbar holds the choosers alone. *whole* is
+ * the change set's whole totals, where its list was cut short and the page knows them
+ * (`wholeTotalsOf`). A *control* the host keeps across mounts, a narrowed diff's File type
+ * control, leads the choosers.
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
  * @param {MountedDiffState} view
  * @param {boolean} showSummary
  * @param {HTMLElement | null} [summaryHost]
  * @param {WholeTotals | null} [whole]
+ * @param {HTMLElement | null} [hostControl]
+ * @param {boolean} [chooseLayout] Whether the reader chooses the layout here, with the
+ *   control and `L`.
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null, whole = null) {
+function renderDiffToolbar(
+  totals,
+  files,
+  view,
+  showSummary,
+  summaryHost = null,
+  whole = null,
+  hostControl = null,
+  chooseLayout = true,
+) {
   const toolbar = el("div", "diff-toolbar");
   /** @type {(() => void) | null} */
   let disposeSummary = null;
   if (showSummary && (summaryHost !== null || Number(totals.files) !== 1)) {
-    const summary = summaryOrTotals(totals, files, summaryOwnerOf(view), whole);
+    // A page that places the summary at its own top says its file count on the size line
+    // above it.
+    const summary = summaryOrTotals(
+      totals,
+      files,
+      summaryOwnerOf(view, summaryHost === null),
+      whole,
+    );
     disposeSummary = summary.dispose;
     if (summaryHost !== null) {
       summaryHost.replaceChildren(summary.element);
@@ -1804,10 +3140,41 @@ function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null,
   if (!filterControls) {
     return { toolbar, unbind: () => disposeSummary?.() };
   }
+  if (hostControl !== null) {
+    toolbar.append(hostControl);
+  }
+  // The choosers for the whole diff are one group at the toolbar's end, so where they do not
+  // fit beside what leads them they take the next line together, still at its end.
+  const end = el("div", "diff-toolbar-end");
+  toolbar.append(end);
+  const show = el("div", "diff-show-control");
+  view.showControl = show;
+  renderShowControl(view);
+  end.append(show);
+  const unbindShow = filterControls.bind(show, {
+    onChange(key, value, select) {
+      if (key === "diff-show" && select === "one") {
+        setShow(view, value);
+      }
+    },
+  });
+  // Once, after the first draw, as `L` below: every host reaches this view through the
+  // plugin's render, so a diff file, the Git commit view, and a pull request's Changes and
+  // Docs all have `N`.
+  attachShowKey(view);
+  if (!chooseLayout) {
+    return {
+      toolbar,
+      unbind: () => {
+        unbindShow();
+        disposeSummary?.();
+      },
+    };
+  }
   const control = el("div", "diff-layout-control");
   view.layoutControl = control;
   renderLayoutControl(view);
-  toolbar.append(control);
+  end.append(control);
   const unbindControls = filterControls.bind(control, {
     onChange(key, value, select) {
       if (key === "diff-layout" && select === "one") {
@@ -1816,6 +3183,7 @@ function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null,
     },
   });
   const unbind = () => {
+    unbindShow();
     unbindControls();
     disposeSummary?.();
   };
@@ -2165,17 +3533,32 @@ function isAbortError(error) {
 }
 
 /**
+ * The rows a changed run of *adds* added and *dels* removed lines draws: Split pairs them,
+ * Unified draws each, and Current draws the added alone. Pure.
+ *
+ * @param {number} adds
+ * @param {number} dels
+ * @param {Projection} layout
+ */
+function changedRows(adds, dels, layout) {
+  if (layout === "split") {
+    return Math.max(adds, dels);
+  }
+  return layout === "current" ? adds : adds + dels;
+}
+
+/**
  * Rows a deferred file should reserve until it arrives. An estimate from the manifest's line
  * counts, in the layout it will draw: a long run folds to its visible rows, and a change on
  * both sides has context around it. Pure.
  *
  * @param {Record<string, unknown>} change
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function reservedRows(change, layout) {
   const adds = Number(change.additions ?? 0);
   const dels = Number(change.deletions ?? 0);
-  const changed = layout === "split" ? Math.max(adds, dels) : adds + dels;
+  const changed = changedRows(adds, dels, layout);
   const shown = FOLD_THRESHOLD > 0 && changed > FOLD_THRESHOLD ? FOLD_VISIBLE + 1 : changed;
   const context = adds > 0 && dels > 0 ? 6 : 0;
   return shown + context + 1;
@@ -2188,27 +3571,98 @@ export function reservedRows(change, layout) {
  * height accounts for each row kind separately. Soft-wrapped code can grow. Pure.
  *
  * @param {Record<string, unknown>} patch
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
+ * @param {Record<string, unknown> | null} [change] The file's manifest entry.
  */
-export function patchRows(patch, layout) {
-  const { lines, headers, folds, notices } = patchRowCounts(patch, layout);
+export function patchRows(patch, layout, change = null) {
+  const { lines, headers, folds, notices } = patchRowCounts(patch, layout, change);
   return lines + headers + folds + notices;
 }
 
 /**
- * Count each differently sized row without drawing held lines. Soft-wrapped code can
- * grow after rendering; the single-line chrome has its exact shared CSS metrics.
+ * The gaps a patch in hand draws bars for (`gapsOf`, before any answer says where the file
+ * ends), or null for a change whose gaps draw as plain headers.
+ *
  * @param {Record<string, unknown>} patch
- * @param {"unified" | "split"} layout
+ * @param {Record<string, unknown>} change
+ * @param {number} context
+ * @returns {(HunkGap | null)[] | null}
  */
-export function patchRowCounts(patch, layout) {
+function patchGaps(patch, change, context) {
+  const side = /** @type {{entry_type?: unknown} | undefined} */ (change.new);
+  if (change.binary === true || side?.entry_type !== "file") {
+    return null;
+  }
+  const hunks =
+    /** @type {{old_start?: unknown, old_count?: unknown, new_start?: unknown, new_count?: unknown, lines?: {op?: unknown, no_newline?: unknown}[]}[]} */ (
+      patch.hunks ?? []
+    );
+  const gaps = hunkGaps(
+    hunks.map((hunk) => ({
+      oldStart: Number(hunk.old_start),
+      oldCount: Number(hunk.old_count),
+      newStart: Number(hunk.new_start),
+      newCount: Number(hunk.new_count),
+      lines: (hunk.lines ?? []).map((line) => ({
+        op: String(line.op),
+        noNewline: line.no_newline === true,
+      })),
+    })),
+    context,
+  );
+  if (patch.truncated && gaps.length > 0) {
+    gaps[gaps.length - 1] = null;
+  }
+  return gaps;
+}
+
+/**
+ * Count each differently sized row without drawing held lines. Soft-wrapped code can
+ * grow after rendering; the single-line chrome has its exact shared CSS metrics. Current
+ * leaves out a hunk with no line of the new file, header and all, and a file with no new
+ * version, deleted or emptied, draws the one sentence that says so (`currentAbsence`),
+ * which its manifest entry, *change*, tells. Where the diff reads its gaps (*gapContext*), a
+ * hunk with a gap above it draws that gap's fold bar in place of its header, and a last
+ * hunk the file may go on past draws one more below it (`hunkGaps`).
+ * @param {Record<string, unknown>} patch
+ * @param {Projection} layout
+ * @param {Record<string, unknown> | null} [change]
+ * @param {number | null} [gapContext] `GapSource.context`, where the diff reads its gaps.
+ */
+export function patchRowCounts(patch, layout, change = null, gapContext = null) {
   const rows = { lines: 0, headers: 0, folds: 0, notices: patch.truncated ? 1 : 0 };
-  for (const hunk of /** @type {{lines?: {op?: unknown}[]}[]} */ (patch.hunks ?? [])) {
-    rows.headers += 1;
+  const hunks =
+    /** @type {{lines?: {op?: unknown}[], new_start?: unknown, new_count?: unknown}[]} */ (
+      patch.hunks ?? []
+    );
+  if (
+    layout === "current" &&
+    change !== null &&
+    currentAbsence(
+      change,
+      hunks.map((hunk) => ({ newStart: Number(hunk.new_start), newCount: Number(hunk.new_count) })),
+    ) !== null
+  ) {
+    rows.notices += 1;
+    return rows;
+  }
+  const gaps = gapContext === null || change === null ? null : patchGaps(patch, change, gapContext);
+  for (const [index, hunk] of hunks.entries()) {
+    if (layout === "current" && (hunk.lines ?? []).every((line) => line.op === "del")) {
+      continue;
+    }
+    if (gaps?.[index]) {
+      rows.folds += 1;
+    } else {
+      rows.headers += 1;
+    }
+    if (gaps !== null && index === hunks.length - 1 && gaps[hunks.length]) {
+      rows.folds += 1;
+    }
     let adds = 0;
     let dels = 0;
     const endRun = () => {
-      const run = layout === "split" ? Math.max(adds, dels) : adds + dels;
+      const run = changedRows(adds, dels, layout);
       const folded = FOLD_THRESHOLD > 0 && run > FOLD_THRESHOLD;
       rows.lines += folded ? FOLD_VISIBLE : run;
       rows.folds += folded ? 1 : 0;
@@ -2266,16 +3720,25 @@ function reserveBody(body, rows) {
  * Reserve the rows this file will draw in the current layout. Held answers use
  * their patch; a file not fetched yet uses the manifest estimate.
  * @param {DeferredFile} file
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
+ * @param {MountedDiffState} view
  */
-function reserveFileBody(file, layout) {
+function reserveFileBody(file, layout, view) {
   if (file.held !== null) {
-    reserveBody(file.body, patchRowCounts(file.held.patches[String(file.change.id)], layout));
+    reserveBody(
+      file.body,
+      patchRowCounts(
+        file.held.patches[String(file.change.id)],
+        layout,
+        file.change,
+        gapContextOf(view, file.revision),
+      ),
+    );
     return;
   }
   const adds = Number(file.change.additions ?? 0);
   const dels = Number(file.change.deletions ?? 0);
-  const changed = layout === "split" ? Math.max(adds, dels) : adds + dels;
+  const changed = changedRows(adds, dels, layout);
   const folds = FOLD_THRESHOLD > 0 && changed > FOLD_THRESHOLD ? 1 : 0;
   reserveBody(file.body, {
     lines: reservedRows(file.change, layout) - 1 - folds,
@@ -2363,7 +3826,9 @@ async function loadDeferred(file, signal, view) {
   const payload = await loadOneChange(file.revision, path, { signal });
   const result = validateDocument(payload);
   if (!result.ok) {
-    throw new Error(`invalid document: ${result.error}`);
+    // The validator's location rides as the cause, which the console report of a failed
+    // file prints (docs/design-system-messages.md).
+    throw new Error("This diff document is not valid.", { cause: result.error });
   }
   return /** @type {OneFileAnswer} */ (result.document);
 }
@@ -2390,6 +3855,7 @@ function settleDeferred(file, view) {
   view.hydrationObserver?.unobserve(file.section);
   view.deferred.delete(String(file.change.id));
   view.deferredBySection.delete(file.section);
+  view.reached.delete(String(file.change.id));
   if (view.deferred.size === 0) {
     view.hydrationObserver?.disconnect();
     view.hydrationObserver = null;
@@ -2439,6 +3905,9 @@ function spliceDeferred(file, loaded, view) {
   if (only && patch === undefined && reason) {
     // The server looked and has a reason: a file past the bound of one patch.
     file.body.append(el("div", "diff-availability", reason));
+    if (availability === "binary") {
+      appendPdfCard(view, only, file.body);
+    }
     return "none";
   }
   if (!only || patch === undefined) {
@@ -2448,9 +3917,16 @@ function spliceDeferred(file, loaded, view) {
     file.body.append(el("div", "diff-availability", "No content changes."));
     return "none";
   }
-  const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body);
+  const state = createFileState(
+    only,
+    patch,
+    view.api ?? plainSyntaxApi(),
+    file.body,
+    view.unfold,
+    gapSourceOf(view, file.revision),
+  );
   if (!view.awaitingWidth) {
-    renderFileBody(state, view.layout);
+    renderFileBody(state, projectionOf(view));
   }
   // Only a file whose rows are in the page is a file of the view: one whose render threw
   // would throw again at every relayout.
@@ -2467,7 +3943,7 @@ function spliceDeferred(file, loaded, view) {
  */
 function failDeferred(file, error, view) {
   const count = ++view.deferredFailed;
-  view.hydrationFailure.textContent = `Could not load changes for ${count.toLocaleString("en-US")} ${count === 1 ? "file" : "files"}.`;
+  view.hydrationFailure.textContent = `Could not load changes for ${countFormatter(view.api)(count)} ${count === 1 ? "file" : "files"}.`;
   view.hydrationFailure.hidden = false;
   reportLoad(
     "file hydration",
@@ -2479,7 +3955,7 @@ function failDeferred(file, error, view) {
     },
     error,
   );
-  file.body.append(el("div", "diff-availability", "Could not load this file's changes."));
+  file.body.append(noticeEl("error", "", "Could not load this file's changes."));
   return "failed";
 }
 
@@ -2512,7 +3988,7 @@ function queueDeferredHydration(section, body, change, revision, view, held = nu
   });
   view.deferredBySection.set(section, id);
   view.hydration.add(id, view.deferred.size);
-  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), view.layout);
+  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), projectionOf(view), view);
 }
 
 /** @param {MountedDiffState} view */
@@ -2534,7 +4010,12 @@ function observeHydration(view) {
       for (const entry of entries) {
         const id = view.deferredBySection.get(/** @type {HTMLElement} */ (entry.target));
         if (id !== undefined) {
-          changes.push([id, entry.isIntersecting]);
+          if (entry.isIntersecting) {
+            view.reached.add(id);
+          } else {
+            view.reached.delete(id);
+          }
+          changes.push([id, entry.isIntersecting && bodyWanted(view, id)]);
         }
       }
       view.hydration.setNearby(changes);
@@ -2543,6 +4024,32 @@ function observeHydration(view) {
   );
   for (const section of view.deferredBySection.keys()) {
     view.hydrationObserver.observe(section);
+  }
+}
+
+/**
+ * Whether a held file's body is to be drawn once it is reached: not while the file's
+ * rendered view hides it (`createMarkdownViews`), since rows nobody sees would cost what
+ * the reader sees: a 17,177-line document's Source on a pull request's Docs, drawn at load
+ * behind its rendered view, was 72,000 nodes and 4 s of main-thread work.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} id
+ */
+function bodyWanted(view, id) {
+  return view.deferred.get(id)?.body.hidden !== true;
+}
+
+/**
+ * A held file's rendered view showed or hid its body: drawn now if it is reached, and not
+ * drawn while it is hidden.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} id
+ */
+function bodyShownChanged(view, id) {
+  if (view.deferred.has(id)) {
+    view.hydration.setNearby([[id, view.reached.has(id) && bodyWanted(view, id)]]);
   }
 }
 
@@ -2658,7 +4165,7 @@ function placeAtTop(view, section) {
  *
  * @param {MountedDiffState} view
  * @param {boolean} [mustCoverPaneTop] Preserve an offset above the diff when its heading is visible.
- * @returns {{section: HTMLElement, top: number} | null}
+ * @returns {Place | null}
  */
 function placeOfTopFile(view, mustCoverPaneTop = false) {
   const pane = scrollerOf(view);
@@ -2685,12 +4192,378 @@ function placeOfTopFile(view, mustCoverPaneTop = false) {
 }
 
 /**
- * The page changed height: put back what the reader was looking at. A browser's scroll
- * anchoring usually has, and this measures rather than assumes, so it adds nothing to that
- * and holds in a browser without it.
+ * What a rendered file's change keeps on the screen: the file at the pane's top and, when
+ * it shows rendered Markdown, the block at the pane's top, found again by its index after
+ * the change, which may draw it anew (`drawnRows`).
  *
  * @param {MountedDiffState} view
- * @param {{section: HTMLElement, top: number} | null} [anchor]
+ * @returns {Place | null}
+ */
+function placeOfTopRendered(view) {
+  const place = placeOfTopFile(view, true);
+  const rendered = place?.section.querySelector(".diff-markdown") ?? null;
+  return place === null || rendered === null || /** @type {HTMLElement} */ (rendered).hidden
+    ? place
+    : placeOfTopRow(view, view.show);
+}
+
+/**
+ * What a Diff | Current choice keeps on the screen: the file at the pane's top, as
+ * `placeOfTopFile` finds it, and the row of it at the pane's top, or the nearest row that
+ * what the diff is about to show (*next*) draws too (`anchorRow`), with where that row is to
+ * be. A rendered file's rows are its blocks, a fold among them, or its tree's rows; a code
+ * file's are its lines. A file with no such row keeps its own top.
+ *
+ * @param {MountedDiffState} view
+ * @param {Shown} next
+ * @returns {Place | null}
+ */
+function placeOfTopRow(view, next) {
+  const place = placeOfTopFile(view);
+  const pane = scrollerOf(view);
+  if (place === null || pane === null) {
+    return place;
+  }
+  const rows = drawnRows(view, place.section, next === "current");
+  const paneTop = pane.getBoundingClientRect().top;
+  /** @type {Map<number, {top: number, bottom: number, kept: boolean}>} */
+  const boxes = new Map();
+  const chosen = anchorRow(
+    rows.length,
+    (index) => {
+      let box = boxes.get(index);
+      if (box === undefined) {
+        const { top, bottom } = rows[index].element.getBoundingClientRect();
+        box = { top, bottom, kept: rows[index].kept };
+        boxes.set(index, box);
+      }
+      return box;
+    },
+    paneTop,
+    paneTop + pane.clientHeight,
+  );
+  if (chosen === null) {
+    return place;
+  }
+  const { find, state } = rows[chosen.index];
+  return { ...place, row: { find, top: paneTop + chosen.offset, state } };
+}
+
+/**
+ * Which of a file's drawn rows a Diff | Current choice keeps, and how far below the pane's
+ * top it keeps its top, or null for none. The *count* rows are in order, and *rowAt* gives
+ * one's box and whether the choice draws it too (*kept*); the row at the pane's top is found
+ * by bisection, so a long file measures few. That row, or the first kept row after it, keeps
+ * where it is while it is on the screen. Where the choice leaves out every row from the
+ * pane's top to its end, which is Current inside a long removal, the last kept row above goes
+ * just above the top, so what follows it, where the removal was, is at the top; with none
+ * above, the first kept row below goes to the top. Pure.
+ *
+ * @param {number} count
+ * @param {(index: number) => {top: number, bottom: number, kept: boolean}} rowAt
+ * @param {number} paneTop
+ * @param {number} paneBottom
+ * @returns {{index: number, offset: number} | null}
+ */
+export function anchorRow(count, rowAt, paneTop, paneBottom) {
+  let atTop = 0;
+  let high = count;
+  while (atTop < high) {
+    const middle = (atTop + high) >> 1;
+    if (rowAt(middle).bottom > paneTop) {
+      high = middle;
+    } else {
+      atTop = middle + 1;
+    }
+  }
+  let after = -1;
+  for (let index = atTop; index < count; index += 1) {
+    if (rowAt(index).kept) {
+      after = index;
+      break;
+    }
+  }
+  if (after !== -1 && rowAt(after).top < paneBottom) {
+    return { index: after, offset: rowAt(after).top - paneTop };
+  }
+  for (let index = atTop - 1; index >= 0; index -= 1) {
+    const row = rowAt(index);
+    if (row.kept) {
+      return { index, offset: row.top - row.bottom };
+    }
+  }
+  return after === -1 ? null : { index: after, offset: 0 };
+}
+
+/**
+ * A file's rows as it draws them now, in order: each element, whether Current (*current*
+ * true) or Diff draws it too, and how to find it once the choice is drawn. Rendered Markdown
+ * keeps its block elements and hides what Current leaves out, so a block is its own element
+ * after, and a view drawn anew draws it again by its index (`drawnBlock`); a YAML or JSON
+ * tree is drawn again, with the same paths; a code file's rows are drawn again from the same
+ * lines, so a row is found by its line, the new side's in Split.
+ *
+ * @param {MountedDiffState} view
+ * @param {HTMLElement} section
+ * @param {boolean} current
+ * @returns {{element: HTMLElement, kept: boolean, find: () => HTMLElement | null, state: FileViewState | null}[]}
+ */
+function drawnRows(view, section, current) {
+  const rendered = /** @type {HTMLElement | null} */ (
+    section.querySelector(".diff-markdown") ?? section.querySelector(".diff-structured")
+  );
+  if (rendered !== null && !rendered.hidden) {
+    const tree = /** @type {HTMLElement | null} */ (rendered.querySelector(".tree-viewport"));
+    if (tree !== null) {
+      return [...tree.children].map((child) => {
+        const element = /** @type {HTMLElement} */ (child);
+        const path = element.getAttribute("data-path");
+        return {
+          element,
+          kept: !current || !element.classList.contains("srow-change-removed"),
+          find: () => {
+            if (rendered.hidden) {
+              return null;
+            }
+            const found = [...tree.children].find((row) => row.getAttribute("data-path") === path);
+            return found === undefined ? null : /** @type {HTMLElement} */ (found);
+          },
+          state: null,
+        };
+      });
+    }
+    return markdownRows(rendered).map((element) => {
+      const at = blockAt(element);
+      return {
+        element,
+        kept: !current || !element.classList.contains("diff-markdown-removed"),
+        find: () => {
+          if (rendered.hidden) {
+            return null;
+          }
+          if (element.isConnected && !element.hidden) {
+            return element;
+          }
+          if (at === null) {
+            return null;
+          }
+          // Drawn anew, the view may keep the block in a chunk not drawn yet: its chunk is
+          // drawn, so the block itself keeps the reader's place.
+          view.markdown?.controller.drawBlock(section, at);
+          return drawnBlock(/** @type {HTMLElement} */ (rendered), at);
+        },
+        state: null,
+      };
+    });
+  }
+  const state = view.files.find((file) => section.contains(file.body)) ?? null;
+  if (state === null || !drawsLines(state)) {
+    return [];
+  }
+  /** @type {Map<HTMLElement, DiffLine>} */
+  const lines = new Map();
+  for (const { host, line, side } of state.textHosts) {
+    const row = rowOfHost(host);
+    if (row !== null && (side === "new" || !lines.has(row))) {
+      lines.set(row, line);
+    }
+  }
+  // In the page's order: a fold's rows are drawn after the rows below it.
+  const split = state.body.querySelectorAll(".diff-split-row");
+  const drawn = split.length > 0 ? split : state.body.querySelectorAll(".diff-line");
+  return [...drawn].flatMap((element) => {
+    const row = /** @type {HTMLElement} */ (element);
+    const line = lines.get(row);
+    return line === undefined
+      ? []
+      : [
+          {
+            element: row,
+            kept: !current || line.op !== "del",
+            find: () => rowOfLine(state, line),
+            state,
+          },
+        ];
+  });
+}
+
+/**
+ * A rendered Markdown article's rows in the page's order: its own, in place of a change the
+ * rows its runs hold (`changeRuns` in diff-markdown.js), and in place of an open fold's
+ * group, the rows the group holds, so the row at the pane's top is the block there however
+ * deep in a fold it is. A fold's rows are its blocks and the places of its chunks not drawn
+ * yet; a closed fold's group holds none.
+ *
+ * @param {HTMLElement} rendered
+ * @returns {HTMLElement[]}
+ */
+function markdownRows(rendered) {
+  /** @type {HTMLElement[]} */
+  const rows = [];
+  for (const child of rendered.children) {
+    const element = /** @type {HTMLElement} */ (child);
+    if (element.hidden) {
+      continue;
+    }
+    if (element.classList.contains("diff-markdown-change")) {
+      for (const run of element.children) {
+        for (const row of run.children) {
+          if (!(/** @type {HTMLElement} */ (row).hidden)) {
+            rows.push(/** @type {HTMLElement} */ (row));
+          }
+        }
+      }
+      continue;
+    }
+    if (!element.classList.contains("diff-fold-group")) {
+      rows.push(element);
+      continue;
+    }
+    if (!element.classList.contains("diff-fold-collapsed")) {
+      for (const inner of element.children) {
+        if (!(/** @type {HTMLElement} */ (inner).hidden)) {
+          rows.push(/** @type {HTMLElement} */ (inner));
+        }
+      }
+    }
+  }
+  return rows;
+}
+
+/**
+ * The first block of a rendered Markdown row: a block's own index (`data-block`), or the
+ * first of those a fold's bar or a chunk not drawn yet stands for (`data-span`).
+ *
+ * @param {HTMLElement} element
+ * @returns {number | null}
+ */
+function blockAt(element) {
+  const own = element.dataset?.block ?? element.dataset?.span?.split("-")[0];
+  return own === undefined ? null : Number(own);
+}
+
+/**
+ * The element that draws block *index* of a rendered Markdown file now: its row, or what
+ * stands for it, the fold's bar that holds it or the place of a chunk not drawn yet. A
+ * view drawn anew, Full for Concise or a chunk for its place, keeps its blocks' indexes,
+ * so a block the reader was looking at is found again however it is drawn.
+ *
+ * @param {HTMLElement} rendered
+ * @param {number} index
+ * @returns {HTMLElement | null}
+ */
+function drawnBlock(rendered, index) {
+  /** @type {HTMLElement | null} */
+  let best = null;
+  for (const child of rendered.querySelectorAll("[data-block], [data-span]")) {
+    const element = /** @type {HTMLElement} */ (child);
+    if (element.hidden || element.closest(".diff-fold-collapsed") !== null) {
+      continue;
+    }
+    if (element.dataset.block === String(index)) {
+      return element;
+    }
+    const [start, end] = (element.dataset.span ?? "").split("-").map(Number);
+    if (start <= index && index < end) {
+      // The innermost: a chunk's place inside an open fold, before the fold's bar.
+      best = element;
+    }
+  }
+  return best;
+}
+
+/** Whether a code file's body is drawn: not collapsed, and not under its Rendered view. @param {FileViewState} state */
+function drawsLines(state) {
+  return !state.body.hidden && !state.body.classList.contains("diff-file-body-collapsed");
+}
+
+/**
+ * The row a line's text sits in: a Unified or Current `.diff-line`, or the Split row whose
+ * side it is.
+ *
+ * @param {HTMLElement} host
+ * @returns {HTMLElement | null}
+ */
+function rowOfHost(host) {
+  const cell = host.parentElement;
+  return cell?.classList.contains("diff-split-side") ? cell.parentElement : cell;
+}
+
+/**
+ * Every line a file can draw, in the file's order: each hunk's, after the lines read for the
+ * gap above it, and last those read for the gap below the last hunk.
+ *
+ * @param {FileViewState} state
+ * @returns {Map<DiffLine, number>}
+ */
+function lineOrder(state) {
+  /** @type {Map<DiffLine, number>} */
+  const order = new Map();
+  const gaps = gapsOf(state) ?? [];
+  const read = state.gapLines.byNumber;
+  const numbers = gaps.length === 0 ? [] : [...read.keys()].sort((a, b) => a - b);
+  let next = 0;
+  /** @param {number} end */
+  const readBefore = (end) => {
+    while (next < numbers.length && numbers[next] < end) {
+      order.set(/** @type {DiffLine} */ (read.get(numbers[next])), order.size);
+      next += 1;
+    }
+  };
+  for (const [index, hunk] of state.renderModel.hunks.entries()) {
+    const gap = gaps[index] ?? null;
+    if (gap?.end != null) {
+      readBefore(gap.end);
+    }
+    for (const each of hunk.lines) {
+      order.set(each, order.size);
+    }
+  }
+  readBefore(Number.POSITIVE_INFINITY);
+  return order;
+}
+
+/**
+ * The row that draws *line* now, or, where a fold keeps it out of the page, the row of the
+ * nearest line before it that is drawn, else after it. Null when the file draws no line.
+ *
+ * @param {FileViewState} state
+ * @param {DiffLine} line
+ * @returns {HTMLElement | null}
+ */
+function rowOfLine(state, line) {
+  if (!drawsLines(state)) {
+    return null;
+  }
+  const order = lineOrder(state);
+  const at = order.get(line) ?? 0;
+  /** @type {{host: HTMLElement, index: number} | null} */
+  let before = null;
+  /** @type {{host: HTMLElement, index: number} | null} */
+  let after = null;
+  for (const { host, line: drawn } of state.textHosts) {
+    if (drawn === line && host.isConnected) {
+      return rowOfHost(host);
+    }
+    const index = order.get(drawn) ?? -1;
+    if (index < at && (before === null || index > before.index)) {
+      before = { host, index };
+    } else if (index > at && (after === null || index < after.index)) {
+      after = { host, index };
+    }
+  }
+  const nearest = before ?? after;
+  return nearest === null ? null : rowOfHost(nearest.host);
+}
+
+/**
+ * The page changed height: put back what the reader was looking at, the row a Diff | Current
+ * choice keeps (`placeOfTopRow`), or the file at the pane's top. This measures where it is
+ * and moves the pane by the difference, so where a browser's own scroll anchoring has kept
+ * the same row in place, it moves nothing, and in a browser without anchoring it holds.
+ *
+ * @param {MountedDiffState} view
+ * @param {Place | null} [anchor]
  */
 function holdPlace(view, anchor = null) {
   if (view.pinned !== null) {
@@ -2699,11 +4572,81 @@ function holdPlace(view, anchor = null) {
   }
   if (anchor !== null) {
     const pane = scrollerOf(view);
-    const moved = anchor.section.getBoundingClientRect().top - anchor.top;
-    if (pane !== null && Math.abs(moved) >= 0.5) {
+    const row = anchor.row?.find() ?? null;
+    const moved =
+      row !== null && anchor.row !== undefined
+        ? row.getBoundingClientRect().top - anchor.row.top
+        : anchor.section.getBoundingClientRect().top - anchor.top;
+    if (pane !== null && Math.abs(moved) >= HOLD_PLACE_MIN_PX) {
       pane.scrollTop += moved;
     }
   }
+}
+
+// The least drift `holdPlace` puts back: no finer than the step the pane's scroll position
+// takes, so a correction never leaves a drift it would correct again. A move under the step
+// is made as a whole step, past the row, and Chrome's own anchoring, which keeps a row's
+// rounded place, then holds it there. Chrome's step is a device pixel: set to 1146.25,
+// 1146.5, and 1146.75, an element's scrollTop read back 1146, 1147, and 1147 at a device
+// pixel ratio of 1, which the Chrome tier forces (tests/dom/chrome-session.mjs), and 1146.5,
+// 1146.5, and 1147 at 2 (headless Chrome, 2026-11-25). At 1, opening a hunk gap above the
+// pane's top (tests/dom/diff-hunk-gap-chrome.mjs) with half a pixel here, a drift of 0.5 px
+// moved the pane from 1146 to 1147, and the row at the pane's top ended 1 px above where it
+// was, 1.1-1.5 px while the gap's group grew; with a whole pixel it ended where it was and
+// stayed within 0.48 px of it at every frame. It is not `1 / devicePixelRatio`, which in
+// Chrome at 2 would put back a drift of half a pixel this leaves: WebKit's step is
+// unmeasured, and on any scroller coarser than a device pixel that would bring the overshoot
+// back. A drift it leaves is under a pixel, and each call measures it from the place first
+// kept, so it does not grow.
+const HOLD_PLACE_MIN_PX = 1;
+
+/**
+ * Keep holding a Diff | Current choice's row while its file's open folds draw their rows,
+ * which they do in batches after the redraw (`renderFoldControl`): a kept line inside one is
+ * not drawn until its batch is. Ends when they are drawn, at the next redraw, or at the
+ * reader's own move, as a pin does (`releasePinOnInput`).
+ *
+ * @param {MountedDiffState} view
+ * @param {Place | null} anchor
+ * @param {FileViewState | null} [drawing] The file whose rows are being drawn, where it is
+ *   not the kept row's: a gap opened in a file above the pane's top (`gapSourceOf`).
+ */
+function settlePlace(view, anchor, drawing = null) {
+  const state = drawing ?? anchor?.row?.state ?? null;
+  const pane = scrollerOf(view);
+  if (anchor === null || state === null || pane === null || state.foldTasks.size === 0) {
+    return;
+  }
+  const generation = view.layoutGeneration;
+  const since = eventClockNow();
+  const listening = new AbortController();
+  const options = { capture: true, passive: true, signal: listening.signal };
+  /** @param {{timeStamp?: number}} [event] */
+  const releaseHold = (event) => {
+    if (typeof event?.timeStamp !== "number" || event.timeStamp >= since) {
+      listening.abort();
+    }
+  };
+  for (const type of ["wheel", "touchstart", "pointerdown"]) {
+    pane.addEventListener(type, releaseHold, options);
+  }
+  pane.ownerDocument?.defaultView?.addEventListener("keydown", releaseHold, options);
+  const step = () => {
+    view.timers.delete(timer);
+    if (listening.signal.aborted || view.disposed || view.layoutGeneration !== generation) {
+      listening.abort();
+      return;
+    }
+    holdPlace(view, anchor);
+    if (state.foldTasks.size === 0) {
+      listening.abort();
+      return;
+    }
+    timer = setTimeout(step, 0);
+    view.timers.add(timer);
+  };
+  let timer = setTimeout(step, 0);
+  view.timers.add(timer);
 }
 
 /**
@@ -2839,7 +4782,8 @@ function jumpToEntry(view, entry, path) {
     releasePinOnInput(view, pane);
   }
   const fileId = String(entry.change.id);
-  const lines = view.hydration.jump(fileId);
+  // A file whose rendered view hides its body has no rows to draw for the jump.
+  const lines = bodyWanted(view, fileId) ? view.hydration.jump(fileId) : null;
   const availability = String(entry.change.availability);
   return {
     kind: "jumped",
@@ -2880,16 +4824,18 @@ function rememberFile(view, change, section, expand) {
  * @param {{revision?: string}} context
  * @param {MountedDiffState} view
  * @param {boolean} draw Whether a ready file's rows are drawn now. One past the first screen
- *   is held, with its answer, until it is reached.
+ *   is held, with its answer, until it is reached, and so is one with a rendered view,
+ *   wherever it is, until its Source is shown and reached (`bodyWanted`).
  * @returns {HTMLElement}
  */
 function renderFileSection(change, patch, context, view, draw) {
   sectionSequence += 1;
   const toggleId = `diff-file-toggle-${sectionSequence}`;
   const bodyId = `diff-file-body-${sectionSequence}`;
+  const factsId = `diff-file-facts-${sectionSequence}`;
   const section = el("section", "diff-file");
   section.setAttribute("aria-labelledby", toggleId);
-  const { bar, toggle, notice } = renderFileBar(change, toggleId, bodyId, view);
+  const { bar, end, toggle, notice } = renderFileBar(change, toggleId, bodyId, factsId, view);
   const body = el("div", "diff-file-body");
   body.setAttribute("id", bodyId);
   if (notice) {
@@ -2900,11 +4846,28 @@ function renderFileSection(change, patch, context, view, draw) {
 
   // The whole bar is one activation surface, like a tree row; the
   // button stays the semantic trigger for focus and keyboard, whose
-  // synthesized click bubbles here. Only the copy and View file
-  // controls opt out.
-  const markdown = view.markdown?.supports(change)
-    ? view.markdown.controller.add({ section, bar, toggle, source: body, id: String(change.id) })
-    : null;
+  // synthesized click bubbles here. Only the copy control, a file's
+  // view chooser, and the View file controls opt out.
+  const format = view.markdown?.format(change) ?? null;
+  const availability = String(change.availability);
+  const markdown =
+    format === null
+      ? null
+      : view.markdown?.controller.add({
+          section,
+          bar,
+          end,
+          source: body,
+          id: String(change.id),
+          format,
+          gone: String(change.kind) === "deleted",
+          onSource: () => bodyShownChanged(view, String(change.id)),
+          // A file whose changes did not load has no Rendered either, for the reason its
+          // body gives below.
+          ...(availability === "ready" || availability === "deferred"
+            ? {}
+            : { unavailable: AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY }),
+        });
   let expanded = true;
   /** @param {boolean} next */
   const setExpanded = (next) => {
@@ -2935,14 +4898,16 @@ function renderFileSection(change, patch, context, view, draw) {
     }
   });
 
-  const availability = String(change.availability);
   if (availability === "deferred" && context.revision) {
     queueDeferredHydration(section, body, change, context.revision, view);
     return section;
   }
   if (availability !== "ready" || patch === undefined) {
-    const copy = AVAILABILITY_COPY[availability] || "These changes are unavailable.";
+    const copy = AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY;
     body.append(el("div", "diff-availability", copy));
+    if (availability === "binary") {
+      appendPdfCard(view, change, body);
+    }
     return section;
   }
   const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
@@ -2952,16 +4917,23 @@ function renderFileSection(change, patch, context, view, draw) {
     body.append(el("div", "diff-availability", "No content changes."));
     return section;
   }
-  if (!draw) {
+  if (!draw || markdown !== null) {
     const id = String(change.id);
     const held = { manifest: { files: [change] }, patches: { [id]: patch } };
     queueDeferredHydration(section, body, change, context.revision ?? "", view, held);
     return section;
   }
-  const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
+  const state = createFileState(
+    change,
+    patch,
+    view.api ?? plainSyntaxApi(),
+    body,
+    view.unfold,
+    gapSourceOf(view, context.revision),
+  );
   view.files.push(state);
   if (!view.awaitingWidth) {
-    renderFileBody(state, view.layout);
+    renderFileBody(state, projectionOf(view));
   }
   scheduleFileEnhancement(view, state);
   return section;
@@ -2975,7 +4947,7 @@ function renderFileSection(change, patch, context, view, draw) {
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown> | undefined} patch
  * @param {{revision?: string}} context
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 function bodyRows(change, patch, context, layout) {
   const availability = String(change.availability);
@@ -2983,7 +4955,7 @@ function bodyRows(change, patch, context, layout) {
     return reservedRows(change, layout);
   }
   if (availability === "ready" && patch !== undefined) {
-    return Math.max(1, patchRows(patch, layout));
+    return Math.max(1, patchRows(patch, layout, change));
   }
   return 1;
 }
@@ -3079,6 +5051,8 @@ export function mountDiffSummary(slot, document_, api, options) {
     disposed: false,
     changedFiles: options.changedFiles,
     jump: options.openFile,
+    // The page's header says the file count on its size line, above the summary.
+    countsFiles: false,
   };
   const summary = summaryOrTotals(manifest.totals, manifest.files, owner);
   slot.replaceChildren(summary.element);
@@ -3101,12 +5075,23 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   summaryHost?: HTMLElement | null,
  *   summaryTotals?: unknown,
  *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
- *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
- *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
+ *   renderMarkdown?: (
+ *     fileId: string,
+ *     signal: AbortSignal,
+ *     ask?: import("./diff-markdown.js").RenderedAsk,
+ *   ) => Promise<unknown>,
+ *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "renderedFormat">,
  *   markdownTargets?: (value: string, image: boolean) => boolean,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
- *   openFile?: (path: string) => void
+ *   openFile?: (path: string) => void,
+ *   summaryManifest?: Record<string, unknown> | null,
+ *   toolbarControl?: HTMLElement | null,
+ *   emptyText?: string,
+ *   unfold?: boolean,
+ *   layout?: "unified",
+ *   show?: "diff" | "current",
+ *   showPreference?: string
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -3119,11 +5104,32 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   where a page that places the summary at its own top wants it drawn (mb-pb35).
  *   *summaryTotals* are the change set's whole totals, which its summary says where the list
  *   is cut short at its bound, as a commit's page knows them (A3 of review A on #470).
- * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
+ *   A diff narrowed to some file types (diff-type-filter.js) passes the whole comparison's
+ *   manifest as *summaryManifest*, so its summary still describes the whole change set; its
+ *   File type control as *toolbarControl*, which leads the toolbar's end group of choosers; and *emptyText*,
+ *   what it says when it keeps no file. *unfold* draws the text diff's long changed runs
+ *   open and opens a rendered Markdown file in Full where it is small enough to draw whole
+ *   (`createMarkdownViews`' *opens*), for a page that shows its files whole: a pull
+ *   request's Docs tab. *layout* fixes the layout at
+ *   Unified, which the diff then draws with no layout control and no `L`, neither reading
+ *   nor writing the reader's stored choice: a pull request's Docs tab, whose rendered
+ *   documents take that form. Split is the reader's to choose, so no host fixes it. *show*
+ *   is what the toolbar's Diff | Current opens on before the reader chooses on this
+ *   surface, Diff unless the host says Current, and *showPreference* the preference the
+ *   choice is remembered as, `diff.show` unless the host keeps its own; a stored value that
+ *   is not a choice reads as *show*. A pull request's Docs tab opens on Current and
+ *   remembers its choice as `github.docs.show`, so neither its choice nor Changes' moves
+ *   the other.
+ * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, sectionForPath: (path: string) => HTMLElement | null, pathForSection: (section: Element) => string | null, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
-  const chosenLayout = readLayoutPreference(api);
+  const fixedLayout = options.layout === "unified" ? options.layout : null;
+  const chosenLayout = fixedLayout ?? readLayoutPreference(api);
+  const showPreference =
+    typeof options.showPreference === "string" && options.showPreference !== ""
+      ? options.showPreference
+      : "diff.show";
   // Measured before the first draw, so a narrow pane never draws Split to throw it away. A
   // container that is not laid out yet has no width, as a commit's stage has none until it
   // is placed, so nothing is drawn until its first report decides.
@@ -3147,6 +5153,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     generation: 1,
     hydration: /** @type {MountedDiffState["hydration"]} */ (/** @type {unknown} */ (null)),
     hydrationObserver: null,
+    reached: new Set(),
     markdown: null,
     insistedOnSplit: false,
     layout: drawnLayout(chosenLayout, narrow, false),
@@ -3155,7 +5162,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     layoutKey: null,
     listTruncated: false,
     narrow,
-    hydrationFailure: el("div", "diff-availability diff-hydration-failure"),
+    hydrationFailure: noticeEl("error", "diff-hydration-failure"),
     pinListeners: null,
     pinned: null,
     pinnedAt: Number.NEGATIVE_INFINITY,
@@ -3169,8 +5176,14 @@ export function mountDiffView(container, document_, api, options = {}) {
     viewFileBusy: null,
     viewFileBars: [],
     yielders: new Set(),
+    pdfCards: [],
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
+    unfold: options.unfold === true,
+    show: readShowPreference(api, showPreference, options.show === "current" ? "current" : "diff"),
+    showPreference,
+    showControl: null,
+    showKey: null,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (
@@ -3180,19 +5193,26 @@ export function mountDiffView(container, document_, api, options = {}) {
     typeof IntersectionObserver === "function"
   ) {
     view.markdown = {
-      supports: options.markdownViews.supportsMarkdownChange,
+      format: options.markdownViews.renderedFormat,
       controller: options.markdownViews.createMarkdownViews({
         load: options.renderMarkdown,
         controls: api.filterControls,
         ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
+        opens: options.unfold === true ? "prefer-full" : "concise",
+        current: view.show === "current",
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
         },
+        // The structured plugin draws a YAML or JSON file's tree, as in the file view
+        // (`requires` in manifest.toml).
+        async ensureStructured() {
+          return api?.plugins?.load("structured");
+        },
         loadStyles: (assets) => api?.loadKpressAssets?.(assets) ?? Promise.resolve(),
         mutate(change) {
-          const anchor = view.pinned === null ? placeOfTopFile(view, true) : null;
+          const anchor = view.pinned === null ? placeOfTopRendered(view) : null;
           change();
           holdPlace(view, anchor);
           view.notifyCurrentFile();
@@ -3215,6 +5235,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     });
   }
   const removeSelectionGate = installSplitSelectionGate(root);
+  root.dataset.show = view.show;
   if (!view.awaitingWidth) {
     root.dataset.layout = view.layout;
   }
@@ -3223,33 +5244,48 @@ export function mountDiffView(container, document_, api, options = {}) {
       document_.manifest
     );
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
-  const totals = manifest.totals;
   view.listTruncated = manifest.truncated === true;
+  // A diff narrowed to some file types describes the whole change set in its summary.
+  const described = /** @type {typeof manifest} */ (options.summaryManifest ?? manifest);
   const { toolbar, unbind } = renderDiffToolbar(
-    totals,
-    manifest.files,
+    described.totals,
+    described.files,
     view,
     options.showSummary !== false,
     options.summaryHost ?? null,
-    wholeTotalsOf(manifest, options.summaryTotals ?? null),
+    wholeTotalsOf(described, options.summaryTotals ?? null),
+    options.toolbarControl ?? null,
+    fixedLayout === null,
   );
-  root.append(toolbar);
+  // A fixed layout leaves the toolbar what else it holds, Diff | Current on a pull request's
+  // Docs tab, and a toolbar with nothing in it, as where the chip family is not loaded, is not
+  // drawn.
+  const drawsToolbar = fixedLayout === null || toolbar.children.length > 0;
+  if (drawsToolbar) {
+    root.append(toolbar);
+  }
+  // A list cut short at its bounds may have left out what was asked for: the truncation
+  // notice below says so, and "none" would not be true.
+  if (manifest.files.length === 0 && manifest.truncated !== true && options.emptyText) {
+    root.append(el("div", "diff-availability diff-type-empty", options.emptyText));
+  }
   // What the source could not model is left out of the files below, so it is said above them.
   for (const warning of /** @type {string[]} */ (view.resolved.warnings ?? [])) {
-    root.append(el("div", "diff-availability diff-warning", warning));
+    root.append(noticeEl("warning", "diff-warning", warning));
   }
   const context = { revision: String(document_.__revision ?? "") };
   view.hydrationFailure.hidden = true;
   root.append(view.hydrationFailure);
   // Rows are drawn for the files whose estimated top is within the first screen and one more;
-  // every later ready file is held, with its answer, and drawn when it is reached. The bars
+  // every later ready file is held, with its answer, and drawn when it is reached, as is
+  // every file with a rendered view, whose Source waits until it shows (`bodyWanted`). The bars
   // are all here, and each held file reserves its code rows and chrome before drawing.
   // Soft wraps and arriving scrollbars can add height. Drawing every hydrated file at
   // once was one task of style, layout and commit
   // proportional to the rows: 1,083 ms at 114,609 nodes on a 1,031-file comparison (review
-  // of #284, E1). The toolbar is counted as about a bar.
+  // of #284, E1). The toolbar, where there is one, is counted as about a bar.
   const budget = firstScreenBudget(screen);
-  let estimatedTop = screen?.barPx ?? 0;
+  let estimatedTop = drawsToolbar ? (screen?.barPx ?? 0) : 0;
   measureProjection(
     api,
     "diffMount:projection",
@@ -3260,11 +5296,11 @@ export function mountDiffView(container, document_, api, options = {}) {
         root.append(renderFileSection(change, patch, context, view, draw));
         if (screen !== null) {
           estimatedTop +=
-            screen.barPx + bodyRows(change, patch, context, view.layout) * screen.rowPx;
+            screen.barPx + bodyRows(change, patch, context, projectionOf(view)) * screen.rowPx;
         }
       }
       if (manifest.truncated) {
-        root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
+        root.append(noticeEl("warning", "", "The change list is too long to show in full."));
       }
       view.spacer = el("div", "diff-end-spacer");
       root.append(view.spacer);
@@ -3444,6 +5480,26 @@ export function mountDiffView(container, document_, api, options = {}) {
      * @param {string} path
      */
     fileForPath: (path) => lookupFile(view, path),
+    /**
+     * The section of the file a path names, or null, and the path a file's section is
+     * known by: for a host that keeps a reader's place by its file across two comparisons.
+     *
+     * @param {string} path
+     */
+    sectionForPath: (path) =>
+      view.disposed ? null : (fileEntryForPath(view, path)?.section ?? null),
+    /** @param {Element} section */
+    pathForSection(section) {
+      // A disposed view says nothing of its files, as `sectionForPath` does not.
+      const entry = view.disposed
+        ? undefined
+        : view.bySection.get(/** @type {HTMLElement} */ (section));
+      if (entry === undefined) {
+        return null;
+      }
+      const side = /** @type {{path?: string}} */ (entry.change.new ?? entry.change.old);
+      return typeof side.path === "string" ? side.path : null;
+    },
     currentFile,
     /** Settles when the first screen's Markdown files no longer wait to be drawn. */
     firstScreen: () => view.markdown?.controller.firstScreen ?? Promise.resolve(),
@@ -3482,8 +5538,13 @@ export function mountDiffView(container, document_, api, options = {}) {
       }
       cancelPendingWork();
       view.viewFile?.dispose();
+      for (const card of view.pdfCards.splice(0)) {
+        card.dispose();
+      }
       view.layoutKey?.detach();
       view.layoutKey = null;
+      view.showKey?.detach();
+      view.showKey = null;
       unbind();
       removeSelectionGate();
       root.remove();

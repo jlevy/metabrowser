@@ -1,0 +1,3 @@
+{"v":1,"ts":"2026-11-18T09:00:00.120Z","event":"mark","kind":"lifecycle","name":"server.start","pid":17,"attrs":{"served":"/srv/notes","version":"0.12.0"}}
+{"v":1,"ts":"2026-11-18T09:00:04.800Z","event":"end","kind":"request","name":"GET /api/tree","span":3,"dur_ms":2412.5,"outcome":"ok","pid":17,"attrs":{"status":200,"bytes":51200,"start_ms":2410.0,"phases":{"read":2380.2,"encode":12.1}}}
+{"v":1,"ts":"2026-11-18T09:01:00.000Z","event":"mark","kind":"lifecycle","name":"server.stop","pid":17}

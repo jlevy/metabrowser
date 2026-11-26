@@ -177,7 +177,10 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     getRegisteredView: () => ({ render: async () => ({ dispose() {} }) }),
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
     formatTimestamp: () => "now",
     navigation: { href: () => "/view/" },
     sourceKind: () => "git_revision",
@@ -208,6 +211,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const warm = new Element("main");
   const current = structuredClone(recorded.current);
   current.body.refreshing = true;
+  // The page notes its record back over an older list's word for it (mb-as06): the list said
+  // draft, earlier than GitHub's last update of the record, which says open.
+  const pullState = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-state.js")).href
+  );
+  const source = current.body.source;
+  pullState.noteListed(source, "all", [
+    { number: 7, state: "draft", updatedAt: "2026-09-15T00:00:00Z", title: "Listed seven" },
+  ]);
   const next = page.mountPullPage(
     warm,
     {
@@ -224,6 +236,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     null,
     "cached refreshing page remains readable",
   );
+  assert.deepEqual(
+    pullState.listedState(source, 7),
+    {
+      state: "open",
+      updatedAt: current.body.record.pull.updated_at,
+      title: current.body.record.pull.title,
+    },
+    "the page notes its fresher record back",
+  );
   assert(warm.textContent.includes(current.body.record.pull.title));
   // The freshness note ends the author's row (mb-ne91).
   const refreshing = warm.querySelector(".github-pull-note");
@@ -231,10 +252,11 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     refreshing.querySelector(".github-pull-freshness").textContent,
     /^Fetched .+ via GitHub CLI$/,
   );
-  // Refresh keeps its slot at the row of ages' end, held hidden while a refresh runs.
-  const refresh = warm.querySelector(".github-pull-opened").children.at(-1);
-  assert.ok(refresh.classes.has("github-pull-refresh"));
-  assert.equal(refresh.hidden, true);
+  // The stack's slot ends the row of ages: the page has no Refresh of its own (mb-ablv).
+  assert.ok(
+    warm.querySelector(".github-pull-opened").children.at(-1).classes.has("github-pull-stacks"),
+  );
+  assert.equal(warm.querySelector(".github-pull-refresh"), null);
   assert.equal(refreshing.querySelector(".spinner"), null, "nothing spins over the cached page");
   const age = refreshing.querySelector(".github-pull-freshness");
   assert(
@@ -243,6 +265,11 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       refreshing.getAttribute("aria-busy") === null,
     "the cached page's age breathes, and is the one thing busy, while it refreshes",
   );
+  // The header's rows and the row of ages' parts before the stack arrives: its chip lands in
+  // the slot that ends that row (mb-646g), so it adds, takes, and reorders no row or part. tests/dom/github-pull-header-chrome.mjs measures that nothing moves.
+  const agesRow = warm.querySelector(".github-pull-opened");
+  const rowsBefore = [...warm.querySelector(".github-pull-header").children];
+  const partsBefore = [...agesRow.children];
   resolveStacks({
     status: optionalStacks.current.status,
     headers: { get: () => optionalStacks.current.etag },
@@ -256,8 +283,21 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert(
-    warm.querySelector(".github-pull-meta").children.at(-1).contains(trigger),
-    "stack control ends the author's row (mb-cf0l)",
+    agesRow.children.at(-1).contains(trigger),
+    "stack control ends the row of ages (mb-646g, mb-ablv)",
+  );
+  // The same nodes, by identity, in the same order.
+  const same = (now, before) =>
+    now.length === before.length && now.every((node, at) => node === before[at]);
+  assert(
+    same([...warm.querySelector(".github-pull-header").children], rowsBefore),
+    "the chip arriving adds, takes, and reorders no header row",
+  );
+  assert(same([...agesRow.children], partsBefore), "the chip lands in the row of ages' own slot");
+  assert.deepEqual(
+    warm.querySelector(".github-pull-meta").children.map((node) => node.getAttribute("class")),
+    ["github-pull-meta-lead"],
+    "the author's row holds no stack control",
   );
   assert(warm.querySelector(".github-pull-author"), "page actor uses semantic username treatment");
   const disclosure = warm.querySelector(".github-pull-stack-disclosure");
@@ -265,10 +305,165 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   disclosure.open = true;
   disclosure.events.get("toggle")();
   const members = warm.querySelector(".github-pull-stack-menu");
+  // The menu's links: Whole stack first (mb-vad1), then the members.
+  const allLinks = () => [...members.descendants()].filter((item) => item.tag === "a");
+  const memberLinks = () =>
+    allLinks().filter((item) => item.getAttribute("class")?.includes("github-pull-stack-member"));
   assert.deepEqual(
-    [...members.descendants()].filter((item) => item.tag === "a").map((item) => item.textContent),
-    ["3/3 · Stack change 8 · #8", "✓2/3 · Stack change 7 · #7", "1/3 · Stack change 6 · #6"],
+    allLinks().map((item) => item.getAttribute("href")),
+    ["/stack/286", "/pull/8/files", "/pull/7/files", "/pull/6/files"],
   );
+  assert.equal(allLinks()[0].textContent, "Whole stack");
+  assert.deepEqual(
+    memberLinks().map((item) => item.textContent),
+    [
+      "Stack change 8 3/3 · #8 · contributor",
+      "Stack change 7 2/3 · #7 · forker",
+      "Stack change 6 1/3 · #6 · contributor",
+    ],
+  );
+  // Every member is one line in one layout (mb-as06): the state icon, then the title, whose
+  // whole is the member's tip, then, together at the line's end, the bold place, a muted dot,
+  // the number, and another dot and the author, in a Pulls row's order, the title, the place,
+  // the number, and the author (mb-1kzu, mb-pw8t, mb-x0z1), so a reader and a screen reader
+  // alike tell two members of one title apart. The page's own member has the header's state and
+  // author; a member the Pulls list has not listed keeps the icon's slot empty, and every other
+  // member has the author the stacks route read with its title.
+  const classOf = (node) => node.className || node.getAttribute("class");
+  const layout = (link) => ({
+    parts: link.children.map(classOf),
+    line: link.children[1].children
+      .filter((node) => typeof node === "object")
+      .map((node) => `${node.tag}.${classOf(node)}`),
+    state: link.children[0].dataset.state ?? null,
+    named: link.children[0].getAttribute("aria-label") ?? null,
+    tip: link.getAttribute("data-tip-text"),
+  });
+  const line = [
+    "span.github-pull-stack-member-title",
+    "strong.github-pull-stack-member-position",
+    "span.github-pull-stack-dot",
+    "span.github-pull-stack-member-number",
+    "span.github-pull-stack-member-by",
+  ];
+  const parts = ["github-pull-state-icon", "github-pull-stack-member-copy"];
+  assert.deepEqual(memberLinks().map(layout), [
+    { parts, line, state: null, named: null, tip: "Stack change 8" },
+    { parts, line, state: "open", named: "Open", tip: "Stack change 7" },
+    { parts, line, state: null, named: null, tip: "Stack change 6" },
+  ]);
+  assert.deepEqual(
+    memberLinks().map((link) =>
+      link.children[1].children
+        .filter((node) => typeof node === "object")
+        .slice(-2)
+        .map((node) => node.textContent),
+    ),
+    [
+      ["#8", " · contributor"],
+      ["#7", " · forker"],
+      ["#6", " · contributor"],
+    ],
+    "each member's number is followed by its author, which ends its line",
+  );
+  // Once the Pulls list has said the others' states, the menu opened again draws them.
+  pullState.noteListed(source, "all", [
+    { number: 8, state: "draft", updatedAt: "2026-11-24T00:00:00Z" },
+    { number: 6, state: "merged", updatedAt: "2026-11-24T00:00:00Z" },
+  ]);
+  const linksBefore = memberLinks();
+  disclosure.open = false;
+  disclosure.events.get("toggle")();
+  disclosure.open = true;
+  disclosure.events.get("toggle")();
+  assert.deepEqual(
+    memberLinks().map((link) => link.children[0].dataset.state ?? null),
+    ["draft", "open", "merged"],
+  );
+  assert(
+    memberLinks().every((link, at) => link === linksBefore[at]),
+    "a state drawn anew keeps each member's link",
+  );
+  // A state the list takes back is drawn no longer (mb-as06): the Open list, the Pulls tab's
+  // first filter, said #8 open, and its next answer leaves #8 out, as it does once #8 merges
+  // or closes. The menu opened again keeps #8's slot empty and unnamed, where it had drawn
+  // the Open icon and named it "Open"; the merge the All list said of #6 stands.
+  const reopen = () => {
+    disclosure.open = false;
+    disclosure.events.get("toggle")();
+    disclosure.open = true;
+    disclosure.events.get("toggle")();
+  };
+  const drawn = () =>
+    memberLinks().map((link) => [
+      link.children[0].dataset.state ?? null,
+      link.children[0].getAttribute("aria-label") ?? null,
+    ]);
+  pullState.noteListed(source, "open", [
+    { number: 8, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+    { number: 7, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+  ]);
+  reopen();
+  assert.deepEqual(drawn(), [
+    ["open", "Open"],
+    ["open", "Open"],
+    ["merged", "Merged"],
+  ]);
+  pullState.noteListed(source, "open", [
+    { number: 7, state: "open", updatedAt: "2026-11-24T02:00:00Z" },
+  ]);
+  reopen();
+  assert.deepEqual(
+    drawn(),
+    [
+      [null, null],
+      ["open", "Open"],
+      ["merged", "Merged"],
+    ],
+    "a member the Open list no longer holds is not drawn open",
+  );
+  assert.equal(page.stackMemberState(source, 8, 7, "open"), null);
+  // Each list takes back only the states it holds, never a merge, and an answer older than
+  // what is noted of a row replaces nothing. A record fresher than the list is noted back;
+  // one no list has noted is noted only when merged, as no list could take another back.
+  const elsewhere = "https://github.com/octo/elsewhere";
+  const statesOf = (...numbers) =>
+    numbers.map((at) => pullState.listedState(elsewhere, at)?.state ?? null);
+  pullState.noteListed(elsewhere, "all", [
+    { number: 1, state: "merged", updatedAt: "2026-11-24T01:00:00Z" },
+    { number: 2, state: "closed", updatedAt: "2026-11-24T01:00:00Z" },
+    { number: 3, state: "draft", updatedAt: "2026-11-24T01:00:00Z" },
+    { number: 4, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+  ]);
+  pullState.noteListed(elsewhere, "open", [
+    { number: 4, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+  ]);
+  assert.deepEqual(statesOf(1, 2, 3, 4), ["merged", "closed", null, "open"]);
+  pullState.noteListed(elsewhere, "closed", []);
+  assert.deepEqual(statesOf(1, 2, 3, 4), ["merged", null, null, "open"]);
+  const four = { number: 4, state: "closed", merged: true, title: "Four" };
+  pullState.noteRecord(elsewhere, { ...four, updated_at: "2026-11-24T00:30:00Z" });
+  assert.deepEqual(statesOf(4), ["open"], "an older record replaces nothing");
+  pullState.noteRecord(elsewhere, { ...four, updated_at: "2026-11-24T02:00:00Z" });
+  assert.deepEqual(pullState.listedState(elsewhere, 4), {
+    state: "merged",
+    updatedAt: "2026-11-24T02:00:00Z",
+    title: "Four",
+  });
+  // An Open answer read before the merge, as a cached one is, says #4 open: it is older news.
+  pullState.noteListed(elsewhere, "open", [
+    { number: 4, state: "open", updatedAt: "2026-11-24T01:00:00Z" },
+  ]);
+  pullState.noteListed(elsewhere, "all", []);
+  assert.deepEqual(statesOf(4), ["merged"], "a merge noted back stands");
+  pullState.noteRecord(elsewhere, { number: 5, state: "open", updated_at: "2026-11-24T00:00:00Z" });
+  pullState.noteRecord(elsewhere, {
+    number: 6,
+    state: "closed",
+    merged: true,
+    updated_at: "2026-11-24T00:00:00Z",
+  });
+  assert.deepEqual(statesOf(5, 6), [null, "merged"]);
   // A menu of one group is named once, by the heading over its members: the host's group
   // heading, in the stack's label class (docs/design-system.md, "Stacks").
   const heading = [...members.descendants()].find(
@@ -289,7 +484,30 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const following = anchors.find((element) => element.getAttribute("href") === "/pull/8/files");
   assert(previous);
   assert(following);
-  assert.equal(anchors[1].getAttribute("aria-current"), "page");
+  assert.equal(anchors[2].getAttribute("aria-current"), "page");
+  // Each member's author follows its number, after a dot (mb-x0z1): the page's own for the pull
+  // request it shows, and the stack's for the others, #6 and #8 here. The Whole stack row has
+  // the stack's glyph in the icon's slot (mb-7cn4).
+  const byOf = (anchor) =>
+    [...anchor.descendants()].find(
+      (element) => element.getAttribute("class") === "github-pull-stack-member-by",
+    );
+  assert.equal(byOf(anchors[2]).hidden, false);
+  assert.equal(byOf(anchors[2]).textContent, " · forker");
+  assert.deepEqual(
+    [anchors[1], anchors[3]].map((anchor) => [byOf(anchor).hidden, byOf(anchor).textContent]),
+    [
+      [false, " · contributor"],
+      [false, " · contributor"],
+    ],
+  );
+  assert.deepEqual(
+    anchors[0].children.map((node) => node.getAttribute("class")),
+    ["github-pull-stack-icon", "github-pull-stack-member-copy"],
+  );
+  // This fake parser makes no glyph, so the slot stands empty here and keeps the column; the
+  // stacks Chrome check pins the glyph itself and where it and the words start.
+  assert.equal(anchors[0].children[0].children.length, 0, "the slot stands without a glyph");
   next.activate();
   assert.equal(next.hasStack(), true);
   assert.equal(next.moveStack(-1), true);
@@ -330,6 +548,14 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     assert.equal(opened.length, count, "modified clicks do not open a local page");
     assert.equal(following.getAttribute("href"), "/pull/8/files");
   }
+  // The menu's first row opens the stack's own page in place (mb-vad1).
+  const wholeStack = anchors[0];
+  assert.equal(wholeStack.getAttribute("href"), "/stack/286");
+  const wholeCount = opened.length;
+  wholeStack.events.get("click")({ preventDefault() {} });
+  assert.equal(opened.length, wholeCount + 1);
+  assert.deepEqual(opened.at(-1), { number: 286, tab: "", stack: true });
+  opened.pop();
   const outsideFocus = new Element("button");
   document.activeElement = outsideFocus;
   disclosure.open = true;
@@ -381,17 +607,31 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     icon: null,
     currentTitle: "Current",
     titleNodes: api.titleNodes,
+    menus: api.menus,
     onOpen() {},
   });
   const menuHost = new Element("main");
   menuHost.append(standalone.element);
-  const key = (name, target = null) =>
-    standalone.element.events.get("keydown")({
+  // A key the menu leaves goes on to the document's listeners, as a keydown bubbles: Escape
+  // closes the open menu there (docs/design-system.md, "Every Menu Closes Alike").
+  const key = (name, target = null) => {
+    let stopped = false;
+    const event = {
       key: name,
       target,
-      preventDefault() {},
-      stopPropagation() {},
-    });
+      defaultPrevented: false,
+      preventDefault() {
+        event.defaultPrevented = true;
+      },
+      stopPropagation() {
+        stopped = true;
+      },
+    };
+    standalone.element.events.get("keydown")(event);
+    for (const listener of stopped ? [] : [...(documentEvents.get("keydown") ?? [])]) {
+      listener(event);
+    }
+  };
   // A key held with Command, Control, or Option is the browser's: Command-R reloads,
   // Command-Left goes back, and Command-Down scrolls to the end. The menu opens and moves
   // only on unmodified keys.
@@ -430,7 +670,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     });
     assert.equal(prevented || Boolean(standalone.element.open), false, `${name} opens nothing`);
   }
-  // Every way the menu opens puts focus on the current member, #7, the row checked, whose
+  // Every way the menu opens puts focus on the current member, #7, the row marked, whose
   // place in the top-first list is second (mb-xlla).
   key("ArrowDown");
   const menuLinks = standalone.element.querySelectorAll("a[href]");
@@ -547,6 +787,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     currentTitle: "Current",
     titleNodes: api.titleNodes,
     named: true,
+    menus: api.menus,
     onOpen() {},
   });
   assert.equal(named.element.children[0].textContent, "90 2/3");
@@ -555,6 +796,37 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "Navigate Stack #90, position 2 of 3",
   );
   named.dispose();
+  // With `wholeStack`, the menu's first row opens the stack's own page (mb-vad1), and the
+  // menu still opens on the current member, now third, with the keys moving over all rows.
+  const whole = page.createStackMenu(menuStack, 7, {
+    link: (target) => page.h("a", { href: `/pull/${target}` }),
+    wholeStack: (id) => page.h("a", { href: `/stack/${id}` }),
+    icon: null,
+    currentTitle: "Current",
+    titleNodes: api.titleNodes,
+    onOpen() {},
+  });
+  const wholeKey = (name) =>
+    whole.element.events.get("keydown")({
+      key: name,
+      target: null,
+      preventDefault() {},
+      stopPropagation() {},
+    });
+  wholeKey("ArrowDown");
+  const wholeLinks = whole.element.querySelectorAll("a[href]");
+  assert.deepEqual(
+    wholeLinks.map((link) => link.getAttribute("href")),
+    ["/stack/90", "/pull/8", "/pull/7", "/pull/6"],
+  );
+  assert.equal(wholeLinks[0].textContent, "Whole stack");
+  assert.equal(wholeLinks[0].getAttribute("role"), "menuitem");
+  assert.equal(wholeLinks[0].getAttribute("aria-current"), null);
+  assert.equal(document.activeElement, wholeLinks[2], "Down opens at the current member");
+  wholeKey("Home");
+  assert.equal(document.activeElement, wholeLinks[0], "Home reaches Whole stack");
+  wholeKey("Escape");
+  whole.dispose();
   for (const listener of documentEvents.get("pointerdown")) {
     listener({ target: new Element("button") });
   }
@@ -613,6 +885,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       fileCleared: true,
       explicitReaderIntent: true,
       disposedWorkReleased: true,
+      memberStateTakenBack: true,
+      recordNotedBack: true,
     }),
   );
 })().catch((error) => {

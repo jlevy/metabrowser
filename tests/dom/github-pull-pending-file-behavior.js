@@ -93,7 +93,10 @@ async function run() {
           },
         }),
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: { href: () => "/view/" },
         sourceKind: () => "git_revision",
@@ -235,7 +238,10 @@ async function run() {
         }),
       }),
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "age",
+      })),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/" },
       sourceKind: () => "git_revision",
@@ -248,13 +254,9 @@ async function run() {
   updated.record.comparison.head = "c".repeat(40);
   updated.record.pull.head.sha = "c".repeat(40);
   updated.fetched_at = "2026-09-17T12:00:01Z";
+  // The record's newer head replaces the diff still mounting, as Changes follows it.
   newer.resolve(response(updated));
   await settle();
-  const offer = [...container.descendants()].find(
-    (element) => element.textContent === "Show the newer changes",
-  );
-  assert.ok(offer);
-  offer.events.get("click")();
   oldAssets.resolve();
   await settle();
   await sameVisit.whenFilesReady();
@@ -325,7 +327,10 @@ async function run() {
           throw new Error("no comparison exists before acquisition");
         },
         ...require("./sdk-ref-fixture.js").refHelpers(document),
-        formatAge: () => ({ label: "now", className: "age" }),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
         formatTimestamp: () => "now",
         navigation: { href: () => "/view/" },
         sourceKind: () => "filesystem",
@@ -353,7 +358,7 @@ async function run() {
     const during = paint();
     assert.match(during.pending ?? "", /Fetching changes/, "the walk will settle on Changes");
     assert.equal(during.spinner, true);
-    assert.equal(during.fetch, false, "no Fetch changes the settled address makes needless");
+    assert.equal(during.fetch, false, "no Fetch the settled address makes needless");
     assert.equal(during.posts, 0, "the request waits for the address");
     if (end !== "settled") {
       if (end === "cancelled") {

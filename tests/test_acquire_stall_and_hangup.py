@@ -311,7 +311,7 @@ def test_a_stderr_whose_reader_has_gone_does_not_change_the_exit_status(
         assert finished.returncode == 0, (mode, finished.stdout)
         assert finished.stdout != b""
     # The second command found what the first cloned.
-    assert len(list((tmp_path / "home" / "repository-stores").iterdir())) == 1
+    assert len(list((tmp_path / "home" / "repos").iterdir())) == 1
 
 
 def _metab() -> str:

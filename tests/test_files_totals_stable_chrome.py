@@ -36,6 +36,8 @@ default pane and the narrowest. This judges it:
   keeps its box as "No ignored files";
 - the tracked and ignored lines' tooltips, each its line's whole phrase, show only while
   the line is cut short, and in the narrowest pane the ignored line is;
+- a Source Sans response held until after the rows first paint does not move the
+  navigation when the font arrives;
 - the tree's hold is bounded: a load whose ``filter-controls.js`` fails never fills the
   bar, and the tree is shown at the bound in the hold's rule, which this reads from
   styles.css, with nothing moved.
@@ -68,7 +70,7 @@ from tests.required_tools import require_chrome, require_node
 SESSION = Path(__file__).resolve().parent / "dom" / "files-totals-stable-chrome.mjs"
 STYLES = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "styles.css"
 _METAB = Path(sys.executable).with_name("metab")
-# Three server starts, one Chrome, and thirty-one loads, eighteen of them holding the tally
+# Three server starts, one Chrome, and thirty-two loads, eighteen of them holding the tally
 # 2 s and two the event stream 1.5 s (eight more hold it only until first paint, inside
 # their tally's 2 s): the session took 71 s, and the test 98 s, on a 10-core Mac at a
 # load average near 30. A cold Chrome start in CI has taken 28.2 s, and each server's
@@ -81,7 +83,13 @@ TOLERANCE_PX = 0.5
 # The tree's insertion is marked a moment before its first style, where the hold's bound
 # starts, and an animation's start is a frame's time: at most a few frames either way.
 BOUND_SLACK_MS = 50
-# The folder with ignored files: "41 files (1.5 MB)" over "+ 2,000 ignored (133.5 MB)".
+# The folder with ignored files: "41 files (1.5 MB)" over "+ 10,000 ignored (1001.4 MB)".
+# The ignored figures are long enough, a five-digit count and a size of 1000 MB or more,
+# that the line is cut short in the narrowest pane. "+ 2,000 ignored (133.5 MB)" was, by
+# 6 px, until the line left the tree's scroller for the band over it and gained the
+# scrollbar's 11 px gutter (mb-vgx3): in the band at 180 px it takes 150.1 px of the
+# 155 px it has, in Source Sans 3 at 13 px, measured in headless Chrome on 2026-11-18,
+# and its tooltip's shown branch went unchecked.
 # As one line the two wrapped in the narrowest pane, so main's code moved the tree there;
 # the tracked count is short enough to stay one line at 180 px in a wider font set than
 # the Mac's, so the check measures the ignored line and not that (the design system's
@@ -91,8 +99,8 @@ BOUND_SLACK_MS = 50
 _TRACKED_FILES = 40
 _WIDE_TRACKED_FILES = 1200
 _TRACKED_BYTES = 40_000
-_IGNORED_FILES = 2000
-_IGNORED_BYTES = 70_000
+_IGNORED_FILES = 10_000
+_IGNORED_BYTES = 105_000
 # How old the served trees are dated. An age is drawn in buckets, and the main view's
 # folder header shows the folder's: written as the test starts, a folder read "just now"
 # for its first minute, then "1m ago", "2m ago" and on. The header refreshes its summary a
@@ -230,7 +238,7 @@ def test_nothing_in_the_files_panel_moves_from_document_start_to_settled(
         tip = result["tip"]
         if ignored:
             assert tip is not None and tip["shows"] is tip["cut"], f"{name}: {tip}"
-            assert tip["text"] == "+ 2,000 ignored (133.5 MB)", f"{name}: {tip}"
+            assert tip["text"] == "+ 10,000 ignored (1001.4 MB)", f"{name}: {tip}"
             if result["width"] == 180:
                 assert tip["cut"], f"{name}: not cut short at 180 px: {tip}"
         else:
@@ -240,6 +248,10 @@ def test_nothing_in_the_files_panel_moves_from_document_start_to_settled(
         assert tracked is not None and tracked["shows"] is tracked["cut"], f"{name}: {tracked}"
     provisional = [result for result in results if result["provisional"]]
     assert len(provisional) == 2 and all(result["settled"] for result in provisional)
+
+    late_font: dict[str, Any] = output["lateFont"]
+    assert late_font["settled"] and late_font["fontArrivedAfterRows"], late_font
+    assert not _still(late_font) and late_font["shift"] == 0, late_font
 
     # The hold is bounded: with filter-controls.js failed, the bar is never filled, and the
     # tree is shown at the bound, not hidden for good, and nothing moves.

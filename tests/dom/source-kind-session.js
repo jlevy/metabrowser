@@ -23,7 +23,8 @@
 //   payload's `name` and `path`;
 // - whether Recent answers the Files panel, index progress polls, and the live
 //   event stream opens, or the one-shot catalog starts instead;
-// - which nav filter controls render. A pin has no mtime and no ignore state;
+// - which nav filter controls render. A pin has no ignore state, and has recency only where the
+//   server's Git can date its files (`METABROWSER_FILE_AGES`), which the transcript shows both ways;
 // - the navigation heading as served and after the tree loads. A folder's
 //   heading becomes the tree root's name; a pin keeps the ref and short commit
 //   the server rendered, since its tree root is the empty GitPath;
@@ -53,6 +54,7 @@ const PRODUCTION_MODULES = [
   "plugin-sdk.js",
   "filter-state.js",
   "filter-controls.js",
+  "menus.js",
   "tree-filter-model.js",
 ];
 
@@ -113,6 +115,12 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function liftVar(name) {
+  const match = appSource.match(new RegExp(`\\nvar ${name} = [^;]*;`));
+  assert(match, `${name} not found in app.js`);
+  return match[0];
 }
 
 function lift(name) {
@@ -225,8 +233,19 @@ function chipKeys(html) {
   return keys;
 }
 
-function observe(kind) {
-  const { shell, heading: servedHeading, root, tree, summary } = served[kind];
+function observe(kind, { fileAges } = {}) {
+  const { shell: servedShell, heading: servedHeading, root, tree, summary } = served[kind];
+  // The recording is made on the Git the suite pretends to have, which dates no files; a pin
+  // the server's Git can date has the same block with the flag set.
+  const shell =
+    fileAges === true
+      ? servedShell.map((script) =>
+          script.replace(
+            "window.METABROWSER_FILE_AGES=false;",
+            "window.METABROWSER_FILE_AGES=true;",
+          ),
+        )
+      : servedShell;
   const { sandbox, probe, navFilterBar } = createContext();
 
   // The served block runs first, exactly as the page's inline scripts do.
@@ -246,7 +265,7 @@ function observe(kind) {
     vm.runInContext(fs.readFileSync(absolute, "utf8"), sandbox, { filename: absolute });
   }
   vm.runInContext(COLLABORATORS, sandbox, { filename: "source-kind-collaborators.js" });
-  vm.runInContext(LIFTED.map(lift).join("\n"), sandbox, {
+  vm.runInContext([liftVar("noFileAges"), ...LIFTED.map(lift)].join("\n"), sandbox, {
     filename: "app-source-kind-gates.js",
   });
 
@@ -329,6 +348,7 @@ function observe(kind) {
 
 const folder = observe("filesystem");
 const pin = observe("git_revision");
+const pinWithAges = observe("git_revision", { fileAges: true });
 
 assert(folder.sourceKind === "filesystem", "a folder shell did not report filesystem");
 assert(pin.sourceKind === "git_revision", "a pin shell did not report git_revision");
@@ -369,5 +389,20 @@ for (const key of ["recency", "showIgnored"]) {
   assert(folder.gates.navFilterControls.includes(key), `a folder lost the ${key} control`);
   assert(!pin.gates.navFilterControls.includes(key), `a pin offered the ${key} control`);
 }
+// A pin whose Git dates its files offers what has a time to read, and still no ignore state.
+assert(
+  pinWithAges.gates.navFilterControls.includes("recency") &&
+    !pinWithAges.gates.navFilterControls.includes("showIgnored"),
+  "a pin with file ages must offer Modified within and no Show ignored",
+);
+assert(
+  pinWithAges.gates.groupByOptions.join() === "age,type" &&
+    pinWithAges.gates.filesPanelUsesRecentSource,
+  "a pin with file ages must offer By age and answer a window from Recent",
+);
+assert(
+  JSON.stringify(pinWithAges.rows) === JSON.stringify(pin.rows),
+  "file ages must not change how a pin names its rows",
+);
 
-console.log(JSON.stringify([folder, pin], null, 2));
+console.log(JSON.stringify([folder, pin, pinWithAges], null, 2));

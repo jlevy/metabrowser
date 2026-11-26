@@ -11,8 +11,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": null,
+    "checked_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "total": null,
@@ -38,8 +40,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -70,8 +74,9 @@ cloned https://github.com/octo/demo in 0.0 s
 --- body ---
 {}
 --- gh ---
-gh api repos/octo/demo --jq .size
 gh auth status
+gh api repos/octo/demo --jq .size
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
@@ -86,8 +91,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -128,8 +135,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -164,8 +173,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "not_logged_in",
@@ -195,6 +206,7 @@ Error: the refresh ended with not_logged_in
 --- body ---
 {"retry": true}
 --- gh ---
+gh api user
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -209,8 +221,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "not_logged_in",
@@ -245,8 +259,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_too_old",
@@ -276,6 +292,7 @@ Error: the refresh ended with gh_too_old
 --- body ---
 {"retry": true}
 --- gh ---
+gh api user
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -290,8 +307,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_too_old",
@@ -326,8 +345,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "not_found_or_private",
@@ -357,7 +378,7 @@ Error: the refresh ended with not_found_or_private
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -372,8 +393,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "not_found_or_private",
@@ -408,12 +431,14 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "network_error",
-    "message": "gh could not reach api.github.com",
+    "message": "GitHub could not be reached because api.github.com did not resolve (DNS)",
     "reset_at": null,
     "at": "2026-09-17T12:01:01Z"
   },
@@ -439,6 +464,7 @@ Error: the refresh ended with network_error
 --- body ---
 {"retry": true}
 --- gh ---
+gh api user
 gh auth status
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
@@ -454,12 +480,14 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "network_error",
-      "message": "gh could not reach api.github.com",
+      "message": "GitHub could not be reached because api.github.com did not resolve (DNS)",
       "reset_at": null,
       "at": "2026-09-17T12:01:01Z"
     },
@@ -490,8 +518,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -521,7 +551,7 @@ Error: the refresh ended with gh_failed
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -536,8 +566,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_failed",
@@ -572,8 +604,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "account_changed",
@@ -603,7 +637,7 @@ Error: the refresh ended with account_changed
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -618,8 +652,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "account_changed",
@@ -654,8 +690,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_missing",
@@ -696,8 +734,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_missing",
@@ -756,8 +796,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_missing",
@@ -792,8 +834,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "rate_limited",
@@ -823,7 +867,7 @@ Error: the refresh ended with rate_limited
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
@@ -838,8 +882,10 @@ status: 200
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "rate_limited",
@@ -883,8 +929,10 @@ status: 200
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "rate_limited",
@@ -929,8 +977,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "rate_limited",
@@ -965,8 +1015,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:03:02Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -995,7 +1047,7 @@ status: 200
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 ## A cache that refuses a write says why, and the command that clears it.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
@@ -1011,8 +1063,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:03:02Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -1047,8 +1101,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:03:02Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "cache_unwritable",
@@ -1078,7 +1134,7 @@ Error: the refresh ended with cache_unwritable
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 ## While the directory itself refuses writes, so does that command.
 # metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -
@@ -1087,7 +1143,8 @@ exit: 1
 api: /api/plugin/github/cache-clear
 status: 409
 {
-  "error": "the GitHub cache of octo/demo could not be cleared: Permission denied",
+  "error": "the GitHub cache of octo/demo could not be cleared",
+  "detail": "Permission denied",
   "code": "cache_unwritable"
 }
 --- stderr ---
@@ -1108,8 +1165,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:03:02Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "cache_unwritable",
@@ -1144,8 +1203,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:03:02Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1174,7 +1235,7 @@ status: 200
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 ## A catalog a newer Metabrowser wrote is left as it is and named, before any page is asked for; the command it names clears it, and the list is fetched again.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
@@ -1190,8 +1251,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": null,
+    "checked_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -1222,8 +1285,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": null,
+  "checked_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "newer_cache",
@@ -1275,8 +1340,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": null,
+    "checked_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "total": null,
@@ -1302,8 +1369,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:03:02Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1332,7 +1401,7 @@ status: 200
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
@@ -1350,8 +1419,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": null,
+    "checked_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -1382,8 +1453,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": null,
+  "checked_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "unknown_cache",
@@ -1435,8 +1508,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": null,
+    "checked_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "total": null,
@@ -1462,8 +1537,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:03:02Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1492,7 +1569,7 @@ status: 200
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
@@ -1507,6 +1584,7 @@ Error: the refresh ended with network_error
 --- body ---
 {"retry": true}
 --- gh ---
+gh api user
 gh auth status
 ## A reconnect can refresh metadata immediately once GitHub is reachable.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
@@ -1518,5 +1596,5 @@ status: 200 succeeded, 100 cached PRs
 --- body ---
 {"reconnect": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start

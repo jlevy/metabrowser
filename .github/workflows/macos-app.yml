@@ -14,17 +14,35 @@ on:
       - "apps/macos/**"
       - "Makefile"
       - ".github/workflows/macos-app.yml"
+      # The scripts that install uv and Node here, whose macOS branches no other workflow
+      # runs.
+      - "devtools/install_uv.sh"
+      - "devtools/install_node.sh"
+      # The shared Lucide notice copied into the signed app bundle.
+      - "src/metabrowser/static/source-kind-glyphs.license.txt"
       # metab's half of handing the app a target, whose LaunchServices lookup runs here.
       - "src/metabrowser/cli/present.py"
       - "tests/test_present.py"
+      # What metab answers the app, which the app's own readers are held to
+      # (AppContractTests): a change to it is a change the app must still read.
+      - "tests/golden/app-contract.txt"
   pull_request:
     paths:
       - "apps/macos/**"
       - "Makefile"
       - ".github/workflows/macos-app.yml"
+      # The scripts that install uv and Node here, whose macOS branches no other workflow
+      # runs.
+      - "devtools/install_uv.sh"
+      - "devtools/install_node.sh"
+      # The shared Lucide notice copied into the signed app bundle.
+      - "src/metabrowser/static/source-kind-glyphs.license.txt"
       # metab's half of handing the app a target, whose LaunchServices lookup runs here.
       - "src/metabrowser/cli/present.py"
       - "tests/test_present.py"
+      # What metab answers the app, which the app's own readers are held to
+      # (AppContractTests): a change to it is a change the app must still read.
+      - "tests/golden/app-contract.txt"
 
 permissions:
   contents: read
@@ -36,6 +54,10 @@ concurrency:
 
 env:
   UV_EXCLUDE_NEWER: "14 days"
+  # As in ci.yml: a cache restore whose download has not arrived within a minute, a
+  # wall-clock deadline per 128 MiB segment, goes on as a miss, not after the default 10,
+  # a third of this job's limit.
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
 defaults:
   run:
@@ -82,15 +104,28 @@ jobs:
           swift --version
           test "$(xcodebuild -version | head -n 1)" = "Xcode $XCODE"
 
+      # setup-uv fetches a manifest once, with a fixed 5 s limit, even for a pinned version,
+      # and a slow answer failed the job; it fetches nothing when the pinned uv is already in
+      # the tool cache, where this step puts it with retries (devtools/install_uv.sh).
+      # uv-aarch64-apple-darwin.tar.gz for 0.11.26: both runners are Apple silicon. ci.yml
+      # pins the Linux x86_64 archive's checksum, which does not match here.
       - name: Install uv
+        run: bash devtools/install_uv.sh 0.11.26 8f7fbf1708399b921857bce71e1d60f0d3ccf52a30caebc1c1a2f175dce13ab6
+
+      - name: Set up uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.11.26"
-          # uv-aarch64-apple-darwin.tar.gz for 0.11.26: both runners are Apple silicon. ci.yml pins
-          # the Linux x86_64 archive's checksum, which does not match here.
           checksum: "8f7fbf1708399b921857bce71e1d60f0d3ccf52a30caebc1c1a2f175dce13ab6"
           enable-cache: true
           python-version: "3.13"
+
+      # setup-node downloads a Node the runner image lacks and copies it into the tool cache
+      # file by file, and each has stalled for over a minute; it does neither when the
+      # pinned Node is already in the tool cache, where this step unpacks a checksum-pinned
+      # download fetched with retries (devtools/install_node.sh).
+      - name: Install Node
+        run: bash devtools/install_node.sh 24.18.0
 
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -144,10 +179,11 @@ jobs:
           source scripts/common.sh
           variant_settings release
           # The rehearsal is built from this checkout, so it must be its version and commit,
-          # as scripts/check-release.sh requires of a release and its tag.
-          EXPECTED_VERSION="$version" EXPECTED_COMMIT="$(git rev-parse HEAD)" scripts/check-dmg.sh "$dmg"
+          # as scripts/check-release.sh requires of a release and its tag, with the slices
+          # its name says.
+          EXPECTED_ARCHES="$arches" EXPECTED_VERSION="$version" EXPECTED_COMMIT="$(git rev-parse HEAD)" scripts/check-dmg.sh "$dmg"
           variant_settings dev
-          scripts/check-dmg.sh "$dmg"
+          EXPECTED_ARCHES="$arches" scripts/check-dmg.sh "$dmg"
           # ditto keeps the bundle's symlinks, modes, and signature, which a plain upload
           # would not.
           zip="build/$artifact_label-$version-$arch_label.app.zip"

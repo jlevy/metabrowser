@@ -812,7 +812,11 @@
       "chroma_ratio": null,
       "deviation": null,
       "extensions": [
-        ".sqlite"
+        ".sqlite",
+        ".sqlite3",
+        ".db",
+        ".db3",
+        ".s3db"
       ],
       "group_id": "data",
       "hue": 77.6,
@@ -960,7 +964,7 @@
       "order": 100
     }
   ],
-  "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704",
+  "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24",
   "groups": [
     {
       "icon": "alignLeft",
@@ -1649,7 +1653,11 @@
     {
       "content_family": "data",
       "extensions": [
-        ".sqlite"
+        ".sqlite",
+        ".sqlite3",
+        ".db",
+        ".db3",
+        ".s3db"
       ],
       "family_id": "sqlite",
       "filenames": [],
@@ -1850,8 +1858,7 @@
       "extensions": [
         ".cfg",
         ".conf",
-        ".properties",
-        ".db"
+        ".properties"
       ],
       "family_id": null,
       "filenames": [],
@@ -1874,7 +1881,7 @@
     }
   ],
   "max_extension_components": 2,
-  "revision": 3,
+  "revision": 4,
   "schema": "file-type-registry-v5",
   "schema_version": 5
 }

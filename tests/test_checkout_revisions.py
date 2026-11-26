@@ -25,12 +25,13 @@ import subprocess
 import time
 from collections.abc import Generator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server
+from metabrowser import checkout_revisions, server
 from metabrowser.capabilities import (
     DEFAULT_CAPABILITIES,
     UNTRUSTED_CAPABILITIES,
@@ -38,10 +39,15 @@ from metabrowser.capabilities import (
     get_capabilities,
 )
 from metabrowser.checkout_revisions import (
+    CHECKOUT_REFS_FLOOR_S,
+    CHECKOUT_REFS_POLL_S,
     NOT_A_CHECKOUT,
     PARTIAL_CLONE_GIT_MINIMUM,
+    CheckoutGitUnsupportedError,
     open_on_ref,
 )
+from metabrowser.commit_ids import short_commit
+from metabrowser.git import repo as git_repo
 from metabrowser.git.process import (
     GIT_NO_CONFIGURED_FORMAT_ARGS,
     GIT_NO_DRIVER_ARGS,
@@ -54,6 +60,7 @@ from metabrowser.git.process import (
     run_git,
     run_git_at,
 )
+from metabrowser.settings import GIT_REPO_INFO_TTL_S
 from metabrowser.source import (
     SubjectOpenError,
     attach_subject,
@@ -71,6 +78,7 @@ from tests.source_checkout_fixture import (
     build_partial_clone,
     git,
     git_env,
+    read_refs_at_every_ask,
     signed_branch,
     snapshot,
     view,
@@ -83,6 +91,9 @@ pytestmark = [
 ]
 
 _JSON = {"content-type": "application/json"}
+# What a page shows for a Git too old for a checkout's revisions; the release it needs
+# is the answer's detail.
+TOO_OLD = CheckoutGitUnsupportedError.reader_message
 FIRST = "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
 SECOND = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
@@ -93,6 +104,13 @@ def _installed_git(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[
     """A checkout's revisions are read with an admitted Git; see ``admit_installed_git``."""
 
     admit_installed_git(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def _reads_at_every_ask(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Each page ask here reads the refs; see ``read_refs_at_every_ask``."""
+
+    read_refs_at_every_ask(monkeypatch)
 
 
 @pytest.fixture
@@ -143,23 +161,31 @@ def _live_tree(client: TestClient) -> list[str]:
 # ── Listing ──────────────────────────────────────────────────
 
 
-def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient) -> None:
+def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, checkout: Path) -> None:
     branches = _refs(served)
     assert branches["kinds"] == ["branch", "tag", "remote"]
-    # The working tree is what a folder opens on, and is no ref: no row is served.
+    # The working tree is what a folder opens on, and is no ref: no row is served. It is
+    # named as the folder's page names it, the folder and its path, which is not under the
+    # test's home directory and so is shown whole.
     assert branches["working_tree"] == {
         "current": True,
         "head": "refs/heads/topic",
         "head_name": "topic",
+        "name": "checkout",
+        "location": str(checkout),
     }
     assert (branches["pin"], branches["ref"]) == (None, None)
     # The checked-out branch lists first, as a mirror's default does, and is not "current":
-    # picked as a ref it shows its commit, which is not the working tree.
-    assert _names(branches) == ["topic", "feature", "local-work"]
+    # picked as a ref it shows its commit, which is not the working tree. The rest read
+    # newest first: local-work's commit was made here a month after feature's.
+    assert _names(branches) == ["topic", "local-work", "feature"]
+    # Each row's commit and the date it was committed, read in the same for-each-ref. The
+    # page shortens the ID as every line does (`shortCommit` in static/formatters.js).
     assert branches["refs"][0] == {
         "name": "topic",
         "ref": "refs/heads/topic",
         "commit": SECOND,
+        "committed_at": float(git(checkout, "log", "-1", "--format=%ct", SECOND)),
         "default": False,
         "checked_out": True,
         "current": False,
@@ -167,8 +193,10 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient) -> N
     assert not any(row["current"] or row["default"] for row in branches["refs"])
     tags = _refs(served, kind="tag")
     assert sorted(_names(tags)) == ["local-tag", "v1"]
-    # An annotated tag is peeled to the commit it names.
-    assert {row["name"]: row["commit"] for row in tags["refs"]}["v1"] == FIRST
+    # An annotated tag is peeled to the commit it names, and has that commit's date.
+    v1 = {row["name"]: row for row in tags["refs"]}["v1"]
+    assert v1["commit"] == FIRST
+    assert v1["committed_at"] == float(git(checkout, "log", "-1", "--format=%ct", FIRST))
     remotes = _refs(served, kind="remote")
     # A remote-tracking branch keeps its remote's name; origin/HEAD names another row.
     assert _names(remotes) == ["origin/feature", "origin/topic"]
@@ -179,6 +207,37 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient) -> N
     assert _names(_refs(served, kind="remote", q="FEAT")) == ["origin/feature"]
 
 
+def test_a_kept_listing_follows_head_to_another_branch(
+    served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A listing is kept under the branch ``HEAD`` is on as well as the refs' state.
+
+    The listing reads ``HEAD`` through ``repo_info``, which keeps it for
+    ``GIT_REPO_INFO_TTL_S``, while the refs' state reads it afresh. Keyed on the state
+    alone, the listing made within the TTL of a switch, from the ``HEAD`` kept before it,
+    was kept under the new state and served past the TTL, until some ref moved (review A
+    of #614). Here the identity cache's clock stands still until it is moved past the TTL.
+    """
+
+    standing = time.monotonic()
+    clock = {"offset": 0.0}
+    monkeypatch.setattr(
+        git_repo,
+        "time",
+        SimpleNamespace(monotonic=lambda: standing + clock["offset"]),
+    )
+    git_repo.clear_repo_cache()
+    assert _refs(served)["working_tree"]["head"] == "refs/heads/topic"
+    git(checkout, "symbolic-ref", "HEAD", "refs/heads/feature")
+    # Within the TTL the listing names the HEAD repo_info kept, as /api/git/refs does.
+    assert _refs(served)["working_tree"]["head"] == "refs/heads/topic"
+    clock["offset"] = GIT_REPO_INFO_TTL_S + 1
+    after = _refs(served)
+    assert after["working_tree"]["head"] == "refs/heads/feature"
+    assert _names(after)[0] == "feature"
+    assert [row["name"] for row in after["refs"] if row["checked_out"]] == ["feature"]
+
+
 def test_a_detached_head_is_on_no_branch(checkout: Path) -> None:
     git(checkout, "stash", "-q", "--include-untracked")
     git(checkout, "checkout", "-q", "--detach", FIRST)
@@ -186,7 +245,13 @@ def test_a_detached_head_is_on_no_branch(checkout: Path) -> None:
     with TestClient(server.app) as client:
         listing = _refs(client)
         refused = client.post("/api/source/pin", json={"ref": "HEAD"}, headers=_JSON)
-    assert listing["working_tree"] == {"current": True, "head": None, "head_name": None}
+    assert listing["working_tree"] == {
+        "current": True,
+        "head": None,
+        "head_name": None,
+        "name": "checkout",
+        "location": str(checkout),
+    }
     assert not any(row["checked_out"] for row in listing["refs"])
     assert (refused.status_code, refused.json()["code"]) == (404, "selection_not_found")
 
@@ -210,6 +275,30 @@ def test_a_plain_folder_and_a_subdirectory_of_a_checkout_have_no_selector(
         assert "METABROWSER_SOURCE_CHECKOUT" not in shell, root
         assert (refs.status_code, refs.json()["capability"]) == (409, "refs"), root
         assert (pin.status_code, pin.json()["capability"]) == (409, "pin"), root
+
+
+def test_a_revision_of_a_checkout_keeps_the_mark_and_the_repository_the_route_names(
+    checkout: Path,
+) -> None:
+    """The shell's mark and `/api/identity` say the same on the working tree and on a revision.
+
+    A revision has no mirror session, so the page's own repository context is empty for it;
+    the sentence still names the repository the checkout's `origin` is on github.com.
+    """
+
+    git(checkout, "remote", "set-url", "origin", "git@github.com:Octo/Demo.git")
+    server._set_root_dir(checkout)
+    tip = "Local Git checkout (GitHub: Octo/Demo)"
+    with TestClient(server.app) as client:
+        for shown in ("working tree", "revision"):
+            if shown == "revision":
+                _pin(client, ref="refs/heads/feature", view="/view/README.md")
+            identity = client.get("/api/identity").json()
+            assert (identity["kind"], identity["kind_tip"]) == ("git", tip), shown
+            for address in ("/view/", "/pulls", "/commit/0123456789abcdef"):
+                page = client.get(address).text
+                assert 'data-root-kind="git"' in page, (shown, address)
+                assert f'data-tip-text="{tip}"' in page, (shown, address)
 
 
 # ── Showing a revision ───────────────────────────────────────
@@ -238,9 +327,9 @@ def test_a_branch_is_shown_from_its_commit_not_from_the_working_tree(
     assert readme["content"] == "# Mirror\n"
     raw = served.get("/raw", params={"path": _wire("FEATURE.md")})
     assert raw.text == "Only on feature.\n"
-    # The mode is still how the root was opened.
+    # The kind is still how the root was opened: a checkout, whichever revision it shows.
     identity = served.get("/api/identity").json()
-    assert (identity["kind"], identity["short_name"]) == ("folder", "checkout")
+    assert (identity["kind"], identity["short_name"]) == ("git", "checkout")
     assert identity["full_name"].endswith("/checkout@feature")
     assert _refs(served)["working_tree"]["current"] is False
     assert [row["name"] for row in _refs(served)["refs"] if row["current"]] == ["feature"]
@@ -270,6 +359,85 @@ def test_the_checked_out_branch_is_its_commit_and_the_working_tree_is_a_separate
     assert _pin(served, working_tree=True)["changed"] is False
 
 
+_SELECTOR_ROW = re.compile(r'<div class="source-ref-selector" id="source-ref-selector".*?</div>')
+
+
+def _selector_row(client: TestClient) -> str:
+    """The revision row the server draws at first paint, before the selector mounts."""
+
+    found = _SELECTOR_ROW.search(client.get("/view/").text)
+    assert found is not None
+    return found.group(0)
+
+
+def test_the_row_tells_the_working_tree_from_the_checked_out_branchs_revision(
+    served: TestClient, checkout: Path
+) -> None:
+    """The working tree and its branch's own revision never read the same (mb-cxpq).
+
+    Both name the branch topic, so the row says which view it is in words first, and a
+    revision has a button back to the working tree; the working tree has none, since it is
+    where the button goes. ``tests/golden/cli-ui-source-ref-selector.tryscript.md`` pins
+    what the mounted selector then paints from the same attributes.
+    """
+
+    tree = _selector_row(served)
+    assert ' data-view="working-tree" data-working-branch="topic">' in tree
+    assert (
+        '<span class="source-ref-selector-label"><span class="source-ref-selector-view">'
+        'Working tree</span><span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+        '<span class="git-ref git-ref-local"><span class="git-ref-label">topic</span></span>'
+        "</span>"
+    ) in tree
+    assert "source-ref-selector-back" not in tree
+    _pin(served, ref="refs/heads/topic")
+    revision = _selector_row(served)
+    assert ' data-view="revision">' in revision and "data-working-" not in revision
+    assert (
+        '<span class="source-ref-selector-view">Revision</span>'
+        '<span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+        '<span class="git-ref git-ref-local"><span class="git-ref-label">topic</span></span>'
+    ) in revision
+    assert (
+        '<button type="button" class="btn source-ref-selector-back"'
+        ' aria-label="Back to the working tree"'
+    ) in revision
+    _pin(served, working_tree=True)
+    assert _selector_row(served) == tree
+    # A detached HEAD's working tree names its commit, in the commit-ID face.
+    git(checkout, "checkout", "-q", "--detach", "topic")
+    detached = _selector_row(served)
+    assert f' data-view="working-tree" data-working-commit="{SECOND}">' in detached
+    assert (
+        'Working tree</span><span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+        f'<span class="git-commit-sha">{short_commit(SECOND)}</span></span>'
+    ) in detached
+
+
+def test_a_github_checkouts_row_names_its_head_from_the_pages_repository_context(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A checkout whose origin is on github.com has a repository context, read for the page,
+    which already holds its ``HEAD``: the row names the branch or commit from it, and the
+    server does not read ``HEAD`` a second time."""
+
+    git(checkout, "remote", "set-url", "origin", "git@github.com:Octo/Demo.git")
+    server._set_root_dir(checkout)
+
+    def read_again(root: Path) -> None:
+        raise AssertionError(f"HEAD of {root} was read again")
+
+    monkeypatch.setattr(server, "checked_out_head", read_again)
+    with TestClient(server.app) as client:
+        tree = _selector_row(client)
+        assert ' data-view="working-tree" data-working-branch="topic">' in tree
+        assert '<span class="git-ref-label">topic</span>' in tree
+        git(checkout, "checkout", "-q", "--detach", "topic")
+        detached = _selector_row(client)
+        assert f' data-view="working-tree" data-working-commit="{SECOND}">' in detached
+        assert f'<span class="git-commit-sha">{short_commit(SECOND)}</span>' in detached
+
+
 def test_a_tag_a_remote_branch_and_a_commit_are_shown_and_a_miss_fetches_nothing(
     served: TestClient,
 ) -> None:
@@ -282,8 +450,7 @@ def test_a_tag_a_remote_branch_and_a_commit_are_shown_and_a_miss_fetches_nothing
     )
     assert served.get("/api/identity").json()["full_name"].endswith("@origin/feature")
     # A commit no remote has, by its abbreviated ID, under no ref.
-    local = _refs(served)["refs"][2]
-    assert local["name"] == "local-work"
+    local = next(row for row in _refs(served)["refs"] if row["name"] == "local-work")
     by_id = _pin(served, oid=local["commit"][:10])["status"]
     assert (by_id["pin"], by_id["ref"]) == (local["commit"], None)
     assert "LOCAL.md" in _tree(served)
@@ -299,6 +466,390 @@ def test_a_tag_a_remote_branch_and_a_commit_are_shown_and_a_miss_fetches_nothing
         assert (refused.status_code, refused.json()["code"]) == (status, code), body
     # Nothing was switched by a refusal.
     assert served.get("/api/source/status").json()["pin"] == local["commit"]
+
+
+def _page_ask(client: TestClient) -> dict[str, Any]:
+    """A visible page's own ask, which reads where the served ref is in the checkout."""
+
+    response = client.post("/api/source/refresh", json={"for": "page"}, headers=_JSON)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_branch_follows_the_checkout_when_the_reader_commits(
+    served: TestClient, checkout: Path
+) -> None:
+    """A page on a branch reads that branch, not one commit of it: when the reader's
+    commit moves it, the server serves the new commit, and the page's address is found
+    there, or the root when the new commit lacks it."""
+
+    answer = _pin(served, ref="refs/heads/feature", view="/view/FEATURE.md")
+    status = answer["status"]
+    assert (status["pin"], status["follows"], status["latest"]) == (FEATURE, True, FEATURE)
+    assert status["probe_every_s"] == CHECKOUT_REFS_POLL_S
+    # Nothing is fetched into a checkout, so nothing is refreshable; the ask is a read.
+    assert status["refreshable"] is False
+    asked = _page_ask(served)
+    assert (asked["refresh"], asked["status"]["pin"]) == ("probed", FEATURE)
+    assert asked["status"]["generation"] == status["generation"]
+
+    # A commit on the branch, as `git commit` there makes one: the ref names a new commit.
+    git(checkout, "branch", "-f", "feature", "local-work")
+    local_work = git(checkout, "rev-parse", "local-work")
+    moved = _page_ask(served)["status"]
+    assert (moved["pin"], moved["ref"], moved["latest"]) == (
+        local_work,
+        "refs/heads/feature",
+        local_work,
+    )
+    assert moved["generation"] > status["generation"] and moved["follows"] is True
+    assert _tree(served) == ["LOCAL.md", "NOTES.md", "README.md"]
+    # The page asks the pin route for its ref with its own address, as a mirror's does:
+    # nothing changes, and the answer says where the page is on the new commit.
+    kept = _pin(served, ref="refs/heads/feature", view=view("README.md"))
+    assert (kept["changed"], kept["view_href"]) == (False, view("README.md"))
+    gone = _pin(served, ref="refs/heads/feature", view=view("FEATURE.md"))
+    assert (gone["changed"], gone["view_href"]) == (False, "/view/")
+    # The status route reads nothing: it reports what the ask found.
+    assert served.get("/api/source/status").json()["pin"] == local_work
+
+
+def test_a_remote_tracking_branch_and_a_tag_follow_the_readers_own_fetch(
+    served: TestClient, checkout: Path
+) -> None:
+    """`origin/feature` is where the reader's last fetch left it, and moves when theirs
+    does; Metabrowser fetches nothing into the checkout to move it."""
+
+    remote = _pin(served, ref="refs/remotes/origin/feature")["status"]
+    assert (remote["pin"], remote["follows"]) == (FEATURE, True)
+    # What `git fetch` does to a remote-tracking ref, without a network.
+    git(checkout, "update-ref", "refs/remotes/origin/feature", SECOND)
+    assert _page_ask(served)["status"]["pin"] == SECOND
+    tag = _pin(served, ref="refs/tags/local-tag")["status"]
+    assert (tag["pin"], tag["follows"]) == (FEATURE, True)
+    git(checkout, "tag", "-f", "local-tag", SECOND)
+    assert _page_ask(served)["status"]["pin"] == SECOND
+
+
+def test_a_commit_id_and_the_working_tree_never_move(served: TestClient, checkout: Path) -> None:
+    """What the reader opened decides whether the view moves: a commit stays that commit
+    and the working tree is the files on disk, so neither is asked about."""
+
+    status = _pin(served, oid=FEATURE)["status"]
+    assert (status["pin"], status["ref"]) == (FEATURE, None)
+    assert (status["follows"], status["probe_every_s"], status["latest"]) == (False, None, None)
+    git(checkout, "branch", "-f", "feature", "local-work")
+    # No store and nothing that follows: the ask is refused as a folder's refresh is.
+    refused = served.post("/api/source/refresh", json={"for": "page"}, headers=_JSON)
+    assert (refused.status_code, refused.json()["code"]) == (409, "unsupported_for_subject")
+    assert served.get("/api/source/status").json()["pin"] == FEATURE
+    back = _pin(served, working_tree=True)["status"]
+    assert (back["follows"], back["probe_every_s"], back["pin"]) == (False, None, None)
+    refused = served.post("/api/source/refresh", json={"for": "page"}, headers=_JSON)
+    assert refused.status_code == 409
+
+
+def test_a_commit_opened_by_its_id_at_a_branchs_tip_stays_that_commit(
+    served: TestClient, checkout: Path
+) -> None:
+    """A commit opened by its ID while it is the tip of the branch the page was on is
+    served under that branch, so the selector still names it, and never follows it: only
+    a selection that names a ref does. Choosing the branch again makes it follow."""
+
+    _pin(served, ref="refs/heads/feature")
+    by_id = _pin(served, oid=FEATURE)
+    assert by_id["changed"] is False
+    status = by_id["status"]
+    assert (status["pin"], status["ref"]) == (FEATURE, "refs/heads/feature")
+    assert (status["follows"], status["probe_every_s"], status["latest"]) == (False, None, None)
+    git(checkout, "branch", "-f", "feature", "local-work")
+    local_work = git(checkout, "rev-parse", "local-work")
+    # Nothing that follows is served, and with no store there is nothing else to ask.
+    refused = served.post("/api/source/refresh", json={"for": "page"}, headers=_JSON)
+    assert (refused.status_code, refused.json()["code"]) == (409, "unsupported_for_subject")
+    assert served.get("/api/source/status").json()["pin"] == FEATURE
+
+    # Chosen by its name, the branch is served at its tip and follows from there.
+    named = _pin(served, ref="refs/heads/feature")
+    assert named["changed"] is True
+    assert (named["status"]["pin"], named["status"]["follows"]) == (local_work, True)
+    # Opened by ID while it is the very revision served, it stops following; named again
+    # while the branch has not moved, it follows again. Neither changes what is served.
+    still = _pin(served, oid=local_work)
+    assert (still["changed"], still["status"]["follows"]) == (False, False)
+    again = _pin(served, ref="refs/heads/feature")
+    assert (again["changed"], again["status"]["follows"]) == (False, True)
+    assert again["status"]["latest"] == local_work
+    git(checkout, "branch", "-f", "feature", FEATURE)
+    assert _page_ask(served)["status"]["pin"] == FEATURE
+
+
+def test_a_commit_opened_by_its_id_under_a_named_ref_follows_it(
+    served: TestClient, checkout: Path
+) -> None:
+    """A selection that names the ref a commit is served under, as View on branch's does
+    with ``under``, names a ref, so the pin follows it."""
+
+    under = _pin(served, oid=FEATURE, under="refs/heads/feature")["status"]
+    assert (under["pin"], under["ref"], under["follows"]) == (FEATURE, "refs/heads/feature", True)
+    git(checkout, "branch", "-f", "feature", "local-work")
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+
+
+def test_following_reads_the_ref_only_when_the_checkouts_refs_changed(
+    served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ask names the checkout's ref state from the filesystem; Git reads the ref
+    only when that state is not the one it was last read under."""
+
+    from metabrowser.cache import resolve
+
+    read: list[str] = []
+    ref_tip = resolve.ref_tip
+
+    async def counted(target: Any, ref: str) -> str | None:
+        read.append(ref)
+        return await ref_tip(target, ref)
+
+    _pin(served, ref="refs/heads/feature")
+    monkeypatch.setattr(resolve, "ref_tip", counted)
+    for _ask in range(3):
+        assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert read == []
+    # Another ref moved: the state changed, the served ref is read, and it is where it was.
+    git(checkout, "update-ref", "refs/heads/other", SECOND)
+    assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert read == ["refs/heads/feature"]
+    assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert read == ["refs/heads/feature"]
+
+
+def test_a_branch_the_reader_deleted_keeps_its_last_commit_served(
+    served: TestClient, checkout: Path
+) -> None:
+    _pin(served, ref="refs/heads/feature")
+    git(checkout, "branch", "-D", "feature")
+    status = _page_ask(served)["status"]
+    assert (status["pin"], status["ref"], status["latest"]) == (FEATURE, "refs/heads/feature", None)
+    assert _tree(served) == ["FEATURE.md", "README.md"]
+
+
+class _Clock:
+    """The monotonic clock the floor between two readings is kept on, moved by the test."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class _CountedLock:
+    """A switch's lock that counts how often it is taken."""
+
+    def __init__(self, lock: asyncio.Lock) -> None:
+        self._lock = lock
+        self.taken = 0
+
+    async def __aenter__(self) -> None:
+        self.taken += 1
+        await self._lock.acquire()
+
+    async def __aexit__(self, *_exc: object) -> None:
+        self._lock.release()
+
+
+def _counted(monkeypatch: pytest.MonkeyPatch, module: Any, name: str) -> list[str]:
+    """Each call of *module*'s async *name*, by its last argument, in order."""
+
+    calls: list[str] = []
+    real = getattr(module, name)
+
+    async def counted(*args: Any) -> Any:
+        calls.append(str(args[-1]))
+        return await real(*args)
+
+    monkeypatch.setattr(module, name, counted)
+    return calls
+
+
+def test_an_ask_whose_refs_did_not_move_takes_no_switch_lock(
+    served: TestClient, checkout: Path
+) -> None:
+    """An ask names the ref state before taking the locks a switch is made under, and
+    takes them only when it changed, so it waits for no switch and holds none up."""
+
+    _pin(served, ref="refs/heads/feature")
+    revisions = checkout_revisions.checkout_revisions()
+    assert revisions is not None
+    lock = _CountedLock(revisions._switching)
+    revisions._switching = lock  # type: ignore[assignment]
+    for _ask in range(3):
+        assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert lock.taken == 0
+    git(checkout, "branch", "-f", "feature", "local-work")
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+    assert lock.taken == 1
+
+
+def test_asks_inside_the_floor_are_answered_from_memory(
+    served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """However many visible pages ask, the refs are read at most once a floor: an ask
+    under half an interval after the last reading reads nothing, and the next is read."""
+
+    from metabrowser.git import ref_state
+
+    monkeypatch.setattr(checkout_revisions, "CHECKOUT_REFS_FLOOR_S", CHECKOUT_REFS_FLOOR_S)
+    clock = _Clock()
+    monkeypatch.setattr(checkout_revisions, "_monotonic", clock)
+    # The switch reads the ref, which is a reading.
+    _pin(served, ref="refs/heads/feature")
+    named = _counted(monkeypatch, ref_state, "ref_state")
+    git(checkout, "branch", "-f", "feature", "local-work")
+    clock.now += CHECKOUT_REFS_FLOOR_S - 0.1
+    early = _page_ask(served)
+    assert (early["refresh"], early["status"]["pin"]) == ("probed", FEATURE)
+    assert named == []
+    clock.now += 0.1
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+    assert len(named) == 1
+    # A second page asking at once is answered by that reading.
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+    assert len(named) == 1
+
+
+def test_a_ref_that_cannot_be_read_is_warned_of_once_a_streak(
+    served: TestClient,
+    checkout: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A reading that keeps failing, as when the Git directory is removed under an open
+    page, warns once, and again only after a reading has succeeded."""
+
+    from metabrowser.cache import resolve
+    from metabrowser.git.process import GitCommandError
+
+    real = resolve.ref_tip
+    failing = [True]
+
+    async def ref_tip(target: Any, ref: str) -> str | None:
+        if failing[0]:
+            raise GitCommandError(["for-each-ref"], 128, "fatal: not a git repository")
+        return await real(target, ref)
+
+    _pin(served, ref="refs/heads/feature")
+    monkeypatch.setattr(resolve, "ref_tip", ref_tip)
+
+    def warned() -> int:
+        return sum(
+            1
+            for record in caplog.records
+            if record.levelname == "WARNING" and "could not be read" in record.getMessage()
+        )
+
+    caplog.set_level("DEBUG", logger="metabrowser.checkout_revisions")
+    for number in range(3):
+        # Each ask finds the refs changed, so each reads the ref, and each reading fails.
+        git(checkout, "update-ref", f"refs/heads/other-{number}", SECOND)
+        assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert warned() == 1
+    failing[0] = False
+    git(checkout, "update-ref", "refs/heads/other-read", SECOND)
+    assert _page_ask(served)["status"]["pin"] == FEATURE
+    failing[0] = True
+    git(checkout, "update-ref", "refs/heads/other-again", SECOND)
+    assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert warned() == 2
+
+
+def test_a_followed_revision_is_the_checkouts_before_it_is_attached(
+    served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The follow records the new revision as this checkout's before attaching it, as a
+    switch does, so no request can find it served and not the checkout's."""
+
+    from metabrowser import mirror_refresh
+
+    _pin(served, ref="refs/heads/feature")
+    revisions = checkout_revisions.checkout_revisions()
+    assert revisions is not None
+    real = mirror_refresh.replace_owned_subject
+    seen: list[bool] = []
+
+    async def replace(subject: Any) -> Any:
+        seen.append(revisions.serves(subject))
+        return await real(subject)
+
+    monkeypatch.setattr(mirror_refresh, "replace_owned_subject", replace)
+    git(checkout, "branch", "-f", "feature", "local-work")
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+    assert seen == [True]
+
+
+def test_following_a_branch_writes_nothing_into_the_checkout(checkout: Path) -> None:
+    """The move is read from the refs: after the reader's own commit, an ask, the follow,
+    and the new commit's files leave every entry under the checkout as it was."""
+
+    server._set_root_dir(checkout)
+    with TestClient(server.app) as client:
+        _pin(client, ref="refs/heads/feature")
+        _page_ask(client)
+        git(checkout, "branch", "-f", "feature", "local-work")
+        before = snapshot(checkout)
+        assert _page_ask(client)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+        for node in client.get("/api/tree", params={"depth": "2"}).json()["tree"]:
+            assert client.get("/api/file", params={"path": node["path"]}).status_code == 200
+        _page_ask(client)
+        after = snapshot(checkout)
+    changed = sorted(
+        key for key in before.keys() | after.keys() if before.get(key) != after.get(key)
+    )
+    assert changed == []
+    assert snapshot(checkout) == before
+
+
+def test_the_commits_tab_shows_the_revision_the_files_tab_shows(
+    checkout: Path, served: TestClient
+) -> None:
+    """One choice for both tabs: the history is the served revision's, as the files are.
+
+    On the working tree it walks the checkout's ``HEAD``, its upstream, and its trunk
+    refs. On a branch, tag, remote-tracking branch, or commit it is that commit's own
+    history, Git's walk from the commit the Files tab shows, which is its first row. Back
+    on the working tree, every answer is what it was.
+    """
+
+    routes = (
+        "/api/git/repo",
+        "/api/git/refs",
+        "/api/git/summary",
+        "/api/git/summary?scope=all",
+        "/api/git/log?limit=50",
+        "/api/git/log?limit=50&scope=all",
+    )
+
+    def answers() -> dict[str, Any]:
+        replies = {route: served.get(route) for route in routes}
+        assert all(reply.status_code == 200 for reply in replies.values()), replies
+        return {route: reply.json() for route, reply in replies.items()}
+
+    def walked(answer: dict[str, Any]) -> list[str]:
+        return [commit["id"] for commit in answer["/api/git/log?limit=50"]["commits"]]
+
+    on_the_folder = answers()
+    assert on_the_folder["/api/git/repo"]["head"]["ref"] == "refs/heads/topic"
+    assert walked(on_the_folder)[0] == git(checkout, "rev-parse", "HEAD")
+    for selection in ({"ref": "feature"}, {"ref": "v1"}, {"ref": "origin/topic"}, {"oid": FIRST}):
+        shown = _pin(served, **selection)["status"]["pin"]
+        on_revision = answers()
+        assert on_revision["/api/git/repo"]["head"]["revision"] == shown, selection
+        history = git(checkout, "rev-list", "--date-order", shown).split()
+        assert walked(on_revision) == history, selection
+        assert on_revision["/api/git/summary"]["commit_count"] == len(history), selection
+    _pin(served, working_tree=True)
+    assert answers() == on_the_folder
 
 
 def test_an_address_crosses_between_the_folder_and_a_revision(served: TestClient) -> None:
@@ -594,10 +1145,29 @@ def test_a_working_tree_page_is_refused_while_a_revision_is_served(served: TestC
     # nothing, as `metab --api` and curl do, is never refused.
     assert served.get("/api/source/status", headers=on_tree).status_code == 200
     assert served.get("/api/tree").status_code == 200
+    # So are the event log's, which are about the server whichever revision it shows: a
+    # page left behind still reports what it saw, and its Details read the log (A4, review
+    # A of #629). Without a log they answer that, never that the pin changed.
+    report = {"page": "k3v9q2zx", "reports": [], "dropped": 0}
+    for answer in (
+        served.get("/api/event-log", headers=on_tree),
+        served.get("/api/event-log/failures", headers=on_tree),
+        served.post("/api/event-log/client", json=report, headers={**_JSON, **on_tree}),
+    ):
+        assert PIN_CHANGED_HEADER not in answer.headers, answer.text
+        assert answer.status_code in {200, 409}, answer.text
+        assert answer.json().get("code") != "pin_changed", answer.text
+    assert served.get("/api/event-logs", headers=on_tree).status_code == 409
     revision_shell = served.get("/view/").text
     assert 'window.METABROWSER_SOURCE_CHECKOUT={"working_tree": false}' in revision_shell
     assert "MetabrowserSourcePinGuard" in revision_shell
     assert 'data-mirror-note="committed revision of"' in revision_shell
+    # The root menu describes the pinned source beside its local checkout path.
+    assert 'data-mirror-tip="Files come from a committed revision of this checkout."' in (
+        revision_shell
+    )
+    assert "window.MetabrowserMirrorHeading" in revision_shell
+    assert "window.MetabrowserMirrorHeading" not in shell
     # And the other way: the revision's page, once the working tree is served again.
     _pin(served, working_tree=True)
     stale = served.get("/api/tree", headers={PIN_HEADER: pinned})
@@ -633,6 +1203,44 @@ def test_a_page_that_names_nothing_is_refused_while_a_revision_is_served(
     assert served.get("/api/source/status", headers=page_fetch).status_code == 200
     _pin(served, working_tree=True)
     assert served.get("/api/tree", headers=page_fetch).status_code == 200
+
+
+def test_a_commits_tab_left_behind_is_refused_as_files_is(served: TestClient) -> None:
+    """A switch made in another tab is a reload for this page's Commits tab too.
+
+    Its history is the revision the page was drawn for, so once another is served, the
+    guard refuses its history and its commits as it refuses its tree, for the working
+    tree's page and a revision's, and for a page whose guard has not arrived. The page's
+    freshness row then offers the reload on every tab.
+    """
+
+    page_fetch = {"sec-fetch-site": "same-origin", "sec-fetch-dest": "empty"}
+    routes = (
+        "/api/tree",
+        "/api/git/repo",
+        "/api/git/refs",
+        "/api/git/summary",
+        "/api/git/log?limit=5",
+        "/api/git/log?limit=5&scope=all",
+        f"/api/git/commit/{FIRST}",
+    )
+    on_tree = {**page_fetch, PIN_HEADER: WORKING_TREE_PIN}
+    for route in routes:
+        assert served.get(route, headers=on_tree).status_code == 200, route
+    pinned = _pin(served, ref="feature")["status"]["pin"]
+    on_revision = {**page_fetch, PIN_HEADER: pinned}
+    for headers in (on_tree, page_fetch):
+        for route in routes:
+            reply = served.get(route, headers=headers)
+            assert (reply.status_code, reply.json()["code"]) == (409, "pin_changed"), route
+            assert reply.headers[PIN_CHANGED_HEADER] == pinned, route
+    for route in routes:
+        assert served.get(route, headers=on_revision).status_code == 200, route
+    # And the revision's page, once another tab has gone back to the working tree.
+    _pin(served, working_tree=True)
+    for route in routes:
+        reply = served.get(route, headers=on_revision)
+        assert (reply.status_code, reply.headers[PIN_CHANGED_HEADER]) == (409, ""), route
 
 
 # ── The checkout is never written ────────────────────────────
@@ -713,6 +1321,14 @@ def test_showing_revisions_leaves_the_checkout_byte_for_byte(checkout: Path) -> 
 def test_the_snapshot_sees_an_index_rewritten_with_the_same_entries(checkout: Path) -> None:
     """The comparison above would catch a careless ``git status``, not only a checkout."""
 
+    # ``git status`` rewrites the index only when it has stat data to refresh, so a bare
+    # run sometimes leaves it alone (a run on main did, mb-c8hi). Give it some: a tracked
+    # file's modification time moves with its bytes unchanged, which Git finds out of date
+    # with the index and refreshes, deterministically. The file is touched before the
+    # snapshot, so what differs after is only what ``git status`` wrote.
+    tracked = checkout / "STAGED.md"
+    later = tracked.stat().st_mtime_ns + 5_000_000_000
+    os.utime(tracked, ns=(later, later))
     before = snapshot(checkout)
     subprocess.run(
         ["git", "-C", str(checkout), "status", "--porcelain"],
@@ -725,8 +1341,9 @@ def test_the_snapshot_sees_an_index_rewritten_with_the_same_entries(checkout: Pa
     assert [key for key in before if before[key] != after.get(key)] == [".git", ".git/index"]
 
 
-# The reads that honor a repository's configuration: a revision's history, a commit's
-# view, and its diffs, whole and one file.
+# The reads that honor a repository's configuration: the Commits tab's history, a commit's
+# view, and its diffs, whole and one file. While a revision is served, each is read at its
+# store target (`session_git_location` in git/routes.py), under the store policies.
 def _commit_views(*commits: str) -> tuple[str, ...]:
     views = [
         "/api/git/repo",
@@ -832,9 +1449,10 @@ def test_a_hostile_checkout_configuration_runs_nothing_for_a_revision(
     which would run for every signed commit of a history and, by what it prints, take
     that commit out of it. Every ``diff`` and ``show`` at a store target says
     ``--no-textconv --no-ext-diff``, and every command says ``log.showSignature=false``
-    (``git/process.py``). So across a revision's files, its history, its commit views,
-    and its diffs: no marker, the signed commit is in the history and opens, and every
-    entry under the checkout is what it was.
+    (``git/process.py``). So across a revision's files, its commit views, and its diffs,
+    and the Commits tab beside it, which is the revision's history read at the same store
+    target: no marker, the signed commit is in the history and opens, and every entry
+    under the checkout is what it was.
     """
 
     signed = signed_branch(checkout)
@@ -845,8 +1463,13 @@ def test_a_hostile_checkout_configuration_runs_nothing_for_a_revision(
     with TestClient(server.app) as client:
         _read_revisions(client, ("feature", "topic", "signed", "v1", "origin/topic"), views)
         _pin(client, ref="signed")
+        # The Commits tab shows the revision the Files tab shows: its history starts at the
+        # signed commit, which a signature program's lines would have taken out of it, and
+        # every ref's walk has it too.
         log = client.get("/api/git/log", params={"limit": "5"}).json()
         assert log["commits"][0]["id"] == signed
+        every = client.get("/api/git/log", params={"limit": "50", "scope": "all"}).json()
+        assert signed in [commit["id"] for commit in every["commits"]]
         assert client.get(f"/api/git/commit/{signed}").json()["commit"]["id"] == signed
         _pin(client, working_tree=True)
     assert [name for name, marker in markers.items() if marker.exists()] == []
@@ -997,7 +1620,7 @@ def test_a_partial_clone_answers_object_unavailable_and_fetches_nothing(tmp_path
         if version < PARTIAL_CLONE_GIT_MINIMUM:
             refused = client.post("/api/source/pin", json={"ref": "origin/feature"}, headers=_JSON)
             assert (refused.status_code, refused.json()["code"]) == (409, "unsupported_git")
-            assert "partial clone" in refused.json()["error"]
+            assert "partial clone" in refused.json()["detail"]
             assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
             _the_clone_is_unchanged(clone, packs, before)
             return
@@ -1018,7 +1641,8 @@ def test_a_partial_clone_answers_object_unavailable_and_fetches_nothing(tmp_path
         ):
             diff = client.get(address)
             assert (diff.status_code, diff.json()["error"]) == (409, "object_unavailable"), address
-            assert "nothing is fetched into it" in diff.json()["message"]
+            assert diff.json()["message"] == "Part of this comparison is not in this checkout."
+            assert "nothing is fetched into it" in diff.json()["detail"]
         _pin(client, working_tree=True)
     _the_clone_is_unchanged(clone, packs, before)
 
@@ -1056,7 +1680,7 @@ def test_a_partial_clone_on_a_git_that_ends_at_a_missing_object_is_refused_by_na
         ):
             assert (refused.status_code, refused.json()) == (
                 409,
-                {"error": said, "code": "unsupported_git"},
+                {"error": TOO_OLD, "detail": said, "code": "unsupported_git"},
             )
         assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
     assert _differing(before, snapshot(clone)) == []
@@ -1081,7 +1705,7 @@ def test_a_partial_clone_on_a_git_that_ends_at_a_missing_object_is_refused_by_na
         if refuses:
             assert (answer.status_code, answer.json()) == (
                 409,
-                {"error": said, "code": "unsupported_git"},
+                {"error": TOO_OLD, "detail": said, "code": "unsupported_git"},
             ), setting
         else:
             assert answer.status_code == 200, answer.text
@@ -1118,7 +1742,7 @@ def test_an_older_git_is_refused_by_name_and_the_working_tree_is_still_served(
         ):
             assert (refused.status_code, refused.json()) == (
                 409,
-                {"error": said, "code": "unsupported_git"},
+                {"error": TOO_OLD, "detail": said, "code": "unsupported_git"},
             )
         assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
         assert _live_tree(client) == ["NOTES.md", "README.md", "STAGED.md", "UNTRACKED.md"]

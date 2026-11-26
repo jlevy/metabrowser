@@ -1,3 +1,4 @@
+import AppKit
 import Darwin
 import Foundation
 import os
@@ -40,9 +41,11 @@ nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
     }
 
     /// Writes `text` where a real child's stderr goes, the log, which the app does not read
-    /// line by line: it shows only as `outputProgress`, as a clone's progress does.
+    /// line by line: it shows as `outputProgress`, as a clone's progress does, and its whole
+    /// lines in `recentOutput()`, which a real child reads from the log.
     func writeToLog(_ text: String) {
         written.withLock { $0 += text.utf8.count }
+        text.split(separator: "\n").forEach { tail.append(String($0)) }
     }
 
     private let written = OSAllocatedUnfairLock(initialState: 0)
@@ -131,6 +134,52 @@ func temporaryDirectory(_ name: String = #function) throws -> URL {
 /// shares, for seconds on a loaded runner.
 func ignoreSIGPIPELikeTheApp() {
     signal(SIGPIPE, SIG_IGN)
+}
+
+/// Runs AppKit's event loop on the main thread from the first call on, as the app runs
+/// it. A suite that puts one of the app's windows on screen calls it before the first
+/// window exists.
+///
+/// AppKit's event thread takes each window-server event for this process and wakes the
+/// main thread by stopping whatever run loop the main thread is in (HIToolbox's
+/// `SignalMainThread` queues a `CFRunLoopStop` of the main run loop). In the app that is
+/// the event wait inside `NSApplication.run`. In a test process with no event loop it is
+/// the test runner's own (`CFMainExecutor.run`), whose return ends the run with status 0
+/// and the remaining tests unrun: `exit` from `swift_task_asyncMainDrainQueue`. On
+/// 2026-11-24 lldb caught that stop, queued from `_NSEventThread`'s
+/// `PushToCGEventQueue`, ending runs of SettingsWindowTests after two to four of its
+/// tests. Inside `NSApplication.run` the stop ends one wait for an event, as in the app,
+/// and the main queue, where the suites' main-actor work runs, is served as before.
+///
+/// It starts from a run-loop block rather than from a test's own main-queue job, since a
+/// run loop nested in a main-queue job does not serve the main queue, and it returns once
+/// the block has run, from the runner's loop: a block left queued would run in the next
+/// loop the main thread enters, such as the one a button's click runs, and never return
+/// to it. A stop queued before the block runs would still end the runner's loop, so it
+/// starts before any window does.
+///
+/// A suite that calls it runs in a test process of its own (`window_suites` in the app's
+/// Makefile): its windows hold the main actor, which every suite shares, long enough on
+/// a loaded machine that other suites' wall-clock bounds fail.
+func runAppKitEventLoop() async {
+    if let start = AppKitEventLoop.start { return await start.value }
+    let start = Task {
+        await withCheckedContinuation { (running: CheckedContinuation<Void, Never>) in
+            let main = CFRunLoopGetMain()
+            CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
+                // Resumed on the main queue, which the event loop serves.
+                running.resume()
+                NSApplication.shared.run()
+            }
+            CFRunLoopWakeUp(main)
+        }
+    }
+    AppKitEventLoop.start = start
+    await start.value
+}
+
+private enum AppKitEventLoop {
+    static var start: Task<Void, Never>?
 }
 
 /// How long, in seconds, the background job of a group-signal test sleeps. It must

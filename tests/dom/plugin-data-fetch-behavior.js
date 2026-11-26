@@ -133,6 +133,15 @@ function jsonResponse(status, body) {
     calls[0].url,
   );
 
+  nextResponse = () => jsonResponse(200, { type: "table_rows" });
+  await mb.fetchPluginData("table", "rows", { path: "a.csv", cols: ["a, b", "c"], q: null });
+  check(
+    "an array repeats its parameter, one value each, a comma kept in its value",
+    calls[1].url === "http://localhost/api/plugin/table/rows?path=a.csv&cols=a%2C+b&cols=c",
+    calls[1].url,
+  );
+  calls.splice(1);
+
   // ── Structured non-ok errors ────────────────────────────────────
   nextResponse = () =>
     jsonResponse(413, {
@@ -173,7 +182,11 @@ function jsonResponse(status, body) {
 
   // ── Degraded plugin_error envelopes ─────────────────────────────
   nextResponse = () =>
-    jsonResponse(200, { type: "plugin_error", error: "Plugin data hook failed", detail: "boom" });
+    jsonResponse(200, {
+      type: "plugin_error",
+      error: "Could not load this view's data.",
+      detail: "RuntimeError: boom",
+    });
   captured = null;
   try {
     await mb.fetchPluginData("binary", "chunk", {});
@@ -181,11 +194,14 @@ function jsonResponse(status, body) {
     captured = error;
   }
   check(
-    "a degraded plugin_error still rejects with its detail",
-    captured?.message === "Plugin data hook failed: boom",
+    "a degraded plugin_error rejects with its reader sentence, not its detail",
+    captured?.message === "Could not load this view's data.",
     String(captured?.message),
   );
-  check("a degraded plugin_error carries its payload", captured?.payload?.detail === "boom");
+  check(
+    "a degraded plugin_error carries its payload",
+    captured?.payload?.detail === "RuntimeError: boom",
+  );
 
   // ── Abort ───────────────────────────────────────────────────────
   const controller = new AbortController();

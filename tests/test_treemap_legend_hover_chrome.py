@@ -6,7 +6,8 @@ names, the tooltip it shows, and when the hover is put away run browserlessly in
 ``tests/dom/treemap-legend-session.js`` (``cli-ui-treemap-legend.tryscript.md``). What only a
 browser can say is held here: ``tests/dom/treemap-legend-hover-chrome.mjs`` serves a folder of
 seven families with a folder of Python files and an ignored build folder, opens the
-Treemap tab, and moves Chrome's pointer onto the Python entry, off the legend, and onto a
+Treemap tab while the folder's first view still holds its first paint, and moves Chrome's
+pointer onto the Python entry, off the legend, and onto a
 Python file's cell. This holds that:
 
 - the legend is File Overview's, under the tally bars, on a row one line tall, the line it
@@ -14,13 +15,14 @@ Python file's cell. This holds that:
 - the entry marks every cell painted Python's color, the folder of Python files among
   them, the family's segment in every tally row, and itself, and nothing else, with the
   family's counts in a tooltip under the entry;
-- a marked cell lifts and does not grow, since its area is its value; a marked bar grows
-  twice over; the entry's dot lifts and its name reads at 4.5:1 or better;
+- a marked cell's pixels, and no other cell's, are copied onto the marks canvas, which
+  lifts and does not grow, since a cell's area is its value; a marked bar grows twice
+  over; the entry's dot lifts and its name reads at 4.5:1 or better;
 - the entry's hover runs no cell's shimmer, only the bars' and the dot's, however many
   cells the family has (the cost at maxCells is measured beside the rule in
   builtin_plugins/folder/styles.css);
 - a cell marks itself and its family's entry alone, with its own tooltip, and it alone
-  of the cells shimmers, its sheen under its label;
+  of the cells shimmers, on the hover anchor over it, its sheen under the labels;
 - every shimmer animates opacity alone, and no layout box in the view moves.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``), and CI runs
@@ -90,11 +92,17 @@ def _free_port() -> int:
 
 def _legend_in_place(reading: dict[str, Any], label: str) -> None:
     # Markdown and Python tie on files and bytes, so the family ID orders them
-    # (file_type_legend.py).
-    assert reading["legend"] == ["Markdown", "Python", "JSON", "TypeScript", "YAML", "Other"], (
-        label,
-        reading["legend"],
-    )
+    # (file_type_legend.py), as it does CSS and Rust. All seven families clear the share
+    # floor and the legend's limit, so they are all named and nothing is left for Other.
+    assert reading["legend"] == [
+        "Markdown",
+        "Python",
+        "JSON",
+        "TypeScript",
+        "YAML",
+        "CSS",
+        "Rust",
+    ], (label, reading["legend"])
     assert reading["legendName"] == "Share of Total (30 files)", (label, reading)
     assert reading["legendUnderBars"] and reading["legendRowHeld"], (label, reading)
 
@@ -102,20 +110,24 @@ def _legend_in_place(reading: dict[str, Any], label: str) -> None:
 def _nothing(reading: dict[str, Any], label: str) -> None:
     _legend_in_place(reading, label)
     assert reading["marked"] == [], (label, reading)
-    assert reading["cellsAtRest"] and reading["barsAtRest"], (label, reading)
+    assert reading["canvas"]["liftedPixels"] == 0 and reading["anchor"] is None, (label, reading)
+    assert reading["barsAtRest"], (label, reading)
     assert reading["shimmer"]["on"] == [], (label, reading)
     assert reading["tooltip"] is None, (label, reading)
 
 
 def _cells_lifted(reading: dict[str, Any], label: str) -> None:
-    """Every marked cell lifted, not grown; the pointer's own cell's sheen under its label."""
+    """Every marked cell's pixels, and only theirs, lifted on the marks canvas, not grown."""
 
-    assert reading["cellStyle"], (label, reading)
-    for style in reading["cellStyle"]:
-        assert style["scaleY"] == 1 and style["scaleX"] == 1, (label, reading)
-        assert style["filter"] != "none", (label, reading)
-        assert style["sheenUnderLabel"] == (style["marks"] == "self"), (label, reading)
-    assert reading["cellsAtRest"], (label, reading)
+    canvas = reading["canvas"]
+    assert canvas["sampled"] >= 20 and canvas["liftedPixels"] > 0, (label, reading)
+    assert canvas["markedLifted"] and canvas["copied"], (label, reading)
+    assert canvas["unmarkedClear"], (label, reading)
+    lift = reading["lift"]
+    assert lift["scaleY"] == 1 and lift["scaleX"] == 1 and lift["filter"] != "none", (
+        label,
+        reading,
+    )
 
 
 def _entry_marked(reading: dict[str, Any], label: str) -> None:
@@ -144,16 +156,24 @@ def test_the_treemap_legend_hovers_its_familys_cells_in_chrome(
     print(result.stdout, result.stderr)
     measured: dict[str, Any] = json.loads(result.stdout.strip().splitlines()[-1])
 
+    # The Treemap was chosen on the staged bar, before the Overview had its data and before
+    # any bar was committed to the pane, and it is the tab in front at the commit (mb-s588;
+    # the orders a choice can arrive in run in tests/dom/view-tab-hold-session.js).
+    assert measured["earlyChoice"] == {"staged": True, "committedTabs": 0, "front": "overview"}
+    assert measured["frontAtCommit"] == "Treemap", measured
+
     rest = measured["atRest"]
     _nothing(rest, "at rest")
 
     entry = measured["entry"]
     _legend_in_place(entry, "the Python entry")
     cells = [mark for mark in entry["marked"] if mark.startswith("cell ")]
-    # Every cell of the family's color, the folder of Python files among them, and no other.
-    assert cells == entry["familyCells"] and "cell lib (family)" in cells, entry
+    # Every cell of the family's color and no other. The folder of Python files is not
+    # among them: a nested folder's header and frame are neutral (mb-lzmo).
+    assert cells == entry["familyCells"] and "cell lib (family)" not in cells, entry
     assert entry["marked"] == [*_PYTHON_BARS, _PYTHON_ENTRY, *cells], entry
     _cells_lifted(entry, "the Python entry")
+    assert entry["anchor"] is None, entry
     assert entry["barStyle"] and all(
         style["scaleY"] == 2 and style["scaleX"] == 1 and style["filter"] != "none"
         for style in entry["barStyle"]
@@ -170,8 +190,11 @@ def test_the_treemap_legend_hovers_its_familys_cells_in_chrome(
     cell = measured["cell"]
     assert cell["marked"] == [_PYTHON_ENTRY, "cell f1.py (self)"], cell
     _cells_lifted(cell, "the f1.py cell")
+    anchor = cell["anchor"]
+    assert anchor["name"] == "cell f1.py (self)" and anchor["sheenUnderLabel"], cell
+    assert anchor["scaleY"] == 1 and anchor["scaleX"] == 1, cell
     _entry_marked(cell, "the f1.py cell")
     assert sorted(cell["shimmer"]["on"]) == sorted(cell["marked"]), cell
-    assert cell["tooltip"] is not None and cell["tooltip"].startswith("f1.py 1 file · 3 B"), cell
+    assert cell["tooltip"] is not None and cell["tooltip"].startswith("f1.py 3 B modified "), cell
     assert cell["layout"] == rest["layout"], "the f1.py cell moved the view"
     _nothing(measured["cellLeft"], "off the cell")

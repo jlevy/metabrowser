@@ -32,8 +32,13 @@
 // clamped at two lines carries the whole title in its tooltip.
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+
+// The SDK's age builder over the ages a fake plays (sdk-ref-fixture.js), its source
+// interpolated into a page script, so a page draws the labels the session chose.
+const { agesFrom } = createRequire(import.meta.url)("./sdk-ref-fixture.js");
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -63,6 +68,10 @@ const SCRIPTS = [
   "navigation.js",
   "inert-html.js",
   "plugin-sdk.js",
+  // `metabrowser.menus`, the closing every menu has, which the stack menu and the
+  // views' menus use, and the shell tool it forwards to.
+  "filter-controls.js",
+  "menus.js",
   "plugin-sdk-views.js",
   "file-fuzzy-match.js",
   "known-file-catalog.js",
@@ -192,7 +201,8 @@ const MEASURE = `async (titles) => {
       return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
     };
     const nav = document.createElement("div");
-    nav.style.width = "300px";
+    // Narrow enough that the long title runs past its two lines: at 300 px it fits them.
+    nav.style.width = "200px";
     pane.replaceChildren(nav);
     const handle = panelModule.mountPullsPanel(
       nav,
@@ -223,6 +233,15 @@ const MEASURE = `async (titles) => {
     await document.fonts.ready;
     await frames();
     out.pullsRow = { prefixed: read(title(rows[0].number)), plain: read(title(rows[1].number)) };
+    // The row's run (mb-pw8t, mb-rb3n): the title, the number, and the author, wrapping in as
+    // many lines as they take, never cut short.
+    const heading = title(rows[0].number).closest(".github-pulls-heading");
+    const lineHeight = parseFloat(getComputedStyle(heading).lineHeight);
+    out.pullsHeading = {
+      clamped: heading.scrollHeight > heading.clientHeight + 1,
+      lineClamp: getComputedStyle(heading).webkitLineClamp,
+      lines: Math.round((heading.getBoundingClientRect().height / lineHeight) * 100) / 100,
+    };
     handle?.dispose?.();
   }
 
@@ -264,11 +283,13 @@ const MEASURE = `async (titles) => {
         refChip: mb.refChip,
         refChipHtml: mb.refChipHtml,
         mergeRefs: mb.mergeRefs,
-        mountRefCopies: mb.mountRefCopies,
+        mountRefMenus: mb.mountRefMenus,
         actorIdentity: mb.actorIdentity,
         titleNodes: mb.titleNodes,
+        shortCommit: mb.shortCommit,
         countPartsNodes: mb.countPartsNodes,
-        formatAge: () => ({ label: "2mo ago", className: "age-old" }),
+        formatInteger: mb.formatInteger,
+        ...(${agesFrom})(document, () => ({ label: "2mo ago", className: "age-old" })),
         formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
         navigation: { href: () => "/view/" },
         sourceKind: () => "filesystem",
@@ -313,7 +334,7 @@ const MEASURE = `async (titles) => {
     const menu = pageModule.createStackMenu(
       { number: 286, base_ref: "main", open: true, pulls: [6, 7, 8], titles: [PULL, PULL_PLAIN, null] },
       7,
-      { link: () => document.createElement("a"), icon: null, currentTitle: PULL_PLAIN, titleNodes: mb.titleNodes, onOpen() {} },
+      { link: () => document.createElement("a"), icon: null, currentTitle: PULL_PLAIN, titleNodes: mb.titleNodes, onOpen() {}, menus: mb.menus },
     );
     const holder = document.createElement("div");
     holder.className = "github-pull-stacks";
@@ -326,6 +347,26 @@ const MEASURE = `async (titles) => {
     const members = [...holder.querySelectorAll(".github-pull-stack-member")];
     const member = (title) => members.map((link) => link.querySelector(".github-pull-stack-member-title")).find((node) => node.textContent === title);
     out.stackMember = { prefixed: read(member(PULL)), plain: read(member(PULL_PLAIN)) };
+    // Each member's line and the shell's tip (mb-as06): one line, the long title cut short
+    // before the number, which stays whole at the line's end (mb-1kzu), and the whole title
+    // in the member's tip, which the shell shows only while it is cut.
+    out.stackMemberLines = members.map((link) => {
+      const title = link.querySelector(".github-pull-stack-member-title");
+      const number = link.querySelector(".github-pull-stack-member-number");
+      const copy = link.querySelector(".github-pull-stack-member-copy");
+      return {
+        height: Math.round(link.getBoundingClientRect().height * 100) / 100,
+        title: title.textContent,
+        tip: link.dataset.tipText ?? null,
+        clipped: title.scrollWidth > title.clientWidth,
+        number: number === null ? null : {
+          text: number.textContent,
+          whole: number.scrollWidth <= number.clientWidth,
+          afterTitle: number.getBoundingClientRect().left >= title.getBoundingClientRect().right - 0.5,
+          endGap: Math.round((copy.getBoundingClientRect().right - number.getBoundingClientRect().right) * 100) / 100,
+        },
+      };
+    });
     menu.dispose();
   }
 
@@ -549,12 +590,50 @@ async function main() {
           bare.rest.weight,
         );
       }
-      // A Pulls row cut short ends in an ellipsis, with all of its title its text.
+      // A Pulls row's long title wraps in its run and is never cut short, all of its title its
+      // text (mb-pw8t): it was one line, cut short by text-overflow, and then two, cut short
+      // by a line clamp's ellipsis (mb-85op).
       const row = measured.pullsRow?.prefixed;
+      const heading = measured.pullsHeading;
       check(
-        "a Pulls row's long title is cut short with an ellipsis, whole in its text",
-        row?.clipped === true && row.overflow === "ellipsis" && row.text === PULL,
-        JSON.stringify(row),
+        "a Pulls row's long title wraps in its run, never cut short, whole in its text",
+        heading?.clamped === false &&
+          heading.lineClamp === "none" &&
+          heading.lines >= 2 &&
+          Math.abs(heading.lines - Math.round(heading.lines)) < 0.01 &&
+          row?.text === PULL,
+        JSON.stringify({ row, heading }),
+      );
+      // A stack menu's member is one line (mb-as06): a long title is cut short with an
+      // ellipsis, the member as tall as one whose title fits, and its tip the whole title.
+      const member = measured.stackMember?.prefixed;
+      const memberLines = measured.stackMemberLines ?? [];
+      check(
+        "a stack member's long title is cut short with an ellipsis on its one line, whole in its tip",
+        member?.clipped === true &&
+          member.overflow === "ellipsis" &&
+          member.text === PULL &&
+          memberLines.length === 3 &&
+          memberLines.every(
+            (line) => line.height === memberLines[0].height && line.tip === line.title,
+          ) &&
+          memberLines.find((line) => line.title === PULL)?.clipped === true &&
+          memberLines.some((line) => !line.clipped),
+        JSON.stringify({ member, memberLines }),
+      );
+      // Its number is never cut (mb-1kzu): whole at the line's end, after the title, the long
+      // title's too, which is cut short before it.
+      check(
+        "a stack member's number stays whole at the line's end, the long title cut short before it",
+        memberLines.length === 3 &&
+          memberLines.every(
+            (line) =>
+              /^#\d+$/.test(line.number?.text ?? "") &&
+              line.number.whole &&
+              line.number.afterTitle &&
+              Math.abs(line.number.endGap) <= 0.5,
+          ),
+        JSON.stringify(memberLines),
       );
       // The pull request's heading, clamped at two lines, carries the whole title in its tip.
       const clamped = measured.pullTitleClamped;

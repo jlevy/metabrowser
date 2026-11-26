@@ -23,7 +23,8 @@ from typing import get_args
 import click
 from watchfiles import DefaultFilter
 
-from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_ENV
+from metabrowser.builtin_plugins.github.gh_status import GH_MINIMUM_LABEL
+from metabrowser.cache.free_space import FREE_SPACE_RESERVE_ENV, FREE_SPACE_RESERVE_MB
 from metabrowser.cli.exit_codes import (
     INTERRUPTED_EXIT_CODE,
     PRESENT_BLOCKED_EXIT_CODE,
@@ -40,15 +41,18 @@ from metabrowser.cli.present import (
     DeliveryCode,
     PresentKind,
 )
+from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
+from metabrowser.file_type_legend import LEGEND_MINIMUM_SHARE_PERCENT, LEGEND_TYPE_LIMIT
+from metabrowser.git.file_ages import file_ages_version_label
 from metabrowser.git.log import TRUNK_BRANCH_NAMES, TRUNK_REMOTES
 from metabrowser.git.process import ACQUISITION_MINIMUM
 from metabrowser.gz_io import GZIP_SUFFIX, ZLIB_SUFFIX
 from metabrowser.home import application_cache, configuration_directory
 from metabrowser.inventory_engine.factory import InventoryProvider
-from metabrowser.logutil.parsing import _BUILTIN_ADAPTERS
+from metabrowser.logutil.parsing import registered_log_adapters
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 from metabrowser.settings import (
     DEFAULT_BROWSER_PORT,
@@ -61,18 +65,33 @@ from metabrowser.settings import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src" / "metabrowser"
 APP_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources" / "ShellCore"
-AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agent_log" / "manifest.toml"
+AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agents" / "manifest.toml"
 
 # What a guide calls each JSONL adapter. A new adapter fails here until it has a name, so
-# that the guides can be told about it.
-AGENT_NAMES = {"claude": "Claude Code", "gemini": "Gemini CLI", "pi": "Pi", "codex": "Codex"}
+# that the guides can be told about it. Codex's two formats share a name.
+AGENT_NAMES = {
+    "claude": "Claude Code",
+    "gemini": "Gemini CLI",
+    "pi": "Pi",
+    "codex": "Codex",
+    "codex-rollout": "Codex",
+}
 
 # The examples docs/browsing-files.md gives of directories the watcher does not observe.
 # They come from `watchfiles.DefaultFilter`, which `run_watcher` leaves in place; a
 # watchfiles release that drops one, or a filter of our own, fails here.
 UNWATCHED_EXAMPLES = ("node_modules", ".venv", "__pycache__")
 
-_NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven"}
+_NUMBER_WORDS = {
+    2: "two",
+    3: "three",
+    4: "four",
+    5: "five",
+    6: "six",
+    7: "seven",
+    8: "eight",
+    9: "nine",
+}
 
 
 @dataclass(frozen=True)
@@ -105,11 +124,16 @@ def _series(names: list[str], conjunction: str = "and") -> str:
 
 def _manifest_adapters() -> set[str]:
     manifest = tomllib.loads(AGENT_LOG_MANIFEST.read_text(encoding="utf-8"))
-    return {str(kind["match"]["adapter"]) for kind in manifest["kind"]}
+    # The rules that name an adapter; a rule that claims a file by its path, such as a
+    # compressed rollout's, names none.
+    return {
+        str(kind["match"]["adapter"]) for kind in manifest["kind"] if "adapter" in kind["match"]
+    }
 
 
 def _charted_agents() -> str:
-    return _series([AGENT_NAMES[name] for name in sorted(_manifest_adapters())])
+    names = [AGENT_NAMES[name] for name in sorted(_manifest_adapters())]
+    return _series(list(dict.fromkeys(names)))
 
 
 def stated_values() -> list[Stated]:
@@ -119,15 +143,15 @@ def stated_values() -> list[Stated]:
         APP_SOURCES / "Setup" / "MetabVersion.swift",
         r"static let minimumRelease = \[(\d+), (\d+), (\d+)\]",
     )
-    live_tabs = int(
+    live_pages = int(
         _swift(
-            APP_SOURCES / "Web" / "TabDiscardPolicy.swift",
-            r"static let defaultLiveBackgroundTabs = (\d+)",
+            APP_SOURCES / "Web" / "PageDiscardPolicy.swift",
+            r"static let defaultLiveBackgroundPages = (\d+)",
         ).group(1)
     )
     budget = _swift(
         APP_SOURCES / "Folders" / "SavedSession.swift",
-        r"static let standard = RestoreBudget\(windows: (\d+), tabs: (\d+)\)",
+        r"static let standard = RestoreBudget\(windows: (\d+), pages: (\d+)\)",
     )
     cap = f"{INVENTORY_MAX_FILES:,}"
     return [
@@ -184,6 +208,12 @@ def stated_values() -> list[Stated]:
             (*TRUNK_BRANCH_NAMES, *TRUNK_REMOTES),
         ),
         Stated(
+            "docs/browsing-history.md",
+            "the short commit ID's length",
+            r"the\s+short\s+ID,\s+its\s+first\s+(\w+)\s+characters,\s+as\s+GitHub",
+            (_NUMBER_WORDS.get(SHORT_COMMIT_CHARS, str(SHORT_COMMIT_CHARS)),),
+        ),
+        Stated(
             "docs/working-with-agents.md",
             "the default port",
             r"the first free one from (\d+)",
@@ -194,12 +224,6 @@ def stated_values() -> list[Stated]:
             "the charted agents",
             r"the session logs of ([^,]+(?:, [^,]+)*?) open with",
             (_charted_agents(),),
-        ),
-        Stated(
-            "docs/working-with-agents.md",
-            "the agents parsed without Charts",
-            r"(\w+) logs are\s+parsed into the same timeline, without Charts",
-            tuple(AGENT_NAMES[name] for name in sorted(_BUILTIN_ADAPTERS - _manifest_adapters())),
         ),
         Stated(
             "docs/reviewing-pull-requests.md",
@@ -317,15 +341,39 @@ def stated_values() -> list[Stated]:
         ),
         Stated(
             "docs/command-line.md",
-            "the first-clone override",
-            r"^\| `(\w+)` \| The size limit, in kilobytes, on a first clone",
-            (MAX_FIRST_CLONE_ENV,),
+            "the first-clone free-space reserve",
+            r"^\| `(\w+)` \| The free space, in megabytes, a first clone leaves",
+            (FREE_SPACE_RESERVE_ENV,),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the default first-clone free-space reserve",
+            r"a first clone leaves on the cache volume, (\d+) by default",
+            (str(FREE_SPACE_RESERVE_MB),),
         ),
         Stated(
             "docs/installation.md",
             "the Git security floor",
             r"a Git older than (\d+\.\d+\.\d+)",
             (".".join(str(part) for part in ACQUISITION_MINIMUM),),
+        ),
+        Stated(
+            "docs/browsing-files.md",
+            "the Git release that reads file ages",
+            r"which needs Git (\d+\.\d+) or newer",
+            (file_ages_version_label(),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the Git release that reads file ages",
+            r"\(`git last-modified`, Git (\d+\.\d+)\)",
+            (file_ages_version_label(),),
+        ),
+        Stated(
+            "docs/installation.md",
+            "the GitHub CLI minimum",
+            r"the doctor.s GitHub check, need `gh` (\d+\.\d+\.\d+) or later",
+            (GH_MINIMUM_LABEL,),
         ),
         Stated(
             "docs/installation.md",
@@ -346,15 +394,27 @@ def stated_values() -> list[Stated]:
             (".".join(app_minimum.groups()),),
         ),
         Stated(
+            "docs/browsing-files.md",
+            "the legend's family limit",
+            r"largest file-type families, such as Python, Markdown, and JSON, up to (\w+),",
+            (_NUMBER_WORDS.get(LEGEND_TYPE_LIMIT, str(LEGEND_TYPE_LIMIT)),),
+        ),
+        Stated(
+            "docs/browsing-files.md",
+            "the legend's share floor",
+            r"each at least (\d+)% of what is shown",
+            (str(LEGEND_MINIMUM_SHARE_PERCENT),),
+        ),
+        Stated(
             "docs/macos-app.md",
-            "the live background tabs",
-            r"and so do the (\w+)\s+background tabs shown most recently",
-            (_NUMBER_WORDS.get(live_tabs, str(live_tabs)),),
+            "the live background folders",
+            r"and so do the (\w+)\s+background folders shown most recently",
+            (_NUMBER_WORDS.get(live_pages, str(live_pages)),),
         ),
         Stated(
             "docs/macos-app.md",
             "the restore budget",
-            r"rebuilds at most the front (\d+) windows and (\d+) tabs",
+            r"rebuilds at most the front (\d+) windows and (\d+)\s+pages",
             budget.groups(),
         ),
     ]
@@ -389,9 +449,15 @@ def test_user_guides_state_the_values_the_code_sets() -> None:
 
 
 def test_every_jsonl_adapter_has_a_name_the_guides_can_use() -> None:
-    assert _manifest_adapters() <= _BUILTIN_ADAPTERS
-    unnamed = sorted(_BUILTIN_ADAPTERS - AGENT_NAMES.keys())
+    adapters = frozenset(registered_log_adapters())
+    assert _manifest_adapters() <= adapters
+    unnamed = sorted(adapters - AGENT_NAMES.keys())
     assert not unnamed, f"name {unnamed} in AGENT_NAMES, then say which guides list it"
+    # docs/working-with-agents.md says every recognized agent's logs open with Charts.
+    uncharted = sorted(adapters - _manifest_adapters())
+    assert not uncharted, (
+        f"{uncharted} parse without Charts: say so in docs/working-with-agents.md and pin it"
+    )
 
 
 def test_the_watcher_keeps_the_filter_the_guide_describes() -> None:
@@ -405,17 +471,17 @@ def test_the_watcher_keeps_the_filter_the_guide_describes() -> None:
     )
 
 
-def test_the_app_guides_say_whether_its_minimum_is_released() -> None:
-    released = _swift(
-        APP_SOURCES / "Setup" / "MetabVersion.swift", r"static let isReleased = (true|false)"
-    ).group(1)
-    for name in ("docs/installation.md", "skills/metabrowser/SKILL.md"):
-        guide = (REPO_ROOT / name).read_text(encoding="utf-8")
-        says_unreleased = "no release on PyPI has it yet" in " ".join(guide.split())
-        assert says_unreleased == (released == "false"), (
-            f"MetabRequirement.isReleased changed: update {name}, Release Status in "
-            "docs/installation.md, and the steps in docs/macos-app.md, then this test"
-        )
+def test_cli_release_docs_keep_the_preview_runtime_guidance_conditional() -> None:
+    installation = (REPO_ROOT / "docs/installation.md").read_text(encoding="utf-8")
+    app_section = installation.split("## The macOS App\n", 1)[1].split("\n## ", 1)[0]
+    app_section = " ".join(app_section.split())
+    assert "If the published CLI meets the app’s minimum" in app_section
+    assert "`uv tool install metabrowser`" in app_section
+    assert "If your preview needs a newer runtime" in app_section
+    assert "`.venv/bin/metab`" in app_section
+    skill = (REPO_ROOT / "skills/metabrowser/SKILL.md").read_text(encoding="utf-8")
+    assert "a skill installed from a release tag matches that release" in skill
+    assert "If you need an unreleased feature" in skill
 
 
 def _reason_codes(guide: str, heading: str) -> list[str]:
@@ -455,7 +521,7 @@ def test_the_values_check_sees_what_it_must() -> None:
     assert _series(["a", "b"]) == "a and b"
 
 
-_PRESENT_SECTION = "Handing a Target to the App: `--present`"
+_PRESENT_SECTION = "Presenting a Target: `--present`"
 
 
 def test_the_present_guide_names_every_delivery_code_and_kind() -> None:

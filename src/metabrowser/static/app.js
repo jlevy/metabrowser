@@ -238,8 +238,8 @@ function countHtml(n, extraClass) {
  * inherits whatever emphasis its container declares. This is what the
  * navigation heading shows: the directories above the served root never
  * change, and the column they would spend width on is the narrowest in the
- * app. Where a whole path is wanted the file header renders it as an
- * address of controls instead — see headerAddressHtml.
+ * app. Where the main view names an item, its view header renders the
+ * folders above it as an address of controls — see view-header.js.
  */
 function pathBaseHtml(path) {
   return `<span class="path"><span class="path-base">${esc(pathBaseName(path))}</span></span>`;
@@ -252,19 +252,15 @@ function pathBaseName(path) {
 }
 
 /**
- * Settle the navigation heading once the tree has loaded. A folder shows the
- * served root's name from the tree payload. A pinned revision keeps the heading
- * the server rendered from its session, its ref and short commit: the tree's
- * root there is the empty GitPath, which has no name to show.
+ * Update the folder name from the tree payload. A pinned revision keeps the
+ * server-rendered heading because its GitPath root is empty.
  */
 function renderServedRootHeading(pathEl, root) {
   if (!pathEl || isGitRevisionSource()) {
     return;
   }
-  // Home draws the tree again, and with it this; rewriting the same name under a pointer
-  // resting on it would replace the nodes it is over for nothing. The name's text is
-  // compared, not markup: `esc` writes a quote as an entity, and the element's own
-  // serialization does not, so a name with one never compared equal.
+  // Keep the name's nodes under the pointer on Home redraws. Compare text
+  // because the browser and esc() serialize quoted names differently.
   if (pathEl.textContent !== pathBaseName(root)) {
     pathEl.innerHTML = pathBaseHtml(root);
   }
@@ -345,53 +341,6 @@ function isOwnedControl(element) {
 /** @param {Element | null} element */
 function isPageElement(element) {
   return window.MetabrowserPluginHost?.ownsElement?.(element) === true;
-}
-
-/**
- * The main view's address: the served root dimmed, the root slash, then one
- * control per component beneath it.
- *
- * The prefix is dim because it is identical on every page — context, not
- * content — and everything from the slash rightward is live. The final
- * component is a control too. On the page you are already looking at it
- * changes nothing, but a run of links with one dead segment in the middle
- * reads as a bug rather than as a rule.
- *
- * A crumb's tooltip is its own name, which the shell shows only while a narrow
- * pane has cut the crumb short (`tipAddsInformation`): the trail itself shows
- * the path, so a crumb repeats none of it (docs/design-system.md, "Tooltips Add
- * Information").
- *
- * @param {string} path served-root-relative path; "" is the root itself
- * @param {boolean} isFile whether the last component names a file
- */
-function headerAddressHtml(path, isFile) {
-  var root = servedRoot();
-  // <bdi> isolates the path from the start-truncation direction on the
-  // wrapper; see .file-header-root. It carries no style of its own.
-  var prefix = root ? `<span class="file-header-root"><bdi>${esc(root)}</bdi></span>` : "";
-  var rootCrumb = `<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} data-tip-text="Served root">/</button>`;
-  var segments = path ? path.split("/") : [];
-  var crumbs = [];
-  var walked = "";
-  for (var i = 0; i < segments.length; i++) {
-    walked = walked ? `${walked}/${segments[i]}` : segments[i];
-    var last = i === segments.length - 1;
-    var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
-    var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
-    // One name, as the crumb's tip and its text, so the two cannot drift apart: the tip
-    // shows only while that text is cut short (`tipAddsInformation`).
-    var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));
-    crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>`,
-    );
-  }
-  return (
-    prefix +
-    rootCrumb +
-    crumbs.join('<span class="folder-crumb-sep">/</span>') +
-    mirrorHeading("note")
-  );
 }
 
 function getExt(name) {
@@ -489,14 +438,8 @@ function formatAge(mtimeSec, options) {
   if (mtimeSec === null) {
     return '<span class="tally-pending tally-pending-narrow"></span>';
   }
-  // One age primitive for the whole product (formatters.js): same
-  // abbreviations, same freshness tiers, same colours, wherever an age
-  // appears.
-  var age = window.MetabrowserFormatters.age(mtimeSec, options);
-  if (!age.label) {
-    return "";
-  }
-  return `<span class="${age.className}">${age.label}</span>`;
+  // The one age builder (formatters.js).
+  return window.MetabrowserFormatters.ageLabelHtml(mtimeSec, options);
 }
 
 function formatTimestamp(mtimeSec) {
@@ -509,15 +452,6 @@ function formatTimestamp(mtimeSec) {
 function formatExactSize(bytes) {
   return `${bytes.toLocaleString()} bytes`;
 }
-
-// ── SVG Icons ───────────────────────────────────────────────────
-
-// Lucide `copy` from the shared registry (icons.js loads first);
-// aliased so call sites keep the established name.
-var _iconRegistry = /** @type {Record<string, string>} */ (
-  (typeof window !== "undefined" && window.MetabrowserIcons) || {}
-);
-var ICON_COPY = _iconRegistry.copy || "";
 
 // ── Icon registry ──────────────────────────────────────────────
 // All SVG markup lives in static/icons.js, loaded before this file
@@ -713,7 +647,6 @@ function initSettingsControl() {
     for (var i = 0; i < themeSegs.length; i++) {
       themeSegs[i].innerHTML = themeModeIcon(themeSegs[i].dataset.themeChoice);
       themeSegs[i].addEventListener("click", (e) => {
-        e.stopPropagation();
         var segment = e.currentTarget;
         if (segment instanceof HTMLElement) {
           applyThemeMode(segment.dataset.themeChoice, true);
@@ -724,7 +657,6 @@ function initSettingsControl() {
     for (var j = 0; j < fontSegs.length; j++) {
       fontSegs[j].innerHTML = proseFontIcon(fontSegs[j].dataset.fontChoice);
       fontSegs[j].addEventListener("click", (e) => {
-        e.stopPropagation();
         var segment = e.currentTarget;
         if (segment instanceof HTMLElement) {
           applyProseFont(segment.dataset.fontChoice, true);
@@ -757,15 +689,12 @@ function initSettingsControl() {
     // Reading width. `input` applies live so the column follows the number as
     // it is typed or stepped; `change` (commit, blur) is what normalizes and
     // writes back, so an out-of-range or half-typed value is not snapped under
-    // the caret mid-edit. Clicks inside must not close the menu.
+    // the caret mid-edit.
     var charsInput = /** @type {HTMLInputElement | null} */ (
       document.getElementById("doc-max-chars-input")
     );
     if (charsInput) {
       charsInput.value = String(getStoredDocMaxChars());
-      charsInput.addEventListener("click", (e) => {
-        e.stopPropagation();
-      });
       charsInput.addEventListener("input", (event) => {
         var field = event.currentTarget;
         if (field instanceof HTMLInputElement && field.value !== "") {
@@ -784,21 +713,17 @@ function initSettingsControl() {
     var setOpen = (open) => {
       wrap.setAttribute("aria-expanded", open ? "true" : "false");
     };
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
+    var dismissal = window.metabrowser.menus?.dismissible({
+      name: "settings-menu",
+      trigger: btn,
+      inside: (node) => wrap.contains(node),
+      isOpen,
+      close: () => setOpen(false),
+    });
+    btn.addEventListener("click", () => {
+      void window.MetabrowserAssets?.ensureAsset("remote-images");
       setOpen(!isOpen());
-    });
-    // Dismiss on outside click or Escape.
-    document.addEventListener("click", (e) => {
-      if (isOpen() && e.target instanceof Node && !wrap.contains(e.target)) {
-        setOpen(false);
-      }
-    });
-    document.addEventListener("keydown", (e) => {
-      // A key held with Command, Control, or Option is the browser's.
-      if (e.key === "Escape" && !(e.altKey || e.ctrlKey || e.metaKey) && isOpen()) {
-        setOpen(false);
-      }
+      dismissal?.[isOpen() ? "opened" : "closed"]();
     });
 
     // Segments exist now — re-sync the active markers.
@@ -846,25 +771,14 @@ function initSettingsControl() {
 // ── File type design system ───────────────────────────────────
 // The file tree's icon and colour, resolved through the rollup registry.
 //
-// This used to be a second taxonomy: sixteen hand-maintained matchers here
-// resolving to nine `ft-*` classes, beside a registry of 56 families each with
-// its own declared hue. Nothing kept them in step and they had drifted in both
-// directions at once — `.js` and `.jsx` were one family in the registry and two
-// different shapes in the tree, while `.json`, `.toml` and `.yaml` were three
-// families painted as one. A reader saw the bars disagree with the rows beside
-// them.
+// Classification is NOT re-implemented here: `MetabrowserFileTypeTaxonomy` is the registry
+// runtime (compound extensions, a family's shape through its group), and this file only
+// turns its answer into markup. A second taxonomy here had drifted from the registry, so
+// the bars disagreed with the rows beside them.
 //
-// Classification is NOT re-implemented here. `MetabrowserFileTypeTaxonomy` is
-// the registry runtime, it already canonicalises compound extensions and
-// resolves a family's shape through its group, and a second implementation of
-// that is exactly the defect being removed. This file only turns its answer
-// into markup.
-//
-// Colours arrive finished in `DISTRIBUTION_COLORS`, resolved per theme by the
-// server, because sRGB cannot hold the palette's target chroma at every hue and
-// a browser handed an out-of-gamut `oklch()` clips it — moving hue further than
-// the separation the palette is built on. The distribution bars read the same
-// list, which is what makes a family look like itself wherever it appears.
+// Colours arrive finished in `DISTRIBUTION_COLORS`, resolved per theme by the server, since
+// a browser clips an out-of-gamut `oklch()` and moves the hue. The distribution bars read
+// the same list, so a family looks like itself wherever it appears.
 
 /** Where a file row's colour for each theme is written. */
 const FILE_COLOR_LIGHT_PROPERTY = "--mb-file-color-light";
@@ -1135,11 +1049,8 @@ function renderInitialTreeRows() {
   // where they will stay. Omitting it cost 43 px of downward shift the moment
   // the fetch returned -- a jump this inline had itself introduced, since
   // before it there were no rows in place to push.
-  _lastTreeRender = {
-    tree: rows,
-    chromeHtml: treeSummaryHtml(rootTotals().totals(), null, null),
-    tallyCacheStatus: "scanning",
-  };
+  paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
+  _lastTreeRender = { tree: rows, chromeHtml: "", tallyCacheStatus: "scanning" };
   // Measured here rather than around the call, so the span exists only when
   // this path actually paints. Every return above declined to — no inlined
   // rows, something already on screen, a filter the server did not know about
@@ -1180,12 +1091,13 @@ async function loadTree(options = {}) {
       renderInitialTreeRows();
 
       /** Replace whatever is on screen with a failure the reader can act on. */
-      function failTree(reason) {
-        console.warn(`loadTree: ${reason}`);
+      /** @param {unknown} cause */
+      function failTree(cause) {
+        console.warn("loadTree: could not load the tree", cause);
         const treeEl = document.getElementById("tree-content");
         if (treeEl) {
           treeEl.innerHTML =
-            '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
+            '<div class="preview-empty" role="alert">Could not load files. Reload the page to try again.</div>';
         }
       }
 
@@ -1194,7 +1106,7 @@ async function loadTree(options = {}) {
       try {
         resp = await fetch(treeUrl(""));
         if (!resp.ok) {
-          failTree(`HTTP ${resp.status}`);
+          failTree({ status: resp.status });
           return;
         }
         data = await _perf.measureAsync(
@@ -1203,19 +1115,16 @@ async function loadTree(options = {}) {
           responsePerfMeta(resp, ""),
         );
       } catch (error) {
-        // A throw has to land here for the same reason a non-ok status does, and
-        // more urgently since the inline rows are already painted: a dropped
-        // connection or a malformed body would otherwise leave the reader
-        // looking at two hundred rows with no chrome, no counts, and no error --
-        // a tree that appears complete and is not. Before those rows were
-        // inlined the same failure left an empty pane, which at least read as
-        // broken.
-        failTree(String(error));
+        // A throw lands here as a non-ok status does: the inline rows are already
+        // painted, so a dropped connection or a malformed body would otherwise leave a tree
+        // that appears complete with no chrome, no counts, and no error.
+        failTree(error);
         return;
       }
+      observeFileAges(data.ages);
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
-      renderServedRootHeading(pathEl, data.root);
+      renderServedRootHeading(queryHtml("#header-home-name"), data.root);
       var rootTally = rootTallyFromTopLevel(data.tree);
       var newestMtime = rootTally.newestMtime;
       var summaryFiles = rootTally.files;
@@ -1234,20 +1143,16 @@ async function loadTree(options = {}) {
         // tree refresh instead of leaving these new pending cells to the watchdog.
         startIndexProgressPolling();
       }
-      // Carry aggregates on the path link so the header tooltip handler
-      // can pull them on hover without rebuilding from DOM.
+      // Keep the disclosure's aggregates in step with the root inventory.
       if (pathEl) {
-        // The display form, so the tooltip and the file header's prefix say the
-        // same thing about the root — one of them abbreviating the home
-        // directory and the other not would read as two different roots.
-        pathEl.dataset.tipName = pathEl.dataset.servedRoot || data.root;
         pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
         pathEl.dataset.tipSize = nullableDataValue(summarySize);
         pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+        updateRootDetailsStats();
       }
-      // Summary row sits at the top of the scrollable tree listing, not
-      // in the sticky header — visible on first paint, scrolls away with
-      // the rest of the tree. Keeps the upper nav header clean.
+      // The summary row stands in its band under the filter bar, out of the
+      // tree's scroller, so it stays in view as the tree scrolls and its rule
+      // runs the pane's width; every source the panel shows keeps it.
       // The root's totals, never partial (docs/design-system.md, "The Files totals").
       if (data.summary) {
         rootTotals().fromSummary(data.summary, data.tally_cache_status);
@@ -1260,9 +1165,7 @@ async function loadTree(options = {}) {
         holding ? null : summaryFiles,
         holding ? null : summarySize,
       );
-      // Cached so the recency source, which paints over the whole panel,
-      // can keep the same tally row above its own filtered count.
-      _lastTreeSummaryHtml = summaryHtml;
+      paintTreeSummary(summaryHtml);
       // Walker truncation banner. The provider
       // walker stops at INVENTORY_MAX_FILES; finalized dirs still
       // emit accumulated totals so the UI is usable, but the user
@@ -1281,7 +1184,7 @@ async function loadTree(options = {}) {
       _filteredTreeTotals = data.filtered || null;
       _lastTreeRender = {
         tree: data.tree,
-        chromeHtml: truncationHtml + summaryHtml,
+        chromeHtml: truncationHtml,
         tallyCacheStatus: data.tally_cache_status,
       };
       // A recency request, or a grouping, may have started while this tree request was
@@ -1289,7 +1192,7 @@ async function loadTree(options = {}) {
       // newer source selection.
       if (!filesPanelUsesRecentSource() && !filesPanelUsesGroupedSource()) {
         if (_inlineTreeBaseline || reconcileMountedRoot) {
-          reconcileMountedTree(data.tree, truncationHtml + summaryHtml);
+          reconcileMountedTree(data.tree, truncationHtml);
         } else {
           renderFilesFromTree(options.asHome === true);
         }
@@ -1458,11 +1361,12 @@ async function loadGroupedTreeInner(state, load) {
       load,
     });
     sections = treeFilterModel.groupSections(data);
+    observeFileAges(data.ages);
   } catch (error) {
     // A refresh that fails keeps the sections on screen; its pacing retries it with a
     // backoff (requestGroupedRefresh). A first load has nothing to keep.
     if (owns() && !preserve) {
-      failGroupedTree(String(error));
+      failGroupedTree(error);
     }
     return false;
   }
@@ -1472,6 +1376,7 @@ async function loadGroupedTreeInner(state, load) {
   if (data.tally_cache_status === "scanning") {
     startIndexProgressPolling();
   }
+  applyFilterTallies(data);
   if (preserve) {
     await fetchReopenedFolders(sections, owns);
     if (!owns()) {
@@ -1630,12 +1535,13 @@ function groupingRowPrefetchUrl(row) {
   );
 }
 
-function failGroupedTree(reason) {
-  console.warn(`loadGroupedTree: ${reason}`);
+/** @param {unknown} cause */
+function failGroupedTree(cause) {
+  console.warn("loadGroupedTree: could not load the groups", cause);
   var panel = document.getElementById("tab-files");
   if (panel) {
     panel.innerHTML =
-      '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
+      '<div class="preview-empty" role="alert">Could not load files. Reload the page to try again.</div>';
   }
 }
 
@@ -1647,11 +1553,15 @@ function failGroupedTree(reason) {
  * A name too long for a narrow pane is cut short, and its tooltip then gives the whole
  * of it; while the name is whole the tooltip repeats it, so it does not show
  * (`tipAddsInformation`; docs/design-system.md, "Tooltips Add Information").
+ * A type group's name follows its category's icon, and an age group has none
+ * ("File-Type Category Icons"); a refresh rewrites a kept heading from here, so it keeps it.
  *
  * @param {MetabrowserPublicTreeSection} section
  */
 function treeSectionHeadingHtml(section) {
-  var label = `<span class="tree-section-label" data-tip-text="${esc(section.label)}">${esc(section.label)}</span>`;
+  var label =
+    (ICONS.withClass?.(section.icon, "category-icon") || "") +
+    `<span class="tree-section-label" data-tip-text="${esc(section.label)}">${esc(section.label)}</span>`;
   if (section.files === null) {
     return label;
   }
@@ -1747,9 +1657,7 @@ function renderGroupedSections(sections, truncationHtml) {
     )
     .join("");
   panel.innerHTML =
-    truncationHtml +
-    (_lastTreeSummaryHtml || "") +
-    (body || '<div class="recent-empty">No files match the filters.</div>');
+    truncationHtml + (body || '<div class="recent-empty">No files match the filters.</div>');
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
   synchronizeTreeNow();
@@ -1929,22 +1837,21 @@ function rootTotals() {
   return _rootTotals;
 }
 
-// Draw the totals line in place, and keep both caches of it in step: chromeHtml feeds a
-// source swap back to the tree, and _lastTreeSummaryHtml is what the recency source
-// prepends.
+// Draw the totals line in place: the first line of the Files metadata band, outside the
+// panel, so a source swap repaints the panel and leaves the band's lines as they are.
 /** @param {string} html */
 function paintTreeSummary(html) {
   var row = document.querySelector(".tree-summary");
-  if (row && row.outerHTML !== html) {
+  if (!row) {
+    filesMetadataBand()?.insertAdjacentHTML("afterbegin", html);
+  } else if (row.outerHTML !== html) {
     row.outerHTML = html;
   }
-  _lastTreeSummaryHtml = html;
-  if (_lastTreeRender) {
-    _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-      /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
-      html,
-    );
-  }
+}
+
+// The band the Files totals and the remarks on them stand in (server.py draws it).
+function filesMetadataBand() {
+  return document.getElementById("nav-metadata-files");
 }
 
 // The root's tallies, asked of the server again, for the filter menus' counts and the
@@ -2063,17 +1970,7 @@ async function fetchRootSummary() {
   if (!document.querySelector(".tree-summary")) {
     return true;
   }
-  // Only rebuild the bar when no dropdown is open. Replacing
-  // its DOM mid-poll would drop focus out of a menu the user
-  // is arrowing through, and this runs repeatedly while the
-  // index warms up.
-  if (updateFilterTallies(data)) {
-    if (filterOpenMenu === null) {
-      renderNavFilterBar();
-    } else {
-      patchOpenRecencyTallyCounts();
-    }
-  }
+  applyFilterTallies(data);
   paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
   return true;
 }
@@ -2085,8 +1982,6 @@ var _lastTreeRender = null;
 // Match totals from the last filtered /api/tree response, or null when
 // nothing is filtered. Shape: {files, size, entries}.
 var _filteredTreeTotals = null;
-// The tally row alone, so the recency source can reuse it verbatim.
-var _lastTreeSummaryHtml = "";
 
 /**
  * The folders the Files tree opens when it is drawn for Home (*asHome*), as a fresh load of
@@ -2241,11 +2136,6 @@ function reconcileMountedTree(nextTree, chromeHtml) {
 
       var chrome = document.createElement("div");
       chrome.innerHTML = chromeHtml;
-      var summary = panel.querySelector(":scope > .tree-summary");
-      var nextSummary = chrome.querySelector(":scope > .tree-summary");
-      if (summary && nextSummary) {
-        summary.replaceWith(nextSummary);
-      }
       var truncation = panel.querySelector(":scope > .tree-truncation-note");
       var nextTruncation = chrome.querySelector(":scope > .tree-truncation-note");
       if (truncation && nextTruncation) {
@@ -2285,43 +2175,125 @@ function ensureTreeTruncationNote(maxFiles) {
   filesPanel.insertAdjacentHTML("afterbegin", treeTruncationNoteHtml(maxFiles));
 }
 
-// Header hover tooltip — same folder-tooltip HTML the tree uses, so
-// hovering the served-root path shows the same name / files / size /
-// mtime block a hovered folder row shows below. One helper, one design.
-//
-// It adds details and nothing else (docs/design-system.md, "Home"): the click is what the
-// name is for, and it reads as a link home without a line saying so. A press on the name
-// moves focus to it, in Chrome, and the focus transition that ends a tooltip would end
-// this one, or cancel it before it showed, so a click took it away. That focus is the
-// pointer's own click, not a reader moving focus, so it leaves the tooltip as the pointer
-// has it: shown while the pointer rests on the name, gone when it leaves.
-document.addEventListener("DOMContentLoaded", () => {
-  const headerPath = queryHtml(".header-path");
-  if (!headerPath) {
+// Populate the menu's file count and size from the live root inventory.
+/** @param {DOMStringMap} dataset */
+function rootDetailsStats(dataset) {
+  return folderTooltipHtml(
+    "",
+    parseTipNumber(dataset.tipFiles),
+    parseTipNumber(dataset.tipSize),
+    undefined,
+    false,
+  );
+}
+
+function updateRootDetailsStats() {
+  const heading = queryHtml(".header-path");
+  const stats = queryHtml("#root-details .root-details-stats");
+  if (heading && stats) {
+    stats.innerHTML = rootDetailsStats(heading.dataset);
+  }
+}
+
+function initRootDetails() {
+  const details = document.getElementById("root-details");
+  const panel = queryHtml("#root-details-panel");
+  const trigger = details?.querySelector("button");
+  const status = details?.querySelector(".root-details-status");
+  if (!details || !panel || !trigger || !status) {
     return;
   }
-  headerPath.addEventListener("mouseenter", () => {
-    var d = headerPath.dataset;
-    // The heading shows the folder name alone, so the whole served root lives
-    // here — as one tooltip. It used to be here and in a native `title` as
-    // well, which showed the reader two tooltips saying the same thing.
-    if (!d.tipName) {
-      showTooltip(`${esc(d.servedRoot || "")}${mirrorHeading("tip")}`, headerPath);
+  trigger.innerHTML = `<span aria-hidden="true">${ICONS.info ?? ""}</span>`;
+  const location = details.querySelector(".root-details-location");
+  const mirrorLocation = queryHtml(".header-path")?.dataset.mirrorLocation;
+  if (location && mirrorLocation) {
+    location.textContent = mirrorLocation;
+  }
+  const actions = details.querySelector(".root-details-actions");
+  const revision = details.querySelector(".git-commit-revision[data-revision]");
+  const tips = [document.getElementById("header-root-kind"), trigger].map((element) => ({
+    element,
+    text: element?.dataset.tipText,
+  }));
+  /** @param {boolean} open */
+  const setOpen = async (open) => {
+    if (open === !panel.hidden) {
       return;
     }
-    var folderTip = folderTooltipHtml(
-      d.tipName,
-      parseTipNumber(d.tipFiles),
-      parseTipNumber(d.tipSize),
-      parseTipNumber(d.tipMtime),
-    );
-    showTooltip(`${folderTip}${mirrorHeading("tip")}`, headerPath);
+    panel.hidden = !open;
+    trigger.ariaExpanded = String(open);
+    for (const { element, text } of tips) {
+      if (element && text) {
+        if (open) {
+          delete element.dataset.tipText;
+          hideTooltipWithin(element);
+        } else {
+          element.dataset.tipText = text;
+        }
+      }
+    }
+    const url = details.dataset.repositoryUrl;
+    if (!open) {
+      status.textContent = "";
+      return;
+    }
+    if (
+      !(url && actions && !actions.childElementCount) &&
+      !revision?.hasAttribute("data-revision")
+    ) {
+      return;
+    }
+    try {
+      await window.MetabrowserAssets?.ensureAsset("sdk-views");
+      if (panel.hidden) {
+        return;
+      }
+      const commit = revision?.getAttribute("data-revision");
+      if (revision && commit) {
+        const copy = document.createElement("button");
+        copy.className = "icon-btn icon-btn-reveal git-commit-revision-copy";
+        copy.type = "button";
+        copy.dataset.mbCopy = "text";
+        copy.dataset.mbCopyText = commit;
+        copy.dataset.mbCopyLabel = copy.dataset.tipText = "Copy revision";
+        copy.setAttribute("aria-label", "Copy revision");
+        copy.innerHTML = ICONS.copy ?? "";
+        window.metabrowser.ownDelegate(copy);
+        revision.append(copy);
+        revision.removeAttribute("data-revision");
+      }
+      if (!url || !actions || actions.childElementCount) {
+        return;
+      }
+      const items = window.metabrowser.externalLinkMenuItems(url, {
+        onCopyResult: (result) => {
+          status.textContent = result === "copied" ? "Link copied" : "Copy failed";
+        },
+      });
+      for (const item of items) {
+        item.removeAttribute("role");
+        item.removeAttribute("tabindex");
+        item.setAttribute("aria-describedby", "root-repository-url");
+      }
+      actions.append(...items);
+      actions.removeAttribute("hidden");
+    } catch (error) {
+      console.warn("Could not load repository link actions", error);
+      status.textContent = "Repository link actions are unavailable.";
+    }
+  };
+  const dismissal = window.metabrowser.menus?.dismissible({
+    name: "root-details-panel",
+    trigger,
+    inside: (node) => panel.contains(node),
+    isOpen: () => !panel.hidden,
+    close: () => void setOpen(false),
   });
-  headerPath.addEventListener("mouseleave", hideTooltip);
-  headerPath.addEventListener("pointerdown", () => {
-    tooltipPressedAnchor = headerPath;
+  trigger.addEventListener("click", () => {
+    void setOpen(Boolean(panel.hidden));
+    dismissal?.[panel.hidden ? "closed" : "opened"]();
   });
-});
+}
 
 // Lookup table from "page-more" sentinel id to the deferred slice.
 // Keeps the closure per-renderer minimal — the click handler reads
@@ -2796,23 +2768,19 @@ function treeLazyFailureHtml(message) {
   );
 }
 
-function responseErrorDetail(body, status) {
+function responseErrorDetail(body) {
   var text = String(body || "").trim();
   if (text) {
     try {
-      var parsed = JSON.parse(text);
-      var detail = parsed?.error || parsed?.detail;
-      if (typeof detail === "string" && detail.trim()) {
-        return detail.trim();
+      var said = JSON.parse(text)?.error;
+      if (typeof said === "string" && said.trim()) {
+        return said.trim();
       }
     } catch (_error) {
-      // A plain-text response is already suitable for the preview message.
-    }
-    if (text.length <= 400) {
-      return text;
+      // Not JSON.
     }
   }
-  return `The request failed (HTTP ${status}).`;
+  return "The server could not complete the request.";
 }
 
 function responseErrorSummary(body, fallback) {
@@ -3342,26 +3310,13 @@ function hideTooltipWithin(within) {
   }
 }
 
-/**
- * The element whose own press is under way, when it is one whose tooltip a click must not
- * end: the folder's name (docs/design-system.md, "Home"). Set by its `pointerdown`, and
- * read and cleared by the focus that press gives it.
- *
- * @type {HTMLElement | null}
- */
-var tooltipPressedAnchor = null;
-
 // The element focus was last given to, which tells focus put back from focus moved.
 /** @type {Node | null} */
 var tooltipFocusOwner = null;
 
 /**
  * Focus moving puts a pointer's tooltip away (docs/design-system.md, "Tooltip Input
- * Modality"). Two focuses are not focus moving, and leave it:
- *
- * - the focus a press on the folder's name gives it, which is the pointer's click, and
- *   neither shows nor hides the name's tooltip ("Home");
- * - focus put back where it was. A rebuild that replaces the focused control focuses its
+ * Modality"). A rebuild can replace a focused control and focus its
  *   replacement, as the Files filter bar's does when new tallies arrive. The element that
  *   had focus is out of the document by then, so a focus that follows one that left the
  *   document, with no key or press of the reader's since (endTooltipFocusRepair), is that
@@ -3371,17 +3326,12 @@ var tooltipFocusOwner = null;
  * @param {FocusEvent} event
  */
 function hideTooltipOnFocus(event) {
-  var pressed = tooltipPressedAnchor;
   var previous = tooltipFocusOwner;
-  tooltipPressedAnchor = null;
   tooltipFocusOwner = /** @type {Node | null} */ (event.target);
   if (previous && previous.isConnected === false) {
     if (tooltipAnchor && !tooltipAnchor.isConnected) {
       hideTooltip();
     }
-    return;
-  }
-  if (pressed !== null && event.target === pressed) {
     return;
   }
   hideTooltip();
@@ -3452,14 +3402,15 @@ if (typeof window !== "undefined") {
  * rendered document's own markup, which a trusted folder's Markdown keeps, so a
  * document cannot label itself in the application's tooltip layer. A control page
  * code placed in the document and marked with `mb.ownDelegate`, as the document's print
- * button is (builtin_plugins/markdown/print-indicator.js), keeps its tooltip. That test
- * is the element's identity, not its owner value, so a document that has come to carry
- * the value still cannot label itself.
+ * button is (builtin_plugins/markdown/print-indicator.js), keeps its tooltip, and so does
+ * an image's fallback chip (inert_html.py).
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
   return anchor instanceof HTMLElement &&
-    (!anchor.closest(".metabrowser-kpress-host") || isPageElement(anchor))
+    (!anchor.closest(".metabrowser-kpress-host") ||
+      isPageElement(anchor) ||
+      anchor.classList.contains("mb-image-fallback"))
     ? anchor
     : null;
 }
@@ -3484,6 +3435,11 @@ function tipComparable(text) {
  * @param {HTMLElement} anchor
  */
 function tipAnchorIsCut(anchor) {
+  // Ref names ellipsize horizontally. Font ink can extend below the compact line.
+  const label = anchor.querySelector(":scope.git-ref > .git-ref-label");
+  if (label) {
+    return label.scrollWidth > label.clientWidth;
+  }
   var boxes = [anchor, ...anchor.querySelectorAll("*")];
   return boxes.some(
     (box) =>
@@ -3546,8 +3502,7 @@ function hideTipText(e) {
 
 // mouseenter/mouseleave do not bubble, so these listen in the capture phase.
 // Any focus transition ends pointer-owned tooltip presentation without
-// creating a second visual layer around keyboard navigation; the two focuses
-// that are not one are hideTooltipOnFocus's.
+// creating a second visual layer around keyboard navigation. A rebuild can repair focus.
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
 document.addEventListener("focusin", hideTooltipOnFocus);
@@ -3555,11 +3510,6 @@ document.addEventListener("focusin", hideTooltipOnFocus);
 // gives, ends a focus repair (endTooltipFocusRepair).
 document.addEventListener("keydown", endTooltipFocusRepair, true);
 document.addEventListener("pointerdown", endTooltipFocusRepair, true);
-// A press that gave no focus, as Safari's on a link, leaves nothing for the next focus.
-document.addEventListener("pointerup", () => {
-  tooltipPressedAnchor = null;
-});
-
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
 // file header, app header). Tooltip still uses formatExactSize()
@@ -3927,6 +3877,59 @@ async function toggleTreeFolder(row, options) {
 // Container expansion mirrors lazy folder expansion: fetch children on
 // first open, then toggle visibility. Failures state themselves in the
 // group rather than leaving an empty box.
+// A container's children follow its file, as a database's tables do (file-watches.js,
+// followContainer): a change reads them again, coalesced, or on the next expand.
+var containerHtml = new WeakMap();
+function watchContainer(row, children) {
+  if (!isGitRevisionSource()) {
+    void window.MetabrowserAssets?.ensureAsset("file-watches").then(() =>
+      window.MetabrowserFileWatches?.followContainer(row, children, loadContainerChildren),
+    );
+  }
+}
+
+async function loadContainerChildren(row, children) {
+  // A refresh keeps the children drawn until their replacement arrives.
+  children.innerHTML ||=
+    '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
+    '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
+  var level = Number(row.dataset.treeLevel || "1") + 1;
+  var childrenStartedAt = Date.now();
+  var html;
+  try {
+    var payload = await window.metabrowser.fetchPluginData(
+      row.dataset.containerPlugin,
+      row.dataset.containerChildren,
+      { path: row.dataset.path || "" },
+    );
+    var rows = Array.isArray(payload?.children) ? payload.children : [];
+    html = rows.length
+      ? renderContainerChildren(rows, { level: level })
+      : '<div class="tree-empty-note">No entries in this file.</div>';
+    children.dataset.loaded = "1";
+    watchContainer(row, children);
+  } catch (error) {
+    console.error(
+      "metabrowser tree: container children failed",
+      {
+        path: row.dataset.path,
+        plugin: row.dataset.containerPlugin,
+        hook: row.dataset.containerChildren,
+        elapsedMs: Date.now() - childrenStartedAt,
+      },
+      error,
+    );
+    html = '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
+  }
+  // Drawn again only when they differ, so a refresh keeps a child's focus and hover.
+  if (containerHtml.get(children) !== html) {
+    containerHtml.set(children, html);
+    children.innerHTML = html;
+    applyTreeFilters();
+    synchronizeTreeNow();
+  }
+}
+
 async function toggleTreeContainer(row) {
   var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
   if (!children?.classList.contains("tree-children")) {
@@ -3946,36 +3949,7 @@ async function toggleTreeContainer(row) {
   row.classList.remove("collapsed");
   children.classList.remove("tree-children-collapsed");
   if (!children.dataset.loaded) {
-    children.innerHTML =
-      '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
-      '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
-    var level = Number(row.dataset.treeLevel || "1") + 1;
-    var childrenStartedAt = Date.now();
-    try {
-      var payload = await window.metabrowser.fetchPluginData(
-        row.dataset.containerPlugin,
-        row.dataset.containerChildren,
-        { path: row.dataset.path || "" },
-      );
-      var rows = Array.isArray(payload?.children) ? payload.children : [];
-      children.innerHTML = rows.length
-        ? renderContainerChildren(rows, { level: level })
-        : '<div class="tree-empty-note">No entries in this file.</div>';
-      children.dataset.loaded = "1";
-    } catch (error) {
-      console.error(
-        "metabrowser tree: container children failed",
-        {
-          path: row.dataset.path,
-          plugin: row.dataset.containerPlugin,
-          hook: row.dataset.containerChildren,
-          elapsedMs: Date.now() - childrenStartedAt,
-        },
-        error,
-      );
-      children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
-    }
-    applyTreeFilters();
+    await loadContainerChildren(row, children);
   }
   synchronizeTreeNow();
   return row;
@@ -4187,7 +4161,7 @@ function renderSelectionOutsideFilterNote(selectedPath) {
     return;
   }
   var path = selectedPath === undefined ? currentPath : selectedPath;
-  var existing = panel.querySelector(".tree-selection-note");
+  var existing = document.querySelector(".tree-selection-note");
   var filtered = filterState ? filterHasConstraints(filterState.get()) : false;
   var absent = filtered && !!path && treeOmitsPath(panel, path);
   if (!absent) {
@@ -4203,12 +4177,21 @@ function renderSelectionOutsideFilterNote(selectedPath) {
   note.className = "tree-selection-note nav-metadata nav-metadata-note";
   note.setAttribute("role", "status");
   note.textContent = text;
+  addFilesRemark(note);
+}
+
+/**
+ * Add a remark to the Files metadata band, under the totals and the filter's remark.
+ *
+ * @param {HTMLElement} note
+ */
+function addFilesRemark(note) {
   var anchor =
-    panel.querySelector(".tree-summary-filtered") || panel.querySelector(".tree-summary");
+    document.querySelector(".tree-summary-filtered") || document.querySelector(".tree-summary");
   if (anchor) {
     anchor.insertAdjacentElement("afterend", note);
   } else {
-    panel.insertAdjacentElement("afterbegin", note);
+    filesMetadataBand()?.insertAdjacentElement("afterbegin", note);
   }
 }
 
@@ -5035,9 +5018,11 @@ function initNavTabs() {
 function shellKeymapShell() {
   return Object.freeze({
     goHome,
+    navToggle: () => navCollapse?.button ?? null,
     openFolder: navigateToFolder,
     selectPreviewTab,
     toggleFilterMenu,
+    toggleNav: () => navCollapse?.toggle(),
   });
 }
 
@@ -5169,7 +5154,8 @@ function initNavScrollShadow() {
     // Whichever chrome is bottom-most *and visible* carries it, and the
     // others are cleared so a tab switch cannot leave two shadows armed.
     // The chrome is the pane's own children, so a scroll visits those and not
-    // the document (44 to 510 us a call on 1,871 to 23,232 elements).
+    // the document (44 to 510 us a call on 1,871 to 23,232 elements). A metadata
+    // band under the toolbar takes its shadow while it has lines (styles.css).
     const target = pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])") ?? tabBar;
     for (const chrome of pane.querySelectorAll(":scope > :is([data-nav-toolbar], .nav-tab-bar)")) {
       chrome.classList.toggle("scrolled", chrome === target && scrollContent.scrollTop > 0);
@@ -5186,32 +5172,17 @@ function initNavScrollShadow() {
 // authoritative mapping in metabrowser/settings.py.
 const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {};
 
-// Recent is a hybrid
-// of "snapshot from /api/recent" + "live FileStore overlay".
+// Recent is a snapshot from /api/recent plus a live FileStore overlay. The SSE stream is
+// scoped to ``root-depth-2``, so FileStore holds no file at depth 3+ and a FileStore-only
+// panel silently truncated 24h / 7d / 30d / all to that scope.
 //
-// The SSE stream is scoped to ``root-depth-2`` (the right scope
-// for tree decoration). FileStore therefore does NOT contain
-// files at depth 3+. A FileStore-only Recent panel was correct
-// for 1h windows (recent edits cluster near the visible tree)
-// but silently truncated 24h / 7d / 30d / all to whatever
-// happened to fall within ``root-depth-2``.
+// * On chip change, fetch ``/api/recent?window=...``: the server queries every known entry,
+//   so ``entries_flat`` covers the whole window and is the base set, keyed by path.
+// * ``fs.change`` upserts/removes mutate the base set in place when they fall inside the
+//   window, and the panel re-paints (debounced); a change seen while the snapshot request
+//   is in flight invalidates that response and schedules one authoritative refetch.
 //
-// Data flow:
-// * On chip change, fetch ``/api/recent?window=...`` (the server
-//   uses a bounded provider query over all known entries, so the
-//   payload covers the whole window). Use the response's
-//   ``entries_flat`` field as the base set.
-// * Live overlay: ``fs.change`` upserts/removes mutate the base
-//   set in place when they fall inside the active window. The
-//   panel re-clusters + re-paints (debounced); a change observed
-//   while the snapshot request is in flight invalidates that
-//   response and schedules one authoritative refetch.
-// * The base set is keyed by path so a file edited twice doesn't
-//   double-count.
-//
-// FileStore stays the single source of truth for the Files tab
-// and tree decoration; Recent has its own base because it needs
-// wider coverage than SSE's scope.
+// FileStore stays the source of truth for the Files tab and tree decoration.
 var recentBaseEntries = new Map(); // path -> recent-flat dict
 var recentTotalMatching = 0;
 var recentTotalMatchingExact = true;
@@ -5300,11 +5271,7 @@ function markRecentTotalAsRetainedLowerBound(lowerBound) {
   if (!filterState) {
     return;
   }
-  var state = filterState.get();
-  var panel = recentResultsHost();
-  if (panel) {
-    _renderFilteredTally(panel, state, recentTotalMatching);
-  }
+  _renderFilteredTally(filterState.get(), recentTotalMatching);
 }
 // Server-published set of dir paths the Recent panel paints gray.
 // Pathspec is a backend concern; the SPA never re-derives this. A
@@ -5393,7 +5360,7 @@ function fetchRecent(cursor, preserveRows) {
         showInitialError: () => {
           if (results) {
             results.innerHTML =
-              '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
+              '<div class="recent-empty nav-error" role="alert">Could not load recently modified files. Reload the page to try again.</div>';
           }
         },
       });
@@ -5408,6 +5375,7 @@ function fetchRecent(cursor, preserveRows) {
 
 /** Commit one accepted provider response without rendering it. */
 function commitRecentResponse(data, cursor) {
+  observeFileAges(data?.ages, data?.undated);
   var flat = data?.entries_flat || [];
   knownFileCatalog?.observeRecent(flat);
   recentBaseEntries = new Map();
@@ -5474,7 +5442,7 @@ function paintRecentView(results, state, inputCount, view) {
     { items: inputCount },
   );
   scheduleRecentExpiryRecheck(entries);
-  _renderFilteredTally(results, state, entries.length);
+  _renderFilteredTally(state, entries.length);
   // Rendering replaces the whole panel, so restore any retry status that a
   // live repaint displaced while the authoritative repair is still pending.
   setRecentContinuityStatus(recentContinuity.status());
@@ -5542,11 +5510,7 @@ function recentResultsHost() {
 
 /** @param {"fresh" | "retrying" | "stale"} status */
 function setRecentContinuityStatus(status) {
-  var panel = recentResultsHost();
-  if (!panel) {
-    return;
-  }
-  var existing = panel.querySelector(".recent-stale-note");
+  var existing = document.querySelector(".recent-stale-note");
   if (status === "fresh" || !filesPanelUsesRecentSource()) {
     existing?.remove();
     return;
@@ -5554,7 +5518,7 @@ function setRecentContinuityStatus(status) {
   var text =
     status === "retrying"
       ? "Recent files may be out of date; retrying…"
-      : "Recent files may be out of date. Change the filter or refresh to try again.";
+      : "Recent files may be out of date. Reload the page to try again.";
   if (existing) {
     existing.textContent = text;
     return;
@@ -5563,22 +5527,20 @@ function setRecentContinuityStatus(status) {
   note.className = "recent-stale-note nav-metadata nav-metadata-note";
   note.setAttribute("role", "status");
   note.textContent = text;
-  var anchor =
-    panel.querySelector(".tree-summary-filtered") || panel.querySelector(".tree-summary");
-  if (anchor) {
-    anchor.insertAdjacentElement("afterend", note);
-  } else {
-    panel.insertAdjacentElement("afterbegin", note);
-  }
+  addFilesRemark(note);
 }
 
 function renderRecentList(data) {
   var tree = data.tree || [];
   if (tree.length === 0) {
     var emptyText =
-      currentRecentWindow === "live"
-        ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
-        : "No files were modified during the selected time range.";
+      fileAgesState === "dating"
+        ? "Reading file ages…"
+        : fileAgesState === "failed"
+          ? "No file ages to filter by."
+          : currentRecentWindow === "live"
+            ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
+            : "No files were modified during the selected time range.";
     return `<div class="recent-empty">${emptyText}</div>`;
   }
   // Reuse the Files-tab renderer with one mode flip: dir rows
@@ -5588,23 +5550,22 @@ function renderRecentList(data) {
   // viewport-bounded expansion planner can select compact folders;
   // the Recent tree builder leaves ``expanded`` unset on those
   // nodes so explicit cluster-collapse state still wins.
-  var body = renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
-  // Keep the summary row this source would otherwise paint over.
-  // renderRecentFromBase writes its filtered tally from the exact
-  // model entries after this markup is mounted.
-  return (_lastTreeSummaryHtml || "") + body;
+  // The summary row stays in its band over the panel, and
+  // renderRecentFromBase writes its filtered tally there from the
+  // exact model entries after this markup is mounted.
+  return renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
 }
 
 // ── Navigation filter bar ───────────────────────────────────────
 //
-// One always-visible row (Group by and Show ignored) plus a drawer
-// holding the three filters. Controls come from the shared chip family
+// One always-visible row (Group by) plus a drawer holding the three
+// filters and Show ignored. Controls come from the shared chip family
 // (static/filter-controls.js) and every click writes through to the
 // shared state (static/filter-state.js), so the bar holds no state of
 // its own.
 //
 // The drawer carries no section headings: its three menus' triggers
-// say what they are.
+// and the checkbox's label say what they are.
 //
 // See docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md.
 
@@ -5647,15 +5608,6 @@ var FILTER_SIZE_OPTIONS = [
   { value: "100m", label: ">100M" },
   { value: "1g", label: ">1G" },
 ];
-
-// Named shorthands at the top of the type menu. The server injects the
-// vocabulary so the index can count the same tokens the browser uses.
-var FILTER_TYPE_PRESETS = _METABROWSER_SETTINGS.FILTER_TYPE_PRESETS || [];
-
-// The extension menu is built from what the folder actually contains,
-// not a fixed vocabulary, so it never offers a type with nothing
-// behind it and never omits one the tree is full of.
-var FILTER_TYPE_MENU_MAX = 20;
 
 // Deliberately not persisted. The drawer holds the secondary controls,
 // so a session that starts with it open costs vertical space the user
@@ -5716,14 +5668,30 @@ function updateFilterTallies(data) {
   return changed;
 }
 
+function applyFilterTallies(data) {
+  if (updateFilterTallies(data)) {
+    refreshFilterTallies();
+  }
+}
+
+// A bar rebuilt under an open menu would drop focus out of it, so only its counts change.
+function refreshFilterTallies() {
+  if (filterOpenMenu === null) {
+    renderNavFilterBar();
+  } else {
+    patchOpenRecencyTallyCounts();
+  }
+}
+
 function filterRecencyOptions() {
   const showIgnored = filterState ? filterState.get().showIgnored : true;
   const counts = new Map(
     _recencyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
   );
+  // "…" until a revision's ages are read: "0" would say they are none.
   return FILTER_RECENCY_OPTIONS.map((option) => ({
     ...option,
-    count: counts.get(option.value) || 0,
+    count: counts.get(option.value) || (fileAgesState === "dating" ? "…" : 0),
   }));
 }
 
@@ -5739,37 +5707,24 @@ function patchOpenRecencyTallyCounts() {
     var value = rows[i].getAttribute("data-chip-value");
     var count = value === null ? undefined : counts.get(value);
     var countEl = rows[i].querySelector(".chip-menu-count");
-    if (typeof count === "number" && countEl) {
+    if (count !== undefined && countEl) {
       countEl.textContent = count.toLocaleString();
     }
   }
 }
 
-function filterTypePresets() {
-  const showIgnored = filterState ? filterState.get().showIgnored : true;
-  const counts = new Map(
-    _typePresetTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
-  );
-  return FILTER_TYPE_PRESETS.map((preset) => ({
-    ...preset,
-    count: counts.get(preset.id) || 0,
-  }));
+// The tally the server last sent, for `filterControls.typeMenu`.
+function filterTypeTally() {
+  return {
+    extensions: _extensionTally,
+    canonical_extensions: _canonicalExtensionTally,
+    type_families: _typeFamilyTally,
+    type_presets: _typePresetTally,
+  };
 }
 
-function filterTypeFamilies(groupId) {
-  const showIgnored = filterState ? filterState.get().showIgnored : true;
-  const counts = new Map(
-    _typeFamilyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
-  );
-  return (window.MetabrowserFileTypeTaxonomy?.families || [])
-    .filter((family) => !groupId || (family.groupId || family.category) === groupId)
-    .map((family) => ({
-      id: `family:${family.id}`,
-      label: family.label,
-      values: family.extensions.slice(),
-      count: counts.get(family.id) || 0,
-    }))
-    .filter((family) => family.count > 0);
+function filterTypeMenuOptions() {
+  return { showIgnored: filterState ? filterState.get().showIgnored : true, iconFor: getFileIcon };
 }
 
 // Where the drawer's filters take their keyboard numbers while the drawer is closed: its
@@ -5781,7 +5736,7 @@ function filterTypeFamilies(groupId) {
 function filterKeySlotsHtml() {
   /** @type {Record<string, string>} */
   var names = { recency: "Modified within", types: "File type" };
-  return (isGitRevisionSource() ? ["types"] : ["recency", "types"])
+  return (noFileAges ? ["types"] : ["recency", "types"])
     .map(
       (key) =>
         `<span class="filter-key-slot" data-filter-key-slot="${key}" aria-hidden="true"` +
@@ -5790,36 +5745,20 @@ function filterKeySlotsHtml() {
     .join("");
 }
 
-// Group by's choices beside "No grouping", each read the same on its row and on the closed
-// trigger, and each with the letter that chooses it while the menu is open: the first of
-// the word naming its value (docs/design-system.md, "Keys in a Menu"). A Git revision has
-// no mtime, so it offers no By age, as it offers no Modified within.
+// Group by's choices, each with the letter that chooses it while the menu is open
+// (docs/design-system.md, "Keys in a Menu"). With no file ages there is no By age.
 function filterGroupOptions() {
   var options = [
     { value: "age", label: "By age", key: "a" },
     { value: "type", label: "By file type", key: "t" },
   ];
-  return isGitRevisionSource() ? options.filter((option) => option.value !== "age") : options;
+  return noFileAges ? options.filter((option) => option.value !== "age") : options;
 }
 
 function filterTypePresetSections() {
-  // Documentation first, as everywhere the app lists the groups (displayGroups).
-  const groups = window.MetabrowserFileTypeTaxonomy?.displayGroups || [];
-  const groupPresets = filterTypePresets();
-  if (groups.length === 0) {
-    return [
-      { id: "groups", label: "Groups", presets: groupPresets },
-      { id: "families", label: "Families", presets: filterTypeFamilies() },
-    ];
-  }
-  return [
-    { id: "groups", label: "Groups", presets: groupPresets },
-    ...groups.map((group) => ({
-      id: `families:${group.id}`,
-      label: group.label,
-      presets: filterTypeFamilies(group.id),
-    })),
-  ];
+  return filterControls
+    ? filterControls.typeMenu.presetSections(filterTypeTally(), filterTypeMenuOptions())
+    : [];
 }
 
 function allFilterTypePresets() {
@@ -5827,49 +5766,15 @@ function allFilterTypePresets() {
 }
 
 function filterTypeOptions() {
-  const showIgnored = filterState ? filterState.get().showIgnored : true;
-  const source = _canonicalExtensionTally.length > 0 ? _canonicalExtensionTally : _extensionTally;
-  const ranked = source
-    .map(
-      (row) => /** @type {[string, number]} */ ([row[0], showIgnored ? row[1] + row[2] : row[1]]),
-    )
-    // An extension that exists only under gitignored paths has nothing
-    // to offer once those rows are hidden.
-    .filter((row) => row[1] > 0)
-    // Re-rank on the count actually being shown. The server ranks by
-    // the total, so hiding gitignored rows would otherwise leave the
-    // menu ordered by numbers that are no longer on screen — .py with
-    // 157 tracked files sorting below .d.ts with one.
-    .sort((a, b) => (b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1]));
-  // A hard cap, including anything currently selected. Appending
-  // selected-but-unranked tokens instead let one preset add dozens of
-  // rows — most of them extensions this folder does not contain, and
-  // bare filename tokens like "makefile" listed as if they were
-  // suffixes. A preset's members outside the top rows stay reachable
-  // through the preset row itself and through Clear.
-  const kept = ranked.slice(0, FILTER_TYPE_MENU_MAX);
-  return kept.map(([ext, count]) => {
-    // Same icon the tree row shows for that type, resolved through the
-    // same matcher, so a menu row and the files it keeps are visibly
-    // the same thing. `getFileIcon` wants a filename, not an
-    // extension, so give it a synthetic one.
-    const fi = getFileIcon(`x${ext}`);
-    return {
-      value: ext,
-      label: ext,
-      count: count,
-      icon: fi.svg,
-      iconClass: fi.cls,
-    };
-  });
+  return filterControls
+    ? filterControls.typeMenu.options(filterTypeTally(), filterTypeMenuOptions())
+    : [];
 }
 
-// A recency window reads from /api/recent, which scans the whole index
-// rather than the loaded subtrees — the one thing the Recent tab did
-// that a DOM walk cannot. This includes Live: it is the shortest
-// server-owned mtime window, not the specialized activity tracker.
+// A recency window, Live included, reads /api/recent, which scans the whole index and
+// not the loaded subtrees.
 function filesPanelUsesRecentSource() {
-  if (isGitRevisionSource() || !filterState) {
+  if (noFileAges || !filterState) {
     return false;
   }
   var st = filterState.get();
@@ -5883,14 +5788,13 @@ function renderNavFilterBar() {
     return;
   }
   var st = filterState.get();
-  // Clear resets every filter, Show ignored included; the chevron's badge counts only the
-  // filters behind it, because Show ignored on the row shows its own state.
+  // Clear resets every filter, Show ignored included. The chevron's badge counts what is
+  // set behind it, Show ignored turned off among them, since the closed drawer hides it.
   var count = filterState.activeCount();
   var drawerCount = treeFilterModel.drawerFilterCount(st);
   var fc = filterControls;
-  // The three filters, each a dropdown. A Git pin has no mtime, so recency is omitted
-  // rather than offered as a 409.
-  var recencyMenu = isGitRevisionSource()
+  // The three filters, each a dropdown. With no file ages, recency is omitted, not a 409.
+  var recencyMenu = noFileAges
     ? ""
     : fc.menuGroupHtml({
         key: "recency",
@@ -5924,16 +5828,25 @@ function renderNavFilterBar() {
     open: filterOpenMenu === "size",
     menuId: "filter-size-menu",
   });
+  // Show ignored follows the three filters in the drawer: turned off, it removes rows as
+  // they do, and its tick states its own direction. A Git revision has no gitignored
+  // entries to show, so it has no Show ignored.
+  var ignoredCheck = isGitRevisionSource()
+    ? ""
+    : fc.checkHtml({
+        key: "showIgnored",
+        label: "Show ignored",
+        checked: st.showIgnored,
+      });
   var main =
     // A toolbar row, which wraps between its controls in a narrow pane (styles.css,
     // `.nav-toolbar-row`).
     '<div class="nav-filter-bar-main nav-toolbar-row">' +
     // Group by leads the row: splitting the tree by age or by type is the simplest way to
-    // see a folder, and it removes nothing, so it needs no drawer. Show ignored follows it,
-    // a checkbox whose tick states its own direction, so it needs no drawer either. The
-    // filters, which remove rows by value, sit behind the chevron, whose badge counts the
-    // ones set (docs/design-system.md, "Grouping the Files Tree"). A Git revision has no
-    // gitignored entries to show, so it has no Show ignored.
+    // see a folder, and it removes nothing, so it needs no drawer. The filters and Show
+    // ignored, which remove rows, sit behind the chevron, whose name counts the ones set; it
+    // has no visible count, so Clear and the chevron fit beside Group by
+    // (docs/design-system.md, "Grouping the Files Tree").
     fc.menuGroupHtml({
       key: "group",
       select: "one",
@@ -5946,13 +5859,6 @@ function renderNavFilterBar() {
       open: filterOpenMenu === "group",
       menuId: "filter-group-menu",
     }) +
-    (isGitRevisionSource()
-      ? ""
-      : fc.checkHtml({
-          key: "showIgnored",
-          label: "Show ignored",
-          checked: st.showIgnored,
-        })) +
     '<span class="nav-filter-bar-end">' +
     // Clear sits on the row with the chevron: it can only appear when a filter is set,
     // and having to open the drawer to undo one is a step too many. "Clear", not "Clear
@@ -5965,7 +5871,6 @@ function renderNavFilterBar() {
       icon: ICONS.toggle || "",
       className: "filter-drawer-toggle disclosure-toggle",
       pressed: filterDrawerOpen,
-      badge: drawerCount,
       // A glyph-only control needs a name that says what happens, and
       // the badge is decorative once the count is spoken here.
       ariaLabel:
@@ -5991,6 +5896,7 @@ function renderNavFilterBar() {
     recencyMenu +
     typeMenu +
     sizeMenu +
+    ignoredCheck +
     "</div></div>";
   // The rebuild replaces the control that has focus: a menu row, its trigger, a checkbox.
   // Focus goes back to the same control, or to the trigger of a menu the rebuild closed,
@@ -6120,14 +6026,9 @@ function initFilterBar() {
       if (!preset) {
         return;
       }
-      // Additive, like the extensions beside it: turning Docs on adds
-      // its values to whatever is already picked, and turning it off
-      // removes only its own.
-      var current = filterState.get().types || [];
-      var next = wasOn
-        ? current.filter((value) => preset.values.indexOf(value) < 0)
-        : current.concat(preset.values.filter((value) => current.indexOf(value) < 0));
-      filterState.set({ types: next.length > 0 ? next : null });
+      filterState.set({
+        types: filterControls.typeMenu.togglePreset(filterState.get().types, preset.values, wasOn),
+      });
     },
     onMenuPick: (key, value) => {
       // The any-row clears the dimension back to its default rather
@@ -6279,11 +6180,6 @@ function onFilterStateChange(state) {
 // the live event stream. It must never infer membership from mounted folders:
 // collapsed and paged descendants are deliberately absent from the DOM.
 
-function _childContainerFor(row) {
-  var next = row.nextElementSibling;
-  return next?.classList.contains("tree-children") ? next : null;
-}
-
 function applyTreeFilters() {
   return _perf.measure("applyTreeFilters", applyTreeFiltersInner);
 }
@@ -6335,8 +6231,10 @@ function _applyTreeSourceFilters(panel, state) {
           ));
     row.classList.toggle("tree-item-filter-hidden", hide);
   }
-  _renderFilteredTally(panel, state, _filteredTreeTotals ? _filteredTreeTotals.files : null);
+  _renderFilteredTally(state, _filteredTreeTotals ? _filteredTreeTotals.files : null);
   renderSelectionOutsideFilterNote();
+  // A recency window's remark on its own freshness goes with it.
+  setRecentContinuityStatus("fresh");
 }
 
 // How many files the filter is actually showing, as a second line
@@ -6349,8 +6247,8 @@ function _applyTreeSourceFilters(panel, state) {
 // capped by depth and the renderer pages long child lists, so a DOM count
 // would report how much has been mounted. A null count means the filter has
 // nothing to report and the line comes down.
-function _renderFilteredTally(panel, state, count) {
-  var existing = panel.querySelector(".tree-summary-filtered");
+function _renderFilteredTally(state, count) {
+  var existing = document.querySelector(".tree-summary-filtered");
   if (!filterHasConstraints(state) || typeof count !== "number") {
     if (existing) {
       existing.remove();
@@ -6375,9 +6273,10 @@ function _renderFilteredTally(panel, state, count) {
   remark.append(...window.MetabrowserFormatters.countPartsNodes(document, parts));
   if (existing) {
     existing.replaceChildren(remark);
+    window.MetabrowserRevisionAges?.annotate();
     return;
   }
-  var summary = panel.querySelector(".tree-summary");
+  var summary = document.querySelector(".tree-summary");
   var line = document.createElement("div");
   line.className = "tree-summary-filtered nav-metadata nav-metadata-note";
   line.setAttribute("role", "status");
@@ -6385,8 +6284,9 @@ function _renderFilteredTally(panel, state, count) {
   if (summary) {
     summary.insertAdjacentElement("afterend", line);
   } else {
-    panel.insertAdjacentElement("afterbegin", line);
+    filesMetadataBand()?.insertAdjacentElement("afterbegin", line);
   }
+  window.MetabrowserRevisionAges?.annotate();
 }
 // Rows arriving from the event stream have to be classified too, or a
 // newly written file would appear regardless of the active filter.
@@ -6575,7 +6475,7 @@ async function loadMoreCurrentText() {
       return;
     }
     const nextCached = sourceAppend.nextCacheValue(cached, chunk);
-    if (sourceAppend.appendSourceText(document, chunk.content || "")) {
+    if (sourceAppend.appendSourceText(document, chunk.content || "", cached.content || "")) {
       // The append skipped the plugin's render, so the banner it emitted still
       // reports the byte counts from the previous chunk. Sync it rather than
       // leaving a "content truncated" notice over a fully loaded file.
@@ -6691,6 +6591,7 @@ async function selectFile(path, preferredViewId) {
         // Chunk growth is per file: a fresh selection starts small again so
         // opening a file never inherits the last file's appetite.
         resetTextChunkGrowth();
+        awaitedPreviewView = null;
         currentPath = path;
         if (selectFileAbortController) {
           selectFileAbortController.abort();
@@ -6699,11 +6600,17 @@ async function selectFile(path, preferredViewId) {
         const preview = document.getElementById("preview-pane");
         if (!preview) {
           return {
-            message: "Could not display the file. Refresh the page to try again.",
+            message: "Could not display the file. Reload the page to try again.",
             status: "error",
           };
         }
         var retainedPreview = beginPreviewNavigation(previewClaim);
+        // The page's View on GitHub link is asked for while its file loads, so it can come
+        // with the header (plugin-sdk-views.js, prefetchCounterpart). Only a page whose
+        // repository is on github.com draws the button (view-header.js).
+        if (window.METABROWSER_REPOSITORY_CONTEXT) {
+          window.metabrowser?.prefetchCounterpart?.(location.pathname);
+        }
         await settleHoverPrefetchForSelection(path);
         if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
           return { status: "cancelled" };
@@ -6810,7 +6717,10 @@ async function selectFile(path, preferredViewId) {
               () => resp.text().catch(bodyFailure),
               responsePerfMeta(resp, path),
             );
-            throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
+            if (resp.status !== 404) {
+              console.error("file request failed", resp.status);
+            }
+            throw Object.assign(new Error(responseErrorDetail(text)), {
               notFound: resp.status === 404,
               summary: responseErrorSummary(text, "Could not open this file."),
             });
@@ -6894,54 +6804,6 @@ function navigateToFolder(path) {
   navigateToPath(path ? `${path}/` : "");
 }
 
-// Folder preview header: up control, clickable breadcrumb, aggregate
-// summary. The shell owns this chrome so every folder view shares it.
-function renderFolderHeader(data) {
-  var path = typeof data.path === "string" ? data.path : "";
-  var segments = path ? path.split("/") : [];
-  var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
-  var parentLabel =
-    parent === null
-      ? ""
-      : parent === ""
-        ? "/"
-        : `${window.MetabrowserNavigationRoute.displayPath(segments[segments.length - 2])}/`;
-  var upButton =
-    parent === null
-      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
-      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"${ownedControlAttr()}><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
-  var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
-  var summary = dir
-    ? `<span class="folder-header-summary">${folderHeaderSummaryHtml(dir)}</span>`
-    : "";
-  return (
-    '<div class="file-header folder-header" data-kbd-badge-anchor>' +
-    upButton +
-    `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
-    summary +
-    "</div>"
-  );
-}
-
-// Aggregate strip of the folder header. Split out so the live
-// refresher below can patch it in place when the inventory changes.
-function folderHeaderSummaryHtml(dirInfo) {
-  // A still-finalizing directory reports null aggregates; sizeHtml,
-  // countHtml, and formatAge(null) all render the tally-pending
-  // skeleton the tree rows use, so the header paints with shape
-  // instead of blanks until the live refresher patches it.
-  // Omitted aggregates are not pending: a Git tree envelope has no dir.
-  // Nor are a folder's the inventory leaves out: they will never arrive.
-  if (dirInfo.not_indexed) {
-    return "";
-  }
-  return (
-    sizeHtml(dirInfo.total_size, "file-header-size") +
-    countHtml(dirInfo.total_files, "folder-header-count") +
-    `<span class="folder-header-age">${formatAge(dirInfo.mtime, { style: "relative" })}</span>`
-  );
-}
-
 // ── Folder header live refresh ──────────────────────────────────
 //
 // The folder envelope is no-store, so its header aggregates would
@@ -6975,72 +6837,9 @@ function startFolderHeaderSubscription(path) {
     var summaryEl = document.querySelector("#preview-pane .folder-header-summary");
     if (summaryEl) {
       var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
-      summaryEl.innerHTML = dir ? folderHeaderSummaryHtml(dir) : "";
+      summaryEl.innerHTML = dir ? viewHeaderBuilders().folderHeaderSummaryHtml(dir) : "";
     }
   });
-}
-
-// Build badges based on file kind (data-driven)
-function renderBadges(data) {
-  var badges = "";
-  // Compression status — surfaced first so it's adjacent to the path.
-  // Mirrors the .compression-badge overlay on the tree icon, with
-  // text rather than a glyph since file-header badges are larger.
-  if (data?.compressed) {
-    var label = data.compression
-      ? data.compression.charAt(0).toUpperCase() + data.compression.slice(1)
-      : "Compressed";
-    badges +=
-      '<span class="file-header-badge badge-compressed" data-tip-text="On-disk file is ' +
-      esc(label.toLowerCase()) +
-      '-compressed">' +
-      esc(label) +
-      "</span>";
-  }
-  var kind = data.kind;
-  if (kind === "agent-log" && data.summary) {
-    var summary = data.summary;
-    if (summary.adapter === "claude") {
-      badges += '<span class="file-header-badge badge-claude">Claude</span>';
-    } else if (summary.adapter === "gemini") {
-      badges += '<span class="file-header-badge badge-gemini">Gemini</span>';
-    } else if (summary.adapter === "pi") {
-      badges += '<span class="file-header-badge badge-pi">Pi</span>';
-    }
-  } else if (data.summary?.adapter && data.summary.adapter !== "unknown") {
-    var adapterLabel = String(data.summary.adapter)
-      .replace(/[-_]+/g, " ")
-      .replace(/\b\w/g, (letter) => letter.toUpperCase());
-    badges += `<span class="file-header-badge badge-adapter">${esc(adapterLabel)}</span>`;
-  }
-  // Status badge for JSONL kinds. It changes its label in place, Running to Live and Live
-  // to Run ended, so it sits in a slot as wide as the widest label from first paint.
-  if (data.type === "jsonl" && data.summary) {
-    var statusSummary = data.summary;
-    var statusBadge = statusSummary.is_done
-      ? statusSummary.is_error
-        ? '<span class="file-header-badge badge-failed">Failed</span>'
-        : '<span class="file-header-badge badge-completed">Done</span>'
-      : activeFiles.has(data.path)
-        ? '<span class="file-header-badge badge-live">Live</span>'
-        : '<span class="file-header-badge badge-running">Running</span>';
-    badges += `<span class="file-header-badge-slot">${statusBadge}${RUN_STATUS_SIZERS}</span>`;
-  }
-  // Frontmatter parse error — surfaced as a red warning badge with the
-  // YAML parser's message in the tooltip. /api/file populates this on
-  // .md files where the leading --- ... --- block is present but
-  // unparsable; absent frontmatter does NOT trigger this. The warning
-  // hides a producer bug (e.g. tab characters, unmatched quotes); the
-  // file still renders because classification falls back to generic
-  // markdown, but the operator now sees that the frontmatter was
-  // ignored rather than silently using an unparsable value.
-  if (data.frontmatter_error) {
-    badges +=
-      '<span class="file-header-badge badge-frontmatter-error" data-tip-text="' +
-      esc(data.frontmatter_error) +
-      '">Frontmatter error</span>';
-  }
-  return badges;
 }
 
 function boolData(value) {
@@ -7073,79 +6872,64 @@ function viewMetaAttrs(view) {
   return attrs;
 }
 
-// The preview's print state, which the print stylesheet reads: the active view prints
-// when it is printable, and otherwise the page prints a line saying it is not. Printing
-// itself is the browser's: Command-P (Control-P elsewhere), the app's File > Print, and a
-// rendered document's print button (builtin_plugins/markdown/print-indicator.js) all print
-// through it, so no shell control or command stands in front of it.
-function setActivePreviewView(tabId, preview) {
-  preview = preview || document.getElementById("preview-pane");
-  if (!preview) {
-    return;
-  }
-  preview = /** @type {HTMLElement} */ (preview);
-  /** @type {HTMLElement | null} */
-  var active = null;
-  var tabContents = queryHtmlAll("[data-tab-content]", preview);
-  for (var i = 0; i < tabContents.length; i++) {
-    var c = tabContents[i];
-    var isActive = !!tabId && c.dataset.tabContent === tabId;
-    if (window.MetabrowserViewState) {
-      window.MetabrowserViewState.setActive(c, isActive);
-    } else {
-      c.dataset.activeView = isActive ? "true" : "false";
-    }
-    if (isActive) {
-      active = c;
-    }
-  }
-  if (!active) {
-    delete preview.dataset.activeView;
-    preview.dataset.printable = "false";
-    preview.dataset.printProfile = "plain";
-    delete preview.dataset.renderRuntime;
-    delete preview.dataset.kpressEnabled;
-    return;
-  }
-  var printable = boolData(active.dataset.printable);
-  preview.dataset.activeView = tabId;
-  preview.dataset.printable = printable ? "true" : "false";
-  preview.dataset.printProfile = active.dataset.printProfile || "plain";
-  if (active.dataset.renderRuntime) {
-    preview.dataset.renderRuntime = active.dataset.renderRuntime;
-  } else {
-    delete preview.dataset.renderRuntime;
-  }
-  if (active.dataset.kpressEnabled) {
-    preview.dataset.kpressEnabled = active.dataset.kpressEnabled;
-  } else {
-    delete preview.dataset.kpressEnabled;
-  }
-}
-
 // The partial-content notice's Load more runs the shell's text loader by name.
 window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", loadMoreCurrentText);
 
 document.addEventListener("metabrowser:view-print-state", () => {
   var preview = document.getElementById("preview-pane");
   if (preview?.dataset.activeView) {
-    setActivePreviewView(preview.dataset.activeView, preview);
+    window.MetabrowserViewComposition.setActiveView(preview, preview.dataset.activeView);
   }
 });
 
 /** @type {ReturnType<Window["MetabrowserViewComposition"]["createLifecycle"]> | null} */
 var pluginViewLifecycle = null;
+/** @type {Readonly<MetabrowserViewHeaderBuilders> | null} */
+var viewHeader = null;
+
+/**
+ * The view header's builders (view-header.js) over this file's helpers. Its bundle loads
+ * with the compositor (loadViewComposition), so only a render, and the live refresh of
+ * the folder line a render drew, asks for them.
+ */
+function viewHeaderBuilders() {
+  if (!viewHeader) {
+    const header = window.MetabrowserViewHeader;
+    if (!header) {
+      throw new Error("Metabrowser view header is unavailable");
+    }
+    viewHeader = header.create({
+      esc,
+      servedRoot,
+      pathBaseName,
+      ownedControlAttr,
+      mirrorHeading,
+      getFileIcon,
+      getLogicalName,
+      sizeHtml,
+      countHtml,
+      formatAge,
+      activeFiles,
+    });
+  }
+  return viewHeader;
+}
 
 async function loadViewComposition() {
   const assets = window.MetabrowserAssets;
   if (!assets) {
     throw new Error("Metabrowser asset loader is unavailable");
   }
-  // The line gutter and the SDK's view helpers are one bundle, fetched beside the
-  // compositor and not after it: every file view is mounted through here, so its
-  // renderer finds them without the plugin loader having to fetch them first.
+  // The line gutter and the SDK's view helpers are one bundle, and the view header
+  // another, fetched beside the compositor and not after it: every file view is mounted
+  // through here, so its renderer finds them without the plugin loader having to fetch
+  // them first.
   await _perf.measureAsync("fileNavigation:viewComposition", () =>
-    Promise.all([assets.ensureAsset("view-composition"), assets.ensureAsset("sdk-views")]),
+    Promise.all([
+      assets.ensureAsset("view-composition"),
+      assets.ensureAsset("sdk-views"),
+      assets.ensureAsset("view-header"),
+    ]),
   );
   const composition = window.MetabrowserViewComposition;
   if (!composition) {
@@ -7220,7 +7004,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
       var composition = await viewComposition.composition.prepare({
         kind: compositionKind,
         views: Array.isArray(data.views) ? data.views : [],
-        preferredViewId: preferredViewId,
+        preferredViewId: takeAwaitedPreviewView(data.path || "") ?? preferredViewId,
         ensureKindAssets(kind) {
           return _perf.measureAsync(
             "fileNavigation:assets",
@@ -7258,27 +7042,17 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
       cancelPendingFilePreviewStage();
       pendingFilePreviewStageCleanup = cleanupStage;
       try {
-        // Build header — folders get breadcrumb chrome (renderFolderHeader),
-        // files the path/badges/size strip.
+        // The view header: a folder's or a file's, one structure (view-header.js).
         let html = "";
         if (data.kind === "folder") {
-          const folderData = /** @type {Parameters<typeof renderFolderHeader>[0]} */ (data);
-          html = renderFolderHeader(folderData);
+          const folderData =
+            /** @type {Parameters<Window["metabrowser"]["folderContext"]["seed"]>[1]} */ (data);
+          html = viewHeaderBuilders().renderFolderHeader(folderData);
           window.metabrowser?.folderContext?.seed(data.path, folderData);
-        }
-        if (data.kind !== "folder") {
-          var badges = renderBadges(data);
-          html = '<div class="file-header" data-kbd-badge-anchor>';
-          html +=
-            '<span class="file-header-path folder-breadcrumb">' +
-            headerAddressHtml(data.path, true) +
-            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(data.path))}"${ownedControlAttr()} data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
-            ICON_COPY +
-            "</button>" +
-            "</span>";
-          html += badges;
-          html += sizeHtml(data.size, "file-header-size");
-          html += "</div>";
+        } else {
+          html = viewHeaderBuilders().renderFileHeader(
+            /** @type {MetabrowserViewHeaderFile} */ (data),
+          );
         }
 
         // Plugins own every (kind, viewId). The shell mounts empty hosts before
@@ -7361,7 +7135,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
                 viewMetaAttrs(view) +
                 ' data-active-view="false"' +
                 hidden +
-                '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+                '><div class="preview-empty" role="alert">This view is unavailable. Reload the page to try again.</div></div>';
             }
           }
         } else {
@@ -7382,16 +7156,21 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           },
           filePerfMeta(data, { html_chars: html.length }),
         );
-        if (initialActiveView) {
-          setActivePreviewView(initialActiveView.id, stage);
-        } else {
-          setActivePreviewView(null, stage);
+        // The View on GitHub button in the header's corner, which view-header.js marks on
+        // a page whose repository is on github.com; the server says whether this page has
+        // a counterpart (plugin-sdk-views.js, mountCounterpart).
+        const counterpartCorner = stage.querySelector(".view-header-end[data-counterpart]");
+        if (counterpartCorner) {
+          void window.metabrowser?.mountCounterpart?.(counterpartCorner, location.pathname);
         }
+        viewComposition.composition.setActiveView(stage, initialActiveView?.id ?? null);
 
         // The stage is connected so renderers can measure layout, but remains
         // transparent and inert while the prior useful surface stays visible.
         // The active renderer and its optional readiness promise settle before
         // the shell transfers the stage's children into the preview.
+        /** @type {(() => Promise<unknown>) | null} */
+        let mountInitialView = null;
         if (pluginRenders?.length) {
           var ctx = {
             path: data.path,
@@ -7419,11 +7198,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
                 })
             )(container, pr.view);
             if (initialActiveView && pr.tabId === initialActiveView.id) {
-              await _perf.measureAsync(
-                "fileNavigation:activeView",
-                mount,
-                filePerfMeta(data, { view: pr.tabId }),
-              );
+              mountInitialView = mount;
             } else {
               container._metabrowserMount = () => {
                 void mount();
@@ -7432,7 +7207,20 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           }
         }
 
-        _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
+        // The staged bar takes a choice before the first view holds the paint: a tab
+        // chosen in the hold is the one the commit brings to the front (mb-s588).
+        _perf.measure(
+          "initTabs",
+          () => viewComposition.composition.bindTabs(stage),
+          filePerfMeta(data),
+        );
+        if (mountInitialView && initialActiveView) {
+          await _perf.measureAsync(
+            "fileNavigation:activeView",
+            mountInitialView,
+            filePerfMeta(data, { view: initialActiveView.id }),
+          );
+        }
         const arrivalContent =
           stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
         // Shown once the faces its text is set in land (view-composition.js#settleFaces).
@@ -7443,6 +7231,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (!renderIsCurrent()) {
           return false;
         }
+        const frontViewId = stage.dataset.activeView || null;
         const replacementNodes = Array.from(stage.childNodes);
         stopFolderHeaderSubscription();
         if (
@@ -7464,17 +7253,15 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           pendingFilePreviewStageCleanup = null;
         }
         preview.dataset.renderedPath = data.path || "";
-        if (initialActiveView) {
-          setActivePreviewView(initialActiveView.id, preview);
-        } else {
-          setActivePreviewView(null, preview);
-        }
+        viewComposition.composition.setActiveView(preview, frontViewId);
         if (data.kind === "folder") {
           startFolderHeaderSubscription(data.path);
         }
         scheduleHighlightCode(preview);
-        if (arrivalContent instanceof HTMLElement) {
-          animatePreviewContentArrival(arrivalContent);
+        const arrived =
+          preview.querySelector(':scope > [data-active-view="true"]') ?? arrivalContent;
+        if (arrived instanceof HTMLElement) {
+          animatePreviewContentArrival(arrived);
         }
         await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
         return true;
@@ -7502,9 +7289,9 @@ function toggleEvent(header) {
   parent.classList.toggle("expanded");
   if (parent.classList.contains("expanded")) {
     // First-expand mount: agent-log emits log-event-raw containers
-    // empty and registers mountLogEventRaw on window. When the
-    // structured plugin is loaded, this renders a collapsible inline
-    // tree; otherwise it falls back to a flat JSON block.
+    // empty and registers mountLogEventRaw on window. An object payload
+    // is the structured plugin's collapsible tree, drawn once that plugin
+    // loads (a flat JSON block if it cannot); a string is a flat block.
     var rawEl = parent.querySelector(".log-event-raw");
     if (
       rawEl &&
@@ -7531,89 +7318,64 @@ function onHeaderNavigationClick(e) {
   var navBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-dir]"));
   if (navBtn && isOwnedControl(navBtn) && !navBtn.hasAttribute("disabled")) {
     navigateToFolder(navBtn.dataset.navDir ?? "");
-    return;
-  }
-  // The address bar's last crumb names a file rather than a directory. It
-  // re-opens what is already open, which is the point: every segment of the
-  // address behaves alike.
-  var fileBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-file]"));
-  if (fileBtn && isOwnedControl(fileBtn) && !fileBtn.hasAttribute("disabled")) {
-    void navigateToPath(fileBtn.dataset.navFile ?? "");
-    return;
   }
 }
 document.addEventListener("click", onHeaderNavigationClick);
 
 // ── Tab switching ───────────────────────────────────────────────
 
+// A view asked for by name while its file was loading, before it had a tab bar. The
+// render that stages the file opens in it, and the next selection forgets it.
+/** @type {{path: string, viewId: string} | null} */
+var awaitedPreviewView = null;
+
+/** @param {string} path */
+function takeAwaitedPreviewView(path) {
+  var awaited = awaitedPreviewView;
+  awaitedPreviewView = null;
+  return awaited?.path === path ? awaited.viewId : undefined;
+}
+
 /**
- * Select a tab of the file the preview pane shows, as a click on it does, unless it is
- * already selected. A file still loading, or a view it lacks, has no tab to select.
+ * Select a tab of the file the preview pane shows or is staging, as a click on it does,
+ * unless it is already selected (view-composition.js#selectTab). A view the file lacks
+ * has no tab to select.
  *
  * @param {string} path
  * @param {string | null} tabId
  */
 function showPreviewTab(path, tabId) {
   var preview = document.getElementById("preview-pane");
-  if (!tabId || !preview || preview.dataset.renderedPath !== path) {
+  if (!tabId || !preview) {
     return;
   }
-  var button = queryHtml(`#preview-pane > .tab-bar > .tab-btn[data-tab="${tabId}"]`);
-  var bar = button?.parentElement;
-  if (button && bar && !button.classList.contains("active")) {
-    selectPreviewTab(bar, tabId);
+  var shown = preview.dataset.renderedPath === path ? preview : null;
+  var staged = window.MetabrowserViewComposition?.stagedFile(preview, path) ?? null;
+  if (!shown && !staged) {
+    var held = previewPane.snapshot();
+    if (held.phase === "loading" && held.path === path) {
+      awaitedPreviewView = { path, viewId: tabId };
+    }
+    return;
+  }
+  // The pane's own bar first: selecting there selects in a stage of the same file.
+  for (const host of [shown, staged]) {
+    var button = host && queryHtml(`:scope > .tab-bar > .tab-btn[data-tab="${tabId}"]`, host);
+    var bar = button?.parentElement;
+    if (button && bar && !button.classList.contains("active")) {
+      selectPreviewTab(bar, tabId);
+    }
   }
 }
 
 /**
- * Select one tab of a view tab bar: mark its button, show its content, mount a view
- * not shown before, and tell the shell which view is active. The tab's click, its
- * letter key, and showPreviewTab share this path, and none of them moves focus.
- * Reports whether the bar has that tab.
+ * Select one tab of a view tab bar, as its click and its letter key do.
  *
  * @param {HTMLElement} bar
  * @param {string} tabId
  */
 function selectPreviewTab(bar, tabId) {
-  var container = bar.parentElement;
-  /** @type {HTMLElement | null} */
-  var selected = null;
-  queryHtmlAll(".tab-btn", bar).forEach((b) => {
-    var on = b.dataset.tab === tabId;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-selected", on ? "true" : "false");
-    if (on) {
-      selected = b;
-    }
-  });
-  if (!container || !selected) {
-    return false;
-  }
-  queryHtmlAll("[data-tab-content]", container).forEach((c) => {
-    c.style.display = c.dataset.tabContent === tabId ? "" : "none";
-  });
-  if (container.id === "preview-pane") {
-    setActivePreviewView(tabId, container);
-  }
-  var activeContent = container.querySelector(`[data-tab-content="${tabId}"]`);
-  if (activeContent && typeof activeContent._metabrowserMount === "function") {
-    var mount = activeContent._metabrowserMount;
-    activeContent._metabrowserMount = null;
-    mount();
-  }
-  return true;
-}
-
-/** @param {ParentNode} [root] */
-function initTabs(root = document) {
-  queryHtmlAll(".tab-btn", root).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      var bar = /** @type {HTMLElement | null} */ (btn.closest(".tab-bar"));
-      if (bar && btn.dataset.tab) {
-        selectPreviewTab(bar, btn.dataset.tab);
-      }
-    });
-  });
+  return window.MetabrowserViewComposition.selectTab(bar, tabId);
 }
 
 // ── Pane resizing ───────────────────────────────────────────────
@@ -7756,10 +7518,14 @@ function openLiveStream(path, startCursor) {
   };
 }
 
+// Whether a live tail's rows went undrawn because the agent-log renderers did not load,
+// which is said once on the console rather than for every batch.
+var liveEventsUndrawnLogged = false;
+
 function appendLiveEvents(path, batch) {
-  return _perf.measure(
+  return _perf.measureAsync(
     "appendLiveEvents",
-    () => {
+    async () => {
       var cached = fileCache.get(path);
       if (!cached || !Array.isArray(batch.events)) {
         return;
@@ -7774,21 +7540,33 @@ function appendLiveEvents(path, batch) {
       }
       // Append to the currently-rendered log tab if it's visible. Charts are
       // not extended: they show the events there were when the file loaded.
-      var logPane = queryHtml('[data-tab-content="log"]');
+      const logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
-        var tail = "";
         var startIdx = cached.events.length - batch.events.length;
-        // The agent-log built-in plugin owns renderLogEvent and exposes it
-        // through the public namespace. If the plugin isn't loaded
-        // (shouldn't happen for built-ins), the live tail is silently
-        // skipped — the static log render still shows up on full reload.
-        var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
-        if (renderEvt) {
-          for (var j = 0; j < batch.events.length; j++) {
-            tail += renderEvt(logPane, batch.events[j], startIdx + j);
-          }
-        }
-        logPane.insertAdjacentHTML("beforeend", tail);
+        // The agents plugin's agent-log renderers, which drew this pane, export
+        // renderLogEvent. Returning the load makes the measure cover the rows' render, not
+        // only the bookkeeping.
+        return window.metabrowser.plugins
+          .load("agents")
+          .then((agents) => agents.loadLogRenderers())
+          .then(
+            (agentLog) => {
+              var tail = "";
+              for (var j = 0; j < batch.events.length; j++) {
+                tail += agentLog.renderLogEvent(logPane, batch.events[j], startIdx + j);
+              }
+              logPane.insertAdjacentHTML("beforeend", tail);
+            },
+            (error) => {
+              if (!liveEventsUndrawnLogged) {
+                liveEventsUndrawnLogged = true;
+                console.warn(
+                  "metabrowser: live events were not drawn: agent-log did not load",
+                  error,
+                );
+              }
+            },
+          );
       }
     },
     {
@@ -7799,17 +7577,6 @@ function appendLiveEvents(path, batch) {
   );
 }
 
-// Every label a run's status badge shows, Running, Live, Done, Failed, and Run ended, each a
-// badge's box of no height beside the badge in its slot: the slot is the widest label's
-// width, so a label that changes in place moves nothing (styles.css,
-// `.file-header-badge-slot`).
-const RUN_STATUS_SIZERS = ["Running", "Live", "Done", "Failed", "Run ended"]
-  .map(
-    (label) =>
-      `<span class="file-header-badge file-header-badge-sizer" aria-hidden="true">${label}</span>`,
-  )
-  .join("");
-
 function flagRunEndedBadge() {
   var badge = document.querySelector(".file-header-badge.badge-live");
   if (badge) {
@@ -7819,14 +7586,7 @@ function flagRunEndedBadge() {
 }
 
 // ── FileStore + /api/events EventSource ────────────────────────
-//
-// Single source of truth for live tree decoration. Populated from
-// /api/events:
-//   1. fs.snapshot (id=0 sentinel) — initial snapshot at the
-//      requested scope.
-//   2. fs.change ops — walker / watcher updates; each upsert
-//      replaces an FsEntry in the store and triggers
-//      applyCellPatch() to update the rendered tree row.
+// arch-live-delivery.md, "The Browser's Stores" and "Recovery".
 var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
@@ -7835,6 +7595,37 @@ var catalogFeedCanStart = false;
 function isGitRevisionSource() {
   return window.METABROWSER_SOURCE_KIND === "git_revision";
 }
+// A revision whose Git cannot read file ages has no Modified within and no By age.
+var noFileAges = window.METABROWSER_FILE_AGES === false;
+var fileAgesState = "";
+// Each response says how the read of ages stands; revision-ages.js loads when it is not `ready`.
+function observeFileAges(ages, undated) {
+  var before = fileAgesState;
+  fileAgesState = ages?.state ?? "";
+  if ((before === "dating") !== (fileAgesState === "dating")) {
+    refreshFilterTallies();
+  }
+  if (window.MetabrowserRevisionAges) {
+    window.MetabrowserRevisionAges.track(ages, undated);
+  } else if (ages && ages.state !== "ready") {
+    void window.MetabrowserAssets?.ensureAsset("revision-ages").then(() =>
+      window.MetabrowserRevisionAges?.track(ages, undated),
+    );
+  }
+}
+// The ages landed: whatever was drawn without them is drawn again.
+function redrawForFileAges() {
+  subtreeCache.clear();
+  fileCache.clear();
+  void loadTree({ reconcileMountedRoot: true });
+  if (filesPanelUsesRecentSource()) {
+    loadRecent(currentRecentFilterCursor());
+  }
+  if (currentPath) {
+    void selectFile(currentPath);
+  }
+}
+window.addEventListener("metabrowser:file-ages-landed", redrawForFileAges);
 // The startup crawl establishes the navigation baseline. Its snapshot and
 // incremental walker upserts are not user-visible file changes, so newly
 // mounted rows stay neutral until the first terminal inventory event. A
@@ -8647,6 +8438,7 @@ function updateRootAggregatePresentation(entry) {
     pathEl.dataset.tipFiles = nullableDataValue(totalFiles);
     pathEl.dataset.tipSize = nullableDataValue(totalSize);
     pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+    updateRootDetailsStats();
   }
 }
 
@@ -8970,13 +8762,18 @@ function _createInventoryEventSource() {
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
     try {
+      // The connection leads the frame; file watches register on it (file-watches.js).
+      var named = /^\{"connection":(?:"([^"]*)"|null),/.exec(e.data);
+      var body = named ? e.data.slice(named[0].length) : e.data;
+      window.metabrowserEventConnection = named?.[1] ?? null;
+      window.MetabrowserFileWatches?.connected(window.metabrowserEventConnection);
       // Equality of this scoped snapshot avoids parsing and repainting it.
       // It cannot prove deep files unchanged: retain the normal revalidation
       // and Recent repair boundary even when the shallow tree is identical.
-      if (lastInventorySnapshot !== e.data) {
+      if (lastInventorySnapshot !== body) {
         var data = JSON.parse(e.data);
         fileStoreApplySnapshot(data.scope, data.entries || []);
-        lastInventorySnapshot = e.data;
+        lastInventorySnapshot = body;
         if (data.complete === true) {
           inventoryChangeHighlightingActive = true;
         }
@@ -9010,6 +8807,13 @@ function _createInventoryEventSource() {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
       _scheduleRecentRecompute();
+    } catch (_e) {
+      /* ignore */
+    }
+  });
+  inventoryEventSource.addEventListener("file.changed", (e) => {
+    try {
+      window.MetabrowserFileWatches?.changed(JSON.parse(e.data));
     } catch (_e) {
       /* ignore */
     }
@@ -9064,17 +8868,11 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
     lastInventorySnapshot = null;
-    // A resync marks a gap in the ordered delta stream. Clear derived state,
-    // then replace this connection so the server sends an authoritative
-    // snapshot before live updates resume.
+    // A gap: clear derived state, keep FileStore and its rows as the baseline, and
+    // reconnect for a snapshot (arch-live-delivery.md, "Recovery", says why).
     recentRecompute.cancel();
     scheduleRecentAuthoritativeRefetch();
     knownFileCatalog?.clear();
-    // Keep FileStore and its rendered rows as the baseline. The reconnect
-    // snapshot retires only rows that are really gone and patches the rest in
-    // place; emptying the store here would collapse the tree for the whole
-    // reconnect backoff and lose expanded folders. The server sends this on
-    // queue overflow, which is exactly when changes are arriving in bursts.
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
@@ -9082,9 +8880,7 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.onopen = () => {
     catalogFeedCanStart = true;
-    // Do not erase accumulated failure state as soon as a socket opens. A
-    // connection that survives this interval is healthy enough to reset the
-    // exponential backoff; repeated overflow/resync cycles keep backing off.
+    // The backoff resets only once the connection has lasted ("Recovery").
     _scheduleEsStableReset();
     // The first open starts the bulk catalog fetch after subscription;
     // later opens refetch to cover deltas lost while disconnected.
@@ -9096,10 +8892,6 @@ function _createInventoryEventSource() {
     _cancelEsStableReset();
     _esConsecutiveErrors += 1;
     if (_esConsecutiveErrors >= _ES_MAX_CONSECUTIVE_ERRORS) {
-      // Circuit breaker: too many consecutive errors without a
-      // successful open or message. Close and recreate with
-      // exponential backoff. A fresh connection gets a snapshot
-      // via the existing fs.snapshot/resync flow.
       _scheduleInventoryReconnect();
     }
   };
@@ -9203,7 +8995,7 @@ var PULLS_ROUTE = "/pulls";
 
 /** @param {string} pathname */
 function isPullAddress(pathname) {
-  return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname === PULLS_ROUTE;
+  return /^\/(pull|stack)\//.test(pathname) || pathname === PULLS_ROUTE;
 }
 /** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
 var pullPageHost = null;
@@ -9271,7 +9063,7 @@ function showPullPageLoadFailure(claim, what = "the pull-request page") {
     stopFolderHeaderSubscription();
   }
   renderPreviewHtml(
-    previewErrorHtml(`Could not load ${what}.`, "Refresh the page to try again."),
+    previewErrorHtml(`Could not load ${what}.`, "Reload the page to try again."),
     held,
   );
 }
@@ -9298,7 +9090,7 @@ function pullPageHostDeps(routes) {
     },
     isCurrent: isPreviewClaimCurrent,
     mount: (claim, route, open) =>
-      mountView(claim, "pull-request", {
+      mountView(claim, route.stack ? "pull-stack" : "pull-request", {
         number: route.number,
         tab: route.tab,
         reader: route.reader,
@@ -9441,7 +9233,9 @@ async function applyNavigationTarget(target, context) {
       if (!context.isCurrent()) {
         return { status: "cancelled" };
       }
-      var pullRoute = window.MetabrowserPullRoute?.parsePull(window.location.pathname);
+      var pullRoute =
+        window.MetabrowserPullRoute?.parsePull(window.location.pathname) ??
+        window.MetabrowserPullRoute?.parseStack(window.location.pathname);
       if (pullRoute) {
         return pullHost.show(pullRoute);
       }
@@ -9472,12 +9266,12 @@ async function applyNavigationTarget(target, context) {
     if (context.source === "user" && !target.fragment && !target.query) {
       await revealAddressedItem(route, { isCurrent: context.isCurrent, again: true });
     }
-    // A line anchor added to the file shown opens its Source tab, as opening it does.
+    // A line anchor opens its Source tab; a caller's `viewId` wins, as below.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
     if (!context.isCurrent()) {
       return { status: "cancelled" };
     }
-    showPreviewTab(path, shownView);
+    showPreviewTab(path, context.viewId || shownView);
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,
@@ -10122,6 +9916,8 @@ async function initDeferredShellTools() {
   }
   await _perf.measureAsync("loadShellTools", () => assets.ensureAsset("shell-tools"));
   attachMainTabs();
+  // Before the keymap, whose backslash key targets the chevron.
+  startNavCollapse();
   initKeyboardInfrastructure();
   initQuickFileFinder();
   window.MetabrowserPullsNav?.init().catch((error) => {
@@ -10196,19 +9992,118 @@ if (isGitRevisionSource() && !window.MetabrowserGitPath) {
     const pane = document.getElementById(id);
     if (pane) {
       pane.innerHTML =
-        '<div class="preview-empty" role="alert">This page did not load completely. Refresh the page to try again.</div>';
+        '<div class="preview-empty" role="alert">This page did not load completely. Reload the page to try again.</div>';
     }
   }
   throw new Error("metabrowser: git-path.js did not load on a pinned revision's page");
 }
 renderNavFilterBar();
 renderInitialTreeRows();
+/** @type {MetabrowserPublicNavCollapseController | null} */
+var navCollapse = null;
+drawNavCollapseButton();
+
+/**
+ * The chevron that hides and shows the navigation pane, drawn before the first paint.
+ * Its module, static/nav-collapse.js, arrives in the `shell-tools` bundle, which owns
+ * every decision; a click before then loads the bundle and then hides the pane.
+ */
+function drawNavCollapseButton() {
+  var button = document.getElementById("nav-collapse-toggle");
+  if (!button) {
+    return;
+  }
+  // The chevron of the "icon-btn nav-collapse-toggle disclosure-toggle" server.py writes.
+  button.innerHTML = `${ICONS.toggle}`;
+  button.addEventListener("click", onEarlyNavCollapseClick);
+  alignNavCollapseButton(button);
+}
+
+/**
+ * Keep the chevron on the shortcut strip's row (mb-yw18), from the first paint on. The
+ * strip moves when a row under it shows, the scan's progress or a mirror's freshness,
+ * so a ResizeObserver on the pane and the rows from the strip down measures the row below
+ * the strip's rule, from the pane's top, where the frame and the divider start too, and
+ * gives `--nav-shortcut-row-top` and `--nav-shortcut-row-height` to the chevron, which it
+ * places, and to the divider, whose resize reach stops above it (`.nav-collapse-toggle`
+ * and `.resize-handle::after` in styles.css). Only those two take them: a property set on
+ * a shared ancestor restyled the whole open document on every change, 100 ms for a
+ * 28,000-node file in headless Chrome 152 (review A on #609). Boxes, not offsets, so the
+ * row is not rounded to a whole pixel under the app's fractional page zoom.
+ *
+ * @param {HTMLElement} button
+ */
+function alignNavCollapseButton(button) {
+  var pane = document.getElementById("tree-pane");
+  var strip = document.getElementById("nav-shortcut-hints");
+  var handle = document.getElementById("tree-resize");
+  if (!pane || !strip || typeof ResizeObserver !== "function") {
+    return;
+  }
+  var targets = handle ? [button, handle] : [button];
+  var row = strip;
+  var start = pane;
+  var observer = new ResizeObserver(() => {
+    var rect = row.getBoundingClientRect();
+    var top = `${rect.top + row.clientTop - start.getBoundingClientRect().top}px`;
+    var height = `${rect.height - row.clientTop}px`;
+    for (var target of targets) {
+      target.style.setProperty("--nav-shortcut-row-top", top);
+      target.style.setProperty("--nav-shortcut-row-height", height);
+    }
+  });
+  observer.observe(pane);
+  for (var node = /** @type {Element | null} */ (strip); node; node = node.nextElementSibling) {
+    observer.observe(node);
+  }
+}
+
+/** @param {MouseEvent} event */
+function onEarlyNavCollapseClick(event) {
+  event.preventDefault();
+  window.MetabrowserAssets?.ensureAsset("shell-tools").then(
+    () => startNavCollapse()?.toggle(),
+    (error) => console.error("metabrowser: could not load the navigation toggle", error),
+  );
+}
+
+/** Run the chevron with its module, once the `shell-tools` bundle has loaded it. */
+function startNavCollapse() {
+  if (navCollapse) {
+    return navCollapse;
+  }
+  var button = /** @type {HTMLButtonElement | null} */ (
+    document.getElementById("nav-collapse-toggle")
+  );
+  var pane = document.getElementById("tree-pane");
+  var frame = queryHtml(".preview-frame");
+  var container = queryHtml(".container");
+  if (!window.MetabrowserNavCollapse || !button || !pane || !frame || !container) {
+    return null;
+  }
+  button.removeEventListener("click", onEarlyNavCollapseClick);
+  navCollapse = window.MetabrowserNavCollapse.create({
+    button: button,
+    container: container,
+    focusFallback: () => document.getElementById("preview-pane"),
+    frame: frame,
+    // Close the hidden pane’s menus.
+    onHide: () => {
+      closeFilterMenu();
+      queryHtml(".root-details-trigger[aria-expanded=true]")?.click();
+      window.MetabrowserSourceRefSelector?.mounted()?.close();
+    },
+    pane: pane,
+  });
+  return navCollapse;
+}
 
 document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();
   initSettingsControl();
   initNavTabs();
   initHomeHeading();
+  initRootDetails();
   initFilterBar();
   initNavScrollShadow();
   // Only a /view/ pathname selects a file; a hash is document state, never identity.

@@ -123,11 +123,10 @@ const PARTS = {
   identity: "github-pull-identity",
   action: "github-pull-action",
   branches: "merge-refs",
-  "copy buttons": "git-ref-copy",
+  "ref menu triggers": "git-ref-action",
   "opened row": "github-pull-quiet",
-  "GitHub link": "github-pull-external-action",
   labels: "github-pull-label",
-  Refresh: "github-pull-refresh",
+  "Retry or Fetch": "github-pull-remedy",
 };
 
 async function run() {
@@ -199,7 +198,10 @@ async function run() {
         },
       }),
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "age",
+      })),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/" },
       sourceKind: () => "git_revision",

@@ -1,0 +1,152 @@
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+status: 202 started
+status: 200 succeeded, 2 cached PRs
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- body ---
+{}
+--- gh ---
+gh auth status
+gh api repos/octo/demo --jq .size
+gh api user
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=all cursor=start
+## The clock moves on 20 s, to 2026-09-17T12:00:20Z.
+## An automatic ask finds nothing due and probes: one conditional read of the issue or pull request updated last, with no account check. The catalog holds that row, so nothing starts, and `checked_at` says when GitHub confirmed the list.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pulls": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": "2026-09-17T12:00:20Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "total": 2,
+    "repository_total": 4,
+    "filter_totals": {
+      "all": 4,
+      "open": 2,
+      "closed": 2
+    },
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 4,
+    "generation": "<CATALOG_EPOCH_1>:0",
+    "fetched": 2,
+    "complete": true,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+--- stderr ---
+--- body ---
+{"background": true}
+--- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+## The clock moves on 10 s, to 2026-09-17T12:00:30Z.
+## GitHub retitles #10. The next ask's probe finds a row the catalog lacks and starts the delta scan at once, 30 s into a 60 s window.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+status: 202 started
+status: 200 succeeded, 2 cached PRs
+--- stderr ---
+--- body ---
+{"background": true}
+--- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api user
+gh api graphql catalog state=updated cursor=start
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=all&limit=1'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?state=all&limit=1
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "all",
+  "fetched_at": "2026-09-17T12:00:30Z",
+  "checked_at": null,
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:30Z"
+  },
+  "total": 4,
+  "repository_total": 4,
+  "filter_totals": {
+    "all": 4,
+    "open": 2,
+    "closed": 2
+  },
+  "count_at": "2026-09-17T12:00:30Z",
+  "catalog_fetched": 4,
+  "generation": "<CATALOG_EPOCH_1>:2",
+  "fetched": 4,
+  "complete": true,
+  "truncated": false,
+  "limit": 1,
+  "next_after": 10,
+  "rows": [
+    {
+      "number": 10,
+      "title": "Retitled between scans",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "author": "maintainer",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-17T12:00:30Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "wip",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "merged": false
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+## A reader's Refresh never probes: it scans.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+status: 202 started
+status: 200 succeeded, 2 cached PRs
+--- stderr ---
+--- body ---
+{"retry": true}
+--- gh ---
+gh api user
+gh api graphql catalog state=updated cursor=start

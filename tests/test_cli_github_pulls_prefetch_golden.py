@@ -9,7 +9,9 @@ does, with these substitutions and nothing else:
   call, which the transcript lists after each command, so the requests each refresh made
   are its measured cost;
 - one clock, fixed, which a block says where it moves, serves the records and the catalog;
-- the rate-limit governor starts empty before each command, as a new process would.
+- the rate-limit governor starts empty before each command, as a new process would, or,
+  where a block says so, with what the process's speculative work spent earlier in the
+  hour, as a server that has run a while has.
 
 A pull envelope is printed as its freshness alone: ``state``, ``fetched_at``,
 ``verified_at``, ``verified_by``, ``head_moved``, and ``checks_pending``. The whole
@@ -29,13 +31,14 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh_budget, pull_list, pulls
+from metabrowser.builtin_plugins.github import gh_budget, pull_list, pull_prefetch, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.cache import pull_refs
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
+    LIST_PROBE_PATH,
     Origin,
     catalog_entries,
     generated_item,
@@ -55,6 +58,7 @@ from tests.golden_harness import (
     check_golden,
     isolate_cli,
     label_home,
+    mask_pushed_bytes,
     normalize_pull_comparison_scopes,
     origin_identity,
     quoted,
@@ -108,12 +112,29 @@ class _Session:
         self.now += timedelta(seconds=seconds)
         self.say(f"The clock moves on {seconds:g} s, to {_stamp(self.now)}.")
 
-    def run(self, *args: str, body: dict[str, Any] | None = None, full: bool = False) -> Invocation:
+    def run(
+        self,
+        *args: str,
+        body: dict[str, Any] | None = None,
+        full: bool = False,
+        spent: tuple[int, int] | None = None,
+    ) -> Invocation:
+        """Run one command; *spent* is what speculative work spent earlier in the hour, and
+        how much of that was the cores walk's."""
+
         if body is not None:
             path = self.tmp_path / "request.json"
             path.write_text(json.dumps(body) + "\n", encoding="utf-8")
             args = (*args, "--data", str(path))
+        # Each command is a new process: no budget spent, and no prefetch lane asked for.
         gh_budget.forget()
+        pull_prefetch.forget_lanes()
+        if spent is not None:
+            spent_all, of_it_walk = spent
+            with gh_budget.speculative(walk=True):
+                gh_budget.spent(of_it_walk, now=self.now)
+            with gh_budget.speculative():
+                gh_budget.spent(spent_all - of_it_walk, now=self.now)
         result = run_metab(args)
         catalog = read_catalog(self.home, origin_identity(CANONICAL).slug)
         if catalog is not None and catalog.epoch not in self.epochs:
@@ -255,7 +276,7 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert delta.exit_code == 0, delta.stderr
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
     # One scan of what changed: one account check and one GraphQL page.
-    assert calls == ["gh auth status", "gh api graphql catalog state=updated cursor=start"]
+    assert calls == ["gh api user", "gh api graphql catalog state=updated cursor=start"]
     vouched = session.run(CANONICAL, "--api", f"{PULL}?number=8").payload()
     assert (vouched["state"], vouched["verified_by"], vouched["verified_at"]) == (
         "current",
@@ -291,15 +312,32 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
         ("record", 10, "refreshed"),
     ]
     assert (report["records"]["hour_used"], report["files"]["hour_used"]) == (1, 0)
+    # The price the reserve counts a record at is what 10's read spent: the pull and five
+    # parts, a page each (review A5 of #761). The page asked a moment ago, so the lane keeps
+    # a scan's records from the cores walk.
+    ceiling = report["governor"]["ceiling"]
+    assert ceiling["speculative_hour_used"] == pull_prefetch.POINTS_PER_RECORD
+    assert ceiling["prefetch_reserved"] == (
+        pull_prefetch.RECORDS_PER_SCAN * pull_prefetch.POINTS_PER_RECORD
+    )
 
     session.say(
-        "7's page asks for its automatic refresh, which reads its checks on their own: the "
-        "pull, its check runs, and its status, each with its ETag, and no fetch into the store."
+        "7's page asks for its automatic refresh. Its checks alone are due, but its last full "
+        "read was two hours ago, past FULL_REFRESH_S, and a visible page's record is read in "
+        "full that often: every part is asked with its ETag, and GitHub answers 304 for all "
+        "that did not change. A record read in full within that interval reads its checks alone. "
+        "The same ask probes the repository's list, one read of the row updated last, "
+        "as a visible Pulls tab's ask would."
     )
     checks = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
     assert checks.exit_code == 0, checks.stderr
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
-    assert not any("comments" in call or "reviews" in call for call in calls), calls
+    assert f"gh api {LIST_PROBE_PATH}" in calls, calls
+    api = [
+        call for call in calls if call.startswith("gh api repos/") and LIST_PROBE_PATH not in call
+    ]
+    assert any("comments" in call for call in api), calls
+    assert all(call.endswith("(If-None-Match)") for call in api), calls
     read = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
     assert (read["state"], read["fetched_at"]) == ("current", _stamp(session.now))
 
@@ -334,6 +372,42 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert (files.payload()["state"], files.payload()["head"]) == ("current", earlier)
 
     session.say(
+        "This server's cores walk has spent the whole of speculative work's share of the "
+        "ceiling this hour, before any page asked for the prefetch, so the lane kept nothing "
+        "back from it. The ceiling itself has two thirds left, which what is on screen keeps. "
+        "A visible page asks for 9 and for 10's and 9's changed files. The record is refused "
+        "at once with `self_ceiling`, and the lists go on: the store gives 10's, which costs "
+        "GitHub nothing, and 9's, which GitHub would give, is refused when its turn comes. "
+        "From this ask on, the lane keeps a scan's records from the walk."
+    )
+    share = (gh_budget.SPECULATIVE_CORE_PER_HOUR, gh_budget.SPECULATIVE_CORE_PER_HOUR)
+    spent_share = session.run(
+        CANONICAL,
+        "--api",
+        PREFETCH,
+        body={"records": [9], "files": [10, 9]},
+        full=True,
+        spent=share,
+    )
+    assert spent_share.exit_code == 0, spent_share.stderr
+    assert '"reason": "self_ceiling"' in spent_share.stdout
+    report = json.loads(spent_share.stdout[spent_share.stdout.rindex("status: 200\n{") + 12 :])
+    governor = report["governor"]
+    assert (governor["admits"], governor["reason"]) == (False, "self_ceiling")
+    ceiling = governor["ceiling"]
+    assert ceiling["speculative_hour_used"] >= ceiling["speculative_per_hour"]
+    assert (ceiling["walk_hour_used"], ceiling["prefetch_reserved"]) == (
+        share[1],
+        pull_prefetch.RECORDS_PER_SCAN * pull_prefetch.POINTS_PER_RECORD,
+    )
+    assert ceiling["hour_used"] < ceiling["per_hour"]
+    assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [
+        (10, "refreshed"),
+        (9, "deferred:self_ceiling"),
+    ]
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
+    session.say(
         "Every REST answer now reports 1,000 of 5,000 core points left, below the 25% floor. "
         "Nothing was observed when the lane started, so 9 is read; its answers stop the lane "
         "before 106."
@@ -347,6 +421,35 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
         (106, "deferred:below_floor"),
     ]
     assert report["governor"]["admits"] is False
+
+    session.advance(5)
+    session.say(
+        "7 is retitled on GitHub while the budget is that low, and its page's automatic ask "
+        "probes it. The probe's own answer shows the budget below the floor, and the change "
+        "it found is read in full all the same: the floor stops the reads the clock asks "
+        "for, not a change found on the page the reader is looking at."
+    )
+    pull_path = "repos/octo/demo/pulls/7"
+    retitled = {
+        **moved["api"][pull_path]["body"],
+        "title": "Retitled below the floor",
+        "updated_at": _stamp(session.now - timedelta(seconds=2)),
+    }
+    changed = {**moved, "api": {**moved["api"], pull_path: ok(pull_path, retitled)}}
+    session.answer(_low_budget(changed, 1000))
+    found = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
+    assert found.exit_code == 0, found.stderr
+    assert '"refresh": "started"' in found.stdout
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    # The list's probe runs beside the ask and is listed first; then the record's probe,
+    # and the whole record between its two account checks.
+    assert calls[0] == f"gh api {LIST_PROBE_PATH}", calls
+    calls = calls[1:]
+    assert calls[1] == "gh api user" and calls[-1] == "gh api user (If-None-Match)", calls
+    assert len(calls) == 9, calls
+    reread = session.run(CANONICAL, "--api", f"{PULL}?number=7", full=True).payload()
+    assert reread["record"]["pull"]["title"] == "Retitled below the floor"
+    session.blocks.pop()
 
     session.say(
         "GitHub refuses the catalog's next scan with its rate limit exhausted. The hold it "
@@ -463,6 +566,12 @@ def test_golden_open_pull_requests_are_listed_from_one_head_fetch(
     merged = session.run(CANONICAL, "--api", PREFETCH, body={"files": [8]}, full=True)
     report = json.loads(merged.stdout[merged.stdout.rindex("status: 200\n{") + 12 :])
     assert report["files"]["hour_used"] == 1
+    # The price the reserve counts a list from GitHub at is what 8's spent: its one page
+    # (review A5 of #761).
+    assert (
+        report["governor"]["ceiling"]["speculative_hour_used"]
+        == pull_prefetch.POINTS_PER_FILES_LIST
+    )
     assert fetches == [[topic]]
     listed = session.run(CANONICAL, "--api", "/api/plugin/github/pull-files?number=8&limit=0")
     assert listed.payload().get("listed_from") != "comparison"
@@ -482,4 +591,4 @@ def test_golden_open_pull_requests_are_listed_from_one_head_fetch(
         label_home(session.labels.apply("".join(session.blocks)), session.home)
     )
     assert str(tmp_path) not in rendered and "file://" not in rendered
-    check_golden("cli-github-pulls-prefetch-local-lists.txt", rendered)
+    check_golden("cli-github-pulls-prefetch-local-lists.txt", mask_pushed_bytes(rendered))

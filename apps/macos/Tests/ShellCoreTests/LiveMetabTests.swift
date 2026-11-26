@@ -8,15 +8,18 @@ import Testing
 ///     METABROWSER_SHELL_TEST_METAB=$PWD/../../.venv/bin/metab swift test --filter LiveMetab
 nonisolated private let liveMetab = ProcessInfo.processInfo.environment["METABROWSER_SHELL_TEST_METAB"]
 
-/// A server's environment as the app builds it, with a configuration directory of the
-/// test's own. Every serve records its root as a recent target, and a test's folder must
-/// not enter the list of whoever runs the suite, as it would through the default
-/// directory the app's servers use. The directory is one `metab` makes inside
-/// `configuration`, private to the user, which a temporary directory is not.
+/// The environment the app gives a `metab` when it was started with a configuration
+/// directory of the test's own, which it passes on (`ChildEnvironment`), as the hand
+/// checks start a development build: a test's folder must not enter the list of whoever
+/// runs the suite, as it would through the default directory. The directory is one
+/// `metab` makes inside `configuration`, private to the user, which a temporary directory
+/// is not. Whatever the suite was started with, `RecentTargets.recordVariable` is unset,
+/// as for an app started without it.
 nonisolated private func liveEnvironment(configuration: URL, toolDirectories: [String] = []) -> [String: String] {
-    let directory = configuration.appending(path: "metabrowser").path(percentEncoded: false)
-    return ChildEnvironment.build(inherited: ProcessInfo.processInfo.environment, toolDirectories: toolDirectories)
-        .merging(["METABROWSER_CONFIG_DIR": directory, RecentTargets.recordVariable: "1"]) { _, test in test }
+    var inherited = ProcessInfo.processInfo.environment
+    inherited["METABROWSER_CONFIG_DIR"] = configuration.appending(path: "metabrowser").path(percentEncoded: false)
+    inherited.removeValue(forKey: RecentTargets.recordVariable)
+    return ChildEnvironment.build(inherited: inherited, toolDirectories: toolDirectories)
 }
 
 /// Serialized: `metab` picks its port by probing and binds it later, so two servers
@@ -74,10 +77,11 @@ struct LiveMetabTests {
         #expect(try String(contentsOf: log, encoding: .utf8).contains("Serving "))
     }
 
-    /// File > Open Recent end to end: the server the app starts for a folder records it,
-    /// `metab --recent --json` answers what `RecentTargets` reads, the folder is the row,
-    /// under the path the app keys its session by, and forgetting and clearing empty it.
-    @Test func theServerTheAppStartsIsWhatOpenRecentLists() async throws {
+    /// File > Open Recent end to end: the server the app starts for a folder records
+    /// nothing, the app's own `--recent-add` records the open, `metab --recent --json`
+    /// answers what `RecentTargets` reads, the folder is the row, under the path the app
+    /// keys its session by, and forgetting and clearing empty it.
+    @Test func openRecentListsWhatTheAppRecords() async throws {
         let path = try #require(liveMetab)
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -101,17 +105,14 @@ struct LiveMetabTests {
         }
 
         #expect(await listed().isEmpty)
-        // Served by a spelling that differs only in case, where the volume takes one, as
-        // this job's does: the list must hold the folder as the volume spells it, which is
-        // how the app names its session (`FileChecks.canonicalPath`). The Python test of
-        // this is in the macOS tier, which CI does not run.
-        let shouted = root.deletingLastPathComponent().appending(
-            path: root.lastPathComponent.uppercased(), directoryHint: .isDirectory)
-        let served = FileManager.default.fileExists(atPath: shouted.path(percentEncoded: false)) ? shouted : root
+        // The server the app starts for an open records nothing (`RecentTargets.serverRecords`):
+        // the app records the open itself, with `--recent-add`, as it shows it.
+        var serving = environment
+        serving[RecentTargets.recordVariable] = RecentTargets.serverRecords
         let launch = CLIServeLaunch()
         let subject = ServerSupervisor(
             spec: LaunchSpec(
-                executable: path, arguments: launch.arguments(serving: served), environment: environment,
+                executable: path, arguments: launch.arguments(serving: root), environment: serving,
                 workingDirectory: root.path),
             launch: launch)
         await subject.start()
@@ -120,38 +121,53 @@ struct LiveMetabTests {
                 Issue.record("expected ready, got \(subject.state)")
                 return
             }
-            // Recorded before the Serving line, so a ready server is already listed.
-            let targets = await listed()
-            #expect(targets.map(\.mode) == [.folder])
-            #expect(targets.map(\.root) == [FileChecks.canonicalPath(root.path(percentEncoded: false))])
+            #expect(await listed().isEmpty)
         }
-
-        // A server that is not an open, as a restored folder's is, records nothing: started
-        // with the opt-out, it serves and leaves the list as it was.
-        var restored = environment
-        restored[RecentTargets.recordVariable] = "0"
-        let quiet = ServerSupervisor(
+        // Told nothing, a server records nothing either: its stdin is the app's pipe, not a
+        // person's terminal (mb-1q02).
+        let silent = ServerSupervisor(
             spec: LaunchSpec(
-                executable: path, arguments: launch.arguments(serving: other), environment: restored,
+                executable: path, arguments: launch.arguments(serving: other), environment: environment,
                 workingDirectory: other.path),
             launch: launch)
-        await quiet.start()
-        try await stoppingAfterward(quiet) {
-            guard case .ready = quiet.state else {
-                Issue.record("expected ready, got \(quiet.state)")
+        await silent.start()
+        try await stoppingAfterward(silent) {
+            guard case .ready = silent.state else {
+                Issue.record("expected ready, got \(silent.state)")
                 return
             }
-            #expect(await listed().map(\.root) == [FileChecks.canonicalPath(root.path(percentEncoded: false))])
+            #expect(await listed().isEmpty)
         }
+
+        // The app's record of the open. Given a spelling that differs only in case, where
+        // the volume takes one, as this job's does, the list must hold the folder as the
+        // volume spells it, which is how the app names its session
+        // (`FileChecks.canonicalPath`). The Python test of this is in the macOS tier, which
+        // CI does not run.
+        let shouted = root.deletingLastPathComponent().appending(
+            path: root.lastPathComponent.uppercased(), directoryHint: .isDirectory)
+        let opened = FileManager.default.fileExists(atPath: shouted.path(percentEncoded: false)) ? shouted : root
+        #expect(await metab(RecentTargets.addArguments(RecentTargets.target(opened))).succeeded)
+        let targets = await listed()
+        #expect(targets.map(\.mode) == [.folder])
+        #expect(targets.map(\.root) == [FileChecks.canonicalPath(root.path(percentEncoded: false))])
+        // It is in the configuration directory the app was started with and passed on.
+        #expect(FileManager.default.fileExists(
+            atPath: configuration.appending(path: "metabrowser/recent-targets.yml").path(percentEncoded: false)))
+
+        // An app started with recording off, as `make run` starts a development build,
+        // passes it on, and its own call then records nothing.
+        var off = environment
+        off[RecentTargets.recordVariable] = "0"
         let unrecorded = await CommandRunner.run(
             LaunchSpec(
                 executable: path, arguments: RecentTargets.addArguments(other.path(percentEncoded: false)),
-                environment: restored),
+                environment: off),
             timeout: RecentTargets.timeout)
         #expect(unrecorded.succeeded)
         #expect(await listed().count == 1)
 
-        // An open that starts no server is recorded by the app's own call, and goes first.
+        // The next open goes first.
         #expect(await metab(RecentTargets.addArguments(other.path(percentEncoded: false))).succeeded)
         let both = await listed()
         try #require(both.count == 2)
@@ -299,9 +315,32 @@ struct LiveMetabTests {
         #expect(answer == .notCached)
     }
 
-    /// File > Open URL… asks the command a link sent to the app is resolved with: a
-    /// supported URL closes the panel on `metab`'s plan, and one `metab` refuses keeps the
-    /// panel open with `metab`'s own message.
+    /// Help > Check Setup… end to end: the report `metab --doctor --json` prints in a
+    /// server's environment is one the app reads, with every setup check.
+    @Test func checkSetupReadsTheDoctorsReport() async throws {
+        let path = try #require(liveMetab)
+        let configuration = try temporaryDirectory("configuration")
+        defer { try? FileManager.default.removeItem(at: configuration) }
+        let tools = RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
+        let setup = RuntimeSetup(
+            runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil), tools: tools)
+        var spec = DoctorRun.spec(
+            setup: setup, inherited: ProcessInfo.processInfo.environment, appBundle: "/Applications/Metabrowser.app")
+        spec.environment = liveEnvironment(configuration: configuration, toolDirectories: tools.directories)
+        let answer = DoctorRun.answer(await CommandRunner.run(spec, timeout: DoctorRun.timeout))
+        guard case .report(let report) = answer else {
+            Issue.record("Check Setup… could not read the doctor's report: \(answer)")
+            return
+        }
+        #expect(report.hasChecks)
+        #expect(
+            report.rows.map(\.id)
+                == ["plugins", "open_in", "metab", "git", "config", "cache", "event_log", "github"])
+        #expect(!report.rows.contains { $0.state == .other("unreadable") })
+    }
+
+    /// File > Open URL… accepts the plan from the same dry run as a sent link. It waits
+    /// for window placement on success and shows `metab`'s reason on refusal.
     @Test(arguments: [
         ("https://github.com/jlevy/metabrowser/pull/540", true),
         ("https://github.com/jlevy/metabrowser/blob/main/docs/macos-app.md", true),
@@ -312,11 +351,14 @@ struct LiveMetabTests {
         var panel = OpenURLPanel()
         panel.edit(text)
         let opened = panel.open()
-        let link = try #require(opened)
-        let answer = try await dryRun(link.absoluteString)
-        let plan = panel.answered(answer, for: link, metab: "metab")
+        let request = try #require(opened)
+        let answer = try await dryRun(request.link.absoluteString)
+        let plan = panel.answered(answer, for: request, metab: "metab")
         if opens {
             #expect(plan?.link.absoluteString == text)
+            #expect(panel.phase == .opening(request))
+            let presented = panel.presented(for: request)
+            #expect(presented)
             #expect(panel.phase == .closed)
         } else {
             guard case .refused(let refusal) = answer else {
@@ -329,11 +371,34 @@ struct LiveMetabTests {
         }
     }
 
+    @Test(arguments: [
+        "https://github.com/jlevy/metabrowser",
+        "github.com/jlevy/metabrowser",
+        "jlevy/metabrowser",
+    ])
+    func theOpenURLExamplesResolveToTheSameRepository(_ text: String) async throws {
+        let expected = try #require(URL(string: "https://github.com/jlevy/metabrowser"))
+        var panel = OpenURLPanel()
+        panel.edit(text)
+        let opened = panel.open()
+        let request = try #require(opened)
+        #expect(request.link == expected)
+        #expect(panel.text == expected.absoluteString)
+        let answer = try await dryRun(request.link.absoluteString)
+        let plan = panel.answered(answer, for: request, metab: "metab")
+        #expect(plan == PresentPlan(kind: .repository, repository: expected, link: expected))
+        #expect(panel.phase == .opening(request))
+    }
+
     /// The panel opens what `metab URL` opens as typed: the link the panel sends, its path
     /// encoded as a browser sends it, gets the plan `metab` gives the raw text, and text
     /// the panel refuses for a character `metab` refuses too (`OpenURLEntry.encoded`).
+    /// A GitHub URL typed without `https://` is written in full by both
+    /// (`OpenURLEntry.corrected`, and `_root_in_full` in `src/metabrowser/cli/main.py`).
     @Test(arguments: [
         "https://github.com/octo/demo/blob/main/a b.md",
+        "github.com/octo/demo/blob/main/a b.md",
+        "www.github.com/octo/demo/pull/7",
         "https://github.com/octo/demo/blob/main/café.md",
         "https://github.com/octo/demo/blob/main/❤️.md",
         #"https://github.com/octo/demo/blob/main/a"b{c}|d^e`f<g>[1].md"#,

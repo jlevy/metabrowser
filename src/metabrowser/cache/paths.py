@@ -1,4 +1,4 @@
-"""Logical paths of the ``f01`` layout, relative to the application home.
+"""Logical paths of the ``f03`` layout, relative to the application home.
 
 Every cache module and the read routes spell layout locations through these names, so a
 physical spelling changes in one place. Callers pass only validated slugs, store keys,
@@ -11,13 +11,18 @@ from typing import Final, Literal
 
 from metabrowser.cache.identity import is_slug, is_store_key
 from metabrowser.cache.locks import is_entry_name
+from metabrowser.config_file import CONFIG_MAX_BYTES, CONFIG_RECORD
 
-CONFIG_RECORD: Final = "config.yml"
 CACHE_ROOT: Final = "."
 LAYOUT_RECORD: Final = "layout.yml"
 STAGING: Final = "staging"
 SOURCES: Final = "sources"
-REPOSITORY_STORES: Final = "repository-stores"
+# The directory of the repository stores, one per Git database. Its name is `repos`, and
+# the code still says "repository store" for an entry of it. An `f02` home named it
+# `repository-stores` (``store_rename.LEGACY_REPOSITORY_STORES``).
+REPOSITORY_STORES: Final = "repos"
+# The bare repository inside a store, and inside a staging entry that becomes one.
+REPOSITORY_GIT: Final = "repository.git"
 STAGING_LOCKS: Final = "locks/staging"
 # The GitHub URL grammar's ``^[1-9][0-9]{0,9}$``.
 MAX_PULL_REQUEST_NUMBER: Final = 9_999_999_999
@@ -93,6 +98,15 @@ def source_pull_snapshots(slug: str, number: int) -> str:
     return source_pull_record(slug, number).removesuffix(".json") + ".snapshots.json"
 
 
+def source_stack_snapshots(slug: str, number: int) -> str:
+    """Return ``sources/<slug>/pulls/stack-<n>.snapshots.json``: a native stack's retained
+    comparison pairs, which no pull request's file shares."""
+
+    if isinstance(number, bool) or not 1 <= number <= MAX_PULL_REQUEST_NUMBER:
+        raise ValueError("invalid stack number")
+    return f"{source_pulls_directory(slug)}/stack-{number}.snapshots.json"
+
+
 def source_pull_list_refresh(slug: str, name: PullListName) -> str:
     """Return ``sources/<slug>/pulls/list-<name>.refresh.json``: its refresh outcome."""
 
@@ -120,7 +134,7 @@ def source_pull_files_refresh(slug: str, number: int) -> str:
 
 
 def store_directory(store_key: str) -> str:
-    """Return ``repository-stores/<store-key>``."""
+    """Return ``repos/<store-key>``."""
 
     if not is_store_key(store_key):
         raise ValueError("invalid store key")
@@ -133,6 +147,12 @@ def store_record(store_key: str, name: StoreRecordName) -> str:
     return f"{store_directory(store_key)}/{name}"
 
 
+def store_git_directory(store_key: str) -> str:
+    """Return ``repos/<store-key>/repository.git``, the bare repository of a store."""
+
+    return f"{store_directory(store_key)}/{REPOSITORY_GIT}"
+
+
 def staging_entry(entry: str) -> str:
     """Return ``staging/<entry>``."""
 
@@ -143,11 +163,13 @@ def staging_entry(entry: str) -> str:
 
 __all__ = [
     "CACHE_ROOT",
+    "CONFIG_MAX_BYTES",
     "CONFIG_RECORD",
     "LAYOUT_RECORD",
     "MAX_PULL_REQUEST_NUMBER",
     "PULL_LIST_NAMES",
     "PullListName",
+    "REPOSITORY_GIT",
     "REPOSITORY_STORES",
     "SOURCES",
     "STAGING",
@@ -165,8 +187,10 @@ __all__ = [
     "source_pulls_directory",
     "source_record",
     "source_labels",
+    "source_stack_snapshots",
     "source_stacks",
     "staging_entry",
     "store_directory",
+    "store_git_directory",
     "store_record",
 ]

@@ -17,8 +17,8 @@ an Xcode whose Swift meets its `swift-tools-version`, and a `metab` the app acce
 `MetabRequirement.minimumRelease` in `Sources/ShellCore/Setup/MetabVersion.swift` is the
 oldest. While `MetabRequirement.isReleased` is false, only a source checkout’s `metab`
 meets it: `make install` at the repository root builds `.venv/bin/metab`, and Settings >
-Choose metab… points the app at it (so does `open --env METABROWSER_METAB=…`). Once the
-floor is published, a CLI install does, as
+Runtime > Choose metab… points the app at it (so does `open --env METABROWSER_METAB=…`).
+Once the floor is published, a CLI install does, as
 [the installation guide](../../docs/installation.md) describes.
 
 From the repository root (each target delegates to `apps/macos/Makefile`, whose header
@@ -52,6 +52,13 @@ Any identity it names, of whatever kind, is looked for only in the release keych
 `SIGN_KEYCHAIN` (by default `release_keychain` in `scripts/common.sh`). Its header
 documents `BUILD`, `ARCHES`, `ICON`, and `SIGN_KEYCHAIN`.
 
+`ARCHES` is read in one place, `normalize_arches` in `scripts/common.sh`, which every
+script’s build, image name, and checks go through.
+Order, repeats, and stray whitespace do not change what it means, and a name outside
+`supported_arches` stops the script before anything is built.
+The build then requires the executable’s slices, as `lipo` reads them, to be the ones
+asked for.
+
 ### Versions
 
 `VERSION` holds the version, `MAJOR.MINOR.PATCH`, and nothing overrides it; a release is
@@ -77,9 +84,11 @@ Both are named Metabrowser:
 | DMG | `build/Metabrowser-Dev-<VERSION>-arm64.dmg` | `build/Metabrowser-<VERSION>-arm64.dmg` |
 
 `scripts/build-app.sh` writes the variant and the commit into the bundle’s property list
-(`MetabrowserBuildVariant` and `MetabrowserSourceCommit`, the commit with `-dirty` when
-`apps/macos` had uncommitted changes), and the app reads them (`AppIdentity`). A bundle
-without the release variant counts as a development build.
+(`MetabrowserBuildVariant` and `MetabrowserSourceCommit`, the commit’s full ID with
+`-dirty` when `apps/macos` had uncommitted changes), and the app reads them
+(`AppIdentity`). The release check compares the full ID with the tag’s, and the About
+box shows it as a [short commit ID](../../docs/design-system.md#short-commit-ids).
+A bundle without the release variant counts as a development build.
 
 The rule: **the canary icon is for development builds, and the published icon only for
 official releases.**
@@ -125,10 +134,10 @@ and nothing on disk names a server to stop, so no copy can stop another’s.
 
 `make macos-test` runs `make test` in `apps/macos`: it builds the WebKit gate’s driver,
 which no product ships, so a change to the views or configuration it shares with the app
-cannot break it unnoticed; runs the Swift suites in three processes, since the WebKit
-suites and the exit stress suite each stall the main actor that every suite shares (the
-Makefile says which); runs `scripts/test-scripts.sh`; and runs the gate’s Node tests
-(`webkit-gate/*.test.mjs`), which need no browser.
+cannot break it unnoticed; runs the Swift suites in four processes, since the WebKit
+suites, the Settings window suite, and the exit stress suite each stall the main actor
+that every suite shares (the Makefile says which); runs `scripts/test-scripts.sh`; and
+runs the gate’s Node tests (`webkit-gate/*.test.mjs`), which need no browser.
 `scripts/test-scripts.sh` runs `scripts/test-release-logic.sh`, which checks what the
 release scripts decide on stand-ins for Apple’s tools and runs in the repository’s
 `make test` too, and, on a CI runner only, the signing doctor against a throwaway
@@ -142,6 +151,13 @@ METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test  # at the re
 
 The live tests check that `metab` against the version the app requires.
 
+`AppContractTests` needs no `metab`: it reads `tests/golden/app-contract.txt`, which
+records what `metab` answers each command the app runs, and requires the app’s own
+builders to write those command lines and its own readers to read those answers.
+[The App’s Contract with metab](../../docs/project/architecture/arch-app-contract.md)
+describes the contract, `metab-contract.toml` here declares it, and a change to what the
+app runs or reads starts there.
+
 What the unit tests cannot reach, the platform behavior that AppKit, WebKit, and macOS
 decide, is checked by hand against a built development app with the
 [macOS app hand checks](../../docs/project/qa/qa-macos-app-hand-checks.md), including
@@ -153,8 +169,12 @@ decide, is checked by hand against a built development app with the
   build and a release alike, mode 0600. It holds the server’s output, with the app’s
   lifecycle events interleaved: start command, pid, announced URL, readiness time, stop,
   and exit status. File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens
-  the folder. A second running copy, or a folder opened again while its last server is
-  still stopping, writes a log named for its own process beside it (`ServerLogLease`).
+  the folder. Help > Open Event Log opens `metab`’s own event log (`EventLogLocation`), a
+  separate record of its requests and work that `metab` writes to its state directory;
+  it opens in a window on the log’s own directory, not inside an open folder that holds
+  it, and stays out of Open Recent.
+  A second running copy, or a folder opened again while its last server is still
+  stopping, writes a log named for its own process beside it (`ServerLogLease`).
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.
@@ -167,8 +187,11 @@ decide, is checked by hand against a built development app with the
   session, a release’s too, since both variants share it, and File > Open Recent > Clear
   Menu the recent targets, which `metab` keeps for both.
   `make run` starts the app with `METABROWSER_RECORD_RECENT=0`, so what a development
-  run opens stays out of that list; a copy that is already running keeps the setting it
-  started with.
+  run opens stays out of that list: agents start the app this way, and their folders are
+  not the user’s. [The hand checks](../../docs/project/qa/qa-macos-app-hand-checks.md),
+  which record and clear a list, start it with `open --env METABROWSER_CONFIG_DIR=DIR`
+  instead, so it keeps a list and a `config.yml` of its own in `DIR`. A copy that is
+  already running keeps the settings it started with.
 
 ### The WebKit Gate
 
@@ -181,7 +204,8 @@ instead. Its method and its last results are in
 ### Continuous Integration
 
 `.github/workflows/macos-app.yml` runs on pushes to `main` and on every pull request
-that changes `apps/macos`, the root `Makefile`, or the workflow.
+that changes a path its filters name: `apps/macos`, the root `Makefile`, the workflow,
+`metab`’s half of handing the app a target, and the app contract’s golden.
 It uses no secrets and signs only ad hoc.
 It runs on one pinned runner image, with its Xcode selected explicitly, both named in
 its matrix: the toolchain the app is built with, on the oldest macOS it supports.
@@ -399,7 +423,11 @@ In this order. The owner’s approvals, O7, come at steps 1, 3, and 8, and O8 is
       `spctl --assess --type open`, and its checksum is written again, since stapling
       changes it.
    6. **Check:** `check-dmg.sh` checks the image as a downloader meets it
-      ([The Checks](#the-checks)).
+      ([The Checks](#the-checks)). The image’s name is predicted from `ARCHES` before
+      the build, so the release removes any earlier image under that name, stops unless
+      the built app has exactly those slices and `make-dmg.sh` writes that name, and has
+      `check-dmg.sh` require the slices and the name again in the mounted image
+      (`EXPECTED_ARCHES`), with the version and commit when the build matches a commit.
    7. **Cask:** `build/metabrowser-app.rb`, the cask template in `packaging/` with the
       version, the checksum, and the image’s architecture filled in: `-arm64.dmg`
       declares `depends_on arch: :arm64`, `-x86_64.dmg` declares `:x86_64`, and
@@ -491,8 +519,8 @@ Each script’s header lists what it checks.
 | --- | --- | --- |
 | `scripts/check-signing.sh` (`make macos-signing-check`) | The release keychain, the identity, its expiry and issuer, the G2 intermediate, Xcode and notarytool, and the notary credentials; read-only | The build Mac, and each release’s preflight; macOS CI against a throwaway keychain |
 | `scripts/notarize.sh` | `syspolicy_check notary-submission` before each submission, and the notary log after it | Each submission |
-| `scripts/check-dmg.sh` | The image and its contents, the icons, the hardened runtime, and for a Developer ID build the secure timestamp, the Team ID, the chain, the stapled tickets, `spctl`, `syspolicy_check distribution`, and `codesign --check-notarization` | Every image built; macOS CI on both its images; the download check |
-| `scripts/check-release.sh` (`make macos-check-release`) | A draft or published release as downloaded: the checksum, GitHub’s digest, the build provenance `BUILT` names, immutable releases on for a draft, and the immutable release and Latest once published, `check-dmg.sh` with `NOTARIZE=1` and `EXPECTED_TEAM_ID`, and that the app is the release variant, the tag’s version, and built from the tag’s commit; it quarantines a download that has none, for `LAUNCH=1` | Step 6 and step 8 of each release |
+| `scripts/check-dmg.sh` | The image and its contents, the executable’s slices against the image’s name (and `EXPECTED_ARCHES`), the icons, the hardened runtime, and for a Developer ID build the secure timestamp, the Team ID, the chain, the stapled tickets, `spctl`, `syspolicy_check distribution`, and `codesign --check-notarization` | Every image built; macOS CI on both its images; the download check |
+| `scripts/check-release.sh` (`make macos-check-release`) | A draft or published release as downloaded: the exact attachments, the image checksum, both GitHub digests, the build provenance `BUILT` names, immutable releases on for a draft, and the immutable release and Latest once published, `check-dmg.sh` with `NOTARIZE=1` and `EXPECTED_TEAM_ID`, and that the app is the release variant, the tag’s version, and built from the tag’s commit; it quarantines a download that has none, for `LAUNCH=1` | Step 6 and step 8 of each release |
 | `scripts/launch-release.sh` (`LAUNCH=1`) | The first launch, which must be translocated, the relaunch and a move from Terminal, recorded, and a move in Finder, after which it must not be; the person’s confirmations | At the Mac only, never in CI |
 
 `scripts/test-release-logic.sh` runs what these scripts decide on stand-ins for Apple’s
@@ -609,7 +637,7 @@ Do not hand one out as a release.
 
 | Path | Holds |
 | --- | --- |
-| `Sources/ShellCore/`, `Sources/ShellViews/`, `Sources/Metabrowser/` | The decisions testable without a window, the web view and its container, and the AppKit app |
+| `Sources/ShellCore/`, `Sources/ShellViews/`, `Sources/Metabrowser/` | The decisions testable without a window, the web view and its container and the chooser’s menu item, and the AppKit app |
 | `Tests/ShellCoreTests/` | Swift Testing tests of `ShellCore`, with fake processes and machines, plus real `posix_spawn` children and real `WKDownload`s from a local server |
 | `Resources/Info.plist` | The bundle’s property list |
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The icon’s SVG masters and renderer, and the icons they build ([AppIcon/README.md](AppIcon/README.md)) |
@@ -622,7 +650,7 @@ Do not hand one out as a release.
 | `scripts/check-release.sh`, `check-release-lib.sh`, `launch-release.sh`, `quarantine.swift` | The download check, its decisions, the launch check, and the helper that quarantines a download as a browser does |
 | `scripts/test-release-logic.sh`, `scripts/fixtures/` | The release scripts’ decisions on stand-ins for Apple’s tools, which Linux CI runs too, and their inputs |
 | `scripts/check-setup-flows.sh`, `scripts/setup-check/` | The hand checks of the first-run screens and the launch notice, and their stand-ins |
-| `scripts/measure-web-views.swift` | The measurement behind `TabDiscardPolicy` |
+| `scripts/measure-web-views.swift` | The measurement behind `PageDiscardPolicy` |
 | `webkit-gate/` | The WebKit measurement gate: `run.mjs`, the in-page `probe.js`, `summary.mjs` for its verdicts, `processes.mjs` and `static-server.mjs`, and `driver/`, the `WebKitDriver` target |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release |
 | `packaging/DeveloperIDG2CA.cer` | Apple’s Developer ID G2 intermediate, reviewed in [Supply-Chain Security](../../SUPPLY-CHAIN-SECURITY.md#apple-developer-id-intermediate-november-17-2026) |

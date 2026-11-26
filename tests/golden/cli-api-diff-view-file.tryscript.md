@@ -11,7 +11,7 @@ env:
   GIT_CONFIG_SYSTEM: "/dev/null"
 patterns:
   APP_HOME: '[^\s"]+/home'
-  STORE_KEY: '[0-9a-f]{64}'
+  STORE_KEY: '[a-z0-9-]+-[0-9a-z]{11}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   METABROWSER_CONFIG_DIR="$PWD/config"
@@ -159,10 +159,11 @@ status: 200
     "ref_name": null,
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -172,7 +173,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -211,10 +214,11 @@ status: 200
     "ref_name": "refs/pull/7/head",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": true,
     "latest": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -224,7 +228,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": 7,
     "selection_state": null,
     "selection_href": null
