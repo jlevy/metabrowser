@@ -1249,10 +1249,13 @@
    * (src/metabrowser/git/message.py), as a pull request's description takes it from its own
    * route: KPress's render, reduced to the inert allowlist on the server, and here again by
    * static/inert-html.js, which builds the nodes the page inserts; the trailers as written,
-   * a block of their own lines; and the base the body's links resolve against. Or the
-   * message stays as written, with the sentence that says why when one is owed.
+   * a block of their own lines; the base the body's links resolve against; and what its
+   * links into the served repository open, the resolver `metabrowser.loadRepositoryLinks()`
+   * answered while the body was prepared, or null. Or the message stays as written, with the
+   * sentence that says why when one is owed.
    *
-   * @typedef {{kind: "rendered", html: string, trailers: string, linkBase: string}
+   * @typedef {{kind: "rendered", html: string, trailers: string, linkBase: string,
+   *   links: MetabrowserRepositoryLinksRuntime | null}
    *   | {kind: "plain", note: string | null}} CommitBodyOutcome
    */
 
@@ -1445,16 +1448,15 @@
    */
   async function insertableBody(body) {
     const pluginSdk = sdk();
+    /** @type {MetabrowserRepositoryLinksRuntime | null} */
+    let links = null;
     try {
-      await Promise.all([
+      [, links] = await Promise.all([
         pluginSdk.ensureAsset("inert-html"),
         // What the body's links open (static/repository-links.js); without it they stay the
-        // github.com links they are.
-        pluginSdk.repository
-          ? pluginSdk.ensureAsset("repository-links").catch((/** @type {unknown} */ error) => {
-              console.warn("metabrowser git: repository links are unavailable", error);
-            })
-          : null,
+        // github.com links they are. A page with no repository identity asks for no
+        // resolver, which it would answer with none.
+        pluginSdk.repository ? pluginSdk.loadRepositoryLinks() : null,
       ]);
       if (body.html !== "") {
         bodyStyles ??= pluginSdk.loadKpressAssets(body.assets);
@@ -1475,6 +1477,7 @@
       html: body.html,
       trailers: typeof body.trailers === "string" ? body.trailers : "",
       linkBase: typeof body.link_base === "string" ? body.link_base : "about:blank",
+      links,
     };
   }
 
@@ -1522,7 +1525,7 @@
     const parts = [];
     if (outcome.kind === "rendered" && inert) {
       if (outcome.html !== "") {
-        parts.push(commitKpressHost(inert, outcome.html, outcome.linkBase));
+        parts.push(commitKpressHost(inert, outcome.html, outcome.linkBase, outcome.links));
       }
       if (outcome.trailers !== "") {
         const trailers = document.createElement("div");
@@ -1557,15 +1560,16 @@
    * @param {MetabrowserInertHtmlRuntime} inert
    * @param {string} html The route's hardened HTML.
    * @param {string} linkBase What the server resolved the body's links against.
+   * @param {MetabrowserRepositoryLinksRuntime | null} links What its links open, or null.
    * @returns {HTMLElement}
    */
-  function commitKpressHost(inert, html, linkBase) {
+  function commitKpressHost(inert, html, linkBase, links) {
     const article = document.createElement("article");
     article.className = "kpress kpress-inert";
     article.append(inert.kpressProse(inert.sanitizeHtml(html, linkBase), document));
     const pluginSdk = sdk();
     if (pluginSdk) {
-      window.MetabrowserRepositoryLinks?.enhance(article, pluginSdk);
+      links?.enhance(article, pluginSdk);
     }
     for (const anchor of article.querySelectorAll("a[href]")) {
       if (anchor instanceof HTMLElement) {
