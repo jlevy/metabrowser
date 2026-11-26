@@ -378,14 +378,20 @@ A step’s files open in the stack’s Changes, and a step can cite each layer a
 `{pull: <n>}`. The guide is read at the comparison the page shows, as the Diff summary,
 Docs, and Changes are.
 While a layer is being fetched, or the stack cannot be shown as one comparison, the
-guide on screen stays, and a step you have not read yet says why in its place; when the
-stack moves, the page offers its new comparison, and the guide is read again there, out
-of date where a layer moved past its pins, when you take it.
-Until you take it, a step written for the new comparison, as one is once the guide’s
-layer moved and its author pinned it again, says the stack has moved, and the guide’s
-steps stay. The same answer is the `guided-review` route’s, by stack, at the current
-comparison or at one the stack’s page named, by the `left`, `right`, and `key` of its
-`comparison`:
+guide on screen stays, and a step you have not read yet says why in its place.
+When the stack moves, as when its layers’ records arrive one by one on a page just
+opened, the page shows the new comparison at once until you scroll, click, press a key,
+or open a tab or a file; after that it shows one that would look different only when you
+ask: the status line says what changed, such as “#845 has 2 new commits and #843 was
+merged.”, with **Show the new comparison**, and while a layer it waits on is fetched it
+says so instead. A new comparison with the same two commits and the same files changes
+nothing on the page.
+The guide is read again at the comparison shown, out of date where a layer moved past
+its pins. Until you take it, a step written for the new comparison, as one is once the
+guide’s layer moved and its author pinned it again, says the stack has moved, and the
+guide’s steps stay. The same answer is the `guided-review` route’s, by stack, at the
+current comparison or at one the stack’s page named, by the `left`, `right`, and `key`
+of its `comparison`:
 
 ```shell
 metab <pull request URL> --api '/api/plugin/github/guided-review?stack=<n>'

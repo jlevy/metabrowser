@@ -156,6 +156,14 @@ def fresh_markdown_child() -> Generator[None]:
     of #527, A13), and a worker a test left running would carry its child into the next.
     A test that runs the serve path in-process marks the process as serving pages, which
     starts the child ahead of documents; the next test begins as a one-shot command.
+
+    A test whose event loop ended while the worker was still starting a child fails: it
+    skipped the close the server's lifespan always makes (``ProjectionWorker.aclose``),
+    which cancels the start on its own. ``asyncio.run`` cancels it together with the task
+    connecting its pipes instead, and on CPython 3.12 and 3.13 a start cancelled while it
+    spawns never finishes, so the run never returns (mb-4g7f). A run that escaped the hang
+    leaves the start cancelled, which this reads. A child that was ready when its loop
+    ended is only stopped here, as before.
     """
 
     from metabrowser.diff import markdown_projection_worker as worker_module
@@ -167,10 +175,28 @@ def fresh_markdown_child() -> Generator[None]:
     yield
     serving.pages = False
     if shared.cache_info().currsize:
+        worker = shared()
+        loop = worker._loop  # pyright: ignore[reportPrivateUsage]
+        # The worker's own close and stop forget their start, so a start still kept was
+        # ended, if at all, by its loop's end.
+        start = worker._starting  # pyright: ignore[reportPrivateUsage]
+        cut_off = (
+            loop is not None
+            and loop.is_closed()
+            and start is not None
+            and (not start.done() or start.cancelled())
+        )
         # Its event loop may be closed by now; stopping kills the child by its process.
         with contextlib.suppress(RuntimeError):
-            shared().stop()
+            worker.stop()
         shared.cache_clear()
+        if cut_off:
+            pytest.fail(
+                "The event loop that used the shared Markdown child worker ended while it"
+                " was starting a child: end that loop with `await shared_worker().aclose()`,"
+                " as the server's lifespan does",
+                pytrace=False,
+            )
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
