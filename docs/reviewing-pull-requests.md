@@ -97,6 +97,11 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), th
 tab groups the pull requests of each native GitHub stack under a **Stack #N** row, open
 by default, top of the stack first; pull requests in no stack follow, and a stack’s row
 opens and closes like a folder.
+The row shows how many pull requests the stack has and how long ago one of them last
+changed, such as **Stack #286 · 4 pulls** and **2h**. Under it, beside the stack’s pull
+requests, **Whole stack** shows the lines the whole stack changes; press that line or
+the chevron after it to list every file the stack changes, as the stack’s page does, and
+press anywhere else on the row to open that page.
 A member’s row shows its place after its title and before its number, such as **Fix the
 reader · 1/6 · #455 · jlevy**; a pull request in no stack shows no place.
 A pull request in two stacks sits under the first, and its place names the other stack
@@ -114,11 +119,14 @@ Without the extension, or when GitHub cannot answer, pull requests read as usual
 list stays flat, unless stacks are cached.
 
 **Whole stack**, the first row in the menu and under each open stack in the Pulls tab,
-opens the stack’s own page, laid out as a pull request’s page for the whole stack: its
-members under the title, top first, each as the menu lists it; the top member’s head
-branch → the stack’s base; the files changed and the Diff summary of the stack’s
-combined change; and **Docs** and **Changes** of that change, with **Guided Review**
-first when the stack has a guide.
+opens the stack’s own page, laid out as a pull request’s page for the whole stack, each
+line saying of all its pull requests what a pull request’s says of one: how many are in
+each state, such as **2 Pulls Open**, and when one was last opened and last updated;
+their authors and commits; the top member’s head branch → the stack’s base; their
+labels; the commits, files, and size of the stack’s combined change; the pull requests
+themselves under **N Pulls**, top first, each as the menu lists it, closed at first as
+the Diff summary is; then the Diff summary of that change, and **Docs** and **Changes**
+of it, with **Guided Review** first when the stack has a guide.
 **View on GitHub** there opens the stack on github.com.
 While that page is open, the stack’s **Whole stack** row in the Pulls tab is marked as
 the current row, as a pull request’s row is on its page; J and K stop on it and open the
@@ -162,28 +170,20 @@ The page has up to five tabs:
   A short commit ID opens that commit on GitHub.
   **Review comments** lists the inline review comments with their files and diff hunks.
 - **Docs** (`D`): the changed documents alone (the File type menu’s Documentation group:
-  Markdown, plain text, reStructuredText, and the rest), each in its rendered view, so
-  you can read what the pull request says in its docs without the code around it: a
-  Markdown document in **Full**, every block drawn, unless it is long, when it opens in
-  **Concise**, its changes with the unchanged runs between them folded.
-  A document with no rendered view shows its text diff unfolded.
-  Docs has no Split or Unified choice: its text diffs, a document’s **Source** among
-  them, are always Unified.
-  It opens on **Current**, each document’s new version, and its **Diff** | **Current**
-  chooser at the top right (`N` switches) shows what changed instead, as
-  [Diff or Current](#diff-or-current) describes.
+  Markdown, plain text, reStructuredText, and the rest).
+  Docs opens the new version in **Full**, rendered where available.
+  A large document opens as an excerpt with a notice and a way to read the full file.
+  Docs draws source diffs in Unified.
   The tab shows only when the pull request changes a document: it appears at once and
   goes when the comparison’s File type counts say no document changed.
   An address on Docs still opens it, and says so, with a link to Changes.
 - **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
   (`L` switches). Markdown files open as rendered changes, as the next section describes.
-  It opens on **Diff**; the **Diff** | **Current** chooser beside the layout control
-  (`N` switches) shows the new version alone instead, as
-  [Diff or Current](#diff-or-current) describes.
-  The changed-file list on the Pulls tab moves through this diff, and the selected file
-  follows the diff as you scroll.
-  The **File type** menu ahead of the Diff | Current and layout choosers (`Y`) shows
-  only the changed files of the types you choose, as a commit’s does
+  It opens on **Diff**. The [comparison toolbar](#comparison-view) also offers
+  **Excerpt** and **Full**. The changed-file list on the Pulls tab moves through this
+  diff, and the selected file follows the diff as you scroll.
+  The **File type** menu ahead of the comparison and layout choosers (`Y`) shows only
+  the changed files of the types you choose, as a commit’s does
   ([A Commit’s Page](browsing-history.md#a-commits-page)); the page keeps the choice
   while you visit the other tabs, and a file you jump to that it hides shows every type
   again.
@@ -271,16 +271,13 @@ deleted line for a `new` range or an added line for an `old` range, is shown whe
 lies inside the range or touches either end of it, so a changed line appears with what
 it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
 `guided_review.py`); an excerpt past it says it is too large to show.
-A `path` alone shows the file’s whole diff, as Changes draws it: its hunk bars, and its
-long runs folded behind bars you expand.
-A `path` alone of a Markdown file shows it as Docs draws it instead: rendered, with its
-**Rendered** and **Source** choice and **Diff** and **Current**, every fold open, on
-whichever of **Diff** and **Current** Docs shows.
-A `path` alone of a YAML or JSON file shows it as Changes draws it: rendered too, with
-the same choices, on whichever Changes shows.
-Either is drawn from the file’s own reads, so its rendered view has the bounds it has in
-Docs and Changes, and it takes nothing from the step’s budget for whole files.
-A step’s other whole files share that budget (`MAX_STEP_PATCH_BYTES` in
+A reference that names a whole file starts as Changes draws it.
+A whole Markdown document starts as Docs draws it.
+Eligible files offer **Rendered** and **Source**. Use the comparison chooser above the
+step’s file cards to switch their presentation.
+Full is available when the block has a whole-file citation it can read.
+An excerpt stays within its cited range, and a citation of old lines keeps those lines
+visible. A step’s other whole files share that budget (`MAX_STEP_PATCH_BYTES` in
 `guided_review.py`); a file past it says its diff is too large to show in the step, and
 **Open full diff** shows it in Changes.
 A binary change or a rename without a text diff says it has no text changes to show.
@@ -435,44 +432,44 @@ after it. The bar says how many lines it holds, and opens a long run a part at a
 the part nearest the hunk first, with a bar for the rest.
 Opening a bar above the line you are reading leaves that line where it is on the screen.
 The lines are read from the pull request’s or the commit’s files when you open the bar,
-and stay open as you switch between **Split**, **Unified**, and **Current**. Where they
+and stay open as you switch between **Split**, **Unified**, and **Excerpt**. Where they
 cannot be read, as for a binary file or one Git converts for its diff, the file’s hunk
 bars stay plain, and the file says so.
 A guided review step draws a code file’s hunks with plain bars, as a patch file does.
 
-### Diff or Current
+### Comparison View
 
-The diff in **Changes** and **Docs**, and on a commit’s page, has a **Diff** |
-**Current** chooser at the top right, before **Split** | **Unified** where there is one.
-**Diff** shows what changed, removals included.
-**Current** shows the new version alone, with its changes marked and nothing removed:
+The comparison toolbar has three choices for the whole comparison.
 
-- In **Source**, the new file’s lines in one column, its added lines marked, whatever
-  the layout. Each hunk’s header names the lines of the new file it shows.
-- In **Full** and **Concise**, a Markdown file’s added blocks and front matter keys
-  marked and its removed ones left out, and in **Rendered**, a YAML or JSON tree without
-  its removed entries.
-- A deleted file, and a file the change left empty, say that they have no lines to show.
+- **Diff** shows additions and removals with surrounding context.
+- **Excerpt** shows the new version around the changes.
+  A source excerpt marks removals without showing the removed text.
+- **Full** shows the complete new version at the reviewed revision.
+  Files too large to show whole can fall back to their excerpt.
+  A standalone patch offers Diff and Excerpt.
 
-The choice is one for the whole diff: it switches every file, and what you are reading
-stays where it was on the screen, the line or block at the top of the pane, or, where
-**Current** leaves that one out, the next one it shows.
-`N` switches too. **Changes** and a commit’s page open on **Diff**, and **Docs** on
-**Current**. Metabrowser remembers your choice for **Docs** apart from the one for
-**Changes** and commits, so choosing on one tab does not change what the other opens on.
-A file’s choice of view, such as **Concise** or **Source**, is its own.
-While **Current** is shown the layout control stays, its choices unavailable, since
-Current is one column; choosing **Diff** brings back the layout you had.
+Use **Rendered** or **Source** in an individual file’s collapsible header.
+It stays selected as you switch the comparison view.
+Press `N` to switch between Diff and Excerpt.
+Changes and commits open in Diff and remember their choice separately from Docs, which
+opens in Full.
+
+In Source, Diff can use Split or Unified.
+**Default diff layout** in the Metabrowser menu sets the layout for new comparisons.
+The visible layout chooser switches it for this comparison.
+In Excerpt and Full it stays visible and unavailable, and returning to Diff restores
+your choice.
 
 ### Rendered Markdown in Changes
 
-**Concise**, where Changes opens a Markdown file, shows each changed block as removed
-and added, with the changed words marked, and a few unchanged blocks on each side of it.
+**Diff**, where Changes opens a Markdown file, shows each changed block as removed and
+added, with the changed words marked, and a few unchanged blocks on each side of it.
 A longer run of unchanged blocks between two changes folds behind the diff’s fold bar,
 the bar a code file’s long run of changed lines folds behind, which opens the run in
 place. A long run’s blocks are fetched when you open it, or follow a link to a heading
-inside it. **Full** shows every block, none folded, and **Source** the file’s text diff;
-the file’s **Full** | **Concise** | **Source** chooser switches among the three.
+inside it. **Expand unchanged sections** opens the whole rendered comparison with
+removals visible. **Full** shows the entire new document, and **Source** shows the text
+in whichever comparison mode you selected.
 
 A very long file, longer than any the Docs tab opens in Full, is drawn as you scroll
 near it, so the page keeps its place in the scroll bar without drawing all of it at
@@ -570,8 +567,11 @@ entries.
 
 The page says when GitHub CLI fetched what it shows, as in
 `Fetched 3 min ago via GitHub CLI`, at the end of the author’s line.
-The page has no Refresh of its own: the Pulls tab’s **Refresh** refreshes the pull
-request page beside the list, then the list.
+The page has no Refresh of its own: **Refresh**, the circular arrow at the top of the
+navigation pane just before the gear, refreshes everything the page shows, starting with
+what is on screen: the pull request page, and the list while the Pulls tab is in front,
+then the other tabs.
+It is there on every tab, and is dimmed while what is on screen refreshes.
 While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
 repository’s list of pull requests, so new pull requests, state changes, and edits
 arrive by themselves.
@@ -589,8 +589,8 @@ The page names a problem only when it cannot refresh: `Offline`, a rate limit wi
 time of its next check, or the last failure with **Retry**, which asks again even while
 the navigation pane is hidden.
 The page tries a failure again once a window while it stays open, except one you must
-fix, such as GitHub CLI missing or signed out, which waits for **Retry**. The Pulls
-tab’s **Refresh** asks for a new check of the page and the list.
+fix, such as GitHub CLI missing or signed out, which waits for **Retry**. **Refresh**
+asks for a new check of the page and the list.
 
 The page follows the pull request.
 When new commits are pushed, the conversation and checks update, and **Changes** and
@@ -610,7 +610,7 @@ A commit you opened by its ID stays put; when it was the head, the foot of the
 navigation pane says the pull request is now at the newer commit, with **Switch**.
 Beside a checkout, only Changes moves, since Files and Commits show your working tree.
 The foot of the navigation pane says separately when the repository’s mirror was
-fetched.
+fetched; **Refresh** fetches it again before it refreshes the rest.
 
 ### Several Pull Requests at Once
 
@@ -708,11 +708,11 @@ The record names why in `unavailable.comparison`:
 | Name | What it means | What to do |
 | --- | --- | --- |
 | `no_store` | A checkout has the record but no comparison yet | Open **Changes**, which prepares it |
-| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | The Pulls tab’s **Refresh** with the network, which fetches more history into the cache |
-| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | The Pulls tab’s **Refresh** tries to recover them from the origin |
-| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then the Pulls tab’s **Refresh**; Metabrowser never writes to your checkout |
+| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | **Refresh** with the network, which fetches more history into the cache |
+| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | **Refresh** tries to recover them from the origin |
+| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then **Refresh**; Metabrowser never writes to your checkout |
 | `no_merge_base` | The base and head share no history | Read the diff on GitHub |
-| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | The Pulls tab’s **Refresh**, or read the diff on GitHub |
+| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | **Refresh**, or read the diff on GitHub |
 
 The page says each of these in one short sentence of its own.
 Every reason also comes with a message that says more, in the route’s JSON that

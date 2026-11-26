@@ -329,8 +329,8 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert narrow["stops"] == ["group", "clear", "drawer"], narrow
     assert narrow["lines"] == 2 and narrow["readInTabOrder"], narrow
     assert narrow["height"] == 2 * 24 + 1 * 6 + 2 * 6 + 1, narrow
-    assert measured["narrowKeyOne"] == {"menu": "group", "drawerOpen": "false"}
-    assert measured["narrowKeyThree"] == {"menu": "types", "drawerOpen": "true"}
+    assert measured["narrowGroupKey"] == {"menu": "group", "drawerOpen": "false"}
+    assert measured["narrowTypesKey"] == {"menu": "types", "drawerOpen": "true"}
     assert measured["narrowOpen"]["height"] > narrow["height"], measured["narrowOpen"]
     assert measured["narrowClosed"]["height"] == narrow["height"], measured["narrowClosed"]
     # A folder's chevron and a file's icon are one slot wide, from the row's content edge,
@@ -381,12 +381,12 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert repaints["totals"] == {"up": True, "drawn": True, "stayed": True}, repaints
     assert repaints["bar"] == {"refocused": True, "shown": True, "focusMovedOn": True}, repaints
 
-    # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
-    # opens the drawer with File type's menu.
-    assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}
+    # 1 is the navigation's Refresh and 2 is Group by; the drawer's filters keep their
+    # numbers while it is closed, and 4 opens the drawer with File type's menu.
+    assert measured["groupKeyOpens"] == {"menu": "group", "drawerOpen": "false"}
     # Group by's rows read as its closed trigger does (mb-4mir).
     assert measured["groupRows"] == ["No grouping", "By age", "By file type"]
-    # With the menu open from 1, A, T, and N choose its rows and close it; with the menu
+    # With the menu open from 2, A, T, and N choose its rows and close it; with the menu
     # closed, T is Quick Search and chooses nothing (mb-ibo4).
     letters = measured["letters"]
     assert letters["a"]["trigger"] == "By age" and letters["a"]["sections"] > 0, letters
@@ -403,18 +403,18 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     # a trigger. Escape, and a letter's choice that closes the menu, give focus back to the
     # trigger (mb-spqw).
     assert measured["focus"] == {
-        "one": "group: No grouping, checked",
-        "oneEscaped": "group trigger",
-        "one before a": "group: No grouping, checked",
+        "group": "group: No grouping, checked",
+        "groupEscaped": "group trigger",
+        "group before a": "group: No grouping, checked",
         "a": "group trigger",
-        "one before t": "group: By age, checked",
+        "group before t": "group: By age, checked",
         "t": "group trigger",
-        "one before n": "group: By file type, checked",
+        "group before n": "group: By file type, checked",
         "n": "group trigger",
-        "three": "types: Any type, checked",
-        "threeEscaped": "types trigger",
-        "two": "recency: Any age, checked",
-        "twoEscaped": "recency trigger",
+        "types": "types: Any type, checked",
+        "typesEscaped": "types trigger",
+        "recency": "recency: Any age, checked",
+        "recencyEscaped": "recency trigger",
         "arrowDown": "group: No grouping, checked",
         "arrowDownEscaped": "group trigger",
         "enter": "group: No grouping, checked",
@@ -428,7 +428,7 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert measured["typesPicked"] == f"{row}, checked", measured
     assert measured["typesUnpicked"] == row, measured
     assert measured["typesRebuilds"] >= 2, measured
-    assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
+    assert measured["typesKeyOpens"] == {"menu": "types", "drawerOpen": "true"}
 
     # File type sections: Documentation first, each headed in the menu group pattern at
     # the tree's row inset, naming its section and its tree, a divider above all but the

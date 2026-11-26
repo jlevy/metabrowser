@@ -345,7 +345,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   }
   const hints = element(document, "div", { class: "nav-shortcut-hints", id: "nav-shortcut-hints" });
   // The nav's header as server.py writes it: the folder's name, which is Home and `0`'s
-  // target, labelled "Home:" and its own text, in a header that anchors the badge.
+  // target, labelled "Home:" and its own text, and the navigation's Refresh, an icon button
+  // the keymap numbers first, in a header that anchors the badges.
   const navHeader = element(
     document,
     "header",
@@ -362,6 +363,13 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       element(document, "span", { class: "header-home-name", id: "header-home-name" }, "squares"),
     ),
     element(document, "span", { hidden: "", id: "header-home-label" }, "Home:"),
+    element(document, "button", {
+      "aria-label": "Refresh",
+      class: "icon-btn nav-refresh",
+      "data-tip-text": "Refresh",
+      id: "nav-refresh",
+      type: "button",
+    }),
   );
   const navPane = element(
     document,
@@ -1381,16 +1389,17 @@ const PARTS = {
     steps.push(plain.record("a plain folder shows Files only"));
     // The trigger's own path opens the menu, and focus goes to its checked row, so the
     // menu's arrow keys work next; Escape closes it through the same path.
-    // The filters are situational, numbered by their place: Group by is 1 on the row,
-    // Any age 2 and Any type 3, on stand-ins beside the chevron while the drawer is closed.
-    // A filter's number opens the drawer with its menu.
+    // The filters are situational, numbered by their place after the navigation's Refresh,
+    // which is 1 in the header above them: Group by is 2 on the row, Any age 3 and Any type
+    // 4, on stand-ins beside the chevron while the drawer is closed. A filter's number opens
+    // the drawer with its menu.
     const drawerBefore = plain.drawerOpen();
     steps.push(
       plain.record(
-        "3 opens the closed drawer and the file type filter, and focuses its checked row",
+        "4 opens the closed drawer and the file type filter, and focuses its checked row",
         {
           drawerBefore,
-          pressed: { key: "3", handled: plain.press("3") },
+          pressed: { key: "4", handled: plain.press("4") },
           drawerAfter: plain.drawerOpen(),
           focus: plain.menuFocus(),
         },
@@ -1419,7 +1428,7 @@ const PARTS = {
     // controls' one path: a number, a trigger's click (Enter and Space click it), and ↓ on
     // the trigger; Escape, a second click, and a choice that closes it give focus back to
     // the trigger (docs/design-system.md, "Keys in a Menu").
-    plain.press("2");
+    plain.press("3");
     const byNumber = plain.filterFocus();
     plain.press("Escape");
     const byNumberEscaped = plain.filterFocus();
@@ -1455,9 +1464,9 @@ const PARTS = {
         menus: plain.helpGroup("menus"),
       }),
     );
-    plain.press("1");
+    plain.press("2");
     steps.push(
-      plain.record("1 opens Group by and focuses its checked row, whose letters are live", {
+      plain.record("2 opens Group by and focuses its checked row, whose letters are live", {
         focus: plain.filterFocus(),
       }),
     );
@@ -1481,11 +1490,11 @@ const PARTS = {
       }),
     );
     plain.press("Escape");
-    plain.press("1");
+    plain.press("2");
     const checkedAge = plain.filterFocus();
     const chooseType = { key: "t", handled: plain.press("t") };
     steps.push(
-      plain.record("1 focuses By age, the checked row, and T chooses By file type", {
+      plain.record("2 focuses By age, the checked row, and T chooses By file type", {
         focus: checkedAge,
         pressed: chooseType,
         trigger: plain.groupTrigger(),
@@ -1494,7 +1503,7 @@ const PARTS = {
     // Focus gone from the open menu to nothing, as when its focused row is removed: its
     // letters wait, and T is Quick Search's, whose box taking focus closes the menu
     // (docs/design-system.md, "Every Menu Closes Alike").
-    plain.press("1");
+    plain.press("2");
     plain.document.activeElement.blur();
     const outsideT = { key: "t", handled: plain.press("t") };
     steps.push(
@@ -1505,7 +1514,7 @@ const PARTS = {
       }),
     );
     plain.press("Escape");
-    plain.press("1");
+    plain.press("2");
     const chooseNone = { key: "n", handled: plain.press("n") };
     plain.document.body.focus();
     steps.push(
@@ -1816,7 +1825,7 @@ const PARTS = {
     );
     // A menu the pane holds would stay open under the frame with its trigger inert, so
     // hiding the pane closes it.
-    page.press("1");
+    page.press("2");
     const opened = page.filterOpenMenu;
     const closing = { key: "\\", handled: page.press("\\", { code: "Backslash" }) };
     await page.finishSlides();
@@ -1862,8 +1871,8 @@ const PARTS = {
       ["a tree row", page, () => page.rows[0].focus()],
       ["Quick Search's field", page, () => page.press("t")],
       ["Help", page, () => page.press("?", { shiftKey: true })],
-      ["the file type filter's open menu", page, () => page.press("3")],
-      ["the Group by menu, whose rows have letters", page, () => page.press("1")],
+      ["the file type filter's open menu", page, () => page.press("4")],
+      ["the Group by menu, whose rows have letters", page, () => page.press("2")],
       [
         "a pull request in a stack",
         stacked,
@@ -1915,7 +1924,7 @@ const PARTS = {
     const toFiles = repo.press("F", { shiftKey: true });
     steps.push(
       repo.record(
-        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3",
+        "F during the reveal shows the filter bar, and Group by and its filters gain 2 to 4",
         {
           pressed: { key: "f", handled: toFiles },
           active: repo.mainTabs.active(),
@@ -2084,9 +2093,9 @@ const PARTS = {
     pinned.build();
     pinned.mountSelector();
     steps.push(
-      pinned.record("a mirror's pin has W, Group by is 1, and its one filter is 2", {
+      pinned.record("a mirror's pin has W, Group by is 2, and its one filter is 3", {
         pressed: { key: "w", handled: pinned.press("w") },
-        three: pinned.press("3"),
+        four: pinned.press("4"),
       }),
     );
     pinned.press("Escape");

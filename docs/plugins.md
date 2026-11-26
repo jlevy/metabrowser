@@ -175,6 +175,7 @@ The `[plugin]` table supports:
 | `extra_styles` | no | Plain CSS filenames loaded before the plugin’s selected-kind renderer mounts. |
 | `requires` | no | Names of the plugins whose exports this plugin loads with `mb.plugins.load`, and `table` for a plugin with a `[[table_source]]`; see [Declared Dependencies](#declared-dependencies). |
 | `python_requires` | no | The third-party Python distributions the plugin’s Python code imports, by distribution name (`pyyaml`, not `yaml`); see [Python Dependencies](#python-dependencies). |
+| `register` | no | A dotted Python module imported once when the plugin is discovered, to register Python-side extensions; see [Python Registration Module](#python-registration-module). |
 
 Extra asset entries may not contain slashes, traversal segments, or a leading dot.
 
@@ -311,8 +312,10 @@ render_runtime = "client"
 View order in the manifest is tab order.
 At most one view per kind may set `default = true`. A plugin may register a view for a
 kind declared by another plugin, which is useful for composing generic renderers.
-`render_runtime` documents whether the client or KPress renders the view, and a
-printable view declares a `print_profile` suited to documents or source code.
+`render_runtime` documents what renders the view; it is descriptive only, since the
+view’s registration still dispatches.
+A printable view declares a `print_profile`. The values each field accepts are its
+`Literal` in `ViewSpec`, in `src/metabrowser/plugin_loader/manifest.py`.
 
 A view may set `offer = "module:function"`, a Python predicate that decides where the
 view is served; one that raises is logged and its view left out, and an operator

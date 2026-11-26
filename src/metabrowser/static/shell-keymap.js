@@ -1,6 +1,6 @@
 // The shell's own keys: Home, hiding the navigation pane, the main pane's view tabs, the
-// header's Up, a pin's branch switcher, the numbers of the navigation pane's filters, and
-// the letters of their menus' rows.
+// header's Up, a pin's branch switcher, the numbers of the navigation's Refresh and of the
+// navigation pane's filters, and the letters of their menus' rows.
 //
 // Each command runs the activation path its control's click runs, which the shell
 // injects, plus the focus a keyboard user needs next; none synthesizes a click. Each is
@@ -246,6 +246,24 @@
     /** @type {MetabrowserPublicShortcutTarget | null} */
     let navToggleTarget = navToggle
       ? shortcuts.attachTarget("shell.nav-toggle", navToggle, { placement: "beside" })
+      : null;
+
+    // The navigation's one Refresh (static/refresh-plan.js), the icon button the server draws
+    // at the top of the navigation on every page. It is situational, as the filters are, so
+    // it takes a number, and as the first numbered control in reading order it is 1 under
+    // every tab. Its number runs what its click runs; while it waits, `aria-disabled`, it
+    // keeps its number and a press does nothing, as a click does. Its badge sits beside the
+    // icon, as the chevron's does.
+    const navRefresh = document.getElementById("nav-refresh");
+    /** @type {MetabrowserPublicShortcutTarget | null} */
+    let refreshNumber = navRefresh
+      ? shortcuts.attachNumbered(navRefresh, {
+          activate() {
+            void window.MetabrowserRefreshPlan?.plan()?.press();
+            return true;
+          },
+          placement: "beside",
+        })
       : null;
 
     /**
@@ -617,6 +635,8 @@
         navToggleTarget?.detach();
         navToggleTarget = null;
         releaseNavToggle();
+        refreshNumber?.detach();
+        refreshNumber = null;
       });
       disposed = true;
     }

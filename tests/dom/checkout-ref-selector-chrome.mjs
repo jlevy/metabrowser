@@ -316,13 +316,17 @@ const PAGE = `(() => {
     checkout: window.METABROWSER_SOURCE_CHECKOUT ?? null,
     pin: window.METABROWSER_SOURCE_PIN ?? null,
     button: toggle?.parentElement.querySelector(".source-ref-selector-label")?.textContent.trim() ?? null,
-    // Which view the row says the page shows, and its button back to the working tree:
-    // its words and whether it shows, in the Files row beside the chooser.
-    view: document.getElementById("source-ref-selector")?.dataset.view ?? null,
-    back: (() => {
-      const back = document.querySelector("#source-ref-selector .source-ref-selector-back");
-      return back && back.checkVisibility()
-        ? { text: back.textContent, name: back.getAttribute("aria-label"), btn: back.matches(".btn") }
+    // The row's shape: how tall it is, and what it holds beside its label, which is the
+    // chooser's button alone on every page, and its panel once the chooser has mounted.
+    row: (() => {
+      const row = document.getElementById("source-ref-selector");
+      const host = row?.querySelector(".source-ref-selector-button");
+      return row && host
+        ? {
+            height: Math.round(row.getBoundingClientRect().height * 10) / 10,
+            parts: [...row.children].filter((child) => child.checkVisibility()).length,
+            controls: [...host.children].map((child) => child.tagName.toLowerCase()),
+          }
         : null;
     })(),
     inFilesRow:
@@ -424,7 +428,12 @@ const PANEL = `(() => {
   return {
     open: !panel.hidden,
     focused: document.activeElement === root.querySelector(".source-ref-selector-filter"),
-    workingTree: tree.hidden ? null : row(tree),
+    // The working tree's tab shows its one entry, and no filter or list; every other tab
+    // the filter and the list, and no entry.
+    workingTree: tree.hidden ? null : { ...row(tree), focused: document.activeElement === tree, name: tree.getAttribute("aria-label") },
+    filterShown: root.querySelector(".source-ref-selector-filter").checkVisibility(),
+    listShown: root.querySelector(".source-ref-selector-list").checkVisibility(),
+    rowHeight: Math.round(root.getBoundingClientRect().height * 10) / 10,
     location: location?.textContent ?? null,
     folderWhole: base ? base.scrollWidth <= base.clientWidth : null,
     lists: [...root.querySelectorAll(".source-ref-selector-kinds button")].map((button) => ({
@@ -465,7 +474,8 @@ async function openPanel(list = null) {
   await chrome.waitFor(
     `document.querySelector(".source-ref-selector-list").getAttribute("aria-busy") === "false" &&
       (document.querySelectorAll(".source-ref-selector-list button").length > 0 ||
-        document.querySelector(".source-ref-selector-note").textContent !== "")`,
+        document.querySelector(".source-ref-selector-note").textContent !== "" ||
+        document.querySelector(".source-ref-selector-location").textContent !== "")`,
   );
   if (list !== null) {
     await chrome.evaluate(
@@ -619,24 +629,18 @@ try {
   await capture("working-tree");
   result.workingTreePanel = await openPanel();
   await capture("working-tree-panel");
-  // Keyboard focus on the current row, the working tree's here, draws the one ring: its
-  // highlight takes the place of the hover tint a menu row shows focus with. Shift-Tab
-  // from the filter box, where the panel opens, back to the row.
-  for (let step = 0; step < 4; step += 1) {
-    if (
-      await chrome.evaluate(
-        `document.activeElement?.matches(".source-ref-selector-working-tree") === true`,
-      )
-    ) {
-      break;
-    }
+  // Keyboard focus on the current row, the working tree's entry here, draws the one ring:
+  // its highlight takes the place of the hover tint a menu row shows focus with. The
+  // panel opens with focus on the entry; Shift-Tab to the tabs and Tab back, so the
+  // focus is the keyboard's.
+  for (const modifiers of [8, 0]) {
     for (const type of ["keyDown", "keyUp"]) {
       await chrome.send("Input.dispatchKeyEvent", {
         type,
         key: "Tab",
         code: "Tab",
         windowsVirtualKeyCode: 9,
-        modifiers: 8,
+        modifiers,
       });
     }
   }
@@ -656,19 +660,12 @@ try {
       ringColor: style.outlineColor === ringColor,
     };
   })()`);
-  await chrome.evaluate('document.querySelector(".source-ref-selector-kinds button").focus()');
-  for (const type of ["keyDown", "keyUp"]) {
-    await chrome.send("Input.dispatchKeyEvent", {
-      type,
-      key: "ArrowRight",
-      code: "ArrowRight",
-      windowsVirtualKeyCode: 39,
-    });
-  }
-  await chrome.waitFor(
-    'document.activeElement.dataset.chipValue === "remote" && document.activeElement.getAttribute("aria-checked") === "true" && document.querySelector(".source-ref-selector-list").getAttribute("aria-busy") === "false"',
+  // An arrow key along the tabs, from Working tree: Branches, then Remotes.
+  await chrome.evaluate(
+    "document.querySelector('.source-ref-selector-kinds button[aria-checked=\"true\"]').focus()",
   );
-  result.workingTreeRemotes = await chrome.evaluate(PANEL);
+  result.workingTreeBranches = await arrowTo("ArrowRight", "branch");
+  result.workingTreeRemotes = await arrowTo("ArrowRight", "remote");
   result.workingTreeTags = await openPanelList("Tags");
   await openPanelList("Branches");
 
@@ -684,6 +681,18 @@ try {
   // 3. Its lists.
   result.branchPanel = await openPanel();
   await capture("revision-panel");
+  // An arrow key onto the Working tree tab shows its entry, and the page stays the
+  // branch's: no document is asked for.
+  const before = documents.length;
+  await chrome.evaluate(
+    "document.querySelector('.source-ref-selector-kinds button[aria-checked=\"true\"]').focus()",
+  );
+  result.branchArrowed = {
+    panel: await arrowTo("ArrowLeft", "working_tree"),
+    page: await chrome.evaluate(PAGE),
+    documents: documents.length - before,
+  };
+  await capture("revision-working-tree-tab");
   await closePanel();
   result.revisionRequests = takeDataRequests();
   result.leftBehind = leftBehind(leaving, switched);
@@ -777,9 +786,10 @@ try {
   const closed = await chrome.evaluate(`!document.querySelector(${JSON.stringify(REF_MENU)}) &&
     document.activeElement.matches(${JSON.stringify(TAG_CHIP)})`);
   result.tagMenu.repeatClick = { direct, opened, closed };
+  // A press on the Working tree tab, from the tag's page, switches at once.
   await openPanel();
   result.toWorkingTree = await switchBy(
-    `document.querySelector(".source-ref-selector-working-tree")`,
+    `document.querySelector('.source-ref-selector-kinds button[data-chip-value="working_tree"]')`,
   );
   result.back = await chrome.evaluate(PAGE);
   await capture("working-tree-again");
@@ -799,15 +809,21 @@ try {
   // 7. A revision's own page browses as any page does: a file, and its history. None of
   // its requests is refused, since each names the commit the server serves. Last, since
   // the Commits tab adds entries to the history that step 6 walks.
-  await openPanel();
+  await openPanel("Branches");
   await switchBy(rowNamed("topic"));
   result.checkedOutBranch = await chrome.evaluate(PAGE);
-  // The row's own way back, one click from the checked-out branch's revision (mb-cxpq).
-  result.toWorkingTreeByButton = await switchBy(
-    `document.querySelector("#source-ref-selector .source-ref-selector-back")`,
-  );
-  result.backByButton = await chrome.evaluate(PAGE);
+  // The keyboard's way back from the checked-out branch's revision (mb-cxpq): an arrow
+  // key onto the Working tree tab, which shows its entry, then Enter on that entry.
   await openPanel();
+  await chrome.evaluate(
+    "document.querySelector('.source-ref-selector-kinds button[aria-checked=\"true\"]').focus()",
+  );
+  await arrowTo("ArrowLeft", "working_tree");
+  result.toWorkingTreeByEntry = await switchBy(
+    `document.querySelector(".source-ref-selector-working-tree")`,
+  );
+  result.backByEntry = await chrome.evaluate(PAGE);
+  await openPanel("Branches");
   await switchBy(rowNamed("feature"));
   takeDataRequests();
   await chrome.evaluate(
@@ -881,6 +897,25 @@ try {
 } finally {
   await chrome.close();
   await server.stop();
+}
+
+/** Press an arrow key on the focused tab, wait for the tab it moves to, and read the panel. */
+async function arrowTo(key, kind) {
+  for (const type of ["keyDown", "keyUp"]) {
+    await chrome.send("Input.dispatchKeyEvent", {
+      type,
+      key,
+      code: key,
+      windowsVirtualKeyCode: key === "ArrowRight" ? 39 : 37,
+    });
+  }
+  await chrome.waitFor(
+    `document.activeElement.dataset.chipValue === ${JSON.stringify(kind)} &&
+      document.activeElement.getAttribute("aria-checked") === "true" &&
+      document.querySelector(".source-ref-selector-list").getAttribute("aria-busy") === "false" &&
+      document.querySelector(".source-ref-selector-location").textContent !== ""`,
+  );
+  return chrome.evaluate(PANEL);
 }
 
 /** Choose a list in the already open panel and read it. */

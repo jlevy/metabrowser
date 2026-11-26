@@ -42,6 +42,24 @@ and the combined listing runs once a comparison, kept in memory
 stacks of this repository, the base-to-top listing took 0.3 to 2.1 s at load averages near
 330 and 440, so a page's first read after a member moves waits that long, and no read after.
 
+**Its size** is measured where the listing runs, once a comparison, and kept beside the
+store (:func:`metabrowser.git.change_size.change_size`), so the first read after a member
+moves waits on it with the listing, within ``MEASURE_TIMEOUT_S``, and every later read says
+it with no Git (:func:`_size`). Its cost follows the objects packed more than the file
+count, so the file cap bounds the usual stack and the deadline the rest. Only a comparison that is the plain diff of its two commits, every file of
+which a layer changes, is measured, so the size and the file count describe one diff; one
+restricted to its layers' files has no size, since no pair of commits pushes just those
+files, and neither has one of more than :data:`MAX_SIZED_STACK_FILES` files.
+
+The size is asked to an answer once a kept comparison, and the kept manifest is marked
+when it has one (:func:`_settle_size`): a size, a reason Git has none, or that the
+comparison is not one that is measured. A read that finds the manifest kept and marked,
+in this process or a later one, as every ``metab --api`` read is, runs no Git for the
+size. One found kept and not marked, as a build before the mark left it, is asked by the
+read that loads it, which lists the plain diff once more, so that read waits as a moved
+stack's first read does. A measurement that ran out of time is an answer, and is not run
+again until a member moves; one Git failed, or whose read was cancelled, is asked again.
+
 A member with no usable record (none cached, another account's, or one with no
 comparison) leaves the stack ``pending``, with no comparison: the page asks ``pull-refresh``
 for it. A member whose catalog row names a newer head than its record is named in
@@ -60,11 +78,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import stat
 import threading
-from collections import OrderedDict
-from collections.abc import Callable
+from collections import Counter, OrderedDict
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
@@ -73,7 +92,7 @@ from weakref import WeakKeyDictionary
 
 from metabrowser.builtin_plugins.diff.comparison_cache import ResolvedManifest
 from metabrowser.builtin_plugins.diff.sidekick import comparison_cache_key, listed_totals
-from metabrowser.builtin_plugins.github.pull_record import PullRecord
+from metabrowser.builtin_plugins.github.pull_record import PullLabel, PullRecord
 from metabrowser.builtin_plugins.github.pull_stacks import NativeStack, StackCache, read_stacks
 from metabrowser.builtin_plugins.github.served_pull import ATTENDED_PROBE_S
 from metabrowser.cache.locks import run_lock_section
@@ -89,9 +108,11 @@ from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.loading_cache import LoadingCache
 
 if TYPE_CHECKING:
-    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository, PullListRow
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.diff.format import ChangeSetManifest, FileChange, ResolvedComparison
+
+log = logging.getLogger(__name__)
 
 STACK_ROUTE: Final = "/api/plugin/github/stack"
 STACK_COMPARISON_ROUTE: Final = "/api/plugin/github/stack-comparison"
@@ -107,6 +128,13 @@ _RESTRICTION: Final = "stack-files-v1"
 # most about 9 MB; eight at the listing's own bound of 2,000 files, 66 MB. A page asks for
 # its stack's comparison on every poll, so the open stacks of a session stay kept.
 MAX_KEPT_STACK_COMPARISONS: Final = 8
+# The most files a stack's comparison is measured for (`combined`), so its first read waits
+# at most about as long again as its listing. Measured 2026-11-25 on ranges of this
+# repository's main branch (Git 2.43, load averages 54 to 96, each measured twice): 0.13 to
+# 0.15 s for 43 files and 5 commits, 0.27 to 0.43 s for 63 files and 19, 0.78 to 1.16 s for
+# 147 files and 52, 2.4 to 3.5 s for 326 files and 180, and 3.5 to 4.0 s for 477 files and
+# 261. A larger comparison is not measured, and the stack's size line leaves its bytes out.
+MAX_SIZED_STACK_FILES: Final = 150
 # Ancestry answers kept for the process, least recently used out first: one per member a
 # stack's top head is asked about, and they never change, since both ends are commit IDs.
 # Measured 2026-11-24 with tracemalloc on Python 3.14.7 (Apple M1 Pro, macOS 26.5.2): 4,096
@@ -157,6 +185,40 @@ class StackMemberWire(TypedDict):
     # read, so that the page tells a fetch under way from one that ended without a usable
     # record; false for any other.
     fetching: bool
+
+
+class StackPersonWire(TypedDict):
+    """An author or a merger, as a pull request's header names one: the login and the
+    avatar, or None where the cache holds none."""
+
+    login: str
+    avatar: str | None
+
+
+class StackLabelWire(TypedDict):
+    """A label a member carries: its name, and the color and description its record gives it,
+    or None from a cached list row, which names its labels alone."""
+
+    name: str
+    color: str | None
+    description: str | None
+
+
+class StackStatesWire(TypedDict):
+    """How many members are in each state, every state named, 0 where none is."""
+
+    open: int
+    draft: int
+    merged: int
+    closed: int
+
+
+class StackSizeWire(TypedDict):
+    """The combined comparison's size: what the top head pushes over the bottom member's
+    merge base, and its patch's size, as a pull request's size line says its own."""
+
+    pushed_bytes: int
+    diff_bytes: int
 
 
 class StackComparisonWire(TypedDict):
@@ -244,6 +306,33 @@ class StackEnvelope(TypedDict):
     members: list[StackMemberWire]
     pending: list[int]
     lacking: list[int]
+    # What the page's header says of the stack where a pull request's says it of one pull
+    # request (docs/design-system.md, "The Stack Page"), each from what the cache holds of
+    # every member, its record's, or with none its cached list row's, as its title is:
+    # - how many members are in each state, where a pull request's header has its state;
+    states: StackStatesWire
+    # - when a member was last opened and last updated, the latest of each, where a pull
+    #   request's says when it was opened and updated;
+    opened_at: str | None
+    updated_at: str | None
+    # - every member's author, top first, each once, and every merged member's merger, which
+    #   the sentence names once every member is merged, as a pull request's names its merger;
+    authors: list[StackPersonWire]
+    mergers: list[StackPersonWire]
+    # - the oldest of the members' records' fetches, so the stack is said to be no fresher
+    #   than its stalest record; None with no record;
+    fetched_at: str | None
+    # - every label a member carries, top first, each once by its name, or None while a
+    #   member has neither a record nor a cached row, whose labels are not known;
+    labels: list[StackLabelWire] | None
+    # - and the commits of the members the top contains, whose files the comparison holds,
+    #   summed while every one's record counts them, and the size of the combined comparison
+    #   while it is kept (``kept_change_size``: no Git runs for it), measured where the
+    #   comparison was built and only where it is the plain diff of its two commits, so the
+    #   size and the file count describe one diff (`_size`); on a current stack alone, and
+    #   None otherwise.
+    commits: int | None
+    size: StackSizeWire | None
     comparison: StackComparisonWire | None
     totals: StackTotals | None
     truncated: bool
@@ -276,6 +365,65 @@ class _Member:
     author: str | None
     avatar: str | None
     moved: bool
+    details: _Details
+
+
+@dataclass(frozen=True, slots=True)
+class _Details:
+    """What the header sums or gathers of a member (``StackEnvelope``): its record's, or with
+    none its catalog row's, whose labels are names alone; the commits and the merger are the
+    record's alone, which a row lacks. *known* is whether it has either, so its labels are
+    known, even as none."""
+
+    known: bool = False
+    created_at: str | None = None
+    updated_at: str | None = None
+    labels: tuple[StackLabelWire, ...] = ()
+    commits: int | None = None
+    merger: StackPersonWire | None = None
+
+
+def _record_labels(
+    labels: Sequence[PullLabel], row: PullListRow | None
+) -> tuple[StackLabelWire, ...]:
+    """The member's labels by `member_identity`'s rule, the list row's names wherever there is
+    a row, each with the record's colour and description where the record knows that name."""
+
+    known = {label.name: label for label in labels}
+    names = row.labels if row is not None else tuple(known)
+    return tuple(
+        StackLabelWire(
+            name=name,
+            color=known[name].color if name in known else None,
+            description=known[name].description if name in known else None,
+        )
+        for name in names
+    )
+
+
+def _details(record: PullRecord | None, row: PullListRow | None) -> _Details:
+    if record is not None:
+        pull = record.pull
+        return _Details(
+            known=True,
+            created_at=pull.created_at,
+            updated_at=pull.updated_at,
+            labels=_record_labels(pull.labels, row),
+            commits=pull.commits,
+            merger=StackPersonWire(login=pull.merged_by, avatar=pull.merged_by_avatar_url)
+            if pull.merged and pull.merged_by
+            else None,
+        )
+    if row is not None:
+        return _Details(
+            known=True,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            labels=tuple(
+                StackLabelWire(name=name, color=None, description=None) for name in row.labels
+            ),
+        )
+    return _Details()
 
 
 @dataclass(frozen=True, slots=True)
@@ -431,6 +579,7 @@ def _read_members(
                     row.merged if row is not None else False,
                 ),
                 moved=moved,
+                details=_details(record, row),
             )
         )
     return tuple(members)
@@ -684,6 +833,91 @@ def _restricted(
     return manifest.model_copy(update={"files": tuple(kept), "totals": listed_totals(kept)})
 
 
+def _sized(plain: ChangeSetManifest, restricted: ChangeSetManifest) -> bool:
+    """Whether the stack's comparison is measured (:func:`combined`): it is the whole of the
+    plain diff of its two commits, which the measurement measures, so the size and the file
+    count describe one diff, and it is at most :data:`MAX_SIZED_STACK_FILES` files."""
+
+    return (
+        not plain.truncated
+        and len(restricted.files) == len(plain.files)
+        and len(plain.files) <= MAX_SIZED_STACK_FILES
+    )
+
+
+async def _measure(location: GitLocation, pair: StackPair) -> bool:
+    """Measure and keep the size of *pair*'s two commits, and say whether Git answered: a
+    size, or a reason it has none, which leaves the stack without one, as a pull request's
+    row is left (``_measure_size`` in :mod:`.pull_files_refresh`). False where Git failed,
+    which a later read may ask again."""
+
+    from metabrowser.git.change_size import change_size
+    from metabrowser.git.process import GitError
+
+    try:
+        await change_size(location, pair.base, pair.head)
+    except GitError as exc:
+        log.debug("a stack's size could not be measured: %r", exc)
+        return False
+    return True
+
+
+async def _settle_size(
+    published: PublishedSource,
+    source: GitDiffSource,
+    location: GitLocation,
+    pair: StackPair,
+    key: tuple[str, ...],
+    kept: ResolvedManifest,
+    plain: ChangeSetManifest | None,
+) -> None:
+    """Ask the comparison's size to an answer, once a kept manifest, and mark the manifest
+    so that no later read or process asks again (``size_settled``).
+
+    An answer is a size, a reason Git has none (``too_costly`` among them), or that the
+    comparison is not one that is measured (:func:`_sized`). The mark is kept beside the
+    store with the manifest, so a process that finds the manifest kept and marked runs no
+    Git here: a ``metab --api`` read is a process of its own, and an answer held in memory
+    alone would be asked again by every one.
+
+    *plain* is the plain listing where this read built the comparison. A manifest found
+    kept and not marked, as one a build before the mark kept, or one whose read ended
+    before its answer, has none, so the plain diff is listed again, within the listing's
+    own bounds (``MAX_MANIFEST_FILES`` and Git's timeout) and only for a comparison small
+    enough to be measured. Nothing cheaper says whether a restricted comparison is its
+    plain diff whole, and with the mark it runs once a comparison, not once a process.
+
+    Not marked, and so asked again by the next load: a listing or a measurement that Git
+    failed, and a read cancelled before its answer.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_manifest import (
+        settle_stack_size,
+        stack_size_settled,
+    )
+    from metabrowser.diff.adapters.base import DiffSourceError
+    from metabrowser.git.change_size import kept_change_size
+    from metabrowser.git.process import GitError
+
+    if await asyncio.to_thread(stack_size_settled, published, pair.number, key):
+        return
+    restricted = kept.manifest
+    measurable = not restricted.truncated and len(restricted.files) <= MAX_SIZED_STACK_FILES
+    if (
+        measurable
+        and await asyncio.to_thread(kept_change_size, location, pair.base, pair.head) is None
+    ):
+        if plain is None:
+            try:
+                plain = await source.manifest(kept.resolved)
+            except (DiffSourceError, GitError) as exc:
+                log.debug("a kept stack comparison could not be listed for its size: %r", exc)
+                return
+        if _sized(plain, restricted) and not await _measure(location, pair):
+            return
+    await asyncio.to_thread(settle_stack_size, published, pair.number, key)
+
+
 def _layers(
     manifest: ChangeSetManifest, members: tuple[tuple[int, int, dict[str, str]], ...]
 ) -> tuple[FileLayersWire, ...]:
@@ -730,13 +964,17 @@ async def combined(published: PublishedSource, pair: StackPair) -> Combined:
             RepositoryStoreTarget(published.git_dir, published.object_format), pair.head
         )
         source = GitDiffSource(location)
+        plain: ChangeSetManifest | None = None
 
         async def compute(resolved: ResolvedComparison) -> ChangeSetManifest:
-            return _restricted(await source.manifest(resolved), members)
+            nonlocal plain
+            plain = await source.manifest(resolved)
+            return _restricted(plain, members)
 
         manifest = await load_stack_manifest(
             published, pair.number, source, _intent(pair), key, compute
         )
+        await _settle_size(published, source, location, pair, key, manifest, plain)
         return Combined(manifest, _layers(manifest.manifest, members))
 
     return await _kept().get(key, load)
@@ -784,6 +1022,76 @@ def comparison_wire(published: PublishedSource, pair: StackPair) -> StackCompari
         image_route=f"{IMAGE_ROUTE}?{urlencode(_query(pair, store))}",
         rendered_route=f"{RENDERED_ROUTE}?{urlencode(_query(pair, store))}",
     )
+
+
+def _states(members: tuple[_Member, ...]) -> StackStatesWire:
+    """How many of *members* are in each state; a member in none known is in no count."""
+
+    counted = Counter(member.state for member in members)
+    return StackStatesWire(
+        open=counted["open"],
+        draft=counted["draft"],
+        merged=counted["merged"],
+        closed=counted["closed"],
+    )
+
+
+def _people(found: Iterable[StackPersonWire | None]) -> list[StackPersonWire]:
+    """Each person *found* names, once, in the order found, with the first avatar given."""
+
+    people: dict[str, StackPersonWire] = {}
+    for person in found:
+        if person is not None and person["login"] not in people:
+            people[person["login"]] = person
+    return list(people.values())
+
+
+def _labels(members: tuple[_Member, ...]) -> list[StackLabelWire] | None:
+    """Every label of *members*, top first, each once by its name: the first member that
+    names it, top first, gives its color and description, or a later one where it gives
+    none. None while any member's labels are not known, as a pull request's page holds its
+    labels row until its record says them."""
+
+    if not all(member.details.known for member in members):
+        return None
+    labels: dict[str, StackLabelWire] = {}
+    for member in reversed(members):
+        for label in member.details.labels:
+            held = labels.get(label["name"])
+            if held is None or (held["color"] is None and label["color"] is not None):
+                labels[label["name"]] = label
+    return list(labels.values())
+
+
+def _commits(members: tuple[_Member, ...], pair: StackPair | None) -> int | None:
+    """The commits of the members the top contains, every member while that is not known,
+    summed, or None where any of them has no count."""
+
+    counted = [
+        member.details.commits
+        for at, member in enumerate(members)
+        if pair is None or pair.in_top[at]
+    ]
+    if not counted or any(count is None for count in counted):
+        return None
+    return sum(count for count in counted if count is not None)
+
+
+async def _size(published: PublishedSource, pair: StackPair) -> StackSizeWire | None:
+    """The combined comparison's size, kept where it was built (:func:`combined`) and read
+    with ``kept_change_size``, which runs no Git; None where none is kept, as for a
+    comparison restricted to its layers' files or too large to measure, or where it is
+    unknown."""
+
+    from metabrowser.git.change_size import kept_change_size
+
+    location = GitLocation.revision(
+        RepositoryStoreTarget(published.git_dir, published.object_format), pair.head
+    )
+    size = await asyncio.to_thread(kept_change_size, location, pair.base, pair.head)
+    if size is None or size["pushed_bytes"] is None or size["diff_bytes"] is None:
+        return None
+    return StackSizeWire(pushed_bytes=size["pushed_bytes"], diff_bytes=size["diff_bytes"])
 
 
 def absent(number: int, reason: StackAbsence, read: StackRead | None = None) -> StackEnvelope:
@@ -834,6 +1142,25 @@ def _envelope(
         members=wires,
         pending=[wire["number"] for wire in wires if wire["pending"]],
         lacking=[wire["number"] for wire in wires if wire["in_top"] is False],
+        states=_states(members),
+        opened_at=max(
+            (m.details.created_at for m in members if m.details.created_at), default=None
+        ),
+        updated_at=max(
+            (m.details.updated_at for m in members if m.details.updated_at), default=None
+        ),
+        authors=_people(
+            StackPersonWire(login=member.author, avatar=member.avatar) if member.author else None
+            for member in reversed(members)
+        ),
+        mergers=_people(member.details.merger for member in reversed(members)),
+        fetched_at=min(
+            (member.record.fetched_at for member in members if member.record is not None),
+            default=None,
+        ),
+        labels=_labels(members),
+        commits=_commits(members, pair),
+        size=None,
         comparison=None,
         totals=None,
         truncated=False,
@@ -907,6 +1234,7 @@ async def stack_envelope(
         )
         envelope["truncated"] = manifest.truncated
         envelope["files"] = list(found.files)
+        envelope["size"] = await _size(published, read.pair)
         envelope["guide"] = await _guide(published, read)
     if repository is not None and read.stack is not None:
         envelope["github_url"] = f"{repository.source}/pull/{read.stack.pulls[-1]}"

@@ -176,8 +176,7 @@ try {
     const element = document.createElement("div");
     element.className = "source-freshness";
     document.getElementById("tree-pane").append(element);
-    const label = document.createElement("button");
-    label.type = "button";
+    const label = document.createElement("span");
     label.className = "source-freshness-label";
     label.textContent = "Fetched just now";
     element.replaceChildren(label);

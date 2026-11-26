@@ -129,7 +129,9 @@ The same filters are available from the command line:
 ## Reading Files
 
 Each file opens in the view its kind declares; a kind with several views shows them as
-tabs, and `V` and `S` switch to the rendered view and the source wherever both exist.
+tabs, each with a key.
+`V` and `S` are the rendered view and the source on most kinds; an agent log gives its
+Session, Log, Charts, and Raw JSON views keys of their own.
 `metab ROOT --show PATH` prints the kind and views a file gets.
 
 | File | Views |
@@ -137,13 +139,16 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | Markdown (`.md`) | Document, rendered by KPress, and Source |
 | Mermaid diagrams (`.mmd`, `.mermaid`) | Diagram and Source |
 | JSON and YAML | Tree, a collapsible view of the parsed structure; Table, a list of records as a table; and Source |
-| JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
+| JSONL logs | Log, a timeline of events, and Raw JSON; a coding agent’s session log opens on Session and adds Charts, and Codex’s compressed rollouts (`rollout-*.jsonl.zst`) open as Session and Log |
 | Event logs (`events-*.jsonl`) | Timeline, Latency, By kind, Errors, and Raw JSON: Metabrowser’s own log of what it served and how long each took |
+| CSV and TSV | Table and Source |
 | Code and text | Source, with syntax highlighting where a grammar exists |
 | Images | Image |
+| PDF | PDF |
 | HTML | Preview, in a sandboxed frame, and Source |
 | Patches (`.patch`, `.diff`) | Diff, the same view commits and pull requests use |
 | SQLite databases, whatever their name | Table lists tables and views and opens their rows. Schema shows definitions and relationships. Info shows the access mode, database details, and SQLite version. |
+| An fsqlite store’s `fsqlite.json` | Table, Schema, and Info, for the store’s database |
 | Other binary files | Bytes, a view of the file’s bytes |
 
 A patch file also expands in the tree like a folder, with one row per changed file.
@@ -270,15 +275,16 @@ folder’s Markdown is not changed.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
   text, tool calls, and tool results, and each row expands to its raw JSON. For the
   session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in
-  the header and adds **Charts**.
+  the header, opens on **Session**, and adds **Charts**.
   [Working with agents](working-with-agents.md#reading-agent-logs) has more.
 - **Event logs:** a file named `events-*.jsonl`, which a served `metab` writes about
   itself, opens as spans nested under what started them, the slowest spans, each kind’s
   timings, and failures by cause.
   [Browsing the log](realtime-debugging.md#browsing-the-log) has more.
 - **Code and text:** Source highlights common programming, markup, and configuration
-  languages by file extension, and shows plain text for the rest, `.log` files among
-  them.
+  languages, and Lean, by file extension, and names such as `Makefile` by file name; it
+  shows plain text for the rest, `.log` files among them.
+  A diff of such a file is highlighted the same way.
 
 ### HTML
 
@@ -303,7 +309,14 @@ The server watches the served folder and streams changes to the page.
 - **A container’s entries**, such as a patch file’s changed paths, are read again when
   the file changes.
 - **Any other open file** shows its new content the next time you open it, or when you
-  reload.
+  press **Refresh**.
+
+**Refresh**, the circular arrow at the top of the navigation pane, is there on every
+tab. It reads the tree and the open file or folder again, and everything else the page
+holds, starting with what is on screen.
+Where the foot of the navigation pane says when the origin or the mirror was last
+fetched, it fetches from the origin first.
+Its key is `1`.
 
 Files that a running process writes get more.
 Metabrowser watches the files in a folder named `.logs` or `.state` whose names end in
@@ -330,7 +343,7 @@ and **Run ended** when the tail closes because the file was removed or replaced.
 2. Check whether the file is under a tool directory the file watcher skips, such as
    `node_modules`, `.venv`, or `__pycache__`. The tree can list those files, but a
    change to one does not update the page live.
-3. Reload the page.
+3. Press **Refresh**, or reload the page.
 4. If the server log says it is refreshing slow browser connections after a queue
    overflow, a burst of changes outran the page, which then reconnects and catches up
    from a fresh snapshot.

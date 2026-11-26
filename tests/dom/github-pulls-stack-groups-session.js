@@ -2,9 +2,10 @@
 //
 // builtin_plugins/github/pulls-panel.js's controller decides the rows the list draws and the
 // keys walk, and builtin_plugins/github/pull-stacks.js how they group: each stack with a pull
-// request in the list has a "Stack #N" row, open by default, with its pull requests under it
-// in the stack menu's order, top of the stack first; pull requests in no stack follow, in the
-// list's order; one in two stacks sits once, under the first; and with no stacks known for
+// request in the list has a "Stack #N" row, open by default, with its Whole stack row and
+// its pull requests under it, one level in, in the stack menu's order, top of the stack
+// first; pull requests in no stack follow, in the list's order; one in two stacks sits
+// once, under the first; and with no stacks known for
 // the list's reader the list stays flat. The tab always groups; there is no option. Its answers
 // are the server's: the lists in tests/fixtures/github-pulls-panel-responses.json and the
 // stack snapshots in tests/fixtures/github-stacks-responses.json, which
@@ -46,8 +47,9 @@ async function settle() {
 
 /**
  * Mount the production panel over a stand-in for the DOM, on the recorded All list and
- * stack snapshot, and drive what its handle and its list do with a stack's row: Space's
- * toggle, Right and Left (a member's files open, then closed), and a press. Each step
+ * stack snapshot, and drive what its handle and its list do with a stack's row and its
+ * Whole stack row: Space's toggles, Right and Left (a member's files open, then closed, and
+ * the Whole stack row's, the stack's own), and a press on a row or on a change line. Each step
  * prints the tree's drawn rows with their roles and places, and the mounted list each
  * member's muted line as drawn: its place in its stacks, its number, and its author.
  */
@@ -157,6 +159,7 @@ async function mountStory() {
             opened.push(route.stack ? `Stack #${route.number}'s page` : route.number),
           file: null,
           fileHref: (number, file) => `/pull/${number}/files/${file}`,
+          stackFileHref: (stack, file) => `/stack/${stack}/changes/${file}`,
           pageFor: () => null,
           onPageChange: () => () => {},
           filterChanged() {},
@@ -199,6 +202,12 @@ async function mountStory() {
     // closes the changed files its row owns (mb-1z7j, mb-pw8t).
     const changeOf = (row) => find(row, "github-pulls-change");
     const pullRow = (number) => drawnRows().find((row) => row.dataset.number === String(number));
+    const wholeRow = () => drawnRows().find((row) => row.dataset.stack === "286" && isWhole(row));
+    /** Stack #286's pull requests as drawn: the rows a level in that are no Whole stack row. */
+    const membersDrawn = () =>
+      drawnRows()
+        .filter((row) => row.getAttribute("aria-level") === "2" && !isWhole(row))
+        .map((row) => Number(row.dataset.number));
     /** A row's toggle: hidden from assistive technology, its chevron turned or not. */
     const saidLine = (line, name) =>
       [
@@ -245,6 +254,7 @@ async function mountStory() {
                 ]
                   .filter(Boolean)
                   .join(" · "),
+                saidLine(changeOf(row), `  Whole stack of #${row.dataset.stack}'s toggle`),
               ]
             : row.dataset.stack
               ? [said(row, `Stack #${row.dataset.stack}`)]
@@ -265,7 +275,31 @@ async function mountStory() {
         ...(opened.length > 0 ? { opened: opened.splice(0) } : {}),
       });
     };
-    await step("mounted: Stack #286 open, its pull requests a level in", () => undefined);
+    await step(
+      "mounted: Stack #286 open, its Whole stack row and its pull requests one level in",
+      () => undefined,
+    );
+    // The heading as first drawn, before any read of the stack's change answers: its label,
+    // the stack's size as a count summary, and its age, all there at once, and its
+    // accessible name, which says the count the heading shows.
+    const headingOf = (row) => {
+      const heading = row.childNodes.find((node) =>
+        node.classList?.contains("github-pulls-stack-heading"),
+      );
+      const age = row.childNodes.find((node) => node.classList?.contains("github-pulls-age"));
+      return {
+        text: heading.childNodes.map((node) => node.textContent).join(" "),
+        age: age.textContent,
+        name: row.getAttribute("aria-label"),
+      };
+    };
+    const headingDrawn = headingOf(stackRow());
+    const shownCount = /· (\d+) pulls?$/.exec(headingDrawn.text)?.[1];
+    assert.ok(
+      shownCount !== undefined &&
+        headingDrawn.name.startsWith(`Stack #286, ${shownCount} pull request`),
+      "the heading's accessible name says the count it shows",
+    );
     // Each member's run as drawn (pulls-panel.js, `paintPlace` and `buildRow`): the state
     // icon, then the title, then the stack menu's muted dot and its place in bold, " · 3/3",
     // where another stack's glyph is written ⧉, then the dot and the number, and no stack icon
@@ -337,6 +371,23 @@ async function mountStory() {
       "Right on the stack's row goes to its first row, Whole stack, which opens the stack's page",
       () => handle.expand(),
     );
+    // The Whole stack row's children are the stack's changed files, as a pull request's
+    // row's are its own: Right opens them, and Left closes them before it goes up. No pull
+    // request is under it, opened or closed.
+    const membersBeside = membersDrawn();
+    assert.ok(membersBeside.length > 0, "the stack's pull requests are drawn beside it");
+    const beforeStackFiles = requests.length;
+    await step(
+      "Right on the Whole stack row opens the stack's changed files, as on a pull request's row",
+      () => handle.expand(),
+    );
+    const stackFilesOpen = wholeRow().getAttribute("aria-expanded");
+    // What opening them reads: the stack, as its page reads it, and nothing before.
+    const stackFilesRequests = requests.slice(beforeStackFiles);
+    assert.deepEqual(membersDrawn(), membersBeside, "opening them hides no pull request");
+    await step("Left first closes them, keeping the Whole stack row", () => handle.collapse());
+    const stackFilesClosed = wholeRow().getAttribute("aria-expanded");
+    assert.deepEqual(membersDrawn(), membersBeside, "the members stay as they were, beside it");
     await step("J goes to its first pull request, which opens", () => handle.move(1));
     await step("Right on that pull request opens its files, as on a folder's", () =>
       handle.expand(),
@@ -358,14 +409,18 @@ async function mountStory() {
       list.listeners.get("click")({ target: label, button: 0, preventDefault() {} }),
     );
     // Home (docs/design-system.md, "Home"): the list as a fresh load draws it. The reader
-    // opens #8's files, walks down the stack, and closes it; Home opens it, closes #8's
-    // files, and gives the Tab stop back to the stack's row. The address it opens names no
-    // pull request, which the host tells the list next.
-    await step("Right, J, Right: the Whole stack row, then #8, then #8's files", () => {
-      handle.expand();
-      handle.move(1);
-      return handle.expand();
-    });
+    // opens the stack's files and #8's, walks down the stack, and closes it; Home opens it,
+    // closes the stack's files and #8's, and gives the Tab stop back to the stack's row. The
+    // address it opens names no pull request, which the host tells the list next.
+    await step(
+      "Right, Right, J, Right: the Whole stack row, the stack's files, then #8, then #8's files",
+      () => {
+        handle.expand();
+        handle.expand();
+        handle.move(1);
+        return handle.expand();
+      },
+    );
     await step(
       "K back to the Whole stack row, J down the stack, then Space on its row closes it",
       () => {
@@ -388,14 +443,49 @@ async function mountStory() {
       "no pull request's files are open",
     );
     assert.equal(pullRow(8).getAttribute("aria-expanded"), "false", "#8's files closed");
+    assert.equal(wholeRow().getAttribute("aria-expanded"), "false", "the stack's files closed");
     assert.deepEqual(requests.slice(homeRequests), [], "Home reads nothing");
-    // The stack's Whole stack row, the first of its set: a press opens the stack's page, as a
-    // pull request's row opens its own, and while that page is open the row is the current
-    // row, until an address that names a pull request takes the mark back.
-    const wholeRow = () => drawnRows().find((row) => row.dataset.stack === "286" && isWhole(row));
-    const wholeTitle = wholeRow().childNodes.find((node) =>
-      node.classList?.contains("github-pulls-whole-title"),
+    // The stack's Whole stack row, the first of its set: Space, or a press on its change
+    // line or the chevron after it, opens and closes the stack's changed files and opens no
+    // page; a press anywhere else on it opens the stack's page, as a pull request's row
+    // opens its own, and while that page is open the row is the current row, until an
+    // address that names a pull request takes the mark back.
+    const wholeTitle = find(wholeRow(), "github-pulls-whole-title");
+    const wholeName = wholeRow().getAttribute("aria-label");
+    // Its toggle is a pull request's row's: the change line's box, then the chevron, last.
+    assert.deepEqual(
+      changeOf(wholeRow()).childNodes.map(classOf),
+      ["github-pulls-stack-change", "github-pulls-toggle"],
+      "the Whole stack row's toggle is its change line, then the chevron after it",
     );
+    assert.deepEqual(
+      wholeRow().childNodes.map(classOf),
+      ["github-pull-stack-icon", "github-pulls-whole-line"],
+      "the Whole stack row leads with the Layers glyph, and no chevron",
+    );
+    await step(
+      "Space on the Whole stack row (the handle's toggleStackFiles) opens the stack's changed files",
+      () => handle.toggleStackFiles(286),
+    );
+    assert.equal(opened.length, 0, "Space on the Whole stack row opens no page");
+    let prevented = 0;
+    for (const [part, name] of [
+      ["github-pulls-stack-change", "a press on its change line closes them, and opens no page"],
+      ["github-pulls-toggle", "a press on the chevron after it opens them, and opens no page"],
+    ]) {
+      await step(name, () =>
+        list.listeners.get("click")({
+          target: find(changeOf(wholeRow()), part),
+          button: 0,
+          preventDefault() {
+            prevented += 1;
+          },
+        }),
+      );
+      assert.equal(steps.at(-1).opened, undefined, "a press on the toggle opens no page");
+    }
+    assert.equal(prevented, 2, "neither press follows the row's link");
+    await step("Left on the Whole stack row closes them", () => handle.collapse());
     await step("a press on the Whole stack row opens the stack's page", () =>
       list.listeners.get("click")({ target: wholeTitle, button: 0, preventDefault() {} }),
     );
@@ -410,7 +500,14 @@ async function mountStory() {
       "member lines": memberLines,
       "a pull request in no stack": unstacked,
       files: { "Right on #8": filesOpen, "then Left": filesClosed },
+      "the stack's files": {
+        "Right on the Whole stack row": stackFilesOpen,
+        "then Left": stackFilesClosed,
+        "requests when first opened": stackFilesRequests,
+      },
       label: { text: label.textContent, classes: label.className },
+      heading: headingDrawn,
+      "Whole stack row": { name: wholeName },
       steps,
     };
   } finally {
@@ -442,7 +539,7 @@ async function mountStory() {
   const index = (name) => createStackIndex(stacks[name].body);
 
   /** One panel's controller over recorded answers, with every effect it asks for logged. */
-  function mount({ filter = "all", list = "current" } = {}) {
+  function mount({ filter = "all", list = "current", byState = false } = {}) {
     // `requests` counts every request, which Home's reset makes none of.
     const log = { opened: [], marks: [], prefetch: [], revealed: [], requests: 0 };
     let model = null;
@@ -458,6 +555,23 @@ async function mountStory() {
           if (route === "/api/plugin/github/pulls-prefetch") {
             // What an open asks to read ahead: its neighbours as drawn, and the top.
             log.prefetch.push(options.body);
+          }
+          if (byState && method === "GET" && route.startsWith("/api/plugin/github/pulls?")) {
+            // Each filter's own list, for a story in which the list moves from Open to All:
+            // Open's recorded list, and All's, of which the one-row probes that place a
+            // pull request the filter leaves out answer the top row and #8.
+            const all = lists.current;
+            const rows = route.includes("state=open")
+              ? lists.open_current.body.rows
+              : route.includes("limit=1&after=9")
+                ? all.body.rows.filter((row) => row.number === 8)
+                : /limit=1$/.test(route)
+                  ? all.body.rows.slice(0, 1)
+                  : route.includes("&after=")
+                    ? lists.more_window.body.rows
+                    : all.body.rows;
+            const body = route.includes("state=open") ? lists.open_current.body : all.body;
+            return Promise.resolve({ status: 200, etag: null, body: { ...body, rows } });
           }
           if (method === "GET" && route.startsWith("/api/plugin/github/pulls?")) {
             const answer = route.includes("&after=") ? lists.more_window : lists[list];
@@ -551,8 +665,11 @@ async function mountStory() {
     const rest = [];
     for (const row of model.stacks.rows) {
       if (row.kind === "stack") {
+        // The heading as drawn: its label, the stack's size, and the time its age tells,
+        // then its place and its accessible name's words.
+        const pulls = stackModule.stackPullsCount(row.stack);
         lines.push(
-          `${row.expanded ? "▾" : "▸"} ${row.label} [${row.posinset}/${row.setsize}] · ${row.hint}`,
+          `${row.expanded ? "▾" : "▸"} ${row.label} · ${pulls} ${pulls === 1 ? "pull" : "pulls"} · updated ${row.updatedAt} [${row.posinset}/${row.setsize}] · ${row.hint}`,
         );
       } else if (row.kind === "whole") {
         lines.push(`    Whole stack [${row.posinset}/${row.setsize}]`);
@@ -580,8 +697,23 @@ async function mountStory() {
     );
     // Every listed pull request is drawn once, or held by its closed stack's row.
     assert.deepEqual([...placed, ...hidden].sort(), [...listed].sort());
+    const updated = new Map(model.rows.map((row) => [row.number, row.updatedAt]));
     for (const row of rows) {
       if (row.kind === "stack") {
+        // The heading's age tells the newest update of the stack's pull requests the list
+        // holds: never older than any of them, and one of theirs.
+        const times = row.stack.pulls.flatMap((number) => updated.get(number) ?? []);
+        assert.equal(
+          row.updatedAt === null ? null : Date.parse(row.updatedAt),
+          times.length === 0 ? null : Math.max(...times.map((time) => Date.parse(time))),
+          "a stack's time is the newest of its listed pull requests'",
+        );
+        // Its accessible name says the count its heading shows.
+        const pulls = stackModule.stackPullsCount(row.stack);
+        assert.ok(
+          row.hint.startsWith(`${row.label}, ${pulls} pull request${pulls === 1 ? "" : "s"}`),
+          row.hint,
+        );
         // Members are the stack menu's order, of the pull requests the list has.
         const order = stackMenuOrder(row.stack).filter((number) => row.members.includes(number));
         assert.deepEqual(row.members, order);
@@ -641,6 +773,105 @@ async function mountStory() {
     });
     holds(model, story.identity, stackIndex);
   };
+
+  // ── The session's second part, `node github-pulls-stack-groups-session.js reveal`: what a
+  // reveal unfolds, and what stays folded. It prints on its own so each transcript stays
+  // within what tryscript can match: one of 41 KB was refused as too large a regular
+  // expression, where 39 KB matched.
+  if (process.argv[2] === "reveal") {
+    const current = index("current");
+    // ── A reveal that must move the list first. #8 is closed, so Open leaves it out: an address
+    // that names it moves the list to All, and the row arrives after the address was named. It
+    // is revealed there as a row the list already held is, the stack the reader closed opened
+    // over it (review of #862).
+    for (const [how, hide] of [["closes Stack #286", (panel) => panel.setStackOpen(286, false)]]) {
+      const moved = mount({ filter: "open", list: "open_current", byState: true });
+      moved.controller.setStacks(current);
+      await moved.controller.start({ shown: true });
+      await settle();
+      hide(moved.controller);
+      await settle();
+      const before = moved.controller.snapshot();
+      moved.log.revealed.length = 0;
+      moved.controller.setCurrent(8);
+      await settle();
+      await settle();
+      const after = moved.controller.snapshot();
+      record(
+        `on Open the reader ${how}; an address that names #8, which Open leaves out, moves the list to All and reveals it there`,
+        moved,
+        current,
+        {
+          filter: `${before.filter} → ${after.filter}`,
+          closed: `${JSON.stringify(before.closedStacks)} → ${JSON.stringify(after.closedStacks)}`,
+          revealed: moved.log.revealed.splice(0).map(rowName),
+          current: rowName(moved.marked()),
+          tabStop: rowName(moved.anchor()),
+        },
+      );
+      assert.equal(after.filter, "all");
+      assert.ok(
+        moved.model().stacks.rows.some((row) => row.kind === "pull" && row.number === 8),
+        "#8's row is drawn once the list holds it",
+      );
+      assert.equal(moved.anchor(), 8, "and takes the Tab stop");
+      moved.controller.dispose?.();
+    }
+    // ── What the reader folded stays folded until they open the item again. #7 is the open
+    // pull request; the reader closes its stack. The tab
+    // shown again, a landing that keeps the list's place, and a filter picked all ask for the
+    // list, not the item, and unfold nothing; only an address that names the item again does
+    // (docs/design-system.md, "Navigation Reveals the Item"; final review of #862).
+    for (const [how, fold] of [["closes Stack #286", (panel) => panel.setStackOpen(286, false)]]) {
+      const kept = mount({ filter: "all", byState: true });
+      kept.controller.setStacks(current);
+      await kept.controller.start({ shown: true });
+      await settle();
+      kept.controller.setCurrent(7);
+      await settle();
+      fold(kept.controller);
+      await settle();
+      // One line a state, so the transcript stays within what tryscript can match.
+      const folded = () => {
+        const { filter, closedStacks } = kept.controller.snapshot();
+        return `${filter} · closed ${JSON.stringify(closedStacks)}`;
+      };
+      const asFolded = folded();
+      const survived = {};
+      kept.controller.setShown(false);
+      kept.controller.setShown(true);
+      await settle();
+      survived["the tab hidden and shown again"] = folded();
+      kept.controller.setCurrent(6, { preserveScroll: true });
+      await settle();
+      survived["a landing on #6 that keeps the list's place"] = folded();
+      kept.controller.setFilter("open");
+      await settle();
+      await settle();
+      survived["the Open filter picked"] = folded();
+      assert.equal(survived["the tab hidden and shown again"], asFolded);
+      assert.equal(survived["a landing on #6 that keeps the list's place"], asFolded);
+      assert.equal(survived["the Open filter picked"], asFolded.replace(/^all/, "open"));
+      assert.notEqual(asFolded, "all · closed []");
+      kept.controller.setCurrent(7);
+      await settle();
+      record(
+        `the reader ${how} over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded, and an address that names #7 again opens the stack`,
+        kept,
+        current,
+        {
+          folded: asFolded,
+          ...survived,
+          "an address that names #7 again": folded(),
+          tabStop: rowName(kept.anchor()),
+        },
+      );
+      assert.equal(folded(), "open · closed []");
+      kept.controller.dispose?.();
+    }
+    process.stdout.write(`${JSON.stringify({ steps, invariants: true }, null, 2)}\n`);
+    return;
+  }
 
   // ── The default: grouped as soon as the stacks are known, and flat until then.
   const story = mount();

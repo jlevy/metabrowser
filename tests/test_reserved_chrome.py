@@ -354,8 +354,9 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     # the stack's slot is on the row of ages (mb-646g). On the author's row (mb-cf0l) the chip
     # stood a row below the state and ages it belongs with, and on the row that also held the
     # merge a late chip took its width from the sentence and the merge (review E3 on #370).
-    assert 'h("div", { class: "github-pull-meta page-header-line" }, [stateLead]);' in page
-    assert 'h("span", { class: "github-pull-meta-lead" }, [stateDetails, freshnessNote]);' in page
+    # Its parts are the header's builder's (`pageHeaderParts`), which a stack's page shares.
+    assert 'row: h("div", { class: "github-pull-meta page-header-line" }, [lead]),' in page
+    assert 'const lead = h("span", { class: "github-pull-meta-lead" }, [details, note]);' in page
     # The state badge leads the row of ages (mb-4ydo), one line in every state.
     opened = _rule(css, ".github-pull-opened")
     assert "flex-wrap: nowrap;" in opened and "white-space: nowrap;" in opened
@@ -368,7 +369,7 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
     # The stack's slot ends the row (mb-646g, mb-dwha), on a record's row and on the one held
     # before a record, with nothing after it: the page has no Refresh of its own (mb-ablv).
-    assert "placeChildren(openedRow, [stateBadge, opened.row, stackColumn]);" in page
+    assert "placeChildren(openedRow, [stateSlot, opened.row, stackColumn]);" in page
     assert "          ),\n          stackColumn,\n        ]);" in page
     assert "github-pull-refresh" not in page and "github-pull-refresh" not in css
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page
@@ -382,7 +383,7 @@ def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
     labels = re.findall(r'label: "([A-Z][a-z]+)"', states)
     assert set(labels) == {"Open", "Draft", "Merged", "Closed"}, labels
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert 'const stateBadge = h("span", { class: "github-pull-state-slot" });' in page
+    assert 'const stateSlot = h("span", { class: "github-pull-state-slot" });' in page
     # A sizer of every state's label, drawn beside the badge in its slot, built once.
     assert "const badgeSizers = Object.values(PULL_STATES).map(({ label }) =>" in page
     assert "...badgeSizers," in page
@@ -413,7 +414,8 @@ def test_labels_have_a_row_while_unknown_or_present() -> None:
     labels = _rule(css, ".github-pull-label-list")
     assert "min-width: 0;" in labels and "overflow: hidden;" in labels
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert 'h("div", { class: "github-pull-labels" }, [labelList])' in page
+    # The row is the header's builder's (`pageHeaderParts`), which a stack's page shares.
+    assert 'labels: { row: h("div", { class: "github-pull-labels" }, [list]), list },' in page
     # A pull request with no labels has no labels row, and no gap for it.
     assert "if (pull.labels.length > 0) {" in page
     # While the record is on its way the row is held, empty, with the rows it may have.
@@ -481,11 +483,10 @@ def test_the_freshness_note_ends_the_authors_row_in_a_slot_of_its_widest_age() -
     assert "font-variant-numeric: var(--tabular-numerals);" in sizer
     assert "grid-area: 1 / 1;" in _rule(css, ".github-pull-freshness-slot > .github-pull-freshness")
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert 'h("span", { class: "github-pull-note" }, [freshnessSep, freshnessSlot]);' in page, (
-        "Refresh is not in the note, which can leave the line"
-    )
+    note = 'const note = h("span", { class: "github-pull-note" }, [\n    sep,\n'
+    assert note in page, "Refresh is not in the note, which can leave the line"
     # A note cut short, alone on the row before a record, carries its text as a tooltip.
-    assert "const freshnessLine = tipWhenCut(" in page
+    assert "const line = tipWhenCut(" in page
     # One time, never two: no "Checked … · fetched …".
     assert "Checked ${" not in page
 
@@ -563,19 +564,27 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert columns is not None
     # A pull request's link is one column, its run and its last line, across the row from the
     # state icon in the slot to the row's end (mb-85op, mb-pw8t); a stack's row is one line,
-    # with no age and no age's column.
+    # its chevron's slot, its heading, and the age's column a pull request's last line has
+    # (mb-tvhs).
     # The state icon is the tree's one icon slot (mb-hmv7), on the row's inset, with no empty
-    # slot before it (mb-3vil); a stack's row has two, its chevron's and its Layers icon's.
+    # slot before it (mb-3vil); a stack's row has one too, its chevron's.
     assert " ".join(columns.group(1).split()) == "minmax(0, 1fr)"
     stack_columns = re.search(
         r"grid-template-columns:\s*([^;]*);",
         _rule(css, ".github-pulls-row.github-pulls-stack-row"),
     )
     assert stack_columns is not None
-    assert (
-        " ".join(stack_columns.group(1).split())
-        == "var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr)"
+    # Both rows' age columns read the one width, declared once on the row, so no grid keeps
+    # a copy of it.
+    age_column = "var(--github-pulls-age-column)"
+    assert css.count("--github-pulls-age-column:") == 1
+    assert "--github-pulls-age-column:" in _rule(css, ".github-pulls-row")
+    assert stack_columns.group(1).split()[-1] == age_column
+    tail_columns = re.search(
+        r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row > .github-pulls-tail")
     )
+    assert tail_columns is not None
+    assert tail_columns.group(1).split()[-1] == age_column
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
     # on #506).
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")

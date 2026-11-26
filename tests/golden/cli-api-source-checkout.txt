@@ -32,7 +32,7 @@ status: 200
 }
 --- stderr ---
 
-== The selector lists the working tree and the checkout's own branches. working_tree says the working tree is served and which branch is checked out; kinds names the three lists. The checked-out branch lists first and is checked_out, not current: chosen as a ref it shows its commit, which the working tree is not.
+== The selector lists the working tree and the checkout's own branches. working_tree says the working tree is served and where HEAD is, its branch and its commit, read from the checkout as the listing is made; kinds names the four lists in the order of the selector's tabs. The checked-out branch lists first and is checked_out, not current: chosen as a ref it shows its commit, which the working tree is not.
 
 # metab checkout --api /api/source/refs
 exit: 0
@@ -45,14 +45,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
     "head_name": "topic",
+    "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -90,6 +92,52 @@ status: 200
 }
 --- stderr ---
 
+== The working tree's own list has no refs and answers working_tree alone, with no Git process: what the selector's Working tree tab shows, and what a page asks each time its watch says the checkout's HEAD moved. That watch is on the path .git/HEAD of the page's event stream, whose generation is what HEAD names, so it is the same for a linked worktree, whose HEAD is not under that path.
+
+# metab checkout --api '/api/source/refs?kind=working_tree'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=working_tree
+status: 200
+{
+  "kind": "working_tree",
+  "query": "",
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "working_tree",
+    "branch",
+    "remote",
+    "tag"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/topic",
+    "head_name": "topic",
+    "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "name": "checkout",
+    "location": "<ROOT>"
+  },
+  "origin": null,
+  "pull_requests": null,
+  "refs": []
+}
+--- stderr ---
+
+# metab checkout --api /api/events/watch --data watch-head.json
+exit: 0
+--- stdout ---
+api: /api/events/watch
+status: 200
+{
+  "type": "file_watch",
+  "connection": null,
+  "path": ".git/HEAD",
+  "watching": false,
+  "generation": "e116d38afab58b32"
+}
+--- stderr ---
+
 == Remote-tracking branches are a third list, each with its remote's name. The symbolic origin/HEAD a clone writes is not a row. Tags list newest first, peeled to the commit they name.
 
 # metab checkout --api '/api/source/refs?kind=remote'
@@ -103,14 +151,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
     "head_name": "topic",
+    "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -150,14 +200,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
     "head_name": "topic",
+    "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "name": "checkout",
     "location": "<ROOT>"
   },

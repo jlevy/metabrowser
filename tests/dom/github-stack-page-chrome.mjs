@@ -38,8 +38,9 @@ const check = (label, ok, detail = "") => {
 // In the page: a recorder of what the main view shows from a reader's press until it settles,
 // started before the press. Each animation frame it reads the page's parts, the header's
 // lines, the tab bar, the body's first element, and the body's first files' bars, and keeps a
-// frame wherever any of their boxes or kinds changed; a PerformanceObserver keeps every layout
-// shift, its sources' boxes before and after. `ROOT` names the page's element.
+// frame wherever any of their boxes or kinds changed, marked `held` while the header is out of
+// sight for the cold page's quiet period (`.github-pull-cold`); a PerformanceObserver keeps
+// every layout shift, its sources' boxes before and after. `ROOT` names the page's element.
 const RECORDER = (root) => `(() => {
   const ROOT = ${JSON.stringify(root)};
   const t0 = performance.now();
@@ -75,6 +76,7 @@ const RECORDER = (root) => `(() => {
     const parts = page === null ? null : [...page.children].map((child) => [describe(child), box(child)]);
     const header = page?.querySelector(".page-header") ?? null;
     const lines = header === null ? null : [...header.children].map((child) => [describe(child), box(child), child.textContent.slice(0, 60)]);
+    const held = header !== null && getComputedStyle(header).opacity === "0";
     const body = page?.querySelector(".github-pull-body") ?? null;
     const first = body?.firstElementChild ?? null;
     const loading = body?.querySelector(".github-pull-diff-loading") ?? null;
@@ -83,7 +85,7 @@ const RECORDER = (root) => `(() => {
       box(file),
       describe(file.querySelector(".diff-file-body")?.firstElementChild ?? null),
     ]);
-    const shown = { parts, lines, first: [describe(first), box(first)], loading: box(loading), files };
+    const shown = { parts, lines, held, first: [describe(first), box(first)], loading: box(loading), files };
     const signature = JSON.stringify(shown);
     if (signature !== last) {
       last = signature;
@@ -159,13 +161,18 @@ try {
   })()`;
 
   /**
-   * What moved in a recording from the page's first paint to its settled layout: a header
-   * row or the tab column whose box changed, a header row the settled header lacks, and a
-   * diff file or the body's first element that moved once shown. Boxes are [top, height],
-   * with "hidden" while held out of sight.
+   * What moved in a recording from the page's first paint the reader sees to its settled
+   * layout: a header row or the tab column whose box changed, a header row the settled header
+   * lacks, and a diff file or the body's first element that moved once shown. Boxes are
+   * [top, height], with "hidden" while held out of sight. A frame whose header is held out of
+   * sight for the cold page's quiet period is not seen, so it is not measured: a stack's
+   * answer that lands within it is the first header the reader sees, as a pull request's
+   * record is.
    */
   const moves = (result) => {
-    const shown = result.frames.filter((frame) => frame.parts !== null && frame.lines !== null);
+    const shown = result.frames.filter(
+      (frame) => frame.parts !== null && frame.lines !== null && !frame.held,
+    );
     const settled = shown.at(-1);
     if (settled === undefined) {
       return ["the page never painted"];
@@ -342,6 +349,93 @@ try {
       moved.slice(0, 6).join("; "),
     );
   }
+  // The members' toggle, closed as the Diff summary is: a press opens its card and another
+  // closes it, each travelling as every disclosure does, and its words start where the Diff
+  // summary's do, the two toggles' hover grounds at one edge.
+  const MEMBERS = `(() => {
+    const page = document.querySelector(".github-pull-stack-page");
+    const toggle = page.querySelector(".github-pull-stack-members-toggle");
+    const body = page.querySelector(".github-pull-stack-members-body");
+    const summary = page.querySelector(".github-pull-summary .diff-summary-toggle");
+    const left = (el) => el === null ? null : Math.round(el.getBoundingClientRect().left * 100) / 100;
+    // Where a toggle's words start: the first box its contents draw.
+    const firstText = (el) => {
+      if (el === null) return null;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rect = [...range.getClientRects()].find((r) => r.width > 0);
+      return rect === undefined ? null : Math.round(rect.left * 100) / 100;
+    };
+    return {
+      text: toggle?.textContent ?? null,
+      expanded: toggle?.getAttribute("aria-expanded") ?? null,
+      controls: toggle?.getAttribute("aria-controls") === body?.id,
+      height: body === null ? null : Math.round(body.getBoundingClientRect().height),
+      card: Math.round(page.querySelector(".github-pull-stack-members")?.getBoundingClientRect().height ?? -1),
+      visibility: body === null ? null : getComputedStyle(body).visibility,
+      toggleLeft: left(toggle),
+      summaryLeft: left(summary),
+      wordsLeft: firstText(toggle),
+      summaryWordsLeft: firstText(summary),
+      bodyBelowToggle: body !== null && toggle !== null && body.getBoundingClientRect().top >= toggle.getBoundingClientRect().bottom - 0.5,
+      summaryBelow: summary !== null && toggle !== null && summary.getBoundingClientRect().top >= toggle.getBoundingClientRect().bottom - 0.5,
+    };
+  })()`;
+  // Wait out a disclosure's travel: its transitions end.
+  const travelled = () =>
+    evaluate(`(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await Promise.all(document.getAnimations().filter((animation) => animation instanceof CSSTransition).map((animation) => animation.finished.catch(() => null)));
+    })()`);
+  const closedFirst = await evaluate(MEMBERS);
+  await click(".github-pull-stack-members-toggle");
+  await travelled();
+  const openedMembers = await evaluate(MEMBERS);
+  await shot(`stack-70-members-open`);
+  measured.members = { closed: closedFirst, opened: openedMembers };
+  check(
+    "the members' toggle says how many, is closed at first, and opens its card under it",
+    closedFirst.text === "2 Pulls" &&
+      closedFirst.expanded === "false" &&
+      closedFirst.controls &&
+      closedFirst.height === 0 &&
+      closedFirst.visibility === "hidden" &&
+      openedMembers.expanded === "true" &&
+      openedMembers.visibility === "visible" &&
+      openedMembers.height > 0 &&
+      openedMembers.height >= openedMembers.card &&
+      openedMembers.bodyBelowToggle &&
+      openedMembers.summaryBelow,
+    JSON.stringify(measured.members),
+  );
+  check(
+    "the members' toggle and the Diff summary's start their grounds and their words at one edge",
+    closedFirst.toggleLeft === closedFirst.summaryLeft &&
+      closedFirst.wordsLeft === closedFirst.summaryWordsLeft,
+    JSON.stringify(closedFirst),
+  );
+  // The header's tally: a badge for each state some member is in, each in the ink a pull
+  // request's badge of that state has.
+  const tally = await evaluate(`(() => {
+    const page = document.querySelector(".github-pull-stack-page");
+    return [...page.querySelectorAll(".github-pull-stack-tally .github-pull-badge")].map((badge) => {
+      const probe = document.createElement("span");
+      probe.className = "file-header-badge github-pull-badge github-pull-state";
+      probe.dataset.state = badge.dataset.state;
+      page.querySelector(".github-pull-opened").append(probe);
+      const ink = getComputedStyle(probe).color;
+      probe.remove();
+      return { state: badge.dataset.state, text: badge.textContent, ink: getComputedStyle(badge).color, pullInk: ink };
+    });
+  })()`);
+  measured.tally = tally;
+  check(
+    "the tally's badges are a pull request's state badges, one per state a member is in",
+    tally.length > 0 &&
+      new Set(tally.map((badge) => badge.state)).size === tally.length &&
+      tally.every((badge) => badge.ink === badge.pullInk),
+    JSON.stringify(tally),
+  );
   const page = await evaluate(`(() => {
     const page = document.querySelector(".github-pull-stack-page");
     const members = [...page.querySelectorAll(".github-pull-stack-members .github-pull-stack-member")];
@@ -356,9 +450,32 @@ try {
       summary_open: summary?.getAttribute("aria-expanded") ?? null,
       counterpart: counterpart?.getAttribute("href") ?? null,
       tabs: [...page.querySelectorAll(".tab-bar .tab-btn")].filter((tab) => !tab.hidden).map((tab) => tab.textContent),
-      size: page.querySelector(".github-pull-size")?.innerText ?? null,
+      // The size line as it reads on screen: its words, with the commas said in place of its
+      // dots left out.
+      size: (() => {
+        const line = page.querySelector(".github-pull-size")?.cloneNode(true) ?? null;
+        line?.querySelectorAll(".visually-hidden").forEach((node) => node.remove());
+        return line === null ? null : line.textContent.replace(/\\s+/g, " ").trim();
+      })(),
     };
   })()`);
+  // The size line the shell's builder writes for the stack's answer: its commits, its files,
+  // and its comparison's size, with nothing restated here.
+  const sizeLine = await evaluate(`(async () => {
+    const answer = await (await fetch("/api/plugin/github/stack?number=70", {cache: "no-store"})).json();
+    return {
+      commits: answer.commits,
+      files: answer.totals?.files ?? null,
+      size: answer.size,
+      text: window.metabrowser.changeSizeLine({
+        commits: answer.commits,
+        files: answer.totals.files,
+        pushedBytes: answer.size?.pushed_bytes ?? null,
+        diffBytes: answer.size?.diff_bytes ?? null,
+      }).text.replace(/\\s+/g, " ").trim(),
+    };
+  })()`);
+  measured.sizeLine = sizeLine;
   measured.page = page;
   // Each member row is the stack menu's (`stackMemberRow`), so its layout is the menu's by
   // construction. What the running app adds is its data: every member's author, its
@@ -386,11 +503,204 @@ try {
     JSON.stringify(page.tabs) === JSON.stringify(["Docs", "Changes"]),
     JSON.stringify(page.tabs),
   );
-  check("the size line says the files", page.size === "1 file changed", String(page.size));
+  // The size line says the answer's commits and files, and its comparison's size where it is
+  // kept, as the shell's builder writes them.
+  check(
+    "the size line is the shell's for the stack's commits, files, and size",
+    sizeLine.commits === 2 && sizeLine.files === 1 && page.size === sizeLine.text,
+    JSON.stringify({ shown: page.size, built: sizeLine }),
+  );
+  await click(".github-pull-stack-members-toggle");
+  await travelled();
+  const closed = await evaluate(MEMBERS);
+  measured.members.closed_again = closed;
+  check(
+    "a second press closes the members' card",
+    closed.expanded === "false" && closed.height === 0 && closed.visibility === "hidden",
+    JSON.stringify(closed),
+  );
   await theme("dark");
   await shot(`stack-70-dark`);
   await theme("light");
   await shot(`stack-70-light`);
+
+  // In a narrow pane, 560 px, and at a phone's width, 375 px, the stack's answer as a larger
+  // stack's: four states with two-digit counts, and six authors. The page reads it as it
+  // reads any answer, here when it comes back into sight. The tally gives way after the
+  // ages, each badge cut short and keeping its count, and stays inside its row. The author's
+  // row gives way in its names and its action together, so neither is cut to nothing while
+  // the other is whole: at 560 px both keep some of their words, and at 375 px six names at
+  // their floors fill the row, the action given way first since the size line under it
+  // says its commits too.
+  await evaluate(`(async () => {
+    const original = window.fetch;
+    const answer = await (await original("/api/plugin/github/stack?number=70", {cache: "no-store"})).json();
+    const larger = {
+      ...answer,
+      states: { open: 12, draft: 12, merged: 12, closed: 12 },
+      authors: ["maintainer", "a-long-contributor-name", "reviewer-two", "octocat", "someone-else", "sixth-author"]
+        .map((login) => ({ login, avatar: null })),
+      commits: 48,
+    };
+    window.fetch = async (route, init) => {
+      const url = typeof route === "string" ? route : route.url;
+      if (url.startsWith("/api/plugin/github/stack?")) {
+        return new Response(JSON.stringify(larger), {
+          status: 200,
+          headers: { "content-type": "application/json", etag: '"phone"' },
+        });
+      }
+      return original(route, init);
+    };
+    document.dispatchEvent(new Event("visibilitychange"));
+  })()`);
+  await waitFor(
+    `document.querySelectorAll(".github-pull-stack-page .github-pull-stack-tally .github-pull-badge").length === 4 && document.querySelectorAll(".github-pull-stack-page .github-pull-meta-details .github-pull-identity").length === 6`,
+  );
+  const NARROW = `(() => {
+    const page = document.querySelector(".github-pull-stack-page");
+    const r = (n) => Math.round(n * 100) / 100;
+    const box = (el) => el.getBoundingClientRect();
+    // An element's own width, laid out whole.
+    const natural = (el) => {
+      const copy = el.cloneNode(true);
+      copy.style.cssText = "position:absolute;visibility:hidden;width:max-content;max-width:none;min-width:0;flex:none";
+      el.parentElement.append(copy);
+      const width = box(copy).width;
+      copy.remove();
+      return r(width);
+    };
+    const row = page.querySelector(".github-pull-opened");
+    const tally = row.querySelector(".github-pull-stack-tally");
+    const badges = [...tally.querySelectorAll(".github-pull-badge")].map((badge) => {
+      const style = getComputedStyle(badge);
+      const count = badge.textContent.split(" ")[0];
+      const range = document.createRange();
+      range.setStart(badge.firstChild, 0);
+      range.setEnd(badge.firstChild, count.length);
+      const probe = document.createElement("span");
+      probe.textContent = "\u2026";
+      badge.append(probe);
+      const ellipsis = box(probe).width;
+      probe.remove();
+      const word = document.createRange();
+      word.selectNodeContents(badge.lastChild);
+      return {
+        text: badge.textContent,
+        shown: badge.innerText,
+        tip: badge.dataset.tipText ?? null,
+        cut: badge.scrollWidth > badge.clientWidth,
+        // Where the state's word ends, which tells the badges apart.
+        wordEnd: r(word.getBoundingClientRect().right),
+        width: r(box(badge).width),
+        natural: natural(badge),
+        floor: r(parseFloat(style.minWidth)),
+        // Where the count ends, and where an ellipsis after it would: inside the content box.
+        countEnd: r(range.getBoundingClientRect().right + ellipsis),
+        contentEnd: r(box(badge).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth)),
+      };
+    });
+    const meta = page.querySelector(".github-pull-meta-details");
+    const floor = (identity) => parseFloat(getComputedStyle(identity).minWidth);
+    const names = [...meta.querySelectorAll(":scope > .github-pull-identity")].map((identity) => ({
+      login: identity.querySelector(".github-pull-author").textContent,
+      tip: identity.querySelector(".github-pull-author").dataset.tipText ?? null,
+      // Whether the box that carries the tooltip is the one cut short, which is when the
+      // shell shows a tooltip that is its anchor's own text.
+      cut:
+        identity.querySelector(".github-pull-author").scrollWidth >
+        identity.querySelector(".github-pull-author").clientWidth,
+      width: r(box(identity).width),
+      natural: natural(identity),
+      floor: r(floor(identity)),
+    }));
+    const action = meta.querySelector(".github-pull-action");
+    return {
+      row: {
+        left: r(box(row).left),
+        right: r(box(row).right),
+        width: r(box(row).width),
+        font: parseFloat(getComputedStyle(row).fontSize),
+      },
+      tally: { right: r(box(tally).right), width: r(box(tally).width), natural: natural(tally) },
+      badges,
+      sentence: {
+        lead: r(box(page.querySelector(".github-pull-meta-lead")).width),
+        right: r(box(meta).right),
+        rowRight: r(box(page.querySelector(".github-pull-meta")).right),
+        names,
+        action: { width: r(box(action).width), natural: natural(action), text: action.textContent },
+      },
+    };
+  })()`;
+  measured.narrow = {};
+  for (const width of [560, 375]) {
+    await evaluate(`(() => {
+      const pane = document.getElementById("preview-pane");
+      pane.style.flex = "none";
+      pane.style.width = "${width}px";
+    })()`);
+    await frames();
+    await shot(`stack-70-larger-${width}`);
+    const narrow = await evaluate(NARROW);
+    measured.narrow[width] = narrow;
+    check(
+      `at ${width} px the tally gives way inside its row, each badge keeping its count`,
+      narrow.tally.right <= narrow.row.right + 0.5 &&
+        narrow.badges.length === 4 &&
+        narrow.badges.every((badge) => badge.width >= badge.floor - 0.5) &&
+        narrow.badges.every((badge) => badge.countEnd <= badge.contentEnd + 0.5),
+      JSON.stringify({ row: narrow.row, tally: narrow.tally, badges: narrow.badges }),
+    );
+    // What tells four badges of one noun apart is each one's state: its word is whole, or
+    // the badge is cut short and its tooltip, which the shell shows then, is its whole label.
+    check(
+      `at ${width} px each badge of the tally says its state, in its words or its tooltip`,
+      narrow.badges.every(
+        (badge) =>
+          badge.tip === badge.text && (badge.cut || badge.wordEnd <= badge.contentEnd + 0.5),
+      ),
+      JSON.stringify(narrow.badges),
+    );
+    const { sentence } = narrow;
+    const cutNames = sentence.names.filter((name) => name.width < name.natural - 0.5);
+    const actionCut = sentence.action.width < sentence.action.natural - 0.5;
+    check(
+      `at ${width} px the author's row gives way in its names and its action together`,
+      sentence.right <= sentence.rowRight + 0.5 &&
+        (!actionCut || cutNames.length > 0) &&
+        (cutNames.length === 0 || actionCut) &&
+        sentence.names.every((name) => name.width >= name.floor - 0.5) &&
+        // A name cut short is still said: its tooltip, which the shell shows then, is it whole.
+        sentence.names.every((name) => name.tip === name.login) &&
+        cutNames.every((name) => name.cut) &&
+        // Both keep some of their words while a name is above its floor.
+        (sentence.action.width >= 1 ||
+          sentence.names.every((name) => name.width <= name.floor + 0.5)),
+      JSON.stringify(sentence),
+    );
+  }
+  // At a phone's width the four badges leave out their noun and so are whole, each a count
+  // and its state's word; in the wider pane they have room for all three words.
+  check(
+    "at 375 px the four badges are whole without their noun, and at 560 px whole with it",
+    measured.narrow[375].badges.every(
+      (badge) =>
+        !badge.cut &&
+        badge.shown ===
+          badge.text
+            .split(" ")
+            .filter((_, at) => at !== 1)
+            .join(" "),
+    ) && measured.narrow[560].badges.every((badge) => !badge.cut && badge.shown === badge.text),
+    JSON.stringify([measured.narrow[375].badges, measured.narrow[560].badges]),
+  );
+  // Where both give way short of the names' floors, the action keeps some of its words.
+  check(
+    "at 560 px the action keeps some of its words beside six cut names",
+    measured.narrow[560].sentence.action.width >= 1,
+    JSON.stringify(measured.narrow[560].sentence),
+  );
 
   // A pull request's own Docs and Changes, for comparison.
   await send("Page.navigate", { url: `${base}/pull/10` });
@@ -424,24 +734,26 @@ try {
   await frames();
   phase("pulls");
   await shot(`stack-70-with-pulls`);
-  // The Pulls tab's Whole stack row (mb-cm31): one of Stack #70's rows, with its members,
-  // the current row while the stack's page is open, and in view.
+  // The Pulls tab's Whole stack row (mb-cm31, mb-odt4): the first of Stack #70's rows, its
+  // members beside it at one level, the current row while the stack's page is open, and in view.
   const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
   const NAV = `(() => {
     const whole = ${WHOLE};
     if (whole === null) return null;
-    // The stack's rows: the second-level items between its stack's row and the next row
-    // a level out, the Whole stack row's among them.
+    // The stack's rows: the second-level items after its stack's row, its Whole stack row
+    // first, then its members, to the next row a level out.
     const members = [];
-    let item = document.querySelector('#tab-pulls .github-pulls-stack-row[data-stack="70"]')?.closest("li")?.nextElementSibling;
-    for (; item?.dataset.level === "2"; item = item.nextElementSibling) {
-      if (!item.classList.contains("github-pulls-whole-item")) members.push(Number(item.dataset.number));
+    const first = document.querySelector('#tab-pulls .github-pulls-stack-row[data-stack="70"]')?.closest("li")?.nextElementSibling;
+    const under = first === whole.closest("li") && first.dataset.level === "2";
+    for (let item = first?.nextElementSibling; item?.dataset.level === "2"; item = item.nextElementSibling) {
+      members.push(Number(item.dataset.number));
     }
     const view = document.querySelector(".tree-content").getBoundingClientRect();
     const box = whole.getBoundingClientRect();
     return {
       address: location.pathname,
-      text: whole.textContent,
+      text: whole.querySelector(".github-pulls-whole-title")?.textContent ?? null,
+      under,
       href: whole.getAttribute("href"),
       current: whole.getAttribute("aria-current"),
       selected: whole.classList.contains("selected"),
@@ -455,13 +767,13 @@ try {
   const nav = await evaluate(NAV);
   measured.nav = { open: nav };
   check(
-    "the Pulls tab's Whole stack row is one of Stack #70's rows and links to its page",
-    nav !== null &&
+    "the Pulls tab's Whole stack row is the first of Stack #70's rows, its members beside it, and links to its page",
+    nav?.under &&
       nav.text === "Whole stack" &&
       nav.href === "/stack/70" &&
       nav.members.length > 0 &&
       nav.members.every((number) => [10, 8].includes(number)) &&
-      nav.place.endsWith(`/${nav.members.length + 1}`),
+      nav.place === `1/${nav.members.length + 1}`,
     JSON.stringify(nav),
   );
   check(
@@ -508,6 +820,52 @@ try {
     JSON.stringify(measured.nav),
   );
   await shot(`stack-70-whole-row`);
+  // The Whole stack row's change line and the chevron after it open the stack's changed
+  // files under it (mb-odt4): the files the page's Diff summary lists, the same rows in the
+  // same order, and the press opens no page.
+  const SUMMARY_ROWS = `[...document.querySelectorAll(".github-pull-stack-page .github-pull-summary .changed-file-row[data-id]")].map((row) => row.dataset.id)`;
+  const NAV_ROWS = `[...document.querySelectorAll('#tab-pulls .github-pulls-whole-item[data-level="2"] > .github-pull-files .changed-file-row[data-id]')].map((row) => row.dataset.id)`;
+  // The walk above opened the stack's page again. The address and the row's mark move at
+  // once, but the pane holds the outgoing page while the incoming one mounts in its stage
+  // (`beginPreviewNavigation` in static/app.js, `preview-navigation-pending`), so for a
+  // moment the document holds two stack pages, and `pageReady` alone would find the
+  // outgoing one, whose Diff summary is about to go with it. Once the navigation commits
+  // there is one page, which draws its Diff summary once, closed.
+  await waitFor(
+    `!document.getElementById("preview-pane").classList.contains("preview-navigation-pending") &&
+      document.querySelectorAll(".github-pull-stack-page").length === 1 &&
+      ${pageReady}`,
+  );
+  await click(".github-pull-stack-page .github-pull-summary .diff-summary-toggle");
+  await waitFor(`${SUMMARY_ROWS}.length > 0`);
+  await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-change');
+  await waitFor(`${NAV_ROWS}.length > 0`);
+  await frames();
+  const stackFiles = {
+    summary: await evaluate(SUMMARY_ROWS),
+    nav: await evaluate(NAV_ROWS),
+    address: await evaluate("location.pathname"),
+    expanded: await evaluate(`${WHOLE}.getAttribute("aria-expanded")`),
+    // The files hang under the Whole stack row's item, a level in from it.
+    levels: await evaluate(
+      `[${WHOLE}.getAttribute("aria-level"), document.querySelector('#tab-pulls .github-pulls-whole-item > .github-pull-files .changed-file-row')?.getAttribute("aria-level") ?? null]`,
+    ),
+    members: (await evaluate(NAV))?.members ?? null,
+  };
+  measured.nav.files = stackFiles;
+  check(
+    "a press on the Whole stack row's change line lists the stack's files under it, the Diff summary's own, and opens no page",
+    stackFiles.nav.length > 0 &&
+      JSON.stringify(stackFiles.nav) === JSON.stringify(stackFiles.summary) &&
+      stackFiles.address === "/stack/70" &&
+      stackFiles.expanded === "true" &&
+      JSON.stringify(stackFiles.levels) === '["2","3"]' &&
+      JSON.stringify(stackFiles.members) === JSON.stringify(nav?.members),
+    JSON.stringify(stackFiles),
+  );
+  await shot(`stack-70-whole-row-files`);
+  await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-change');
+  await waitFor(`${WHOLE}.getAttribute("aria-expanded") === "false"`);
 
   await send("Page.navigate", { url: `${base}/stack/71` });
   await waitFor(pageReady);

@@ -142,19 +142,27 @@ $ node tests/dom/pulls-nav-session.js
       "focus on": "Stack #286",
       "address": "/view/"
     },
-    "Space on a stack's Whole stack row opens the stack's page": {
+    "Space on a stack's Whole stack row opens the stack's changed files": {
       "handled": true,
       "did": [
-        "the shell opened /stack/286, pushing"
+        "opened Stack #286's files"
       ],
       "focus on": "Whole stack of #286",
-      "address": "/stack/286"
+      "address": "/view/"
     },
-    "holding Space on it opens nothing more": {
+    "holding Space on it leaves them open": {
       "handled": true,
       "did": [],
       "focus on": "Whole stack of #286",
-      "address": "/stack/286"
+      "address": "/view/"
+    },
+    "Space again closes them": {
+      "handled": true,
+      "did": [
+        "closed Stack #286's files"
+      ],
+      "focus on": "Whole stack of #286",
+      "address": "/view/"
     },
     "J on it is the list's": {
       "handled": true,

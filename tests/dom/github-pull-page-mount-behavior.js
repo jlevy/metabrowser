@@ -1640,23 +1640,21 @@ async function tabKeys(page) {
   steps.push(result("g"));
   arrive("files");
   steps.push(`the route arrives: ${shown()}`);
-  // Changes numbers Browse code alone: the page has no Refresh of its own, and the Pulls
-  // tab's Refresh runs the page's `refresh` (mb-ablv), which names the comparison on screen.
+  // Changes numbers Browse code alone: the page has no Refresh of its own, and the
+  // navigation's Refresh runs the page's `refresh` as its part (static/refresh-plan.js),
+  // which names the comparison on screen.
   steps.push(`numbered on Changes: ${numbered()}`);
-  /** What the page's handle told a listener of whether it can refresh, as the Pulls tab hears. */
-  const heard = [];
-  handle.onRefreshChange(() => heard.push(handle.canRefresh()));
-  /** Press the Pulls tab's Refresh as it runs the page's, and say what the page asked for. */
+  /** Press the navigation's Refresh as it runs the page's, and say what the page asked for. */
   const pullsRefresh = async () => {
     asked.length = 0;
     const offered = handle.canRefresh();
-    handle.refresh();
+    void handle.refresh();
     for (const callback of [...timers.values()]) {
       callback();
     }
     timers.clear();
     await settle();
-    return `the Pulls tab's Refresh, the page ${offered ? "offering" : "not offering"} one: ${asked.join("; ") || "nothing asked"}`;
+    return `the navigation's Refresh, the page ${offered ? "offering" : "not offering"} one: ${asked.join("; ") || "nothing asked"}`;
   };
   // A refresh whose answer serves the pull request's head repaints Browse code as a link:
   // 1 now opens the code in the page, the action of this paint, where it asked the server
@@ -1677,10 +1675,9 @@ async function tabKeys(page) {
   steps.push(await pullsRefresh());
   steps.push(`numbered after a refresh with no pin: ${numbered()}`);
   steps.push(await numberResult("1"));
-  // While a refresh runs the page offers none, so the Pulls tab's Refresh asks it for
-  // nothing, and the page says so to the Pulls tab, which waits while the list cannot
-  // refresh either. Code on the pull request's own head offers nothing more: the server
-  // follows that head, so no switch to it is numbered.
+  // While a refresh runs the page offers none, so the navigation's Refresh asks it for
+  // nothing. Code on the pull request's own head offers nothing more: the server follows
+  // that head, so no switch to it is numbered.
   answer = atHead;
   steps.push(await pullsRefresh());
   steps.push(`numbered with the code on the head: ${numbered()}`);
@@ -1703,7 +1700,6 @@ async function tabKeys(page) {
   steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
   arrive("files");
   await settle();
-  steps.push(`the page told the Pulls tab it can refresh: ${heard.join(", ")}`);
   steps.push(await numberResult("2"));
   // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
@@ -2601,10 +2597,10 @@ async function mountScripted(page, tab, options = {}) {
 }
 
 // The page has no Refresh of its own (mb-ablv): a status line that says what to retry or
-// fetch ends in its remedy, Retry or Fetch, which runs what the Pulls tab's Refresh runs of
+// fetch ends in its remedy, Retry or Fetch, which runs what the navigation's Refresh runs of
 // the page. A pressed Retry waits, muted, until the refresh it asked for runs, and its failure
 // and it then go. Each step says the status line, its remedy, whether the note shows, what
-// the page asked the server, and whether the page offers the Pulls tab a refresh.
+// the page asked the server, and whether the page offers the navigation's Refresh one.
 async function statusRemedies(page) {
   const steps = [];
   const posts = [];
@@ -2671,7 +2667,7 @@ async function statusRemedies(page) {
         `remedy ${remedy === null ? "none" : `${remedy.textContent}${waiting}`}; ` +
         `note ${note.hidden ? "none" : "shown"}; ` +
         `asked ${posts.splice(0).join(", ") || "nothing"}; ` +
-        `the Pulls tab ${handle.canRefresh() ? "may refresh it" : "has nothing to refresh"}`,
+        `Refresh ${handle.canRefresh() ? "may refresh it" : "has nothing to refresh"}`,
     );
   };
   // A record still current whose last refresh failed: nothing will ask again by itself, so
@@ -3970,7 +3966,7 @@ async function run() {
     const opened = mounted.length;
     const onScreen = mounted.at(-1);
     const displayed = { base: onScreen.left, head: onScreen.right };
-    // The page has no Refresh of its own: the Pulls tab's Refresh runs the page's `refresh`,
+    // The page has no Refresh of its own: the navigation's Refresh runs the page's `refresh`,
     // which names the comparison on screen (mb-ablv).
     assert.ok(handle.canRefresh(), "fresh Files offers explicit repair");
     handle.refresh();

@@ -51,6 +51,7 @@ BUTTON_CLASS_ALLOWLIST = {
     "agents-sort": "the session table's sortable column headers",
     # The file bar is itself the .disclosure-toggle row; this button is its labelled hit area.
     "diff-file-toggle": "the label of a diff file bar, which carries .disclosure-toggle",
+    "diff-file-view": "the diff file’s quiet text action, also used as a link",
     # A table's header: its label sorts, and its ▾ opens the column's menu, in the header's
     # label type (docs/design-system.md, "Data Tables").
     "table-sort": "a sortable column's header label, which sorts it",
@@ -64,8 +65,6 @@ BUTTON_CLASS_ALLOWLIST = {
 # A shell button whose class is not a primitive, and why that is right. Each is a control of
 # its own surface, documented at its rule in docs/design-system.md, and none redraws a family.
 SHELL_BUTTON_CLASS_ALLOWLIST = {
-    # "Refresh, Retry, and Reload Page", its one exception: the line is the control.
-    "source-freshness-label": "a mirror's freshness line, whose age refreshes when pressed",
     # "View Headers": a crumb of the eyebrow's path is a step of a path, not a button's box.
     "folder-crumb": "a view header's folder crumb",
 }
