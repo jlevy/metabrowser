@@ -1,0 +1,28 @@
+created_at: 2026-11-26T22:53:45.200Z
+ops:
+  - bead_id: is-01m8cs8jdw8yh0hvdy6449jm9j
+    block: |-
+      ⟦tbd⟧
+      `mb-ih4a` · epic · in_progress · P1
+      Children: 7 (1 ready)
+      Bead: `tbd show mb-ih4a`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 83946ca1-f902-4d2b-8df2-2988e9b02f48
+    kind: splice_description
+  - bead_id: is-01m8ctvgrty5asxe2xh62gzn8v
+    block: |-
+      ⟦tbd⟧
+      `mb-wb0x` · epic · in_progress · P2
+      Spec: [plan-2026-11-26-structured-data-views.md](https://github.com/jlevy/metabrowser/blob/codex/softschema-folder-tables/docs/project/specs/active/plan-2026-11-26-structured-data-views.md)
+      Children: 5 (2 ready)
+      Bead: `tbd show mb-wb0x`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 7acc64fa-fd5d-4b37-b24d-9f321abb3ea6
+    kind: splice_description
+provider: linear
+run_id: 01m8d116b03w2gqtmw5ez3b325
+type: in
