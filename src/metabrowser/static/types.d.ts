@@ -4978,6 +4978,7 @@ declare global {
 
   var hljs: {
     getLanguage(language: string): unknown;
+    registerLanguage(name: string, factory: () => Record<string, unknown>): void;
     highlight(
       source: string,
       options: { language: string; ignoreIllegals: boolean },

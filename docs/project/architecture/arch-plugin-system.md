@@ -127,7 +127,8 @@ gives the reasons.
 
 ## Classification
 
-`api_file` in `server.py` decides a file’s kind in this order:
+`_api_file_impl` in `server.py`, behind the `/api/file` route `api_file`, decides a
+file’s kind in this order:
 
 1. A directory is `folder`. A folder view that declares `offer` is served only where its
    predicate accepts the folder, off the event loop, and an offered default becomes the
@@ -477,6 +478,8 @@ for core modules that is not part of the SDK.
 
 The steps below take a format from unknown to fully supported.
 Each is optional except the kind and one view.
+A programming language needs only steps 6 and 7, and
+[Adding a Language](../../adding-a-language.md) is the recipe for them.
 
 1. **Claim the kind.** Add a `[[kind]]` rule to a plugin manifest.
    An extension or basename is cheapest; a content predicate is for a format that shares

@@ -93,6 +93,7 @@ from metabrowser.inventory_engine.contract import (
 )
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
 from metabrowser.wire_models import validate_rollup_result
+from tests.inventory_harness import next_registry_revision
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-inventory-provider.md"
@@ -514,11 +515,7 @@ def test_provider_derives_registry_identity_from_supplied_content(
     tmp_path: Path,
 ) -> None:
     registry_document = load_file_type_registry_document()
-    changed_registry = registry_document.replace(
-        "registry_revision = 4",
-        "registry_revision = 5",
-        1,
-    )
+    changed_registry = next_registry_revision(registry_document)
 
     async def identity(config: InventoryConfig) -> EngineVersion:
         handle = await _open_settled_provider(provider_factory, tmp_path, config=config)
