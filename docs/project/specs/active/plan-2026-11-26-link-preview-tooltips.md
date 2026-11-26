@@ -191,6 +191,11 @@ fit (Follow-ups).
   the one renderer, data in and escaped markup out.
 - `window.MetabrowserLinkPreviews.INTENT_MS`: the intent delay, the tree’s
   `FILE_PREFETCH_HOVER_DELAY_MS`.
+- A plugin reaches these through the resolver’s runtime, which
+  `metabrowser.loadRepositoryLinks()` already gives it, and never through the window
+  global (AGENTS.md, Browser and Plugin Boundary): `previewLink`, `forgetPreview`, and
+  `disposePreviews`, each a no-op where the cards are not loaded
+  ([docs/plugins.md](../../../plugins.md)).
 - `MetabrowserGitPanel.commitSummary(revision, {signal})`: the subject, author, time,
   and whether the repository has it, from the panel’s own cache.
 - `MetabrowserGitPanel.prefetchCommit(revision)`: the commit prepared as a hover on its
@@ -203,7 +208,7 @@ fit (Follow-ups).
 - [x] The design-system rule, the card, the registry, and the renderer, with a
   browserless session, a golden, and a parity row (`mb-wcya`)
 - [x] The providers and prefetch for each kind (`mb-6wiy`)
-- [ ] Every surface registers its links: the resolver’s `enhance`, the Markdown
+- [x] Every surface registers its links: the resolver’s `enhance`, the Markdown
   enhancer, and the rendered diff; authored titles move into the card; the working-tree
   tooltip goes
 - [ ] A Chrome check of the card’s placement, delay, and content on a real page
