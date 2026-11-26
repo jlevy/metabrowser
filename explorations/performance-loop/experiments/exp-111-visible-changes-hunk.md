@@ -293,10 +293,10 @@ experiment:
 ---
 # Exp-111: Separate the First Visible Changes Hunk From File-Card Readiness
 
-The first Changes click on PR #888 reached visible source in 9.75 s. Revisiting the same
-tab showed source in 324 ms, 33 ms after file-card readiness.
-PR #887 showed its description at 263 ms while the whole Conversation view still took
-5.21 s to clear its readiness check.
+The first Changes click on public pull request 888 reached visible source in 9.75 s.
+Revisiting the same tab showed source in 324 ms, 33 ms after file-card readiness.
+public pull request 887 showed its description at 263 ms while the whole Conversation
+view still took 5.21 s to clear its readiness check.
 These are distinct clocks.
 
 The origin store’s startup acquisition took 32.2 s, including 30.4 s for the wildcard
