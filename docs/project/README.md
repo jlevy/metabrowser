@@ -72,6 +72,10 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [SoftSchema collection tables](specs/active/plan-2026-11-26-softschema-collection-tables.md):
+  a draft for opening a folder of SoftSchema records as linked tables, one per contract,
+  from a cached collection index that a SoftSchema collection API builds and a
+  background worker keeps current, so one bad record costs a row, never the table
 - [Whole-stack review](specs/active/plan-2026-11-24-stack-review.md): a page for a
   stack’s whole change, one consolidated diff with Docs over it; collection references
   to a pull request, a file as one changes it, and a commit; a stack’s guide in a
@@ -215,6 +219,10 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [Tables over folders of SoftSchema records](research/research-2026-11-26-softschema-collection-tables.md):
+  the SoftSchema format, how real knowledge bases lay out records and schemas, measured
+  costs of reading and validating thousands of records, and which parts of Paraverse’s
+  browser Metabrowser already has
 - [Drawing dense, deep treemaps in the browser](research/research-2026-11-22-dense-treemap-rendering.md):
   how desktop disk-usage tools and web libraries draw treemaps down to single files, and
   measured canvas, DOM, and hit-testing costs in Chrome and WKWebView
