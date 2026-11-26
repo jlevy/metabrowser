@@ -1,7 +1,7 @@
 """Spike: the worker in the plan's shape, shipped by the host and run on a plugin environment.
 
-Run as ``<env-python> -I -B runtime_worker.py RUNTIME_DIR`` with the request pipe on
-descriptor 3 and the reply pipe on descriptor 4. It puts ``RUNTIME_DIR`` first on
+Run as ``<env-python> -I -B runtime_worker.py RUNTIME_DIR REQUEST_FD REPLY_FD``.
+It puts ``RUNTIME_DIR`` first on
 ``sys.path``, so plugin code imports the host's runtime as ``metabrowser``, points
 descriptor 0 at ``/dev/null`` and descriptor 1 at stderr, ignores SIGINT, and keeps the
 protocol descriptors out of every subprocess plugin code starts.
@@ -33,13 +33,11 @@ from urllib.parse import parse_qs
 Header = dict[str, Any]
 Reply = tuple[Header, bytes]
 
-_requests = os.fdopen(3, "rb")
-_replies = os.fdopen(4, "wb", buffering=0)
-os.set_inheritable(3, False)
-os.set_inheritable(4, False)
-_devnull = os.open(os.devnull, os.O_RDONLY)
-os.dup2(_devnull, 0)
-os.dup2(2, 1)
+_request_fd, _reply_fd = map(int, sys.argv[2:4])
+os.set_inheritable(_request_fd, False)
+os.set_inheritable(_reply_fd, False)
+_requests = os.fdopen(_request_fd, "rb")
+_replies = os.fdopen(_reply_fd, "wb", buffering=0)
 sys.stdout = sys.stderr
 signal.signal(signal.SIGINT, signal.SIG_IGN)
 sys.path.insert(0, sys.argv[1])

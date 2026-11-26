@@ -876,6 +876,13 @@ its start confined against 72 ms bare.
 - That an in-place `uv tool upgrade` under a running server pairs an old host with new
   runtime files; it follows from the worker being started from disk each time.
 
+### macOS Follow-Up
+
+The [macOS worker spike](../../../explorations/plugin-worker-spike/README.md#results)
+records the sandbox runs on Apple Silicon, including all three downstream entry points,
+the workflow hooks, descriptor inheritance, and the hardening and watchdog checks.
+The installed app’s TCC and folder-stop paths still need live evidence.
+
 ## References
 
 - [Plugin Authoring](../../plugins.md)

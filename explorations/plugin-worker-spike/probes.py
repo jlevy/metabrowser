@@ -134,7 +134,7 @@ def lifecycle(bench: Bench) -> Result:
     worker.hang_up()
     time.sleep(3.0)
     still_running = alive(worker.pid)
-    os.waitpid(worker.pid, 0)
+    worker.wait()
     result["request pipe closed while an async hook blocks the loop"] = {
         "worker running 3 s later": still_running,
         "exited after s": round(time.perf_counter() - hung_up, 1),
@@ -146,7 +146,7 @@ def lifecycle(bench: Bench) -> Result:
     time.sleep(0.5)
     hung_up = time.perf_counter()
     worker.hang_up()
-    os.waitpid(worker.pid, 0)
+    worker.wait()
     result["request pipe closed while a synchronous hook runs"] = {
         "exited after ms": round((time.perf_counter() - hung_up) * 1000, 1)
     }
@@ -159,7 +159,7 @@ def lifecycle(bench: Bench) -> Result:
     worker.hang_up()
     time.sleep(2.0)
     still_running = alive(worker.pid)
-    os.waitpid(worker.pid, 0)
+    worker.wait()
     result["request pipe closed while a hook holds the interpreter lock in native code"] = {
         "worker running 2 s later": still_running,
         "exited after s": round(time.perf_counter() - hung_up, 1),
@@ -194,7 +194,7 @@ def lifecycle(bench: Bench) -> Result:
     if child_survived:
         os.kill(child, signal.SIGKILL)
 
-    # A forked child writes to descriptor 4, which an exec'd one cannot reach.
+    # A forked child writes to the reply descriptor, which an exec'd one cannot reach.
     worker, _ = bench.start()
     readers = threading.active_count()
     try:

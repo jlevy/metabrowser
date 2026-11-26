@@ -21,15 +21,8 @@ for the PDF render child, and starts from that profile's grants:
 ``network`` set to ``internet`` adds outbound IP and the system resolver's socket; a
 Unix socket elsewhere stays refused. ``mach`` names Mach services the child may look up,
 which ``getpwuid`` and the resolver need on macOS and Linux has no counterpart for.
-``sbpl`` appends raw rules, which only the probe uses, to replay grants it learned.
+The profile only renders named grants. The probe reports denials for inspection.
 
-``trace`` turns every refusal the profile would make into an allowance that the kernel
-reports to the unified log, so one run lists what a program needs beyond its grants
-(``macos_probe.py`` reads that log). A traced child is not confined.
-
-Standard library only. Nothing here has run yet: it was written on Linux, from the PDF
-profile and Apple's sandbox profile language as the system's own profiles in
-``/System/Library/Sandbox/Profiles`` use it.
 
 Usage:
     confine_macos.py probe
@@ -37,8 +30,7 @@ Usage:
     confine_macos.py run POLICY_JSON -- ARGV...
 
 ``POLICY_JSON`` is ``{"read": [paths], "write": [paths], "network": "none" | "internet",
-"processes": "confined" | "none", "exec": [paths], "mach": [names], "sbpl": [rules],
-"trace": false}``. As on Linux, ``network`` defaults to ``none`` and ``processes`` to
+"processes": "confined" | "none", "exec": [paths], "mach": [names]}``. As on Linux, ``network`` defaults to ``none`` and ``processes`` to
 ``confined``; ``exec`` defaults to ``ARGV[0]`` under ``run``.
 """
 
@@ -93,12 +85,7 @@ def profile(policy: dict[str, Any]) -> str:
     writes = _with_real_paths(policy.get("write", []))
     processes = str(policy.get("processes", "confined"))
     network = str(policy.get("network", "none"))
-    rules = ["(version 1)"]
-    if policy.get("trace"):
-        # A later rule wins, so everything the rules below do not allow reaches this one.
-        rules.append("(allow (with report) default)")
-    else:
-        rules.append("(deny default)")
+    rules = ["(version 1)", "(deny default)"]
     read_rule = _paths("subpath", [*reads, *SYSTEM_READ_ROOTS])
     rules += [
         "(allow file-read-metadata)",
@@ -130,7 +117,6 @@ def profile(policy: dict[str, Any]) -> str:
     mach = sorted(set(policy.get("mach", [])))
     if mach:
         rules.append(f"(allow mach-lookup {_paths('global-name', mach)})")
-    rules += [str(rule) for rule in policy.get("sbpl", [])]
     return "\n".join(rules)
 
 

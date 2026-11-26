@@ -2,7 +2,7 @@
 
 Runs with the host Metabrowser's interpreter. It assembles the runtime folder from this
 host's own files, spawns ``runtime_worker.py`` with the plugin environment's interpreter
-through ``posix_spawn``, with the request pipe on descriptor 3 and the reply pipe on 4,
+through ``subprocess.Popen``, passing the request and reply pipe descriptors as arguments,
 and answers the worker's own requests (built-in adapter detection, agent-log charts).
 
 Usage: host_runtime.py ENV_PYTHON REPO_ROOT PROCESS_SPEC FIXTURE_DIR OUT_DIR
@@ -10,6 +10,7 @@ Usage: host_runtime.py ENV_PYTHON REPO_ROOT PROCESS_SPEC FIXTURE_DIR OUT_DIR
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import shutil
@@ -28,6 +29,9 @@ import metabrowser
 from metabrowser.logutil.parsing import detect_adapter
 from metabrowser.projections import extract_agent_charts_cached
 
+# The real host registers these during built-in plugin discovery.
+importlib.import_module("metabrowser.builtin_plugins.agents.adapters")
+
 HERE = Path(__file__).parent
 Header = dict[str, Any]
 Frame = tuple[Header, bytes]
@@ -45,6 +49,10 @@ def assemble_runtime(out_dir: Path) -> Path:
     return runtime
 
 
+def _open_worker_log(path: str, flags: int) -> int:
+    return os.open(path, flags, 0o600)
+
+
 class Worker:
     def __init__(
         self, python: str, root: Path, runtime: Path, log: Path, prefix: tuple[str, ...] = ()
@@ -53,24 +61,31 @@ class Worker:
         self.root = root.resolve()
         req_r, self._req_w = os.pipe()
         self._rep_r, rep_w = os.pipe()
-        log_fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         env = {"HOME": os.environ["HOME"], "PATH": "/usr/bin:/bin", "PYTHONNOUSERSITE": "1"}
         self.started = time.perf_counter()
-        command = [*prefix, python, "-I", "-B", str(HERE / "runtime_worker.py"), str(runtime)]
-        self.pid = os.posix_spawn(
-            command[0],
-            command,
-            env,
-            file_actions=[
-                (os.POSIX_SPAWN_OPEN, 0, os.devnull, os.O_RDONLY, 0),
-                (os.POSIX_SPAWN_DUP2, log_fd, 1),
-                (os.POSIX_SPAWN_DUP2, log_fd, 2),
-                (os.POSIX_SPAWN_DUP2, req_r, 3),
-                (os.POSIX_SPAWN_DUP2, rep_w, 4),
-            ],
-        )
-        for fd in (req_r, rep_w, log_fd):
-            os.close(fd)
+        command = [
+            *prefix, python, "-I", "-B", str(HERE / "runtime_worker.py"), str(runtime),
+            str(req_r), str(rep_w),
+        ]  # fmt: skip
+        try:
+            with open(log, "ab", opener=_open_worker_log) as stderr:
+                self._process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stderr,
+                    stderr=stderr,
+                    cwd="/",
+                    env=env,
+                    pass_fds=(req_r, rep_w),
+                )
+        except OSError:
+            os.close(self._req_w)
+            os.close(self._rep_r)
+            raise
+        finally:
+            os.close(req_r)
+            os.close(rep_w)
+        self.pid = self._process.pid
         self._out = os.fdopen(self._req_w, "wb", buffering=0)
         self._in = os.fdopen(self._rep_r, "rb")
         self._next = 0
@@ -95,6 +110,7 @@ class Worker:
                 self._pending.pop(int(header["id"])).set_result((header, body))
         # The worker is gone: fail what it will never answer, rather than leave each
         # caller waiting out its timeout.
+        self._in.close()
         for rid in list(self._pending):
             self._pending.pop(rid).set_exception(EOFError("the worker closed its reply pipe"))
 
@@ -138,9 +154,9 @@ class Worker:
     def close(self) -> Header:
         started = time.perf_counter()
         self._out.close()
-        _, status = os.waitpid(self.pid, 0)
+        status = self.wait()
         return {
-            "status": os.waitstatus_to_exitcode(status),
+            "status": status,
             "ms": (time.perf_counter() - started) * 1000,
         }
 
@@ -148,12 +164,14 @@ class Worker:
         """Close the request pipe and return at once, as a server that died leaves it."""
         self._out.close()
 
+    def wait(self, timeout: float | None = None) -> int:
+        status = self._process.wait(timeout=timeout)
+        self._out.close()
+        return status
+
     def kill(self) -> None:
-        try:
-            os.kill(self.pid, signal.SIGKILL)
-            os.waitpid(self.pid, 0)
-        except (ProcessLookupError, ChildProcessError):
-            return
+        self._process.kill()
+        self.wait()
 
 
 def hooks_of(plugin_dir: str) -> dict[str, str]:

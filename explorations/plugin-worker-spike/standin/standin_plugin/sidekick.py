@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
@@ -77,11 +78,11 @@ def spawn_child(request: Request) -> dict[str, Any]:
 
 
 def fork_writes_protocol(request: Request) -> dict[str, Any]:
-    """A forked child inherits descriptors 3 and 4, which an exec'd one does not."""
+    """A forked child inherits the protocol descriptors, which an exec'd one does not."""
     pid = os.fork()
     if pid == 0:
         try:
-            os.write(4, b"garbage from a forked child\n")
+            os.write(int(sys.argv[3]), b"garbage from a forked child\n")
             code = 0
         except OSError:
             code = 7
@@ -120,7 +121,7 @@ def reach(request: Request) -> dict[str, str]:
         "write beside that file": _attempt(lambda: _write(query["outside"] + ".probe")),
         "write in its scratch folder": _attempt(lambda: _write(query["scratch"] + "/probe")),
         "connect over TCP": _attempt(lambda: _connect(query["port"])),
-        "start a system tool": _attempt(lambda: subprocess.run(["/bin/true"], check=True)),
+        "start a system tool": _attempt(lambda: subprocess.run(["true"], check=True)),
     }
 
 

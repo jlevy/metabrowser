@@ -7,10 +7,11 @@
 **Status:** Draft, awaiting the owner’s answers to the eleven Key Decisions below.
 Epic `mb-xbw3` tracks every item as a bead.
 No product code is changed.
-Spikes proved the worker transport, a host-shipped runtime, and, on Linux, a worker and
-the repository’s own PDF render child confined by the kernel; the macOS half of
-confinement is designed from the PDF preview’s existing sandbox and is not yet run for a
-plugin worker.
+The worker spike ran under kernel confinement on Linux and macOS. The Linux spike also
+ran the PDF render child behind the same prefix.
+The macOS spike loaded all three downstream plugins and exercised the workflow plugin’s
+process and log hooks.
+See the [spike results](../../../../explorations/plugin-worker-spike/README.md#results).
 
 ## Overview
 
@@ -604,16 +605,17 @@ can be granted one need at a time without giving up the rest.
 - **D. As B, but `network` or `write` forces `full`.** Also the second revision’s.
   - Pros: two authorities are simple to explain.
   - Cons: a plugin that only needs the network gets the whole account, although both
-    platforms can grant the network alone (run on Linux; `network-outbound` on macOS is
-    not run).
+    platforms can grant outbound IP without opening the worker’s file grants (observed
+    on Linux and macOS).
 - **E. Full access, bound to content** (Key Decision 2, Option C).
   - Pros: nothing changed runs unseen.
   - Cons: prompts on nearly every pull, which nobody reads.
 
-**Recommendation: B,** conditional on one measurement before Phase 4: the three
-downstream plugins run under the macOS profile with grants a consent can state in a
-sentence (`mb-gmut`). If they cannot, fall back to A for macOS and say so in the
-consent, keeping B where the backend holds.
+**Recommendation: B.** The macOS spike loaded all three downstream plugins and ran the
+workflow hooks with the default grants.
+The consent can name the environment, repository and served files it can read, and the
+private scratch folder it can write.
+The macOS app’s privacy attribution and the full app stop path still need an app test.
 
 **Affects:** Isolation, Trust and Consent, Repository Plugins (Decisions), Phase 0 and
 Phase 4.
@@ -899,25 +901,25 @@ a foreign interpreter needs the prefix.
 #### The Enforcement Matrix
 
 What enforces each property, by platform.
-The macOS column is what a deny-by-default profile does, as `macos_profile` is for the
-PDF child. `tests/test_pdf_preview_sandbox.py` checks a write, a connection, a fork, an
-exec, and a read there; the rest of that column is not run, and no profile for a plugin
-worker is written yet.
-The Linux column was observed in `confine_probe.py` and `probes.py` on kernel 6.18,
-Landlock ABI 7, x86-64, as root, which both mechanisms bind like any account.
+The macOS observations are from the
+[worker probe](../../../../explorations/plugin-worker-spike/README.md#results) on macOS
+26.5.2, Apple Silicon.
+The separate PDF preview coverage is in `tests/test_pdf_preview_sandbox.py`. The Linux
+column was observed in `confine_probe.py` and `probes.py` on kernel 6.18, Landlock ABI
+7, x86-64, as root, which both mechanisms bind like any account.
 
 | Property | macOS, `sandbox-exec` | Linux, Landlock and seccomp | Observed on Linux |
 | --- | --- | --- | --- |
-| Read a file | A `file-read*` allowlist | Landlock, kernel 5.13 | Refused outside the grants; that a path exists stays visible |
-| Write a file | A `file-write*` allowlist | Landlock | Refused in a read-only grant and outside the grants |
-| Network: none | `network*` denied, Unix sockets included | The filter fails `socket` and `io_uring_setup`; Landlock adds TCP from 6.7 | TCP, UDP, and a Unix socket by path refused |
-| Network: internet | `network-outbound` | The filter admits the two internet families only | TCP and UDP allowed; a Unix socket by path refused |
-| Start a program | `process-fork` and `process-exec` rules | Landlock’s exec right by path; the filter for `fork` and `clone` | With `processes: none`, a tool and a fork refused and a thread started; otherwise a tool runs, confined too |
-| Signals and other processes | Denied by default | Landlock scopes signals and abstract sockets from 6.12, and ptrace to its own domain | A signal to the parent refused |
-| System services | Mach lookups denied unless named | The keyring, `bpf`, and `perf_event_open` fail in the filter | The keyring call refused |
+| Read a file | A `file-read*` allowlist refused reading and listing outside the grants. File metadata is allowed. | Landlock, kernel 5.13 | Refused outside the grants; that a path exists stays visible |
+| Write a file | A `file-write*` allowlist refused writes in read-only grants and outside the grants. | Landlock | Refused in a read-only grant and outside the grants |
+| Network: none | TCP connect, UDP send, DNS, and a Unix socket connection refused. Creating a UDP socket succeeded. | The filter fails `socket` and `io_uring_setup`; Landlock adds TCP from 6.7 | TCP, UDP, and a Unix socket by path refused |
+| Network: internet | `network-outbound` admitted TCP, UDP send, and DNS. The Unix socket outside the grants remained refused. | The filter admits the two internet families only | TCP and UDP allowed; a Unix socket by path refused |
+| Start a program | Default rules allowed a system tool and fork. With `processes: none`, both were refused and threads still worked. | Landlock’s exec right by path; the filter for `fork` and `clone` | With `processes: none`, a tool and a fork refused and a thread started; otherwise a tool runs, confined too |
+| Signals and other processes | A signal to the parent was refused. | Landlock scopes signals and abstract sockets from 6.12, and ptrace to its own domain | A signal to the parent refused |
+| System services | `getpwuid` needed libinfo. POSIX semaphore creation was refused. The tested hooks completed without either grant. | The keyring, `bpf`, and `perf_event_open` fail in the filter | The keyring call refused |
 | Memory | No address-space limit; the parent watches resident size | `RLIMIT_AS`, and the same watch | Not run here |
-| Inherited descriptors | Usable | Usable | Usable |
-| Leaving the confinement | Refused | Refused; both survive `exec` and are inherited | Not run here |
+| Inherited descriptors | `subprocess.Popen(pass_fds=...)` carried both protocol pipes through `sandbox-exec`. A same-number `posix_spawn` dup2 left a close-on-exec pipe closed. | Usable | Usable |
+| Leaving the confinement | A nested `sandbox-exec` failed with `EPERM`. | Refused; both survive `exec` and are inherited | Not run here |
 
 **The hole a filter on `socket` alone leaves.** Landlock does not judge a connection to
 a Unix socket by its path, and `IORING_OP_SOCKET` makes a socket with no `socket` call.
@@ -936,8 +938,9 @@ What it does not hold:
   ([Protocol](#protocol)).
 - **A granted folder is granted whole.** A confined worker can read every file in the
   clone and the served folder, including ones no plugin needs.
-- **macOS privacy grants** do not widen a confined child: the profile refuses the read
-  before a grant is consulted (inferred, not run).
+- **macOS privacy grants.** The profile refused reads outside its grants in the CLI
+  probe. Whether the installed app’s privacy grants reach the worker and when TCC checks
+  a denied read remain open.
 - **A program started in a session of its own** outlives a group kill, unless the policy
   refuses new processes.
 - **Linux before 5.13,** a kernel with Landlock turned off, an architecture the filter
@@ -947,7 +950,9 @@ What it does not hold:
 
 Cost on Linux: the prefix adds one interpreter start, about 20 ms to a trivial child and
 to a worker’s start, and 37 ms to one PDF render (`results/` in the spike folder).
-Unmeasured on macOS for a worker; the PDF probe took 0.10 to 0.16 s there.
+The [macOS result](../../../../explorations/plugin-worker-spike/README.md#results)
+records both sets of startup timings.
+The PDF probe took 0.10 to 0.16 s on macOS.
 
 #### What a Manifest Declares
 
@@ -994,19 +999,23 @@ SQLite opened read-write in the served folder, Git writing its index, and
   (`ServerSupervisor`). A child that leads its own group is not in it, so the server
   stops its children when it is told to stop, and each child’s lifeline ends it when the
   server is killed outright.
-  The lifeline exits from the thread that reads the pipe, so no hook can hold it.
-  A live test stops a folder and checks that no child remains.
+  The watchdog must hold the server lifeline in a separate process, so a worker blocked
+  in native code cannot hold it.
+  The macOS watchdog probe confirmed the test group exited after its server was killed.
+  A live app test still needs to stop a folder and check that no worker remains.
 - **Privacy grants.** A worker with authority `full` is a descendant of the app, and
   macOS attributes a descendant’s file access to the app (inferred), so it can read what
   the user let Metabrowser read, and its consent says so.
   A confined worker cannot use those grants outside its own.
 - **Signing and the hardened runtime.** Nothing is added to the signed bundle.
   `sandbox-exec` is the system’s, and the worker is the plugin environment’s
-  interpreter, a separate executable the app’s hardened runtime and library validation
-  do not cover (inferred; servers and the PDF child run the same way).
-- **A sandboxed `metab`.** On macOS a server started inside an agent’s sandbox may not
-  be able to nest another, which the PDF probe already allows for; its probe then finds
-  no backend and a clone trusted as `confined` loads no plugin Python there.
+  interpreter, a separate executable.
+  An ad-hoc signed, hardened-runtime Swift launcher started a host whose confined worker
+  served its hooks. The installed app’s full launch and privacy path remains to be
+  exercised.
+- **A sandboxed `metab`.** An outer macOS sandbox refused a nested `sandbox-exec`, and
+  the PDF probe reported no backend.
+  A clone trusted as `confined` loads no plugin Python when the backend is unavailable.
   That is the safe answer, and `--doctor` says why.
   On Linux both mechanisms stack, so a worker confined inside an agent’s sandbox is
   narrower still (inferred from the kernel’s documentation, not run).
@@ -1829,9 +1838,10 @@ Independent pull requests, each useful on its own:
 - [ ] The Linux backend: the Landlock and seccomp launcher behind the same probe, with a
   test that shows each refusal as `tests/test_pdf_preview_sandbox.py` does on macOS, and
   previews of untrusted PDFs on Linux as its first user (`mb-v2m7`).
-- [ ] A macOS spike: the three downstream plugins in a worker under a profile, to learn
-  which grants a full Python environment needs and what the prefix costs.
-  It decides Key Decision 11 for macOS (`mb-gmut`).
+- [x] Run the macOS worker spike against the three downstream plugins and record the
+  default grants, process and network behavior, and prefix cost (`mb-gmut`).
+- [ ] Confirm privacy attribution and restricted reads via the installed macOS app, and
+  stop a folder to verify that its supervised worker group exits (`mb-gmut`).
 - [ ] The plugin API gate: one version, Cargo’s caret rule, read from the raw TOML,
   `sdk-changes.toml`, and refusals that name the changes (`mb-jn5e`).
 - [ ] Hook response headers for in-process hooks, from an inventory test of the built-in
@@ -1989,8 +1999,8 @@ installer inside Metabrowser.
 ## Open Questions
 
 - The eleven Key Decisions above, each awaiting the owner.
-- What a worker profile on macOS must grant for a real Python environment, and whether
-  that still reads as “confined” (`mb-gmut`).
+- Whether the installed app attributes privacy access to its descendants and ends the
+  entire worker group when it stops a folder (`mb-gmut`).
 - Whether the Linux filter stays a list of refusals or becomes a list of what a Python
   worker may call; the first is what the spike ran and what `io_uring` got past.
 - Whether a page that loads a non-built-in plugin’s JavaScript should carry

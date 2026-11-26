@@ -31,10 +31,10 @@ is the plan’s:
   runtime, whatever Metabrowser version its own environment holds.
   The plan’s second revision gives the runtime an import name of its own; the mechanism
   is the same.
-- The request pipe is descriptor 3 and the reply pipe descriptor 4, both close-on-exec
-  in the worker; descriptor 0 is `/dev/null`, descriptor 1 is stderr, and SIGINT is
-  ignored. The host spawns it with `posix_spawn`, behind a confinement’s command prefix
-  when given one.
+- The host passes the protocol pipe numbers to `subprocess.Popen` with `pass_fds`. The
+  worker marks both close-on-exec.
+  Stdin is `/dev/null`, stdout goes to the stderr log, and the worker ignores SIGINT. A
+  platform confinement prefix precedes the worker command when requested.
 - The worker can ask the host something in the middle of a call (`wid` frames).
   The spike uses that for built-in adapter detection and the agent-log chart projection.
 - Hooks get a small request object with `query_params`, not a Starlette `Request`.
@@ -42,9 +42,8 @@ is the plan’s:
 What it still leaves out: the identity codec (path containment here is a plain `resolve`
 and `relative_to`), the content reader and its handle table, cancellation of an async
 handler, and live streams.
-Since Metabrowser moved its built-in adapters into the `agents` plugin, the host’s
-`host.detect_builtin` answers `unknown` unless the host has run plugin discovery, which
-`host_runtime.py` does not.
+The spike host imports Metabrowser’s built-in agent adapters so the downstream chart
+hook can ask the host to classify and project an agent log.
 
 ## Probes
 
@@ -100,17 +99,20 @@ starting from the PDF render child’s grants in
 `probes.py` runs on both.
 
 `macos_probe.py` is the spike `mb-gmut` asks for, and runs only on a Mac.
-Its `learn` probe starts the stand-in’s worker under the default profile, reads the
-kernel’s report of each refusal from the unified log, grants it, and repeats until the
-worker serves its hooks; the grants it had to add are the finding.
-It also covers what only macOS has: the internet granted alone, the Mach services
-`getpwuid` and the resolver use, a descriptor handed over by a same-number `dup2`,
-`sandbox-exec` inside another sandbox, the privacy controls, and the prefix’s cost.
-With `--real`, it does the same for the downstream plugins.
+Its `learn` probe serves the stand-in’s ordinary hooks under the default profile and
+reports kernel denials for that worker’s PID. It keeps those observations out of the
+profile. It also covers what only macOS has: the internet granted alone, the Mach
+services `getpwuid` and the resolver use, a descriptor handed over by a same-number
+`dup2`, `sandbox-exec` inside another sandbox, the privacy controls, and the prefix’s
+cost. With `--real`, it does the same for the downstream plugins.
 
-None of it has run on macOS yet.
-Its plumbing ran on Linux with the Linux launcher standing in for `sandbox-exec` and no
-kernel reports, which shows the harness works and nothing about macOS.
+The macOS runs used macOS 26.5.2 on Apple Silicon.
+Each profile served the stand-in’s hooks.
+The default allowed the served files and scratch writes and refused reads, writes, and
+network access outside its grants.
+The internet profile restored TCP, UDP send, and DNS while leaving the test Unix socket
+inaccessible. Libinfo restored `getpwuid` on its own.
+The stand-in and downstream hooks completed without it.
 
 ## Results
 
@@ -120,6 +122,20 @@ The 2026-11-26 files are from Linux 6.18 on ext4, x86-64, Python 3.13.18, as roo
 at a load average near 0. The two without a suffix are the first run, whose launcher
 refused `socket` alone; the two ending `-2` are the run after the launcher was fixed and
 the later probes were added.
+
+[The macOS run](results/2026-11-26-macos.json) records the working hooks and grants, and
+the bare and confined timing samples.
+All three downstream entry points loaded from a separate environment.
+The workflow plugin’s process model and its nonempty chart responses matched byte for
+byte. The other two entry points were checked for discovery.
+Startup timing varied with host load, so these samples do not isolate the prefix’s cost.
+The watchdog cleaned up its supervised group after the server died.
+APFS did not reuse the Git directory identity in five reclones.
+
+An ad-hoc signed Swift launcher with Hardened Runtime enabled started the host, which
+then served the confined stand-in.
+The two protocol pipes survived via `pass_fds`. The installed app’s privacy attribution,
+privacy prompt ordering, and folder-stop workflow remain unverified.
 
 ## Running It
 
@@ -157,11 +173,18 @@ uv --config-file uv.toml run --frozen python -I -B \
   explorations/plugin-worker-spike/macos_probe.py tmp/macos-run > tmp/macos.json
 ```
 
-Add `--privacy ~/Documents/SOME_FILE` to check the privacy controls (watch for a prompt
-during the confined read), and
-`--real PLUGIN_ENV/bin/python ROOT RELATIVE/SPEC.md FIXTURE_DIR` for the downstream
-plugins. Reading the unified log may ask for an administrator’s password; `learn` finds
-nothing without it. Nothing here runs in CI.
+Set `TMPDIR` to a writable scratch directory.
+The Unix socket path under it must fit in macOS’s socket address.
+Add `--real PLUGIN_ENV/bin/python ROOT RELATIVE/SPEC.md FIXTURE_DIR` for the downstream
+plugins, or `--privacy FILE` with a synthetic file in a privacy-protected folder and
+watch the desktop for a prompt.
+Unified-log access depends on the local account’s permissions.
+These probes run outside CI.
+
+[HardenedLauncher.swift](HardenedLauncher.swift) can run the same probe from a signed
+parent. Build it with `swiftc` in scratch, sign it with
+`codesign --force --sign - --options runtime LAUNCHER`, and run
+`LAUNCHER HOST_ENV/bin/python -I -B macos_probe.py SCRATCH backend worker descriptors`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

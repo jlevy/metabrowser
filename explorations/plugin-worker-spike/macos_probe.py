@@ -6,17 +6,12 @@ answered for Landlock and seccomp, for ``sandbox-exec`` with a profile from
 
 - ``backend``: the macOS version, and whether ``sandbox-exec`` applies a deny-default
   profile here.
-- ``checks``: one checking program bare and under four policies (the default; the
-  internet granted; programs refused; the default plus the Mach services ``getpwuid``
-  and the resolver use), as ``confine_probe.py`` does on Linux.
-- ``learn``: the stand-in plugin's worker under the default profile, with the kernel's
-  report of every refusal read from the unified log, then again with those refusals
-  granted, until the worker serves its hooks or nothing new is refused. The grants it
-  had to add are the finding: whether a full Python environment's worker still reads as
-  confined.
-- ``worker``: the stand-in's worker bare, confined with the default grants and what
-  ``learn`` added, and confined with the internet granted, and what a hook can reach in
-  each; whether a confined worker ends when its request pipe closes.
+- ``checks``: one program bare and under policies that vary network access, process
+  creation, and the Mach services used by account lookup and name resolution.
+- ``learn``: the kernel denials from the stand-in worker serving its hooks under the
+  default profile, attributed to that worker alone.
+- ``worker``: the stand-in's hooks and their access under each profile, and whether a
+  confined worker exits when the request pipe closes during a synchronous hook.
 - ``cost``: what the prefix adds to an interpreter's start and to a worker's.
 - ``descriptors``: whether a descriptor the host hands over survives ``posix_spawn``'s
   same-number ``dup2`` and ``sandbox-exec``'s exec.
@@ -24,9 +19,9 @@ answered for Landlock and seccomp, for ``sandbox-exec`` with a profile from
   outer sandbox, as a server an agent starts would be.
 - ``privacy``, only with ``--privacy FILE``: a file in a folder macOS's privacy controls
   guard, such as ``~/Documents``, read bare and under a profile that does not grant it.
-  The profile should refuse it before any privacy prompt; watch for one.
+  Watch the desktop for a privacy prompt. This probe cannot determine TCC ordering.
 - ``real``, only with ``--real PLUGIN_PYTHON ROOT SPEC FIXTURE_DIR``: the downstream
-  plugins, which are not public, bare and confined, with the grants learned for them.
+  plugins, which are not public, bare and confined, with kernel denials recorded by worker.
   The arguments are ``host_runtime.py``'s.
 
 Usage: macos_probe.py SCRATCH_DIR [PROBE ...] [--privacy FILE] [--real PY ROOT SPEC FIX]
@@ -37,6 +32,8 @@ roots the probe knows (``<env>``, ``<python>``, ``~``, and so on).
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import os
 import re
@@ -52,6 +49,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))  # run with -I, which leaves this folder off the path
@@ -76,12 +74,11 @@ RESOLVER_SERVICES = ("com.apple.dnssd.service",)
 # How long the unified log takes to hold a kernel report after the call it reports;
 # a guess, which `learn` records alongside what it found.
 LOG_SETTLE_SECONDS = 2.0
-LEARN_ROUNDS = 5
 
 # The checking program. It answers by what happened, never by a path.
 CHECKS = r"""
 import asyncio, errno, json, multiprocessing.synchronize, os, pwd, socket, subprocess, sys, threading
-granted, private, writable, port, parent, unix_path = sys.argv[1:7]
+granted, private, writable, port, udp_port, parent, unix_path = sys.argv[1:8]
 
 def attempt(action):
     try:
@@ -103,6 +100,10 @@ def write_then_remove(folder):
 def tcp():
     with socket.create_connection(("127.0.0.1", int(port)), timeout=2):
         pass
+
+def udp():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as made:
+        made.sendto(b"probe", ("127.0.0.1", int(udp_port)))
 
 def unix_socket():
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as made:
@@ -131,6 +132,7 @@ print(json.dumps({
     "write in a read-only grant": attempt(lambda: write_then_remove(granted)),
     "write outside the grants": attempt(lambda: write_then_remove(private)),
     "connect over TCP": attempt(tcp),
+    "send over UDP": attempt(udp),
     "open a UDP socket": attempt(lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM).close()),
     "connect to a Unix socket outside the grants": attempt(unix_socket),
     "resolve localhost": attempt(lambda: resolve("localhost")),
@@ -175,59 +177,56 @@ def since() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def kernel_reports(start: str, pids: set[int] | None = None) -> list[dict[str, str]]:
-    """The sandbox reports since *start*, for *pids* or any Python process."""
+def kernel_denials(start: str, pids: set[int], redact: Redactor) -> list[str]:
+    """Report denials for this probe's processes, without replaying them as grants."""
+    if not pids:
+        return []
     time.sleep(LOG_SETTLE_SECONDS)
     command = [
-        "log", "show", "--start", start, "--style", "syslog",
+        "/usr/bin/log", "show", "--start", start, "--style", "syslog",
         "--predicate", 'eventMessage CONTAINS "Sandbox: "',
     ]  # fmt: skip
-    done = subprocess.run(command, capture_output=True, text=True, check=False)
-    found: list[dict[str, str]] = []
+    done = subprocess.run(command, capture_output=True, text=True, check=True)
+    denied: set[str] = set()
     for line in done.stdout.splitlines():
         match = REPORT.search(line)
-        if match is None:
-            continue
-        pid = int(match["pid"])
-        if pids is not None and pid not in pids and not match["process"].startswith("python"):
-            continue
-        found.append({key: value or "" for key, value in match.groupdict().items()})
-    return found
+        if match and int(match["pid"]) in pids and match["verdict"] == "deny":
+            denied.add(f"{match['operation']} {redact(match['argument'] or '')}".strip())
+    return sorted(denied)
 
 
-def grant_for(report: dict[str, str]) -> str | None:
-    """The rule that would allow what *report* records, as narrowly as it can be said."""
-    operation, argument = report["operation"], report["argument"].strip()
-    if operation == "mach-lookup" and argument:
-        return f"(allow mach-lookup (global-name {confine_macos.sbpl_string(argument)}))"
-    if operation.startswith(("file-", "process-exec")) and argument.startswith("/"):
-        return f"(allow {operation} (literal {confine_macos.sbpl_string(argument)}))"
-    if operation.startswith(("sysctl", "ipc-", "iokit-", "user-preference", "system-")):
-        return f"(allow {operation})"
-    if operation.startswith("network") and argument.startswith("/"):
-        return f"(allow {operation} (literal {confine_macos.sbpl_string(argument)}))"
-    return None
+def communicate(process: subprocess.Popen[str]) -> tuple[str, str]:
+    try:
+        return process.communicate(timeout=15)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        raise
 
 
-def run_checks(before: list[str], arguments: list[str]) -> dict[str, str]:
+def run_checks(before: list[str], arguments: list[str]) -> tuple[dict[str, str], int]:
     command = [*before, sys.executable, "-I", "-S", "-c", CHECKS, *arguments]
-    done = subprocess.run(command, capture_output=True, text=True, cwd="/", check=False)
-    if done.returncode != 0:
-        tail = done.stderr.strip().splitlines()[-1] if done.stderr.strip() else "no output"
-        return {"did not run": tail}
-    answers: dict[str, str] = json.loads(done.stdout)
-    return answers
+    with subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd="/"
+    ) as process:
+        stdout, stderr = communicate(process)
+        if process.returncode != 0:
+            tail = stderr.strip().splitlines()[-1] if stderr.strip() else "no output"
+            return {"did not run": tail}, process.pid
+        return json.loads(stdout), process.pid
 
 
 class Listeners:
     """A TCP listener and a Unix socket outside every grant, as an agent socket would be."""
 
-    def __init__(self) -> None:
+    def __init__(self, socket_dir: Path) -> None:
         self.tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.tcp.bind(("127.0.0.1", 0))
         self.tcp.listen(8)
+        self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.udp.bind(("127.0.0.1", 0))
         # A Unix socket's path is at most 104 bytes on macOS: a short folder of its own.
-        self.folder = Path(tempfile.mkdtemp(prefix="mb-probe-", dir="/tmp"))
+        self.folder = Path(tempfile.mkdtemp(prefix="mb-probe-", dir=socket_dir))
         self.unix_path = self.folder / "agent.sock"
         self.unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.unix.bind(str(self.unix_path))
@@ -243,6 +242,7 @@ class Listeners:
 
     def close(self) -> None:
         self.tcp.close()
+        self.udp.close()
         self.unix.close()
         shutil.rmtree(self.folder, ignore_errors=True)
 
@@ -264,18 +264,18 @@ def start_worker(
 class Mac:
     """One scratch folder's stand-in bench, and the policies the probes share."""
 
-    def __init__(self, scratch: Path) -> None:
+    def __init__(self, scratch: Path, socket_dir: Path) -> None:
         self.scratch = scratch
         self.bench = probes.Bench(scratch)
-        self.listeners = Listeners()
+        self.listeners = Listeners(socket_dir)
         self.outside = scratch / "outside"
         self.writable = scratch / "worker-scratch"
         for folder in (self.outside, self.writable):
             folder.mkdir(exist_ok=True)
         (self.outside / "secret.txt").write_text("secret")
-        self.learned: list[str] = []
         self.redact = Redactor(
             {
+                "<unix-socket>": str(self.listeners.folder),
                 "<scratch>": str(scratch),
                 "<env>": str(scratch / "env"),
                 "<runtime>": str(self.bench.runtime),
@@ -299,7 +299,6 @@ class Mac:
             ],
             "write": [str(self.writable)],
             "network": "none",
-            "sbpl": list(self.learned),
         }
         return {**policy, **extra}
 
@@ -316,12 +315,14 @@ class Mac:
             f"&port={self.listeners.port}"
         )
 
-    def serve(self, prefix: tuple[str, ...]) -> Result:
+    def serve(self, prefix: tuple[str, ...], *, observe: set[int] | None = None) -> Result:
         """What one worker under *prefix* does with the stand-in's hooks."""
         try:
             worker, ready_ms = self.start(prefix)
         except Exception as exc:  # the worker never listed: the profile refused its start
             return {"did not start": type(exc).__name__, "stderr": self._log_tail()}
+        if observe is not None:
+            observe.add(worker.pid)
         try:
             before = len(worker.callbacks)
             result: Result = {
@@ -338,7 +339,8 @@ class Mac:
                 ],
             }
             result["host calls made"] = worker.callbacks[before:]
-            result["reach"] = json.loads(probes.call(worker, "reach", self.reach_query())[1])
+            if observe is None:
+                result["reach"] = json.loads(probes.call(worker, "reach", self.reach_query())[1])
             result["resident MB"] = round(worker.rss_mb(), 1)
         except Exception as exc:
             result = {"failed while serving": type(exc).__name__, "stderr": self._log_tail()}
@@ -366,20 +368,24 @@ def checks(mac: Mac) -> Result:
     (granted / "data.txt").write_text("data")
     (private / "secret.txt").write_text("secret")
     arguments = [str(granted), str(private), str(mac.writable), str(mac.listeners.port)]
-    arguments += [str(os.getpid()), str(mac.listeners.unix_path)]
+    arguments += [
+        str(mac.listeners.udp.getsockname()[1]),
+        str(os.getpid()),
+        str(mac.listeners.unix_path),
+    ]
     base: dict[str, Any] = {
         "read": [*confine_backend.interpreter_roots(), str(granted)],
         "write": [str(mac.writable)],
     }
-    services = [*LIBINFO_SERVICES, *RESOLVER_SERVICES]
     policies: dict[str, dict[str, Any] | None] = {
         "bare": None,
         "confined": base,
         "confined, network internet": {**base, "network": "internet"},
+        "confined, libinfo only": {**base, "mach": LIBINFO_SERVICES},
         "confined, network internet, libinfo and resolver services": {
             **base,
             "network": "internet",
-            "mach": services,
+            "mach": [*LIBINFO_SERVICES, *RESOLVER_SERVICES],
         },
         "confined, processes none": {**base, "processes": "none"},
     }
@@ -387,70 +393,27 @@ def checks(mac: Mac) -> Result:
     for label, policy in policies.items():
         before = [] if policy is None else confine_backend.prefix(policy, sys.executable)
         start = since()
-        result[label] = run_checks(before, arguments)
+        answers, pid = run_checks(before, arguments)
+        result[label] = {key: mac.redact(value) for key, value in answers.items()}
         if policy is not None:
-            refused = {
-                f"{report['operation']} {mac.redact(report['argument'])}".strip()
-                for report in kernel_reports(start)
-                if report["verdict"] == "deny"
-            }
-            result[label + ": the kernel's refusals"] = sorted(refused)
+            result[label + ": the kernel's refusals"] = kernel_denials(start, {pid}, mac.redact)
     return result
 
 
 def learn(mac: Mac) -> Result:
-    """Grant what the kernel reports refusing, round by round, until the worker serves."""
-    rounds: list[Result] = []
-    for _ in range(LEARN_ROUNDS):
-        start = since()
-        served = mac.serve(tuple(confine_backend.prefix(mac.worker_policy())))
-        reports = [r for r in kernel_reports(start) if r["verdict"] == "deny"]
-        new = sorted({g for r in reports if (g := grant_for(r)) and g not in mac.learned})
-        unexpressed = sorted(
-            {
-                f"{r['operation']} {mac.redact(r['argument'])}".strip()
-                for r in reports
-                if not grant_for(r)
-            }
-        )
-        working = "info" in served and served.get("charts on an agent log") == 200
-        rounds.append(
-            {
-                "worker served its hooks": working,
-                "refusals": len(reports),
-                "grants added": [mac.redact(grant) for grant in new],
-                "refusals no grant was made for": unexpressed,
-            }
-        )
-        # A refusal the stand-in's reach hook asks for on purpose is not a need.
-        new = [g for g in new if not _is_probe_target(g, mac)]
-        if working or not new:
-            break
-        mac.learned.extend(new)
-
-    # The same run traced: every refusal becomes a reported allowance, so this lists
-    # what the default grants left out even where a refusal was handled quietly.
+    """Observe denials while the worker runs its ordinary hooks."""
     start = since()
-    mac.serve(tuple(confine_backend.prefix(mac.worker_policy(trace=True))))
-    traced = {
-        f"{r['operation']} {mac.redact(r['argument'])}".strip()
-        for r in kernel_reports(start)
-        if r["verdict"] == "allow"
-    }
+    pids: set[int] = set()
+    served = mac.serve(tuple(confine_backend.prefix(mac.worker_policy())), observe=pids)
     return {
-        "rounds": rounds,
-        "learned grants in all": [mac.redact(grant) for grant in mac.learned],
-        "traced allowances beyond the grants": sorted(traced),
+        "default worker": served,
+        "worker denials": kernel_denials(start, pids, mac.redact),
         "log settle s": LOG_SETTLE_SECONDS,
     }
 
 
-def _is_probe_target(grant: str, mac: Mac) -> bool:
-    return any(str(path) in grant for path in (mac.outside, mac.listeners.folder))
-
-
 def worker(mac: Mac) -> Result:
-    result: Result = {"learned grants used": len(mac.learned)}
+    result: Result = {}
     runs: dict[str, tuple[str, ...]] = {
         "bare": (),
         "confined": tuple(confine_backend.prefix(mac.worker_policy())),
@@ -468,17 +431,16 @@ def worker(mac: Mac) -> Result:
         time.sleep(0.3)
         hung_up = time.perf_counter()
         confined.hang_up()
-        deadline = hung_up + 5
-        while probes.alive(confined.pid) and time.perf_counter() < deadline:
-            time.sleep(0.01)
-        ended = not probes.alive(confined.pid)
+        try:
+            status = confined.wait(timeout=5)
+            exit_result = {"ended": True, "exit": status}
+        except subprocess.TimeoutExpired:
+            confined.kill()
+            exit_result = {"ended": False}
         result["a confined worker ends when its request pipe closes"] = {
-            "ended": ended,
+            **exit_result,
             "after ms": round((time.perf_counter() - hung_up) * 1000, 1),
         }
-        if not ended:
-            confined.kill()
-        os.waitpid(confined.pid, 0)
     except Exception as exc:
         result["a confined worker ends when its request pipe closes"] = {
             "did not run": type(exc).__name__
@@ -511,58 +473,74 @@ def _median(values: list[float]) -> float | None:
     return round(statistics.median(values), 1) if values else None
 
 
-# The child reports whether each descriptor it was told about is open.
-DESCRIPTOR_CHECK = "import os, sys; print(','.join(str(int(_open(int(n)))) for n in sys.argv[1:]))"
-DESCRIPTOR_PRELUDE = "def _open(n):\n    try:\n        os.fstat(n)\n        return True\n    except OSError:\n        return False\n"
+# Match the identity of the pipe. An interpreter may open a different file in that slot.
+DESCRIPTOR_CHECK = """
+import os, sys
+fd, dev, ino = map(int, sys.argv[1:])
+try:
+    stat = os.fstat(fd)
+except OSError:
+    print("closed")
+else:
+    print("open" if (stat.st_dev, stat.st_ino) == (dev, ino) else "different file")
+"""
 
 
 def descriptors(mac: Mac) -> Result:
-    """Whether a pipe the host hands over is open in the child, by each way of handing it."""
-    code = "import os, sys\n" + DESCRIPTOR_PRELUDE + DESCRIPTOR_CHECK.split("; ", 1)[1]
-
-    def child_sees(prefix: list[str], fd: int, actions: list[tuple[Any, ...]]) -> str:
-        argv = [*prefix, sys.executable, "-I", "-S", "-c", code, str(fd)]
-        out_read, out_write = os.pipe()
-        pid = os.posix_spawn(
-            argv[0], argv, {"PATH": "/usr/bin:/bin"},
-            file_actions=[*actions, (os.POSIX_SPAWN_DUP2, out_write, 1)],
-        )  # fmt: skip
-        os.close(out_write)
-        with os.fdopen(out_read) as handle:
-            answer = handle.read().strip()
-        os.waitpid(pid, 0)
-        return {"1": "open", "0": "closed"}.get(answer, f"no answer ({answer!r})")
-
-    sandboxed = confine_backend.prefix(
-        {"read": confine_backend.interpreter_roots(), "processes": "none"}, sys.executable
-    )
-    result: Result = {}
-    for label, prefix in (("bare", []), ("behind the prefix", sandboxed)):
-        read, write = os.pipe()  # both close-on-exec, as os.pipe makes them
-        moved = 9
-        result[label] = {
-            "dup2 to a different number": child_sees(
-                prefix, moved, [(os.POSIX_SPAWN_DUP2, read, moved)]
-            ),
-            "dup2 to the same number": child_sees(
-                prefix, read, [(os.POSIX_SPAWN_DUP2, read, read)]
-            ),
-            "no action, close-on-exec": child_sees(prefix, read, []),
-        }
-        os.set_inheritable(read, True)
-        result[label]["no action, inheritable"] = child_sees(prefix, read, [])
-        os.close(read)
-        os.close(write)
+    """Whether the intended pipe survives exec, by each way of handing it over."""
     read, write = os.pipe()
-    done = subprocess.run(
-        [*sandboxed, sys.executable, "-I", "-S", "-c", code, str(read)],
-        pass_fds=(read,), capture_output=True, text=True, check=False,
-    )  # fmt: skip
-    result["subprocess pass_fds, behind the prefix"] = {"1": "open", "0": "closed"}.get(
-        done.stdout.strip(), "no answer"
-    )
-    os.close(read)
-    os.close(write)
+    moved = fcntl.fcntl(read, fcntl.F_DUPFD_CLOEXEC, 10)
+    identity = os.fstat(read)
+    with tempfile.TemporaryFile(dir=mac.scratch) as output:
+
+        def child_argv(prefix: list[str], fd: int) -> list[str]:
+            return [
+                *prefix, sys.executable, "-I", "-S", "-c", DESCRIPTOR_CHECK,
+                str(fd), str(identity.st_dev), str(identity.st_ino),
+            ]  # fmt: skip
+
+        def child_sees(prefix: list[str], fd: int, actions: list[tuple[int, int, int]]) -> str:
+            argv = child_argv(prefix, fd)
+            output.seek(0)
+            output.truncate()
+            pid = os.posix_spawn(
+                argv[0], argv, {"PATH": "/usr/bin:/bin"},
+                file_actions=[*actions, (os.POSIX_SPAWN_DUP2, output.fileno(), 1)],
+            )  # fmt: skip
+            _, status = os.waitpid(pid, 0)
+            if (exit_code := os.waitstatus_to_exitcode(status)) != 0:
+                return f"no answer (exit {exit_code})"
+            output.seek(0)
+            return output.read().decode().strip()
+
+        sandboxed = confine_backend.prefix(
+            {"read": confine_backend.interpreter_roots(), "processes": "none"}, sys.executable
+        )
+        result: dict[str, dict[str, str]] = {}
+        try:
+            for label, prefix in (("bare", []), ("behind the prefix", sandboxed)):
+                os.set_inheritable(read, False)
+                answers = {
+                    "dup2 to a different number": child_sees(
+                        prefix, moved, [(os.POSIX_SPAWN_DUP2, read, moved)]
+                    ),
+                    "dup2 to the same number": child_sees(
+                        prefix, read, [(os.POSIX_SPAWN_DUP2, read, read)]
+                    ),
+                    "no action, close-on-exec": child_sees(prefix, read, []),
+                }
+                os.set_inheritable(read, True)
+                answers["no action, inheritable"] = child_sees(prefix, read, [])
+                os.set_inheritable(read, False)
+                done = subprocess.run(
+                    child_argv(prefix, read),
+                    pass_fds=(read,), capture_output=True, text=True, check=True,
+                )  # fmt: skip
+                answers["subprocess pass_fds"] = done.stdout.strip()
+                result[label] = answers
+        finally:
+            for fd in (read, write, moved):
+                os.close(fd)
     return result
 
 
@@ -573,12 +551,10 @@ import asyncio, json, subprocess, sys
 inner = sys.argv[1]
 done = subprocess.run(["/usr/bin/sandbox-exec", "-p", inner, "/usr/bin/true"], capture_output=True, text=True)
 answer = {"inner sandbox-exec": "applied" if done.returncode == 0 else (done.stderr.strip().splitlines() or ["refused"])[-1]}
-try:
+if sys.argv[2] == "pdf":
     from metabrowser.builtin_plugins.pdf import preview_isolation
     found = asyncio.run(preview_isolation.probe_sandbox())
     answer["the PDF preview's probe"] = "found sandbox-exec" if found else "found no backend"
-except Exception as exc:
-    answer["the PDF preview's probe"] = f"did not run ({type(exc).__name__})"
 print(json.dumps(answer))
 """
 
@@ -586,14 +562,15 @@ print(json.dumps(answer))
 def nested(mac: Mac) -> Result:
     inner = confine_macos.profile({"exec": ["/usr/bin/true"], "processes": "none"})
     outers = {
-        "inside an allow-default sandbox": "(version 1)\n(allow default)",
-        "inside the plan's worker profile": confine_macos.profile(
-            {**mac.worker_policy(), "read": [*mac.worker_policy()["read"], sys.prefix]}
-        ),
+        "inside an allow-default sandbox": ("(version 1)\n(allow default)", "pdf"),
+        "inside the plan's worker profile": (confine_macos.profile(mac.worker_policy()), ""),
     }
     result: Result = {}
-    for label, outer in outers.items():
-        command = ["/usr/bin/sandbox-exec", "-p", outer, sys.executable, "-I", "-c", NESTED, inner]
+    for label, (outer, check_pdf) in outers.items():
+        command = [
+            "/usr/bin/sandbox-exec", "-p", outer, sys.executable, "-I", "-c", NESTED,
+            inner, check_pdf,
+        ]  # fmt: skip
         done = subprocess.run(command, capture_output=True, text=True, cwd="/", check=False)
         try:
             result[label] = json.loads(done.stdout)
@@ -613,21 +590,22 @@ def privacy(mac: Mac, guarded: Path) -> Result:
         ("confined", confine_backend.prefix(policy, sys.executable)),
     ):
         start = since()
-        done = subprocess.run(
-            [*prefix, sys.executable, "-I", "-S", "-c", code, str(guarded)],
-            capture_output=True, text=True, check=False,
-        )  # fmt: skip
-        result[label] = done.stdout.strip() or "no answer"
+        command = [*prefix, sys.executable, "-I", "-S", "-c", code, str(guarded)]
+        with subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        ) as process:
+            stdout, _ = communicate(process)
+        result[label] = stdout.strip() or f"no answer (exit {process.returncode})"
         if prefix:
-            result["confined: the kernel's refusals"] = sorted(
-                {f"{r['operation']} {mac.redact(r['argument'])}" for r in kernel_reports(start)}
+            result["confined: the kernel's refusals"] = kernel_denials(
+                start, {process.pid}, mac.redact
             )
-    result["note"] = "A privacy prompt during the confined read would mean the check came first."
+    result["note"] = "This records the sandbox denial; TCC ordering needs an app test."
     return result
 
 
 def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
-    """The downstream plugins in a worker, bare and confined, with grants learned for them."""
+    """Measure the downstream hooks with the same inputs, bare and confined."""
     facts = json.loads(
         subprocess.run(
             [python, "-I", "-c", ENV_FACTS], capture_output=True, text=True, check=True
@@ -653,22 +631,22 @@ def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
         ],
         "write": [str(cache)],
         "network": "none",
-        "sbpl": [],
     }  # fmt: skip
     log = mac.scratch / "run" / "real.stderr.log"
     runtime = mac.bench.runtime
 
-    def serve(prefix: tuple[str, ...]) -> Result:
+    def serve(prefix: tuple[str, ...], pids: set[int]) -> Result:
         out: Result = {}
         try:
             worker, ready_ms, listing = start_worker(python, Path(root), runtime, log, prefix)
         except Exception as exc:
             return {"did not start": type(exc).__name__}
+        pids.add(worker.pid)
         hooks: dict[str, str] = {}
         plugin = ""
         try:
             out["spawn_to_listed_ms"] = round(ready_ms, 1)
-            out["plugins"] = [p["entry_point"] for p in listing["plugins"]]
+            out["plugins listed"] = len(listing["plugins"])
             out["errors"] = [redact(str(e)) for e in listing["errors"]]
             target = next(
                 p for p in listing["plugins"] if "viz-model" in host_runtime.hooks_of(p["dir"])
@@ -682,12 +660,13 @@ def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
                 )
 
             info, _ = hook("info")
-            viz, viz_body = hook("viz-model", f"process={spec}")
+            viz, viz_body = hook("viz-model", urlencode({"process": spec}))
             out["info"] = info["status"]
             out["viz-model"] = {
                 "status": viz["status"],
                 "bytes": len(viz_body),
-                "handler_ms": viz.get("handler_ms"),
+                "sha256": hashlib.sha256(viz_body).hexdigest(),
+                "handler_ms": round(viz["handler_ms"], 1),
             }
             out["resident MB"] = round(worker.rss_mb(), 1)
             out["exit"] = worker.close()["status"]
@@ -696,8 +675,10 @@ def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
             worker.kill()
         if "charts" not in hooks:
             return out
+        fixture_worker = None
         try:
             fixture_worker, _, _ = start_worker(python, Path(fixture), runtime, log, prefix)
+            pids.add(fixture_worker.pid)
             charts: Result = {}
             for name in ("pool.jsonl", "agent.jsonl"):
                 header, body = fixture_worker.call(
@@ -706,38 +687,27 @@ def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
                     path=f"/api/plugin/{plugin}/charts",
                     query=f"path={name}",
                 )
+                payload = json.loads(body)
                 charts[name] = {
                     "status": header["status"],
-                    "charts": len(json.loads(body).get("charts") or []),
+                    "has summary": payload.get("summary") is not None,
+                    "charts": len(payload.get("charts") or []),
+                    "sha256": hashlib.sha256(body).hexdigest(),
                 }
             out["charts"] = charts
-            fixture_worker.close()
+            out["chart host calls"] = fixture_worker.callbacks
         except Exception as exc:
             out["charts"] = {"failed": type(exc).__name__}
+        finally:
+            if fixture_worker is not None:
+                fixture_worker.close()
         return out
 
-    result: Result = {"bare": serve(())}
-    rounds: list[Result] = []
-    for _ in range(LEARN_ROUNDS):
-        start = since()
-        served = serve(tuple(confine_backend.prefix(policy)))
-        reports = [r for r in kernel_reports(start) if r["verdict"] == "deny"]
-        new = sorted({g for r in reports if (g := grant_for(r)) and g not in policy["sbpl"]})
-        rounds.append({"served": served, "grants added": [redact(g) for g in new]})
-        if served.get("info") == 200 or not new:
-            break
-        policy["sbpl"].extend(new)
+    result: Result = {"bare": serve((), set())}
     start = since()
-    serve(tuple(confine_backend.prefix({**policy, "trace": True})))
-    result["confined rounds"] = rounds
-    result["learned grants in all"] = [redact(g) for g in policy["sbpl"]]
-    result["traced allowances beyond the grants"] = sorted(
-        {
-            f"{r['operation']} {redact(r['argument'])}".strip()
-            for r in kernel_reports(start)
-            if r["verdict"] == "allow"
-        }
-    )
+    pids: set[int] = set()
+    result["confined"] = serve(tuple(confine_backend.prefix(policy)), pids)
+    result["confined: the kernel's refusals"] = kernel_denials(start, pids, redact)
     return result
 
 
@@ -788,7 +758,8 @@ def main() -> None:
     scratch = Path(arguments[0]).resolve()
     scratch.mkdir(parents=True, exist_ok=True)
     names = arguments[1:] or list(PROBES)
-    mac = Mac(scratch)
+    socket_dir = Path(tempfile.gettempdir())
+    mac = Mac(scratch, socket_dir)
     result: Result = {
         "platform": sys.platform,
         "python": sys.version.split()[0],
