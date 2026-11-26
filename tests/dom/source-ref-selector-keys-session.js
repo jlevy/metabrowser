@@ -34,9 +34,11 @@ const document = new FakeDocument();
 const browserWindow = document.defaultView;
 const requests = [];
 let rejectNextHead = false;
-let now = Date.parse("2026-11-26T12:00:00Z");
+const timeOrigin = Date.parse("2026-11-26T12:00:00Z");
+let now = timeOrigin;
 const context = {
   AbortController,
+  performance: { now: () => now - timeOrigin },
   Date: class extends Date {
     static now() {
       return now;
