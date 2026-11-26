@@ -660,11 +660,12 @@ module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`,
 structured data exports `renderInlineTree` and the tree’s helpers, diff exports
 `mountFilePatch`, which draws one file’s hunks as Changes does and which GitHub’s Guided
 Review draws its excerpts with, and `guidePatchDrawer`, whose
-`disclose(section, folded)` makes the bar and chevron that fold a file’s card in Changes
-for a card the guide draws itself, GitHub exports `pullStateIcon`, which the shell’s ref
-selector draws a branch’s pull request with, and PDF exports `mountPdfCard`, which draws
-a PDF’s first page, name, and page count where a viewer does not belong, as a diff’s
-binary `.pdf` change and a Markdown document’s embedded `.pdf` do.
+`disclose(section, folded, changed)` makes the bar and chevron that fold a file’s card
+in Changes for a card the guide draws itself, its optional `changed` hearing each fold
+and opening with whether the card is now open, GitHub exports `pullStateIcon`, which the
+shell’s ref selector draws a branch’s pull request with, and PDF exports `mountPdfCard`,
+which draws a PDF’s first page, name, and page count where a viewer does not belong, as
+a diff’s binary `.pdf` change and a Markdown document’s embedded `.pdf` do.
 `mountPdfCard(host, {path | oid, name, links?})` asks the PDF plugin’s
 `/api/plugin/pdf/preview` route when the card nears the viewport and shows the image it
 names, or the route’s reason when there is none; it never starts a viewer, and its
@@ -1218,6 +1219,9 @@ tap outside it and its trigger, focus arriving outside them, the window losing f
 a preview’s frame or another application), and Escape close it, and opening one menu
 closes any other. The press that closes a menu still acts on what it lands on.
 A dropdown that `filterControls.bind` draws closes so already.
+`bind` answers for every dropdown inside the element it is given, so bind each control’s
+own element, never a region that holds another bound control: the outer binding would
+take that control’s open dropdown for its own and close it.
 A view that draws a menu of its own gives it that closing with `menus.dismissible`, and
 feature-detects it with `mb.menus?.dismissible`:
 
@@ -1239,7 +1243,8 @@ closing?.dispose(); // from dispose(), when the menu goes for good
 
 - Call `opened()` from every path that opens the menu, a key as well as a click, and
   `closed()` when the view’s own code closes it.
-  The listeners are held only while a menu is open.
+  `opened()` closes any other open menu, whichever handle holds it, so one menu has one
+  handle. The listeners are held only while a menu is open.
 - `opened()` moves focus to the trigger when focus is outside the menu and its trigger,
   as a press in Safari leaves it; a view that puts focus into the menu does so after the
   call.
@@ -1256,6 +1261,10 @@ closing?.dispose(); // from dispose(), when the menu goes for good
   `inside` names the rest.
   A press anywhere else closes it, but a drag that starts inside the menu, as in
   selecting a field’s text, does not, wherever it lets go.
+- Focus that a press inside the menu moves does not close it, until that press is over:
+  at its click, the next press, or a key, and, for a press that brings no click, a task
+  after a mouse’s or a pen’s button comes up, or at once on `pointercancel` or
+  `contextmenu`. A touch that brings none of those ends at the next press or key.
 
 ### Folder Overview Contributions
 

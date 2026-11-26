@@ -141,7 +141,10 @@ export const RENDERED_PARTS = 256;
 export const RENDERED_PART_CHARS = 2_000_000;
 // How long Changes keeps a comparison with rendered Markdown out of sight while its first
 // screen's Markdown files wait for Rendered, so they first show at the height they keep and
-// the files below them never move by themselves. It is the screen it lands on: a file the
+// the files below them never move by themselves. A file still waiting at this bound shows
+// its bar and goes on waiting, with nothing after it in the diff shown until its answer
+// comes (`WAITING_CLASS` in diff/diff-markdown.js), so what the reader is shown here never
+// moves either. It is the screen it lands on: a file the
 // address names is landed before the wait. Measured 2026-11-12 in headless Chrome 152 in the
 // same runs as DESCRIPTION_HOLD_MS, from the `githubPull:changesHold` span: 29 to 170 ms
 // (median 39, p90 90, n 24), none at this bound; the two above 100 ms were one pull
@@ -9057,8 +9060,8 @@ export function mountPullPage(container, ctx, mb) {
                 return diff.mountRenderedFile(body, comparison, path, {
                   ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
                   // Its rendered layer waits for Rendered with Source hidden for as long as
-                  // the rendered route can take, so the step never shows Source first in
-                  // its place (`GUIDE_DOCUMENT_HOLD_MS`).
+                  // the rendered route can take (`GUIDE_DOCUMENT_HOLD_MS`); a document not
+                  // drawn by then shows Source and keeps it, so the step never moves.
                   markdownHoldMs: GUIDE_DOCUMENT_HOLD_MS,
                 });
               },

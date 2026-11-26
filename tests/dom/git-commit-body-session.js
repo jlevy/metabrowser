@@ -729,9 +729,7 @@ async function step(label, revision, body, before = null) {
     assert(linked.assets.includes("repository-links"), "the panel asks for what links open");
     const box = JSON.stringify(linked.box);
     assert(
-      box.includes(
-        "a[href=/pull/12 data-metabrowser-authored-href=https://github.com/acme/widgets/pull/12 data-metabrowser-github-localization=pull]",
-      ),
+      box.includes("a[href=/pull/12 data-metabrowser-github-localization=pull]"),
       "a same-repository pull request opens its page here, in this tab, unmarked",
     );
     assert(box.includes('{"a":"a relative one"}'), "a relative reference stays text");
@@ -761,6 +759,18 @@ async function step(label, revision, body, before = null) {
   }
   delete sandbox.metabrowser.repository;
   delete sandbox.metabrowser.sourceKind;
+  sandbox.MetabrowserSourcePinGuard = { hasChanged: () => true };
+  const staleCommit = summary(LINKED, "linked");
+  await internals.placeCommitBody(staleCommit, detail(LINKED, "linked"));
+  const staleGuide = staleCommit
+    .querySelectorAll("a[href]")
+    .find((anchor) => anchor.textContent === "the guide");
+  assert(
+    staleGuide?.getAttribute("href") ===
+      "https://github.com/acme/widgets/blob/main/docs/guide.md" && !staleGuide.click(),
+    "commit prose in a stale shell keeps the authored GitHub document link",
+  );
+  delete sandbox.MetabrowserSourcePinGuard;
   delete sandbox.metabrowser.loadRepositoryLinks;
   delete sandbox.metabrowser.navigation;
 

@@ -277,8 +277,9 @@ def test_session_replays_the_recording() -> None:
     steps = {step["step"]: step for step in transcript["steps"]}
     first = steps["an answer within the loading delay paints Rendered first"]["files"]
     assert first["f1 docs/guide.md"]["shows"] == "rendered"
-    after = steps["past the loading delay a waiting file shows Source"]["files"]
-    assert after["f2 docs/renamed.md"]["shows"] == "source"
+    # A file still waiting past the delay goes on showing nothing: Source shown then was
+    # replaced when the answer came, which moved every file below it (mb-ne65).
+    assert steps["past the loading delay a waiting file still waits, Source hidden"]["files"] == {}
     # Every file of a rendered format keeps its chooser, and a file its rendered views
     # cannot show says why (mb-rm40): the session itself fails on a chooser that is gone.
     mounted = steps[

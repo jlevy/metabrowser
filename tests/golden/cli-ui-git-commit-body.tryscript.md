@@ -479,11 +479,11 @@ $ node tests/dom/git-commit-body-session.js
                       "p": [
                         "See ",
                         {
-                          "a[href=/pull/12 data-metabrowser-authored-href=https://github.com/acme/widgets/pull/12 data-metabrowser-github-localization=pull]": "the pull request"
+                          "a[href=/pull/12 data-metabrowser-github-localization=pull]": "the pull request"
                         },
                         ", ",
                         {
-                          "a[href=/view/docs/guide.md data-metabrowser-authored-href=https://github.com/acme/widgets/blob/main/docs/guide.md data-metabrowser-github-localization=working-tree data-tip-text=Open the corresponding path in the currently served working tree.]": "the guide"
+                          "a[href=/view/docs/guide.md data-metabrowser-github-localization=working-tree data-tip-text=Open the corresponding path in the currently served working tree.]": "the guide"
                         },
                         ", ",
                         {

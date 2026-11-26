@@ -18,9 +18,16 @@ The comparison names the route that answers a file’s rendered redline,
 Before the reader opens Changes, the page asks for the projections of the Markdown files
 among the first eight, at most four, so the first screen finds them computed.
 
-Every Markdown file waits for its rendered view with Source hidden for the app’s loading
-delay, 50 ms, so an answer within it paints its rendering first and never replaces
-Source in view; past it, Source shows and the rendering replaces it when it arrives.
+Every Markdown file near the first screen waits for its rendered view with Source
+hidden, so its rendering is the first thing its body shows and never replaces Source in
+view. It waits past the app’s loading delay, 50 ms, too: Source shown then was replaced
+when the answer came, which moved every file below it.
+A waiting file’s section says so, and everything after it in the diff is out of sight
+meanwhile. The wait has a ceiling from mount (`RENDERED_WAIT_MS`), which the second
+block’s last steps walk with one first-screen file at a time: a busy server is asked
+again and again until the ceiling and no more after it, and a slow server’s answer comes
+after it. At the ceiling the file shows Source and keeps Rendered to choose; the late
+answer replaces nothing, and choosing Rendered shows it without asking again.
 A file is asked for when it comes within a viewport of the screen, one request at a
 time, and its progress mark counts down to visible only while its request waits.
 A busy server is transient: the file keeps its view and asks again after 100 ms,
@@ -67,19 +74,16 @@ heading in a later chunk draws every chunk through it before it goes there.
 An image of the head keeps its address on the image route.
 A link to a file of the head keeps its `/view/` address only while the page shows the
 head, which is where that address opens the file; the server’s answer is the same for
-every page, and on any other page, or once a page learns another pin is served, the link
-opens that file at the head on github.com instead (`headFile` in
-`builtin_plugins/diff/index.js`). Every other local address is dropped before the shared
-sanitizer.
+every page. Away from that head, the link opens the file at the head on GitHub once the
+resolver is available.
+Every other local address is dropped before the shared sanitizer.
 
 This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`,
-`builtin_plugins/diff/index.js`, `static/inert-html.js`, and the two scripts a
-repository’s page reads a link with, `static/git-path.js` and
-`static/repository-links.js`, whole, and plays the server’s side from
-`tests/fixtures/diff-markdown-responses.json`: what the production projection answers
-for these documents, bound to a pull request’s head, with Python’s HTML parse of every
-block, from which the session builds the template a page parses a block into.
-`tests/test_diff_markdown_session.py` fails when the recording drifts.
+`builtin_plugins/diff/index.js`, and `static/inert-html.js` whole, and plays the
+server’s side from `tests/fixtures/diff-markdown-responses.json`: what the production
+projection answers for these documents, bound to a pull request’s head, with Python’s
+HTML parse of every block, from which the session builds the template a page parses a
+block into. `tests/test_diff_markdown_session.py` fails when the recording drifts.
 The route itself is pinned by `tests/golden/cli-github-pull-rendered.txt`, and its views
 by `tests/golden/cli-github-pull-rendered-views.txt`. The shared chip family, the
 stylesheet loader, and the diff’s layout are stand-ins, the page is an element tree that
@@ -87,17 +91,18 @@ records what the production code builds, and time is a clock the session advance
 hand. The plugin mounts the pull request’s comparison on each page the shell renders and
 hands the diff its rule for which addresses open there, which this session draws with.
 
-`links.pages` says what a link to a file of the head opens on each page: pinned at the
-comparison’s head, pinned at its merge base, beside a checkout at the head, which has no
-pin, and pinned at the head once another tab changed the pin.
-`links.opens` says what each address in a rendered block keeps on the page pinned at the
-head, null for one that is dropped.
-Each step lists the requests the page made and each file whose state it changed: its
-chooser (`*` chosen, and `unavailable` with the reason for a view that cannot be
-chosen), what its body shows (`nothing` while it waits within the loading delay),
+`links.pages` says whether a link to a file of the head opens on each page: pinned at
+the comparison’s head, pinned at its merge base, beside a checkout at the head, which
+has no pin, and pinned at the head once another tab changed the pin.
+`links.opens` says which addresses in a rendered block open something on the page pinned
+at the head. Each step lists the requests the page made and each file whose state it
+changed: its chooser (`*` chosen, and `unavailable` with the reason for a view that
+cannot be chosen), what its body shows (`nothing` while it waits for its rendered view),
 `progress` while its mark counts down, and its rendered rows, a fold as its bar and a
 chunk not drawn yet as the place it keeps, a long file’s rows shortened to their first
-and last four. The session fails if a file’s chooser is ever gone.
+and last four.
+The session fails if a file’s chooser is ever gone, or if a file’s section
+says it waits at any time but while its body shows nothing.
 It prints its transcript in two parts, each a block of its own: the links and the steps
 before the long document’s, then the long document’s steps on (`long`).
 
@@ -105,20 +110,21 @@ before the long document’s, then the long document’s steps on (`long`).
 $ node tests/dom/diff-markdown-session.js
 {
   "links": {
-    "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]",
+    "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
     "pages": {
       "pinned at the comparison's head": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
-      "pinned at the merge base": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
+      "pinned at the merge base before the resolver arrives": null,
+      "pinned at the merge base after the resolver arrives": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
       "beside a checkout at the head, which has no pin": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
       "pinned at the comparison's head, after another tab changed the pin": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md"
     },
     "opens": {
       "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
       "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup",
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc",
-      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
-      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": null,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc",
+      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
+      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef": null,
       "link /api/tree?path=docs": null
     }
   },
@@ -242,7 +248,7 @@ $ node tests/dom/diff-markdown-session.js
             "context: <p>Unchanged paragraph 1.</p>",
             "[5 unchanged blocks]",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -255,15 +261,9 @@ $ node tests/dom/diff-markdown-session.js
       }
     },
     {
-      "step": "past the loading delay a waiting file shows Source",
+      "step": "past the loading delay a waiting file still waits, Source hidden",
       "requests": [],
-      "files": {
-        "f2 docs/renamed.md": {
-          "chooser": "*Rendered | Source",
-          "shows": "source",
-          "progress": "counting"
-        }
-      }
+      "files": {}
     },
     {
       "step": "a file Rendered cannot show stays in Source, and its chooser says why",
@@ -361,7 +361,7 @@ $ node tests/dom/diff-markdown-session.js
             "  context: <p>Unchanged paragraph 5.</p>",
             "  context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -396,7 +396,7 @@ $ node tests/dom/diff-markdown-session.js
             "context: <p>Unchanged paragraph 5.</p>",
             "context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -957,7 +957,7 @@ $ node tests/dom/diff-markdown-session.js long
             "context: <p>Unchanged paragraph 5.</p>",
             "context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -965,15 +965,97 @@ $ node tests/dom/diff-markdown-session.js long
       }
     },
     {
-      "step": "disposal unbinds the chooser and stops every timer",
+      "step": "disposal unbinds every chooser and stops every timer",
       "requests": [],
       "files": {}
     },
     {
       "step": "after disposal",
-      "unbound": [
-        "unbound"
+      "bound": 0,
+      "timers": 0
+    },
+    {
+      "step": "a busy server, asked again and again to just short of the wait's ceiling: it waits",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "nothing"
+        }
+      }
+    },
+    {
+      "step": "at the ceiling it shows Source and keeps Rendered to choose",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "Rendered | *Source",
+          "shows": "source"
+        }
+      }
+    },
+    {
+      "step": "and is asked for no more by itself",
+      "requests": [],
+      "files": {}
+    },
+    {
+      "step": "a slow server, to just short of the ceiling: the file waits",
+      "requests": [
+        "f1 view=concise"
       ],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "nothing",
+          "progress": "counting"
+        }
+      }
+    },
+    {
+      "step": "at the ceiling it shows Source",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "Rendered | *Source",
+          "shows": "source"
+        }
+      }
+    },
+    {
+      "step": "its answer comes late and replaces nothing",
+      "requests": [],
+      "files": {}
+    },
+    {
+      "step": "choosing Rendered shows the answer that was kept, asking for nothing",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "[Frontmatter, open]",
+            "  removed: owner = docs",
+            "  added: owner = platform",
+            "  context: title = Guide",
+            "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
+            "removed: <p>Read the <span>setup notes</span> first.</p>",
+            "added: <p>Read the <a href=\"https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">first setup notes</a> first.</p>",
+            "context: <p>Unchanged paragraph 0.</p>",
+            "context: <p>Unchanged paragraph 1.</p>",
+            "[5 unchanged blocks]",
+            "context: <p>Unchanged paragraph 7.</p>",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "removed: <p>The <del>old</del> closing line.</p>",
+            "added: <p>The <ins>new</ins> closing line.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "after their disposal",
+      "bound": 0,
       "timers": 0
     }
   ]
