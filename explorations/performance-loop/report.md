@@ -127,6 +127,7 @@ against one that did.
 | exp-104 | [Prepare the First Commit History Page During Startup](experiments/exp-104-history-startup.md) | H125 | `first Commits history HTTP read after startup` | diagnostic |
 | exp-105 | [Selected PR Conversation During Checkout Acquisition](experiments/exp-105-conversation-during-acquisition.md) | H126 | `verified Conversation before acquisition release` | diagnostic |
 | exp-106 | [Focused HTTP Loop for Named API Cases](experiments/exp-106-focused-http-loop.md) | H129 | `requests recorded for the short API iteration` | diagnostic |
+| exp-107 | [Upstream KPress Sanitizer Diagnostics](experiments/exp-107-upstream-kpress-diagnostics.md) | H130 | `first seeded PR description through the real server` | diagnostic |
 
 ## Absolute numbers, per condition
 
