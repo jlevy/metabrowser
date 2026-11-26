@@ -3,9 +3,9 @@ type: is
 id: is-01m8a64n37rhg7nya1e434qa2y
 title: "Stack page: a change notice only for a real change, saying what changed, and a button that redraws"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 refs:
   - kind: pr
@@ -18,8 +18,12 @@ parent_id: is-01m8806zrnxn9jwj89hffd2yv7
 hold: null
 hold_until: null
 created_at: 2026-11-25T20:25:18.181Z
-updated_at: 2026-11-25T21:37:35.437Z
+updated_at: 2026-11-26T00:13:16.010Z
 started_at: 2026-11-25T20:25:25.022Z
+closed_at: 2026-11-26T00:13:16.009Z
+close_reason: "Merged in PR #854"
+resolution: null
+duplicate_of: null
 ---
 Owner report: on a stack's page the notice "This stack has changed since its comparison was drawn. Show the new comparison" appears a few seconds after the page opens, and clicking Show the new comparison does nothing.
 
