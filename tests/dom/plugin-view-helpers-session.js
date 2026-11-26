@@ -63,7 +63,7 @@ async function turn() {
 let pages = 0;
 
 /** A page with the shell's startup scripts that a plugin's loading needs, and no view. */
-function createPage() {
+function createPage(repository = null) {
   pages += 1;
   /** @type {Array<{element: any, name: string}>} */
   const waiting = [];
@@ -140,10 +140,15 @@ function createPage() {
     location: { origin: "http://localhost" },
     METABROWSER_ASSET_BUNDLES: {
       mustache: [{ src: "/static/vendor/mustache.min.js", provides: "Mustache" }],
+      "repository-links": [
+        { src: "/static/git-path.js", provides: "MetabrowserGitPath" },
+        { src: "/static/repository-links.js", provides: "MetabrowserRepositoryLinks" },
+      ],
       "sdk-views": [
         { src: "/static/plugin-sdk-views.js", provides: "MetabrowserSourceLineAnchors" },
       ],
     },
+    METABROWSER_REPOSITORY_CONTEXT: repository,
     METABROWSER_SETTINGS: {
       SYNTAX_HIGHLIGHT_MAX_BYTES: 512 * 1024,
       SYNTAX_LANGUAGE_BY_BASENAME: {},
@@ -452,12 +457,116 @@ async function sourceHeaderReadiness() {
   };
 }
 
+// The optional resolver shares a deadline across views. Control the browser's clock
+// and real script load events independently so a slow response has no wall-clock race.
+async function repositoryLinkReadiness() {
+  const repository = {
+    host: "github.com",
+    owner: "org",
+    name: "repo",
+    branch: "main",
+    revision: "a".repeat(40),
+    served_prefix: "",
+  };
+  async function readyPage(context) {
+    const page = createPage(context);
+    const helpers = page.sandbox.MetabrowserAssets.ensureAsset("sdk-views");
+    await turn();
+    page.answer();
+    await helpers;
+    page.requested.length = 0;
+    const deadlines = new Set();
+    page.sandbox.setTimeout = (callback) => {
+      deadlines.add(callback);
+      return callback;
+    };
+    page.sandbox.clearTimeout = (callback) => deadlines.delete(callback);
+    return {
+      ...page,
+      deadlines,
+      expire() {
+        for (const callback of deadlines) {
+          deadlines.delete(callback);
+          callback();
+        }
+      },
+      ask() {
+        const outcome = { state: "pending" };
+        void page.sandbox.metabrowser.loadRepositoryLinks().then(
+          (links) => {
+            outcome.state = links === null ? "no resolver" : "ready";
+          },
+          () => {
+            outcome.state = "rejected";
+          },
+        );
+        return outcome;
+      },
+    };
+  }
+
+  const folder = await readyPage(null);
+  const withoutRepository = folder.ask();
+  await turn();
+
+  const slow = await readyPage(repository);
+  const first = slow.ask();
+  const second = slow.ask();
+  await turn();
+  slow.answer();
+  await turn();
+  const beforeDeadline = {
+    states: [first.state, second.state],
+    deadlines: slow.deadlines.size,
+  };
+  slow.expire();
+  const afterDeadline = slow.ask();
+  await turn();
+  const timedOut = [first.state, second.state, afterDeadline.state];
+  slow.answer();
+  await turn();
+  const afterLateSuccess = slow.ask();
+  await turn();
+
+  const retry = await readyPage(repository);
+  const broken = retry.ask();
+  await turn();
+  retry.answer();
+  await turn();
+  retry.answer(["repository-links.js"]);
+  await turn();
+  const failure = { state: broken.state, deadlines: retry.deadlines.size };
+  const recovered = retry.ask();
+  await turn();
+  retry.answer();
+  await turn();
+
+  return {
+    plainFolder: { state: withoutRepository.state, requests: folder.requested },
+    slow: {
+      beforeDeadline,
+      timedOut,
+      afterLateSuccess: afterLateSuccess.state,
+      originalStatesAfterSuccess: [first.state, second.state],
+      requests: slow.requested,
+      remainingTimers: slow.deadlines.size,
+    },
+    retry: {
+      failure,
+      recovered: recovered.state,
+      requests: retry.requested,
+      remainingTimers: retry.deadlines.size,
+    },
+  };
+}
+
 async function main() {
   const report = {
     withoutACompositor: await withoutACompositor(),
     whenTheHelpersCannotBeFetched: await whenTheHelpersCannotBeFetched(),
     whenTemplatesCannotBeFetched: await whenTemplatesCannotBeFetched(),
     sourceHeaderReadiness: await sourceHeaderReadiness(),
+    repositoryLinkReadiness: await repositoryLinkReadiness(),
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }

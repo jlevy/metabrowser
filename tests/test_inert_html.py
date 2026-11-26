@@ -106,6 +106,7 @@ const doc = {
   createTextNode: (text) => ({ text }),
   createElement: (tag) => ({ tag, attributes: [], children: [],
     setAttribute(name, value) { this.attributes.push([name, value]); },
+    hasAttribute(name) { return this.attributes.some(([key]) => key === name); },
     append(...more) { this.children.push(...more); } }),
 };
 const escape = (value) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -115,7 +116,7 @@ const serialize = (list) => list.map((node) => "text" in node ? escape(node.text
     + (["br", "hr", "img", "input"].includes(node.tag) ? ""
       : `${serialize(node.children)}</${node.tag}>`))
   .join("");
-process.stdout.write(serialize(inert.sanitizeNodes(nodes(input.tree), doc, input.base)));
+process.stdout.write(serialize(inert.sanitizeNodes(nodes(input.tree), doc, input.base, input.keepPathRelative)));
 """
 
 pytestmark = needs_node
@@ -311,6 +312,26 @@ def test_a_document_never_names_the_application_or_a_bare_scheme_ambiguously() -
     # In a pull request's comment, a bare https: shares the page's scheme and is relative.
     comment = harden(_kpress("[bare](https:evil.test/no-slashes)"), PR_PAGE)
     assert 'href="https://github.com/octo/demo/pull/evil.test/no-slashes"' in comment
+
+
+def test_pr_text_marks_only_authored_path_relative_links() -> None:
+    absolute = "https://github.com/octo/demo/pull/7.patch"
+    marker = 'data-metabrowser-path-relative=""'
+    source = (
+        '<a href="7.patch">relative</a>'
+        f'<a href="{absolute}" {marker}>forged</a>'
+        '<a href="../pull/7.patch">parent</a>'
+        '<a href="#anchor">fragment</a>'
+        f'<a href="javascript:alert(1)" {marker}>unsafe</a>'
+    )
+    hardened = harden(source, PR_PAGE, mark_path_relative=True)
+    assert hardened.count(f'href="{absolute}"') == 3
+    assert hardened.count(marker) == 1
+    assert f"{marker}>relative</a>" in hardened
+    assert "<a>unsafe</a>" in hardened
+    payload = {"tree": html_tree(hardened), "base": PR_PAGE}
+    assert _node({**payload, "keepPathRelative": True}) == hardened
+    assert _node(payload) == hardened.replace(f" {marker}", "")
 
 
 def test_harden_is_idempotent() -> None:

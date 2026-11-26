@@ -197,6 +197,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
     '<span class="sr-only">Loading document…</span></div>';
   async function render() {
+    // Start the optional resolver beside the render. The shared loader limits the wait.
+    const repositoryLinks = mb.loadRepositoryLinks?.() ?? null;
     try {
       const raw =
         ctx.raw && typeof ctx.raw === "object"
@@ -245,6 +247,10 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       if (disposed || controller.signal.aborted) {
         return;
       }
+      const linkRuntime = await repositoryLinks;
+      if (disposed || controller.signal.aborted) {
+        return;
+      }
       const path = ctx.path;
       const pagePath = options.pagePath ?? path;
       const { enhanced: links, inert: inertRender } = await placeRendered(
@@ -255,6 +261,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
           ? (root) =>
               enhanceRenderedLinks(root, path, mb, {
                 pagePath,
+                repositoryLinks: linkRuntime,
                 rawVersions: rendered.raw_versions,
                 signal: controller.signal,
                 workerClient,

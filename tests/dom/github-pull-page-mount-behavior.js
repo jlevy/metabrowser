@@ -789,6 +789,321 @@ async function textRefusal() {
   return steps;
 }
 
+// What a text's links open on the mounted page (`inertProse`, `textReading`, `relinkTexts`),
+// with static/repository-links.js run whole beside the GitPath codec, as the
+// `repository-links` bundle carries them, and answered by the SDK's loader
+// (`loadRepositoryLinks`). The allowlist is a stand-in that
+// makes each link absolute against the pull request's page, as static/inert-html.js does
+// (tests/dom/inert-html-session.js pins that), so a path-relative reference arrives under
+// `/pull/` as github.com resolves it. At the served head, such a link opens the head's file
+// in place. Away from it, it opens github.com at the head until the comparison is read, and
+// then, for a file the comparison changes on either side, that file in Changes, in place
+// and through the page's own `open`; an unchanged file stays on github.com. The read lands
+// while Checks shows, so the description's section kept for a return to Conversation is read
+// again too, once, and its link keeps its one click listener. Returns each step's links, as
+// "text → href", and what each click did.
+async function textLinks() {
+  const page = await importPage(
+    `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href}?text-links`,
+  );
+  const vm = require("node:vm");
+  const sandbox = { Object, URL, TextEncoder, TextDecoder, btoa, atob, console };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  for (const name of ["git-path.js", "repository-links.js"]) {
+    const file = path.join(root, "src/metabrowser/static", name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
+  }
+  const comparison = recorded.current.body.record.comparison;
+  // Each pass of the links over a text, which the steps count.
+  let passes = 0;
+  const links = {
+    ...sandbox.MetabrowserRepositoryLinks,
+    enhance(...args) {
+      passes += 1;
+      return sandbox.MetabrowserRepositoryLinks.enhance(...args);
+    },
+  };
+  // The allowlist's stand-in: each `<a href>` of a text's HTML becomes a link made absolute
+  // against *base*, the pull request's page, an outside link as the allowlist leaves one.
+  const inert = {
+    sanitizeHtml(html, base, keepPathRelative) {
+      return [
+        ...html.matchAll(/<a href="([^"]*)"( data-metabrowser-path-relative="")?>([^<]*)<\/a>/g),
+      ].map(([, href, relative, text]) => {
+        const link = new Element("a");
+        link.setAttribute("href", new URL(href, base).href);
+        if (keepPathRelative && relative) {
+          link.setAttribute("data-metabrowser-path-relative", "");
+        }
+        link.setAttribute("target", "_blank");
+        link.setAttribute("rel", "noopener noreferrer");
+        link.textContent = text;
+        return link;
+      });
+    },
+    kpressProse(nodes) {
+      const prose = new Element("div");
+      prose.className = "kpress-prose";
+      prose.append(...nodes);
+      return prose;
+    },
+  };
+  const COMMENT = recorded.current.body.record.issue_comments[0].id;
+  const texts = {
+    body: [
+      '<a href="https://github.com/octo/demo/pull/docs/changed.md" data-metabrowser-path-relative="">the changed guide</a>',
+      '<a href="https://github.com/octo/demo/pull/docs/same.md" data-metabrowser-path-relative="">an unchanged file</a>',
+      '<a href="https://github.com/octo/demo/pull/7/files">the Changes tab</a>',
+    ].join(""),
+    [`issue_comment/${COMMENT}`]:
+      '<a href="https://github.com/octo/demo/pull/docs/before.md" data-metabrowser-path-relative="">the renamed file</a>',
+  };
+  // The comparison's read: one file changed in place and one renamed, whose old path a link
+  // names too.
+  const raw = {
+    manifest: {
+      files: [
+        {
+          id: "1",
+          kind: "modified",
+          old: { path: "docs/changed.md" },
+          new: { path: "docs/changed.md" },
+        },
+        {
+          id: "2",
+          kind: "renamed",
+          old: { path: "docs/before.md" },
+          new: { path: "docs/after.md" },
+        },
+      ],
+      totals: { files: 2, additions: 1, deletions: 1, exact: true },
+      truncated: false,
+    },
+  };
+  const steps = [];
+  const plain = () => ({
+    altKey: false,
+    button: 0,
+    ctrlKey: false,
+    defaultPrevented: false,
+    metaKey: false,
+    shiftKey: false,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
+  });
+  // The click listeners each link was given, however many passes read it.
+  const listeners = new Map();
+  const addEventListener = Element.prototype.addEventListener;
+  Element.prototype.addEventListener = function (name, callback) {
+    if (this.tag === "a" && name === "click") {
+      listeners.set(this, (listeners.get(this) ?? 0) + 1);
+    }
+    return addEventListener.call(this, name, callback);
+  };
+
+  /** Mount the page on Conversation with the code served at *revision*. */
+  async function mount(revision) {
+    const tasks = [];
+    globalThis.document = {
+      visibilityState: "visible",
+      addEventListener() {},
+      removeEventListener() {},
+      createElement: (tag) => new Element(tag),
+      importNode: () => new Element("svg"),
+    };
+    const listeners = new EventTarget();
+    globalThis.window = {
+      location: { pathname: "/pull/7" },
+      addEventListener: listeners.addEventListener.bind(listeners),
+      setTimeout(callback) {
+        tasks.push(callback);
+        return Symbol();
+      },
+      clearTimeout() {},
+    };
+    const body = structuredClone(recorded.current.body);
+    body.record_revision = "f".repeat(64);
+    body.record.pull.body = "Text links.";
+    body.record.issue_comments = [{ ...body.record.issue_comments[0], body: "A comment." }];
+    body.record.reviews = [];
+    body.record.review_comments = [];
+    globalThis.fetch = async (route) => {
+      const part = new URL(route, "http://localhost").searchParams.get("part");
+      if (route.startsWith("/api/plugin/github/pull-markdown") && part in texts) {
+        const answer = {
+          number: 7,
+          fetched_at: body.fetched_at,
+          record_revision: body.record_revision,
+          part,
+          html: texts[part],
+          assets: {},
+        };
+        return { ok: true, status: 200, headers: { get: () => null }, json: async () => answer };
+      }
+      return { status: 304, headers: { get: () => null } };
+    };
+    const opened = [];
+    const viewed = [];
+    const diffView = {
+      prefetch: async (asked) => (asked.right === comparison.head ? raw : null),
+      summary: async () => ({ dispose() {} }),
+    };
+    const container = new Element("main");
+    const handle = page.mountPullPage(
+      container,
+      {
+        number: 7,
+        tab: "",
+        reader: { initial: { etag: null, body }, fetchAfterMs: 60_000 },
+        open(route) {
+          opened.push(route);
+          return Promise.resolve({ status: "opened" });
+        },
+      },
+      {
+        perf,
+        ensureAsset: async (name) => {
+          if (name === "inert-html") {
+            window.MetabrowserInertHtml = inert;
+          }
+        },
+        // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
+        loadRepositoryLinks: async () => links,
+        loadKpressAssets: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
+        ensureKindAssets: async () => {},
+        loadChangedFilesTree: async () => {},
+        getRegisteredView: () => diffView,
+        decorateExternalLink: (anchor) => anchor,
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+          label: "now",
+          className: "age",
+        })),
+        formatTimestamp: () => "now",
+        repository: {
+          host: "github.com",
+          owner: "octo",
+          name: "demo",
+          branch: null,
+          revision,
+          served_prefix: "",
+        },
+        navigation: {
+          href: (target) => `/view/${target.path}`,
+          async open(target) {
+            viewed.push(`/view/${target.path}`);
+          },
+        },
+        sourceKind: () => "git_revision",
+        icons: { toggle: "" },
+      },
+    );
+    await settle();
+    const idle = async () => {
+      for (const task of tasks.splice(0)) {
+        task();
+      }
+      await settle();
+    };
+    const movePin = () => listeners.dispatchEvent(new Event("metabrowser:pin-changed"));
+    return { container, handle, opened, viewed, idle, movePin };
+  }
+  const anchors = (holder) => holder.querySelectorAll("a[href]");
+  const told = (holder) =>
+    anchors(holder)
+      .map((link) => `${link.textContent} → ${link.getAttribute("href")}`)
+      .join("; ");
+  /** Click *text*'s link: what it opened in place, or that the browser follows it. */
+  const click = (holder, text, mounted) => {
+    const link = anchors(holder).find((anchor) => anchor.textContent === text);
+    const event = plain();
+    link.events.get("click")?.(event);
+    const routes = mounted.opened.splice(0);
+    const viewed = mounted.viewed.splice(0);
+    // What a plain click opens in place is the address the link holds, as pull-route.js
+    // spells a route, so a new tab and a copied link open the same.
+    const spelled = routes.map(
+      (route) => `/pull/${route.number}/${route.tab}${route.file ? `/${route.file}` : ""}`,
+    );
+    for (const address of [...spelled, ...viewed]) {
+      assert.equal(address, link.getAttribute("href"), "a click opens the link's own address");
+    }
+    assert.equal(routes.length + viewed.length > 0, event.defaultPrevented, "opened in place");
+    const opened = [...routes.map((route) => JSON.stringify(route)), ...viewed];
+    return `${text}: ${event.defaultPrevented ? opened.join(", ") : "the browser follows it"}`;
+  };
+  const proses = (container) => container.querySelectorAll(".kpress-prose");
+
+  // Served at the head the text describes: the head's file opens in place, before the
+  // comparison is read and after.
+  const atHead = await mount(comparison.head);
+  const [headBody] = proses(atHead.container);
+  steps.push(`served at the head: ${told(headBody)}`);
+  steps.push(`  click ${click(headBody, "the changed guide", atHead)}`);
+  await atHead.idle();
+  steps.push(`  the comparison read: ${told(headBody)}`);
+  atHead.movePin();
+  assert.equal(
+    anchors(headBody)[1].getAttribute("href"),
+    `https://github.com/octo/demo/blob/${comparison.head}/docs/same.md`,
+    "a stale pin drops view links and keeps the PR head",
+  );
+  steps.push(`  after the served revision moves: ${told(headBody)}`);
+  atHead.handle.dispose();
+
+  // Served away from it: github.com at the head, then Changes for a changed file.
+  const away = await mount(comparison.base_commit);
+  const [description, comment] = proses(away.container);
+  steps.push(`served away from the head: ${told(description)}; ${told(comment)}`);
+  steps.push(`  click ${click(description, "the changed guide", away)}`);
+  steps.push(`  click ${click(description, "the Changes tab", away)}`);
+  passes = 0;
+  // The address moves first, as the shell's `open` moves it before the page's tab.
+  window.location.pathname = "/pull/7/checks";
+  away.handle.setTab("checks");
+  await settle();
+  assert.equal(description.isConnected, false, "Checks shows in the description's place");
+  await away.idle();
+  steps.push(
+    `  the comparison read on Checks, ${passes} texts read again: ${told(description)}; ${told(comment)}`,
+  );
+  assert.equal(passes, 2, "the read reads each drawn text again, once");
+  passes = 0;
+  window.location.pathname = "/pull/7";
+  away.handle.setTab("");
+  await settle();
+  await away.idle();
+  assert.equal(description.isConnected, true, "Conversation shows the same description again");
+  steps.push(`  back on Conversation, ${passes} texts read again: ${told(description)}`);
+  for (const [text, holder] of [
+    ["the changed guide", description],
+    ["an unchanged file", description],
+    ["the Changes tab", description],
+    ["the renamed file", comment],
+  ]) {
+    steps.push(`  click ${click(holder, text, away)}`);
+  }
+  assert.equal(
+    anchors(comment)[0].getAttribute("href"),
+    `https://github.com/octo/demo/blob/${comparison.head}/docs/before.md`,
+    "a renamed-away path does not select the destination diff",
+  );
+  const counted = [...anchors(description), ...anchors(comment)].map(
+    (link) => `${link.textContent} ${listeners.get(link) ?? 0}`,
+  );
+  steps.push(`  click listeners: ${counted.join(", ")}`);
+  for (const link of [...anchors(description), ...anchors(comment)]) {
+    const inApp = link.getAttribute("href").startsWith("/");
+    assert.equal(listeners.get(link) ?? 0, inApp ? 1 : 0, "an in-app link has one listener");
+  }
+  away.handle.dispose();
+  Element.prototype.addEventListener = addEventListener;
+  return steps;
+}
+
 // A text's Mermaid blocks on the mounted page (A3 of the review of #597): github.com draws
 // them in a description and in comments, and so does the page, each as an image, since a
 // text is untrusted. The page loads the Markdown plugin's exported host
@@ -1126,6 +1441,9 @@ async function mountOn(page, body, tab, ageLabel, more = {}) {
       },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
+      // The resolver of a text's links, which a story that serves a repository asks for: none
+      // loads here, as the SDK answers when it cannot load.
+      loadRepositoryLinks: async () => null,
       ...sdk,
     },
   );
@@ -4322,6 +4640,7 @@ async function run() {
   const guideIntroductionSteps = await guideIntroduction(page);
   const guideIntroductionBoundSteps = await guideIntroduction(page, true);
   const textRefusalSteps = await textRefusal();
+  const textLinkSteps = await textLinks();
   const textDiagramSteps = await textDiagrams();
   const switchUnavailableSteps = await switchUnavailable(page);
   const eventLogDetailsSteps = await eventLogDetails(page);
@@ -4358,6 +4677,7 @@ async function run() {
     guideIntroduction: guideIntroductionSteps,
     guideIntroductionBound: guideIntroductionBoundSteps,
     textRefusal: textRefusalSteps,
+    textLinks: textLinkSteps,
     textDiagrams: textDiagramSteps,
     switchUnavailable: switchUnavailableSteps,
     eventLogDetails: eventLogDetailsSteps,

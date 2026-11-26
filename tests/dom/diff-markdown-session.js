@@ -378,6 +378,17 @@ globalThis.document = page;
 const windowListeners = new Map();
 /** The plugin's registered view, once index.js has loaded. */
 let plugin = null;
+/** The served repository's identity, as a page of the fixture's mirror or checkout has it. */
+function repositoryAt(revision) {
+  return {
+    branch: null,
+    host: "github.com",
+    name: "demo",
+    owner: "octo",
+    revision,
+    served_prefix: "",
+  };
+}
 /** What the page knows of its source: a pin's page is a Git revision, a checkout's a folder. */
 const pageSource = { kind: "git_revision", repository: null };
 globalThis.window = {
@@ -401,8 +412,19 @@ globalThis.window = {
     get repository() {
       return pageSource.repository;
     },
+    // As static/plugin-sdk-views.js answers it: the links on a repository's page.
+    loadRepositoryLinks: async () =>
+      pageSource.repository ? globalThis.window.MetabrowserRepositoryLinks : null,
   },
 };
+
+// What the page has loaded when a rendered file arrives on a repository's page (diff-view.js
+// `ensureInert`): what a link into the repository opens, and the GitPath codec that reads a
+// link to a file of the head back.
+for (const name of ["git-path.js", "repository-links.js"]) {
+  const file = path.join(repoRoot, "src/metabrowser/static", name);
+  require("node:vm").runInThisContext(fs.readFileSync(file, "utf8"), { filename: file });
+}
 
 /** What the pin guard announces when a data request finds the server serves another pin. */
 function pinChanged(served) {
@@ -794,17 +816,16 @@ async function main() {
   async function targetsOn(pin) {
     if (pin === null) {
       delete globalThis.window.METABROWSER_SOURCE_PIN;
-      Object.assign(pageSource, {
-        kind: "filesystem",
-        repository: { revision: head, served_prefix: "" },
-      });
+      Object.assign(pageSource, { kind: "filesystem", repository: repositoryAt(head) });
     } else {
       globalThis.window.METABROWSER_SOURCE_PIN = { pin, ref: null };
-      Object.assign(pageSource, { kind: "git_revision", repository: null });
+      Object.assign(pageSource, { kind: "git_revision", repository: repositoryAt(pin) });
     }
     const mounted = await plugin.render({}, { comparison, raw: structuredClone(added) });
     assert(typeof mounted?.options?.markdownTargets === "function", "the diff has a rule");
-    return mounted.options.markdownTargets;
+    const target = mounted.options.markdownTargets;
+    return (href, image, links = globalThis.window.MetabrowserRepositoryLinks) =>
+      target(href, image, links);
   }
   const isTarget = await targetsOn(head);
   const atBase = await targetsOn(base);
@@ -813,11 +834,13 @@ async function main() {
   const route = recorded.image_route;
   const links = {
     route,
-    // A link to a file of the head opens only where its address names that file: on a page
-    // that shows the head. The same link on the other pages stays plain text.
+    // A link to a file of the head opens here only where its address names that file: on a
+    // page that shows the head. On the other pages it opens that file at the head on
+    // github.com.
     pages: {
       "pinned at the comparison's head": isTarget(headLink, false),
-      "pinned at the merge base": atBase(headLink, false),
+      "pinned at the merge base before the resolver arrives": atBase(headLink, false, null),
+      "pinned at the merge base after the resolver arrives": atBase(headLink, false),
       "beside a checkout at the head, which has no pin": beside(headLink, false),
     },
     // On the page that shows the head.
@@ -1216,9 +1239,9 @@ async function main() {
   step("draws every chunk through it, and the link goes there", [byId.f11]);
 
   // Another tab switched the server's pin: a link to a file of the head would open that
-  // path at the other pin, so every one drawn becomes plain text, and so does any drawn
-  // later; images stay on the comparison's own route. The pin guard says so once, and the
-  // page that showed the head keeps no such link from then on. The diff's own call when it
+  // path at the other pin, so every one drawn opens that file at the head on github.com
+  // instead, and so does any drawn later; images stay on the comparison's own route. The pin
+  // guard says so once, and the page that showed the head keeps no `/view/` link from then on. The diff's own call when it
   // hears this is diff-view.js's (tests/dom/diff-view-behavior.js); here the session makes
   // it, as the diff's stand-in.
   pinChanged(base);
@@ -1227,7 +1250,9 @@ async function main() {
     false,
   );
   views.closeHeadLinks();
-  step("a page that learns another pin is served keeps no link to a file", [byId.f1]);
+  step("a page that learns another pin is served links a file to the head on github.com", [
+    byId.f1,
+  ]);
 
   views.dispose();
   step("disposal unbinds every chooser and stops every timer", files);

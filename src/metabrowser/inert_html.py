@@ -433,6 +433,31 @@ def outside_link(href: str | None, base: str | None) -> str | None:
     return scheme + absolute[len(scheme) :]
 
 
+# Emitted only by the PR text hardener from the authored href. The browser otherwise
+# cannot tell that two identical absolute URLs had different origins.
+PATH_RELATIVE_LINK: Final = "data-metabrowser-path-relative"
+
+
+def _is_path_relative(href: str | None) -> bool:
+    if not href:
+        return False
+    cleaned = _clean(href)
+    if not cleaned or cleaned.startswith(("/", "\\", "#", "?")) or _SCHEME.match(cleaned):
+        return False
+    # A reference up from the PR page can name another explicit GitHub route.
+    # Mark paths that remain below this page's directory.
+    path = _dot_segments(cleaned.replace("\\", "/")).split("?", 1)[0].split("#", 1)[0]
+    depth = 0
+    for segment in path.split("/"):
+        if segment == "..":
+            if depth == 0:
+                return False
+            depth -= 1
+        elif segment not in {"", "."}:
+            depth += 1
+    return depth > 0
+
+
 def link_href(href: str | None, base: str | None) -> tuple[str, bool] | None:
     """What a link keeps: its address and whether it leaves the page, or ``None``."""
 
@@ -682,10 +707,16 @@ type RewriteLocal = Callable[[str, bool], str | None]
 
 
 class _Hardener(HTMLParser):
-    def __init__(self, base: str | None, rewrite_local: RewriteLocal | None) -> None:
+    def __init__(
+        self,
+        base: str | None,
+        rewrite_local: RewriteLocal | None,
+        mark_path_relative: bool,
+    ) -> None:
         super().__init__(convert_charrefs=True)
         self.base = base
         self.rewrite_local = rewrite_local
+        self.mark_path_relative = mark_path_relative
         self.out: list[str] = []
         # Depth inside a dropped element; nothing is written while it is above zero.
         self.dropped = 0
@@ -727,6 +758,8 @@ class _Hardener(HTMLParser):
                     scoped = self.rewrite_local(href, False)
                     kept = [] if scoped is None else [("href", scoped)]
             if tag == "a":
+                if self.mark_path_relative and kept and _is_path_relative(values.get("href")):
+                    kept.append((PATH_RELATIVE_LINK, ""))
                 self.links += 1
             self.out.append(_open_tag(tag, kept))
             if tag in _HEADINGS and self.base is None:
@@ -815,10 +848,10 @@ class _Hardener(HTMLParser):
         return replaced
 
 
-def harden(html: str, link_base: str | None = None) -> str:
-    """*html* reduced to :data:`ALLOWED_TAGS` and the attributes described above."""
+def harden(html: str, link_base: str | None = None, *, mark_path_relative: bool = False) -> str:
+    """Reduce *html* to the inert allowlist and optionally identify authored PR file links."""
 
-    return _harden(html, link_base)[0]
+    return _harden(html, link_base, mark_path_relative=mark_path_relative)[0]
 
 
 def harden_document(
@@ -840,9 +873,13 @@ def harden_document(
 
 
 def _harden(
-    html: str, link_base: str | None, rewrite_local: RewriteLocal | None = None
+    html: str,
+    link_base: str | None,
+    rewrite_local: RewriteLocal | None = None,
+    *,
+    mark_path_relative: bool = False,
 ) -> tuple[str, dict[str, str]]:
-    hardener = _Hardener(link_base, rewrite_local)
+    hardener = _Hardener(link_base, rewrite_local, mark_path_relative and link_base is not None)
     hardener.feed(html)
     hardener.close()
     replaced = hardener.anchor_headings()

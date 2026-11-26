@@ -2048,6 +2048,12 @@ type MetabrowserSdk = {
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   /** The shared changed-files tree model, loaded once on demand (static/changed-files-tree.js). */
   loadChangedFilesTree(): Promise<MetabrowserChangedFilesTree>;
+  /**
+   * What a link in authored text opens (static/repository-links.js). Resolves to null off
+   * GitHub repository pages or when the load fails or exceeds its shared deadline.
+   * Later calls can use the resolver after it arrives (static/plugin-sdk-views.js).
+   */
+  loadRepositoryLinks(): Promise<MetabrowserRepositoryLinksRuntime | null>;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
   /**
@@ -3922,6 +3928,70 @@ declare global {
     | { kind: "reload"; text: string; button: string }
     | { kind: "retry"; text: string; button: string };
 
+  type MetabrowserPublicRepositoryContext = MetabrowserRepositoryContext;
+  /** static/repository-links.js, the `repository-links` on-demand bundle. */
+  type MetabrowserRepositoryLinkTarget =
+    | Readonly<{
+        kind: "view";
+        target: MetabrowserNavigationTarget;
+        localization: "revision" | "working-tree";
+      }>
+    | Readonly<{
+        kind: "route";
+        href: string;
+        localization: "pull" | "commit" | "pulls";
+        /** The pull request or stack a `pull` route opens, for a page that opens it in place. */
+        pull: Readonly<{
+          number: number;
+          tab: "" | "files" | "checks" | "changes";
+          file: string;
+          stack: boolean;
+        }> | null;
+      }>
+    | Readonly<{ kind: "external"; url: string }>;
+
+  /** A pull request's text: the commit it describes and, when known, the files it changes. */
+  type MetabrowserRepositoryTextContext = {
+    head: string | null;
+    changes?: { number: number; stack: boolean; files: ReadonlySet<string> };
+  };
+
+  type MetabrowserRepositoryLinksRuntime = Readonly<{
+    /** The tooltip of a link that opens whatever revision is served. */
+    WORKING_TREE_TITLE: string;
+    localize(
+      url: string,
+      context: MetabrowserRepositoryContext | null | undefined,
+      options?: {
+        sourceKind?: "filesystem" | "git_revision";
+        text?: MetabrowserRepositoryTextContext;
+        pathRelative?: boolean;
+        views?: boolean;
+      },
+    ): MetabrowserRepositoryLinkTarget | null;
+    enhance(
+      root: ParentNode,
+      mb: Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">,
+      options?: {
+        text?: MetabrowserRepositoryTextContext;
+        open?: (route: Extract<MetabrowserRepositoryLinkTarget, { kind: "route" }>) => boolean;
+        views?: boolean;
+      },
+    ): number;
+    fileUrl(
+      context: MetabrowserRepositoryContext | null | undefined,
+      revision: string,
+      path: string[],
+      directory?: boolean,
+      suffix?: string,
+    ): string | null;
+    viewFileUrl(
+      context: MetabrowserRepositoryContext | null | undefined,
+      revision: string,
+      href: string,
+    ): string | null;
+  }>;
+
   /** What the freshness label says and offers; see static/source-freshness.js. */
   /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
   type MetabrowserInertHtmlRuntime = Readonly<{
@@ -3953,7 +4023,7 @@ declare global {
     outsideLink(href: string | null, base: string | null): string | null;
     remoteImage(src: string | null, base: string | null): string | null;
     kpressProse(nodes: Node[], doc: Document): HTMLElement;
-    sanitizeHtml(html: string, base: string | null): Node[];
+    sanitizeHtml(html: string, base: string | null, keepPathRelative?: boolean): Node[];
     sanitizeNodes(
       nodes: ArrayLike<Node>,
       doc: Pick<Document, "createElement" | "createTextNode">,
@@ -5137,6 +5207,7 @@ declare global {
     /** static/git-path.js, which only a pinned revision's shell loads. */
     MetabrowserGitPath?: Readonly<{
       display(path: string): string | null;
+      text(path: string): string | null;
       wire(path: string | Uint8Array): string | null;
     }>;
     /** static/pull-route.js, the `pull-route` on-demand bundle. */
@@ -5177,9 +5248,11 @@ declare global {
     }>;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
+    MetabrowserRepositoryLinks?: MetabrowserRepositoryLinksRuntime;
     /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
     MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{
+      hasChanged(): boolean;
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;
       /** What the page of a checkout's working tree names in place of a commit. */
