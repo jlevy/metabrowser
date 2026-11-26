@@ -5,7 +5,7 @@ title: Use the core renderer for Markdown frontmatter and code excerpts
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-26-structured-data-views.md
 delegate: codex@spud10.local
 labels: []
@@ -14,11 +14,11 @@ parent_id: is-01m8ctvgrty5asxe2xh62gzn8v
 hold: null
 hold_until: null
 created_at: 2026-11-26T21:06:52.415Z
-updated_at: 2026-11-26T21:45:24.991Z
+updated_at: 2026-11-26T23:37:58.140Z
 started_at: 2026-11-26T21:40:41.544Z
 ---
 Recognize fenced JSON and YAML frontmatter in KPress, preserve original bytes and placement, and lazily mount the same controls for both formats and their code fences.
 
 ## Notes
 
-Frontmatter is live at 6398a4c42 in trusted and inert Markdown. Chrome exercised an actual Universe record: lazy Table, nested Tree and exact Source with original line 9, then back to the same nested Table. CLI goldens cover block/flow YAML, JSON in the frontmatter fences and CRLF. Standalone Markdown code-fence excerpts remain.
+Frontmatter and eligible top-level YAML and JSON Markdown fences use the same lazy Table, Tree and Source renderer. Fence markers match original file revision, line, language and content. Chrome tested independent disclosures, color from the shared syntax service, inline branches and original Source bytes. Browserless UI and API goldens cover both embeddings. Full cross-repository verification remains gated by the published SoftSchema collection release.
