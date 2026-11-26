@@ -577,6 +577,16 @@ function createShell(pathname, network, options = {}) {
   const toolbars = panelIds.map((tab) =>
     fakeElement({ dataset: { navToolbar: tab }, hidden: tab !== initialPanel }),
   );
+  // `sourceRow` is a repository's revision row, which the server draws under the tabs,
+  // shown when Files or Commits is in front.
+  const sourceRow = options.sourceRow
+    ? fakeElement({ hidden: initialPanel !== "files" && initialPanel !== "git" })
+    : null;
+  if (sourceRow) {
+    elements.set("nav-source-ref", sourceRow);
+  }
+  /** Each time the chooser's one mounted instance was told to close its list. */
+  const chooserCloses = [];
   /** @param {any} toolbar The Files bar has its own id; every other toolbar is `nav-toolbar-<tab>`. */
   const slotToolbar = (toolbar) => {
     const id = toolbar.id || `nav-toolbar-${toolbar.dataset.navToolbar}`;
@@ -882,6 +892,12 @@ function createShell(pathname, network, options = {}) {
   });
   sandbox.fileNeedsRevalidate =
     sandbox.MetabrowserNavigationRoute.createFileRevalidationTracker(512);
+  if (sourceRow) {
+    // The chooser's one mounted instance, as source-ref-selector.js answers `mounted()`.
+    sandbox.MetabrowserSourceRefSelector = {
+      mounted: () => ({ close: () => chooserCloses.push(sandbox.mainTabs?.active() ?? null) }),
+    };
+  }
   // No plugin registers a pull-request view here, so a pull-request page that loaded
   // is the shell's own message that nothing renders it.
   for (const name of [...STARTUP_SCRIPTS, ...(options.startupScripts ?? [])]) {
@@ -1003,6 +1019,9 @@ function createShell(pathname, network, options = {}) {
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
     /** The toolbars in the navigation's slot, shown or not. */
     toolbarsPresent: () => toolbars.map((toolbar) => toolbar.dataset.navToolbar),
+    /** Whether the revision row is shown, or null on a page without one. */
+    sourceRowShown: () => (sourceRow ? !sourceRow.hidden : null),
+    chooserCloses,
     /** The toolbars shown in the navigation's slot: exactly the active tab's. */
     toolbarsShown: () =>
       toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
@@ -1698,6 +1717,32 @@ async function independentMainTabs() {
     slots,
     { landing: ["files"], git: ["git"], pulls: ["pulls"], files: ["files"] },
     "each tab shows its own toolbar, and only it",
+  );
+  // A repository's revision row heads Files and Commits alike, since both show the one
+  // revision it chooses, and hides under Pulls; a switch to another tab closes its open
+  // list, and choosing the tab already in front does not.
+  const revision = createShell("/view/", read, { pulls: true, sourceRow: true });
+  await revision.sandbox.navigationController.start();
+  const revisionRow = [`landing: ${revision.sourceRowShown()}`];
+  for (const panel of ["git", "git", "pulls", "files", "pulls", "git"]) {
+    const closes = revision.chooserCloses.length;
+    revision.sandbox.mainTabs.activate(panel);
+    revisionRow.push(
+      `${panel}: ${revision.sourceRowShown()}${revision.chooserCloses.length > closes ? ", list closed" : ""}`,
+    );
+  }
+  assert.deepEqual(
+    revisionRow,
+    [
+      "landing: true",
+      "git: true, list closed",
+      "git: true",
+      "pulls: false, list closed",
+      "files: true, list closed",
+      "pulls: false, list closed",
+      "git: true, list closed",
+    ],
+    "the revision row shows under Files and Commits, and only there",
   );
   const pullsLanding = createShell("/pulls", read, { pulls: true });
   assert.deepEqual(

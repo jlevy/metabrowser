@@ -47,6 +47,9 @@ button says which view the page shows before the ref: “Working tree” and the
 files on disk are on, which the page names as the server writes it and as each listing
 reads `HEAD` again, or “Revision” and the ref chosen, so the checked-out branch’s own
 revision never reads as its working tree (mb-cxpq).
+The same selector heads the Commits tab, which shows the revision chosen: a switch made
+there names no address, and the page reloads on Commits at the tab’s own landing, the
+`/view/` history entry whose state is `gitLanding`, where its row names the revision.
 A way back that fails with the list closed says why in the row.
 A page left behind by a switch elsewhere offers a reload, which a mirror’s freshness row
 does for a mirror. A checkout’s rows say which chip each name is drawn as, and its
@@ -680,6 +683,39 @@ $ node tests/dom/source-ref-selector-session.js
         "navigated": [
           "/view/README.md"
         ]
+      },
+      {
+        "step": "a switch on the Commits tab names no address",
+        "requests": [
+          "POST /api/source/pin {\"ref\":\"refs/heads/feature\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        }
+      },
+      {
+        "step": "the page reloads on the Commits tab's own landing",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        },
+        "navigated": [
+          "/view/ {\"gitLanding\":true}"
+        ]
+      },
+      {
+        "step": "the reloaded Commits tab's row names the revision chosen there",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Revision · Branch: feature",
+          "back": "[← Working tree]",
+          "open": false
+        }
       },
       {
         "step": "a failed way back says so in the row, with the list closed",

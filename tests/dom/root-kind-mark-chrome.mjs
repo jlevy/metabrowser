@@ -197,8 +197,8 @@ const INFO_ICON = `(() => {
 })()`;
 
 async function checkCheckoutDetails() {
-  const chip = "#nav-files-ref .git-ref-action";
-  const chooser = "#nav-files-ref .source-ref-selector-toggle";
+  const chip = "#nav-source-ref .git-ref-action";
+  const chooser = "#nav-source-ref .source-ref-selector-toggle";
   const revisionCopy = "#root-details .git-commit-revision-copy";
   const menu = "[data-ref-action-menu]";
   await browser.waitFor(`document.querySelector(${JSON.stringify(chip)}) !== null`, STEP_MS);
@@ -210,7 +210,7 @@ async function checkCheckoutDetails() {
     return {
       chip: chip.matches(".git-ref-local") && chip.textContent === branch,
       working:
-        document.querySelector("#nav-files-ref .source-ref-selector-view")?.textContent ===
+        document.querySelector("#nav-source-ref .source-ref-selector-view")?.textContent ===
         "Working tree",
       hasDuplicate: document.querySelector("#root-details [data-ref-menu]") !== null,
       branch, revision,
@@ -241,7 +241,7 @@ async function checkCheckoutDetails() {
     const toggle = document.querySelector(${JSON.stringify(chooser)});
     const toggleRect = toggle.getBoundingClientRect();
     const fits = chip.getBoundingClientRect().right < toggleRect.left &&
-      toggleRect.right <= chip.closest("#nav-files-ref").getBoundingClientRect().right;
+      toggleRect.right <= chip.closest("#nav-source-ref").getBoundingClientRect().right;
     const clipped = label.scrollWidth > label.clientWidth;
     pane.style.width = width;
     return fits && clipped;

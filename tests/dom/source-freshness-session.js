@@ -1365,6 +1365,7 @@ async function run() {
     { name: "the session expired", status: 410, body: {}, initial: false },
     { name: "the cursor was rejected", status: 400, body: {}, initial: false },
     { name: "a conflict without a code", status: 409, body: {}, initial: false },
+    { name: "another tab switched the revision", ...recorded.pin_changed, initial: false },
     { name: "the server failed", status: 500, body: {}, initial: false },
     { name: "the first page was stale", ...recorded.history_stale, initial: true },
   ];
