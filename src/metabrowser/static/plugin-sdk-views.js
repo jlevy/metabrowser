@@ -305,14 +305,17 @@
    * (builtin_plugins/github/urls.py). Null leaves the choice to the file's views.
    *
    * @param {Target | null | undefined} target
-   * @returns {"source" | null}
+   * @returns {"source" | "table" | null}
    */
   function preferredView(target) {
     if (!target) {
       return null;
     }
     const plain = (target.query || "").split("&").includes("plain=1");
-    return plain || parse(target.fragment) ? "source" : null;
+    if (plain || parse(target.fragment)) {
+      return "source";
+    }
+    return new URLSearchParams(target.query).has("table") ? "table" : null;
   }
 
   /**

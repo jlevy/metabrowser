@@ -9194,13 +9194,9 @@ window.addEventListener("popstate", applyPullHistoryLanding);
  * @returns {Promise<"source" | "table" | null>}
  */
 async function addressedView(target, loading) {
-  if ((await loading).status !== "ready") {
-    return null;
-  }
-  return (
-    window.MetabrowserSourceLineAnchors?.preferredView(target) ??
-    (new URLSearchParams(target.query).has("table") ? "table" : null)
-  );
+  return (await loading).status === "ready"
+    ? (window.MetabrowserSourceLineAnchors?.preferredView(target) ?? null)
+    : null;
 }
 
 async function applyNavigationTarget(target, context) {

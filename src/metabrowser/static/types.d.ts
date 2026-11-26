@@ -1034,7 +1034,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
   nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
   normalizeLineEndings(text: string, afterCarriageReturn?: boolean): string;
   parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
-  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
+  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | "table" | null;
   refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
   spoken(state: MetabrowserSourceLineAnchorState): string;
 }>;
