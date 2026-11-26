@@ -211,6 +211,22 @@ pin changes, it becomes the external link to that file at the head instead of pl
 text. Its repository links are localized as everywhere else, and its external links get
 the external-link mark the other surfaces give them.
 
+A repository link the resolver would open at a `/view/` address follows the same rule
+(`mb-e2lo`): a `blob/` or `tree/` link to the served branch or commit opens in place, as
+in a README, only while the page shows the head (`headLinksOpen` in
+`builtin_plugins/diff/index.js`, the one rule both kinds of link read), and stays as
+written beside a checkout or on a page pinned elsewhere, the head’s branch at an earlier
+commit among them.
+When another tab changes the pin, `closeHeadLinks` points the server’s
+links to a file of the head at github.com and has `enhance` read the rest again with
+`views: false`, which restores each `/view/` target it made to the link the text wrote,
+with its click; so a link drawn before the change reads as one drawn after it, and no
+link opens another pin’s `/view/` address.
+The two kinds are told apart by who made them: `sanitizeBlock` records the links it kept
+at `/view/`, the only ones converted by their address, and the resolver restores its own
+from the link it kept, since its targets include folders and queries, which
+`viewFileUrl` does not read.
+
 ### Invariants
 
 - An in-app link’s `href` is the address a plain click opens, so a new tab, a copied
@@ -286,6 +302,9 @@ Beads under the Markdown rendering epic, each from a review of #874:
 - `mb-0uzt`: a commit’s or the list’s page, and another pull request outside the pull
   request page, open in place rather than by a page load.
 - `mb-e2lo`: a rendered diff localizes `/view/` targets while it shows the head.
+  Done: [Commit Messages and Rendered Diffs](#commit-messages-and-rendered-diffs) has
+  the design, and the diff Markdown session (`cli-ui-diff-markdown.tryscript.md`) pins
+  each page’s answer, a click with and without a modifier, and the change of pin.
 - `mb-40en`: a single helper that loads and applies the links; the loader now makes a
   forgotten load impossible, and the bead is whether more is worth it.
 

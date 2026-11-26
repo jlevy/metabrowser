@@ -201,8 +201,10 @@ is, opens that file at the pull request’s head instead: in place when the head
 Metabrowser serves, in Changes at that file when the pull request changes it, and on
 GitHub otherwise. A stack’s notes do the same with the stack’s Changes.
 A link to another branch, a tag, an issue, or a particular comment stays a GitHub link.
-In Changes and Docs, a rendered document’s link to another file of the head opens it
-here while the head is served, and on GitHub otherwise.
+In Changes and Docs, a rendered document’s link to another file of the head, or to a
+file or folder on the branch or commit being browsed, opens it here while the head is
+served, as in a README. Otherwise, and once another tab serves something else, a
+relative link opens the file at the head on GitHub and a GitHub link stays as written.
 
 ### Guided Review
 
