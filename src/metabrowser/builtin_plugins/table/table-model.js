@@ -168,7 +168,7 @@ export function parseState(query) {
     q: owned.q ?? "",
     filters: Object.freeze([...filters.values()]),
     ref: owned.ref || null,
-    ...(owned.ref && owned.via ? { via: owned.via } : {}),
+    ...(owned.via !== undefined ? { via: owned.via } : {}),
     cols: cols.length ? Object.freeze(cols) : null,
     record: owned.record || null,
     other: Object.freeze(other),
@@ -198,9 +198,9 @@ export function stateQuery(state) {
   }
   if (state.ref) {
     params.set("ref", state.ref);
-    if (state.via !== undefined) {
-      params.set("via", state.via);
-    }
+  }
+  if (state.via !== undefined) {
+    params.set("via", state.via);
   }
   for (const name of state.cols ?? []) {
     params.append("cols", name);
@@ -247,9 +247,9 @@ export function rowsParams(state, page) {
   }
   if (state.ref) {
     params.ref = state.ref;
-    if (state.via !== undefined) {
-      params.via = state.via;
-    }
+  }
+  if (state.via !== undefined) {
+    params.via = state.via;
   }
   if (state.cols) {
     params.cols = [...state.cols];

@@ -1664,6 +1664,11 @@ async function relationshipFilter() {
   const ref = "people:k.WzFd";
   const via = JSON.stringify([["buyer"], ["id"]]);
   const scoped = new URLSearchParams({ ref, via }).toString();
+  for (const malformed of [{ ref, via: "" }, { via }]) {
+    const state = model.parseState(new URLSearchParams(malformed).toString());
+    assert.equal(model.rowsParams(state, { limit: 200 }).via, malformed.via);
+    assert.equal(new URLSearchParams(model.stateQuery(state)).get("via"), malformed.via);
+  }
   const respond = (route, params, body) => {
     answers[keyOf(route, params)] = { status: 200, body };
   };
