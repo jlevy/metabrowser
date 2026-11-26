@@ -5,7 +5,7 @@ title: "Merge readiness: show whether a pull request is ready to merge as plainl
 kind: epic
 status: in_progress
 priority: 2
-version: 8
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-26-pull-request-merge-readiness.md
 refs:
   - kind: pr
@@ -14,6 +14,21 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/876
     at: 2026-11-26T08:46:39.952Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/879
+    at: 2026-11-26T10:18:03.400Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/883
+    at: 2026-11-26T12:06:43.230Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/884
+    at: 2026-11-26T14:02:25.082Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/885
+    at: 2026-11-26T16:03:49.379Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/886
+    at: 2026-11-26T17:00:09.396Z
 labels:
   - linear
   - Feature
@@ -23,7 +38,7 @@ child_order_hints:
   - is-01m8be45aq589e23647qn19ee1
   - is-01m8bmw4sdejvn3fx7tjgeyvpz
 created_at: 2026-11-26T08:04:02.970Z
-updated_at: 2026-11-26T10:02:02.413Z
+updated_at: 2026-11-26T17:00:09.396Z
 extensions:
   linear:
     id: cdbe63d3-7e97-4a12-b62d-a72c900972ef
