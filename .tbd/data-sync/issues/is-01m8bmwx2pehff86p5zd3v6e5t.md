@@ -5,7 +5,7 @@ title: Bring Paraverse relationship context and record identity to the shared ta
 kind: feature
 status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 delegate: codex@spud10.local
 labels: []
@@ -14,7 +14,11 @@ parent_id: is-01m8amwhv15ckjw7prckfmmggr
 hold: null
 hold_until: null
 created_at: 2026-11-26T10:02:27.266Z
-updated_at: 2026-11-26T10:04:05.990Z
+updated_at: 2026-11-26T10:45:15.152Z
 started_at: 2026-11-26T10:04:05.984Z
 ---
 Use the existing TableSource and table renderer for SQLite, fSQLite, structured, delimited and future SoftSchema data. Fix field-specific back-reference drilldowns and improve human-readable record context without changing stable keys or workbench conventions.
+
+## Notes
+
+Astra and live Paraverse comparison are in https://github.com/jlevy/metabrowser/pull/882 along with record labels and field-specific back-references. Local tests: 122 Python/API and 53 CLI/browser golden cases passed.

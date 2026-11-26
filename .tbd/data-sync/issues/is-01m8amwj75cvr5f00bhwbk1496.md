@@ -5,7 +5,7 @@ title: Upgrade to softschema 0.9.1 with ruamel.yaml.clib and benchmark collectio
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 delegate: claude-code@spud10.local
 labels: []
@@ -16,7 +16,11 @@ parent_id: is-01m8amwhv15ckjw7prckfmmggr
 hold: null
 hold_until: null
 created_at: 2026-11-26T00:43:01.733Z
-updated_at: 2026-11-26T09:36:57.972Z
+updated_at: 2026-11-26T10:45:09.782Z
 started_at: 2026-11-26T09:36:57.972Z
 ---
 Phase 1: supply-chain review of ruamel.yaml.clib; upgrade softschema 0.9.1 + frontmatter-format 0.5.1; adapt to 0.9.0 execution reporting and newly refused characters; metab --doctor shows parser mode; devtools/bench_softschema_collection.py sets the plan's bounds.
+
+## Notes
+
+Benchmark and dependency diagnostics are on https://github.com/jlevy/metabrowser/pull/881. The 4,971-record Universe read+bind was 8.047 seconds C-first vs 41.98 seconds pure, with matched results. Existing YAML table behavior and app contract are covered.
