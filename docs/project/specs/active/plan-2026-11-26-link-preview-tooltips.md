@@ -126,11 +126,11 @@ object, all cache-only:
 
 | Kind | Title from | Prefetch on rest |
 | --- | --- | --- |
-| Pull request, its tabs and files | `pulls?q=<n>`, cached per page by number | The github plugin’s page assets, and the record read with `warm=1`, which counts no view |
-| Stack | The stacks route, already polled by the Pulls tab | The page’s assets |
-| Commit | A public summary on `MetabrowserGitPanel` that shares `fetchCommitDetail`’s cache and its missing set | `prepareRevision(…, true)`, the Commits panel’s own speculative read |
-| File or folder | Its path, type mark, and the folder’s totals already known | `prefetchCounterpart`, and the file’s body through the tree’s hover prefetch where the startup budget allows a seam |
-| The pull request list | Static | The Pulls view’s assets |
+| Pull request, its tabs and files | `pulls?q=<n>`, cached per page by number | The github plugin’s page assets, and the record read with `warm=1`, which counts no view, once a page for each number |
+| Stack | One read of the cache-only stacks route, reused for as long as the Pulls tab’s poller waits between its reads; that poller is the plugin’s own and asks GitHub to refresh a snapshot that is due | The page’s assets |
+| Commit | `MetabrowserGitPanel.commitSummary`, which shares `fetchCommitDetail`’s cache and its missing set | `MetabrowserGitPanel.prefetchCommit`: the detail first, then `prepareRevision(…, true)`, nothing for a commit the repository lacks, and never in place of a preparation still on its way |
+| File or folder | Its type’s name, whether a complete file catalog holds a file, and the folder’s totals already known | `prefetchCounterpart` for its page; not its body (Follow-ups) |
+| The pull request list | Static | The list view’s assets, `ensureKindAssets("pull-request-list")` |
 
 A link starts its read and its prefetch once the pointer has rested on it for the tree’s
 own hover delay, and asks the tooltip to show the card at once; the tooltip waits out
@@ -145,11 +145,12 @@ budget.
 
 A new on-demand module, `static/link-previews.js`, in the `repository-links` bundle the
 resolver already loads, holds the registry, the delegated pointer listener, the intent
-timer, the providers, and the renderer.
-`enhance` and the Markdown enhancer register each in-app link they make by identity; the
-rendered diff registers its head links.
-Nothing is added to the startup scripts except, if it fits, one seam into the tree’s
-file prefetch.
+timer, and the renderer; `static/link-preview-providers.js`, after it in the bundle,
+registers one provider for each kind (`provide(kind, {summary, prefetch})`). `enhance`
+and the Markdown enhancer register each in-app link they make by identity; the rendered
+diff registers its head links.
+Nothing is added to the startup scripts: a seam into the tree’s file prefetch does not
+fit (Follow-ups).
 
 ### API
 
@@ -161,6 +162,8 @@ file prefetch.
   card away.
 - `MetabrowserGitPanel.commitSummary(revision, {signal})`: the subject, author, time,
   and whether the repository has it, from the panel’s own cache.
+- `MetabrowserGitPanel.prefetchCommit(revision)`: the commit prepared as a hover on its
+  row prepares it, for a rest on a link to it.
 
 ## Implementation Plan
 
@@ -168,7 +171,7 @@ file prefetch.
 
 - [ ] The design-system rule, the card, the registry, and the renderer, with a
   browserless session, a golden, and a parity row
-- [ ] The providers and prefetch for each kind
+- [x] The providers and prefetch for each kind
 - [ ] Every surface registers its links: the resolver’s `enhance`, the Markdown
   enhancer, and the rendered diff; authored titles move into the card; the working-tree
   tooltip goes
@@ -185,6 +188,21 @@ link’s text, never claims a state its data does not give, and never appears on
 ## Open Questions
 
 - None: the owner’s request settles what the card says and where it appears.
+
+## Follow-ups
+
+- **A file’s body on a rest.** The tree’s hover prefetch (`startHoverPrefetch` in
+  `static/app.js`) is the only reader of a file’s body ahead of a click, and `app.js` is
+  a startup script. On 2026-11-26 the startup scripts were 75 bytes under their budget
+  (`devtools/check_startup_scripts.py`), and the smallest seam, a shell method that sets
+  the tree’s prefetch path and calls `startHoverPrefetch` for a name that is not
+  `.jsonl`, cost 67 of them.
+  That seam is not enough: it shares the tree’s one abortable slot, so the next tree
+  hover would abort the link’s read, and it has no size bound, which the tree takes from
+  the row’s own size, and a link’s file may have no row.
+  A seam with its own slot and a size bound of its own does not fit, so a rest on a link
+  does not read the body until the startup scripts have room, or the tree’s prefetch
+  moves out of them.
 
 ## References
 
