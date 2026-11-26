@@ -5,8 +5,12 @@ title: Lean language support and a repeatable language recipe
 kind: epic
 status: in_progress
 priority: 2
-version: 19
+version: 20
 spec_path: docs/project/specs/active/plan-2026-11-25-lean-language-support.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/860
+    at: 2026-11-26T00:53:38.149Z
 labels:
   - linear
   - Feature
@@ -29,7 +33,7 @@ child_order_hints:
   - is-01m8ajqmn7tdc4y0n9swzmsmfw
   - is-01m8akjdy146agcfsfcf73v201
 created_at: 2026-11-25T23:43:06.490Z
-updated_at: 2026-11-26T00:20:01.089Z
+updated_at: 2026-11-26T00:53:38.149Z
 extensions:
   linear:
     id: 6f903eec-ab37-494d-8aa0-dde216250a32
