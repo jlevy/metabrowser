@@ -5,7 +5,7 @@ title: Plugin sources and out-of-process plugin environments
 kind: epic
 status: in_progress
 priority: 1
-version: 24
+version: 34
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
 refs:
   - kind: pr
@@ -32,8 +32,18 @@ child_order_hints:
   - is-01m78fw3ppt7qjecxb1m4r276q
   - is-01m78fwdh6mt5frdg94thadjkh
   - is-01m78gmwnk00rz776w8w8k7g9j
+  - is-01m8bfwyrthng58j0rn5mjw2q5
+  - is-01m8bfwz44tckg3hn0sh1r7nfr
+  - is-01m8bfwzfe1q07kf87x8h1xnx9
+  - is-01m8bfwztw84vfapjmyap7ta72
+  - is-01m8bfx06xz0wsd6rvtr586jbg
+  - is-01m8bfx0jk64cgj3sz7sm2nav4
+  - is-01m8bfx0ydnsv7hpxbm60fxhzj
+  - is-01m8bfx1aaxf7qyzn1n2h1ap4v
+  - is-01m8bfx1q8z65g0qyts31p4j6t
+  - is-01m8bfx231spr2pvhzetq1j5as
 created_at: 2026-11-12T18:20:18.805Z
-updated_at: 2026-11-25T02:23:25.121Z
+updated_at: 2026-11-26T08:35:09.537Z
 extensions:
   linear:
     id: 2c899caa-16c3-454c-acd8-d66b8a42baf7

@@ -3,10 +3,11 @@ type: is
 id: is-01m78fvywxsmc0m4481ypk3zbq
 title: Per-command environment sources and the metab-plugins executable
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
+delegate: claude-code@vm
 labels: []
 dependencies:
   - type: blocks
@@ -26,8 +27,11 @@ dependencies:
   - type: blocks
     target: is-01m78fvxxksc6ybfthkyzgbtdn
 parent_id: is-01m78ftefp9ks9100ebsm7sm29
+hold: null
+hold_until: null
 created_at: 2026-11-12T18:21:08.379Z
-updated_at: 2026-11-12T21:18:02.588Z
+updated_at: 2026-11-26T08:35:34.373Z
+started_at: 2026-11-26T08:35:34.373Z
 ---
 Phase 1 (plan: Sources and Scopes, The Registry's listing, CLI and Routes; Key Decision 5). A second console script, metab-plugins: the same command line as metab that also accepts the flags that run plugin code without a recorded decision or record one; metab refuses them and names metab-plugins. Here: --env PATH for one command (an environment identified by its pyvenv.cfg prefix, not its interpreter), the listing cache keyed by the environment fingerprint and written only for added or decided sources, a cold listing taken before the classifier is built, manifests read and assets served by the host, hooks proxied to the worker, the content reader's host calls, the ownership rule (ExecutableTrust) before each spawn, and --doctor's per-source checks including the Python 3.12 floor. Acceptance: the motivating plugin's hooks served from its own environment under a uv tool install with no change to the plugin. Fixture environment under tests/fixtures/plugin-env built offline.
 
