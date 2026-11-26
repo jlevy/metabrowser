@@ -105,31 +105,24 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_startup_scripts
 	$(FLOWMARK) --auto --check .
 
-# The tryscript goldens run with a failing gh first on PATH (tests/no-real-gh/gh), so
-# none reaches a developer's signed-in gh; pytest has the same guard in tests/conftest.py.
-#
-# The server logs a request slower than 2 s to stderr, which a transcript captures, so
-# a loaded machine changed what a golden recorded: at a load average near 100, nine
-# `--api` requests of cli-api-cache.tryscript.md took 2.4 to 8.0 s and each printed the
-# line. It is a wall-clock measurement and not behavior, so the threshold is put past
-# tryscript's own 30 s command timeout, where it cannot fire before the command fails.
-#
-# A golden that serves writes no event log into the state directory of whoever runs it
-# (METABROWSER_EVENT_LOG=0, as tests/conftest.py sets for pytest); one that reads the log
-# names its own directory. Nor does a stand-in gh that fails make it probe the network
-# (METABROWSER_NETWORK_PROBE=0, as tests/conftest.py also sets).
-#
-# `env` sets them all, so the same words work as a shell command and as the command
-# devtools/run_goldens.py runs once for each golden.
-TRYSCRIPT := env -u METABROWSER_CACHE_RESERVE_MB PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
-	METABROWSER_EVENT_LOG=0 METABROWSER_NETWORK_PROBE=0 npx --no-install tryscript
+# tryscript in the environment the goldens are recorded in: a failing gh first on PATH,
+# and the variables that would otherwise put the machine into a transcript. The script
+# holds that environment and why, and runs the same from a shell as from here or from
+# devtools/run_goldens.py, which runs it once for each golden.
+TRYSCRIPT := $(CURDIR)/devtools/tryscript.sh
+# The goldens the golden targets run: files or glob patterns, which the runner and
+# tryscript expand, so `make test-goldens GOLDENS='tests/golden/cli-doctor.tryscript.md
+# tests/golden/cli-api-*.tryscript.md'` runs those alone. Each word reaches them quoted.
 GOLDENS := tests/golden/*.tryscript.md
+QUOTED_GOLDENS = $(foreach golden,$(GOLDENS),'$(golden)')
 # How many golden files devtools/run_goldens.py runs at a time: one per processor of a CI
 # runner, which has four. tryscript runs a file's commands one after another, each in a
 # process of its own. On a shared 4-processor machine at a load average near 1, the 82
 # goldens and their 457 commands took 307 s one at a time and 81 s four at a time, with
 # the same verdict for every file (2026-11-17); the longest file alone is 38 s.
 GOLDEN_JOBS ?= 4
+# devtools/run_goldens.py adds each golden's path to the command after its `--`.
+RUN_GOLDENS = $(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS)
 
 # In CI a skip has to belong to a tier docs/e2e-testing.md names, or the test fails:
 # a reason outside them means a test the suite is believed to run did not. Locally a
@@ -189,7 +182,7 @@ test-chrome:
 	$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)"
 
 test-goldens:
-	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) $(if $(SHARD),--shard $(SHARD)) '$(GOLDENS)' -- $(TRYSCRIPT)
+	$(RUN_GOLDENS) $(if $(SHARD),--shard $(SHARD)) $(QUOTED_GOLDENS) -- $(TRYSCRIPT) run
 
 # The size of the suite by area, at the working tree or at the commits in REFS, and with
 # LOG the time each test file and golden took in that CI job log:
@@ -415,12 +408,32 @@ GOLDEN_DRIVERS := \
 	tests/test_diff_comparison_cache.py \
 	tests/test_agents_mapping_golden.py
 
+# `make golden-update ONLY='<file>...'` runs these steps on only what ONLY names:
+# transcripts, as .tryscript.md files or patterns, and modules of the two lists, by the
+# names the lists give them. A word that is neither stops the run before anything is
+# written, so a misspelled module cannot pass having regenerated nothing. A transcript a
+# recorder's recording feeds has to be named too, and a step with nothing named is
+# skipped. Both tryscript passes run GOLDEN_JOBS files at a time, as `make test-goldens`
+# does; the second checks what the first rewrote, once the fixup has restored its
+# patterns.
+ONLY_UNLISTED = $(filter-out %.tryscript.md $(GOLDEN_RECORDERS) $(GOLDEN_DRIVERS),$(ONLY))
+
 golden-update:
-	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)
-	$(TRYSCRIPT) run --update '$(GOLDENS)' || true
-	$(UV_RUN) python -m devtools.golden_fixup
-	$(TRYSCRIPT) run '$(GOLDENS)'
-	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_DRIVERS)
+	$(if $(ONLY_UNLISTED),$(error ONLY names $(ONLY_UNLISTED), which is no .tryscript.md golden and no module of GOLDEN_RECORDERS or GOLDEN_DRIVERS))
+	$(if $(GOLDEN_RECORDERS),$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS))
+	$(if $(GOLDENS),$(RUN_GOLDENS) $(QUOTED_GOLDENS) -- $(TRYSCRIPT) run --update || true)
+	$(if $(GOLDENS),$(UV_RUN) python -m devtools.golden_fixup $(QUOTED_GOLDENS))
+	$(if $(GOLDENS),$(RUN_GOLDENS) $(QUOTED_GOLDENS) -- $(TRYSCRIPT) run)
+	$(if $(GOLDEN_DRIVERS),$(UV_RUN) python -m devtools.golden_update $(GOLDEN_DRIVERS))
+
+# What ONLY narrows golden-update to. Set for that target alone, so `make test-goldens`
+# still runs GOLDENS, and after its recipe, which devtools/check_goldens.py reads from the
+# target's first line.
+ifneq ($(strip $(ONLY)),)
+golden-update: GOLDENS := $(filter %.tryscript.md,$(ONLY))
+golden-update: GOLDEN_RECORDERS := $(filter $(ONLY),$(GOLDEN_RECORDERS))
+golden-update: GOLDEN_DRIVERS := $(filter $(ONLY),$(GOLDEN_DRIVERS))
+endif
 
 audit:
 	bash devtools/npm_audit.sh

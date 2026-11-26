@@ -63,8 +63,15 @@ make audit
 # Run one test.
 uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
+# Run some tryscript goldens, or one from any shell, in the goldens' environment.
+make test-goldens GOLDENS='tests/golden/cli-doctor.tryscript.md tests/golden/cli-api-*.tryscript.md'
+devtools/tryscript.sh run tests/golden/cli-doctor.tryscript.md
+
 # Regenerate every golden and recorded response fixture after an intended change.
 make golden-update
+
+# Regenerate only the transcripts and recorder or driver modules named, in the same order.
+make golden-update ONLY='tests/golden/cli-doctor.tryscript.md tests/test_cli_golden.py'
 
 # Exercise the full navigation API scenario in process.
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --check-api
@@ -381,6 +388,9 @@ kind, and model behavior without browser automation, and real-browser tests stay
 on paint and platform integration.
 `make golden-update` records an intended change and is never run to clear a failure: a
 regenerated transcript nobody read turns a regression into an expectation.
+When a change touches a few transcripts, `make golden-update ONLY='<file>...'` records
+those alone, so a golden this machine cannot pass, such as one that needs a newer Git,
+is not rewritten with this machine’s failure.
 
 **Normalize only what a fixture cannot pin.** `metabrowser/normalize.py` is the session
 schema. Revisions and mtimes stay real, because fixture repositories build

@@ -3,7 +3,6 @@ time, and a failure for any golden that gave no verdict."""
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -17,10 +16,12 @@ from devtools.shard_weights import GOLDENS, load
 from tests.required_tools import require_node
 
 ROOT = Path(__file__).resolve().parents[1]
-# A stand-in for tryscript: what it prints for a file is the file's first line.
+# A stand-in for tryscript: what it prints for a file is the file's first line. The file's
+# path is its last argument, after `run` and any option.
 FAKE = r"""
 import pathlib, sys, time
-path = pathlib.Path(sys.argv[2]).resolve()
+assert sys.argv[1] == "run", sys.argv
+path = pathlib.Path(sys.argv[-1]).resolve()
 how = path.read_text(encoding="utf-8").split()[0]
 if how == "meet":
     # Wait until every "meet" file has started: they finish only if they run at once.
@@ -51,7 +52,7 @@ elif how == "another-file":
 def tryscript(tmp_path: Path) -> list[str]:
     fake = tmp_path / "fake_tryscript.py"
     fake.write_text(FAKE, encoding="utf-8")
-    return [sys.executable, str(fake)]
+    return [sys.executable, str(fake), "run"]
 
 
 def _goldens(directory: Path, **files: str) -> str:
@@ -226,18 +227,15 @@ def test_make_test_goldens_runs_every_golden_through_the_runner_with_the_makefil
     """The recipe's words, and ``TRYSCRIPT``'s words as the command, on two real goldens."""
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    line = (
-        "\t$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) "
-        "$(if $(SHARD),--shard $(SHARD)) '$(GOLDENS)' -- $(TRYSCRIPT)"
-    )
+    line = "\t$(RUN_GOLDENS) $(if $(SHARD),--shard $(SHARD)) $(QUOTED_GOLDENS) -- $(TRYSCRIPT) run"
     assert recipe(makefile, "test-goldens") == line
     assert makefile_list(makefile, "GOLDENS") == ["tests/golden/*.tryscript.md"]
     require_node()
     command = [
-        word.replace("$(CURDIR)", str(ROOT)).replace("$$PATH", os.environ["PATH"]).strip('"')
-        for word in makefile_list(makefile, "TRYSCRIPT")
+        word.replace("$(CURDIR)", str(ROOT)) for word in makefile_list(makefile, "TRYSCRIPT")
     ]
-    assert command[0] == "env"
+    assert command == [str(ROOT / "devtools" / "tryscript.sh")]
+    command.append("run")
     goldens = [
         "tests/golden/cli-ui-treemap-not-indexed.tryscript.md",
         "tests/golden/cli-ui-tree-summary-line.tryscript.md",

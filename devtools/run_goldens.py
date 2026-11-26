@@ -7,7 +7,7 @@ goldens kept one of a CI runner's four processors busy for 3.3 to 4.3 minutes
 ``tryscript run <file>`` for each file the patterns match, from a queue of ``--jobs``
 workers:
 
-    python -m devtools.run_goldens --jobs 4 'tests/golden/*.tryscript.md' -- <tryscript>
+    python -m devtools.run_goldens --jobs 4 'tests/golden/*.tryscript.md' -- <tryscript> run
 
 ``--shard I/N`` runs the Ith of N disjoint parts of the matched files, so CI can split the
 goldens across runners as it does the pytest tiers (``make test-goldens SHARD=1/2``).
@@ -17,8 +17,11 @@ same parts, and every file is in exactly one. Until run 45062416967 a file's siz
 in for its time, which had tracked it over the 119 files of run 44788663205 and no longer
 did: one part of two held 568 s of the 844 s of golden time.
 
-Everything after ``--`` is the tryscript command. The ``Makefile``'s ``TRYSCRIPT`` holds
-it with its environment, so ``make golden-update`` and this run the same command.
+Everything after ``--`` is the command, and each file's path is added to its end: the
+``Makefile``'s ``TRYSCRIPT``, ``devtools/tryscript.sh``, which holds the goldens'
+environment, then ``run`` to check them or ``run --update`` to rewrite them, as
+``make golden-update`` does. A file tryscript rewrote reports ``FAIL``, as tryscript
+itself does.
 
 Each file's output is printed whole when the file finishes, then one line that
 ``devtools/suite_report.py`` reads:
@@ -135,7 +138,7 @@ def run_one(command: Sequence[str], path: str) -> Result:
     started = time.monotonic()
     try:
         completed = subprocess.run(
-            [*command, "run", path],
+            [*command, path],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -171,7 +174,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     given = list(sys.argv[1:] if arguments is None else arguments)
     if "--" not in given or given.index("--") == len(given) - 1:
         print(
-            "usage: python -m devtools.run_goldens [--jobs N] PATTERN... -- TRYSCRIPT...",
+            "usage: python -m devtools.run_goldens [--jobs N] PATTERN... -- COMMAND...",
             file=sys.stderr,
         )
         return 2
