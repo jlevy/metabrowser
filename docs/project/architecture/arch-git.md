@@ -400,6 +400,17 @@ no diff surface of its own.
 The page keeps those comparisons, as [the diff pipeline](arch-diff-pipeline.md#caches)
 describes.
 
+A link to a commit elsewhere on the page reads the commit through the same cache, by two
+public methods of `window.MetabrowserGitPanel` that the link card’s provider
+(`static/link-preview-providers.js`) calls.
+`commitSummary(revision, {signal})` answers the subject, author, and commit time from
+the cache, a read already on its way, or one more read the panel then keeps, and answers
+a commit the server called `commit_not_found` missing without asking again; it reads
+only a full commit ID and never fetches from origin.
+`prefetchCommit(revision)` prepares the commit as a hover on its row does, and prepares
+nothing for a commit the repository lacks or in place of a preparation still on its way,
+so a rest on a link aborts no request.
+
 ## File Ages
 
 **Status:** Implemented: a pinned revision’s tree nodes and file envelopes carry

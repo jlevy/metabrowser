@@ -6186,6 +6186,204 @@ async function run() {
     comparisonResponder = async (revision) => ({ comparison_id: revision });
   }
 
+  // ── A commit as a link's card names it ─────────────────────
+  //
+  // `commitSummary` answers from the panel's own detail cache, its reads on their way, and
+  // its missing set, so a rest on a link to a commit, a hover on its row, and a click share
+  // one request, and a commit the repository lacks is asked for once. `prefetchCommit`
+  // prepares a commit as a rest on its row does, never one the repository lacks, and never
+  // in place of work still on its way.
+  {
+    internals.teardown();
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const PRESENT = "7a".repeat(20);
+    const SHARED = "7b".repeat(20);
+    const MISSING = "7c".repeat(20);
+    const LATE = "7d".repeat(20);
+    const BUSY = "7e".repeat(20);
+    const WAITING = "7f".repeat(20);
+    const COMMITTED_AT = 1_795_176_000;
+    const reads = (revision) =>
+      fetchRequests.filter((request) => request.url === `/api/git/commit/${revision}`).length;
+    const comparisonsOf = (revision) =>
+      comparisonFetches.filter((request) => request.params.revision === revision);
+    const detailOf = (revision, subject) => ({
+      is_repo: true,
+      commit: {
+        ...commit(revision, [], subject),
+        author: { name: "Ada Author", email: "ada@example.invalid" },
+        committed_at: COMMITTED_AT,
+      },
+      body: "",
+      stats: { files_changed: 1, additions: 1, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    /** A read that answers when the test says so. */
+    const heldDetail = (revision, subject) => {
+      const held = { answer: () => {} };
+      responses.set(
+        `/api/git/commit/${revision}`,
+        () =>
+          new Promise((resolve) => {
+            held.answer = () => resolve(detailOf(revision, subject));
+          }),
+      );
+      return held;
+    };
+    responses.set(`/api/git/commit/${PRESENT}`, detailOf(PRESENT, "docs: write the guide"));
+    responses.set(`/api/git/commit/${MISSING}`, {
+      httpStatus: 404,
+      body: { error: "unknown revision", code: "commit_not_found" },
+    });
+
+    assertEqual(
+      "commit summary: a commit's subject, author, and commit time",
+      await panel.commitSummary(PRESENT),
+      {
+        subject: "docs: write the guide",
+        author: "Ada Author",
+        committedAt: COMMITTED_AT,
+        missing: false,
+      },
+    );
+    await internals.fetchCommitDetail(PRESENT);
+    await panel.commitSummary(PRESENT);
+    assertEqual(
+      "commit summary: the panel's own read and a second summary are served by the first read",
+      reads(PRESENT),
+      1,
+    );
+
+    const shared = heldDetail(SHARED, "a hovered row");
+    const hovered = internals.fetchCommitDetail(SHARED);
+    const summarized = panel.commitSummary(SHARED);
+    shared.answer();
+    await hovered;
+    assertEqual(
+      "commit summary: joins the read a hover has on its way",
+      (await summarized)?.subject,
+      "a hovered row",
+    );
+    assertEqual("commit summary: one request serves the hover and the card", reads(SHARED), 1);
+
+    assertEqual(
+      "commit summary: a commit the repository lacks is missing",
+      await panel.commitSummary(MISSING),
+      { subject: null, author: null, committedAt: null, missing: true },
+    );
+    assertEqual(
+      "commit summary: and missing again",
+      (await panel.commitSummary(MISSING))?.missing,
+      true,
+    );
+    await panel.prefetchCommit(MISSING);
+    assertEqual("commit summary: a missing commit is never asked for twice", reads(MISSING), 1);
+    assertEqual(
+      "commit prefetch: a missing commit's comparison is never asked for",
+      comparisonsOf(MISSING).length,
+      0,
+    );
+
+    const beforeShort = fetchRequests.length;
+    assertEqual(
+      "commit summary: a ref is not a commit ID",
+      await panel.commitSummary("HEAD"),
+      null,
+    );
+    assertEqual(
+      "commit summary: nor is an abbreviated one",
+      await panel.commitSummary(PRESENT.slice(0, 12)),
+      null,
+    );
+    await panel.prefetchCommit("HEAD");
+    assertEqual("commit summary: neither is read", fetchRequests.length, beforeShort);
+
+    // A caller that stops waiting leaves the read to land, and the cache keeps it.
+    const late = heldDetail(LATE, "an answer after the card gave up");
+    const stopped = new AbortController();
+    const waiting = panel.commitSummary(LATE, { signal: stopped.signal });
+    await tick();
+    stopped.abort();
+    let rejected = null;
+    try {
+      await waiting;
+    } catch (error) {
+      rejected = error?.name ?? String(error);
+    }
+    assertEqual("commit summary: a caller that stops waiting is told so", rejected, "AbortError");
+    const lateRead = fetchRequests.find((request) => request.url === `/api/git/commit/${LATE}`);
+    assertTrue(
+      "commit summary: its stopping aborts no request",
+      lateRead !== undefined && lateRead.signal?.aborted !== true,
+    );
+    late.answer();
+    await tick();
+    assertEqual(
+      "commit summary: the late answer is kept for the next rest",
+      (await panel.commitSummary(LATE))?.subject,
+      "an answer after the card gave up",
+    );
+    assertEqual("commit summary: which asks nothing more", reads(LATE), 1);
+
+    // A rest on a link prepares the commit as a hover on its row does, sharing the detail the
+    // card read, and the click that follows takes that preparation.
+    const kindsBefore = ensuredKinds.length;
+    await panel.prefetchCommit(PRESENT);
+    assertEqual(
+      "commit prefetch: asks for the commit's comparison",
+      comparisonsOf(PRESENT).length,
+      1,
+    );
+    assertTrue(
+      "commit prefetch: and loads the diff plugin",
+      ensuredKinds.slice(kindsBefore).includes("diff"),
+    );
+    assertEqual("commit prefetch: reads no detail the card already read", reads(PRESENT), 1);
+    const clicked = internals.prepareRevision(PRESENT, false);
+    assertEqual(
+      "commit prefetch: the click takes the prepared revision",
+      clicked?.revision,
+      PRESENT,
+    );
+    assertEqual("commit prefetch: and asks for nothing again", comparisonsOf(PRESENT).length, 1);
+    responses.set(`/api/git/commit/${BUSY}`, detailOf(BUSY, "beside a selection"));
+    await panel.prefetchCommit(BUSY);
+    assertEqual("commit prefetch: a selected commit keeps the slot", comparisonsOf(BUSY).length, 0);
+
+    // Work still on its way keeps the slot: a rest on a link aborts no request.
+    internals.teardown();
+    /** @type {() => void} */
+    let finishComparison = () => {};
+    comparisonResponder = () =>
+      new Promise((resolve) => {
+        finishComparison = () => resolve({ comparison_id: WAITING });
+      });
+    responses.set(`/api/git/commit/${WAITING}`, detailOf(WAITING, "a hover's preparation"));
+    const hover = internals.prepareRevision(WAITING, true);
+    await hover?.detail;
+    const hoverComparison = comparisonsOf(WAITING)[0];
+    responses.set(`/api/git/commit/${BUSY}`, detailOf(BUSY, "beside a hover"));
+    await panel.prefetchCommit(BUSY);
+    assertTrue(
+      "commit prefetch: leaves a hover's comparison on its way",
+      hoverComparison !== undefined && hoverComparison.signal?.aborted !== true,
+    );
+    assertEqual(
+      "commit prefetch: and prepares nothing in its place",
+      comparisonsOf(BUSY).length,
+      0,
+    );
+    finishComparison();
+    await hover?.comparison;
+    await tick();
+    assertTrue("commit prefetch: the hover's preparation has settled", hover?.settled === true);
+    comparisonResponder = async (revision) => ({ comparison_id: revision });
+    await panel.prefetchCommit(BUSY);
+    assertEqual("commit prefetch: a settled preparation gives way", comparisonsOf(BUSY).length, 1);
+    internals.teardown();
+  }
+
   if (failures.length > 0) {
     console.error(`FAILURES (${failures.length}):`);
     for (const failure of failures) {

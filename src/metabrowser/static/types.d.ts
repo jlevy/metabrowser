@@ -4674,6 +4674,12 @@ declare global {
     plan(): MetabrowserRefreshPlan | null;
   }>;
 
+  /** A commit as a link's card names it (`MetabrowserGitPanel.commitSummary`): its subject,
+   *  author, and commit time in seconds, or that the repository lacks it. */
+  type MetabrowserGitCommitSummary =
+    | { subject: string; author: string | null; committedAt: number | null; missing: false }
+    | { subject: null; author: null; committedAt: null; missing: true };
+
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
     /** Read the history again once it has been read; settles when it is drawn. */
@@ -4681,6 +4687,16 @@ declare global {
     /** Stops the panel's work for another owner; returns what disposes its shown commit diff. */
     cancelPending(): (() => void) | null;
     restoreCommitLanding(): Promise<void>;
+    /** A commit's summary from the panel's own detail cache and missing set, null for a
+     *  revision that is not a full commit ID or a read that failed. *signal* stops the
+     *  caller waiting, never the read. It never fetches from origin. */
+    commitSummary(
+      revision: string,
+      options?: { signal?: AbortSignal },
+    ): Promise<MetabrowserGitCommitSummary | null>;
+    /** Prepare a commit as a rest on its row does, for a rest on a link to it: nothing for a
+     *  commit the repository lacks, and never in place of work still on its way. */
+    prefetchCommit(revision: string): Promise<void>;
     /** Test-only surface; not part of any supported contract. */
     _internals: Record<string, unknown>;
   };

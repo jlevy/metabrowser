@@ -200,6 +200,8 @@
    * @property {Promise<unknown> | undefined} comparison
    * @property {AbortController | null} controller
    * @property {boolean} speculative
+   * @property {boolean} settled Its detail, assets, and comparison have each settled, so
+   *   replacing it aborts no request (`prefetchCommit`).
    */
   /** @type {RevisionPreparation | null} */
   let preparationSlot = null;
@@ -1242,6 +1244,85 @@
     }
   }
 
+  // ── A commit as another surface names it ───────────────────
+  //
+  // A link to a commit elsewhere on the page, in a rendered document or a pull request's
+  // text, shows a card of the commit when the pointer rests on it
+  // (static/link-preview-providers.js). The card reads the commit here, from the panel's own
+  // detail cache and missing set, so a rest on the link, a hover on the commit's row, and a
+  // click on either share one request, and a commit the repository lacks is asked for once.
+
+  /** What `commitSummary` answers for a commit the server said the repository lacks. */
+  const MISSING_COMMIT = Object.freeze({
+    subject: null,
+    author: null,
+    committedAt: null,
+    missing: true,
+  });
+
+  /**
+   * A commit's subject, author, and commit time, or that the repository lacks it.
+   *
+   * It answers from the detail cache, from a read already on its way, or with one
+   * `GET /api/git/commit/<id>`, which the panel then keeps for the commit's row and page. A
+   * kept detail from an earlier history session serves too: only its refs can have moved,
+   * and the summary names none. A commit the server answered `commit_not_found` for answers
+   * missing with no request. Only a full commit ID is read, as it names the same commit
+   * later; any other revision, a read that fails, and a root that is not a repository answer
+   * null. Nothing here fetches from origin: offering that is a commit page's
+   * (`openMissingCommit`), never a card's.
+   *
+   * *signal* stops this caller waiting, never the read: another caller may share it, and the
+   * cache keeps its answer when it lands.
+   *
+   * @param {string} revision
+   * @param {{signal?: AbortSignal}} [options]
+   * @returns {Promise<MetabrowserGitCommitSummary | null>}
+   */
+  async function commitSummary(revision, options = {}) {
+    if (!FULL_COMMIT_ID.test(revision)) {
+      return null;
+    }
+    if (missingRevisions.has(revision)) {
+      return MISSING_COMMIT;
+    }
+    const detail =
+      detailCache.get(revision) ??
+      (await untilAborted(fetchCommitDetail(revision), options.signal));
+    if (detail === null) {
+      return missingRevisions.has(revision) ? MISSING_COMMIT : null;
+    }
+    const { subject, author, committed_at: committedAt } = detail.commit;
+    return {
+      subject,
+      author: author?.name || null,
+      committedAt: Number.isFinite(committedAt) && committedAt > 0 ? committedAt : null,
+      missing: false,
+    };
+  }
+
+  /**
+   * *work*'s answer, or *signal*'s reason once it aborts first. The work goes on either way.
+   *
+   * @template T
+   * @param {Promise<T>} work
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<T>}
+   */
+  function untilAborted(work, signal) {
+    if (signal === undefined) {
+      return work;
+    }
+    if (signal.aborted) {
+      return Promise.reject(signal.reason);
+    }
+    return new Promise((resolve, reject) => {
+      const stop = () => reject(signal.reason);
+      signal.addEventListener("abort", stop, { once: true });
+      work.then(resolve, reject).finally(() => signal.removeEventListener("abort", stop));
+    });
+  }
+
   // ── Commit bodies as Markdown ──────────────────────────────
 
   /**
@@ -1776,15 +1857,31 @@
         void fetchCommitBody(revision, speculative);
       }
     });
-    preparationSlot = {
+    /** @type {RevisionPreparation} */
+    const preparation = {
       revision,
       detail,
       assets: diff.assets,
       comparison: diff.comparison,
       controller,
       speculative,
+      settled: false,
     };
-    return preparationSlot;
+    void preparationSettled(preparation).then(() => {
+      preparation.settled = true;
+    });
+    preparationSlot = preparation;
+    return preparation;
+  }
+
+  /**
+   * When each of *preparation*'s reads has settled, whether answered, failed, or aborted.
+   *
+   * @param {RevisionPreparation} preparation
+   * @returns {Promise<void>}
+   */
+  async function preparationSettled(preparation) {
+    await Promise.allSettled([preparation.detail, preparation.assets, preparation.comparison]);
   }
 
   /** @param {RevisionPreparation | null} preparation */
@@ -1806,6 +1903,37 @@
     }
     abortPreparation(preparationSlot);
     preparationSlot = null;
+  }
+
+  /**
+   * Prepare *revision* as a rest on its row does, `prepareRevision(…, true)`: its detail,
+   * the diff plugin's assets, its first-parent comparison, and its body's Markdown when it
+   * has one, so the commit's page shows them at once. For a rest on a link to the commit
+   * elsewhere on the page (static/link-preview-providers.js).
+   *
+   * It reads the detail first, as `commitSummary` does and sharing that read, and prepares
+   * nothing more for a commit the repository lacks: a link to one asks for its detail once
+   * and never for its comparison. It leaves the slot to work still on its way, a selected
+   * commit's or another hover's, so a rest on a link aborts no request; the panel's own hover
+   * and selection replace what it prepared as they replace any speculative preparation.
+   * Settles once the preparation has, or at once when there is nothing to prepare.
+   *
+   * @param {string} revision
+   * @returns {Promise<void>}
+   */
+  async function prefetchCommit(revision) {
+    if (!FULL_COMMIT_ID.test(revision) || missingRevisions.has(revision)) {
+      return;
+    }
+    const detail = await fetchCommitDetail(revision);
+    const slot = preparationSlot;
+    if (detail === null || (slot !== null && slot.revision !== revision && !slot.settled)) {
+      return;
+    }
+    const preparation = prepareRevision(revision, true);
+    if (preparation !== null) {
+      await preparationSettled(preparation);
+    }
   }
 
   // ── Panel rendering ────────────────────────────────────────
@@ -4237,6 +4365,8 @@
     cancelPending,
     refresh,
     restoreCommitLanding,
+    commitSummary,
+    prefetchCommit,
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,
