@@ -1475,7 +1475,7 @@ const CORNER_DONE = `(() => {
 // the state icon in the row's one slot, the title, a stack member's place after a dot, the
 // number after a dot, and the author after a dot, every line of it in the text column; then
 // its last line, the lines and the chevron in the text column, here with no lines yet, and the
-// age at the row's end. Each row is a member, a level in under its stack's row.
+// age at the row's end. Each row is a member, two levels in under its stack's Whole stack row.
 // The icon and the title's first box are read, from the row's top, before and after each
 // row's place arrives: the place is after the title, so nothing before it moves, and the
 // number and the toggle after it move along the run, to a next line where it takes one, which
@@ -1551,7 +1551,7 @@ const PULLS_ROWS = `async (rows, width) => {
       tail,
       h("span", { class: "sr-only" }, ["#" + row.number + " · " + row.author + " · 12mo"]),
     ]);
-    const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [
+    const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "3" }, [
       h("div", { class: "github-pulls-entry" }, [anchor]),
     ]);
     list.append(item);

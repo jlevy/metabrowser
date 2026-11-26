@@ -564,17 +564,27 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert columns is not None
     # A pull request's link is one column, its run and its last line, across the row from the
     # state icon in the slot to the row's end (mb-85op, mb-pw8t); a stack's row is one line,
-    # with no age and no age's column.
+    # its chevron's slot, its heading, and the age's column a pull request's last line has
+    # (mb-tvhs).
     # The state icon is the tree's one icon slot (mb-hmv7), on the row's inset, with no empty
-    # slot before it (mb-3vil); a stack's row has its chevron's alone, its heading being the
-    # stack's name with no glyph (mb-68uk).
+    # slot before it (mb-3vil); a stack's row has one too, its chevron's.
     assert " ".join(columns.group(1).split()) == "minmax(0, 1fr)"
     stack_columns = re.search(
         r"grid-template-columns:\s*([^;]*);",
         _rule(css, ".github-pulls-row.github-pulls-stack-row"),
     )
     assert stack_columns is not None
-    assert " ".join(stack_columns.group(1).split()) == "var(--tree-icon-slot) minmax(0, 1fr)"
+    # Both rows' age columns read the one width, declared once on the row, so no grid keeps
+    # a copy of it.
+    age_column = "var(--github-pulls-age-column)"
+    assert css.count("--github-pulls-age-column:") == 1
+    assert "--github-pulls-age-column:" in _rule(css, ".github-pulls-row")
+    assert stack_columns.group(1).split()[-1] == age_column
+    tail_columns = re.search(
+        r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row > .github-pulls-tail")
+    )
+    assert tail_columns is not None
+    assert tail_columns.group(1).split()[-1] == age_column
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
     # on #506).
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")

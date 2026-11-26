@@ -120,7 +120,7 @@ export function isFilesSummary(value) {
 }
 
 /**
- * The change line's input from a row's summary, built as a stack heading's is
+ * The change line's input from a row's summary, built as a stack's is
  * (change-lines.js), so a stack of one pull request draws the line its row draws.
  *
  * @param {FilesSummary} change
@@ -133,7 +133,8 @@ export function rowLineInput(change, breakdown) {
 
 /**
  * The change line's accessible name, which describes its row: what it is, and the line in
- * words once it is shown, as a stack's row says its line after its label (`stackGroupHint`).
+ * words once it is shown, as a stack's Whole stack row says its line after its words
+ * (`wholeStackHint`).
  *
  * @param {string | null} words The line's `label`, or null while there is none.
  */

@@ -401,6 +401,8 @@
       toggleFiles: (number) => handle?.toggleFiles(number) ?? false,
       /** @param {number} number */
       toggleStack: (number) => handle?.toggleStack(number) ?? false,
+      /** @param {number} number */
+      toggleWhole: (number) => handle?.toggleWhole(number) ?? false,
       hasStack: () => stackPage() !== null,
       /** @param {-1 | 1} delta */
       moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
@@ -546,9 +548,10 @@
           if (target.matches(".github-pulls-stack-row")) {
             return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
           }
-          // A Whole stack row has nothing to expand: Space opens the stack's page, as Enter does.
+          // A Whole stack row is the folder of its stack's pull requests: Space shows or
+          // hides them, as it does a folder's rows, and Enter opens the stack's page.
           if (target.matches(".github-pulls-whole-row")) {
-            return event?.repeat === true || nav.activateAnchor();
+            return event?.repeat === true || nav.toggleWhole(Number(target.dataset.stack));
           }
           if (target.matches(".github-pulls-row")) {
             return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));

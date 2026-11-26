@@ -687,24 +687,26 @@ try {
   await frames();
   phase("pulls");
   await shot(`stack-70-with-pulls`);
-  // The Pulls tab's Whole stack row (mb-cm31): one of Stack #70's rows, with its members,
-  // the current row while the stack's page is open, and in view.
+  // The Pulls tab's Whole stack row (mb-cm31, mb-tvhs): Stack #70's one row, its members
+  // under it a level further in, the current row while the stack's page is open, and in view.
   const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
   const NAV = `(() => {
     const whole = ${WHOLE};
     if (whole === null) return null;
-    // The stack's rows: the second-level items between its stack's row and the next row
-    // a level out, the Whole stack row's among them.
+    // The stack's rows: its Whole stack row, the one second-level item after its stack's
+    // row, then the third-level items after that, its members.
     const members = [];
-    let item = document.querySelector('#tab-pulls .github-pulls-stack-row[data-stack="70"]')?.closest("li")?.nextElementSibling;
-    for (; item?.dataset.level === "2"; item = item.nextElementSibling) {
-      if (!item.classList.contains("github-pulls-whole-item")) members.push(Number(item.dataset.number));
+    const first = document.querySelector('#tab-pulls .github-pulls-stack-row[data-stack="70"]')?.closest("li")?.nextElementSibling;
+    const under = first === whole.closest("li") && first.dataset.level === "2";
+    for (let item = first?.nextElementSibling; item?.dataset.level === "3"; item = item.nextElementSibling) {
+      members.push(Number(item.dataset.number));
     }
     const view = document.querySelector(".tree-content").getBoundingClientRect();
     const box = whole.getBoundingClientRect();
     return {
       address: location.pathname,
-      text: whole.textContent,
+      text: whole.querySelector(".github-pulls-whole-title")?.textContent ?? null,
+      under,
       href: whole.getAttribute("href"),
       current: whole.getAttribute("aria-current"),
       selected: whole.classList.contains("selected"),
@@ -718,13 +720,13 @@ try {
   const nav = await evaluate(NAV);
   measured.nav = { open: nav };
   check(
-    "the Pulls tab's Whole stack row is one of Stack #70's rows and links to its page",
-    nav !== null &&
+    "the Pulls tab's Whole stack row is Stack #70's one row, its members under it, and links to its page",
+    nav?.under &&
       nav.text === "Whole stack" &&
       nav.href === "/stack/70" &&
       nav.members.length > 0 &&
       nav.members.every((number) => [10, 8].includes(number)) &&
-      nav.place.endsWith(`/${nav.members.length + 1}`),
+      nav.place === "1/1",
     JSON.stringify(nav),
   );
   check(

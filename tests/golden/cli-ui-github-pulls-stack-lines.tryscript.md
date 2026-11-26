@@ -4,28 +4,30 @@ sandbox: false
 env:
   TZ: "UTC"
 ---
-# Golden Test: A Stack Heading’s Brief Change Line
+# Golden Test: A Stack’s Brief Change Line
 
-Each “Stack #N” heading in the Pulls tab shows its stack’s brief change line beside its
-label, “Stack #286 · +5”: the lines of the stack’s combined change, its members’ own
-changed files accumulated, each file once and their lines summed, which the server does
-from the cache (`GET stack-change`); the line counts no files by status (mb-lqkb), and
-leaves out a total of zero (mb-efum).
-This browserless session runs the production code that decides what each heading shows,
+Each stack’s Whole stack row in the Pulls tab shows its stack’s brief change line beside
+its words, “Whole stack · +5”: the lines of the stack’s combined change, its members’
+own changed files accumulated, each file once and their lines summed, which the server
+does from the cache (`GET stack-change`); the line counts no files by status (mb-lqkb),
+and leaves out a total of zero (mb-efum).
+The stack’s own row, its heading, shows the stack’s size and its age instead, “Stack
+#286 · 3 pulls”, which are whole from its first paint and wait on no read (mb-tvhs).
+This browserless session runs the production code that decides what each stack shows,
 `builtin_plugins/github/stack-lines.js`, on the server’s own answers, the stack changes
 `tests/test_github_stack_change.py` records and the list and stack snapshot the
 stack-groups session replays.
 
 `lane` drives the lane alone, with the browser’s idle time, its clock, and when each
 read is answered in the session’s hands.
-Each step’s `shows` is what each heading shows: `waiting`, the pending placeholder while
-the read of its stack is on its way; `shown`, its line; or `none`, no line and no
+Each step’s `shows` is what each stack’s line shows: `waiting`, the pending placeholder
+while the read of its stack is on its way; `shown`, its line; or `none`, no line and no
 placeholder.
 `asked` is what the step read, one stack at a time when the browser is idle,
 and `lane` the lane’s own state.
-A heading waits only for its own stack’s read, not for one queued behind another, and a
+A line waits only for its own stack’s read, not for one queued behind another, and a
 stack whose answer had no line, or whose read failed, does not wait again.
-A line once read is drawn in the paint that draws its heading again, and in a Pulls tab
+A line once read is drawn in the paint that draws its row again, and in a Pulls tab
 mounted again in the document, with no request, from the document’s comparison keep,
 where it is kept under its stack and its revision.
 An answer that names members not yet settled, a list missing or read for the head
@@ -37,24 +39,29 @@ nothing is read; when a member moves it is read again, and the line it had stays
 meanwhile, and stays shown when that read fails.
 A failed read is asked again a minute on, and a 304 says the last answer holds.
 A server with no GitHub repository refuses every stack at once, and the lane asks one
-stack a minute on; once the lines’ own hourly cap is spent no heading waits for a read
-that will not come.
+stack a minute on; once the lines’ own hourly cap is spent no line waits for a read that
+will not come.
 
 `heading` mounts the panel over a stand-in for the DOM with the SDK’s own painters and
-prints each stack’s heading as drawn: first with no read sent and nothing waiting; then
-#290’s read on its way, its heading holding the shell’s pending placeholder and its name
-saying the change is pending, while #286’s, queued, holds none; then #290’s unavailable,
-a member’s list not cached, and #286’s read on its way; and last #286’s line arrived,
-drawn through the SDK’s one component for it (`said`), its line totals alone.
-Its accessible name says the line in words after the label.
+prints each stack as drawn: under `heading`, its own row’s text, age, and accessible
+name, and beside it its Whole stack row’s change slot and name.
+First no read is sent and nothing waits; then #290’s read is on its way, its Whole stack
+row holding the shell’s pending placeholder and its name saying the change is pending,
+while #286’s, queued, holds none; then #290’s is unavailable, a member’s list not
+cached, and #286’s read is on its way; and last #286’s line has arrived, drawn through
+the SDK’s one component for it (`said`), its line totals alone.
+The row’s accessible name says the line in words after its words and its stack.
+Through every step each stack’s heading is as it was first drawn: its count and its age
+are there at once, and no read changes them.
 Mounted again in a fresh document with a member’s list that could not count a binary
 file, the muted “(estimated)” follows the totals, and the name says it.
 Mounted again, a fresh document each, with each of `totals`, the line `shows` a total of
 zero left out, “−4” for a stack that only deletes lines, as “+5” is one that only adds
 them, and both where both are nonzero; a muted “0 lines”, said “no lines changed”, for a
 stack that changes none; and “?” for a total not known, beside a zero or a known one.
-No heading shows a “+0” or a “−0”. The placeholder is one node across paints, the label
-stays the node it was, and the line drawn is the component’s nodes, part for part.
+No line shows a “+0” or a “−0”. The placeholder is one node across paints, the label and
+the Whole stack row’s words stay the nodes they were, and the line drawn is the
+component’s nodes, part for part.
 
 `retryMinutes` is when a stack whose answer keeps naming a member not yet settled is
 asked again over two and a half hours, the list drawing it each minute: a minute on,
@@ -528,40 +535,40 @@ $ node tests/dom/github-pulls-stack-lines-session.js
   "heading": {
     "steps": [
       {
-        "step": "mounted: no heading waits, since no read is sent; the browser is not idle yet",
+        "step": "mounted: no stack waits, since no read is sent; the browser is not idle yet",
         "headings": {
           "Stack #290": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #290",
+            "heading": {
+              "text": "Stack #290 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #290, 3 pull requests · 1m"
+            },
             "text": "",
             "change": [],
-            "name": "Stack #290, 3 pull requests"
+            "name": "Whole stack, Stack #290"
           },
           "Stack #286": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #286",
+            "heading": {
+              "text": "Stack #286 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+            },
             "text": "",
             "change": [],
-            "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290"
+            "name": "Whole stack, Stack #286"
           }
         },
         "requests": []
       },
       {
-        "step": "idle: #290's read is sent, and its heading waits; #286's is queued and does not",
+        "step": "idle: #290's read is sent, and its Whole stack row waits; #286's is queued and does not",
         "headings": {
           "Stack #290": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #290",
+            "heading": {
+              "text": "Stack #290 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #290, 3 pull requests · 1m"
+            },
             "text": "",
             "change": [
               {
@@ -574,17 +581,17 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Stack #290: change pending; 3 pull requests"
+            "name": "Whole stack, Stack #290: change pending"
           },
           "Stack #286": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #286",
+            "heading": {
+              "text": "Stack #286 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+            },
             "text": "",
             "change": [],
-            "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290"
+            "name": "Whole stack, Stack #286"
           }
         },
         "requests": [
@@ -595,21 +602,21 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         "step": "#290 has a member with no list, so it shows nothing; #286's read is sent, and it waits",
         "headings": {
           "Stack #290": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #290",
+            "heading": {
+              "text": "Stack #290 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #290, 3 pull requests · 1m"
+            },
             "text": "",
             "change": [],
-            "name": "Stack #290, 3 pull requests"
+            "name": "Whole stack, Stack #290"
           },
           "Stack #286": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #286",
+            "heading": {
+              "text": "Stack #286 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+            },
             "text": "",
             "change": [
               {
@@ -622,7 +629,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Stack #286: change pending; 3 pull requests, 2 in this list, 1 under Stack #290"
+            "name": "Whole stack, Stack #286: change pending"
           }
         },
         "requests": [
@@ -630,24 +637,24 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         ]
       },
       {
-        "step": "#286's line arrives in its heading, and #290's shows nothing still",
+        "step": "#286's line arrives on its Whole stack row, and #290's shows nothing still",
         "headings": {
           "Stack #290": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #290",
+            "heading": {
+              "text": "Stack #290 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #290, 3 pull requests · 1m"
+            },
             "text": "",
             "change": [],
-            "name": "Stack #290, 3 pull requests"
+            "name": "Whole stack, Stack #290"
           },
           "Stack #286": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #286",
+            "heading": {
+              "text": "Stack #286 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+            },
             "text": "·+5",
             "change": [
               {
@@ -674,7 +681,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Stack #286: 5 lines added; 3 pull requests, 2 in this list, 1 under Stack #290"
+            "name": "Whole stack, Stack #286: 5 lines added"
           }
         },
         "requests": []
@@ -683,11 +690,11 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         "step": "a member's list could not count a binary file: “(estimated)” follows the totals",
         "headings": {
           "Stack #286": {
-            "heading": [
-              "group-heading github-pull-stack-label",
-              "github-pulls-stack-change"
-            ],
-            "label": "Stack #286",
+            "heading": {
+              "text": "Stack #286 · 3 pulls",
+              "age": "1m",
+              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+            },
             "text": "·+5(estimated)",
             "change": [
               {
@@ -720,7 +727,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Stack #286: 5 lines added, estimated; 3 pull requests, 2 in this list, 1 under Stack #290"
+            "name": "Whole stack, Stack #286: 5 lines added, estimated"
           }
         },
         "requests": [
@@ -743,7 +750,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         "shows": [
           "diff-stat-del: −4"
         ],
-        "name": "Stack #286: 4 lines deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+        "name": "Whole stack, Stack #286: 4 lines deleted"
       },
       {
         "totals": {
@@ -755,7 +762,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
           "diff-stat-add: +5",
           "diff-stat-del: −4"
         ],
-        "name": "Stack #286: 5 lines added, 4 deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+        "name": "Whole stack, Stack #286: 5 lines added, 4 deleted"
       },
       {
         "totals": {
@@ -766,7 +773,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         "shows": [
           "change-line-none: 0 lines"
         ],
-        "name": "Stack #286: no lines changed; 3 pull requests, 2 in this list, 1 under Stack #290"
+        "name": "Whole stack, Stack #286: no lines changed"
       },
       {
         "totals": {
@@ -777,7 +784,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         "shows": [
           "diff-stat-del: −?"
         ],
-        "name": "Stack #286: ? lines deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+        "name": "Whole stack, Stack #286: ? lines deleted"
       },
       {
         "totals": {
@@ -789,7 +796,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
           "diff-stat-add: +?",
           "diff-stat-del: −4"
         ],
-        "name": "Stack #286: ? lines added, 4 deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+        "name": "Whole stack, Stack #286: ? lines added, 4 deleted"
       },
       {
         "totals": {
@@ -801,7 +808,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
           "diff-stat-add: +?",
           "diff-stat-del: −?"
         ],
-        "name": "Stack #286: line counts unknown; 3 pull requests, 2 in this list, 1 under Stack #290"
+        "name": "Whole stack, Stack #286: line counts unknown"
       }
     ]
   },
