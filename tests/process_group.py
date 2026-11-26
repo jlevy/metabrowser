@@ -133,8 +133,13 @@ def _live_members(group: int, deadline: float) -> list[_Process]:
     return [p for p in _processes(deadline) if p.pgid == group and not p.zombie]
 
 
-def _group_is_live(group: int, deadline: float) -> bool:
-    """Whether *group* has a member still running."""
+def group_is_live(group: int, deadline: float) -> bool:
+    """Whether *group* has a member still running, a zombie not counted; off macOS the
+    look reads the process table, by *deadline* (or SCAN_FLOOR_S).
+
+    For a test that stops a child leading its own group some other way, and cannot reap
+    it: ``os.kill(pid, 0)`` answers for a zombie as for a live process.
+    """
 
     if not _any_member(group):
         return False
@@ -173,7 +178,7 @@ def stop_group(process: subprocess.Popen[str], *, deadline: float | None = None)
     try:
         live = False
         for signum, phase_end in phases:
-            live = _group_is_live(group, phase_end)
+            live = group_is_live(group, phase_end)
             if not live:
                 return
             try:
@@ -182,12 +187,12 @@ def stop_group(process: subprocess.Popen[str], *, deadline: float | None = None)
                 return
             except PermissionError:
                 # Only zombies, whose last live member exited since the look.
-                if not _group_is_live(group, phase_end):
+                if not group_is_live(group, phase_end):
                     return
                 raise
             while live and time.monotonic() < phase_end:
                 time.sleep(_POLL_S)
-                live = _group_is_live(group, phase_end)
+                live = group_is_live(group, phase_end)
             if not live:
                 return
         raise AssertionError(
