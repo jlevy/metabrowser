@@ -5,7 +5,7 @@ title: "Merge readiness: show whether a pull request is ready to merge as plainl
 kind: epic
 status: in_progress
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-26-pull-request-merge-readiness.md
 refs:
   - kind: pr
@@ -21,8 +21,9 @@ dependencies: []
 child_order_hints:
   - is-01m8be447e9931hjyw4nrg4qxe
   - is-01m8be45aq589e23647qn19ee1
+  - is-01m8bmw4sdejvn3fx7tjgeyvpz
 created_at: 2026-11-26T08:04:02.970Z
-updated_at: 2026-11-26T08:46:43.440Z
+updated_at: 2026-11-26T10:02:02.413Z
 extensions:
   linear:
     id: cdbe63d3-7e97-4a12-b62d-a72c900972ef
