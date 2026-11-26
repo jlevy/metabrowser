@@ -4353,10 +4353,10 @@ when Refresh stood in that toolbar.
   the stack menu’s (`stackEntries`). Each pull request keeps its own change line and
   changed files, a level further in again.
 - **Heading.** A stack’s row is its chevron, its label, the stack’s size, and its age:
-  “Stack #286 · 4 pulls” and, at the row’s end, “2h”. It draws no Layers icon; the label
-  names the stack. The size is how many pull requests the stack has (`stackPullsCount`),
-  not how many the list holds, so it is the stack’s own figure under every filter, and
-  it shows whether the stack is open or closed.
+  “Stack #286 · 4 pulls” and, at the row’s end, “2h”. It draws no Layers icon: its Whole
+  stack row carries the stack’s. The size is how many pull requests the stack has
+  (`stackPullsCount`), not how many the list holds, so it is the stack’s own figure
+  under every filter, and it shows whether the stack is open or closed.
   It is a count summary
   ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)): the
   number bold in the text’s ink and “pulls” regular, “1 pull” for a stack of one, after
