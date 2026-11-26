@@ -19,7 +19,7 @@ listed here and drawn nowhere, fails the build.
 | Source | What it is | Where it lives |
 | --- | --- | --- |
 | Registry | A glyph a folder’s first paint can draw | `static/icons.js`, a startup script, as `window.MetabrowserIcons`; plugins read it as `mb.icons` |
-| Shell | A glyph the server writes into a page’s first paint as markup, which the registry would make every page pay for: a root’s mark, one of a set, or a control’s glyph only some pages draw | A data file the server reads, `static/source-kind-glyphs.json`, and the macOS app’s copy of it; or `shell_glyphs.py` |
+| Shell | A glyph the server writes into a page’s first paint as markup, with no script: a root’s mark, one of a set the registry would make every page pay for, or the glyph of a control the server draws, in its box from the first paint | A data file the server reads, `static/source-kind-glyphs.json`, and the macOS app’s copy of it; or `shell_glyphs.py` |
 | Plugin | A glyph only one plugin draws | Beside that plugin’s code, loaded with it |
 | View bundle | A glyph only a shared view helper draws | `static/plugin-sdk-views.js`, loaded on demand |
 | CSS mask | A glyph a stylesheet draws as a mask over a color token | The stylesheet rule that draws it |
@@ -329,7 +329,7 @@ The title carries the meaning; the symbol only marks the tab.
 | `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `print`, Lucide `printer` | Registry | Print the document | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `gear`, Lucide `settings` | Registry | Open the Metabrowser menu | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `REFRESH_SVG`, Lucide `rotate-cw` | Shell | Refresh: the Pulls tab’s Refresh, at the top of the navigation pane just before the Metabrowser menu’s gear, which refreshes the pull request page beside the list and then the list; the server writes it into the page with its button | `shell_glyphs.py` | `--muted` at rest, `--text` on hover; dimmed while it waits | `--icon-glyph` |
+| `REFRESH_SVG`, Lucide `rotate-cw` | Shell | Refresh: the navigation’s one Refresh, at the top of the navigation pane just before the Metabrowser menu’s gear on every page, which refreshes what the page shows, the parts on screen first; the server writes it into the page with its button | `shell_glyphs.py` | `--muted` at rest, `--text` on hover; dimmed while it waits | `--icon-glyph` |
 | `monitor`, Lucide `monitor` | Registry | The system theme, in the menu’s theme chooser; also the Media category’s shape | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`: a segment’s glyph is its whole label (`.menu-seg svg`) |
 | `sun`, Lucide `sun` | Registry | The light theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `moon`, Lucide `moon` | Registry | The dark theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |

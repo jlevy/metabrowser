@@ -4393,7 +4393,6 @@ _FOCUS_OFFSET_OUTSET = "var(--focus-ring-offset-outset)"
 _FOCUS_RING_OUTSET = frozenset(
     {
         ".nav-shortcut-action:focus-visible",
-        ".source-freshness-label:focus-visible",
         ".filter-check:has(input:focus-visible)",
         ".help-project a:focus-visible",
         ".event-log-details a:focus-visible",

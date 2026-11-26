@@ -466,12 +466,6 @@
       if (leaving !== panelId) {
         window.MetabrowserSourceRefSelector?.mounted()?.close();
       }
-      // The Pulls tab's Refresh, in the navigation's header, is hidden behind another tab as
-      // its panel is, but keeps its box, so the header does not move (server.py draws it so).
-      const pullsRefresh = document.getElementById("nav-refresh");
-      if (pullsRefresh) {
-        pullsRefresh.style.visibility = panelId === "pulls" ? "" : "hidden";
-      }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;
         navPanels.find((candidate) => candidate.id === leaving)?.onHide?.();

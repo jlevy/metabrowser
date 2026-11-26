@@ -29,6 +29,7 @@ from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git import repo as git_repo
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.server import app
+from metabrowser.shell_glyphs import REFRESH_SVG
 from metabrowser.source import attach_subject, reset_source_session
 from metabrowser.source_routes import PIN_HEADER, WORKING_TREE_PIN
 from tests.github_pull_fixture import (
@@ -92,13 +93,23 @@ def _toolbars(html: str) -> dict[str, bool]:
         assert "tally-pending" in body, opening
     assert list(toolbars.values()).count(True) == 1, toolbars
     assert set(toolbars) == set(_tabs(html)), (toolbars, _tabs(html))
-    # The Pulls tab's Refresh, at the top of the navigation, is drawn with the tab, and shown
-    # with its toolbar: hidden, but in its place, while another tab is in front.
-    refresh = re.search(r'<button [^>]*id="nav-refresh"[^>]*>', html)
-    assert (refresh is not None) is ("pulls" in toolbars), refresh
-    if refresh is not None:
-        assert ("visibility: hidden" not in refresh.group(0)) is toolbars["pulls"], refresh.group(0)
+    _assert_refresh_drawn(html)
     return toolbars
+
+
+def _assert_refresh_drawn(html: str) -> None:
+    """The navigation's one Refresh is in the page's header under every tab, glyph and all.
+
+    It is shown and offered from the first paint, so nothing in the header appears or moves
+    after it, whichever tab is in front (server.py, `nav_refresh`).
+    """
+
+    refresh = re.search(r'(<button [^>]*id="nav-refresh"[^>]*>)(.*?)</button>', html, re.S)
+    assert refresh is not None
+    opening = refresh.group(1)
+    assert 'aria-label="Refresh"' in opening, opening
+    assert not re.search(r"hidden|visibility|aria-disabled|disabled", opening), opening
+    assert refresh.group(2) == REFRESH_SVG
 
 
 def _shell_tools(html: str) -> list[str]:
@@ -112,7 +123,10 @@ def _startup_scripts(html: str) -> list[str]:
 
 
 def test_a_folder_draws_no_tab_and_lists_no_script(tmp_path: Path) -> None:
-    """A plain folder's shell is the mutation check on all of it: nothing of the tab reaches it."""
+    """A plain folder's shell is the mutation check on all of it: nothing of the tab reaches it.
+
+    The navigation's Refresh does, since it refreshes whatever the page shows.
+    """
 
     reset_source_session()
     from metabrowser import server
@@ -124,7 +138,7 @@ def test_a_folder_draws_no_tab_and_lists_no_script(tmp_path: Path) -> None:
             html = client.get(route).text
             assert _tabs(html) == {"files": True}, route
             assert 'id="tab-pulls"' not in html, route
-            assert 'id="nav-refresh"' not in html, route
+            _assert_refresh_drawn(html)
             assert "pulls-nav.js" not in html, route
             assert "/static/pulls-nav.js" not in _shell_tools(html), route
             assert "/static/pulls-nav.js" not in _startup_scripts(html), route

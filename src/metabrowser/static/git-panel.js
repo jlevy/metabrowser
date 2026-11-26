@@ -3583,6 +3583,22 @@
     }
   }
 
+  /**
+   * The navigation's Refresh (static/refresh-plan.js): read the history again from the
+   * routes that follow the revision the server serves (`session_git_location` in
+   * git/routes.py), as the stale notice's Refresh does, keeping the selected row. Settles
+   * once the first page is drawn. A panel that has not read its history has nothing to
+   * refresh: its first show reads it then.
+   *
+   * @returns {Promise<void>}
+   */
+  async function refresh() {
+    if (!started || (state.rowCount === 0 && !state.endReached && !state.failed)) {
+      return;
+    }
+    await refreshHistory({ selectedId: state.selectedId });
+  }
+
   /** @returns {Promise<void>} */
   async function ensureHistory() {
     const generation = historyGeneration;
@@ -4068,6 +4084,7 @@
   window.MetabrowserGitPanel = Object.freeze({
     init,
     cancelPending,
+    refresh,
     restoreCommitLanding,
     // Exposed for tests, which drive the panel without a network.
     _internals: {

@@ -987,8 +987,19 @@ async function paintStory(panel, selection = false) {
     }
     const opened = [];
     const current = first.body.rows[1].number;
-    // The tab's Refresh, the shell's button at the top of the navigation, which the list wires.
-    const refresh = new PanelElement("button");
+    // The navigation's one Refresh (static/refresh-plan.js), to which the list lends its parts:
+    // what it lends, and what each asks when the plan runs it.
+    const lent = new Map();
+    const refreshParts = {
+      provide(id, run) {
+        lent.set(id, run);
+        return () => {
+          if (lent.get(id) === run) {
+            lent.delete(id);
+          }
+        };
+      },
+    };
     const mounted = panel.mountPullsPanel(
       container,
       {
@@ -998,7 +1009,7 @@ async function paintStory(panel, selection = false) {
           current,
           shown: true,
           refreshAhead: false,
-          refresh,
+          refreshParts,
           scrollRoot: selection ? container : null,
           open: (route) => opened.push(route.number),
           file: selection ? "src/app.txt" : null,
@@ -1043,8 +1054,17 @@ async function paintStory(panel, selection = false) {
         !spinner.classList.contains("mb-delayed-loading"),
       "one shared spinner and delay for the first loading message",
     );
-    const refreshWhileLoading = refresh.getAttribute("aria-disabled");
-    assert(refreshWhileLoading === "true", "Refresh waits while the list loads");
+    // The list lends the page beside it and itself as it mounts; its own part, while the list
+    // loads, asks the server nothing.
+    const lentWhileLoading = [...lent.keys()];
+    const askedBeforeRefresh = answers.length;
+    await lent.get("pulls")();
+    const listPartWhileLoading =
+      answers.length === askedBeforeRefresh ? "asks nothing" : "asks for a refresh";
+    assert(
+      lentWhileLoading.join() === "page,pulls" && listPartWhileLoading === "asks nothing",
+      "the list lends its parts as it mounts, and its own asks nothing while the list loads",
+    );
     const live = container.childNodes.filter((node) => node.getAttribute("aria-live") === "polite");
     assert(live.length === 1 && live[0].textContent === message.textContent, "one announcement");
     const loading = message.textContent;
@@ -1075,8 +1095,6 @@ async function paintStory(panel, selection = false) {
     filterChips.at(-1).focus();
     await answer(first);
     assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
-    const refreshWhenSettled = refresh.getAttribute("aria-disabled");
-    assert(refreshWhenSettled === "false", "the same Refresh is offered once the list settles");
     assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
     const filterTallies = filterChips.map((chip) => chip.textContent);
     assert(
@@ -1180,23 +1198,13 @@ async function paintStory(panel, selection = false) {
               listener(path === null ? null : { path });
             }
           },
-          // What the Pulls tab's Refresh reads and runs of the page beside it (mb-ablv).
+          // What the navigation's Refresh reads and runs of the page beside the list, as the
+          // page's part (static/refresh-plan.js).
           refreshes: 0,
-          offered: false,
-          refreshListeners: new Set(),
+          offered: true,
           canRefresh: () => handle.offered,
           refresh() {
             handle.refreshes += 1;
-          },
-          onRefreshChange(listener) {
-            handle.refreshListeners.add(listener);
-            return () => handle.refreshListeners.delete(listener);
-          },
-          offer(offered) {
-            handle.offered = offered;
-            for (const listener of handle.refreshListeners) {
-              listener();
-            }
           },
           fileForPath: (path) => ({ kind: "file", path }),
           scrollToFile: (path) => ({ kind: "file", path }),
@@ -1321,47 +1329,33 @@ async function paintStory(panel, selection = false) {
       observations.history = selected(current);
       handles.get(other).emit("src/app.txt");
       observations.lateAfterHistory = selected(other);
-      // The one Refresh (mb-ablv): the tab's Refresh refreshes the page beside it, when the
-      // page has something to refresh, and then the list; it follows what the page offers,
-      // and waits only while neither can refresh.
+      // The one Refresh (mb-ablv): the plan runs the page beside the list, the page the list's
+      // current row names, through the page's own refresh, and the list through its catalog
+      // job, each as a part of its own; a part whose refresh is already on its way asks again
+      // for nothing.
       const beside = handles.get(current);
       const listRefreshes = () =>
         answers.filter((request) => request.route === "/api/plugin/github/pulls-refresh").length;
       const listBefore = listRefreshes();
-      beside.offer(true);
-      assert(
-        refresh.getAttribute("aria-disabled") === "false",
-        "Refresh is offered while the page beside it can refresh",
-      );
-      refresh.listeners.get("click")();
+      await lent.get("page")();
+      void lent.get("pulls")();
       await settle();
       assert(
         beside.refreshes === 1 && listRefreshes() === listBefore + 1,
-        "one press refreshes the page beside the tab and then the list",
+        "the page's part refreshes the page beside the list, and the list's part the list",
       );
-      beside.offer(false);
-      assert(
-        refresh.getAttribute("aria-disabled") === "true",
-        "Refresh waits while neither the page nor the list, its refresh asked, can refresh",
-      );
-      refresh.listeners.get("click")();
-      await settle();
-      assert(
-        beside.refreshes === 1 && listRefreshes() === listBefore + 1,
-        "a waiting Refresh asks nothing of the page or the list",
-      );
-      beside.offer(true);
-      assert(
-        refresh.getAttribute("aria-disabled") === "false",
-        "the page offering a refresh again offers Refresh again",
-      );
-      refresh.listeners.get("click")();
+      await lent.get("page")();
+      void lent.get("pulls")();
       await settle();
       assert(
         beside.refreshes === 2 && listRefreshes() === listBefore + 1,
         "a press while the list's refresh is on its way refreshes the page alone",
       );
+      beside.offered = false;
+      await lent.get("page")();
+      assert(beside.refreshes === 2, "a page with nothing to refresh is asked nothing");
       mounted.dispose();
+      assert(lent.size === 0, "a disposed list takes its parts back");
       handles.get(current).emit("docs/new.md");
       pageHost.dispose();
       off();
@@ -1528,9 +1522,8 @@ async function paintStory(panel, selection = false) {
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
       "loading status": loading,
-      "Refresh waits, then is offered": [refreshWhileLoading, refreshWhenSettled].map(
-        (disabled) => `aria-disabled=${disabled}`,
-      ),
+      "lent to the one Refresh": lentWhileLoading,
+      "the list's part while the list loads": listPartWhileLoading,
       landing: pane.textContent,
       "filter tallies": filterTallies,
       "only the repository name is bold": total.childNodes.map((node) => ({
@@ -1626,9 +1619,12 @@ async function paintStory(panel, selection = false) {
           connection.getAttribute("aria-busy") === null,
         "the outage breathes, muted, and its text, not the row's Refresh, is busy",
       );
-      assert(refresh.getAttribute("aria-disabled") === "true", "Refresh waits for the retry");
     };
     assertRetry();
+    // The list's part asks nothing while the passive retry runs: the retry is already the ask.
+    const askedDuringRetry = answers.length;
+    await lent.get("pulls")();
+    assert(answers.length === askedDuringRetry, "the list's refresh waits for the retry");
     await answer({
       status: 202,
       etag: null,
@@ -1790,12 +1786,13 @@ async function paintStory(panel, selection = false) {
 // shortcut stand-in is the production registry and plugin facade, static/keyboard-shortcuts.js
 // and static/plugin-shortcuts.js, loaded whole into a realm of their own as `shell-tools` loads
 // them, and the panel's `mb.shortcuts.attach` is the facade's. Around the panel is a page
-// shaped as the shell's: the navigation pane, with its header's Refresh, the Files tab's filter
-// bar, whose triggers the shell numbers through `attachNumbered()`, and the Pulls tab, before
-// the main pane, with a pull request header's Browse code. Switching tabs hides the other with
-// `display: none`, and the header's Refresh with `visibility: hidden`, as main-tabs.js does. The
-// elements answer what the registry reads of one in a browser: connection, `hidden`,
-// `display: none`, and `visibility: hidden` up the tree, `inert`, and document order.
+// shaped as the shell's: the navigation pane, with its header's Refresh, which the production
+// refresh plan (static/refresh-plan.js) runs and the shell numbers through `attachNumbered()`
+// as static/shell-keymap.js does, the Files tab's filter bar, whose triggers the shell numbers
+// the same way, and the Pulls tab, before the main pane, with a pull request header's Browse
+// code. Switching tabs hides the other with `display: none`, as main-tabs.js does. The
+// elements answer what the registry reads of one in a browser: connection, `hidden` and
+// `display: none` up the tree, `inert`, and document order.
 
 async function numberStory(panel) {
   const vm = require("node:vm");
@@ -1815,8 +1812,7 @@ async function numberStory(panel) {
         if (
           node.hidden === true ||
           node.attributes?.has("hidden") ||
-          node.style?.display === "none" ||
-          node.style?.visibility === "hidden"
+          node.style?.display === "none"
         ) {
           return false;
         }
@@ -1951,10 +1947,29 @@ async function numberStory(panel) {
     filterBar.append(recency, types);
     const filesTab = new NumberedElement("div");
     const pullsTab = new NumberedElement("div");
-    // The header's Refresh, as server.py draws it: named, and waiting.
+    // The header's Refresh, as server.py draws it on every tab, named and offered, run by the
+    // production plan in a realm of its own with no document, so it does not mount itself.
+    // The Pulls tab is in front and no pull request holds the pane, so the list is the part on
+    // screen: the button waits while the list's refresh is on its way.
     const refresh = new NumberedElement("button");
     refresh.setAttribute("aria-label", "Refresh");
-    refresh.setAttribute("aria-disabled", "true");
+    const planFile = path.join(repoRoot, "src/metabrowser/static/refresh-plan.js");
+    const planRealm = { console, Promise };
+    planRealm.window = planRealm;
+    vm.createContext(planRealm);
+    vm.runInContext(fs.readFileSync(planFile, "utf8"), planRealm, { filename: planFile });
+    const runtime = planRealm.MetabrowserRefreshPlan;
+    const plan = runtime.createPlan({
+      shown: (id) => runtime.isShown(id, { front: "pulls", owner: "none" }),
+      waiting(on) {
+        if (on) {
+          refresh.setAttribute("aria-disabled", "true");
+        } else {
+          refresh.removeAttribute("aria-disabled");
+        }
+      },
+    });
+    refresh.addEventListener("click", () => void plan.press());
     const header = new NumberedElement("header");
     header.append(refresh);
     const navigation = new NumberedElement("div");
@@ -1967,11 +1982,17 @@ async function numberStory(panel) {
       filterBar.style.display = tab === "files" ? "" : "none";
       filesTab.style.display = tab === "files" ? "" : "none";
       pullsTab.style.display = tab === "pulls" ? "" : "none";
-      refresh.style.visibility = tab === "pulls" ? "" : "hidden";
     };
     // What the shell's filter menus and the page's link were asked to do.
     const ran = [];
     // Attached before the panel mounts, and after it in the page: the place decides.
+    registry.attachNumbered(refresh, {
+      activate() {
+        void plan.press();
+        return true;
+      },
+      placement: "beside",
+    });
     for (const trigger of [recency, types]) {
       registry.attachNumbered(trigger, { activate: () => ran.push(name(trigger)) });
     }
@@ -2008,7 +2029,7 @@ async function numberStory(panel) {
           current: null,
           shown: true,
           refreshAhead: false,
-          refresh,
+          refreshParts: plan,
           scrollRoot: null,
           open() {},
           file: null,
@@ -2069,7 +2090,7 @@ async function numberStory(panel) {
         return event.defaultPrevented;
       });
     // A click on a segment, as static/filter-controls.js reports one: nothing for the chip
-    // already chosen, else the group's change. A click on Refresh is its own listener.
+    // already chosen, else the group's change. A click on Refresh is the plan's listener.
     const clickChip = (value) =>
       acted(`click ${name(chip(value))}`, () => {
         if (chip(value).getAttribute("aria-checked") !== "true") {
@@ -2098,17 +2119,33 @@ async function numberStory(panel) {
       "Refresh and the chips take 1 to 4 in reading order, before the page's link",
     );
     assert(
-      refresh.getAttribute("aria-disabled") === "true",
-      "positive control: Refresh waits while the list loads",
+      plan.parts().join() === "page,pulls",
+      "the list lends the page beside it and itself to the one Refresh",
     );
-    story["Refresh waits"] = [await press("1"), await clickRefresh()];
+    // While the list loads it has nothing to refresh: a press asks the server nothing, and
+    // the button is offered again at once.
+    const whileLoading = [await press("1"), await clickRefresh()];
+    story["Refresh while the list loads"] = whileLoading;
+    assert(
+      whileLoading.every((step) => step.asked === undefined) && !plan.waiting(),
+      "positive control: a press while the list loads asks nothing",
+    );
     await answer("/api/plugin/github/pulls", recorded.more_done);
-    assert(refresh.getAttribute("aria-disabled") === "false", "the settled Refresh is available");
     story["the Pulls tab, settled"] = numbers();
     const byKey = await press("1");
+    const waited = refresh.getAttribute("aria-disabled");
     await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
+    const offered = refresh.getAttribute("aria-disabled");
     const byClick = await clickRefresh();
     story.Refresh = [byKey, byClick];
+    story["the button while the list's refresh is on its way, then once it is answered"] = [
+      waited,
+      offered,
+    ];
+    assert(
+      waited === "true" && offered === null,
+      "the button waits while the list's refresh is on its way, and only then",
+    );
     assert(
       byKey.asked.length === 1 && JSON.stringify(byKey.asked) === JSON.stringify(byClick.asked),
       "Refresh's number asks for what its click asks for",
@@ -2154,34 +2191,46 @@ async function numberStory(panel) {
     );
     // Holding Shift shows each live number on its control.
     registry.setRevealed(true);
+    // A badge is in its control, or, placed beside it as Refresh's is, in the control's
+    // parent (static/keyboard-shortcuts.js, `mountBadge`).
+    const isBadge = (child, placement) =>
+      child.classList?.contains("kbd-badge") &&
+      (placement === undefined || child.dataset.kbdPlacement === placement);
     story["the keycaps while Shift is held"] = [refresh, ...chips, recency, types, browseCode]
       .map((node) => {
-        const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
+        const badge =
+          node.childNodes.find((child) => isBadge(child)) ??
+          (node === refresh
+            ? node.parentNode.childNodes.find((child) => isBadge(child, "beside"))
+            : undefined);
         return `${name(node)} ${badge?.textContent ?? "none"}`;
       })
       .join(", ");
     registry.setRevealed(false);
-    // The Files tab shows: the hidden panel's controls give up their numbers.
+    // The Files tab shows: the hidden panel's controls give up their numbers, and the
+    // navigation's Refresh, on every tab, keeps 1.
     show("files");
     story["the Files tab"] = numbers();
     assert(
-      numbers().join() === "1 Modified within,2 File type,3 Browse code",
+      numbers().join() === "1 Refresh,2 Modified within,3 File type,4 Browse code",
       "the hidden panel's controls hold no number",
     );
-    story["on the Files tab"] = [await press("1"), await press("3"), await press("4")];
+    story["on the Files tab"] = [await press("2"), await press("4"), await press("5")];
     show("pulls");
     assert(numbers().length === 5, "the Pulls tab shows its numbers again");
-    // Disposal ends the panel's numbers, and the page's link moves up to 1. Put back in the
-    // page, the disposed panel's controls still hold none: their numbers were let go.
+    // Disposal ends the chips' numbers and takes the list's parts back from the plan, and the
+    // page's link moves up to 2, after the shell's Refresh. Put back in the page, the disposed
+    // panel's controls still hold none: their numbers were let go.
     mounted.dispose();
     story["the Pulls tab, disposed"] = numbers();
     pullsTab.append(filters);
     assert(
-      numbers().join() === "1 Browse code",
-      "a disposed panel's chips and Refresh hold no number",
+      numbers().join() === "1 Refresh,2 Browse code",
+      "a disposed panel's chips hold no number",
     );
+    assert(plan.parts().length === 0, "a disposed list takes its parts back from the plan");
     filters.remove();
-    story["after disposal"] = [await press("1"), await press("2")];
+    story["after disposal"] = [await press("2"), await press("3")];
     show("files");
     story["the Files tab, after disposal"] = numbers();
     return story;

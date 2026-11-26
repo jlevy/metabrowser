@@ -1,0 +1,305 @@
+---
+cwd: ../..
+sandbox: false
+env:
+  TZ: "UTC"
+---
+# Golden Test: The Navigation’s One Refresh
+
+The icon button at the top of the navigation, on every page and under every tab, is the
+page’s one Refresh (docs/design-system.md, “Refresh, Retry, and Reload Page”). One press
+refreshes every part of the page that can be read again, through the path each part
+already had, in one order (`static/refresh-plan.js`): the parts on screen first, then
+the parts behind other tabs, so a tab the reader turns to next is already fresh.
+Within each half the order is the plan’s: the mirror’s fetch first, since every other
+part reads what it brings, then the pull request’s page in the main pane, then the tabs,
+Files, Pulls, and Commits.
+
+What is on screen is read from the tab in front and from what holds the main pane: the
+mirror’s freshness row is at the foot of the navigation on every tab; the pull request’s
+page while it holds the pane; and a tab’s part while it is in front, or, for Files and
+Commits, while the pane shows its file, folder, or commit.
+
+The button waits, `aria-disabled` and dimmed in its place, while the parts on screen
+refresh, and only then; a press while it waits does nothing.
+A part that fails says so where it is drawn, and the rest still run.
+A later press supersedes what an earlier one had not reached behind the other tabs.
+The last steps run the module’s browser glue on a stand-in page, with the shell’s parts
+as app.js, the freshness row, and the Commits panel lend them, and the Pulls list’s two
+as pulls-panel.js does.
+
+`tests/test_refresh_plan_session.py` holds the record to these invariants;
+`cli-ui-key-reveal.tryscript.md` shows the button numbered 1 on every screen.
+
+```console
+$ node tests/dom/refresh-plan-session.js
+{
+  "steps": [
+    {
+      "step": "each screen's order: the parts on screen, then the rest, each half in plan order",
+      "parts": [
+        "source",
+        "page",
+        "files",
+        "pulls",
+        "git"
+      ],
+      "screens": [
+        {
+          "screen": "Files in front, a file in the pane",
+          "visible": [
+            "source",
+            "files"
+          ],
+          "hidden": [
+            "page",
+            "pulls",
+            "git"
+          ]
+        },
+        {
+          "screen": "Files in front, nothing chosen",
+          "visible": [
+            "source",
+            "files"
+          ],
+          "hidden": [
+            "page",
+            "pulls",
+            "git"
+          ]
+        },
+        {
+          "screen": "Files in front, a pull request still in the pane",
+          "visible": [
+            "source",
+            "page",
+            "files"
+          ],
+          "hidden": [
+            "pulls",
+            "git"
+          ]
+        },
+        {
+          "screen": "Pulls in front, a pull request in the pane",
+          "visible": [
+            "source",
+            "page",
+            "pulls"
+          ],
+          "hidden": [
+            "files",
+            "git"
+          ]
+        },
+        {
+          "screen": "Pulls in front, a file still in the pane",
+          "visible": [
+            "source",
+            "files",
+            "pulls"
+          ],
+          "hidden": [
+            "page",
+            "git"
+          ]
+        },
+        {
+          "screen": "Commits in front, a commit in the pane",
+          "visible": [
+            "source",
+            "git"
+          ],
+          "hidden": [
+            "page",
+            "files",
+            "pulls"
+          ]
+        },
+        {
+          "screen": "Commits in front, a file still in the pane",
+          "visible": [
+            "source",
+            "files",
+            "git"
+          ],
+          "hidden": [
+            "page",
+            "pulls"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "a press runs the parts on screen while the button waits, then the rest",
+      "events": [
+        "waits",
+        "source starts",
+        "source settles",
+        "page starts",
+        "page settles",
+        "pulls starts",
+        "pulls settles",
+        "offered",
+        "files starts",
+        "files settles",
+        "git starts",
+        "git settles"
+      ],
+      "a second press while it waits": false,
+      "the first press": true,
+      "waiting after": false
+    },
+    {
+      "step": "a part that fails leaves the rest to run",
+      "events": [
+        "waits",
+        "source starts",
+        "source failed: source could not be read",
+        "files starts",
+        "files settles",
+        "offered",
+        "page starts",
+        "page settles",
+        "pulls starts",
+        "pulls settles",
+        "git starts",
+        "git settles"
+      ]
+    },
+    {
+      "step": "a released part is not run, and a stale release keeps the newer refresh",
+      "parts": "source, files, git",
+      "events": [
+        "waits",
+        "source starts",
+        "source settles",
+        "files starts",
+        "files settles",
+        "offered",
+        "git, provided again, starts",
+        "git starts",
+        "git settles"
+      ]
+    },
+    {
+      "step": "a press while the hidden parts run supersedes the rest of the first",
+      "events": [
+        "waits",
+        "source starts",
+        "source settles",
+        "files starts",
+        "files settles",
+        "offered",
+        "page starts",
+        "waits",
+        "source starts",
+        "page settles",
+        "source settles",
+        "files starts",
+        "files settles",
+        "offered",
+        "page starts",
+        "page settles",
+        "pulls starts",
+        "pulls settles",
+        "git starts",
+        "git settles"
+      ]
+    },
+    {
+      "step": "a part the plan does not list is refused",
+      "refused": "Unknown refresh part: tree"
+    },
+    {
+      "step": "a click with pulls in front and the pane's owner \"pull-request\"",
+      "parts": [
+        "source",
+        "page",
+        "files",
+        "pulls",
+        "git"
+      ],
+      "asked": [
+        "the button: aria-disabled=true",
+        "source: the mirror, fetched, waited for starts",
+        "source: the mirror, fetched, waited for settles",
+        "page: the pull request's page, its own refresh starts",
+        "page: the pull request's page, its own refresh settles",
+        "pulls: the list, its catalog job starts",
+        "pulls: the list, its catalog job settles",
+        "the button: no aria-disabled",
+        "files: the tree and the pane's file or folder, read again starts",
+        "files: the tree and the pane's file or folder, read again settles",
+        "git: the history, read again starts",
+        "git: the history, read again settles"
+      ]
+    },
+    {
+      "step": "a click with files in front and the pane's owner \"file\"",
+      "parts": [
+        "source",
+        "page",
+        "files",
+        "pulls",
+        "git"
+      ],
+      "asked": [
+        "the button: aria-disabled=true",
+        "source: the mirror, fetched, waited for starts",
+        "source: the mirror, fetched, waited for settles",
+        "files: the tree and the pane's file or folder, read again starts",
+        "files: the tree and the pane's file or folder, read again settles",
+        "the button: no aria-disabled",
+        "page: the pull request's page, its own refresh starts",
+        "page: the pull request's page, its own refresh settles",
+        "pulls: the list, its catalog job starts",
+        "pulls: the list, its catalog job settles",
+        "git: the history, read again starts",
+        "git: the history, read again settles"
+      ]
+    },
+    {
+      "step": "a click with git in front and the pane's owner \"git\"",
+      "parts": [
+        "source",
+        "page",
+        "files",
+        "pulls",
+        "git"
+      ],
+      "asked": [
+        "the button: aria-disabled=true",
+        "source: the mirror, fetched, waited for starts",
+        "source: the mirror, fetched, waited for settles",
+        "git: the history, read again starts",
+        "git: the history, read again settles",
+        "the button: no aria-disabled",
+        "page: the pull request's page, its own refresh starts",
+        "page: the pull request's page, its own refresh settles",
+        "files: the tree and the pane's file or folder, read again starts",
+        "files: the tree and the pane's file or folder, read again settles",
+        "pulls: the list, its catalog job starts",
+        "pulls: the list, its catalog job settles"
+      ]
+    },
+    {
+      "step": "a click with files in front and the pane's owner \"file\", a local repository with no store and no Pulls tab",
+      "parts": [
+        "files",
+        "git"
+      ],
+      "asked": [
+        "the button: aria-disabled=true",
+        "files: the tree and the pane's file or folder, read again starts",
+        "files: the tree and the pane's file or folder, read again settles",
+        "the button: no aria-disabled",
+        "git: the history, read again starts",
+        "git: the history, read again settles"
+      ]
+    }
+  ]
+}
+? 0
+```

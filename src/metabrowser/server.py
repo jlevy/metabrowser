@@ -2054,19 +2054,18 @@ async def index(
         if pulls_tab
         else ""
     )
-    # The Pulls tab's Refresh, at the top of the navigation pane just before the Metabrowser
-    # menu, an icon button as the menu's gear is. It is here, glyph and all, from the first
-    # paint (shell_glyphs.py), and stays while another tab is in front, hidden but holding its
-    # place, as a tab's panel is hidden behind it (static/main-tabs.js#activateNavPanel), so
-    # nothing in the header appears or moves after the first paint. It waits, `aria-disabled`,
-    # until the list says what it can refresh: builtin_plugins/github/pulls-panel.js wires it.
-    refresh_behind = "" if pulls_in_front else ' style="visibility: hidden"'
-    pulls_refresh = (
+    # The navigation's one Refresh, at the top of the navigation pane just before the
+    # Metabrowser menu, an icon button as the menu's gear is, on every page and under every
+    # tab. It is here, glyph and all, from the first paint (shell_glyphs.py), so nothing in
+    # the header appears or moves after it. A press refreshes what the page shows, the parts
+    # on screen first (static/refresh-plan.js, which wires it once `shell-tools` loads).
+    # Its cost is page bytes, not a request: the button is 334 bytes as written, and a
+    # folder's page grew from 67,957 to 68,300 bytes, 80 more as sent compressed (17,774 to
+    # 17,854), measured 2026-11-25 with `render_shells` and `sent_body_bytes` in
+    # devtools/check_startup_scripts.py.
+    nav_refresh = (
         '\n        <button class="icon-btn nav-refresh" id="nav-refresh" type="button"'
-        ' aria-label="Refresh" data-tip-text="Refresh" aria-disabled="true"'
-        f"{refresh_behind}>{REFRESH_SVG}</button>"
-        if pulls_tab
-        else ""
+        f' aria-label="Refresh" data-tip-text="Refresh">{REFRESH_SVG}</button>'
     )
     pulls_container = ""
     if pulls_tab:
@@ -2326,6 +2325,8 @@ async def index(
             {"src": git_graph_url},
             {"src": git_history_window_url},
             {"src": git_panel_url},
+            # The navigation's Refresh: mounts as it evaluates, on the button the server drew.
+            {"src": _static_asset_url("refresh-plan.js"), "provides": "MetabrowserRefreshPlan"},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
             *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
             # The event log's reporter, last: nothing here waits on it (`event-reports`).
@@ -2649,7 +2650,7 @@ async def index(
              looking for the project. It carries its own accessible name saying
              where it goes — the bare wordmark would announce as the menu's
              name repeated — and it is not aria-hidden, because a control that
-             cannot be reached is not a control. -->{pulls_refresh}
+             cannot be reached is not a control. -->{nav_refresh}
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
                   aria-haspopup="true" aria-label="Metabrowser menu"></button>

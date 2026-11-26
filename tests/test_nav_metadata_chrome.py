@@ -19,8 +19,8 @@ Commits tally wraps between its phrases and the tab bar between its tabs: at eve
 width from the narrowest, in both font sets, each is held to the navigation toolbars'
 wrap rule (``tests/dom/nav-toolbar-wrap.mjs``; docs/design-system.md, "Navigation
 Toolbars Wrap"). The navigation's header holds still in every one of those states: the
-Pulls tab's Refresh keeps its box behind the other tabs and shows only while Pulls is in
-front, the gear's size on the gear's line.
+navigation's Refresh shows under every tab from the first paint, the gear's size on the
+gear's line.
 
 The fake ``gh`` waits while a hold file exists, so the Pulls list is still loading when
 it is measured; the measurement removes the file, rewrites the scenario the fake answers

@@ -193,7 +193,7 @@ const RULES = `(() => {
 const SHORT_PANE_PX = 220;
 
 // In the page: the navigation's header, which no tab and no state moves: each box in it,
-// whether the Pulls tab's Refresh shows, and the Refresh's box and the gear's, since they
+// whether the navigation's Refresh shows, and the Refresh's box and the gear's, since they
 // are one control (docs/design-system.md, "Every Icon-Only Control Is the Same Control").
 const HEADER = `(() => {
   const round = (value) => Math.round(value * 100) / 100;
@@ -522,8 +522,11 @@ try {
   await paneWidth(null);
   // A refresh that cannot reach GitHub, then one gh refuses until it is signed in, then no
   // gh at all: the rows stay, and the connection line says why and what to do.
-  // Refresh answers only while no refresh runs, as when the catalog's pages still arrive.
-  const reloadReady = `document.querySelector("#nav-refresh")?.getAttribute("aria-disabled") === "false"`;
+  // The list's part of Refresh asks only while no refresh of the list runs, as when the
+  // catalog's pages still arrive, which its connection line says by being busy; and Refresh
+  // takes a press only while it does not wait.
+  const reloadReady = `!document.querySelector("#nav-refresh")?.hasAttribute("aria-disabled") &&
+    document.querySelector(".github-pulls-connection-text")?.getAttribute("aria-busy") !== "true"`;
   scenario({ stderr: "error connecting to api.github.com\n", exit: 1 });
   await waitFor(reloadReady);
   await click("#nav-refresh");
@@ -544,9 +547,9 @@ try {
   phase("closed");
 }
 
-// The header holds still on every tab and in every state: the Pulls tab's Refresh keeps its
-// box behind another tab, so nothing in the row moves when Pulls comes to the front. It shows
-// only while Pulls is in front, and it is the gear's size, on the gear's line.
+// The header holds still on every tab and in every state: the navigation's Refresh is there
+// under every tab from the first paint, so nothing in the row moves when another tab comes
+// to the front, and it is the gear's size, on the gear's line.
 check(
   "the header was read on every tab",
   ["files", "commits", "pulls loading", "pulls updated"].every((name) => name in headers),
@@ -558,11 +561,7 @@ for (const [name, header] of Object.entries(headers)) {
     JSON.stringify(header.boxes) === JSON.stringify(headers.files.boxes),
     `${JSON.stringify(header.boxes)} against ${JSON.stringify(headers.files.boxes)}`,
   );
-  check(
-    `${name}: the Pulls tab's Refresh shows only while Pulls is in front`,
-    header.shown === name.startsWith("pulls"),
-    String(header.shown),
-  );
+  check(`${name}: the navigation's Refresh shows`, header.shown, String(header.shown));
   check(
     `${name}: Refresh is the gear's size, on the gear's line`,
     header.refresh !== null &&

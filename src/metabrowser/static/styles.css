@@ -1860,15 +1860,11 @@ body {
   width: 100%;
   height: 100%;
 }
-/* The row's end: the Pulls tab's Refresh, where the page has that tab, then the Metabrowser
-   menu, two icon buttons at the row's gap. The first of them takes the auto margin. The
-   Refresh is hidden behind another tab but keeps its box (server.py), so the name's room is
-   the same on every tab. */
-.app-header > :is(.nav-refresh, .settings-toggle) {
+/* The row's end: the navigation's Refresh, then the Metabrowser menu, two icon buttons at
+   the row's gap, both on every page from the first paint (server.py). Refresh takes the auto
+   margin. */
+.app-header > .nav-refresh {
   margin-left: auto;
-}
-.app-header > .nav-refresh + .settings-toggle {
-  margin-left: 0;
 }
 /* A pin with no mirror's heading: it has no name and no ref selector, so its ref
    stands in the name's place at the heading's weight, then its short commit, muted,
@@ -2240,9 +2236,9 @@ details[open] > summary.fold-expander::before {
 }
 /* An icon button that cannot act now keeps its place, dimmed as a waiting chip's label is,
    and the pointer raises no surface over it, since a press does nothing. Up is `disabled` at
-   the served root. The Pulls tab's Refresh waits while a refresh runs: `aria-disabled`, which
-   leaves it its focus, its tooltip, and its number (docs/design-system.md, "Refresh, Retry,
-   and Reload Page"). */
+   the served root. The navigation's Refresh waits while what is on screen refreshes:
+   `aria-disabled`, which leaves it its focus, its tooltip, and its number
+   (docs/design-system.md, "Refresh, Retry, and Reload Page"). */
 .icon-btn:is(:disabled, [aria-disabled="true"]) {
   opacity: var(--dimmed-content-opacity);
   cursor: default;
@@ -3379,27 +3375,6 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   background: var(--sidebar-bg);
   color: var(--muted);
   line-height: 1.2;
-}
-.source-freshness-label {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.source-freshness-label:hover,
-.source-freshness-label:focus-visible {
-  color: var(--link);
-}
-.source-freshness-label:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset-outset);
-  border-radius: var(--radius-chrome);
-}
-.source-freshness-label:disabled {
-  color: inherit;
-  cursor: default;
 }
 .source-freshness[data-tone="warning"] .source-freshness-label {
   color: var(--status-warning-text);
