@@ -4,13 +4,14 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Complete
+**Status:** Complete, with an addendum of 2026-11-26 that corrects two measurements and
+adds the isolation findings
 
 Extends [Native macOS App for Metabrowser](research-2026-11-08-macos-app-packaging.md)
 (2026-11-08), whose section Adding Plugins Without Rebuilding the App kept every Python
 plugin inside a runtime’s own environment.
 The decisions this brief supports are in
-[Plugin Sources and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md).
+[Plugin Sources, Process Isolation, and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md).
 
 ## Overview
 
@@ -62,8 +63,9 @@ stdio to a worker that runs in the plugin’s own environment.
 - **Stdio hook proxying works and costs little per call.** A stdlib-only worker in the
   downstream environment, with that environment’s own Metabrowser 0.9.1 and Python
   3.14.7, served the plugin’s hooks to a 0.12.1 development host: 0.13–0.17 ms median
-  round trip for a trivial hook, 10–27 ms of transport on a 429 KB response, and exit
-  within 5 ms of its stdin closing.
+  round trip for a trivial hook, and exit within 5 ms of its stdin closing.
+  The 10–27 ms first reported here for a 429 KB response included a 20 ms polling sleep;
+  measured without it, that response costs 0.72 ms (the addendum).
   A worker costs 61 MB after importing three plugins and 121 MB after one large hook
   call.
 - **Two costs need design, not just transport.** CPU-heavy hook work contends with
@@ -73,9 +75,9 @@ stdio to a worker that runs in the plugin’s own environment.
   server’s. And proxied log parsing cost 2.5–3.5 times the parse itself in each run on a
   synthetic 100,000-line log, mostly JSON encoding and decoding.
   An independent measurement put the server’s own in-process pipeline (parse, `asdict`,
-  one `json.dumps`) at about 2.4 times the bare parse, so the proxied path is a modest
-  regression over today’s (the reviewer’s measurement under a load average near 30, not
-  reproduced here).
+  one `json.dumps`) at about 2.4 times the bare parse, but that figure came from another
+  session under a load average near 30 and was not reproduced here, so the two are not a
+  comparison; the plan measures them paired.
 - **The candidate design’s transport and process model hold; its binding does not.** A
   worker that imports the plugin environment’s own `metabrowser` must set private module
   state of whatever Metabrowser version that environment holds (the spike had to),
@@ -110,8 +112,9 @@ stdio to a worker that runs in the plugin’s own environment.
   `.envrc` until it was allowed again (reproduced), and mise’s paranoid mode does the
   same. Neither a path nor an origin URL is a boundary on its own: two hand-written files
   under `.git` make Git report any origin (reproduced).
-  The plan records consent per clone, keyed by the clone’s Git common directory, with
-  the plugin providers it approved.
+  The plan records consent per clone with the plugin providers it approved.
+  It first keyed the clone by its Git common directory’s device and inode, which the
+  addendum shows a different repository can inherit; it now keys it by a token.
 - **The example repository’s environment is not what a guessed command builds.** Its
   `make install` initializes submodules first and then runs
   `uv sync --all-packages --locked`; a plain `uv sync --locked` fails on a fresh clone
@@ -255,6 +258,9 @@ environment, which the owner’s requirement rules out.
   profile gets one home in Terminal and the default home in app-launched servers.
   This already affects the repository cache, and a plugin registry in any of
   Metabrowser’s homes would inherit it.
+  Since this was written, `main` passes `METABROWSER_CONFIG_DIR`,
+  `METABROWSER_STATE_DIR`, and `XDG_STATE_HOME` as the app was launched with them, and
+  `metab --doctor` reports the others; the addendum has the details.
 
 ### What the Downstream Plugins Need from the Host
 
@@ -314,7 +320,7 @@ other work. Four runs; the ranges are across runs.
 | Trivial hook round trip, 300 calls | median 0.13–0.17 ms, p95 0.17–0.30 ms |
 | Transport overhead on the trivial hook | 0.10 ms median |
 | Large hook: handler time, response size | 1.23–1.43 s, 429,248 bytes |
-| Large hook: transport overhead | 10–27 ms |
+| Large hook: transport overhead | 10–27 ms as timed, which includes a 20 ms polling sleep; withdrawn (the addendum) |
 | Trivial hooks issued beside the large one | median 8.2–8.5 ms, max 47–68 ms |
 | Adapter detection on a 20-line head | 0.2–0.7 ms |
 | 100,000-line log, 2,000-line batches, events echo `raw` | 1.23–1.34 s total, 0.36–0.39 s parsing, 41.8 MB of events |
@@ -323,12 +329,14 @@ other work. Four runs; the ranges are across runs.
 
 What this shows:
 
-- **Transport is not the cost.** A tenth of a millisecond per call and 10–27 ms on a 429
-  KB body are small beside a 1.3 s handler, and well inside the shell’s 50 ms spinner
-  threshold for small hooks.
-- **The lifeline works.** The worker exits when its stdin closes (in the second spike,
-  its request pipe), so a worker cannot outlive the server that started it, the same
-  mechanism as `metab --exit-on-eof`.
+- **Transport is not the cost.** A tenth of a millisecond per call is small beside a 1.3
+  s handler, and well inside the shell’s 50 ms spinner threshold for small hooks.
+  The body’s transport was mistimed here and is under a millisecond at this size (the
+  addendum).
+- **The lifeline works while the worker’s event loop is free.** The worker exits when
+  its stdin closes (in the second spike, its request pipe), the same mechanism as
+  `metab --exit-on-eof`. The addendum shows it held open by a blocking `async def` hook,
+  because the spike’s reader asks the loop to stop instead of exiting.
 - **Version skew between host and plugin environment is harmless at this boundary.** The
   host read the manifests itself and the worker answered from a different Metabrowser
   version, because only manifests, frames, and the plugin’s own code cross it.
@@ -531,7 +539,7 @@ version), it has no session from which to read a Git pin’s content, and every 
 environment must still install all of Metabrowser, with its exact pins, only to import a
 dozen helpers.
 
-### Option H: Out-of-Process Workers over a Runtime the Host Injects (Recommended; Key Decision 1, Option C)
+### Option H: Out-of-Process Workers over a Runtime the Host Injects (Recommended; Key Decision 1, Options B and C)
 
 Option G’s transport and process model, with the plugin-side runtime (the sidekick
 names, the worker loop, and the bounded readers) shipped inside Metabrowser and put
@@ -540,7 +548,10 @@ Host and worker are then one artifact, as the repository’s rule for internal c
 assumes; security fixes to path and decompression bounds reach every plugin with the
 next Metabrowser; and nothing is installed in plugin environments.
 The second spike ran the three downstream plugins this way unchanged.
-The plan specifies it.
+The plan specifies it, and since its second revision recommends an import name of the
+runtime’s own (`metabrowser_sdk`, Key Decision 1, Option B): the three plugins are
+edited in any case, and a package under its own name can be the one copy the server, a
+worker, and an author’s type checker all use.
 
 ### Option O: A Plugin SDK Package Installed in Each Environment (Not Recommended; Key Decision 1, Option A)
 
@@ -585,8 +596,9 @@ workspace’s `pyproject.toml` files and lock already say.
 - **Per clone, with the named plugin providers** (recommended): asks once per clone, and
   again only when a new distribution starts providing a plugin; version bumps of an
   approved provider do not ask.
-  The clone is identified by its Git common directory, so its linked worktrees share the
-  decision.
+  The clone was first identified by its Git common directory’s device and inode; the
+  addendum shows why it is now a token, and why a worktree is read from the clone’s
+  side.
 
 ### Option N: Metabrowser Builds Its Own Environment for Each Repository (Not Recommended; Key Decision 4, Option C)
 
@@ -604,13 +616,14 @@ Stdio gives the lifeline for free and needed no dependencies in the spike.
 ## Recommendations
 
 Adopt Option H, specified in
-[Plugin Sources and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md):
-a runtime the host injects into one worker per plugin environment per server, a registry
-of scoped plugin sources in a state home, declarative log-adapter detection, a caret
-gate on one plugin API version, and native app settings that run the same CLI modes.
-Discover a repository’s plugins statically, and load them after a per-clone consent that
-names their providers.
-The plan’s ten Key Decisions put each remaining choice to the owner with its options,
+[Plugin Sources, Process Isolation, and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md):
+a runtime the host injects into one worker per plugin environment per server, started
+through one core isolation facility, a registry of scoped plugin sources in the state
+home, declarative log-adapter detection, a caret gate on one plugin API version, and
+native app settings that run the same CLI modes.
+Discover a repository’s plugins statically, and load them, confined, after a per-clone
+consent that names their providers.
+The plan’s eleven Key Decisions put each remaining choice to the owner with its options,
 their pros and cons, and the recommendation; this brief’s evidence is what those pros
 and cons rest on. Declare dependency ranges in Metabrowser’s `pyproject.toml` as an
 independent fix.
@@ -642,6 +655,171 @@ independent fix.
   Its in-process parsing baseline is quoted with its conditions and was not reproduced
   here.
 - Claims marked inferred rest on reading alone.
+- For the addendum, on 2026-11-26: read `main` at `c0ea08948`; ran both spikes’ hosts
+  and `probes.py` and `confine_probe.py` from `explorations/plugin-worker-spike/` with
+  `uv --config-file uv.toml run --frozen python -I -B`, against a plugin environment the
+  probe builds offline, and once against a scratch environment holding
+  `metabrowser==0.9.1`; and kept each run’s JSON beside the spike.
+
+## 2026-11-26 Addendum: A Review Against `main`, and Isolation
+
+Two weeks after this brief, a review reran its spikes on Linux against `main` and read
+the plan against the code as it then stood.
+The three downstream plugins are not public, so the review used a stand-in plugin
+(`explorations/plugin-worker-spike/standin/`) that imports only the documented names and
+installs offline.
+It shows mechanisms, and says nothing about what the real plugins cost.
+Everything below ran on one machine: Linux 6.18, ext4, x86-64, Python 3.13.18, 4 CPUs,
+load average near 0, as root.
+The raw answers are in `explorations/plugin-worker-spike/results/`.
+
+### What Moved on `main`
+
+| This brief says or assumes | `main` on 2026-11-26 |
+| --- | --- |
+| The SDK gate refuses anything but 0.7 | `PLUGIN_SDK_VERSION` is 0.8; the gate is still strict equality |
+| The host’s log-parsing module imports `prettyfmt`, so built-in detectors must be separated from it | Core registers no adapter. The built-in `agents` plugin registers five through `register_log_adapter`, so the second spike’s `host.detect_builtin` answers `unknown` for a Claude log unless the host has run plugin discovery (observed) |
+| The app’s allowlist drops every home variable | It passes `METABROWSER_CONFIG_DIR`, `METABROWSER_STATE_DIR`, and `XDG_STATE_HOME` as the app was launched with them; `metab --doctor` reports the cache and configuration overrides it does not pass, and `tests/test_macos_app_pins.py` pins that choice |
+| A state home would be new | `state_directory` in `home.py` exists, for the event log |
+| The plugins need about a dozen host names | `metabrowser.plugin_api.__all__` exports 94, of which 55 are the table-source API |
+| Plugin Python is data hooks and log adapters | Also `[plugin] register` modules, `[[view]] offer` predicates that run for every folder page and text file, and `[[table_source]]` adapters |
+| The app shows nothing about plugins | Settings > Plugins lists `metab --plugins --json`, declared in `apps/macos/metab-contract.toml` |
+| Nothing in the package confines a child | `builtin_plugins/pdf/preview_isolation.py` runs the PDF render child under `sandbox-exec` on macOS, and `sqlite_readers.py` runs a supervised pool of reader processes |
+
+What still holds, checked again: discovery is in process and once; operator directories
+lose hooks and adapters; `pyproject.toml` pins `softschema==0.8.1`; `--present` accepts
+no plugin option (`--plugins-dir not valid with --present`, observed); and
+`python -I -S` on the host’s interpreter finds none of Starlette, Pydantic, Softschema,
+or Metabrowser.
+
+### Corrections
+
+- **Transport on a large response.** `host.py` timed the large hook around a loop that
+  issues a small call and then sleeps 20 ms, so its “overhead” included up to one sleep
+  and one call. The table below times it directly through the second shape’s host
+  (`probes.py transport`). A trivial call issued behind a 64 MiB reply waited 31 ms,
+  since one frame holds the pipe.
+  The error overstated the cost, so the brief’s conclusion stands.
+- **The parsing baseline.** The 2.4 times figure for today’s in-process pipeline and the
+  2.5–3.5 times figure for the proxied one came from different sessions under different
+  loads. They are not a comparison, and the plan measures the two paired.
+
+| Body | Overhead, median | Maximum |
+| --- | --- | --- |
+| 0 bytes | 0.21 ms | 1.72 ms |
+| 429,248 bytes | 0.72 ms | 1.18 ms |
+| 4 MiB | 4.83 ms | 7.62 ms |
+| 64 MiB | 122 ms | 127 ms |
+
+### Probes of the Second Shape
+
+`probes.py lifecycle`, on the second shape’s host and worker unchanged:
+
+| Probe | Result |
+| --- | --- |
+| The request pipe closes while a synchronous hook runs | The worker exits in 1.8 ms |
+| The request pipe closes while an `async def` hook blocks the event loop | The worker is still running 3 s later and exits when the hook returns, at 7.5 s: the reader asks the loop to stop, and the loop is busy |
+| A trivial hook issued beside a 3 s blocking `async def` hook | Answered after 2.8 s |
+| The worker is killed, as at a deadline, with another call in flight | That call is never answered |
+| The same, after a hook started a subprocess | The subprocess keeps running, in the host’s process group |
+| A hook forks a child that writes to descriptor 4 | The host’s reader thread ends on the malformed frame, and no later call is answered |
+
+So “a plugin’s subprocess cannot reach the protocol” holds for a program the plugin
+starts with `exec`, which is what the second spike tested, and not for a fork.
+
+### The Identity of a Clone and of a Worktree
+
+`probes.py identity`:
+
+- **A device and inode do not identify a clone.** A clone was deleted and a different
+  repository cloned at the same path, five times; the Git common directory had the same
+  device and inode all five.
+  `src/metabrowser/home.py` says the same of inode numbers, and calls such an identity a
+  hint. Not tested on APFS.
+- **A folder can claim any clone.** One hand-written `.git` file naming a trusted
+  clone’s Git directory made `git rev-parse --git-common-dir` in that folder report the
+  trusted clone’s, with its device and inode.
+  The clone’s own `git worktree list` did not list the folder, and its
+  `worktrees/*/gitdir` held a back-pointer for a real linked worktree and none for the
+  forged one. That back-pointer is what tells them apart.
+
+### Isolation: What Exists and What Linux Can Enforce
+
+Three children on `main` are each started their own way; the plan’s Isolation section
+tabulates them. Only the PDF render child is confined, by a deny-by-default
+`sandbox-exec` profile on macOS that `tests/test_pdf_preview_sandbox.py` checks, and
+Linux has no confinement: an untrusted source’s PDF gets no preview there.
+
+`confine_linux.py` tries a Linux counterpart with the same shape, a command prefix: the
+host’s interpreter sets `no_new_privs`, applies a Landlock ruleset and a seccomp filter
+to itself, and replaces itself with the child.
+Standard library only, through `ctypes`. `confine_probe.py` runs one checking program
+bare and confined:
+
+| Attempt | Bare | Confined |
+| --- | --- | --- |
+| Read a granted file | allowed | allowed |
+| Read or list outside the grants | allowed | denied |
+| Write in the write grant | allowed | allowed |
+| Write in a read-only grant, or outside the grants | allowed | denied |
+| Connect over TCP | allowed | denied |
+| Open a UDP socket or a Unix socket | allowed | denied |
+| Start a system tool | allowed | allowed, and confined too |
+| Signal the parent | allowed | denied |
+| Make an asyncio event loop; write to an inherited descriptor | allowed | allowed |
+
+`probes.py confined` then ran the second shape’s worker behind the same prefix, granted
+its interpreter, its environment, the runtime, and the served root to read and one
+scratch folder to write.
+The plugin listed, both adapters registered, every hook answered with the same bytes,
+and both host calls were made.
+From inside a hook, a file outside the grants could not be read, a file beside it could
+not be written, and a TCP connection was refused, while the scratch folder was writable
+and a started tool ran.
+The worker was listed 89 ms after its start against 59 ms bare; a trivial child started
+in 24 ms against 7 ms.
+
+What this does and does not show:
+
+- Landlock reported ABI 7. File rules need kernel 5.13, its TCP rules 6.7, and its
+  signal scoping 6.12, by the kernel’s documentation; no older kernel was tried.
+  The socket refusals observed are the seccomp filter’s, which does not depend on the
+  Landlock version.
+- The filter knows the `socket` call’s number for x86-64 and aarch64 and ran on x86-64.
+- It ran as root, which both mechanisms bind like any account.
+- No worker has run under a `sandbox-exec` profile.
+  The PDF profile grants a child that loads one native library; a profile for a whole
+  Python environment may need grants this review cannot name from Linux, which is why
+  the plan makes that a spike before its Key Decision 11 is settled for macOS.
+- A confined worker still holds its protocol pipes, by design, so what it can ask the
+  host for is the rest of its authority.
+
+### Options Considered Since
+
+- **A second executable for the modes that run plugin code** (the plan’s first
+  revision). Rejected: the documented sandbox exemption is the prefix `metab --present`,
+  which accepts only its own five options, and a second executable does nothing about
+  code edited in a clone that is already trusted.
+- **A new worker subsystem beside the existing ones.** Rejected in favor of extracting
+  one facility from the PDF preview’s sandbox and the SQLite readers’ supervision, which
+  the plugin worker then uses.
+- **Trust that binds file contents.** Still deferred, for the reason in Option M.
+  Confinement answers the same threat differently: an edit to approved code still runs
+  unasked, and gains only the worker’s grants.
+- **A process per hook call,** as CGI runs a program per request, with no long-lived
+  worker. Not chosen: the first spike’s 0.3–0.9 s from spawn to listed would be paid on
+  every call.
+
+### Not Verified in This Addendum
+
+- Anything on macOS: a worker under `sandbox-exec`, whether a confined child can use the
+  app’s privacy grants, whether a hardened-runtime app’s descendants can start
+  `sandbox-exec`, and inode reuse on APFS.
+- The real downstream plugins, so every memory and handler time in the body of this
+  brief is as it was measured on 2026-11-12.
+- Landlock on a kernel older than 6.18, and the seccomp filter on aarch64.
+- That an in-place `uv tool upgrade` under a running server pairs an old host with new
+  runtime files; it follows from the worker being started from disk each time.
 
 ## References
 

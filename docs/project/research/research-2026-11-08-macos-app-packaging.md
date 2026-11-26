@@ -1343,11 +1343,12 @@ environment and had the plugin mode reinstall Metabrowser with `--with`.
 [Loading Plugins from Any Source](research-2026-11-12-plugin-sources.md) found that
 install unresolvable for the motivating plugin, because of Metabrowser’s exact pins, and
 the owner ruled out reinstalling Metabrowser to add a plugin.
-[Plugin Sources and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md)
+[Plugin Sources, Process Isolation, and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md)
 replaces that section’s install mechanics and its project-plugin sketch: plugins are
 registered sources or a trusted repository’s own, Python plugins run in workers on their
-own interpreters, and an app-managed runtime no longer reinstalls plugins when its base
-changes. What the section says about the signed bundle holding no plugins still holds.
+own interpreters, a repository’s run confined by the operating system, and an
+app-managed runtime no longer reinstalls plugins when its base changes.
+What the section says about the signed bundle holding no plugins still holds.
 
 ## References
 

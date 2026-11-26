@@ -46,16 +46,20 @@ def assemble_runtime(out_dir: Path) -> Path:
 
 
 class Worker:
-    def __init__(self, python: str, root: Path, runtime: Path, log: Path) -> None:
+    def __init__(
+        self, python: str, root: Path, runtime: Path, log: Path, prefix: tuple[str, ...] = ()
+    ) -> None:
+        """*prefix* is a confinement's command, such as ``confine_linux.py run POLICY --``."""
         self.root = root.resolve()
         req_r, self._req_w = os.pipe()
         self._rep_r, rep_w = os.pipe()
         log_fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         env = {"HOME": os.environ["HOME"], "PATH": "/usr/bin:/bin", "PYTHONNOUSERSITE": "1"}
         self.started = time.perf_counter()
+        command = [*prefix, python, "-I", "-B", str(HERE / "runtime_worker.py"), str(runtime)]
         self.pid = os.posix_spawn(
-            python,
-            [python, "-I", "-B", str(HERE / "runtime_worker.py"), str(runtime)],
+            command[0],
+            command,
             env,
             file_actions=[
                 (os.POSIX_SPAWN_OPEN, 0, os.devnull, os.O_RDONLY, 0),
@@ -136,6 +140,10 @@ class Worker:
             "ms": (time.perf_counter() - started) * 1000,
         }
 
+    def hang_up(self) -> None:
+        """Close the request pipe and return at once, as a server that died leaves it."""
+        self._out.close()
+
     def kill(self) -> None:
         os.kill(self.pid, signal.SIGKILL)
         os.waitpid(self.pid, 0)
@@ -146,8 +154,10 @@ def hooks_of(plugin_dir: str) -> dict[str, str]:
     return {hook["route"]: hook["sidekick"] for hook in manifest.get("data_hook", [])}
 
 
-def start(python: str, root: Path, runtime: Path, log: Path) -> tuple[Worker, Header]:
-    worker = Worker(python, root, runtime, log)
+def start(
+    python: str, root: Path, runtime: Path, log: Path, prefix: tuple[str, ...] = ()
+) -> tuple[Worker, Header]:
+    worker = Worker(python, root, runtime, log, prefix)
     hello, _ = worker.call("hello", root=str(root))
     listing, _ = worker.call("list")
     ready = (time.perf_counter() - worker.started) * 1000

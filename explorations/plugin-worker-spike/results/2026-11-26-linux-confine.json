@@ -1,0 +1,47 @@
+{
+  "kernel": "6.18.44",
+  "python": "3.13.18",
+  "probe": {
+    "landlock_abi": 7,
+    "machine": "x86_64",
+    "socket_filter_known": true
+  },
+  "bare": {
+    "read a granted file": "allowed",
+    "read a file outside the grants": "allowed",
+    "list a folder outside the grants": "allowed",
+    "write in the write grant": "allowed",
+    "write in a read-only grant": "allowed",
+    "write outside the grants": "allowed",
+    "connect over TCP": "allowed",
+    "open a UDP socket": "allowed",
+    "open a Unix socket": "allowed",
+    "start a system tool": "allowed",
+    "signal the parent": "allowed",
+    "make an asyncio event loop": "allowed",
+    "write to an inherited descriptor": "allowed"
+  },
+  "confined": {
+    "read a granted file": "allowed",
+    "read a file outside the grants": "denied",
+    "list a folder outside the grants": "denied",
+    "write in the write grant": "allowed",
+    "write in a read-only grant": "denied",
+    "write outside the grants": "denied",
+    "connect over TCP": "denied",
+    "open a UDP socket": "denied",
+    "open a Unix socket": "denied",
+    "start a system tool": "allowed",
+    "signal the parent": "denied",
+    "make an asyncio event loop": "allowed",
+    "write to an inherited descriptor": "allowed"
+  },
+  "start_bare": {
+    "median_ms": 7.2,
+    "max_ms": 11.6
+  },
+  "start_confined": {
+    "median_ms": 24.7,
+    "max_ms": 39.8
+  }
+}

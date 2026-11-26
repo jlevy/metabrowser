@@ -1,0 +1,18 @@
+# The stand-in's manifest. The spike's host reads its hooks from the raw TOML, past the
+# host's schema and gate, so this file declares only what the probes call.
+
+[plugin]
+name = "standin"
+sdk_version = "0.8"
+
+[[data_hook]]
+route = "info"
+sidekick = "standin_plugin.sidekick:info"
+
+[[data_hook]]
+route = "viz-model"
+sidekick = "standin_plugin.sidekick:viz_model"
+
+[[data_hook]]
+route = "charts"
+sidekick = "standin_plugin.sidekick:charts"
