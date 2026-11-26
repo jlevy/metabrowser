@@ -143,7 +143,7 @@ What a provider keeps is bounded.
 | Pull request, its tabs and files | `pulls?q=<n>`, kept by number for as long as the Pulls tab waits between its reads; a failed read, and a number a catalog not yet whole lacks, are read again | The github plugin’s page assets, and the record read with `warm=1`, which counts no view, once a page for each number |
 | Stack | One read of the cache-only stacks route, reused for as long as the Pulls tab’s poller waits between its reads, a second while the snapshot is being refreshed; that poller is the plugin’s own and asks GitHub to refresh a snapshot that is due | The page’s assets |
 | Commit | `MetabrowserGitPanel.commitSummary` and `keptCommitSummary`, which share `fetchCommitDetail`’s cache and its missing set, so the card follows what the panel keeps and clears | `MetabrowserGitPanel.prefetchCommit`: the detail first, then `prepareRevision(…, true)`, nothing for a commit the repository lacks, and never in place of a preparation still on its way |
-| File or folder | Its type’s name, whether a complete file catalog holds a file, and the folder’s totals already known, read from the page each time and never kept | `prefetchCounterpart` for its page; not its body (Follow-ups) |
+| File or folder | Whether a complete file catalog holds a file, and the folder’s totals already known, read from the page each time and never kept; a file’s type is its mark’s to say | `prefetchCounterpart` for its page; not its body (Follow-ups) |
 | The pull request list | Static | The list view’s assets, `ensureKindAssets("pull-request-list")` |
 
 A link starts its read and its prefetch once the pointer has rested on it for the tree’s

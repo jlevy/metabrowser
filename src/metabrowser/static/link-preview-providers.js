@@ -8,9 +8,9 @@
 // `prefetch` once it has rested there. A summary is plain text, never markup, and says only
 // what its data gives: a pull request's title and state from the catalog's exact-number
 // search, a stack's top member and size from the stacks snapshot, a commit's subject,
-// author, and age from the Commits panel's own detail cache, a file's type and whether the
-// served files hold it and a folder's totals from what the page already holds, and nothing
-// for the list. A
+// author, and age from the Commits panel's own detail cache, whether the served files hold
+// a file and a folder's totals from what the page already holds, and nothing for the list.
+// A
 // prefetch starts what the click opens: the page's plugin assets, a pull request's record, a
 // commit prepared as a hover on its row prepares it, and a file's or folder's View on GitHub
 // answer.
@@ -50,7 +50,7 @@
   /**
    * @typedef {Pick<MetabrowserPublicSdk,
    *   | "directoryTotals" | "ensureKindAssets" | "fetchPluginData" | "fileCatalog"
-   *   | "fileTypes" | "formatAge" | "formatFileCount" | "formatSize" | "navigation"
+   *   | "formatAge" | "formatFileCount" | "formatSize" | "navigation"
    *   | "prefetchCounterpart" | "repository">} Sdk
    * @typedef {Awaited<ReturnType<Sdk["fetchPluginData"]>>} PluginData
    */
@@ -458,18 +458,18 @@
   const FILE_MISSING = "Not in the served files";
 
   /**
-   * A file's type, by its name, and whether the served tree has it; a folder's file count
-   * and size where the tree has totaled them: from the page's own state at the moment it is
-   * asked, so nothing is read or kept and the card says what the tree holds now. The file
-   * catalog's snapshot proves a file absent only when it covers the whole root, and a folder
-   * is never called absent, since the catalog holds only files and a folder may hold none.
+   * Whether the served tree has a file, and a folder's file count and size where the tree
+   * has totaled them: from the page's own state at the moment it is asked, so nothing is
+   * read or kept and the card says what the tree holds now. The file catalog's snapshot
+   * proves a file absent only when it covers the whole root, and a folder is never called
+   * absent, since the catalog holds only files and a folder may hold none. A file's type is
+   * its mark's to say (`fileTypeIcon`) and its name's extension, so no line repeats it.
    *
    * @param {PathSubject} subject
    * @param {{mb: Sdk}} how
    * @returns {Summary | null}
    */
   function knownPath(subject, { mb }) {
-    const shown = subject.path.replace(/\/+$/, "");
     const path = servedPath(subject);
     if (subject.kind === "folder") {
       const totals = mb.directoryTotals.get(path);
@@ -479,17 +479,10 @@
           }
         : null;
     }
-    /** @type {Summary} */
-    const summary = {};
-    const type = fileTypeName(shown.slice(shown.lastIndexOf("/") + 1), mb);
-    if (type !== null) {
-      summary.detail = type;
-    }
     const catalog = mb.fileCatalog.snapshot();
-    if (catalog.complete && !catalogHolds(catalog.files, path)) {
-      summary.missing = FILE_MISSING;
-    }
-    return Object.keys(summary).length > 0 ? summary : null;
+    return catalog.complete && !catalogHolds(catalog.files, path)
+      ? { missing: FILE_MISSING }
+      : null;
   }
 
   /**
@@ -499,24 +492,6 @@
    */
   function summarizePath(subject, how) {
     return Promise.resolve(knownPath(subject, how));
-  }
-
-  /**
-   * "Markdown file", from the family the file type registry gives the name, or null for a
-   * name no family claims.
-   *
-   * @param {string} name
-   * @param {Sdk} mb
-   * @returns {string | null}
-   */
-  function fileTypeName(name, mb) {
-    const dot = name.lastIndexOf(".");
-    // `classify` takes the name and its extension and does the compound-suffix work, as the
-    // tree's own icons ask it (app.js, `fileTypeFamilyFor`).
-    const { familyId } = mb.fileTypes.classify(name, dot > 0 ? name.slice(dot) : "");
-    const family =
-      familyId === null ? undefined : mb.fileTypes.families.find((f) => f.id === familyId);
-    return family === undefined ? null : `${family.label} file`;
   }
 
   /**

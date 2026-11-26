@@ -4,8 +4,7 @@
 // The exact production module runs whole, with the exact modules it reads: the Commits
 // panel (static/git-panel.js, over the graph and history window it needs to evaluate), whose
 // commit summary and prefetch it calls; the shared formatters, whose age a commit's card
-// tells; the file type registry, whose family names a file; and the GitPath codec, which
-// spells a pin's paths. The card's registry is a stand-in that keeps what each provider
+// tells; and the GitPath codec, which spells a pin's paths. The card's registry is a stand-in that keeps what each provider
 // registers, as static/link-previews.js keeps it, and the session calls each as the card
 // does once the pointer rests on a link. Every read replays the server's own answer:
 // tests/fixtures/link-preview-providers-responses.json, which
@@ -34,12 +33,6 @@ const fixture = (name) =>
   JSON.parse(fs.readFileSync(path.join(repoRoot, "tests/fixtures", name), "utf8"));
 const recorded = fixture("link-preview-providers-responses.json");
 const stackSnapshots = fixture("github-stacks-responses.json");
-const fileTypeRegistry = JSON.parse(
-  fs.readFileSync(
-    path.join(repoRoot, "src/metabrowser/data/file-rollup-format/recommended-file-types.json"),
-    "utf8",
-  ),
-);
 
 // The time ages are told at: six days after the recording's one commit date.
 let now = Date.parse("2026-11-26T12:00:00Z");
@@ -119,7 +112,6 @@ const sandbox = {
   atob,
   setTimeout,
   clearTimeout,
-  METABROWSER_SETTINGS: { FILE_TYPE_REGISTRY: fileTypeRegistry },
   async fetch(url, options = {}) {
     const answered = request(options.method ?? "GET", url, options.signal);
     failOnce(url);
@@ -141,7 +133,7 @@ sandbox.window = sandbox;
 
 // What a page holds of its files: the catalog's snapshot and the tree's folder totals, by
 // each path as the inventory spells it, `%` as `%25` in a folder's.
-const servedFiles = ["README.md", "docs/guide.md", "notes/100%25.md", "notes/draft.zzz-unclaimed"];
+const servedFiles = ["README.md", "docs/guide.md", "notes/100%25.md"];
 const catalogOf = (paths) =>
   paths
     .map((file) => ({
@@ -196,11 +188,6 @@ const mb = {
     return repository;
   },
   sourceKind: () => sourceKind,
-  // The registry the shell carries, as static/file-type-taxonomy.js builds it from the
-  // settings the server writes.
-  get fileTypes() {
-    return sandbox.MetabrowserFileTypeTaxonomy;
-  },
   navigation: {
     href: (target) => `/view/${target.path}`,
   },
@@ -250,7 +237,6 @@ sandbox.MetabrowserLinkPreviews = {
 vm.createContext(sandbox);
 for (const name of [
   "formatters.js",
-  "file-type-taxonomy.js",
   "git-path.js",
   "git-graph.js",
   "git-history-window.js",
@@ -413,7 +399,6 @@ async function run() {
   summaries["the same, once the served tree has it"] = await rest(file("docs/old-guide.md"));
   knownFiles = catalogOf(servedFiles);
   summaries["a name with a percent sign"] = await rest(file("notes/100%.md"));
-  summaries["a name no file type claims"] = await rest(file("notes/draft.zzz-unclaimed"));
   summaries["a folder the tree has totaled"] = await rest(folder("docs/"));
   summaries["the served root"] = await rest(folder(""));
   summaries["a folder it has not"] = await rest(folder("src/"));

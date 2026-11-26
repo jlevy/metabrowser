@@ -16,7 +16,7 @@ is the design, and its “Data and Prefetch” table is the reads each kind make
 
 This session runs the exact module whole, with the exact modules it reads: the Commits
 panel (`static/git-panel.js`), whose commit summary and prefetch it calls, the shared
-formatters, the file type registry, and the GitPath codec.
+formatters, and the GitPath codec.
 The card’s registry is a stand-in that keeps what each provider registers, and the
 session calls each as the card does.
 Every read replays the server’s own answer:
@@ -398,12 +398,8 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "docs/guide.md"
         }
       },
-      "known": {
-        "detail": "Markdown file"
-      },
-      "summary": {
-        "detail": "Markdown file"
-      },
+      "known": null,
+      "summary": null,
       "asked": [],
       "catalog": "whole"
     },
@@ -416,12 +412,8 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "docs/guide.md"
         }
       },
-      "known": {
-        "detail": "Markdown file"
-      },
-      "summary": {
-        "detail": "Markdown file"
-      },
+      "known": null,
+      "summary": null,
       "asked": [],
       "catalog": "whole"
     },
@@ -435,11 +427,9 @@ $ node tests/dom/link-preview-providers-session.js
         }
       },
       "known": {
-        "detail": "Markdown file",
         "missing": "Not in the served files"
       },
       "summary": {
-        "detail": "Markdown file",
         "missing": "Not in the served files"
       },
       "asked": [],
@@ -454,12 +444,8 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "docs/old-guide.md"
         }
       },
-      "known": {
-        "detail": "Markdown file"
-      },
-      "summary": {
-        "detail": "Markdown file"
-      },
+      "known": null,
+      "summary": null,
       "asked": [],
       "catalog": "filling"
     },
@@ -472,12 +458,8 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "docs/old-guide.md"
         }
       },
-      "known": {
-        "detail": "Markdown file"
-      },
-      "summary": {
-        "detail": "Markdown file"
-      },
+      "known": null,
+      "summary": null,
       "asked": [],
       "catalog": "whole"
     },
@@ -488,24 +470,6 @@ $ node tests/dom/link-preview-providers-session.js
         "opens": "here",
         "target": {
           "path": "notes/100%25.md"
-        }
-      },
-      "known": {
-        "detail": "Markdown file"
-      },
-      "summary": {
-        "detail": "Markdown file"
-      },
-      "asked": [],
-      "catalog": "whole"
-    },
-    "a name no file type claims": {
-      "subject": {
-        "kind": "file",
-        "path": "notes/draft.zzz-unclaimed",
-        "opens": "here",
-        "target": {
-          "path": "notes/draft.zzz-unclaimed"
         }
       },
       "known": null,
@@ -572,12 +536,8 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ"
         }
       },
-      "known": {
-        "detail": "Markdown file"
-      },
-      "summary": {
-        "detail": "Markdown file"
-      },
+      "known": null,
+      "summary": null,
       "asked": [],
       "catalog": "whole"
     },
@@ -591,11 +551,9 @@ $ node tests/dom/link-preview-providers-session.js
         }
       },
       "known": {
-        "detail": "Markdown file",
         "missing": "Not in the served files"
       },
       "summary": {
-        "detail": "Markdown file",
         "missing": "Not in the served files"
       },
       "asked": [],
