@@ -33,6 +33,7 @@ function check(name, condition, detail = "") {
 const document = new FakeDocument();
 const browserWindow = document.defaultView;
 const requests = [];
+let rejectNextHead = false;
 let now = Date.parse("2026-11-26T12:00:00Z");
 const context = {
   AbortController,
@@ -63,6 +64,10 @@ const context = {
   METABROWSER_SOURCE_PIN: { ref: recorded.branches.body.ref, ref_name: "topic" },
   async fetch(route, init) {
     requests.push(init?.method === "POST" ? `POST ${route} ${init.body}` : route);
+    if (rejectNextHead && route === "/api/source/refs?kind=working_tree") {
+      rejectNextHead = false;
+      throw new Error("Network unavailable");
+    }
     return { status: answer.status, json: async () => answer.body };
   },
   setTimeout: () => 0,
@@ -292,11 +297,19 @@ async function checkSourceTips() {
   const refresh = element(document, "button", { id: "nav-refresh", type: "button" });
   document.body.append(refresh);
   const plan = context.MetabrowserRefreshPlan.mount();
+  rejectNextHead = true;
   await plan.press();
   check(
-    "manual Refresh updates the branch and reads Files once",
-    host.querySelector(".source-ref-selector-label .git-ref")?.textContent === "feature" &&
+    "a rejected HEAD read leaves the branch label in place and reads Files once",
+    !rejectNextHead &&
+      host.querySelector(".source-ref-selector-label .git-commit-sha")?.textContent === detached &&
       fileRereads === 1,
+  );
+  await plan.press();
+  check(
+    "the next manual Refresh retries HEAD and reads Files once",
+    host.querySelector(".source-ref-selector-label .git-ref")?.textContent === "feature" &&
+      fileRereads === 2,
   );
   check(
     "changing the branch hides its old tooltip",
@@ -313,11 +326,11 @@ async function checkSourceTips() {
   await settle();
   check(
     "the next external checkout updates the label and reads Files once",
-    host.querySelector(".source-ref-selector-label .git-commit-sha") !== null && fileRereads === 2,
+    host.querySelector(".source-ref-selector-label .git-commit-sha") !== null && fileRereads === 3,
   );
   watchedHead();
   await settle();
-  check("an unchanged HEAD observation leaves the Files view in place", fileRereads === 2);
+  check("an unchanged HEAD observation leaves the Files view in place", fileRereads === 3);
   working.dispose();
   refresh.remove();
 }

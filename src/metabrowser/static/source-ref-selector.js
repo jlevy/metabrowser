@@ -1153,13 +1153,16 @@
         if (disposed || headInflight !== controller) {
           return;
         }
-        headInflight = null;
         if (response.status === 200 && isListing(response.body)) {
           takeHead(response.body, filesCovered);
           render();
         }
       } catch {
-        // The row says what it said; the next change asks again.
+        // Keep the last observed HEAD. A later refresh or watch can try again.
+      } finally {
+        if (headInflight === controller) {
+          headInflight = null;
+        }
       }
     }
 
