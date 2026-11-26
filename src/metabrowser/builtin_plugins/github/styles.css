@@ -2350,8 +2350,10 @@
    own width with two-digit counts, 388 px; without the nouns the four are 274 px, whole in
    the 316 px row of a 375 px pane (Chrome 152, tests/dom/github-stack-page-chrome.mjs,
    2026-11-25). A tally of fewer states fits that row whole, three two-digit badges at most
-   296 px with their gaps, and keeps its nouns. A badge still cut short, as by a longer
-   count, says its whole label in its tooltip. */
+   296 px with their gaps, and keeps its nouns. The rule is set for
+   that case alone, four badges in the 375 px pane measured: a narrower pane, a tally of
+   fewer states in a row too narrow for it, and a longer count still cut a badge short at
+   its end, and a badge cut short says its whole label in its tooltip. */
 .github-pull-stack-page .github-pull-opened {
   container: github-pull-stack-opened / inline-size;
 }

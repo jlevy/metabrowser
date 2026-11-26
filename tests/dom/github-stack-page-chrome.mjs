@@ -605,6 +605,11 @@ try {
     const names = [...meta.querySelectorAll(":scope > .github-pull-identity")].map((identity) => ({
       login: identity.querySelector(".github-pull-author").textContent,
       tip: identity.querySelector(".github-pull-author").dataset.tipText ?? null,
+      // Whether the box that carries the tooltip is the one cut short, which is when the
+      // shell shows a tooltip that is its anchor's own text.
+      cut:
+        identity.querySelector(".github-pull-author").scrollWidth >
+        identity.querySelector(".github-pull-author").clientWidth,
       width: r(box(identity).width),
       natural: natural(identity),
       floor: r(floor(identity)),
@@ -668,6 +673,7 @@ try {
         sentence.names.every((name) => name.width >= name.floor - 0.5) &&
         // A name cut short is still said: its tooltip, which the shell shows then, is it whole.
         sentence.names.every((name) => name.tip === name.login) &&
+        cutNames.every((name) => name.cut) &&
         // Both keep some of their words while a name is above its floor.
         (sentence.action.width >= 1 ||
           sentence.names.every((name) => name.width <= name.floor + 0.5)),

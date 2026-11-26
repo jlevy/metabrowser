@@ -4124,12 +4124,14 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   each cut short at its end down to a floor that keeps its count
   (`--github-pull-tally-badge-floor`). A tally of all four states in a row too narrow
   for it leaves out each badge’s noun first, “12 Merged”, so the badges differ by their
-  words and not by ink alone, and a badge cut short says its whole label in its tooltip
-  (`tallyBadge`). After them and a dot, when a member was last opened and when one was
-  last updated, the latest of each, “Last opened 3d ago · Last update 1h ago”, in a pull
-  request’s ages’ freshness ink and told again as time passes (`pullAge`, `retellAges`).
-  The answer’s `states`, `opened_at`, and `updated_at` say them, each member counted
-  from its record or else its cached list row.
+  words and not by ink alone (`tallyBadge`). That is set for four badges in a phone’s
+  375 px pane, the case measured; a narrower pane, or a longer count, still cuts a badge
+  short, and a badge cut short says its whole label in its tooltip.
+  After them and a dot, when a member was last opened and when one was last updated, the
+  latest of each, “Last opened 3d ago · Last update 1h ago”, in a pull request’s ages’
+  freshness ink and told again as time passes (`pullAge`, `retellAges`). The answer’s
+  `states`, `opened_at`, and `updated_at` say them, each member counted from its record
+  or else its cached list row.
 - **Browse code, Refresh, and the stack chip:** dropped.
   No one branch holds a stack, the page reads the stack on its own poll, and the page is
   the stack the chip would open; the row ends in the chip’s hidden strut (`rowStrut`),
