@@ -3,9 +3,9 @@ type: is
 id: is-01m8cn7g58hfbbdjx6x1ng7bbg
 title: "Address Metabrowser PR #888 reviews A, B, and C"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -20,6 +20,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T19:27:28.935Z
-updated_at: 2026-11-26T19:54:25.326Z
+updated_at: 2026-11-26T20:08:54.266Z
 started_at: 2026-11-26T19:27:44.616Z
+closed_at: 2026-11-26T20:08:54.259Z
+close_reason: "Review findings were fixed and published, exact CI passed, and PR #888 merged."
+resolution: null
+duplicate_of: null
 ---
