@@ -41,7 +41,7 @@ from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 from urllib.parse import quote, unquote_to_bytes, urlencode, urlsplit
 
 from starlette.requests import Request
@@ -71,6 +71,9 @@ from metabrowser.http_caching import store_tag
 from metabrowser.inert_html import fragment_link
 from metabrowser.invisible_chars import display_segment
 from metabrowser.view_routes import VIEW_ROUTE_PREFIX
+
+if TYPE_CHECKING:
+    from metabrowser.builtin_plugins.github.pull_stack import StackPair
 
 # What an `<img>` in rendered Markdown shows. The formats the browser decodes as pictures
 # only: an SVG is a document, so a reference to one is dropped.
@@ -264,31 +267,42 @@ def requested_snapshot(params: Mapping[str, str]) -> tuple[int, Literal["pull", 
 
 async def _stack_admission(
     request: Request, published: PublishedSource, snapshot: Snapshot, reader: str | None
-) -> Admission:
+) -> tuple[Admission, StackPair | None]:
     from metabrowser.builtin_plugins.github.pull_list_route import served_repository
     from metabrowser.builtin_plugins.github.pull_stack import read_stack
     from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
 
     read = await read_stack(served_repository(request.app), published, snapshot.number, reader)
     if read.reason == "commits_unavailable":
-        return "unknown"
+        return "unknown", None
     pair = read.pair
     if pair is not None and (pair.base, pair.head) == (snapshot.base, snapshot.head):
-        return "current"
+        return "current", pair
     # A pair the stack has moved from stays admitted while the stack route keeps it, so a
     # page keeps drawing the comparison it drew (pull_stack_retained.py).
     retained = await asyncio.to_thread(
         retained_stack_pair, published, snapshot.number, reader, snapshot.base, snapshot.head, None
     )
     if retained == "unknown":
-        return "unknown"
-    return "retained" if retained is not None else "refused"
+        return "unknown", None
+    return ("retained", retained) if retained is not None else ("refused", None)
 
 
 async def admitted_snapshot(
     request: Request, snapshot: Snapshot
 ) -> tuple[PublishedSource | None, Admission]:
     """Find the current source and authorize this exact pair without starting a fetch."""
+
+    published, admission, _ = await admitted_pair(request, snapshot)
+    return published, admission
+
+
+async def admitted_pair(
+    request: Request, snapshot: Snapshot
+) -> tuple[PublishedSource | None, Admission, StackPair | None]:
+    """:func:`admitted_snapshot`, and for a stack's snapshot the pair that admitted it: the
+    stack's current pair or the retained one, so a route that draws it reads the stack once
+    (mb-3dkn). ``None`` for a pull request's snapshot or a refusal."""
     from metabrowser.builtin_plugins.github.checkout import ensure_resolved
 
     await ensure_resolved(request.app)
@@ -299,19 +313,19 @@ async def admitted_snapshot(
         or not isinstance(published, PublishedSource)
         or snapshot.store != store_tag(published.git_dir)
     ):
-        return None, "refused"
+        return None, "refused", None
     reader = host.pulls.observed_reader
-    allowed = (
-        await _stack_admission(request, published, snapshot, reader)
-        if snapshot.scope == "stack"
-        else await asyncio.to_thread(_admission, published, snapshot, reader)
-    )
+    pair = None
+    if snapshot.scope == "stack":
+        allowed, pair = await _stack_admission(request, published, snapshot, reader)
+    else:
+        allowed = await asyncio.to_thread(_admission, published, snapshot, reader)
     # The source and reader the decision was made for must still be the server's.
     if host.pulls.published is not published or host.pulls.observed_reader != reader:
-        return None, "refused"
+        return None, "refused", None
     if allowed in ("refused", "unknown"):
-        return None, allowed
-    return published, allowed
+        return None, allowed, None
+    return published, allowed, pair
 
 
 # ── Revisions ───────────────────────────────────────────────────
