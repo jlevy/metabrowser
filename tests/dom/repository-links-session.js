@@ -83,7 +83,28 @@ const contexts = {
       revision: PINNED,
       served_prefix: "",
     },
-    options: { sourceKind: "git_revision", text: { head: OTHER } },
+    options: {
+      sourceKind: "git_revision",
+      text: {
+        head: OTHER,
+        // The files pull request 7's comparison changes, which its Changes tab shows.
+        changes: { number: 7, stack: false, files: new Set(["docs/trade-runner/README.md"]) },
+      },
+    },
+  },
+  "a stack's note away from its head": {
+    context: {
+      branch: "main",
+      host: "github.com",
+      name: "docs",
+      owner: "example",
+      revision: PINNED,
+      served_prefix: "",
+    },
+    options: {
+      sourceKind: "git_revision",
+      text: { head: OTHER, changes: { number: 3, stack: true, files: new Set(["src/app.py"]) } },
+    },
   },
   "text at the served head, from a subfolder": {
     context: {
@@ -116,6 +137,7 @@ const cases = {
     ["the repository, its README's heading, as GitHub spells it", `${repo}#install`],
     ["the repository, any case, .git, www", "https://www.github.com/Example/Docs.git/"],
     ["the repository with a query", `${repo}?tab=readme`],
+    ["the repository's README, as its anchors copy", `${repo}?tab=readme-ov-file#install`],
     ["a file on the served branch", `${repo}/blob/feature/navigation/guide/intro.md#Setup`],
     ["a file shown as source", `${repo}/blob/feature/navigation/src/app.py?plain=1#L3-L5`],
     ["a folder on the served branch", `${repo}/tree/feature/navigation/guide`],
@@ -125,7 +147,8 @@ const cases = {
     ["a name with a percent sign", `${repo}/blob/feature/navigation/100%25.md`],
     ["a file on another branch", `${repo}/blob/main/guide/intro.md`],
     ["a file at another commit", `${repo}/blob/${OTHER}/guide/intro.md`],
-    ["a file at an abbreviated commit", `${repo}/blob/aaaaaaa/guide/intro.md`],
+    ["a file at the served commit, abbreviated", `${repo}/blob/aaaaaaa/guide/intro.md`],
+    ["a file at another commit, abbreviated", `${repo}/blob/bbbbbbb/guide/intro.md`],
     ["a file at a tag", `${repo}/blob/v1.2.3/guide/intro.md`],
     ["a blob naming only the branch", `${repo}/blob/feature/navigation`],
     ["a pull request", `${repo}/pull/12`],
@@ -188,13 +211,20 @@ const cases = {
     ["the root", `${repo}/pull/`],
     ["with a query and fragment", `${repo}/pull/src/app.py?plain=1#L2`],
     ["a pull request's Changes, still", `${repo}/pull/7/files`],
-    ["a number first is a pull request's address", `${repo}/pull/2024/notes.md`],
+    ["a number first, then a pull request's page", `${repo}/pull/7/commits`],
+    ["a folder named with digits", `${repo}/pull/2024/notes.md`],
+    ["a bare pull, which is no reference", `${repo}/pull`],
     ["GitHub's page that opens a pull request", `${repo}/pull/new/feature/navigation`],
     ["a stray percent sign", `${repo}/pull/docs/a.md?q=%zz`],
     ["a file on another branch, still external", `${repo}/blob/main/README.md`],
   ],
   "text away from its head": [
-    ["a path-relative reference", `${repo}/pull/docs/trade-runner/README.md`],
+    ["a file the pull request changes, in its Changes", `${repo}/pull/docs/trade-runner/README.md`],
+    ["a file it does not change, on github.com", `${repo}/pull/docs/guide.md`],
+    [
+      "a changed file with a query, on github.com",
+      `${repo}/pull/docs/trade-runner/README.md?plain=1`,
+    ],
     ["a folder", `${repo}/pull/docs/`],
     ["the root", `${repo}/pull/`],
     ["with a query and fragment", `${repo}/pull/src/app.py?plain=1#L2`],
@@ -204,6 +234,10 @@ const cases = {
   "text at the served head, from a subfolder": [
     ["a file inside the served folder", `${repo}/pull/packages/handbook/a.md`],
     ["a file outside it, on github.com", `${repo}/pull/README.md`],
+  ],
+  "a stack's note away from its head": [
+    ["a file the stack changes, in its Changes", `${repo}/pull/src/app.py`],
+    ["a file it does not change, on github.com", `${repo}/pull/README.md`],
   ],
   "text with no head yet": [["a path-relative reference", `${repo}/pull/docs/new.md`]],
 };
@@ -224,6 +258,7 @@ function anchor(href, attributes = {}) {
   const listeners = [];
   return {
     getAttribute: (key) => values.get(key) ?? null,
+    hasAttribute: (key) => values.has(key),
     setAttribute: (key, value) => values.set(key, String(value)),
     removeAttribute: (key) => values.delete(key),
     addEventListener: (type, listener) => listeners.push({ type, listener }),
@@ -274,15 +309,17 @@ function enhanced(context, sourceKind, options) {
       },
     },
   };
-  const changed = links.enhance(root, mb, {
-    ...options,
-    // As a pull request's page does: another pull request opens in place, and a commit's
-    // page is followed as a link.
-    open: options.routes
-      ? (route) =>
-          route.pull !== null && routed.push(`${route.href} ${JSON.stringify(route.pull)}`) > 0
-      : undefined,
-  });
+  // As a pull request's page does: another pull request opens in place, and a commit's
+  // page is followed as a link.
+  const open = options.routes
+    ? (route) =>
+        route.pull !== null && routed.push(`${route.href} ${JSON.stringify(route.pull)}`) > 0
+    : undefined;
+  const changed = [links.enhance(root, mb, { text: options.text, open })];
+  if (options.later) {
+    // The same text, read again once the page knows the files its pull request changes.
+    changed.push(links.enhance(root, mb, { text: options.later, open }));
+  }
   const clicks = {};
   for (const [name, link] of Object.entries(anchors)) {
     clicks[name] = { plain: link.click(), withMeta: link.click({ metaKey: true }) };
@@ -311,6 +348,18 @@ console.log(
           contexts["text away from its head"].context,
           "git_revision",
           { text: { head: OTHER }, routes: true },
+        ),
+        "a text whose pull request's changed files arrive after it is drawn": enhanced(
+          contexts["text away from its head"].context,
+          "git_revision",
+          {
+            text: { head: OTHER },
+            later: {
+              head: OTHER,
+              changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+            },
+            routes: true,
+          },
         ),
         "a commit's message, which has no text context": enhanced(textContext, "filesystem", {}),
         "a page with no repository": enhanced(null, "filesystem", { text: { head: SERVED } }),

@@ -22,13 +22,18 @@ from urllib.parse import unquote, urlsplit
 from metabrowser.builtin_plugins.github.urls import GithubUrlReducer
 from metabrowser.cache.urls import ReducerOutcome
 from metabrowser.cli.selection_href import selection_view_href
-from metabrowser.view_routes import decode_safe_commit_route, decode_safe_pull_route
+from metabrowser.view_routes import (
+    decode_safe_commit_route,
+    decode_safe_pull_route,
+    decode_safe_stack_route,
+)
 from tests.required_tools import require_node
 
 SESSION_JS = Path(__file__).resolve().parent / "dom" / "repository-links-session.js"
 # The head each pull request text of the session describes.
 TEXT_HEADS = {
     "text away from its head": "b" * 40,
+    "a stack's note away from its head": "b" * 40,
     "text at the served head, from a subfolder": "a" * 40,
 }
 
@@ -70,6 +75,8 @@ def test_an_in_app_page_is_the_one_the_server_opens_the_link_at() -> None:
     assert {row["result"]["localization"] for _, row in routes} == {"pull", "commit", "pulls"}
     for context, row in routes:
         href = row["result"]["href"]
+        if row["result"]["pull"] is not None and row["result"]["pull"]["file"]:
+            continue  # A text's changed file: test_a_texts_changed_file_opens_in_changes.
         if href == "/pulls":
             assert urlsplit(row["url"]).path.endswith("/pulls"), row
             continue
@@ -112,6 +119,29 @@ def test_a_texts_path_off_its_head_is_that_file_at_the_head() -> None:
         assert selection.kind == ("tree" if relative == "" or relative.endswith("/") else "blob")
         assert selection.ref_and_path[0] == TEXT_HEADS[context].encode(), row
         assert b"/".join(selection.ref_and_path[1:]) == relative.rstrip("/").encode(), row
+
+
+def test_a_texts_changed_file_opens_in_changes() -> None:
+    """A pull request text's path to a file its comparison changes opens in its Changes.
+
+    The address is the one the server's route decoder reads back as that file of that pull
+    request or stack, so the page's router and a new tab open the same file.
+    """
+
+    changed = [
+        (context, row)
+        for context, row in _rows("route")
+        if row["result"]["pull"] is not None and row["result"]["pull"]["file"]
+    ]
+    assert {row["result"]["pull"]["stack"] for _, row in changed} == {False, True}
+    for context, row in changed:
+        pull = row["result"]["pull"]
+        relative = unquote(urlsplit(row["url"]).path.split("/pull/", 1)[1])
+        assert pull["file"] == relative, (context, row)
+        raw = row["result"]["href"].encode()
+        route = decode_safe_stack_route(raw) if pull["stack"] else decode_safe_pull_route(raw)
+        assert route is not None, row
+        assert (route.number, route.tab, route.file) == (pull["number"], pull["tab"], relative)
 
 
 def test_an_in_app_link_opens_what_its_address_says() -> None:

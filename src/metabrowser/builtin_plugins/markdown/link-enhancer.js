@@ -159,7 +159,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
               anchor.setAttribute(
                 "title",
-                "Open the corresponding path in the currently served working tree.",
+                window.MetabrowserRepositoryLinks?.WORKING_TREE_TITLE ?? "",
               );
             }
             internalTargets.set(anchor, target);

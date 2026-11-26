@@ -3905,7 +3905,6 @@ declare global {
     | { kind: "reload"; text: string; button: string }
     | { kind: "retry"; text: string; button: string };
 
-  type MetabrowserPublicNavigationTarget = MetabrowserNavigationTarget;
   type MetabrowserPublicRepositoryContext = MetabrowserRepositoryContext;
   /** static/repository-links.js, the `repository-links` on-demand bundle. */
   type MetabrowserRepositoryLinkTarget =
@@ -3918,12 +3917,25 @@ declare global {
         kind: "route";
         href: string;
         localization: "pull" | "commit" | "pulls";
-        /** The pull request a `pull` route opens, for a page that opens it in place. */
-        pull: Readonly<{ number: number; tab: "" | "files" | "checks" }> | null;
+        /** The pull request or stack a `pull` route opens, for a page that opens it in place. */
+        pull: Readonly<{
+          number: number;
+          tab: "" | "files" | "checks" | "changes";
+          file: string;
+          stack: boolean;
+        }> | null;
       }>
     | Readonly<{ kind: "external"; url: string }>;
 
+  /** A pull request's text: the commit it describes and, when known, the files it changes. */
+  type MetabrowserRepositoryTextContext = {
+    head: string | null;
+    changes?: { number: number; stack: boolean; files: ReadonlySet<string> };
+  };
+
   type MetabrowserRepositoryLinksRuntime = Readonly<{
+    /** The tooltip of a link that opens whatever revision is served. */
+    WORKING_TREE_TITLE: string;
     localize(
       url: string,
       context: MetabrowserRepositoryContext | null | undefined,
@@ -3936,7 +3948,7 @@ declare global {
       root: ParentNode,
       mb: Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">,
       options?: {
-        text?: { head: string | null };
+        text?: MetabrowserRepositoryTextContext;
         open?: (route: Extract<MetabrowserRepositoryLinkTarget, { kind: "route" }>) => boolean;
         views?: boolean;
       },

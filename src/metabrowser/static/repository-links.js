@@ -49,6 +49,30 @@
   /** Bounds path comparison work for one authored link. */
   const MAX_PATH_SEGMENTS = 512;
   const FULL_REVISION = /^[0-9a-f]{40}$/i;
+  // An abbreviated commit ID, as GitHub accepts one in a `blob` or `tree` URL; it names the
+  // served commit only when that commit's full ID begins with it.
+  const ABBREVIATED_REVISION = /^[0-9a-f]{7,39}$/i;
+  // The pages under a pull request's number on github.com. A path-relative reference in a
+  // pull request's text whose first folder is named with digits is a pull request's
+  // address only when its next segment is one of these, or absent.
+  const PULL_PAGES = new Set(["files", "changes", "checks", "commits"]);
+  // The repository page's own query when it shows the README (`?tab=readme-ov-file`, as
+  // github.com's README anchors copy), which the served root's Overview shows too.
+  const README_TAB = "tab=readme-ov-file";
+  // Where `enhance` keeps the address a link's text gave it, the first time it changes the
+  // link, so a later pass that knows more (the files a pull request changes, once they
+  // arrive) reads the authored link rather than its own answer. The allowlist keeps no
+  // attribute of the text's own, so only the page writes it.
+  const AUTHORED_HREF = "data-metabrowser-authored-href";
+  /**
+   * What a plain click on each link `enhance` made in-app opens, read at the click, so a
+   * later pass changes it without a second listener.
+   *
+   * @type {WeakMap<Element, {resolved: RepositoryLinkTarget, mb: Pick<MetabrowserPublicSdk, "navigation">, open: ((route: Extract<RepositoryLinkTarget, {kind: "route"}>) => boolean) | undefined}>}
+   */
+  const opens = new WeakMap();
+  // The tooltip of a link that opens whatever revision is served, not the one it named.
+  const WORKING_TREE_TITLE = "Open the corresponding path in the currently served working tree.";
   // Keep aligned with view_routes._PULL_NUMBER and static/pull-route.js.
   const PULL_NUMBER = /^[1-9][0-9]{0,9}$/;
   // GitHub's anchor for one file of a pull request's Changes tab or a commit's page:
@@ -71,8 +95,18 @@
 
   /**
    * @typedef {{
+   *   head: string | null,
+   *   changes?: {number: number, stack: boolean, files: ReadonlySet<string>},
+   * }} TextContext
+   *   A pull request's text: `head`, the commit it describes, or null when not known, and
+   *   `changes`, the pull request's or stack's number and the paths its comparison changes,
+   *   which its Changes tab shows at the head, when the page knows them.
+   */
+
+  /**
+   * @typedef {{
    *   sourceKind?: "filesystem" | "git_revision",
-   *   text?: {head: string | null},
+   *   text?: TextContext,
    * }} LocalizeOptions
    *   `sourceKind` is what the served tree is (`metabrowser.sourceKind()`): a pinned
    *   revision addresses its paths in the GitPath wire. `text` is a pull request's text,
@@ -134,7 +168,7 @@
     if (page === undefined) {
       // The repository's page shows its default branch's README; here the served root does,
       // in its Overview, whose fragment scrolls the README as the page's anchor does there.
-      return link.query
+      return link.query && link.query !== README_TAB
         ? null
         : view([], true, "", link.fragment, "working-tree", context, sourceKind);
     }
@@ -177,10 +211,11 @@
     const referenceAndPath = link.rest.slice(1);
     // A tree names a folder, its branch's root among them; a blob names a file.
     const least = tree ? 0 : 1;
+    const reference = referenceAndPath[0]?.toLowerCase() ?? "";
     if (
       referenceAndPath.length > least &&
-      FULL_REVISION.test(referenceAndPath[0]) &&
-      referenceAndPath[0].toLowerCase() === context.revision.toLowerCase()
+      (FULL_REVISION.test(reference) || ABBREVIATED_REVISION.test(reference)) &&
+      context.revision.toLowerCase().startsWith(reference)
     ) {
       return view(
         referenceAndPath.slice(1),
@@ -214,15 +249,15 @@
 
   /**
    * A pull request's page, its Changes or Checks tab, or one of its commits. An address
-   * whose first segment is a number, or GitHub's own `new` (`pull/new/<branch>`, the page
-   * that opens a pull request, which `git push` prints), is a pull request's, mapped or not;
-   * with a text context, any other address under `pull/` is the repository path a
-   * path-relative reference named.
+   * whose first segment is GitHub's own `new` (`pull/new/<branch>`, the page that opens a
+   * pull request, which `git push` prints), or a number followed by nothing or one of the
+   * pull request's pages, is a pull request's, mapped or not; with a text context, any
+   * other address under `pull/` is the repository path a path-relative reference named.
    *
    * @param {RepositoryLink} link
    * @param {MetabrowserPublicRepositoryContext} context
    * @param {"filesystem" | "git_revision"} sourceKind
-   * @param {{head: string | null} | undefined} text
+   * @param {TextContext | undefined} text
    * @returns {RepositoryLinkTarget | null}
    */
   function pullLink(link, context, sourceKind, text) {
@@ -230,8 +265,12 @@
     if (number === "new") {
       return null;
     }
-    if (number === undefined || !PULL_NUMBER.test(number)) {
-      return text ? textPath(link, context, sourceKind, text.head) : null;
+    if (
+      number === undefined ||
+      !PULL_NUMBER.test(number) ||
+      (tab !== undefined && !PULL_PAGES.has(tab))
+    ) {
+      return text ? textPath(link, context, sourceKind, text) : null;
     }
     if (link.query) {
       return null;
@@ -253,37 +292,39 @@
   }
 
   /**
-   * The repository path a pull request's path-relative reference names, at *head*: in
-   * place when the served tree is that commit, and on github.com otherwise, where it shows
-   * the file the author meant rather than the missing page under `pull/`.
+   * The repository path a pull request's path-relative reference names, at the text's
+   * head, opened where Metabrowser can show that file without switching what it serves:
+   *
+   * 1. in place, when the served tree is the head and serves the path;
+   * 2. in the pull request's or stack's Changes, when the comparison changes the file, so
+   *    Changes shows it at the head (a link with a query keeps its own meaning and skips
+   *    this);
+   * 3. on github.com at the head otherwise, where it shows the file the author meant
+   *    rather than the missing page under `pull/`.
    *
    * @param {RepositoryLink} link
    * @param {MetabrowserPublicRepositoryContext} context
    * @param {"filesystem" | "git_revision"} sourceKind
-   * @param {string | null} head
+   * @param {TextContext} text
    * @returns {RepositoryLinkTarget | null}
    */
-  function textPath(link, context, sourceKind, head) {
-    if (typeof head !== "string" || !FULL_REVISION.test(head)) {
+  function textPath(link, context, sourceKind, text) {
+    const head = text.head;
+    const path = link.rest.slice(1);
+    // A bare `pull` is an absolute address, not a reference relative to the page.
+    if (typeof head !== "string" || !FULL_REVISION.test(head) || path.length === 0) {
       return null;
     }
-    const path = link.rest.slice(1);
-    // In place when the served tree is the head and serves the path; a path outside a
-    // served folder is shown on github.com, as one at another commit is.
     const here =
       head.toLowerCase() === context.revision.toLowerCase()
-        ? view(
-            path,
-            link.directory || path.length === 0,
-            link.query,
-            link.fragment,
-            "revision",
-            context,
-            sourceKind,
-          )
+        ? view(path, link.directory, link.query, link.fragment, "revision", context, sourceKind)
         : null;
     if (here !== null) {
       return here;
+    }
+    const file = path.join("/");
+    if (text.changes && !link.directory && !link.query && text.changes.files.has(file)) {
+      return changesRoute(text.changes, file);
     }
     const url = fileUrl(context, head, path, link.directory, `${link.search}${link.hash}`);
     return url === null ? null : Object.freeze({ kind: "external", url });
@@ -365,7 +406,27 @@
       kind: "route",
       href: tab ? `/pull/${number}/${tab}` : `/pull/${number}`,
       localization: "pull",
-      pull: Object.freeze({ number, tab }),
+      pull: Object.freeze({ number, tab, file: "", stack: false }),
+    });
+  }
+
+  /**
+   * One changed file in a pull request's Changes, `/pull/<n>/files/<path>`, or a stack's,
+   * `/stack/<n>/changes/<path>`, each segment escaped as static/pull-route.js
+   * (`tabbedHref`) escapes it.
+   *
+   * @param {NonNullable<TextContext["changes"]>} changes
+   * @param {string} file
+   * @returns {RepositoryLinkTarget}
+   */
+  function changesRoute(changes, file) {
+    const tab = changes.stack ? "changes" : "files";
+    const encoded = file.split("/").map(encodeURIComponent).join("/");
+    return Object.freeze({
+      kind: "route",
+      href: `/${changes.stack ? "stack" : "pull"}/${changes.number}/${tab}/${encoded}`,
+      localization: "pull",
+      pull: Object.freeze({ number: changes.number, tab, file, stack: changes.stack }),
     });
   }
 
@@ -419,12 +480,14 @@
 
   /**
    * Make every link of *root*, an inert text already reduced to the allowlist, open what
-   * `localize` says. Returns how many links it changed.
+   * `localize` says. Returns how many links it changed. It may run again over the same
+   * text with more context, and then reads each link as the text wrote it and moves its
+   * one click handler to the new answer.
    *
    * @param {ParentNode} root
    * @param {Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">} mb
    * @param {{
-   *   text?: {head: string | null},
+   *   text?: TextContext,
    *   open?: (route: Extract<RepositoryLinkTarget, {kind: "route"}>) => boolean,
    *   views?: boolean,
    * }} [options]
@@ -436,32 +499,29 @@
    * @returns {number}
    */
   function enhance(root, mb, options = {}) {
-    if (mb.repository === null) {
+    if (!mb.repository) {
       return 0;
     }
     const sourceKind = mb.sourceKind() === "git_revision" ? "git_revision" : "filesystem";
     let changed = 0;
     for (const anchor of Array.from(root.querySelectorAll("a[href]"))) {
-      const resolved = localize(anchor.getAttribute("href") ?? "", mb.repository, {
+      // A later pass, which may know more, reads the link as the text wrote it.
+      const authored = anchor.getAttribute(AUTHORED_HREF) ?? anchor.getAttribute("href") ?? "";
+      const resolved = localize(authored, mb.repository, {
         sourceKind,
         ...(options.text ? { text: options.text } : {}),
       });
       if (resolved === null || (resolved.kind === "view" && options.views === false)) {
         continue;
       }
-      if (resolved.kind === "external") {
-        anchor.setAttribute("href", resolved.url);
-        changed += 1;
-        continue;
-      }
-      const target = resolved.kind === "view" ? resolved.target : null;
-      const routed = resolved.kind === "route" ? resolved : null;
       let href;
       try {
         href =
-          target === null
-            ? /** @type {{href: string}} */ (resolved).href
-            : mb.navigation.href(target);
+          resolved.kind === "view"
+            ? mb.navigation.href(resolved.target)
+            : resolved.kind === "route"
+              ? resolved.href
+              : resolved.url;
       } catch (error) {
         // An address the codec will not spell leaves this link as written, and the text's
         // other links are still read.
@@ -469,33 +529,63 @@
         continue;
       }
       changed += 1;
+      anchor.setAttribute(AUTHORED_HREF, authored);
       anchor.setAttribute("href", href);
+      if (resolved.kind === "external") {
+        // It leaves the page, as the allowlist's outside links do.
+        anchor.setAttribute("target", "_blank");
+        anchor.setAttribute("rel", "noopener noreferrer");
+        anchor.removeAttribute("data-metabrowser-github-localization");
+        opens.delete(anchor);
+        continue;
+      }
       anchor.removeAttribute("target");
       anchor.removeAttribute("rel");
       anchor.setAttribute("data-metabrowser-github-localization", resolved.localization);
-      anchor.addEventListener("click", (event) => {
-        const mouse = /** @type {MouseEvent} */ (event);
-        if (
-          mouse.defaultPrevented ||
-          mouse.button !== 0 ||
-          mouse.altKey ||
-          mouse.ctrlKey ||
-          mouse.metaKey ||
-          mouse.shiftKey
-        ) {
-          return;
+      if (resolved.kind === "view" && resolved.localization === "working-tree") {
+        if (!anchor.hasAttribute("title")) {
+          anchor.setAttribute("title", WORKING_TREE_TITLE);
         }
-        if (target !== null) {
-          mouse.preventDefault();
-          void mb.navigation.open(target).catch((error) => {
-            console.warn("Could not open the link", error);
-          });
-        } else if (routed !== null && options.open?.(routed) === true) {
-          mouse.preventDefault();
-        }
-      });
+      }
+      const listening = opens.has(anchor);
+      opens.set(anchor, { resolved, mb, open: options.open });
+      if (!listening) {
+        anchor.addEventListener("click", (event) => openOnPlainClick(anchor, event));
+      }
     }
     return changed;
+  }
+
+  /**
+   * Open what `enhance` last made of *anchor* on a plain primary click; any other click is
+   * the browser's, which follows the same `href`.
+   *
+   * @param {Element} anchor
+   * @param {Event} event
+   */
+  function openOnPlainClick(anchor, event) {
+    const mouse = /** @type {MouseEvent} */ (event);
+    const opened = opens.get(anchor);
+    if (
+      !opened ||
+      mouse.defaultPrevented ||
+      mouse.button !== 0 ||
+      mouse.altKey ||
+      mouse.ctrlKey ||
+      mouse.metaKey ||
+      mouse.shiftKey
+    ) {
+      return;
+    }
+    const { resolved, mb, open } = opened;
+    if (resolved.kind === "view") {
+      mouse.preventDefault();
+      void mb.navigation.open(resolved.target).catch((error) => {
+        console.warn("Could not open the link", error);
+      });
+    } else if (resolved.kind === "route" && open?.(resolved) === true) {
+      mouse.preventDefault();
+    }
   }
 
   /**
@@ -608,5 +698,10 @@
     return left.toLowerCase() === right.toLowerCase();
   }
 
-  window.MetabrowserRepositoryLinks = Object.freeze({ enhance, fileUrl, localize });
+  window.MetabrowserRepositoryLinks = Object.freeze({
+    WORKING_TREE_TITLE,
+    enhance,
+    fileUrl,
+    localize,
+  });
 })();
