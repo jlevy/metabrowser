@@ -2882,6 +2882,17 @@ On a pull request’s Docs and Changes, a changed Markdown file’s bar carries 
 chooser, a joined chip group, and before it a small spinner that keeps its place in the
 bar and appears only after the loading-state delay while the rendered view is on its
 way.
+Until that view comes the file’s body shows nothing, and neither does anything after
+the file in the diff: the body takes a height only its answer knows, so a file shown
+below it would move when the answer came, under a press already aimed.
+A page shows its first screen once those files are drawn, or at its bound with the ones
+still waiting drawn so.
+The wait has a ceiling, `RENDERED_WAIT_MS` in `diff/diff-markdown.js`, counted from the
+diff’s mount: a file still waiting then shows Source and keeps it, with Rendered to
+choose, so a slow or busy server never keeps files that are ready out of sight for long,
+and nothing replaces Source by itself afterwards.
+A document drawn alone, as a guided review step draws one, has nothing after it to hide,
+so its ceiling is its page’s own hold.
 A file that falls back permanently to Source keeps the format chooser, with Rendered
 unavailable and a tooltip giving the reason.
 Where the main UI can show the file the change makes, the name’s group is followed by
@@ -7038,7 +7049,10 @@ menu, and a table’s column menus.
   to the nearest ancestor a press can focus instead, which for a menu in a view is the
   preview pane. A menu opened with focus outside it, as that press leaves it, takes focus
   to its trigger, so a tree redrawn under it that puts focus back on its row does not
-  close it.
+  close it. A press is over at its click, at the next press, and at any key.
+  One that brings no click, as on a disabled row, is over a task after a mouse’s or a
+  pen’s button comes up, and at once where the browser takes it for a scroll or a
+  context menu, so focus that arrives outside afterwards closes the menu.
 - **Opening one menu closes any other**, so at most one is open.
 
 A press inside a filter bar beside its open dropdown closes the dropdown once the
@@ -7047,6 +7061,13 @@ the bar is redrawn as the dropdown closes and would otherwise take that control 
 under the press. So a press on the drawer’s chevron opens the drawer, a press on Show
 ignored turns it off, and a press on another dropdown’s trigger opens that one, each
 closing the dropdown that was open.
+
+A filter bar answers for every dropdown inside the element it is bound to
+(`filterControls.bind`), so each control is bound by itself, and never a region that
+holds another bound control: the outer binding would take that control’s open dropdown
+for its own, and opening it there closes it for the control.
+A diff binds each file’s Rendered and Source chooser by itself for that reason, since
+the diff’s toolbar holds the File type menu.
 
 The behavior is one helper’s, `metabrowser.menus.dismissible` (`static/menus.js`,
 reached through `static/filter-controls.js`), and a plugin’s menu uses it too

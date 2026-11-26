@@ -2385,7 +2385,8 @@ export function mountStackPage(container, ctx, mb) {
             return diff.mountRenderedFile(body, shown, path, {
               ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
               // Rendered waits with Source hidden for as long as the rendered route can
-              // take, so the step never shows Source first in its place.
+              // take; a document not drawn by then shows Source and keeps it, so the step
+              // never moves.
               markdownHoldMs: GUIDE_DOCUMENT_HOLD_MS,
             });
           },

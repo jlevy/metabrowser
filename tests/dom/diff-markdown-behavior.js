@@ -165,7 +165,13 @@ class Element {
         chip.dataset.tipText = tip;
       }
       chip.setAttribute("aria-checked", String(spec.value === value));
-      chip.addEventListener("click", () => sharedChange(spec.key, value, spec.select));
+      chip.addEventListener("click", () => {
+        for (const [container, onChange] of bound) {
+          if (container.contains(chip)) {
+            onChange(spec.key, value, spec.select);
+          }
+        }
+      });
       return chip;
     });
   }
@@ -180,7 +186,16 @@ class Element {
 }
 
 const make = (tag) => new Element(tag);
-let sharedChange;
+// The chip family's `bind`: a bound element's handler hears the chips inside it. The layer
+// binds each file's chooser by itself, never the diff around them, whose toolbar holds
+// another control's dropdown (mb-yn7w).
+/** @type {Map<Element, (key: string, value: string, select: string) => void>} */
+const bound = new Map();
+function bindChooser(container, { onChange }) {
+  assert.equal(container.className, "diff-markdown-control", "a chooser is bound by itself");
+  bound.set(container, onChange);
+  return () => bound.delete(container);
+}
 // The page's address, which KPress's stylesheets are resolved against (kpressStylesheets).
 const PAGE = "http://127.0.0.1:8000/pull/1/files";
 globalThis.document = {
@@ -272,6 +287,7 @@ async function main() {
     changeRuns,
     chunkUnits,
     createMarkdownViews,
+    WAITING_CLASS,
     estimatedHeight,
     foldBlocks,
     projectionModel,
@@ -658,13 +674,7 @@ async function main() {
   const view = createMarkdownViews({
     controls: {
       groupHtml: (spec) => spec,
-      bind(container, { onChange }) {
-        assert.equal(container, root);
-        sharedChange = onChange;
-        return () => {
-          sharedChange = undefined;
-        };
-      },
+      bind: bindChooser,
     },
     load(id, signal) {
       return new Promise((resolve, reject) => calls.push({ id, signal, resolve, reject }));
@@ -737,7 +747,7 @@ async function main() {
   );
   assert.equal(a.control.hidden, false);
   assert.equal(a.progress.hidden, false);
-  view.observe(root, null);
+  view.observe(null);
   assert.equal(observer.options.rootMargin, "0px 0px 100% 0px", "a viewport of lookahead");
   assert.equal(
     chunkObserver.options.rootMargin,
@@ -757,9 +767,15 @@ async function main() {
   );
   assert.ok(a.progress.classList.contains("mb-delayed-loading"), "progress waits for the delay");
   time.advance(50);
-  assert.equal(a.source.hidden, false, "past the loading delay Source shows");
-  assert.equal(b.source.hidden, false);
+  assert.equal(a.source.hidden, true, "past the loading delay a file still waits for Rendered");
+  assert.equal(b.source.hidden, true);
+  // What a waiting file's section says, which keeps everything after it out of sight
+  // (styles.css), so its body arriving moves nothing a reader sees; one that waits no more
+  // does not say it.
+  const awaiting = (file) => file.section.classList.contains(WAITING_CLASS);
+  assert.deepEqual([a, b, c, d].map(awaiting), [true, true, false, false]);
   await a.sourceChoice.click();
+  assert.equal(awaiting(a), false, "choosing Source ends its wait");
   assert.equal(a.progress.classList.contains("mb-delayed-loading"), false);
   assert.equal(a.source.hidden, false);
   assert.equal(document.activeElement, a.sourceChoice);
@@ -928,7 +944,7 @@ async function main() {
   assert.equal(calls[5].signal.aborted, true, "disposal stops the request in flight");
   assert.equal(observer.observed.size, 0);
   assert.equal(chunkObserver.observed.size, 0, "disposal stops watching chunks");
-  assert.equal(sharedChange, undefined);
+  assert.equal(bound.size, 0, "disposal unbinds every chooser");
   assert.equal(time.pending, 0, "disposal cancels every timer");
   calls[5].resolve(ready);
   await new Promise(setImmediate);
@@ -976,7 +992,7 @@ async function main() {
   void view4.firstScreen.then(() => {
     settled4 = true;
   });
-  view4.observe(root4, null);
+  view4.observe(null);
   observer.notify([{ target: section4, isIntersecting: true }]);
   await new Promise(setImmediate);
   assert.deepEqual(asked, [], "no projection is asked for it");
@@ -1020,7 +1036,7 @@ async function main() {
   const changed5 = file5("m", false);
   const deleted5 = file5("x", true);
   const emptied5 = file5("e", false);
-  view5.observe(root5, null);
+  view5.observe(null);
   observer.notify([changed5, deleted5, emptied5].map(({ section }) => arrival({ section })));
   const changedProjection = {
     version: "markdown-diff-v1",
@@ -1141,7 +1157,7 @@ async function main() {
     id: "n",
     format: "markdown",
   });
-  view6.observe(root6, null);
+  view6.observe(null);
   observer.notify([{ target: section6, isIntersecting: true }]);
   loads6[0].resolve({ ...changedProjection, frontmatter: undefined });
   await new Promise(setImmediate);
@@ -1184,7 +1200,7 @@ async function main() {
     id: "w",
     format: "markdown",
   });
-  view7.observe(root7, null);
+  view7.observe(null);
   observer.notify([{ target: section7, isIntersecting: true }]);
   loads7[0].resolve(structuredClone(concise));
   await new Promise(setImmediate);
@@ -1258,7 +1274,7 @@ async function main() {
     id: "p",
     format: "markdown",
   });
-  view8.observe(root8, null);
+  view8.observe(null);
   observer.notify([{ target: section8, isIntersecting: true }]);
   loads8[0].resolve({
     version: "markdown-diff-v1",
@@ -1298,10 +1314,7 @@ async function main() {
   const view2 = createMarkdownViews({
     controls: {
       groupHtml: (spec) => spec,
-      bind(_container, { onChange }) {
-        sharedChange = onChange;
-        return () => {};
-      },
+      bind: bindChooser,
     },
     load: (id) => new Promise((resolve) => retried.push({ id, resolve })),
     async ensureInert() {
@@ -1337,7 +1350,7 @@ async function main() {
   });
   const [, control2] = end2.children;
   const [, , rendered2] = section2.children;
-  view2.observe(root2, null);
+  view2.observe(null);
   observer.notify([{ target: section2, isIntersecting: true }]);
   retried[0].resolve(ready);
   await new Promise(setImmediate);
@@ -1364,7 +1377,8 @@ async function main() {
   view2.dispose();
 
   // The first screen settles once none of its files waits: here when both are Rendered,
-  // well inside a page's longer wait; and at the wait's end for one that never answers.
+  // well inside a page's longer wait; and at the wait's end for one that never answers,
+  // whose files go on waiting.
   for (const answered of [true, false]) {
     const loads = [];
     const root3 = make("div");
@@ -1396,7 +1410,7 @@ async function main() {
     void view3.firstScreen.then(() => {
       settled = true;
     });
-    view3.observe(root3, null);
+    view3.observe(null);
     observer.notify(sections.map((target) => ({ target, isIntersecting: true })));
     time.advance(50);
     await new Promise(setImmediate);
@@ -1411,7 +1425,12 @@ async function main() {
     } else {
       time.advance(150);
       await new Promise(setImmediate);
-      assert.equal(settled, true, "the wait's end settles it, Source shown");
+      assert.equal(settled, true, "the wait's end settles it");
+      assert.deepEqual(
+        sections.map((section) => section.children.at(-1).hidden),
+        [true, true],
+        "with no Source shown that a late answer would replace",
+      );
     }
     view3.dispose();
   }
