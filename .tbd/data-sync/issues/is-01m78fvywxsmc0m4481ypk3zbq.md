@@ -1,12 +1,14 @@
 ---
 type: is
 id: is-01m78fvywxsmc0m4481ypk3zbq
-title: Per-command environment sources and the metab-plugins executable
+title: Per-command plugin environments (--plugin-env) and the --present refusal test
 kind: task
 status: open
 priority: 1
-version: 11
+version: 17
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
+assignee: null
+delegate: null
 labels: []
 dependencies:
   - type: blocks
@@ -25,12 +27,19 @@ dependencies:
     target: is-01m78fw3ppt7qjecxb1m4r276q
   - type: blocks
     target: is-01m78fvxxksc6ybfthkyzgbtdn
+  - type: blocks
+    target: is-01m8bfx0ydnsv7hpxbm60fxhzj
+  - type: blocks
+    target: is-01m8bfx0jk64cgj3sz7sm2nav4
 parent_id: is-01m78ftefp9ks9100ebsm7sm29
+hold: null
+hold_until: null
 created_at: 2026-11-12T18:21:08.379Z
-updated_at: 2026-11-12T21:18:02.588Z
+updated_at: 2026-11-26T08:37:20.279Z
+started_at: 2026-11-26T08:35:34.373Z
 ---
-Phase 1 (plan: Sources and Scopes, The Registry's listing, CLI and Routes; Key Decision 5). A second console script, metab-plugins: the same command line as metab that also accepts the flags that run plugin code without a recorded decision or record one; metab refuses them and names metab-plugins. Here: --env PATH for one command (an environment identified by its pyvenv.cfg prefix, not its interpreter), the listing cache keyed by the environment fingerprint and written only for added or decided sources, a cold listing taken before the classifier is built, manifests read and assets served by the host, hooks proxied to the worker, the content reader's host calls, the ownership rule (ExecutableTrust) before each spawn, and --doctor's per-source checks including the Python 3.12 floor. Acceptance: the motivating plugin's hooks served from its own environment under a uv tool install with no change to the plugin. Fixture environment under tests/fixtures/plugin-env built offline.
+Phase 1 (plan: Sources and Scopes, The Registry's listing, CLI and Routes; Key Decision 5). One executable: metab --plugin-env PATH names a plugin environment for one command, identified by its pyvenv.cfg prefix, not its interpreter; the Python floor is read from pyvenv.cfg. No option that names a plugin source or records a decision is in --present's option set (_MODE_OPTIONS in cli/main.py), and a test fails if one is added; the first revision's second executable is dropped, since the documented sandbox exemption is the prefix metab --present. Here: the listing cache keyed by the environment fingerprint and written only for added or decided sources, a cold listing taken before the classifier is built, manifests read and assets served by the host, hooks proxied to the worker, the content reader's host calls, the ownership rule before each spawn and on the worker's sys.path, and --doctor's per-source checks. Acceptance: the motivating plugin's hooks, at the current SDK version, served from its own environment under a uv tool install, with no change to its Python beyond the runtime's import name. Fixture environment built offline, as explorations/plugin-worker-spike/probes.py builds one.
 
 ## Notes
 
-Body rewritten 2026-11-12 after the Fable 5.2 design review; it supersedes the earlier review notes. The plan's Key Decisions are awaiting the owner.
+Rewritten 2026-11-26 with the plan's second revision (review against main); supersedes the 2026-11-12 body.

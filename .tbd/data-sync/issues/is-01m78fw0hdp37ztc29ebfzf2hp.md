@@ -5,16 +5,21 @@ title: Plugin author harness and CI pattern
 kind: task
 status: open
 priority: 2
-version: 2
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
+assignee: null
+delegate: null
 labels: []
 dependencies: []
 parent_id: is-01m78ftefp9ks9100ebsm7sm29
+hold: null
+hold_until: null
 created_at: 2026-11-12T18:21:10.060Z
-updated_at: 2026-11-12T21:17:42.960Z
+updated_at: 2026-11-26T08:37:20.283Z
+started_at: 2026-11-26T08:35:34.380Z
 ---
-Phase 2 (plan: Workflows, CI; Testing Strategy). A published copy of the injected runtime for type checks and in-process hook tests (name must not match the metabrowser-plugin-<name> pattern; release mechanics per the plan's Open Questions), a fixture that runs the real worker, the shell's startup scripts and on-demand bundle registry served as data with a golden so browser harnesses stop copying server.py, and the documented CI pattern: metab-plugins . --repo --doctor/--api/--show goldens for editable installs, plus a wheel built and installed in a scratch environment checked with metab-plugins --env for libraries that publish wheels.
+Phase 3 (plan: Workflows, CI; Testing Strategy). metabrowser-sdk as a development dependency for type checks and in-process hook tests (it has no dependencies, and is the same package the host injects), a fixture that runs the real worker, the shell's startup scripts and on-demand bundle registry served as data with a golden so browser harnesses stop copying server.py, and the documented CI pattern: metab . --plugin-repo --doctor/--api/--show goldens for editable installs, the same with --plugin-confined on a runner whose kernel has a backend, and a wheel built and installed in a scratch environment checked with metab --plugin-env for libraries that publish wheels.
 
 ## Notes
 
-Body rewritten 2026-11-12 after the Fable 5.2 design review; it supersedes the earlier review notes. The plan's Key Decisions are awaiting the owner.
+Rewritten 2026-11-26 with the plan's second revision (review against main); supersedes the 2026-11-12 body.
