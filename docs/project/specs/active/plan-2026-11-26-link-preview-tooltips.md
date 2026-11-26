@@ -4,7 +4,8 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft
+**Status:** Approved 2026-11-26 from the owner’s request; in implementation on a pull
+request stacked on #891.
 
 ## Overview
 
@@ -61,29 +62,129 @@ The Git panel’s commit hover card and the table plugin’s reference card are 
 rich cards. [External GitHub Links](../../../design-system.md#external-github-links)
 gives an outside GitHub link its mark.
 
+## What Exists Today
+
+A survey of `main` and #891 on 2026-11-26 found these pieces, each private to the
+surface that owns it:
+
+| Need | Exists | Gap |
+| --- | --- | --- |
+| A card in the app’s tooltip | `MetabrowserTooltip.show(html, anchor)` and `mb.tooltip.show`: one `.custom-tooltip`, a 300 ms appear delay (`TOOLTIP_APPEAR_DELAY` in `static/app.js`), placed once on its anchor | A visible tooltip does not take new HTML; a `show` still waiting out its delay does |
+| Which links are in-app | `enhance` and the Markdown enhancer keep each link’s answer by identity (`opens`, `internalTargets`, `routeTargets`) | No registry another module can read; the `data-metabrowser-github-localization` attribute is forgeable in a trusted render |
+| A pull request’s title and state | `GET /api/plugin/github/pulls?q=<n>`, the catalog’s exact-number search (`pull_catalog.py` `catalog_search`), cache-only, about 1 ms | No client cache or export; `listedState` in `pull-state.js` is the github plugin’s own |
+| A commit’s subject | `GET /api/git/commit/<id>`, one `git show`, never a fetch; `fetchCommitDetail`’s cache in `static/git-panel.js` | Private to the Commits panel |
+| A stack | “Stack #N” (`stackLabel` in `pull-stacks.js`), its members from the cache-only stacks route | Plugin-internal |
+| A file or folder | Its path, `mb.fileTypeIcon`, `mb.fileCatalog`, `mb.directoryTotals` | A front-matter title needs the file’s own read, which this does not make |
+| Prefetch | A tree row’s hover prefetch of a file’s body (`app.js`, 250 ms), the Commits panel’s speculative `prepareRevision`, `prefetchCounterpart` | All but `prefetchCounterpart` private; `app.js` has 75 bytes of startup budget |
+| A link’s tooltip today | `WORKING_TREE_TITLE` as `data-tip-text` | The shell drops `data-tip-text` inside a `.metabrowser-kpress-host`, so it never shows in a rendered document, a pull request’s text, or a commit’s message; a trusted Markdown link keeps its author’s native `title` |
+
 ## Design
 
-To be completed from the survey of the tooltip primitives, the data each kind of object
-already has on the client, and the prefetch facilities.
+### The Rule for Tooltips on Links
+
+`docs/design-system.md` gains **Tooltips on Links**, beside the tooltip sections, and
+every link in the app follows it:
+
+| Link | Tooltip |
+| --- | --- |
+| Opens a page in Metabrowser, in text whose words say nothing about what it opens (rendered Markdown, a pull request’s text, a Guided Review note, a commit’s message, a rendered diff) | The **link card**: what it opens, its title where known, and that it opens here |
+| Leaves for another site | None: the [External GitHub Links](../../../design-system.md#external-github-links) mark says it leaves, and the browser shows the address |
+| The app’s own chrome, whose text names what it opens (a Pulls row’s title, a crumb, a Files row) | None, as [Tooltips Add Information](../../../design-system.md#tooltips-add-information) already says |
+
+The card is the app’s one tooltip, so it obeys every rule already there: shown on
+pointer rest and never on focus, placed on its link and holding still, and put away by
+the surface that drew the link (`hide(within)`). A link in a text the author titled
+keeps that title as the card’s description, and loses its native `title`, so the reader
+never sees two tooltips.
+
+### The Card
+
+One renderer draws every card, from data, so no surface can draw a card of its own.
+It uses the tooltip’s existing content classes (`.tip-name`, `.tip-detail` in
+`static/styles.css`), as a Files row’s tooltip does:
+
+1. **What it is**, in `.tip-name`: the object’s mark and its identity: “Pull request
+   #12”, “Stack #3”, “Commit a1b2c3d4e5f6” (the shell’s short commit), the path of a
+   file or folder, or “Pull requests”.
+   A link to a tab or a changed file names it after the identity: “Pull request #12 ·
+   Changes · docs/guide.md”.
+2. **Its title**, when known and not already the link’s own text: a pull request’s
+   title, a commit’s subject, a stack’s top member’s title, an author’s `title`. A pull
+   request’s mark is its state icon only when its metadata says so: the address alone
+   never establishes a state (External GitHub Links).
+3. **Where it opens**, in `.tip-detail`: “Opens here in Metabrowser”, or, for a link to
+   a branch that opens whatever is served, “Opens in the served working tree”, which
+   replaces `WORKING_TREE_TITLE`. A commit the repository lacks says “Not in this
+   repository” instead, and the card makes no fetch for it.
+
+### Data and Prefetch
+
+A **link preview** is one kind’s answer for a resolved target:
+`{kind, identity, title?, state?, detail?, missing?}`, each field plain text.
+Providers return data, never HTML, and make only reads the app already makes for that
+object, all cache-only:
+
+| Kind | Title from | Prefetch on rest |
+| --- | --- | --- |
+| Pull request, its tabs and files | `pulls?q=<n>`, cached per page by number | The github plugin’s page assets, and the record read with `warm=1`, which counts no view |
+| Stack | The stacks route, already polled by the Pulls tab | The page’s assets |
+| Commit | A public summary on `MetabrowserGitPanel` that shares `fetchCommitDetail`’s cache and its missing set | `prepareRevision(…, true)`, the Commits panel’s own speculative read |
+| File or folder | Its path, type mark, and the folder’s totals already known | `prefetchCounterpart`, and the file’s body through the tree’s hover prefetch where the startup budget allows a seam |
+| The pull request list | Static | The Pulls view’s assets |
+
+A link starts its read and its prefetch once the pointer has rested on it for the tree’s
+own hover delay, and asks the tooltip to show the card at once; the tooltip waits out
+its appear delay, and a card whose title arrives in that time is shown with it (a `show`
+still waiting takes the newer HTML). A title that arrives later is cached for the next
+rest.
+At most one read and one prefetch are in flight; a newer rest waits for them rather
+than aborting them, since an aborted request counts against the page’s `fetch_aborts`
+budget.
+
+### Where It Lives
+
+A new on-demand module, `static/link-previews.js`, in the `repository-links` bundle the
+resolver already loads, holds the registry, the delegated pointer listener, the intent
+timer, the providers, and the renderer.
+`enhance` and the Markdown enhancer register each in-app link they make by identity; the
+rendered diff registers its head links.
+Nothing is added to the startup scripts except, if it fits, one seam into the tree’s
+file prefetch.
+
+### API
+
+- `window.MetabrowserLinkPreviews.register(root, anchor, target, mb)`: called by the
+  resolver’s `enhance`, the Markdown enhancer, and the rendered diff for each in-app
+  link; `target` is the resolver’s answer.
+  A later call replaces the entry; a link the resolver leaves as written is dropped.
+- `window.MetabrowserLinkPreviews.dispose(root)`: forgets a root’s links and puts its
+  card away.
+- `MetabrowserGitPanel.commitSummary(revision, {signal})`: the subject, author, time,
+  and whether the repository has it, from the panel’s own cache.
 
 ## Implementation Plan
 
 ### Phase 1: Link Previews
 
-- [ ] The design-system rule for tooltips on links
-- [ ] The preview card and its data for each kind
-- [ ] Prefetch on pointer rest
-- [ ] Every surface the resolver serves shows it
+- [ ] The design-system rule, the card, the registry, and the renderer, with a
+  browserless session, a golden, and a parity row
+- [ ] The providers and prefetch for each kind
+- [ ] Every surface registers its links: the resolver’s `enhance`, the Markdown
+  enhancer, and the rendered diff; authored titles move into the card; the working-tree
+  tooltip goes
+- [ ] A Chrome check of the card’s placement, delay, and content on a real page
 
 ## Testing Strategy
 
 Browserless sessions run the exact production modules, with a golden transcript and a
 parity row for each new surface (AGENTS.md, CLI and Functional UI Parity); a Chrome
 check confirms the tooltip’s placement and timing.
+The renderer’s session holds one invariant per rule above: a card never repeats its
+link’s text, never claims a state its data does not give, and never appears on focus.
 
 ## Open Questions
 
-- None yet.
+- None: the owner’s request settles what the card says and where it appears.
 
 ## References
 
