@@ -3,9 +3,9 @@ type: is
 id: is-01m8ctvgrty5asxe2xh62gzn8v
 title: Shared YAML and JSON views in Metabrowser
 kind: epic
-status: in_progress
+status: open
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-26-structured-data-views.md
 delegate: codex@spud10.local
 labels:
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T21:05:47.799Z
-updated_at: 2026-11-26T21:13:29.022Z
+updated_at: 2026-11-26T21:17:03.261Z
 started_at: 2026-11-26T21:12:15.641Z
 extensions:
   linear:
