@@ -172,9 +172,8 @@ def stack_envelope(view: StackView) -> StackEnvelope:
         stack["labels"] = [
             None if member.labels is None else list(member.labels) for member in members
         ]
-        listed = [rows[number] for number in stack["pulls"] if number in rows]
         stack["updated_at"] = max(
-            [row.updated_at for row in listed]
+            [rows[number].updated_at for number in stack["pulls"] if number in rows]
             + [
                 record.pull.updated_at
                 for number in stack["pulls"]
@@ -182,17 +181,43 @@ def stack_envelope(view: StackView) -> StackEnvelope:
             ],
             default=None,
         )
-        # A stack can rank ahead of this filter's loaded prefix even when its most
-        # recent member is in another filter. Give the column a row to represent it.
-        leaders = {}
-        for name in ("open", "closed"):
-            lead = max(
-                (row for row in listed if row.state == name),
-                key=lambda row: (row.updated_at, row.number),
-                default=None,
-            )
-            if lead is not None:
-                leaders[name] = lead.model_dump(
+        stack["leaders"] = {}
+    _assign_leaders(stacks, rows)
+    fresh = result["fresh_for_s"] > 0 and stamp is not None and stamp.outcome == "succeeded"
+    result.update(
+        state="current" if fresh else "stale",
+        reason=None,
+        reader=snapshot.reader,
+        fetched_at=snapshot.fetched_at,
+        complete=snapshot.complete,
+        stacks=stacks,
+    )
+    return result
+
+
+def _assign_leaders(stacks: list[dict[str, Any]], rows: dict[int, PullListRow]) -> None:
+    """Project one owned member per filter for a stack above the loaded list's end.
+
+    Claim shared members in stack rank order, as the column does. A later stack can
+    then be represented by its own highest-ranked member when it shares the first.
+    """
+    ranked = sorted(
+        stacks, key=lambda stack: (stack["updated_at"] or "", stack["number"]), reverse=True
+    )
+    for name in ("open", "closed", "all"):
+        claimed: set[int] = set()
+        for stack in ranked:
+            available = [
+                rows[number]
+                for number in stack["pulls"]
+                if number not in claimed
+                and number in rows
+                and (name == "all" or rows[number].state == name)
+            ]
+            if available:
+                claimed.update(row.number for row in available)
+                lead = max(available, key=lambda row: (row.updated_at, row.number))
+                stack["leaders"][name] = lead.model_dump(
                     mode="json",
                     include={
                         "number",
@@ -205,17 +230,6 @@ def stack_envelope(view: StackView) -> StackEnvelope:
                         "head_oid",
                     },
                 ) | {"merged": lead.merged}
-        stack["leaders"] = leaders
-    fresh = result["fresh_for_s"] > 0 and stamp is not None and stamp.outcome == "succeeded"
-    result.update(
-        state="current" if fresh else "stale",
-        reason=None,
-        reader=snapshot.reader,
-        fetched_at=snapshot.fetched_at,
-        complete=snapshot.complete,
-        stacks=stacks,
-    )
-    return result
 
 
 def envelope_etag(envelope: StackEnvelope) -> str:

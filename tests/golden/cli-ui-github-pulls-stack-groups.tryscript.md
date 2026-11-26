@@ -469,22 +469,21 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       ]
     },
     {
-      "step": "#8 in two stacks: once, under the first listed, its badge naming the other",
+      "step": "#8 in two stacks: once, under the most recently updated stack, its badge naming the other",
       "grouped": true,
       "rows": [
-        "#106 [1/99]",
-        "#105 [2/99]",
-        "…",
-        "#11 [96/99]",
-        "▾ Stack #290 · 3 pulls · updated 2026-09-17T08:10:00Z [97/99] · Stack #290, 3 pull requests",
+        "▾ Stack #290 · 3 pulls · updated 2026-09-17T12:20:05Z [1/99] · Stack #290, 3 pull requests",
         "    Whole stack [1/4]",
         "    #10 3/3 [2/4]",
         "    #9 2/3 [3/4]",
         "    #8 1/3 · ⧉286 3/3 [4/4]",
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [98/99] · Stack #286, 3 pull requests, 1 under Stack #290",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T12:20:04Z [2/99] · Stack #286, 3 pull requests, 1 under Stack #290",
         "    Whole stack [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
+        "#106 [3/99]",
+        "#105 [4/99]",
+        "…",
         "#5 [99/99]"
       ]
     },
@@ -492,7 +491,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Closed: #286's one listed pull request sits under #290, so #286 has no row",
       "grouped": true,
       "rows": [
-        "▾ Stack #290 · 3 pulls · updated 2026-09-17T08:10:00Z [1/1] · Stack #290, 3 pull requests, 2 in this list",
+        "▾ Stack #290 · 3 pulls · updated 2026-09-17T12:20:05Z [1/1] · Stack #290, 3 pull requests, 2 in this list",
         "    Whole stack [1/3]",
         "    #9 2/3 [2/3]",
         "    #8 1/3 · ⧉286 3/3 [3/3]"
@@ -983,7 +982,21 @@ $ node tests/dom/github-pulls-stack-groups-session.js recency
       "#102",
       "#101"
     ]
-  }
+  },
+  "overlapping stacks in a partial Open window": [
+    {
+      "stack": 286,
+      "members": [
+        14
+      ]
+    },
+    {
+      "stack": 287,
+      "members": [
+        15
+      ]
+    }
+  ]
 }
 ? 0
 ```

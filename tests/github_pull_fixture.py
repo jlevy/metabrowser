@@ -154,8 +154,12 @@ if args[:1] == ["api"]:
             slots = [f"n{{i}}" for i in range(8)]
             path = "graphql:visible-cores:" + ",".join(fields[key] for key in slots if key in fields)
         else:
-            tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
-            state = "updated" if "field:UPDATED_AT" in tail else "closed" if "states:[CLOSED,MERGED]" in tail else "open" if "states:OPEN" in tail else "all"
+            query = fields.get("query", "")
+            tail = query.split("page:pullRequests", 1)[-1]
+            if "field:UPDATED_AT" in tail and query.startswith("query CatalogActivity("):
+                state = "closed" if "states:[CLOSED,MERGED]" in tail else "open" if "states:OPEN" in tail else "activity"
+            else:
+                state = "updated" if "field:UPDATED_AT" in tail else "all"
             path = "graphql:" + state + ":" + fields.get("cursor", "start")
         if fields.get("owner", "").casefold() != "octo" or fields.get("name", "").casefold() != "demo":
             path = "graphql:unavailable-repository"
@@ -715,10 +719,11 @@ def logged_gh_calls(directory: Path) -> list[str]:
                 numbers = ",".join(fields[key] for key in slots if key in fields)
                 calls.append(f"gh api graphql visible-cores numbers={numbers}")
                 continue
-            tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
+            query = fields.get("query", "")
+            tail = query.split("page:pullRequests", 1)[-1]
             state = (
                 "updated"
-                if "field:UPDATED_AT" in tail
+                if "field:UPDATED_AT" in tail and not query.startswith("query CatalogActivity(")
                 else "closed"
                 if "states:[CLOSED,MERGED]" in tail
                 else "open"
@@ -1119,21 +1124,32 @@ NEWEST_PULL_PATH = "repos/octo/demo/pulls?state=all&sort=updated&direction=desc&
 def catalog_entries(
     items: list[dict[str, Any]], *, reader: str = READER, repository_id: str = "R_demo"
 ) -> dict[str, Any]:
-    """Fixed GraphQL catalog pages: graphql:<all|open|closed|updated>:<cursor|start>."""
+    """Fixed GraphQL pages for creation backfill, activity prefixes and deltas."""
     totals = {"all": len(items), "open": sum(item["state"] == "open" for item in items)}
     totals["closed"] = totals["all"] - totals["open"]
     latest = max((item["updated_at"] for item in items), default=None)
     entries: dict[str, Any] = {}
-    for name in ("all", "open", "closed", "updated"):
-        selected = [item for item in items if name in {"all", "updated"} or item["state"] == name]
+    for name in ("all", "open", "closed", "activity", "updated"):
+        selected = [
+            item for item in items if name not in {"open", "closed"} or item["state"] == name
+        ]
         selected.sort(
             key=lambda item: (
-                (item["updated_at"], item["number"]) if name == "updated" else item["number"]
+                item["created_at" if name == "all" else "updated_at"],
+                item["number"],
             ),
             reverse=True,
         )
+        # Keep All's cursor format in existing assertions. Its fixture page key still
+        # distinguishes the order of the priority scan from that of the backfill.
+        cursor_name = "all" if name == "activity" else name
+        prefix_head = (
+            [{"number": selected[0]["number"], "updatedAt": selected[0]["updated_at"]}]
+            if selected
+            else []
+        )
         for offset in range(0, max(1, len(selected)), 100):
-            cursor = f"{name}-{offset}" if offset else "start"
+            cursor = f"{cursor_name}-{offset}" if offset else "start"
             batch = selected[offset : offset + 100]
             nodes = []
             for item in batch:
@@ -1169,11 +1185,14 @@ def catalog_entries(
                         "id": repository_id,
                         **{label: {"totalCount": count} for label, count in totals.items()},
                         "latest": {"nodes": [{"updatedAt": latest}] if latest else []},
+                        "prefixHead": {"nodes": prefix_head},
                         "page": {
                             "nodes": nodes,
                             "pageInfo": {
                                 "hasNextPage": offset + 100 < len(selected),
-                                "endCursor": f"{name}-{offset + len(batch)}" if batch else None,
+                                "endCursor": f"{cursor_name}-{offset + len(batch)}"
+                                if batch
+                                else None,
                             },
                         },
                     },

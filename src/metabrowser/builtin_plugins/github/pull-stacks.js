@@ -17,7 +17,7 @@
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
 /** @typedef {{number: number, updated_at: string} & Record<string, unknown>} StackLeader */
-/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[], labels: (string[] | null)[], updated_at?: string | null, leaders?: {open?: StackLeader, closed?: StackLeader}}} NativeStack */
+/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[], labels: (string[] | null)[], updated_at?: string | null, leaders?: Partial<Record<"open" | "closed" | "all", StackLeader>>}} NativeStack */
 /** @typedef {{
  * state: "absent" | "current" | "stale", reason: string | null,
  * source: string | null, reader: string | null, fetched_at: string | null,
@@ -208,22 +208,18 @@ export function stackMembership(index, identity, number) {
  * @returns {StackLeader[]}
  */
 export function stackLeaders(index, identity, filter, through) {
-  if (!sameIdentity(index, identity)) {
+  if (
+    !sameIdentity(index, identity) ||
+    (filter !== "open" && filter !== "closed" && filter !== "all")
+  ) {
     return [];
   }
   return index.stacks.flatMap((stack) => {
     if ((stack.updated_at ?? "") < through) {
       return [];
     }
-    const { open, closed } = stack.leaders ?? {};
-    if (filter !== "all") {
-      const lead = filter === "open" ? open : closed;
-      return lead === undefined ? [] : [lead];
-    }
-    if (open === undefined) {
-      return closed === undefined ? [] : [closed];
-    }
-    return [closed !== undefined && newerFirst(closed, open) < 0 ? closed : open];
+    const lead = stack.leaders?.[filter];
+    return lead === undefined ? [] : [lead];
   });
 }
 
@@ -326,10 +322,11 @@ export function groupByStack(numbers, index, identity, options = {}) {
   for (const number of numbers) {
     for (const stack of stackMembership(index, identity, number)) {
       if (!order.has(stack.number)) {
+        const updated_at = stackUpdatedAt(stack, options.updatedAt);
         order.set(stack.number, {
           stack,
-          number,
-          updated_at: stackUpdatedAt(stack, options.updatedAt),
+          number: updated_at === null ? number : stack.number,
+          updated_at,
         });
       }
     }
@@ -443,7 +440,7 @@ export function stackPullsCount(stack) {
   return stack.pulls.length;
 }
 
-/** By GitHub's UTC update timestamps, then descending PR number for ties.
+/** By GitHub's UTC update timestamps, then descending stack or pull request number for ties.
  * @param {{updated_at: string | null, number: number}} left
  * @param {{updated_at: string | null, number: number}} right
  */

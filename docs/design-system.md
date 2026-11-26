@@ -4418,6 +4418,8 @@ when Refresh stood in that toolbar.
   Stacks use their most recent member update and share the same order as standalone pull
   requests. When a stack ranks within the visible window, it can use a member from
   further down the current filter to represent it.
+  If a higher-ranked stack holds that member, the next available member can represent
+  the later stack.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
   in that order, and its place names the other.
   A later stack’s row’s accessible name still counts it among the pull requests the list

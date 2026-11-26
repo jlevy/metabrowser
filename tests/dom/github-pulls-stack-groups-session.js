@@ -923,7 +923,7 @@ async function mountStory() {
           number: 286 + i,
           pulls: [open.number, closed.number],
           updated_at: [open.updated_at, closed.updated_at].sort().at(-1),
-          leaders: { open, closed },
+          leaders: { open, closed, all: open.updated_at > closed.updated_at ? open : closed },
         })),
       });
     const values = {
@@ -964,6 +964,37 @@ async function mountStory() {
       activity[filter] = { initial, "after the closed member is updated": top().map(rowName) };
       story.controller.dispose();
     }
+    // Both stacks rank inside the Open window, and share its newest off-window member.
+    const shared = pull(14, "10:00", "open");
+    const alternate = pull(15, "09:30", "open");
+    const grouped = snapshot([
+      [shared, pull(16, "12:45", "closed")],
+      [alternate, pull(17, "12:15", "closed")],
+    ]);
+    const [first, second] = grouped.stacks;
+    second.pulls.unshift(shared.number);
+    const story = mount({
+      filter: "open",
+      window: {
+        ...lists.current.body,
+        list: "open",
+        fetched: open.length,
+        rows: open,
+        next_after: 101,
+      },
+    });
+    story.controller.setStacks(createStackIndex({ ...template, stacks: [first, second] }));
+    await story.controller.start({ shown: true });
+    const groups = story
+      .model()
+      .stacks.rows.filter((row) => row.kind === "stack")
+      .map((row) => ({ stack: row.stack.number, members: row.members }));
+    assert.deepEqual(groups, [
+      { stack: 286, members: [14] },
+      { stack: 287, members: [15] },
+    ]);
+    activity["overlapping stacks in a partial Open window"] = groups;
+    story.controller.dispose();
     process.stdout.write(`${JSON.stringify(activity, null, 2)}\n`);
     return;
   }
@@ -1093,7 +1124,7 @@ async function mountStory() {
   const shared = index("shared");
   story.controller.setStacks(shared);
   record(
-    "#8 in two stacks: once, under the first listed, its badge naming the other",
+    "#8 in two stacks: once, under the most recently updated stack, its badge naming the other",
     story,
     shared,
   );
