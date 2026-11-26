@@ -4,19 +4,19 @@ What a card says, when a rest asks for it, and which rests show none run browser
 the exact module and app.js's own tooltip (``tests/dom/link-previews-session.js``, the
 ``shell.link-previews`` parity row). What only a browser can tell is held here, through
 Chrome's own pointer and keys on a document the server renders: that the card comes up on
-the two timers' delays, placed on its link and holding still while the pointer moves
-within it, that it says what the link opens from the data the page reads, and that focus,
-an outside link, and a pointer that leaves show none (docs/design-system.md, "Tooltips on
-Links").
+the tooltip's appear delay whatever the rest reads meanwhile, placed on its link and
+holding still while the pointer moves within it, that it says what the link opens from the
+data the page reads, and that focus, an outside link, and a pointer that leaves show none
+(docs/design-system.md, "Tooltips on Links").
 
 So this serves a checkout of the GitHub stand-in, whose ``origin`` names
 ``github.com/octo/demo``, with a fake ``gh`` whose catalog holds pull request 8, and a
 document linking a file with its author's title, a folder, pull request 8 twice (once by
 its title), the checkout's head commit, the list of pull requests, and a page on another
 site, then, past a screenful of words, the file again, whose card has no room below it,
-beside the README, which the pointer reaches last, straight from the file's link, to
-record the shell's known bug H1. ``tests/dom/link-card-chrome.mjs`` rests Chrome's
-pointer on each link.
+beside the README, which the pointer reaches last, straight from the file's link while the
+file's card is up, and whose own card must then show (the shell's bug H1, fixed).
+``tests/dom/link-card-chrome.mjs`` rests Chrome's pointer on each link.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node

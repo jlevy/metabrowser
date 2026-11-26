@@ -44,11 +44,10 @@ the session read the `tooltip` the reader would see.
   for.
 - `timing`: the card is asked for at once and appears on the tooltip’s own 300 ms delay;
   the summary and the prefetch start at 250 ms, the tree’s hover delay.
-  An answer that arrives while the tooltip still waits is shown with it, which waits the
-  delay again from then; a later one is the provider’s to keep, and the next rest’s card
-  says it from the pointer’s arrival (`known`), when the provider answers its summary at
-  once (`kept`); a pass across a link reads nothing, and moving within it changes
-  nothing.
+  An answer that arrives while the tooltip still waits is shown with it, on the delay
+  the rest began; a later one is the provider’s to keep, and the next rest’s card says
+  it from the pointer’s arrival (`known`), when the provider answers its summary at once
+  (`kept`); a pass across a link reads nothing, and moving within it changes nothing.
 - `requests`: one read and one prefetch are in flight; a newer rest waits for them
   rather than aborting them, and a link the pointer leaves before its intent delay is
   never read.
@@ -538,7 +537,7 @@ $ node tests/dom/link-previews-session.js
     "hide": "twelve"
    }
   ],
-  "an answer during the delay: the card waits for it": [
+  "an answer during the delay: the card shows it on time": [
    {
     "at": 0,
     "show": "twelve",
@@ -559,7 +558,7 @@ $ node tests/dom/link-previews-session.js
    },
    {
     "at": 320,
-    "tooltip": null
+    "tooltip": "[pull] Pull request #12 | Keep the tail | Opens here in Metabrowser"
    },
    {
     "at": 570,

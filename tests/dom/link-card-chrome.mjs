@@ -14,10 +14,10 @@
 // 1. The time from the pointer's arrival on the link to the card's appearance, in the page's
 //    own clock, within a window the two timers give it: the tooltip's appear delay
 //    (TOOLTIP_APPEAR_DELAY in static/app.js) and the card's intent delay (INTENT_MS in
-//    static/link-previews.js), both read from the page. A rest that reads what to say at
-//    the intent delay asks the tooltip again, which waits its delay again from then; a rest
-//    on a link whose card the page already knows, from what its provider holds as the
-//    pointer arrives, waits the appear delay alone.
+//    static/link-previews.js), both read from the page. The card comes on the appear delay
+//    from the pointer's arrival, whatever the rest finds meanwhile: a rest that finds what
+//    to say at the intent delay asks the tooltip again, which takes the newer card and keeps
+//    its time, so every rest comes before a show at the intent delay could.
 // 2. What the card says: what the link opens in `.tip-name`, its title once the page has read
 //    it, the author's title, and "Opens here in Metabrowser" last, never the link's own words.
 // 3. Where it is: centered below its link, or above it where there is no room, and nowhere
@@ -25,11 +25,12 @@
 // 4. That moving the pointer away puts it away.
 //
 // Then what an outside link shows (OUTSIDE_LINK_CARD: none, today), that a Tab puts a card
-// away, and that focus brought by Tab and Shift-Tab shows none; and, last, what shows when
-// the pointer moves straight from one link to the next, the shell's known bug H1
-// (KNOWN_BUG_H1), recorded and not checked. Throughout, no link with a card carries a
-// native `title`, and the page throws nothing, logs no error, and has no request fail. The
-// rules behind each run browserlessly in tests/dom/link-previews-session.js.
+// away, and that focus brought by Tab and Shift-Tab shows none; and, last, that moving the
+// pointer straight from one link to the next shows the next link's card, on its link, in
+// the same window, which the shell's bug H1 broke (KNOWN_BUG_H1). Throughout, no link with
+// a card carries a native `title`, and the page throws nothing, logs no error, and has no
+// request fail. The rules behind each run browserlessly in
+// tests/dom/link-previews-session.js and tests/dom/tooltip-anchor-session.js.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, and each rest its time.
 import { launchChrome } from "./chrome-session.mjs";
@@ -63,12 +64,12 @@ const BROWSERS_OWN = new Set(["/favicon.ico"]);
 // as "Opens example.com in a new tab"; it puts that line here, and the outside link's step
 // then checks the card comes up saying it.
 const OUTSIDE_LINK_CARD = [];
-// The shell's known bug H1: a pointer that moves straight from one link with a card to
-// another within the tooltip's fade leaves the first link's card showing. A fix is coming
-// in static/app.js; until it lands, the step that moves so records what shows and checks
-// nothing, and once it has, setting this false makes that step check the second link's
-// card. Every other step leaves the pointer on empty space until the fade has ended.
-const KNOWN_BUG_H1 = true;
+// The shell's bug H1: a pointer that moved straight from one link with a card to another
+// within the tooltip's fade left the first link's card showing. static/app.js fixed it
+// (`tooltipShown`), so this is false and the step that moves so checks the second link's
+// card; true makes that step record what shows and check nothing. Every other step leaves
+// the pointer on empty space until the fade has ended.
+const KNOWN_BUG_H1 = false;
 
 const failures = [];
 let checks = 0;
@@ -284,20 +285,16 @@ try {
     INTENT < APPEAR,
     JSON.stringify(constants),
   );
-  // By then any card a rest or a focus would bring is up: one asked for again at the intent
-  // delay, with an answer read in the first appear delay, waits that delay again.
+  // Where every rest's card comes up: on the appear delay from the pointer's arrival,
+  // whatever its provider does meanwhile, and sooner than a show at the intent delay could
+  // bring one. A provider that answers at once (a file's, a folder's, the list's) answers at
+  // the intent delay, inside the appear delay, and the tooltip takes the newer card and keeps
+  // its time; one that reads the server answers then or later, when the card comes with what
+  // the page knew; and where the page knows what the card says, nothing is read.
+  const WINDOW = [APPEAR, INTENT + APPEAR];
+  // By then any card a rest or a focus would bring is up, even one first asked for at the
+  // intent delay, with an appear delay to spare: what a step that shows none waits.
   const CARD_BY_MS = INTENT + 2 * APPEAR;
-  const WINDOWS = {
-    // A provider that reads the server answers at the intent delay, in time to ask the
-    // tooltip again, which waits its appear delay again from then, or later, when the card
-    // comes on the appear delay with what the page knew. So does one whose page state can
-    // change in between, as a folder's totals arrive.
-    read: [APPEAR, CARD_BY_MS],
-    // The page knows what the card says as the pointer arrives (a file's provider and the
-    // list's read the page's own state, and any other its kept answer): the card comes on
-    // the appear delay alone, and the intent delay's summary changes nothing.
-    known: [APPEAR, INTENT + APPEAR],
-  };
   // How long a step waits for a card, or for one to go, past when it should have: long
   // enough that a late one is reported with its time rather than as none.
   const LATE_MS = 2 * CARD_BY_MS;
@@ -408,13 +405,13 @@ try {
       text: "The guide",
       identity: viewPath,
       lines: [expected.authorTitle],
-      first: "known",
+      first: "at once",
     },
     {
       text: "The source folder",
       identity: (name, card) => name.endsWith("/") && viewPath(name, card),
       lines: [],
-      first: "read",
+      first: "at once",
     },
     {
       text: `Pull request ${expected.pull}`,
@@ -441,7 +438,7 @@ try {
       text: "The pull requests",
       identity: (name) => name === PULLS,
       lines: [],
-      first: "known",
+      first: "at once",
     },
     {
       text: "the guide again",
@@ -482,12 +479,12 @@ try {
         break;
       }
       const delay = card.shown - card.arrived;
-      const [low, high] = WINDOWS[kind];
+      const [low, high] = WINDOW;
       const where = placed(label, card);
       placements.add(where);
       process.stderr.write(
         `rest ${label}: up ${Math.round(delay)} ms after the pointer arrived, ` +
-          `window [${low}, ${high}) for a card ${kind === "read" ? "that may read" : kind}; ` +
+          `window [${low}, ${high}) for a card ${kind === "read" ? "that reads" : kind}; ` +
           `${where}: ${card.lines.map((line) => line.text).join(" | ")}\n`,
       );
       check(`${label}: the pointer arrived on the link`, card.arrived !== null);
@@ -620,10 +617,11 @@ try {
   }
   phase("focus");
 
-  // Known bug H1: straight from one link's card onto the next link, within the fade. The
-  // pointer rests on the foot's file link until its card is up, then moves in one step onto
-  // the README beside it, whose card the page does not know yet, and what shows is read
-  // once any card would be up. Last, so that what it leaves cannot touch another step.
+  // H1: straight from one link's card onto the next link, within the fade. The pointer rests
+  // on the foot's file link until its card is up, then moves in one step onto the README
+  // beside it, whose card the page does not know yet, and what shows is read once any card
+  // would be up: the README's card, on its link, up in the window every rest's comes in.
+  // Last, so that what it leaves cannot touch another step.
   const straightFrom = links.at(-1).text;
   await away();
   await evaluate(
@@ -653,20 +651,27 @@ try {
     const shownAt =
       after.shown === null ? "never" : `${Math.round(after.shown - after.arrived)} ms`;
     process.stderr.write(
-      `known bug H1 (static/app.js): straight from ${JSON.stringify(straightFrom)} to ` +
+      `H1 (static/app.js): straight from ${JSON.stringify(straightFrom)} to ` +
         `${JSON.stringify(straightTo)}: ${CARD_BY_MS} ms after the move ` +
         `${after.up ? "a card is up" : "no card is up"}, placed on ${placedOn}, saying ` +
         `${after.lines.map((line) => line.text).join(" | ") || "nothing"}; it came up ` +
-        `${shownAt} after the pointer arrived; ${KNOWN_BUG_H1 ? "recorded, not checked" : "checked"}\n`,
+        `${shownAt} after the pointer arrived, window [${WINDOW[0]}, ${WINDOW[1]}); ` +
+        `${KNOWN_BUG_H1 ? "recorded, not checked" : "checked"}\n`,
     );
     if (!KNOWN_BUG_H1) {
+      const label = `straight from ${JSON.stringify(straightFrom)} to ${JSON.stringify(straightTo)}`;
       check(
-        `straight from ${JSON.stringify(straightFrom)} to ${JSON.stringify(straightTo)}: ` +
-          `the README's card is up, on its link`,
+        `${label}: the README's card is up, on its link`,
         after.up &&
           viewPath(after.lines[0]?.text ?? "", after) &&
           placedOn === JSON.stringify(straightTo),
         JSON.stringify(after.lines),
+      );
+      const delay = after.shown === null ? Number.NaN : after.shown - after.arrived;
+      check(
+        `${label}: up in [${WINDOW[0]}, ${WINDOW[1]}) ms`,
+        after.arrived !== null && delay >= WINDOW[0] && delay < WINDOW[1],
+        shownAt,
       );
     }
     await pointAt(park.x, park.y);

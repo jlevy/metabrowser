@@ -3204,10 +3204,12 @@ document.getElementById("tree-content")?.addEventListener(
 
 var tooltipEl = null;
 var tooltipTimer = null;
-// The element the visible tooltip belongs to. It is what makes a tooltip hold
-// still: position is read from this once, when the tooltip appears, and never
-// again while it is up.
+// The element the last show named, waiting or up: what a surface's hide asks about.
 var tooltipAnchor = null;
+// The element whose markup is up, from when it appears until its fade ends.
+var tooltipShown = null;
+// The newest markup for a show still waiting, or null.
+var tooltipWaiting = null;
 
 var TOOLTIP_ANCHOR_GAP = 6;
 var TOOLTIP_VIEWPORT_MARGIN = 8;
@@ -3221,23 +3223,26 @@ function initTooltip() {
 }
 
 /**
- * Show `html` anchored to `anchor`, the element the tooltip describes.
- *
- * Calling again with the same anchor is how a surface says "still here" — it
- * cancels a pending hide and leaves the tooltip exactly where it is. That is
- * what lets a delegated listener fire on every descendant the pointer crosses
- * without the tooltip flickering or drifting.
+ * Show `html` anchored to `anchor`, the element the tooltip describes, after the delay.
+ * Again for the element whose markup is up is "still here", which cancels a pending hide
+ * and changes nothing; again for one still waiting takes the newer markup and keeps its
+ * time (docs/design-system.md, "A Tooltip Holds Still").
  */
 function showTooltip(html, anchor) {
   var element = anchor && anchor.nodeType === 1 ? anchor : null;
-  if (element && element === tooltipAnchor && tooltipEl.style.display === "block") {
+  var waiting = element && element === tooltipAnchor && tooltipWaiting !== null;
+  tooltipAnchor = element;
+  if (element && element === tooltipShown) {
     clearTimeout(tooltipTimer);
+    tooltipWaiting = null;
     tooltipEl.classList.add("visible");
     return;
   }
-  tooltipAnchor = element;
+  tooltipWaiting = html;
+  if (waiting) {
+    return;
+  }
   clearTimeout(tooltipTimer);
-  // Small delay before appearing so tooltips don't flash when moving across items
   tooltipTimer = setTimeout(() => {
     // Replaced during the delay, as a tree row is when its folder re-renders. A
     // detached element's rect is all zeros, which would put the tooltip at the
@@ -3246,10 +3251,11 @@ function showTooltip(html, anchor) {
       hideTooltip();
       return;
     }
-    tooltipEl.innerHTML = html;
+    tooltipEl.innerHTML = tooltipWaiting;
+    tooltipWaiting = null;
+    tooltipShown = element;
     tooltipEl.style.display = "block";
     positionTooltip(element);
-    // Trigger fade-in on next frame
     requestAnimationFrame(() => {
       tooltipEl.classList.add("visible");
     });
@@ -3283,12 +3289,13 @@ function positionTooltip(anchor) {
 
 function hideTooltip() {
   clearTimeout(tooltipTimer);
+  tooltipWaiting = null;
   tooltipEl.classList.remove("visible");
-  // The anchor survives the fade on purpose: a surface that re-announces the
-  // same element mid-fade gets its tooltip back rather than a fresh delay.
+  // The anchor and the element shown survive the fade on purpose: a surface that
+  // re-announces the same element mid-fade gets its tooltip back rather than a fresh delay.
   tooltipTimer = setTimeout(() => {
     tooltipEl.style.display = "none";
-    tooltipAnchor = null;
+    tooltipAnchor = tooltipShown = null;
   }, TOOLTIP_FADE_OUT);
 }
 

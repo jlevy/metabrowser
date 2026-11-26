@@ -69,7 +69,7 @@ surface that owns it:
 
 | Need | Exists | Gap |
 | --- | --- | --- |
-| A card in the app’s tooltip | `MetabrowserTooltip.show(html, anchor)` and `mb.tooltip.show`: one `.custom-tooltip`, a 300 ms appear delay (`TOOLTIP_APPEAR_DELAY` in `static/app.js`), placed once on its anchor | A visible tooltip does not take new HTML; a `show` still waiting out its delay does, and waits the whole delay again from then |
+| A card in the app’s tooltip | `MetabrowserTooltip.show(html, anchor)` and `mb.tooltip.show`: one `.custom-tooltip`, a 300 ms appear delay (`TOOLTIP_APPEAR_DELAY` in `static/app.js`), placed once on its anchor | A visible tooltip does not take new HTML; a `show` still waiting out its delay does, and keeps its time ([A Tooltip Holds Still](../../../design-system.md#a-tooltip-holds-still)) |
 | Which links are in-app | `enhance` and the Markdown enhancer keep each link’s answer by identity (`opens`, `internalTargets`, `routeTargets`) | No registry another module can read; the `data-metabrowser-github-localization` attribute is forgeable in a trusted render |
 | A pull request’s title and state | `GET /api/plugin/github/pulls?q=<n>`, the catalog’s exact-number search (`pull_catalog.py` `catalog_search`), cache-only, about 1 ms | No client cache or export; `listedState` in `pull-state.js` is the github plugin’s own |
 | A commit’s subject | `GET /api/git/commit/<id>`, one `git show`, never a fetch; `fetchCommitDetail`’s cache in `static/git-panel.js` | Private to the Commits panel |
@@ -149,9 +149,8 @@ What a provider keeps is bounded.
 A link starts its read and its prefetch once the pointer has rested on it for the tree’s
 own hover delay, and asks the tooltip to show the card at once; the tooltip waits out
 its appear delay, and a card whose title arrives in that time is shown with it (a `show`
-still waiting takes the newer HTML, and waits its delay again from then, so a card whose
-title is read at once appears the appear delay after the intent delay rather than after
-the appear delay alone, as the golden’s timing shows).
+still waiting takes the newer HTML and keeps its time, so the card appears on the appear
+delay from the pointer’s arrival, as the golden’s timing shows).
 A title that arrives later is its provider’s to keep, and the next rest’s card says it
 from the pointer’s arrival.
 At most one read and one prefetch are in flight; a newer rest waits for them rather than
@@ -241,11 +240,11 @@ ended, and the check holds:
 
 - **Delay.** The time from the pointer’s arrival to the card’s appearance, in the page’s
   clock, printed for each rest, falls in a window of `INTENT_MS` and
-  `TOOLTIP_APPEAR_DELAY`, both read from the page: from their sum to the intent delay
-  plus twice the appear delay on a first rest whose provider answers at once (a file, a
-  folder, the list), from the appear delay to that bound on one that reads the server
-  (#8, the commit), and from the appear delay to their sum on a rest whose card the page
-  already knows.
+  `TOOLTIP_APPEAR_DELAY`, both read from the page: from the appear delay to their sum,
+  on every rest, whether its provider answers at once (a file, a folder, the list),
+  reads the server (#8, the commit), or the page already knows its card.
+  A rest whose card started its delay again at the intent delay would come at their sum
+  or later.
 - **Content.** The card’s `.tip-name` names what the link opens (the path its address
   opens, “Pull request #8”, or the commit’s short ID), its last line is “Opens here in
   Metabrowser”, and no line is the link’s words; by the second rest it says #8’s title
@@ -261,12 +260,13 @@ ended, and the check holds:
   `/favicon.ico`, as the page names no icon
   ([Known Departures](../../../design-system-icons.md#known-departures)).
 
-A last step records, and does not check, a known bug in the shell’s tooltip: the pointer
-moves in one step from the file’s link, with its card up, onto the README beside it,
-within the fade, and the file’s card comes up again, on the file’s link, when the
-README’s card is asked for at the intent delay, and stays while the pointer rests on the
-README. `KNOWN_BUG_H1` in the session turns the step into a check of the README’s card
-once the fix in `static/app.js` lands.
+A last step moves the pointer in one step from the file’s link, with its card up, onto
+the README beside it, within the fade, and checks that the README’s card comes up on the
+README’s link in the same window.
+Before the fix in `static/app.js` (`tooltipShown`), the file’s card came up again, on
+the file’s link, when the README’s card was asked for at the intent delay, and stayed
+while the pointer rested on the README (the shell’s bug H1); `KNOWN_BUG_H1` in the
+session, now false, would turn the step back into a record of what shows.
 
 With the renderer’s “Opens here in Metabrowser” line dropped, or `register` made a
 no-op, it fails on every rest.
