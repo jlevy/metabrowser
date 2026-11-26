@@ -5,7 +5,7 @@ title: "Merge readiness: show whether a pull request is ready to merge as plainl
 kind: epic
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-26-pull-request-merge-readiness.md
 labels:
   - linear
@@ -15,6 +15,10 @@ child_order_hints:
   - is-01m8be447e9931hjyw4nrg4qxe
   - is-01m8be45aq589e23647qn19ee1
 created_at: 2026-11-26T08:04:02.970Z
-updated_at: 2026-11-26T08:04:05.078Z
+updated_at: 2026-11-26T08:20:48.376Z
+extensions:
+  linear:
+    id: cdbe63d3-7e97-4a12-b62d-a72c900972ef
+    linked_at: 2026-11-26T08:20:48.376Z
 ---
 Owner asked 2026-11-26. Every open pull request gets one readiness verdict (Ready to merge, Conflicts, Checks failing, Changes requested, Checks running, Review required, Out of date, Blocked, Queued, Checking) in GitHub's colors: on the pull request page's header and a Merge status section opening the Checks tab, and as a glyph column in the Pulls tab and on stack member rows. GitHub's mergeStateStatus decides; mergeable, the checks rollup, reviewDecision, and the merge queue explain. Operational status (PullStatus, PullChecks) becomes a model and store of its own, stamped with its head, separate from the core PullRecord. The spec opens with GitHub's model and Metabrowser's current one.
