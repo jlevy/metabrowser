@@ -1465,10 +1465,12 @@ including when its destination is a PR. Other PR references retain their entity/
 icon. Icons preserve text, wrapping, focus and safe external-navigation attributes.
 
 Use the shared `decorateExternalLink` view helper after source-link localization and
-sanitization. A link localized to a served file stays internal.
-The decorator adds no metadata request, remote image or SVG fetch, observer, or
-document-wide scan. It uses the existing on-demand SDK view bundle and app-owned icon
-markup; document sanitization keeps its allowlist.
+sanitization.
+A link localized to a served file stays internal: it takes no mark, and its
+tooltip is the link card ([Tooltips on Links](#tooltips-on-links)). The decorator adds
+no metadata request, remote image or SVG fetch, observer, or document-wide scan.
+It uses the existing on-demand SDK view bundle and app-owned icon markup; document
+sanitization keeps its allowlist.
 Rendered Markdown retains its existing enhancement budget; links beyond the admitted
 prefix keep their authored form.
 
@@ -6840,6 +6842,7 @@ name, and a rendered document’s own links and embeds.
 | --- | --- |
 | A short string | `data-tip-text="…"` |
 | Rich content: counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
+| A link that opens a page in Metabrowser | The link card: register the link with `MetabrowserLinkPreviews.register` ([Tooltips on Links](#tooltips-on-links)) |
 
 **A tooltip reads at body size**, `--tooltip-font-size`, and so do its subordinate
 lines, which set no size and read at the tooltip’s: a file’s size and age under its name
@@ -6988,6 +6991,82 @@ redraw and the filter bar rebuilds.
 `tests/dom/folder-totals-view-behavior.js`, `tests/dom/folder-plugin-behavior.js`,
 `tests/dom/treemap-not-indexed-session.js` and `tests/dom/git-panel-behavior.js` check
 that each of those surfaces passes its own element.
+
+### Tooltips on Links
+
+**Every link follows one rule for its tooltip, by where it goes and what its words
+say.** A link’s words in authored text are the author’s, and say nothing of whether it
+leaves the app; the app’s own chrome names what it opens.
+
+| Link | Tooltip |
+| --- | --- |
+| Opens a page in Metabrowser, in text whose words say nothing about what it opens (rendered Markdown, a pull request’s text, a Guided Review note, a commit’s message, a rendered diff) | The **link card**: what it opens, its title where known, and that it opens here |
+| Leaves for another site | None: the [External GitHub Links](#external-github-links) mark says it leaves, and the browser shows the address |
+| The app’s own chrome, whose text names what it opens (a Pulls row’s title, a crumb, a Files row) | None, as [Tooltips Add Information](#tooltips-add-information) says |
+
+The card is the app’s one tooltip
+([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)), so it keeps every rule
+above: it appears on pointer rest and never on focus or a touch
+([Tooltip Input Modality](#tooltip-input-modality)), placed on its link and holding
+still ([A Tooltip Holds Still](#a-tooltip-holds-still)), and the surface that drew the
+link puts it away
+([A Surface Puts Away Only Its Own Tooltip](#a-surface-puts-away-only-its-own-tooltip)).
+
+**Its lines**, in order, using the tooltip’s own content classes, as a Files row’s
+tooltip does:
+
+1. **What it is**, in `.tip-name`: “Pull request #12”, “Stack #3”, “Commit a1b2c3d” (the
+   short commit ID, [Short Commit IDs](#short-commit-ids)), the path of a file or
+   folder, a folder’s ending in `/` and the root’s `/`, or “Pull requests”.
+   A link to a tab or a changed file names it after the identity: “Pull request #12 ·
+   Changes · docs/guide.md”.
+2. **Its title**, when the app knows it: a pull request’s title, a commit’s subject, a
+   stack’s top member’s title, drawn as every title is ([Titles](#titles)).
+3. **The author’s title**, when the author gave the link one.
+4. **A detail**, in `.tip-detail`, when its data has one.
+5. **Where it opens**, in `.tip-detail`, always: “Opens here in Metabrowser”, “Opens in
+   the served working tree” for a link to a branch, which opens whatever the page serves
+   rather than what it named, or what its data says is missing, such as “Not in this
+   repository”.
+
+A line that is the link’s own text, in any case and spacing, or a line above it, is left
+out: a card never says its link’s words again, as a Files row’s tooltip leaves out the
+row’s name. The first line the card keeps leads with the object’s mark, so a card whose
+identity is its link’s text still shows its state.
+
+**The mark** is the [icon catalog](design-system-icons.md#git-and-github-objects)’s for
+the object: a pull request’s state glyph only where its data gives the state, and the
+neutral pull request mark where only its address is known, the two marks
+`decorateExternalLink` gives a pull request’s address, since the address alone never
+establishes a state; a stack’s `layers`; a file’s type, from `fileTypeIcon`. A folder
+ends in `/` and a commit is its ID, as the catalog draws neither.
+
+**An author’s title is folded in.** A trusted Markdown link can carry its author’s
+`title`. The surface that registers the link takes it off the link and hands it to the
+card, which shows it as the card’s description, or as its own line beside the object’s
+title, and never twice, so the reader never sees two tooltips.
+
+**Its timing.** The card is asked for as soon as the pointer arrives and appears on the
+tooltip’s own appear delay, `TOOLTIP_APPEAR_DELAY` in `static/app.js`. Once the pointer
+has rested for the tree’s own hover delay (`INTENT_MS` in `static/link-previews.js`,
+equal to app.js’s `FILE_PREFETCH_HOVER_DELAY_MS`), the card’s data is read and what the
+link opens is prefetched, from reads the app already makes for that object, all from its
+caches. A title that arrives while the tooltip still waits is shown with it, and waits
+the delay again from then; one that arrives after the card is up is kept for the next
+rest. At most one read and one prefetch are in flight, and a newer rest waits for them
+rather than aborting them, since an aborted request counts against the page’s
+`fetch_aborts` budget
+([performance budgets](../explorations/performance-loop/performance-budgets.toml)).
+
+**One renderer draws every card.** A surface registers each in-app link it draws with
+`MetabrowserLinkPreviews.register` and puts its links away with `dispose`; it never
+draws a card. `card` in `static/link-previews.js` draws every one from data, escaping
+every value, and each kind’s provider gives that data as plain text, never markup.
+`devtools/check_tooltips.py` fails any other browser source or stylesheet that writes
+the card’s classes or its words for where a link opens.
+`tests/dom/link-previews-session.js` holds the lines, the timing, and the input modality
+on the module’s own code and app.js’s tooltip, and `tests/test_link_previews_js.py`
+holds its invariants.
 
 ### Shared Overlay Lifecycle
 

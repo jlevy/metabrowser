@@ -254,18 +254,21 @@ in `/`, so neither draws a folder icon.
 | `gitPullRequestClosed`, Lucide `git-pull-request-closed` | Plugin | A closed pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-closed` | `--icon-glyph` in a row; `1em` of the page’s title |
 | `arrowLeft`, Lucide `arrow-left` | Plugin | Guided Review’s previous step, in the step list’s head and before the way back below a step | `builtin_plugins/github/guided-review.js` | The button’s | `--icon-glyph` |
 | `arrowRight`, Lucide `arrow-right` | Plugin | Guided Review’s next step, in the step list’s head and after the way on below a step | `builtin_plugins/github/guided-review.js` | The button’s | `--icon-glyph` |
-| `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know, and the link card of one whose data gives none, which asks `decorateExternalLink` for it | `static/plugin-sdk-views.js` | The link’s; the tooltip’s muted ink in a link card (`.link-card-mark`) | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `github`, Octicons `mark-github-16` | View bundle | GitHub: the View on GitHub button’s mark, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `arrowRight`, Lucide `arrow-right` | View bundle | Navigate within Metabrowser from a menu, including View This Branch, View This Tag, and View PR Head in Metabrowser | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
 | `arrowUpRight`, Lucide `arrow-up-right` | View bundle | Open in Browser and Open on GitHub menu actions | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
-| `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
+| `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, another stack a member is in, and a link card’s stack | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button, the tooltip’s muted ink in a link card | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
 
 A pull request’s state glyph is one module’s, `pullStateIcon` in `pull-state.js`, so a
 Pulls row and its page cannot disagree
 ([A Pull Request’s State](design-system.md#a-pull-requests-state)). The neutral `pull`
 mark is the open state’s drawing without the state’s color.
+A link card draws a pull request’s mark as `decorateExternalLink` draws it on the pull
+request’s address, with the state’s glyph only where the card’s data gives the state
+([Tooltips on Links](design-system.md#tooltips-on-links)).
 
 ## Status and Change Marks
 
