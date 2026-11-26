@@ -4,10 +4,8 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft (epic `mb-zuiq`: `mb-h91v` upgrade, `mb-znlo` SoftSchema API,
-`mb-ibo7` plugin). The choices under [Proposed Decisions](#proposed-decisions) wait for
-the owner’s review; nothing here is built.
-Research:
+**Status:** In progress (epic `mb-zuiq`: `mb-h91v` upgrade, `mb-znlo` SoftSchema API,
+`mb-ibo7` plugin). The plugin depends on a released upstream collection API. Research:
 [Tables Over Folders of SoftSchema Records](../../research/research-2026-11-26-softschema-collection-tables.md).
 
 ## Overview
@@ -173,22 +171,29 @@ schema is in `kb/_schemas/` and their organizations in `kb/organizations/`.
 2. Resolve each sampled record’s schema pointer.
 3. The root is the nearest common ancestor of the opened folder and those schemas, kept
    inside the served root.
-   A pointer that leaves the served root is not followed.
+   Apply the same inventory ignore policy to discovery and explicit pointers.
+   When the sample offers no eligible schema, start with the opened folder.
 
 For `kb/people/` and `kb/accounts/x/` the root is `kb/`; for the experiments folder it
 is the folder itself.
 The opened folder becomes a path filter on the root’s tables, so every subfolder shares
 one index and references into sibling folders resolve.
+This is a discovery heuristic.
+The index must identify the scope it scanned and report when a bound cuts discovery.
 
 ### Finding Each Record’s Schema (SoftSchema)
 
 In order, the first that yields a readable compiled schema:
 
-1. **The record’s pointer**, `softschema.schema`, resolved from the record’s directory,
-   which must stay inside the served root (the package’s safe-path helpers).
+1. **The record’s pointer**, `softschema.schema`, resolved from the record’s directory
+   with the package’s safe-path helpers.
+   It must stay inside the served root.
+   Reject absolute paths, paths through symlinks, and schemas declaring a different
+   contract.
 2. **The contract index**: every compiled schema under the root whose root
-   `x-softschema.contract` equals the record’s contract ID. When two schemas claim one
-   contract, the one most records point at wins, and the overview says so.
+   `x-softschema.contract` equals the record’s contract ID. Identical schema digests are
+   equivalent. When several distinct digests claim the contract, a record without a
+   usable pointer stays unbound, and the overview reports the ambiguity.
 3. **None.** The record is `unbound`: it is a row, and its table’s columns come from the
    payloads observed instead of a schema.
 
@@ -250,10 +255,13 @@ metadata, payload, state, errors, repairs; per schema: digest, contract, field m
 and refreshes it against the tree, reporting what changed.
 The plugin persists it: one SQLite database per collection root, at
 `plugin_cache_directory("softschema")/collections/<digest of the root's real path>/`.
-SQLite gives atomic incremental updates and survives a crash mid-build; the agents
-plugin’s summary store is the precedent.
-The tables below are the plugin’s storage; the invalidation rules are SoftSchema’s
-refresh, which the plugin runs.
+SQLite gives atomic incremental updates and survives a crash mid-build.
+The agents plugin’s summary store is the precedent.
+Key cache reuse by the resolved served boundary, collection root, and effective ignore
+policy.
+The same collection path can produce different results under a different boundary
+or policy. The tables below are the plugin’s storage; the invalidation rules are
+SoftSchema’s refresh, which the plugin runs.
 
 - **`meta`**: the index format version, the plugin’s version, SoftSchema’s version, and
   the root. A mismatch discards the index and rebuilds it.
@@ -274,9 +282,9 @@ refresh, which the plugin runs.
   are kept, so no record is reread.
 - Records whose schema pointer or contract changed are rebound.
 
-**Freshness.** The source’s `generation()` is a digest of the stat walk, which measured
-15 ms over Universe’s `kb/`. It is memoized briefly and reset by the server’s filesystem
-change events, so a burst of requests walks once.
+**Freshness.** The source’s `generation()` identifies the snapshot the worker published.
+Filesystem changes and scheduled checks trigger the worker’s stat walk.
+Requests read the generation alongside the corresponding rows and links.
 A walk bounded by a measured file cap stops there, and the overview says the collection
 was cut.
 
@@ -331,7 +339,10 @@ Merging versions, as Paraverse does across datasets, is an open question.
 
 ### References
 
-- **Keys.** A table whose schema has an `id` field is keyed by it; otherwise by `$path`.
+- **Keys.** Use the record’s relative path as the stable row key.
+  Index its `id` for cross-record links.
+  An ID with multiple target rows stays unresolved and is reported as ambiguous, so
+  duplicate or missing IDs leave all rows addressable.
 - **Learned prefixes.** For each keyed table, the builder records the prefixes of its
   IDs (`person:` for every Person record).
 - **Reference fields.** A field whose pattern’s alternation names prefixes
@@ -357,8 +368,8 @@ The predicate:
    or a `*.schema.yaml` file whose root carries `x-softschema`.
 
 Both bounds are set from measurements in Phase 1 and recorded beside their constants.
-[Proposed Decision 1](#proposed-decisions) chooses whether the offered view is the
-folder’s default.
+The folder keeps its Overview as the default.
+The offer adds a Table tab.
 
 ### Table Routes Over a Folder
 
@@ -379,20 +390,20 @@ one commit.
 
 ### Views
 
-- **Table** (Phase 1): the table plugin’s view, mounted with the folder’s path and the
+- **Table** (Phase 3): the table plugin’s view, mounted with the folder’s path and the
   selected table. A collection with one table opens it; with several, the overview.
-- **Overview** (Phase 2): the collection’s root, build state and cache state, each
+- **Overview** (Phase 3): the collection’s root, build state and cache state, each
   table’s count, problem count, and field coverage, the schemas and which records bind
   to each, and links into each table and the Problems table.
   It is the Table view’s landing page when there are several tables.
-- **Record view** (Phase 2): the table plugin’s record view, extended through a
+- **Record view** (Phase 3): the table plugin’s record view, extended through a
   `describe` hook the softschema plugin serves: fields in field-model order; nested
   objects as a definition list; a list of objects as a sub-table over its `$def`’s
   fields; references as links with hover cards; validation errors at their fields;
   repairs listed; the Markdown body rendered below the fields, as reader-facing text;
   and the raw payload.
   Whether this is the table plugin’s extension point or the softschema plugin’s own
-  record drawing is settled in Phase 2 against the object model plan’s detail view.
+  record drawing is settled against the object model plan’s detail view.
 
 ### Routes
 
@@ -422,21 +433,19 @@ Importing `metabrowser` must not load `softschema` or `jsonschema`
 (`tests/test_plugin_public_api.py`). The offer, the routes, and the builder import them
 inside their functions, as the GitHub sidekick does.
 
-## Proposed Decisions
+## Decisions
 
-Recommendations, for the owner to confirm or change:
-
-1. **The Table view is the folder’s default when offered.** A knowledge base folder is
-   for its records; the folder Overview stays one key away.
-   Alternative: an extra tab, with Overview kept as the default.
+1. **Offer the Table view alongside Overview.** Discovery examines a bounded sample.
+   Keeping Overview as the initial view gives folder links and keyboard navigation a
+   stable destination as files are added.
 2. **The index root is the nearest ancestor holding the records’ schemas**, with the
    opened folder as a filter, so references resolve from any subfolder.
    Alternative: index only the opened subtree.
 3. **One reader, SoftSchema’s, C-first.** Upgrade to SoftSchema 0.9.1 and add
    `ruamel.yaml.clib` after the supply-chain review, rather than a second, faster reader
    in Metabrowser.
-4. **The collection API goes in SoftSchema first**, Python at least; whether the
-   TypeScript package gains it in the same release is SoftSchema’s parity decision.
+4. **The collection API goes in SoftSchema first**, with the shared contract and CLI
+   tested on Python and TypeScript under SoftSchema’s parity process.
    The plugin starts once a release has it.
 5. **Three phases:** upgrade and measure; the collection API in SoftSchema; then the
    plugin, its table, overview, and record view.
@@ -445,17 +454,35 @@ Recommendations, for the owner to confirm or change:
 
 ### Phase 1: Upgrade SoftSchema and Measure (Metabrowser)
 
-- [ ] Supply-chain review of `ruamel.yaml.clib` per
+- [x] Supply-chain review of `ruamel.yaml.clib` per
   [SUPPLY-CHAIN-SECURITY.md](../../../../SUPPLY-CHAIN-SECURITY.md), within its cool-off.
-- [ ] Upgrade to SoftSchema 0.9.1 and frontmatter-format 0.5.1 (first-party), add
+- [x] Upgrade to SoftSchema 0.9.1 and frontmatter-format 0.5.1 (first-party), add
   `ruamel.yaml.clib`, and adapt to 0.9.0’s changes: results now report `execution`, and
   some raw characters are newly refused.
   Metabrowser’s own contracts, cache records, and guided-review collections must still
   read, which the existing corpus and round-trip checks show.
-- [ ] `metab --doctor` reports SoftSchema’s parser mode.
-- [ ] Benchmark `devtools/bench_softschema_collection.py`: the brief’s measurements over
-  a generated collection and over a path given on the command line, with C-first and
-  with `SOFTSCHEMA_PURE_YAML=1`. Its numbers set the bounds in this plan.
+- [x] `metab --doctor` reports SoftSchema’s parser mode.
+- [x] Add a repeatable generated and existing-tree benchmark.
+  Compare both parser modes and fail if they disagree on record counts, parsed data, or
+  verdicts.
+
+The [benchmark](../../../../devtools/bench_softschema_collection.py) on macOS arm64 and
+CPython 3.14.7 took the median of three trials in each mode.
+The filesystem cache was warm and each trial started with an empty validator cache.
+The corpus commits are the ones pinned in the research brief.
+
+| Corpus | Valid records | Read and bind, C-first / pure | Validate and hash, C-first / pure |
+| --- | ---: | ---: | ---: |
+| Generated | 2,000 | 1.18 s / 2.54 s | 0.15 s / 0.16 s |
+| GitHub Universe | 4,971 | 8.05 s / 41.98 s | 3.23 s / 3.29 s |
+| Patch the Conference | 132 | 0.17 s / 0.63 s | 0.27 s / 0.42 s |
+
+The modes agreed on all three collections.
+The Universe walk took about 0.10 s on this drive.
+Reading and validating that corpus still takes about 11 s in C-first mode, so the cold
+build and refresh walk belong in the worker.
+The benchmark does not exercise the eventual offer, incremental index, or browser, which
+need their own measurements before their limits are set.
 
 ### Phase 2: The Collection API (SoftSchema)
 
@@ -535,8 +562,7 @@ view split into a fourth phase.
 Phase 1 ships on its own: a dependency upgrade with no visible change but speed.
 Phase 2 ships as a SoftSchema minor release.
 The plugin ships built in, in the single artifact, pinned to that release.
-Opening a folder of SoftSchema records changes what it shows by default (Decision 1),
-which the changelog fragment says.
+Opening a folder of SoftSchema records offers a Table view alongside Overview.
 The table protocol’s additions are internal contracts and land with every consumer in
 the same commit; if they change an SDK surface, `PLUGIN_SDK_VERSION` moves with every
 built-in manifest.

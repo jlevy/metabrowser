@@ -116,12 +116,15 @@ def test_core_importing_a_package_outside_the_runtime_list_fails(tmp_path: Path)
     ]
 
 
-def test_a_namespace_module_resolves_to_the_runtime_distribution(tmp_path: Path) -> None:
+@pytest.mark.parametrize("accelerators", [set(), {"ruamel-yaml-clib"}])
+def test_a_namespace_module_resolves_to_the_runtime_distribution(
+    tmp_path: Path, accelerators: set[str]
+) -> None:
     report = _run(
         tmp_path,
         plugin="import ruamel.yaml\n",
         declared=["ruamel.yaml"],
-        runtime={"starlette", "ruamel-yaml"},
+        runtime={"starlette", "ruamel-yaml"} | accelerators,
     )
     assert report.problems == []
 

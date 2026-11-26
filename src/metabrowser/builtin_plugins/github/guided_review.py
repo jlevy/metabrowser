@@ -540,7 +540,9 @@ def _collection(fence: Token, name: str = GUIDE_FENCE) -> Collection:
     refusal = _outside_shape(document["collection"])
     if refusal is not None:
         raise GuideError(refusal)
-    result = validate_artifact(Path(name), contract=_CONTRACT, document=document)
+    result = validate_artifact(
+        Path(name), contract=_CONTRACT, document=document, require=("structural",)
+    )
     if not result.ok:
         raise GuideError(_schema_refusal(result.structural.errors[0].get("path"), name))
     try:
