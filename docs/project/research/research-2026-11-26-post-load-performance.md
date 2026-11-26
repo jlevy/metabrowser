@@ -67,12 +67,12 @@ content, including server-side Markdown rendering.
 ### First Visits in Chrome
 
 The broad wiring pass completed the Files, keyboard, views, Commits, tree, and palette
-journeys.
-The Pulls return sometimes failed to converge and its pinned historical PR #353
-did not appear in the list.
-The new subject override exercised the full PR sequence with #888, #882, #887, and #880.
-The recorder refused that run because the first Pulls view changed between readiness and
-convergence, and the editable build’s reported identity changed during the run.
+journeys. The Pulls return sometimes failed to converge and its pinned historical pull
+request jlevy/metabrowser#353 did not appear in the list.
+The new subject override exercised the full PR sequence with jlevy/metabrowser#888,
+jlevy/metabrowser#882, jlevy/metabrowser#887, and jlevy/metabrowser#880. The recorder
+refused that run because the first Pulls view changed between readiness and convergence,
+and the editable build’s reported identity changed during the run.
 The per-transition observations below are triage evidence from that refused run.
 
 | Transition | Useful content | Visible before ready |
@@ -96,6 +96,13 @@ The image change hands its decode promise to the existing view compositor, so th
 current preview can stay visible until the image is ready.
 A diagnostic rerun counted one blank frame.
 Its editable version label was inconsistent, so these samples do not establish a gate.
+
+### Browser Rendering Fixtures
+
+The standalone layout and intraline fixtures both completed through the headless
+renderer runner. Chrome mounted the 1,000-file layout fixture in 35.5 ms and ran all six
+intraline samples. These clocks covered the production browser code and excluded fixture
+transfer, repository load, and API responses.
 
 ### Live GitHub Reads
 

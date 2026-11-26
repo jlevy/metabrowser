@@ -2325,6 +2325,32 @@ uv --config-file uv.toml run --frozen python explorations/performance-loop/run.p
 
 `compare` prints each metric’s median with its range beside it.
 
+### Rendering Without Application Requests
+
+The [diff layout](../diff-layout/README.md) and
+[diff intraline](../diff-intraline/README.md) fixtures load inputs before starting their
+clocks and call the production renderer or its refinement directly.
+Run them without an application server by serving static files on loopback from the
+repository root:
+
+```shell
+uv --config-file uv.toml run --frozen python -m http.server 8412 --bind 127.0.0.1
+```
+
+In a second terminal run the headless fixture reader.
+It emits one JSON line per fixture and run, with a fresh Chrome profile and the
+fixture’s own timing.
+
+```shell
+node explorations/performance-loop/render-fixtures.mjs --runs 3
+```
+
+Use `--origin` if the static server is on another loopback port.
+Use `--fixture diff-layout` or `--fixture diff-intraline` to narrow the run.
+The fixture clocks exclude transport and startup.
+The headless HTTP cases cover server work and the full transition driver provides the
+separate navigation and paint check.
+
 ### Measuring External Fetching
 
 Use the transition rows to find the clicks whose destination arrives late, then look at
