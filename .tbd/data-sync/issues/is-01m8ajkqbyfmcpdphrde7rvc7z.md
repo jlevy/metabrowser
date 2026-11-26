@@ -5,17 +5,17 @@ title: "Stack page header: a pull request's header for the whole stack (state ta
 kind: feature
 status: in_progress
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-26T00:03:14.938Z
-updated_at: 2026-11-26T01:17:04.799Z
+updated_at: 2026-11-26T01:24:54.107Z
 started_at: 2026-11-26T00:03:21.103Z
 ---
 
 ## Notes
 
-PR #861 (https://github.com/jlevy/metabrowser/pull/861), base main, head 565e82f55. Stack page header said of the whole stack from the pull page's builders; GET stack answers states, opened_at, updated_at, authors, mergers, fetched_at, labels, commits, size; members under a closed **N** Pulls toggle above the Diff summary; Pulls tab stack row without its icon, Whole stack glyph in text ink. Open questions in the PR's guide: the empty labels row kept once seen; sizes only when every in-top member's is kept.
+PR #861 (https://github.com/jlevy/metabrowser/pull/861), base main, head 03a5e7dde, CI green, guided review ready (9 steps). Stack page header said of the whole stack from the pull page's builders; GET stack answers states, opened_at, updated_at, authors, mergers, fetched_at, labels, commits, size; members under a closed **N** Pulls toggle above the Diff summary; Pulls tab stack row without its icon, Whole stack glyph in text ink. Open questions in the PR's guide: the empty labels row kept once seen; sizes only when every in-top member's is kept.
