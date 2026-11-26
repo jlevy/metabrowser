@@ -842,6 +842,8 @@ def test_recording_optional_stack_metadata_answers_real_routes(
         refresh()
         present = read("current")
         assert present["stacks"][0]["pulls"] == [6, 7, 8]
+        assert present["stacks"][0]["updated_at"] == generated_item(8)["updated_at"]
+        assert present["stacks"][0]["leaders"]["open"]["number"] == 8
         response = client.get(
             "/api/plugin/github/stacks",
             headers={

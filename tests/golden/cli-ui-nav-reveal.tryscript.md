@@ -173,8 +173,8 @@ $ node tests/dom/nav-reveal-session.js
         "tab": "pulls",
         "told": [
           "Pulls view mounted at current 7",
-          "Pulls: #7 revealed",
-          "Pulls: current 7"
+          "Pulls: current 7",
+          "Pulls: #7 revealed"
         ]
       },
       {
@@ -1045,8 +1045,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the reader picks Closed, and a link names closed #2700 before its rows arrive: Closed holds it past its first window, so the list stays, reads on, and reveals it",
         "read": [
           "closed",
-          "lookup: #2700 or the next older",
-          "lookup: the newest",
+          "lookup: #2700",
           "closed after #2801",
           "closed after #2701",
           "closed after #2601",
@@ -1060,8 +1059,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "open #2950 named under Closed: the catalog says it is open and among All's first 500, so the list goes to All and reveals it",
         "read": [
-          "lookup: #2950 or the next older",
-          "lookup: the newest",
+          "lookup: #2950",
           "all",
           "all after #2901",
           "all after #2801",
@@ -1085,8 +1083,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "open #1000 named under Closed: All's 500 rows do not reach it, so the list goes to Open, which draws it, and reveals it",
         "read": [
-          "lookup: #1000 or the next older",
-          "lookup: the newest",
+          "lookup: #1000",
           "open"
         ],
         "told": [
@@ -1106,8 +1103,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "closed #1500 named under Closed: it is further down than Closed draws, so the list stays and says so",
         "read": [
-          "lookup: #1500 or the next older",
-          "lookup: the newest"
+          "lookup: #1500"
         ],
         "told": [
           "note: #1500 is not among the pull requests loaded."
@@ -1127,8 +1123,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the reader picks Closed, and a link names open #2950: the list goes to All and reveals it",
         "read": [
           "closed",
-          "lookup: #2950 or the next older",
-          "lookup: the newest",
+          "lookup: #2950",
           "all"
         ],
         "told": [
@@ -1140,8 +1135,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "a link from #2950 names open #1000: All's 500 rows do not reach it, so the list goes on to Open, which draws it, and reveals it",
         "read": [
-          "lookup: #1000 or the next older",
-          "lookup: the newest",
+          "lookup: #1000",
           "open"
         ],
         "told": [
@@ -1161,8 +1155,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "closed #1500 named under All: All's rows do not reach it, so the list goes to Closed, which reaches furthest, and says it is further down than Closed draws too",
         "read": [
-          "lookup: #1500 or the next older",
-          "lookup: the newest",
+          "lookup: #1500",
           "closed"
         ],
         "told": [
@@ -1200,8 +1193,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "a link names closed #2700 while the catalog has read 200 of 2,001 from GitHub: where it is is not known yet, so the list stays and says nothing",
         "read": [
-          "lookup: #2700 or the next older",
-          "lookup: the newest"
+          "lookup: #2700"
         ],
         "told": []
       },
@@ -1209,8 +1201,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the catalog reads to its end, and time passes: the next poll finds #2700 closed, so the list stays, reads on, and reveals it",
         "read": [
           "closed",
-          "lookup: #2700 or the next older",
-          "lookup: the newest",
+          "lookup: #2700",
           "closed after #2801",
           "closed after #2701",
           "closed after #2601",
@@ -1223,8 +1214,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "a link names open #2995, opened since the catalog's last read: the catalog, read to its end, lacks it, so the list says so",
         "read": [
-          "lookup: #2995 or the next older",
-          "lookup: the newest"
+          "lookup: #2995"
         ],
         "told": [
           "note: #2995 is not in this list."
@@ -1244,8 +1234,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "a link names open #2995 under Closed, opened since the catalog's last read: the catalog, read to its end, lacks it, so the list stays and says so",
         "read": [
-          "lookup: #2995 or the next older",
-          "lookup: the newest"
+          "lookup: #2995"
         ],
         "told": [
           "note: #2995 is not in this list."
@@ -1262,8 +1251,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the catalog reads #2995, and time passes: Closed's next poll says the catalog has read more, so the list asks again, goes to All, and reveals it",
         "read": [
           "closed",
-          "lookup: #2995 or the next older",
-          "lookup: the newest",
+          "lookup: #2995",
           "all",
           "all after #2901",
           "all after #2801",
@@ -1277,10 +1265,9 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         ]
       },
       {
-        "step": "a link names open #2995 under Closed as the catalog reads it in: the lookup of #2995 answers before, and that of the newest row after, so the catalog as the first saw it lacks #2995, and the list says so",
+        "step": "a link names open #2995 under Closed just before the catalog reads it in: the lookup lacks #2995, and the list says so",
         "read": [
-          "lookup: #2995 or the next older",
-          "lookup: the newest"
+          "lookup: #2995"
         ],
         "told": [
           "note: #2995 is not in this list."
@@ -1290,8 +1277,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "time passes: Closed's next poll says the catalog has read more than the lookup of #2995 saw, so the list asks again, goes to All, and reveals it",
         "read": [
           "closed",
-          "lookup: #2995 or the next older",
-          "lookup: the newest",
+          "lookup: #2995",
           "all",
           "all after #2901",
           "all after #2801",
@@ -1307,8 +1293,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "a link names #4000 under Closed: the catalog, read to its end, lacks it, so the list says so",
         "read": [
-          "lookup: #4000 or the next older",
-          "lookup: the newest"
+          "lookup: #4000"
         ],
         "told": [
           "note: #4000 is not in this list."
@@ -1318,8 +1303,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the catalog starts again, as for a new reader, and has read 200 so far; time passes: what the old catalog lacked is not known of the new one yet, so the note goes and the list says nothing",
         "read": [
           "closed",
-          "lookup: #4000 or the next older",
-          "lookup: the newest"
+          "lookup: #4000"
         ],
         "told": [
           "note gone"
@@ -1329,8 +1313,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the catalog reads to its end, and time passes: it lacks #4000 too, so the list says so again",
         "read": [
           "closed",
-          "lookup: #4000 or the next older",
-          "lookup: the newest",
+          "lookup: #4000",
           "closed after #2801",
           "closed after #2701",
           "closed after #2601",
@@ -1345,8 +1328,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "the Closed list answers HTTP 500, and a link names open #2950: the catalog still says where it is, so the list goes to All and reveals it",
         "read": [
-          "lookup: #2950 or the next older",
-          "lookup: the newest",
+          "lookup: #2950",
           "all",
           "all after #2901",
           "all after #2801",
@@ -1374,8 +1356,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "the catalog's lookups fail as a link names open #2940: where it is is not known, so the list stays and says nothing",
         "read": [
-          "lookup: #2940 or the next older",
-          "lookup: the newest"
+          "lookup: #2940"
         ],
         "told": []
       },
@@ -1383,8 +1364,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the lookups answer again, and time passes: the next poll asks again, so the list goes to All and reveals #2940",
         "read": [
           "closed",
-          "lookup: #2940 or the next older",
-          "lookup: the newest",
+          "lookup: #2940",
           "all"
         ],
         "told": [
@@ -1395,8 +1375,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "open #2950 named under Closed while All answers HTTP 500: the list goes to All, whose first read fails, so nothing is revealed and nothing noted",
         "read": [
-          "lookup: #2950 or the next older",
-          "lookup: the newest",
+          "lookup: #2950",
           "all"
         ],
         "told": [
@@ -1428,21 +1407,18 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "a link names open #1000 under Closed while the catalog is slow to answer: the list waits and says nothing",
         "read": [
-          "lookup: #1000 or the next older",
-          "lookup: the newest"
+          "lookup: #1000"
         ],
         "told": []
       },
       {
         "step": "a second link names open #2950 before that answer: the first lookup is let go, and the second waits",
         "read": [
-          "lookup: #2950 or the next older",
-          "lookup: the newest"
+          "lookup: #2950"
         ],
         "told": [],
         "let go": [
-          "lookup: #1000 or the next older",
-          "lookup: the newest"
+          "lookup: #1000"
         ]
       },
       {
@@ -1463,8 +1439,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the reader picks Closed, and a link names open #1000 while the catalog is slow again",
         "read": [
           "closed",
-          "lookup: #1000 or the next older",
-          "lookup: the newest"
+          "lookup: #1000"
         ],
         "told": [
           "filter closed"
@@ -1479,8 +1454,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
           "filter all"
         ],
         "let go": [
-          "lookup: #1000 or the next older",
-          "lookup: the newest"
+          "lookup: #1000"
         ]
       },
       {
@@ -1492,8 +1466,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the reader picks Closed, and a link names open #2950 while the catalog is slow",
         "read": [
           "closed",
-          "lookup: #2950 or the next older",
-          "lookup: the newest"
+          "lookup: #2950"
         ],
         "told": [
           "filter closed"
@@ -1504,8 +1477,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "read": [],
         "told": [],
         "let go": [
-          "lookup: #2950 or the next older",
-          "lookup: the newest"
+          "lookup: #2950"
         ]
       },
       {
@@ -1517,8 +1489,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the panel is shown again: its next poll asks again, so the list goes to All and reveals #2950",
         "read": [
           "closed",
-          "lookup: #2950 or the next older",
-          "lookup: the newest",
+          "lookup: #2950",
           "all"
         ],
         "told": [
@@ -1531,8 +1502,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "with focus on a row, open #2950 named under Closed, as Control-N names it: the list goes to All, whose rows are slow",
         "read": [
-          "lookup: #2950 or the next older",
-          "lookup: the newest",
+          "lookup: #2950",
           "all"
         ],
         "told": [
@@ -1563,8 +1533,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "open #2940 named, as Control-N names it: the list goes to All, whose rows are slow again",
         "read": [
-          "lookup: #2940 or the next older",
-          "lookup: the newest",
+          "lookup: #2940",
           "all"
         ],
         "told": [
@@ -1584,8 +1553,7 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
       {
         "step": "a link names #9999999999, the largest number a pull request may have: the route refuses a read from above it, and the newest pull request is older, so the catalog lacks it and the list says so",
         "read": [
-          "lookup: #9999999999 or the next older",
-          "lookup: the newest"
+          "lookup: #9999999999"
         ],
         "told": [
           "note: #9999999999 is not in this list."

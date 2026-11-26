@@ -83,7 +83,21 @@
             [],
             [],
             []
-          ]
+          ],
+          "updated_at": "2026-09-17T08:08:00Z",
+          "leaders": {
+            "open": {
+              "number": 8,
+              "title": "Stack change 8",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:08:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            }
+          }
         }
       ]
     }
@@ -140,7 +154,21 @@
             [],
             [],
             []
-          ]
+          ],
+          "updated_at": "2026-09-17T08:08:00Z",
+          "leaders": {
+            "open": {
+              "number": 8,
+              "title": "Stack change 8",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:08:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            }
+          }
         }
       ]
     }
@@ -213,7 +241,21 @@
             [],
             [],
             []
-          ]
+          ],
+          "updated_at": "2026-09-17T08:08:00Z",
+          "leaders": {
+            "open": {
+              "number": 8,
+              "title": "Stack change 8",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:08:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            }
+          }
         },
         {
           "number": 290,
@@ -243,7 +285,21 @@
             [],
             [],
             []
-          ]
+          ],
+          "updated_at": "2026-09-17T08:10:00Z",
+          "leaders": {
+            "open": {
+              "number": 10,
+              "title": "Stack change 10",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:10:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            }
+          }
         }
       ]
     }

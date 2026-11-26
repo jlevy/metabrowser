@@ -172,6 +172,40 @@ def stack_envelope(view: StackView) -> StackEnvelope:
         stack["labels"] = [
             None if member.labels is None else list(member.labels) for member in members
         ]
+        listed = [rows[number] for number in stack["pulls"] if number in rows]
+        stack["updated_at"] = max(
+            [row.updated_at for row in listed]
+            + [
+                record.pull.updated_at
+                for number in stack["pulls"]
+                if (record := records.get(number)) is not None
+            ],
+            default=None,
+        )
+        # A stack can rank ahead of this filter's loaded prefix even when its most
+        # recent member is in another filter. Give the column a row to represent it.
+        leaders = {}
+        for name in ("open", "closed"):
+            lead = max(
+                (row for row in listed if row.state == name),
+                key=lambda row: (row.updated_at, row.number),
+                default=None,
+            )
+            if lead is not None:
+                leaders[name] = lead.model_dump(
+                    mode="json",
+                    include={
+                        "number",
+                        "title",
+                        "state",
+                        "draft",
+                        "author",
+                        "author_avatar_url",
+                        "updated_at",
+                        "head_oid",
+                    },
+                ) | {"merged": lead.merged}
+        stack["leaders"] = leaders
     fresh = result["fresh_for_s"] > 0 and stamp is not None and stamp.outcome == "succeeded"
     result.update(
         state="current" if fresh else "stale",

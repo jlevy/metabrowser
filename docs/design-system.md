@@ -4407,23 +4407,17 @@ when Refresh stood in that toolbar.
   number bold in the text’s ink and “pulls” regular, “1 pull” for a stack of one, after
   a muted dot. The accessible name says the same count first, in words, and then how many
   the list holds when that is fewer.
-  The age is that of the stack’s most recent change: the newest `updated_at` among its
-  pull requests the list holds (`stackUpdatedAt`). GitHub moves a pull request’s
-  `updated_at` on a push, a review, a comment, and a change of state, base, or title, so
-  the newest is the stack’s latest change of any kind, and it is the time each row under
-  the heading tells its own age from: the heading’s age is the freshest of its rows’,
-  never older than one of them, and a closed stack still says how fresh it is.
-  The stacks’ snapshot holds no times, and a stack’s own endpoint would be one more read
-  to wait on. The age is the shell’s [age](#age), with its freshness ink, in the one
-  column every Pulls row’s age has ([Ages End the Row](#ages-end-the-row)). The count
-  comes with the stacks’ snapshot and the age with the list’s rows, which are what draws
-  the row, so the heading is whole in its first paint, has no pending state, and nothing
-  in it arrives later.
-  Where the pane is too narrow for the label, the size, and the age, the size goes
-  whole, as a change line does, and the label and the age stay.
-- **Stack order.** The stacks come in the order of their first pull request in the list,
-  so the list’s own order, newest first, still decides which comes first.
-  The pull requests in no stack follow the stacks, in the list’s order.
+  The age uses the most recent known update of any member, including members outside the
+  current filter. GitHub updates this time on pushes, reviews, comments, and changes to a
+  pull request’s state, base, or title.
+  The heading draws it in the same column and freshness ink as the pull request rows.
+  [Ages End the Row](#ages-end-the-row) Where the pane is too narrow for the label, the
+  size, and the age, the size goes whole, as a change line does, and the label and the
+  age stay.
+- **Order by activity.** Open, Closed, and All show the newest updates first.
+  Stacks use their most recent member update and share the same order as standalone pull
+  requests. When a stack ranks within the visible window, it can use a member from
+  further down the current filter to represent it.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
   in that order, and its place names the other.
   A later stack’s row’s accessible name still counts it among the pull requests the list

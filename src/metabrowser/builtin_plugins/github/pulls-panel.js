@@ -70,6 +70,7 @@ import {
   namedStackPositionNodes,
   stackCaption,
   stackLabel,
+  stackLeaders,
   stackMembership,
   stackPullsCount,
   stackRowKey,
@@ -257,6 +258,7 @@ const CHECKOUT_NOT_LISTED =
  *   count_at: string | null,
  *   limit: number,
  *   next_after: number | null,
+ *   position?: number | null,
  *   rows: Record<string, any>[],
  * }} PullsEnvelope
  */
@@ -304,10 +306,9 @@ const CHECKOUT_NOT_LISTED =
  */
 
 /**
- * The Pulls tab's rows grouped by stack, in their order: each stack's row, its pull
- * requests under it, and then every pull request in no stack. The tab always groups once
- * its stacks are known; `rows` is null while the list is flat, before then or with no
- * listed pull request in a stack. `version` changes whenever the rows do.
+ * The Pulls tab's newest-first rows, with each stack's members grouped beneath its heading.
+ * The tab groups once its stacks are known. `rows` is null while the list is flat,
+ * before then or when no listed PR belongs to a stack.
  *
  * @typedef {{
  *   rows: import("./pull-stacks.js").GroupedRow[] | null,
@@ -977,7 +978,7 @@ export function createPullsController(deps, options = {}) {
    * @type {{
    *   key: string, version: number,
    *   rows: import("./pull-stacks.js").GroupedRow[] | null, closed: import("./pull-stacks.js").StackGroupRow[],
-   *   keys: number[], at: Map<number, number>,
+   *   keys: number[], at: Map<number, number>, extra: Map<number, PullRow>,
    * } | null}
    */
   let grouped = null;
@@ -989,15 +990,27 @@ export function createPullsController(deps, options = {}) {
     const identity =
       envelope === null ? null : { source: envelope.source, reader: envelope.reader };
     const setSize = envelope?.total ?? Math.max(envelope?.fetched ?? 0, list.rows.length);
-    const key = JSON.stringify([filter, list.version, groupingInputs, identity, setSize]);
+    const partial = list.nextAfter !== null;
+    const key = JSON.stringify([filter, list.version, groupingInputs, identity, setSize, partial]);
     if (grouped?.key === key) {
       return grouped;
     }
-    const numbers = list.rows.map((row) => row.number);
+    /** @type {Map<number, PullRow>} */
+    const extra = new Map();
+    const through = list.rows.at(-1)?.updatedAt;
+    if (partial && through) {
+      for (const row of stackLeaders(stackIndex, identity, filter, through)) {
+        if (!list.keys.has(row.number)) {
+          extra.set(row.number, describeRow(row));
+        }
+      }
+    }
+    const numbers = [...list.rows.map((row) => row.number), ...extra.keys()];
     const answer = groupByStack(numbers, stackIndex, identity, {
       collapsed: closedStacks,
       setSize,
-      updatedAt: (number) => list.rows[list.keys.get(number) ?? -1]?.updatedAt ?? null,
+      updatedAt: (number) =>
+        (list.rows[list.keys.get(number) ?? -1] ?? extra.get(number))?.updatedAt ?? null,
     });
     // Stacks unknown, another reader's, or holding no listed pull request group nothing
     // (`groupByStack` places a row only by the list's own reader's membership).
@@ -1010,8 +1023,15 @@ export function createPullsController(deps, options = {}) {
       closed: (rows ?? []).flatMap((row) => (row.kind === "stack" && !row.expanded ? [row] : [])),
       keys,
       at: new Map(keys.map((row, index) => [row, index])),
+      extra,
     };
     return grouped;
+  }
+
+  /** @param {number} number */
+  function rowFor(number) {
+    const list = held();
+    return list.rows[list.keys.get(number) ?? -1] ?? grouping().extra.get(number);
   }
 
   /** The row of a closed stack that holds pull request *number*, or whose Whole stack row
@@ -1594,8 +1614,8 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     const rows = numbers.flatMap((number) => {
-      const index = list.keys.get(number);
-      return index === undefined ? [] : [list.rows[index]];
+      const row = rowFor(number);
+      return row === undefined ? [] : [row];
     });
     const key = JSON.stringify([list.content, rows.map((row) => [row.number, row.updatedAt])]);
     if (key === visibleCoreKey) {
@@ -1624,7 +1644,7 @@ export function createPullsController(deps, options = {}) {
     return describePulls(list.envelope, {
       stacks: { rows: order.rows, version: order.version },
       filter,
-      rows: list.rows,
+      rows: order.extra.size ? [...list.rows, ...order.extra.values()] : list.rows,
       rowsVersion: list.version,
       filterTotals,
       nowMs: deps.now(),
@@ -1899,7 +1919,7 @@ export function createPullsController(deps, options = {}) {
     if (placeSought(true)) {
       return;
     }
-    if (number !== null && held().keys.has(number)) {
+    if (number !== null && rowFor(number) !== undefined) {
       revealRow(number);
     } else {
       chaseCurrent();
@@ -2035,7 +2055,7 @@ export function createPullsController(deps, options = {}) {
       return false;
     }
     const list = held();
-    if (list.keys.has(sought) || list.envelope?.reason === "not_github") {
+    if (rowFor(sought) !== undefined || list.envelope?.reason === "not_github") {
       placing = false;
       return false;
     }
@@ -2065,15 +2085,9 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Ask the catalog where *sought* is: one indexed read of All from just above its number,
-   * whose first row is that pull request when the catalog holds it, and one of All's newest
-   * row. At most their difference of pull requests are newer than it, so All's drawn rows
-   * reach it when the difference is under All's display limit. Both are local, and run no
-   * gh. A number past the largest a pull request may have is refused from the first read:
-   * then the newest row says, since no pull request is newer, and the catalog lacks any
-   * other number the route refuses. A read that fails otherwise, or a number the catalog
-   * lacks while it is still being read from GitHub, leaves the place as it was, and the
-   * next poll asks again (`placeSought`).
+   * Ask the cache for the pull request and how many rows precede it in All. The server
+   * caps the indexed count at the requested depth. A missing row can be absent only
+   * once the catalog is complete, or when the route refuses the number.
    */
   async function readSought() {
     if (sought === null || soughtRead !== null) {
@@ -2083,33 +2097,25 @@ export function createPullsController(deps, options = {}) {
     const controller = new AbortController();
     soughtRead = controller;
     try {
-      const [at, top] = await Promise.all([
-        deps.request("GET", `${PULLS_ROUTE}?state=all&limit=1&after=${number + 1}`, {
-          signal: controller.signal,
-        }),
-        deps.request("GET", `${PULLS_ROUTE}?state=all&limit=1`, { signal: controller.signal }),
-      ]);
+      const limit = DISPLAY_ROWS;
+      const at = await deps.request("GET", `${PULLS_ROUTE}?state=all&limit=${limit}&at=${number}`, {
+        signal: controller.signal,
+      });
       if (disposed || controller.signal.aborted || sought !== number) {
         return;
       }
       const from = at.status === 200 && isEnvelope(at.body) ? at.body : null;
       const refused = at.status >= 400 && at.status < 500 && !pinChanged(at);
-      if (top.status !== 200 || !isEnvelope(top.body) || (from === null && !refused)) {
-        return;
-      }
-      const newest = top.body.rows[0];
-      const row = from === null ? newest : from.rows[0];
+      const row = from?.rows[0];
       if (row?.number === number) {
         soughtFound = {
           state: row.state === "open" ? "open" : "closed",
           reach:
-            Math.max(number, newest?.number ?? number) - number <
-            (lists.get("all")?.displayLimit ?? DISPLAY_ROWS),
+            lists.get("all")?.keys.has(number) === true ||
+            (typeof from?.position === "number" && from.position < limit),
         };
-      } else if (from === null || (from.complete && from.reason === null)) {
-        // The catalog as the read that lacked it saw it: the window and its envelope are read
-        // together, and the newest row's read may have seen a pull request read in since.
-        soughtFound = { state: "absent", mark: catalogMark(from ?? top.body) };
+      } else if (refused || (from?.complete && from.reason === null)) {
+        soughtFound = { state: "absent", mark: catalogMark(from ?? held().envelope) };
       } else {
         return;
       }
@@ -2146,16 +2152,14 @@ export function createPullsController(deps, options = {}) {
       (!placing || soughtFound.state === "absent") &&
       list.envelope !== null &&
       list.error === null &&
-      !list.keys.has(current)
+      rowFor(current) === undefined
     ) {
       const further = outsideText(current, true);
       if (soughtFound.state === "absent") {
         next = outsideText(current, false);
       } else if (
         (filter === "all" || filter === soughtFound.state) &&
-        // The rows are newest first, and *nextAfter* is where the next window starts.
         list.nextAfter !== null &&
-        current < list.nextAfter &&
         (list.rows.length >= list.displayLimit || outside === further)
       ) {
         next = further;
@@ -2177,18 +2181,19 @@ export function createPullsController(deps, options = {}) {
   function chaseCurrent() {
     const list = held();
     if (
-      !(filter === "all" || (current === sought && soughtFound?.state === filter)) ||
+      current !== sought ||
+      soughtFound === null ||
+      soughtFound.state === "absent" ||
+      !(filter === "all" || soughtFound.state === filter) ||
       current === null ||
-      list.keys.has(current) ||
+      rowFor(current) !== undefined ||
       list.nextAfter === null ||
       list.rows.length >= list.displayLimit
     ) {
       return;
     }
-    if (current < list.nextAfter) {
-      chasing = true;
-      void loadWindow();
-    }
+    chasing = true;
+    void loadWindow();
   }
 
   /**
@@ -2431,7 +2436,7 @@ export function createPullsController(deps, options = {}) {
     // A list's first rows reveal the current row, and so does any read that brings the row
     // of a pull request a navigation named before it has been revealed.
     const awaited = first || (revealPending && sought === current);
-    if (awaited && shown && current !== null && list.keys.has(current)) {
+    if (awaited && shown && current !== null && rowFor(current) !== undefined) {
       revealRow(current);
     }
     if (shown) {
@@ -2684,7 +2689,7 @@ export function createPullsController(deps, options = {}) {
               (number) => number !== undefined,
             );
           });
-    const listed = (/** @type {number} */ number) => list.keys.has(number);
+    const listed = (/** @type {number} */ number) => rowFor(number) !== undefined;
     deps.warmComparisons([
       ...new Set([
         ...(current === null ? [] : [current]),
@@ -2744,7 +2749,7 @@ export function createPullsController(deps, options = {}) {
     const top = pulls.slice(0, PREFETCH_TOP_ROWS);
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
-    const listed = (/** @type {number} */ number) => list.keys.has(number);
+    const listed = (/** @type {number} */ number) => rowFor(number) !== undefined;
     const own = [
       ...new Set([
         ...restedRows.filter(listed),
@@ -3041,6 +3046,9 @@ export function createPullsController(deps, options = {}) {
           list.rows.push(row);
         }
         if (fresh.length > 0) {
+          if (response.body.source !== null) {
+            noteListed(response.body.source, name, fresh, { append: true });
+          }
           list.version += 1;
         }
         // Cached pages only advance the rows and cursor. Keep the top window's metadata.
@@ -3074,7 +3082,7 @@ export function createPullsController(deps, options = {}) {
       render();
       // A chase, or a list filling its rows before a navigation's pull request is revealed.
       const waited = chasing || (revealPending && sought === current);
-      if (waited && current !== null && list.keys.has(current)) {
+      if (waited && current !== null && rowFor(current) !== undefined) {
         chasing = false;
         revealRow(current);
       }
@@ -3586,7 +3594,7 @@ export function createPullsController(deps, options = {}) {
         stopWarming();
         return;
       }
-      if (current !== null && held().keys.has(current)) {
+      if (current !== null && rowFor(current) !== undefined) {
         revealRow(current);
       }
       wake();

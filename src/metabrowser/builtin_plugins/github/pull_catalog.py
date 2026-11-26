@@ -64,8 +64,8 @@ from metabrowser.sqlite_access import (
 
 log = logging.getLogger(__name__)
 
-# The tables and index, as ``PRAGMA user_version``.
-CATALOG_SCHEMA = 1
+# Version 2 indexes the Pulls list by activity for all three filters.
+CATALOG_SCHEMA = 2
 # The checkpoint's own fields, as the ``schema_version`` CatalogState writes.
 CHECKPOINT_SCHEMA = 1
 # 2 added each row's head commit, which a cached record and file list are checked against.
@@ -121,7 +121,7 @@ _HEADS_READ_OPCODES: Final = 2_000_000
 
 # One exact disposable schema: no user triggers, views, or missing query indexes.
 # Initialization and admission share the same SQL so neither can drift independently.
-_SCHEMA = (
+_SCHEMA_V1 = (
     (
         "table",
         "checkpoint",
@@ -141,6 +141,21 @@ _SCHEMA = (
         "CREATE INDEX pulls_state_number ON pulls(state, number DESC)",
     ),
 )
+_ACTIVITY_INDEXES = (
+    (
+        "index",
+        "pulls_updated_number",
+        "pulls",
+        "CREATE INDEX pulls_updated_number ON pulls(updated_at DESC, number DESC)",
+    ),
+    (
+        "index",
+        "pulls_state_updated_number",
+        "pulls",
+        "CREATE INDEX pulls_state_updated_number ON pulls(state, updated_at DESC, number DESC)",
+    ),
+)
+_SCHEMA = _SCHEMA_V1[:2] + _ACTIVITY_INDEXES
 
 
 class CatalogUnusableError(ValueError):
@@ -400,7 +415,7 @@ def _declarations(db: sqlite3.Connection) -> tuple[object, object]:
     return version, value
 
 
-def _state(db: sqlite3.Connection) -> CatalogState | None:
+def _state(db: sqlite3.Connection, *, previous_schema: bool = False) -> CatalogState | None:
     """The checkpoint, or ``None`` for none, after admitting the exact schema.
 
     Raises :class:`NewerCatalogError` for a version past this release's,
@@ -419,9 +434,10 @@ def _state(db: sqlite3.Connection) -> CatalogState | None:
             raise
         why = _DAMAGED_VERSIONS if _damaged(exc) else f"its versions could not be read: {exc}"
         raise UnknownCatalogError(why) from exc
-    if version != CATALOG_SCHEMA:
+    supported = 1 if previous_schema else CATALOG_SCHEMA
+    if version != supported:
         raise CatalogUnusableError("unknown catalog schema")
-    if set(schema) != set(_SCHEMA):
+    if set(schema) != set(_SCHEMA_V1 if previous_schema else _SCHEMA):
         raise CatalogUnusableError("unsupported catalog schema")
     if value is None:
         return None
@@ -556,6 +572,28 @@ def read_catalog(home: Path, slug: str) -> CatalogState | None:
         return None
 
 
+def upgrade_catalog(repository: ListedRepository) -> None:
+    """Index an existing v1 cache in place before a refresh asks GitHub for data."""
+    with source_alias_lock(repository.home, repository.slug):
+        try:
+            with _database(repository.home, repository.slug, write=True) as db, db:
+                if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+                    return
+                db.execute("BEGIN IMMEDIATE")
+                _state(db, previous_schema=True)
+                db.execute("DROP INDEX pulls_state_number")
+                for entry in _ACTIVITY_INDEXES:
+                    db.execute(entry[3])
+                db.execute(f"PRAGMA user_version={CATALOG_SCHEMA}")
+        except (FileNotFoundError, CatalogUnusableError):
+            # The normal publication path initializes a missing or unusable cache.
+            return
+
+
+def _row_wire(row: PullListRow) -> dict[str, Any]:
+    return row.model_dump(mode="json") | {"merged": row.merged}
+
+
 def catalog_window(
     home: Path, slug: str, name: PullListName, *, limit: int, after: int | None = None
 ) -> tuple[CatalogState | None, list[dict[str, Any]], int | None]:
@@ -566,22 +604,60 @@ def catalog_window(
         with _database(home, slug) as db:
             db.execute("BEGIN")
             state = _state(db)
-            where = ["number < ?"] if after is not None else []
-            values: list[Any] = [after] if after is not None else []
-            if name != "all":
-                where.append("state = ?")
-                values.append(name)
-            clause = " WHERE " + " AND ".join(where) if where else ""
-            cursor = db.execute(
-                "SELECT body FROM pulls" + clause + " ORDER BY number DESC LIMIT ?",
-                [*values, limit + 1 if limit else 0],
+            scope = "state=? AND " if name != "all" else ""
+            scope_args = (name,) if scope else ()
+            select = "SELECT body FROM pulls WHERE " + scope
+            take = limit + 1 if limit else 0
+            found: list[tuple[str]] = []
+            boundary = None
+            if after is not None:
+                cursor = db.execute("SELECT updated_at FROM pulls WHERE number=?", (after,))
+                boundary = cursor.fetchone()
+                if boundary is None:
+                    return state, [], None
+                # A row-value inequality can walk the entire equal-timestamp range.
+                # Seek within it by number before seeking the older timestamps.
+                found = db.execute(
+                    select + "updated_at=? AND number<? ORDER BY number DESC LIMIT ?",
+                    (*scope_args, boundary[0], after, take),
+                ).fetchall()
+            found.extend(
+                db.execute(
+                    select
+                    + ("updated_at<?" if boundary is not None else "1")
+                    + " ORDER BY updated_at DESC, number DESC LIMIT ?",
+                    (*scope_args, *(boundary or ()), take - len(found)),
+                ).fetchall()
             )
-            result: list[PullListRow] = []
-            for row in cursor:
-                result.append(PullListRow.model_validate_json(row[0]))
-            rows = result[:limit]
-            wire = [row.model_dump(mode="json") | {"merged": row.merged} for row in rows]
-            return state, wire, rows[-1].number if len(result) > limit and rows else None
+            rows = [PullListRow.model_validate_json(body) for (body,) in found[:limit]]
+            wire = [_row_wire(row) for row in rows]
+            return state, wire, rows[-1].number if len(found) > limit and rows else None
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return None, [], None
+
+
+def catalog_position(
+    home: Path, slug: str, number: int, *, limit: int
+) -> tuple[CatalogState | None, list[dict[str, Any]], int | None]:
+    """Read an exact PR and its position in All, capped at the requested depth."""
+    if not 0 <= limit <= MAX_WINDOW:
+        raise ValueError("invalid catalog position limit")
+    try:
+        with _database(home, slug) as db:
+            db.execute("BEGIN")
+            state = _state(db)
+            found = db.execute(
+                "SELECT updated_at,body FROM pulls WHERE number=?", (number,)
+            ).fetchone()
+            if found is None:
+                return state, [], None
+            row = PullListRow.model_validate_json(found[1])
+            (position,) = db.execute(
+                "SELECT COUNT(*) FROM (SELECT 1 FROM pulls WHERE updated_at > ? "
+                "UNION ALL SELECT 1 FROM pulls WHERE updated_at = ? AND number > ? LIMIT ?)",
+                (found[0], found[0], number, limit),
+            ).fetchone()
+            return state, [_row_wire(row)], position
     except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
         return None, [], None
 
@@ -1005,9 +1081,11 @@ def _commit(
                 generations = dict(current.generations)
             minima = {
                 name: db.execute(
-                    "SELECT MIN(number) FROM pulls" + (" WHERE state=?" if name != "all" else ""),
+                    "SELECT updated_at,number FROM pulls"
+                    + (" WHERE state=?" if name != "all" else "")
+                    + " ORDER BY updated_at,number LIMIT 1",
                     (name,) if name != "all" else (),
-                ).fetchone()[0]
+                ).fetchone()
                 for name in PULL_LIST_NAMES
             }
             changed: set[PullListName] = set()
@@ -1024,7 +1102,8 @@ def _commit(
                 else:
                     counts["all"] += 1
                     for name in ("all", row.state):
-                        if not reset and (minima[name] is None or row.number > minima[name]):
+                        oldest = minima[name]
+                        if not reset and (oldest is None or (row.updated_at, row.number) > oldest):
                             changed.add(name)
                 counts[row.state] += 1
                 db.execute(

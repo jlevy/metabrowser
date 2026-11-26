@@ -16,7 +16,8 @@
 // accessible name.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
-/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[], labels: (string[] | null)[]}} NativeStack */
+/** @typedef {{number: number, updated_at: string} & Record<string, unknown>} StackLeader */
+/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[], labels: (string[] | null)[], updated_at?: string | null, leaders?: {open?: StackLeader, closed?: StackLeader}}} NativeStack */
 /** @typedef {{
  * state: "absent" | "current" | "stale", reason: string | null,
  * source: string | null, reader: string | null, fetched_at: string | null,
@@ -35,7 +36,7 @@
 /** @typedef {{
  * known: boolean, reason: string | null,
  * source: string | null, reader: string | null,
- * byPull: Map<number, NativeStack[]>, labels: Map<number, StackCaption>,
+ * stacks: NativeStack[], byPull: Map<number, NativeStack[]>, labels: Map<number, StackCaption>,
  * }} StackIndex */
 
 /** A stack's one name, wherever a surface names it. @param {number} number */
@@ -176,6 +177,7 @@ export function createStackIndex(envelope) {
     reason: envelope?.reason ?? null,
     source: envelope?.source ?? null,
     reader: envelope?.reader ?? null,
+    stacks: envelope?.stacks ?? [],
     byPull,
     labels,
   };
@@ -198,6 +200,31 @@ function sameIdentity(index, identity) {
  */
 export function stackMembership(index, identity, number) {
   return sameIdentity(index, identity) ? (index.byPull.get(number) ?? []) : [];
+}
+
+/** The PRs representing stacks ranked within a partial list window.
+ * @param {StackIndex} index @param {StackIdentity | null} identity
+ * @param {string} filter @param {string} through
+ * @returns {StackLeader[]}
+ */
+export function stackLeaders(index, identity, filter, through) {
+  if (!sameIdentity(index, identity)) {
+    return [];
+  }
+  return index.stacks.flatMap((stack) => {
+    if ((stack.updated_at ?? "") < through) {
+      return [];
+    }
+    const { open, closed } = stack.leaders ?? {};
+    if (filter !== "all") {
+      const lead = filter === "open" ? open : closed;
+      return lead === undefined ? [] : [lead];
+    }
+    if (open === undefined) {
+      return closed === undefined ? [] : [closed];
+    }
+    return [closed !== undefined && newerFirst(closed, open) < 0 ? closed : open];
+  });
 }
 
 /** A row's caption, precomputed for every row but one grouped under a stack other than its
@@ -265,12 +292,11 @@ export function wholeStackOfKey(key) {
  *
  * *numbers* are the list's pull requests in its own order. Each stack with a pull request
  * among them has a row, "Stack #N", open unless *collapsed* names it, and under it its
- * pull requests in the list, in `stackMenuOrder`. The stacks come in the order of their
- * first pull request in the list, so the list's own order still decides which comes
- * first; a tie, two stacks first listed at one shared member, keeps the envelope's order.
- * A pull request in more than one stack sits once, under the first of them in that order;
- * a stack whose listed pull requests all sit under earlier stacks has no row; their
- * places name it. Pull requests in no stack follow the stacks, in the list's order.
+ * pull requests in the list, in `stackMenuOrder`. Stacks and standalone pull requests
+ * share one newest-first order. Each stack's time is the latest update across its known
+ * members, including members outside the current filter. A shared pull request sits
+ * under its newest stack. A stack whose listed members all sit under earlier stacks
+ * has no row; their places name it.
  *
  * An open stack's rows under it, at one level, are its Whole stack row and its pull requests,
  * in `stackEntries`' order, the stack menu's: the Whole stack row, which opens the stack's own
@@ -280,9 +306,8 @@ export function wholeStackOfKey(key) {
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that
- * less the pull requests placed under stacks. *updatedAt* is when the list says a pull
- * request it holds was last updated, which a stack's heading tells the newest of
- * (`stackUpdatedAt`).
+ * less the pull requests placed under stacks. *updatedAt* supplies a listed PR's
+ * update time so an arriving list update can inform a stack before the next stack poll.
  *
  * @param {number[]} numbers
  * @param {StackIndex} index
@@ -296,23 +321,24 @@ export function wholeStackOfKey(key) {
 export function groupByStack(numbers, index, identity, options = {}) {
   const collapsed = options.collapsed ?? new Set();
   const listed = new Set(numbers);
-  /** @type {Map<number, NativeStack>} */
+  /** @type {Map<number, {stack: NativeStack, number: number, updated_at: string | null}>} */
   const order = new Map();
   for (const number of numbers) {
     for (const stack of stackMembership(index, identity, number)) {
       if (!order.has(stack.number)) {
-        order.set(stack.number, stack);
+        order.set(stack.number, {
+          stack,
+          number,
+          updated_at: stackUpdatedAt(stack, options.updatedAt),
+        });
       }
     }
   }
   /** The stack each placed pull request sits under. @type {Map<number, number>} */
   const placed = new Map();
-  /** @type {{stack: NativeStack, members: number[], listed: number, elsewhere: Map<number, number>}[]} */
-  const groups = [];
-  /** Each drawn stack's pull requests the list holds, under it or an earlier stack.
-   * @type {Map<number, number[]>} */
-  const listedOf = new Map();
-  for (const stack of order.values()) {
+  /** @type {Array<{row: StackGroupRow | PullGroupRow, number: number, updated_at: string | null}>} */
+  const top = [];
+  for (const { stack, number, updated_at } of [...order.values()].sort(newerFirst)) {
     const listedMembers = stackMenuOrder(stack).filter((number) => listed.has(number));
     const members = listedMembers.filter((number) => !placed.has(number));
     if (members.length === 0) {
@@ -330,33 +356,56 @@ export function groupByStack(numbers, index, identity, options = {}) {
     for (const number of members) {
       placed.set(number, stack.number);
     }
-    groups.push({ stack, members, listed: listedMembers.length, elsewhere });
-    listedOf.set(stack.number, listedMembers);
+    top.push({
+      number,
+      updated_at,
+      row: {
+        kind: "stack",
+        key: stackRowKey(stack.number),
+        stack,
+        label: stackLabel(stack.number),
+        hint: stackGroupHint(stack, listedMembers.length, elsewhere),
+        members,
+        expanded: !collapsed.has(stack.number),
+        level: 1,
+        posinset: 0,
+        setsize: 0,
+        shown: listedMembers.length,
+        elsewhere,
+        updatedAt: updated_at,
+      },
+    });
   }
-  const rest = numbers.filter((number) => !placed.has(number));
-  const firstLevel =
-    groups.length + Math.max(rest.length, (options.setSize ?? numbers.length) - placed.size);
+  const stackCount = top.length;
+  for (const number of numbers) {
+    if (!placed.has(number)) {
+      top.push({
+        number,
+        updated_at: options.updatedAt?.(number) ?? null,
+        row: {
+          kind: "pull",
+          key: number,
+          number,
+          level: 1,
+          stack: null,
+          posinset: 0,
+          setsize: 0,
+        },
+      });
+    }
+  }
+  const firstLevel = Math.max(
+    top.length,
+    (options.setSize ?? numbers.length) - placed.size + stackCount,
+  );
   /** @type {GroupedRow[]} */
   const rows = [];
-  for (const [at, { stack, members, listed: shown, elsewhere }] of groups.entries()) {
-    const expanded = !collapsed.has(stack.number);
-    rows.push({
-      kind: "stack",
-      key: stackRowKey(stack.number),
-      stack,
-      label: stackLabel(stack.number),
-      hint: stackGroupHint(stack, shown, elsewhere),
-      members,
-      expanded,
-      level: 1,
-      posinset: at + 1,
-      setsize: firstLevel,
-      // What its accessible name counts.
-      shown,
-      elsewhere,
-      updatedAt: stackUpdatedAt(listedOf.get(stack.number) ?? [], options.updatedAt),
-    });
-    if (expanded) {
+  for (const [at, { row }] of top.sort(newerFirst).entries()) {
+    row.posinset = at + 1;
+    row.setsize = firstLevel;
+    rows.push(row);
+    if (row.kind === "stack" && row.expanded) {
+      const { stack, members } = row;
       const entries = stackEntries(members);
       for (const [place, number] of entries.entries()) {
         rows.push(
@@ -382,18 +431,7 @@ export function groupByStack(numbers, index, identity, options = {}) {
       }
     }
   }
-  for (const [at, number] of rest.entries()) {
-    rows.push({
-      kind: "pull",
-      key: number,
-      number,
-      level: 1,
-      stack: null,
-      posinset: groups.length + at + 1,
-      setsize: firstLevel,
-    });
-  }
-  return { stacks: groups.length, placed: placed.size, rows };
+  return { stacks: stackCount, placed: placed.size, rows };
 }
 
 /** How many pull requests a stack has: the count its Pulls heading shows, "Stack #286 · 4
@@ -405,30 +443,27 @@ export function stackPullsCount(stack) {
   return stack.pulls.length;
 }
 
-/**
- * The time a stack's heading tells the age of: the newest `updated_at` of its pull requests
- * the list holds, or null where it has none. GitHub moves a pull request's `updated_at` on a
- * push, a review, a comment, and a change of state, base, or title, so the newest of them is
- * the stack's most recent change of any kind, and it is the time each row under the heading
- * tells its own age from: the heading's age is the freshest of its rows', never older than
- * one of them. The stack snapshot holds no times, and the list's rows are read already, so
- * the heading waits on nothing. A member the list does not hold, a merged one in the Open
- * list, has no time here, as it has no row.
- *
- * @param {number[]} listed The stack's pull requests the list holds.
+/** By GitHub's UTC update timestamps, then descending PR number for ties.
+ * @param {{updated_at: string | null, number: number}} left
+ * @param {{updated_at: string | null, number: number}} right
+ */
+function newerFirst(left, right) {
+  const a = left.updated_at ?? "";
+  const b = right.updated_at ?? "";
+  return a === b ? right.number - left.number : a > b ? -1 : 1;
+}
+
+/** The freshest update the stack snapshot or the current list knows for any member.
+ * @param {NativeStack} stack
  * @param {((number: number) => string | null) | undefined} updatedAt
  * @returns {string | null}
  */
-export function stackUpdatedAt(listed, updatedAt) {
-  /** @type {string | null} */
-  let newest = null;
-  let newestAt = Number.NEGATIVE_INFINITY;
-  for (const number of listed) {
-    const said = updatedAt?.(number) ?? null;
-    const at = said === null ? Number.NaN : Date.parse(said);
-    if (at > newestAt) {
+function stackUpdatedAt(stack, updatedAt) {
+  let newest = stack.updated_at ?? null;
+  for (const number of stack.pulls) {
+    const said = updatedAt?.(number) ?? "";
+    if (said > (newest ?? "")) {
       newest = said;
-      newestAt = at;
     }
   }
   return newest;

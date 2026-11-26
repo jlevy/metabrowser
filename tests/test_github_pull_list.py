@@ -230,6 +230,82 @@ def test_closed_rows_page_through_every_old_cap_in_bounded_windows(
     assert rest["next_after"] == closed[1999]
 
 
+def test_activity_orders_all_filters_and_keeps_numeric_cursors_stable_across_ties(
+    repository: ListedRepository,
+) -> None:
+    def item(number: int, minute: int, state: str = "open") -> dict[str, Any]:
+        updated = utc_stamp(FETCHED_AT + timedelta(minutes=minute))
+        return generated_item(number) | {
+            "updated_at": updated,
+            "state": state,
+            "closed_at": updated if state == "closed" else None,
+        }
+
+    state = _seed(
+        repository,
+        [item(90, 1), item(5, 3), item(4, 3), item(89, 2, "closed"), item(2, 4, "closed")],
+    )
+    view = ListView(repository, None, False)
+    for name, expected in (("all", [2, 5, 4, 89, 90]), ("open", [5, 4, 90]), ("closed", [2, 89])):
+        after = None
+        numbers: list[int] = []
+        while True:
+            envelope = pull_list_envelope(
+                view,
+                list_window(
+                    {
+                        "state": name,
+                        "limit": "1",
+                        **({"after": str(after)} if after is not None else {}),
+                    }
+                ),
+            )
+            numbers.extend(row["number"] for row in envelope["rows"])
+            after = envelope["next_after"]
+            if after is None:
+                break
+        assert numbers == expected
+
+    def seek(limit: int) -> int | None:
+        window = list_window({"state": "all", "at": "89", "limit": str(limit)})
+        envelope = pull_list_envelope(view, window)
+        assert [row["number"] for row in envelope["rows"]] == [89]
+        return envelope.get("position")
+
+    assert seek(5) == 3
+    assert seek(2) == 2
+    assert publish_page(repository, state, state, (_row(item(90, 5))[0],))
+    first = pull_list_envelope(view, ListWindow("open", 1))
+    assert [row["number"] for row in first["rows"]] == [90]
+    assert first["generation"] != state.generation("open")
+    updated = read_catalog(repository.home, repository.slug)
+    assert updated is not None
+    assert publish_page(repository, updated, updated, (_row(item(1, 6))[0],))
+    first = pull_list_envelope(view, ListWindow("all", 1))
+    assert [row["number"] for row in first["rows"]] == [1]
+    assert first["generation"] != updated.generation("all")
+
+
+def test_activity_indexes_upgrade_the_v1_catalog_without_reloading_rows(
+    repository: ListedRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [generated_item(20), generated_item(1) | {"updated_at": STAMP}]
+    initial = _seed(repository, items)
+    with sqlite3.connect(_path(repository)) as db:
+        db.execute("DROP INDEX pulls_updated_number")
+        db.execute("DROP INDEX pulls_state_updated_number")
+        db.execute("CREATE INDEX pulls_state_number ON pulls(state, number DESC)")
+        db.execute("PRAGMA user_version=1")
+
+    calls = _provider(monkeypatch, items)
+    assert asyncio.run(refresh_pull_list(repository, "all")) == initial
+    assert calls == []
+    state, rows, _ = catalog_window(repository.home, repository.slug, "all", limit=2)
+    assert state == initial
+    assert [row["number"] for row in rows] == [1, 20]
+
+
 def test_backfill_past_the_prefix_pauses_below_the_budget_floor_and_resumes(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -750,7 +826,10 @@ def test_empty_initialization_recovers_but_future_schema_refuses_explicitly(
     with pytest.raises(PullDataError, match="newer Metabrowser") as caught:
         asyncio.run(refresh_pull_list(repository, "all", retry=True))
     assert caught.value.state == "newer_cache"
-    assert "catalog schema 999, where this release reads up to 1" in str(caught.value)
+    assert (
+        f"catalog schema 999, where this release reads up to {pull_catalog.CATALOG_SCHEMA}"
+        in str(caught.value)
+    )
     assert _path(repository).read_bytes() == before
     assert calls == []
 
@@ -1855,10 +1934,12 @@ def test_page_publication_cas_and_counts_do_not_walk_the_catalog(
     assert not any("COUNT(" in query.upper() for query in queries)
     with original(_path(repository)) as db:
         plans = db.execute(
-            "EXPLAIN QUERY PLAN SELECT body FROM pulls WHERE state=? AND number<? ORDER BY number DESC LIMIT 100",
-            ("open", 1000),
+            "EXPLAIN QUERY PLAN SELECT body FROM pulls "
+            "WHERE state=? AND updated_at=? AND number<? ORDER BY number DESC LIMIT 100",
+            ("open", STAMP, 1000),
         ).fetchall()
-    assert any("SEARCH pulls USING INDEX pulls_state_number" in plan[3] for plan in plans)
+    assert any("SEARCH pulls USING INDEX pulls_state_updated_number" in plan[3] for plan in plans)
+    assert any("AND number<?" in plan[3] for plan in plans)
 
 
 def test_hostile_bounded_rows_round_trip_without_dropped_rows(repository: ListedRepository) -> None:
@@ -2111,7 +2192,7 @@ def test_cancelled_stamp_waiter_cannot_publish_after_lock_release(
     "alter",
     [
         "CREATE TRIGGER unexpected AFTER INSERT ON pulls BEGIN DELETE FROM pulls WHERE number <> NEW.number; END",
-        "DROP INDEX pulls_state_number",
+        "DROP INDEX pulls_state_updated_number",
         "CREATE VIEW unexpected AS SELECT number FROM pulls",
         "CREATE TABLE unexpected(value TEXT)",
     ],
@@ -2132,7 +2213,8 @@ def test_incompatible_sqlite_schema_is_refused_by_reads_and_replaced_by_a_write(
         assert set(db.execute("SELECT type,name FROM sqlite_schema")) == {
             ("table", "checkpoint"),
             ("table", "pulls"),
-            ("index", "pulls_state_number"),
+            ("index", "pulls_state_updated_number"),
+            ("index", "pulls_updated_number"),
         }
         assert db.execute("SELECT count(*) FROM pulls").fetchone() == (0,)
     assert read_catalog(repository.home, repository.slug) is None
@@ -2192,7 +2274,7 @@ def test_each_catalog_shape_is_pinned_to_the_version_that_names_it() -> None:
         ),
         "rows, CATALOG_PROJECTION": (CATALOG_PROJECTION, _shape(PullListRow.model_json_schema())),
     } == {
-        "tables, CATALOG_SCHEMA": (1, "5f1b61292a43cde0"),
+        "tables, CATALOG_SCHEMA": (2, "af625b8c16761ee0"),
         "checkpoint, CHECKPOINT_SCHEMA": (1, "e74f6ea5853f5c34"),
         "rows, CATALOG_PROJECTION": (2, "327ef662914d936d"),
     }

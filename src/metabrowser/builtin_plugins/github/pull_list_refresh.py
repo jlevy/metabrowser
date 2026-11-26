@@ -51,6 +51,7 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     failure_line,
     publish_page,
     read_catalog,
+    upgrade_catalog,
 )
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_ROW_LABEL_BYTES,
@@ -348,8 +349,14 @@ async def _publish(
     proposed: CatalogState,
     rows: tuple[PullListRow, ...],
 ) -> bool:
+    return await _write_catalog(
+        repository, partial(publish_page, repository, previous, proposed, rows)
+    )
+
+
+async def _write_catalog[T](repository: ListedRepository, write: Callable[[], T]) -> T:
     try:
-        return await run_lock_section(partial(publish_page, repository, previous, proposed, rows))
+        return await run_lock_section(write)
     except NewerCatalogError as exc:
         raise newer_cache(
             _LIST, str(exc), source=repository.source, checkout=repository.checkout
@@ -422,6 +429,7 @@ async def refresh_pull_list(
         repository = await claim_source(repository)
         source_claimed = True
         await _stop_at_kept_catalog(repository)
+        await _write_catalog(repository, partial(upgrade_catalog, repository))
         login = await active_account()
         reader = f"gh:{login}"
         restarted: set[str] = set()
