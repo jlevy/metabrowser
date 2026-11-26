@@ -1477,7 +1477,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 3,
+  "cleared": 4,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
