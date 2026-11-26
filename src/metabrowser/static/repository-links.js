@@ -605,6 +605,13 @@
    * @type {WeakMap<Element, {resolved: RepositoryLinkTarget, mb: Pick<MetabrowserPublicSdk, "navigation">, open: ((route: RouteTarget) => boolean) | undefined}>}
    */
   const opens = new WeakMap();
+  /**
+   * Each link `enhance` has given its one click listener, kept apart from `opens`, which a
+   * link loses while it goes outside, so a link that comes back in-app is not given another.
+   *
+   * @type {WeakSet<Element>}
+   */
+  const listening = new WeakSet();
 
   /**
    * Make every link of *root*, an inert text already reduced to the allowlist, open what
@@ -679,9 +686,9 @@
         // attribute of its own, cannot have set.
         anchor.setAttribute("data-tip-text", WORKING_TREE_TITLE);
       }
-      const listening = opens.has(anchor);
       opens.set(anchor, { resolved, mb, open: options.open });
-      if (!listening) {
+      if (!listening.has(anchor)) {
+        listening.add(anchor);
         anchor.addEventListener("click", (event) => openOnPlainClick(anchor, event));
       }
     }

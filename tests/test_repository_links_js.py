@@ -179,6 +179,8 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
             in_app = "data-metabrowser-github-localization" in attributes
             assert ("target" in attributes) is not in_app, (name, link)
             assert not run["clicks"][link]["withMeta"], (name, link)
+            # One click handler a link, however many times its text is read.
+            assert run["clicks"][link]["listeners"] == (1 if in_app else 0), (name, link)
         opened = [f"/view/{target['path']}" for target in run["opened"]]
         followed = [
             attributes["href"]

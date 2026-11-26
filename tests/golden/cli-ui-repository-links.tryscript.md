@@ -58,11 +58,11 @@ target opens it through `metabrowser.navigation.open`, a pull request’s page o
 another in place through the page’s own router, and every other click is the browser’s.
 A text read again once the page knows the files its pull request changes reads each link
 as the text wrote it, which the first pass kept, and moves the link’s one click handler
-to the new answer.
-A commit’s message has no text context, so its path-relative reference
-stays as written.
-`tests/test_repository_links_js.py` holds these answers to the server’s
-own reading of the same URLs.
+to the new answer, so each in-app link has one listener (`listeners`), even one that
+goes outside while its head moves past its files and comes back when the new files
+arrive. A commit’s message has no text context, so its path-relative reference stays as
+written. `tests/test_repository_links_js.py` holds these answers to the server’s own
+reading of the same URLs.
 
 ```console
 $ node tests/dom/repository-links-session.js
@@ -831,19 +831,23 @@ $ node tests/dom/repository-links-session.js
       "clicks": {
         "file": {
           "plain": true,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "pull": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "commit": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "other": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         }
       },
       "opened": [
@@ -883,19 +887,23 @@ $ node tests/dom/repository-links-session.js
       "clicks": {
         "file": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         },
         "pull": {
           "plain": true,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "commit": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "other": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         }
       },
       "opened": [],
@@ -933,19 +941,79 @@ $ node tests/dom/repository-links-session.js
       "clicks": {
         "file": {
           "plain": true,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "pull": {
           "plain": true,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "commit": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "other": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
+        }
+      },
+      "opened": [],
+      "routed": [
+        "/pull/7/files/docs/new.md {\"number\":7,\"tab\":\"files\",\"file\":\"docs/new.md\",\"stack\":false}",
+        "/pull/12/files {\"number\":12,\"tab\":\"files\",\"file\":\"\",\"stack\":false}"
+      ]
+    },
+    "a text whose head moves past its files, and whose new files then arrive": {
+      "changed": [
+        3,
+        3,
+        3
+      ],
+      "anchors": {
+        "file": {
+          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/docs/new.md",
+          "data-metabrowser-github-localization": "pull",
+          "href": "/pull/7/files/docs/new.md"
+        },
+        "pull": {
+          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/12/files",
+          "data-metabrowser-github-localization": "pull",
+          "href": "/pull/12/files"
+        },
+        "commit": {
+          "data-metabrowser-authored-href": "https://github.com/example/docs/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "data-metabrowser-github-localization": "commit",
+          "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "other": {
+          "href": "https://example.com/",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        }
+      },
+      "clicks": {
+        "file": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "pull": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "commit": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "other": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
         }
       },
       "opened": [],
@@ -983,19 +1051,23 @@ $ node tests/dom/repository-links-session.js
       "clicks": {
         "file": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         },
         "pull": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "commit": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 1
         },
         "other": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         }
       },
       "opened": [],
@@ -1030,19 +1102,23 @@ $ node tests/dom/repository-links-session.js
       "clicks": {
         "file": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         },
         "pull": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         },
         "commit": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         },
         "other": {
           "plain": false,
-          "withMeta": false
+          "withMeta": false,
+          "listeners": 0
         }
       },
       "opened": [],

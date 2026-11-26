@@ -263,6 +263,7 @@ function anchor(href, attributes = {}) {
     removeAttribute: (key) => values.delete(key),
     addEventListener: (type, listener) => listeners.push({ type, listener }),
     attributes: () => Object.fromEntries([...values].sort(([a], [b]) => a.localeCompare(b))),
+    listeners: () => listeners.filter(({ type }) => type === "click").length,
     click(modifiers = {}) {
       const event = {
         altKey: false,
@@ -316,13 +317,18 @@ function enhanced(context, sourceKind, options) {
         route.pull !== null && routed.push(`${route.href} ${JSON.stringify(route.pull)}`) > 0
     : undefined;
   const changed = [links.enhance(root, mb, { text: options.text, open })];
-  if (options.later) {
-    // The same text, read again once the page knows the files its pull request changes.
-    changed.push(links.enhance(root, mb, { text: options.later, open }));
+  // The same text, read again as the page learns more: the files its pull request changes,
+  // or a head that moved past them.
+  for (const text of options.later ?? []) {
+    changed.push(links.enhance(root, mb, { text, open }));
   }
   const clicks = {};
   for (const [name, link] of Object.entries(anchors)) {
-    clicks[name] = { plain: link.click(), withMeta: link.click({ metaKey: true }) };
+    clicks[name] = {
+      plain: link.click(),
+      withMeta: link.click({ metaKey: true }),
+      listeners: link.listeners(),
+    };
   }
   return {
     changed,
@@ -371,10 +377,30 @@ console.log(
           "git_revision",
           {
             text: { head: OTHER },
-            later: {
+            later: [
+              {
+                head: OTHER,
+                changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+              },
+            ],
+            routes: true,
+          },
+        ),
+        "a text whose head moves past its files, and whose new files then arrive": enhanced(
+          contexts["text away from its head"].context,
+          "git_revision",
+          {
+            text: {
               head: OTHER,
               changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
             },
+            later: [
+              { head: PINNED.replace(/c/g, "d") },
+              {
+                head: PINNED.replace(/c/g, "d"),
+                changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+              },
+            ],
             routes: true,
           },
         ),
