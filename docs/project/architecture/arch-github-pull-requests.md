@@ -1158,13 +1158,17 @@ draws a comment, its title and note prose in a KPress article, as a description 
 each excerpt is drawn by the diff plugin’s own renderer (`mountFilePatch`, which the
 page loads with `plugins.load("diff")`; `renderReference` in `guided-review.js`), so its
 hunk bars, folds, type, row height, gutter, and change fills are Changes’.
-A range is one hunk in the diff model’s shape (`_rows_hunk` in `guided_review.py`), and
-a path alone is its file’s whole patch, within the step’s budget for whole files; a file
-past it, or past what the diff source reads in one run, is answered `patch_too_large`. A
-path alone of a file the rendered route renders, by that route’s own rule on both sides
-of the change (`rendered_format` in `pull_rendered_diff.py`: Markdown, YAML, JSON), is a
-document instead: the guided route answers its format as `rendered`, reads no patch for
-it, gives it no hunks, and charges it nothing against the step’s budget for whole files
+Each card the guide draws for a file folds by the diff view’s own bar and chevron, which
+the guide’s drawer hands over (`disclose` on `guidePatchDrawer`, the diff view’s
+`fileDisclosure`), so the guide builds no bar of its own
+([Diff File Bar](../../design-system.md#diff-file-bar)). A range is one hunk in the diff
+model’s shape (`_rows_hunk` in `guided_review.py`), and a path alone is its file’s whole
+patch, within the step’s budget for whole files; a file past it, or past what the diff
+source reads in one run, is answered `patch_too_large`. A path alone of a file the
+rendered route renders, by that route’s own rule on both sides of the change
+(`rendered_format` in `pull_rendered_diff.py`: Markdown, YAML, JSON), is a document
+instead: the guided route answers its format as `rendered`, reads no patch for it, gives
+it no hunks, and charges it nothing against the step’s budget for whole files
 (`_step_references` in `guided_review.py`), so a large document is bounded only by the
 rendered route’s own bounds.
 The page draws it (`referenceDrawing` in `guided-review.js`) with the diff plugin’s own

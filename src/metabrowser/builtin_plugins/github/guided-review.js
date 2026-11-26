@@ -43,7 +43,8 @@ import { stackMemberRow } from "./stack-member-row.js";
  * @typedef {{dispose: () => void, show?: (mode: Presentation) => void}} GuidedDrawing
  * @typedef {((body: HTMLElement, change: Record<string, unknown>,
  *   patch: {hunks: Hunk[], truncated: boolean}, fullFile?: FullFile | null) => GuidedDrawing) & {
- *   disclose?: (section: HTMLElement, bar: HTMLElement, toggle: HTMLElement, body: HTMLElement) => void,
+ *   disclose?: (section: HTMLElement, folded: HTMLElement,
+ *     changed?: (expanded: boolean) => void) => DiffFileDisclosure,
  *   controls?: (host: HTMLElement, full: boolean, initial: Presentation | null,
  *     choose: (mode: Presentation) => void) => GuidedDrawing
  * }} DrawPatch
@@ -81,6 +82,8 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   file in its Changes (`mountGuidedReview`'s deps); *subject* is what the guide's own
  *   files are the changes of.
  * @typedef {{patch: DrawPatch | null, document: DrawDocument | null, pins: Pins}} Drawers
+ * @typedef {{folded: boolean, heard: (expanded: boolean) => void}} Fold Whether the reader
+ *   left a card folded, and what hears them fold or open it (`folds` in guide-reads.js).
  *   What draws a step's references, each null when the diff plugin did not load, and the
  *   comparison the step was read at.
  * @typedef {{drawn: GuidedDrawing[], waits: Promise<unknown>[]}} Drawing What a
@@ -728,19 +731,26 @@ function referenceLink(reference, open) {
 }
 
 /**
+ * The bar of a card the guide draws itself. It is the diff view's own (`fileDisclosure`,
+ * which the drawer hands over as `disclose`): its chevron leads the name and folds *body*
+ * as a file's does in Changes (docs/design-system.md, "Diff File Bar"), and the guide only
+ * names the file in its trigger and puts its link on it. Open full diff is a control that
+ * views the file (`.diff-file-view`), so a press on it is the link's. A card starts open,
+ * and one the reader folded is drawn folded when its step is drawn again (*fold*). Without
+ * the diff plugin there is no builder, and the bar only names the file.
+ *
  * @param {Reference} reference @param {() => void} open
  * @param {HTMLElement} section @param {HTMLElement} body @param {DrawPatch | null} patch
+ * @param {Fold} fold
  */
-function referenceBar(reference, open, section, body, patch) {
-  const bar = element(
-    "div",
-    "",
-    "diff-file-bar github-pull-guide-reference-header disclosure-toggle",
-  );
-  const name = element(patch?.disclose ? "button" : "span", "", "diff-file-toggle");
-  if (patch?.disclose) {
-    name.setAttribute("type", "button");
+function referenceBar(reference, open, section, body, patch, fold) {
+  const disclosure = patch?.disclose?.(section, body, fold.heard) ?? null;
+  if (fold.folded) {
+    disclosure?.setExpanded(false);
   }
+  const bar = disclosure?.bar ?? element("div", "", "diff-file-bar");
+  bar.classList.add("github-pull-guide-reference-header");
+  const name = disclosure?.toggle ?? element("span", "", "diff-file-toggle");
   if (reference.kind === "pull_file") {
     name.append(element("span", `#${reference.pull}`, "github-pull-guide-reference-pull"));
   }
@@ -757,7 +767,6 @@ function referenceBar(reference, open, section, body, patch) {
   if (full !== null) {
     bar.append(full);
   }
-  patch?.disclose?.(section, bar, name, body);
   return bar;
 }
 
@@ -776,9 +785,9 @@ function referenceBar(reference, open, section, body, patch) {
  * @param {Reference} reference @param {Rendered | null} format @param {HTMLElement | null} note
  * @param {() => void} open
  * @param {DrawDocument} drawDocument @param {Pins | PullComparison} pins
- * @param {Drawing} drawing @param {DrawPatch | null} patch
+ * @param {Drawing} drawing @param {DrawPatch | null} patch @param {Fold} fold
  */
-function renderDocument(reference, format, note, open, drawDocument, pins, drawing, patch) {
+function renderDocument(reference, format, note, open, drawDocument, pins, drawing, patch, fold) {
   const path = reference.path ?? "";
   const section = element("section", "", "github-pull-guide-reference github-pull-guide-document");
   const body = element("div", "", "github-pull-guide-document-body");
@@ -789,7 +798,7 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawi
     view.settled.then((drawnFile) => {
       if (!drawnFile) {
         section.classList.add("diff-file");
-        section.prepend(referenceBar(reference, open, section, body, patch));
+        section.prepend(referenceBar(reference, open, section, body, patch, fold));
       } else {
         const bar = body.querySelector(".diff-file-bar");
         const full = referenceLink(reference, open);
@@ -814,8 +823,9 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawi
  * @param {Change} change Whether the file changed after the guide was written.
  * @param {Drawers} drawers What draws the reference.
  * @param {Drawing} drawing Where each drawn view is kept, and what the step waits for.
+ * @param {Fold} fold Whether the reader left this card folded, and what hears a change.
  */
-function renderReference(reference, ways, change, drawers, drawing) {
+function renderReference(reference, ways, change, drawers, drawing, fold) {
   const how = referenceDrawing(reference, drawers);
   if (how === "row") {
     return reference.kind === "pull" ? pullRow(reference, ways) : commitRow(reference, ways);
@@ -845,11 +855,12 @@ function renderReference(reference, ways, change, drawers, drawing) {
       pins,
       drawing,
       drawers.patch,
+      fold,
     );
   }
   const section = element("section", "", "diff-file github-pull-guide-reference");
   const content = element("div", "", "diff-file-body");
-  section.append(referenceBar(reference, open, section, content, drawers.patch), content);
+  section.append(referenceBar(reference, open, section, content, drawers.patch, fold), content);
   if (changed !== null) {
     content.append(changed);
   }
@@ -1449,10 +1460,17 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
     /** @type {Drawers} */
     const by = { patch: drawPatch, document: drawDocument, pins: answered.comparison };
+    // A file the reader folded stays folded while this guide is read at this head, by its
+    // step, its place in the step, and its path (mb-ez0x).
+    const folds = guideReads.folds(asks, answered.comparison.head);
     references.append(
-      ...answered.references.map((reference) =>
-        renderReference(reference, ways, changeOf(stale, reference), by, stage),
-      ),
+      ...answered.references.map((reference, index) => {
+        const key = `${answered.step}\n${index}\n${reference.path ?? ""}`;
+        return renderReference(reference, ways, changeOf(stale, reference), by, stage, {
+          folded: folds.has(key),
+          heard: (expanded) => folds.set(key, !expanded),
+        });
+      }),
     );
     const kinds = answered.references.map((reference) => referenceDrawing(reference, by));
     const canShowFull =

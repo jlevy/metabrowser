@@ -269,6 +269,15 @@ own.
 A stack’s guide, as the stack’s page mounts it, has no introduction and no overview:
 it opens on its first step, asks the route by `stack=`, goes no further back, and says
 of the stack what a pull request’s guide says of the pull request.
+A step’s file is a card that folds as a file’s does in Changes, by the diff plugin’s own
+bar and chevron, which the guide’s drawer hands the card: it starts open, a press on its
+bar or its trigger folds it and opens it, and folding keeps the rows the diff drew.
+A card that holds a sentence in a diff’s place is built on the same bar and folds too.
+A file the reader folds stays folded for the document, as the step answers are kept: the
+guide mounted again on its tab draws it folded, and so does a step left and come back
+to, and one opened again stays open.
+The folds are a guide’s at one head, so the same guide read at a new head, whose files
+may differ, starts with none.
 
 ```console
 $ node tests/dom/github-guided-review-mount-behavior.js
@@ -286,10 +295,13 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "step 1: Step 1; rows context one, del <i>two</i>, add three",
   "a path outside the comparison says: This path is not in the comparison.",
   "Open full diff: files src/app.txt",
+  "step 1's file: open; its bar pressed: folded, 3 rows kept; its trigger pressed: open; a card with no diff, its bar pressed: folded",
   "Next with step 2 on its way: step shown Step 1",
   "left for Conversation with step 2 on its way: read aborted false; guide gone",
   "its tab again: Overview; asked nothing",
   "and its kept steps at once: step shown Step 2; asked nothing",
+  "step 1's file, left folded: back on the tab folded; after Next and Back folded; opened, then Next and Back open",
+  "a fold kept for a guide at its head: the same head true, another guide false, a new head false, the first head again false",
   "opened on its tab: asked step 1",
   "a newer record arrives with the read on its way: old read aborted false; asked step 1, step 1",
   "the new read's answer: Overview",
