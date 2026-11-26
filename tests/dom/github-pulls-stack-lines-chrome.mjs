@@ -78,11 +78,27 @@ const rowsOf = (rows) =>
   Array.isArray(rows)
     ? rows.map((row) => JSON.parse(row))
     : [rows.same_as].flat().flatMap((holder) => rowsOf(lists[holder].body.rows));
+const stacks = JSON.parse(
+  fs.readFileSync(path.join(root, "tests/fixtures/github-stacks-responses.json"), "utf8"),
+).shared.body;
+// Both stacks need to fit the viewport for the geometry checks across pane widths.
+const members = new Set(stacks.stacks.flatMap((stack) => stack.pulls));
+const rows = [...rowsOf(lists.current.body.rows), ...rowsOf(lists.more_window.body.rows)].filter(
+  (row) => members.has(row.number),
+);
+const open = rows.filter((row) => row.state === "open").length;
 const ANSWERS = {
-  list: { ...lists.current.body, rows: rowsOf(lists.current.body.rows) },
-  stacks: JSON.parse(
-    fs.readFileSync(path.join(root, "tests/fixtures/github-stacks-responses.json"), "utf8"),
-  ).shared.body,
+  list: {
+    ...lists.current.body,
+    rows,
+    total: rows.length,
+    repository_total: rows.length,
+    catalog_fetched: rows.length,
+    fetched: rows.length,
+    filter_totals: { all: rows.length, open, closed: rows.length - open },
+    next_after: null,
+  },
+  stacks,
   changes: JSON.parse(
     fs.readFileSync(path.join(root, "tests/fixtures/github-stack-change-responses.json"), "utf8"),
   ),

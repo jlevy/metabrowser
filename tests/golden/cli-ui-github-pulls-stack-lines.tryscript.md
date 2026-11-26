@@ -551,7 +551,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             "heading": {
               "text": "Stack #286 · 3 pulls",
               "age": "1m",
-              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+              "name": "Stack #286, 3 pull requests, 1 under Stack #290 · 1m"
             },
             "text": "",
             "change": [],
@@ -587,7 +587,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             "heading": {
               "text": "Stack #286 · 3 pulls",
               "age": "1m",
-              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+              "name": "Stack #286, 3 pull requests, 1 under Stack #290 · 1m"
             },
             "text": "",
             "change": [],
@@ -615,7 +615,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             "heading": {
               "text": "Stack #286 · 3 pulls",
               "age": "1m",
-              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+              "name": "Stack #286, 3 pull requests, 1 under Stack #290 · 1m"
             },
             "text": "",
             "change": [
@@ -653,7 +653,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             "heading": {
               "text": "Stack #286 · 3 pulls",
               "age": "1m",
-              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+              "name": "Stack #286, 3 pull requests, 1 under Stack #290 · 1m"
             },
             "text": "·+5",
             "change": [
@@ -693,7 +693,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             "heading": {
               "text": "Stack #286 · 3 pulls",
               "age": "1m",
-              "name": "Stack #286, 3 pull requests, 2 in this list, 1 under Stack #290 · 1m"
+              "name": "Stack #286, 3 pull requests, 1 under Stack #290 · 1m"
             },
             "text": "·+5(estimated)",
             "change": [

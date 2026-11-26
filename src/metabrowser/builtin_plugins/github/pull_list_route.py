@@ -14,16 +14,18 @@ as before probes (:func:`refresh_wanted`).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
+import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from time import monotonic
-from typing import Any, Final, Literal, TypedDict
+from typing import Any, Final, Literal, NotRequired, TypedDict
 from weakref import WeakKeyDictionary
 
 from metabrowser.builtin_plugins.github import gh_budget, pull_list
@@ -32,9 +34,11 @@ from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import (
     MAX_WINDOW,
     CatalogState,
+    catalog_position,
     catalog_row,
     catalog_window,
     read_catalog,
+    upgrade_catalog,
 )
 from metabrowser.builtin_plugins.github.pull_list import (
     ListedRepository,
@@ -50,6 +54,7 @@ from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PULL_LIST_NAMES, PullListName
+from metabrowser.home import PrivateStorageError
 from metabrowser.http_caching import build_scoped_etag
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
@@ -118,6 +123,7 @@ class PullListEnvelope(TypedDict):
     limit: int
     next_after: int | None
     rows: list[dict[str, Any]]
+    position: NotRequired[int | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +131,7 @@ class ListWindow:
     name: PullListName
     limit: int = DEFAULT_LIMIT
     after: int | None = None
+    at: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,10 +160,15 @@ def _number(value: str, maximum: int, label: str, *, zero: bool = False) -> int:
 
 def list_window(params: Mapping[str, str]) -> ListWindow:
     after = params.get("after")
+    at = params.get("at")
+    name = _list_name(params.get("state", DEFAULT_LIST))
+    if at is not None and (after is not None or name != "all"):
+        raise ListRequestError('"at" requires state=all and no "after"')
     return ListWindow(
-        _list_name(params.get("state", DEFAULT_LIST)),
+        name,
         _number(params.get("limit", str(DEFAULT_LIMIT)), MAX_WINDOW, "limit", zero=True),
         _number(after, MAX_PULL_REQUEST_NUMBER, "after") if after is not None else None,
+        _number(at, MAX_PULL_REQUEST_NUMBER, "at") if at is not None else None,
     )
 
 
@@ -295,28 +307,47 @@ class ListFound:
     listed: CatalogState | None
     rows: list[dict[str, Any]]
     following: int | None
+    position: int | None = None
 
 
 def read_catalog_window(view: ListView, window: ListWindow) -> ListFound | None:
     """What *view*'s envelope for *window* is built from, or ``None`` with no repository.
 
-    Blocking and bounded: the stamp and one indexed window of the catalog.
+    Blocking: the stamp and one indexed window, preparing a legacy index on first use.
     """
 
     repository = view.repository
     if repository is None:
         return None
     stamp = read_list_refresh(repository.home, repository.slug, "all")
-    listed, rows, following = catalog_window(
-        repository.home, repository.slug, window.name, limit=window.limit, after=window.after
-    )
-    if listed is not None and listed.source != repository.source:
-        listed, rows, following = None, [], None
-    return ListFound(stamp, listed, rows, following)
+    if window.at is not None:
+        read = partial(
+            catalog_position, repository.home, repository.slug, window.at, limit=window.limit
+        )
+    else:
+        read = partial(
+            catalog_window,
+            repository.home,
+            repository.slug,
+            window.name,
+            limit=window.limit,
+            after=window.after,
+        )
+    listed, rows, marker = read()
+    if listed is None:
+        # Local preparation of an existing legacy cache is independent of refresh admission.
+        with contextlib.suppress(PrivateStorageError, OSError, sqlite3.Error, ValueError):
+            if upgrade_catalog(repository):
+                listed, rows, marker = read()
+    if listed is None or listed.source != repository.source:
+        return ListFound(stamp, None, [], None)
+    if window.at is not None:
+        return ListFound(stamp, listed, rows, None, marker)
+    return ListFound(stamp, listed, rows, marker)
 
 
 def pull_list_envelope(view: ListView, window: ListWindow) -> PullListEnvelope:
-    """The envelope for one window of the catalog. Blocking and bounded."""
+    """The envelope for one indexed window of the local catalog."""
 
     return list_envelope(view, read_catalog_window(view, window), window)
 
@@ -353,6 +384,8 @@ def list_envelope(view: ListView, found: ListFound | None, window: ListWindow) -
         next_after=None,
         rows=[],
     )
+    if window.at is not None:
+        empty["position"] = found.position if found is not None else None
     repository = view.repository
     if repository is None or found is None:
         return empty

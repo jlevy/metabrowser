@@ -353,17 +353,17 @@ They move with every scan and probe, so the entity tag leaves them out and
 
 ## The Catalog
 
-`pull_catalog.py` keeps one SQLite catalog per repository of lightweight rows, with a
-`(state, number)` index for the Open and Closed windows; merged rows are closed.
-Its checkpoint holds the repository identity, the reader, GitHub’s counts, the cached
-counts, the scan cursors, freshness, and content generations.
+`pull_catalog.py` keeps one SQLite catalog per repository of lightweight rows, with
+indexes on `(updated_at, number)` and `(state, updated_at, number)`. Merged rows are
+closed. Its checkpoint holds the repository identity, the reader, GitHub’s counts, the
+cached counts, the scan cursors, freshness, and content generations.
 Listing takes a `ListedRepository` and never a store, so a checkout without one has a
 catalog.
 
 **Writing.** `pull_list_refresh.py` reads GraphQL pages of at most `PAGE_SIZE` rows
 (`pull_catalog.py`), with no description, comment, review, check, or patch: the reader’s
-filter prefix first, as far as the reader has scrolled, then the backfill of every pull
-request, newest first.
+filter prefix first in update order, as far as the reader has scrolled, then the
+backfill of every pull request in creation order using a separate cursor.
 Nothing caps the catalog’s size.
 The prefix and the delta scan are the reader’s work; the backfill is background work
 that asks the governor before each page and stops at a page boundary when it is held, to
@@ -415,8 +415,8 @@ docstring gives each outcome, `tests/test_github_pull_list_probe.py` pins them, 
 `cli-github-pulls-probe.txt` shows an ask answered by a probe.
 
 **Admission.** Reads open the database read-only and run neither Git nor `gh`. Readers
-and writers admit only the exact tables and index, and refuse a write-ahead-log database
-before SQLite opens it.
+and writers admit only declared table and index layouts and refuse a write-ahead-log
+database before SQLite opens it.
 A catalog a newer release wrote declares it, in `user_version`, the checkpoint’s schema,
 or a row’s projection, and is left as it is with the refresh ending `newer_cache`,
 because several builds can share one cache.
@@ -424,12 +424,19 @@ One whose versions cannot all be read safely ends `unknown_cache`; anything else
 writer cannot use is replaced with an empty catalog under the lock.
 The module docstring gives each case, and `tests/test_github_pull_list.py` pins the
 shape each version names.
+The first ranked list read or refresh can add activity indexes to a version 1 catalog
+under the source lock.
+The local upgrade preserves cached rows and needs no GitHub access.
+The checkpoint retains the creation-order backfill cursor and clears incomplete prefix
+coverage so each filter can resume in update order.
 
-**Reading.** `GET pulls` answers an indexed window of up to `MAX_WINDOW` rows below
-`after`, newest first, with GitHub’s counts dated by `count_at` beside the cached ones.
-A per-filter `generation` changes when existing content or the leading prefix changes,
-not when older pages are appended, so a client replaces a held window only after
-collecting one under a single source, reader, and generation.
+**Reading.** `GET pulls` answers an indexed window of up to `MAX_WINDOW` rows below the
+`after` row. Each filter orders by descending update time and then descending PR number.
+GitHub’s counts are dated by `count_at`. For an exact PR lookup, `state=all` and `at`
+return its row and its zero-based position in All, capped at `limit`. A per-filter
+`generation` changes when existing content or the leading prefix changes, not when older
+pages are appended, so a client replaces a held window only after collecting one under a
+single source, reader, and generation.
 With `q`, the same route is Quick Search’s completion list across every state
 (`catalog_search`): a number uses the number index, `#` alone lists the newest, and text
 scans titles within `_SEARCH_TITLE_ROWS` and an instruction budget, saying `limited`
