@@ -87,7 +87,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     read_pull_record,
 )
 from metabrowser.builtin_plugins.github.pull_status import PullStatus
-from metabrowser.builtin_plugins.github.pull_status_store import kept_status
+from metabrowser.builtin_plugins.github.pull_status_store import CheckProbes, kept_status
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
     PullCorePreview,
@@ -95,6 +95,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     ServedPull,
     ServedPulls,
     cached_comparison_record,
+    probe_inputs,
     written_without_store,
 )
 from metabrowser.builtin_plugins.github.served_pull import record_revision as _record_revision
@@ -233,7 +234,8 @@ def pull_state(
     A record written with no store, by a checkout's server, is stale whatever its age on a
     server that *has_store*, which can give it its Files changed. Otherwise the catalog's
     *freshness* verdict decides when it has one (:mod:`.pull_freshness`), and the
-    refresh coordinator's window when it has none.
+    refresh coordinator's window when it has none. A ``checks`` verdict is a current
+    record whose status alone is due, which the record does not hold.
     """
 
     if not isinstance(record, PullRecord):
@@ -241,7 +243,7 @@ def pull_state(
     if has_store and written_without_store(record):
         return "stale", None
     if freshness is not None and freshness.verdict != "unverified":
-        return ("current" if freshness.verdict == "current" else "stale"), None
+        return ("stale" if freshness.verdict == "changed" else "current"), None
     age = now - _parse_stamp(record.fetched_at)
     return ("current" if age <= timedelta(seconds=FRESHNESS_WINDOW_S) else "stale"), None
 
@@ -517,7 +519,8 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     """The envelope, and the catalog's verdict on its record for the held state to adopt.
 
     Blocking and bounded; run it off the loop. Besides the record it reads the catalog's
-    checkpoint and one row (:func:`~.pull_catalog.catalog_member`).
+    checkpoint and one row (:func:`~.pull_catalog.catalog_member`), and the kept status
+    (:func:`~.pull_status_store.kept_status`).
     """
 
     host = view.host
@@ -558,10 +561,12 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     has_store = served.git_dir is not None
     # Through the module, so records and their age share one clock seam.
     now = pulls.utc_now()
+    operational = kept_status(served.home, served.slug, view.number)
     freshness = (
         record_freshness(
             record,
             *catalog_member(served.home, served.slug, view.number),
+            status=operational.status,
             now=now,
             scanning=view.catalog_scanning,
             checked_at=view.catalog_checked_at,
@@ -612,7 +617,6 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     labels: object = shown.get("labels") if isinstance(shown, dict) else None
     listed: list[object] = labels if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
     lookup = labels_for(served.home, served.slug, served.source, listed)
-    operational = kept_status(served.home, served.slug, view.number)
     envelope = PullEnvelope(
         state=state,
         reason=absence,
@@ -694,16 +698,39 @@ def record_and_freshness(
     """The cached record of *number* and the catalog's verdict on it. Blocking and bounded.
 
     *scanning* is :func:`catalog_scanning` and *checked_at* :func:`catalog_checked_at`,
-    read on the event loop before the call.
+    read on the event loop before the call. The verdict reads the kept status's row too.
+    """
+
+    record, freshness, _status, _probes = held_record(
+        served, number, scanning=scanning, checked_at=checked_at
+    )
+    return record, freshness
+
+
+def held_record(
+    served: ServedPulls, number: int, *, scanning: bool = False, checked_at: str | None = None
+) -> tuple[PullRecord | None, RecordFreshness | None, PullStatus | None, CheckProbes | None]:
+    """:func:`record_and_freshness`, and what a probe of the record compares with.
+
+    That is the kept status of *number* and what the last probe of its head's checks saw
+    (:func:`~.served_pull.probe_inputs`). Blocking and bounded: the record, a catalog row
+    and the status's, and one small file.
     """
 
     record, _dumped, _revision = cached_pull_record(served.home, served.slug, number)
     if not isinstance(record, PullRecord):
-        return None, None
+        return None, None, None, None
     member = catalog_member(served.home, served.slug, number)
-    return record, record_freshness(
-        record, *member, now=pulls.utc_now(), scanning=scanning, checked_at=checked_at
+    status, probes = probe_inputs(served.published, number)
+    freshness = record_freshness(
+        record,
+        *member,
+        status=status,
+        now=pulls.utc_now(),
+        scanning=scanning,
+        checked_at=checked_at,
     )
+    return record, freshness, status, probes
 
 
 def note_full_record(view: PullView) -> None:
@@ -1079,9 +1106,9 @@ async def _start_refresh(
         served = await host.pulls.companion(ask.number)
         if served.fetched_at is None:
             return "not_cached"
-        held, freshness = await asyncio.to_thread(
+        held, freshness, status, probes = await asyncio.to_thread(
             partial(
-                record_and_freshness,
+                held_record,
                 host.pulls,
                 ask.number,
                 scanning=catalog_scanning(host),
@@ -1097,7 +1124,7 @@ async def _start_refresh(
             # A visible page asks every ATTENDED_PROBE_S; most asks end here, in a free
             # conditional read that finds nothing new (:meth:`ServedPull.probe`).
             try:
-                await served.probe(held, coordinator=host.coordinator)
+                await served.probe(held, status=status, probes=probes, coordinator=host.coordinator)
             except TimeoutError:
                 return "not_due"
             due = served.automatic_due(pulls.utc_now())
@@ -1152,6 +1179,7 @@ __all__ = [
     "comparison_route",
     "display_state",
     "envelope_etag",
+    "held_record",
     "image_route",
     "judged_readiness",
     "pull_answer",

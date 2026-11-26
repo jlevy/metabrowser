@@ -514,11 +514,7 @@ async def keep_pull_status(
     list's refresh leaves it.
     """
 
-    repository = (
-        published
-        if isinstance(published, ListedRepository)
-        else ListedRepository(published.home, published.slug, owner, repo)
-    )
+    repository = _repository(published, owner, repo)
     checkout = repository.checkout
     status: PullStatus | None = None
     try:
@@ -547,13 +543,32 @@ async def keep_pull_status(
         stamp = PullRefreshStamp(outcome="succeeded", at=status.observed_at, reader=reader)
     except PullDataError as exc:
         log.debug("reading the status of pull request %s failed: %s", number, exc)
-        stamp = PullRefreshStamp(
-            outcome=exc.state,
-            message=str(exc)[:1000],
-            reset_at=exc.reset_at,
-            at=utc_stamp(now()),
-            reader=reader,
-        )
+        stamp = _failure_stamp(exc, now=now, reader=reader)
+    await _keep_outcome(repository, number, stamp)
+    return status
+
+
+def _repository(
+    published: PublishedSource | ListedRepository, owner: str, repo: str
+) -> ListedRepository:
+    if isinstance(published, ListedRepository):
+        return published
+    return ListedRepository(published.home, published.slug, owner, repo)
+
+
+def _failure_stamp(
+    exc: PullDataError, *, now: Callable[[], datetime], reader: str | None
+) -> PullRefreshStamp:
+    return PullRefreshStamp(
+        outcome=exc.state,
+        message=str(exc)[:1000],
+        reset_at=exc.reset_at,
+        at=utc_stamp(now()),
+        reader=reader,
+    )
+
+
+async def _keep_outcome(repository: ListedRepository, number: int, stamp: PullRefreshStamp) -> None:
     try:
         await run_lock_section(
             partial(write_status_outcome, repository.home, repository.slug, number, stamp)
@@ -561,13 +576,33 @@ async def keep_pull_status(
     except (PrivateStorageError, OSError) as exc:
         # Only the report of the read is lost; a status it read is kept.
         log.debug("could not keep how pull request %s's status read ended: %s", number, exc)
-    return status
+
+
+async def keep_status_failure(
+    published: PublishedSource | ListedRepository,
+    owner: str,
+    repo: str,
+    number: int,
+    failure: PullDataError,
+    *,
+    now: Callable[[], datetime],
+) -> None:
+    """Keep *failure*, which ended a read of pull request *number*'s status before it asked.
+
+    As :func:`keep_pull_status` keeps a failure of its own: the status and checks an
+    earlier read kept stay, and nothing is raised. The read named no reader yet.
+    """
+
+    log.debug("reading the status of pull request %s failed: %s", number, failure)
+    stamp = _failure_stamp(failure, now=now, reader=None)
+    await _keep_outcome(_repository(published, owner, repo), number, stamp)
 
 
 __all__ = [
     "CONTEXTS_PAGE",
     "StatusRead",
     "keep_pull_status",
+    "keep_status_failure",
     "latest_of_each",
     "read_pull_status",
 ]

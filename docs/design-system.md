@@ -777,7 +777,7 @@ keeps it.
 | The Commits tally | `renderHistorySummary` in `static/git-panel.js` |
 | The Pulls count, “448 PRs on owner/repo” | `.github-pulls-total` in the GitHub plugin’s `pulls-panel.js` |
 | A Pulls stack row’s size, “Stack #286 · 4 pulls” | `paintStackRow` in the GitHub plugin’s `pulls-panel.js`, through `metabrowser.countPartsNodes`, after the stack’s label ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)) |
-| A pull request’s Checks summary, “3 success · 1 failure” | `paintChecks` in the GitHub plugin’s `pull-page.js`, through `metabrowser.countPartsNodes`, its dots `.summary-punctuation` in a line muted already, each saying a comma in its place |
+| A pull request’s Checks summary, “Some checks were not successful: 1 failing · 3 successful” | `paintChecks` in the GitHub plugin’s `pull-page.js`, through `metabrowser.countPartsNodes`, after `gh`’s headline, its dots `.summary-punctuation` in a line muted already, each saying a comma in its place |
 | A commit’s files outside the served folder, “2 files outside this folder” | `renderCommitDetail` in `static/git-panel.js`, in one span of its line |
 | A commit’s hover card, “32 files changed · 56.9 KB compressed (193.9 KB raw diff)” over “4 A, 28 M · +1,921 −160” | `renderCommitChangeStats` in `static/git-panel.js`, through `changeSizeLineHtml`, `changeSummary`, and `changeLineHtml`, in the size line’s and the Diff summary’s words and paint ([Git Commit Summary](#git-commit-summary)) |
 
@@ -3210,9 +3210,15 @@ It names a problem only when no refresh can run: `Offline`,
 The wording is `rateLimitText` in `builtin_plugins/github/copy.js`, which every GitHub
 surface uses. The Checks tab uses the same heading and status badges for check runs and
 status contexts. A check row is its status badge, its plain name, its action, and its
-description. The action says where it opens: **View action on GitHub** for a GitHub
-Actions run, **View on GitHub** for another page on a GitHub host, and **View details**
-for the check’s own site, and its accessible name adds the check’s name.
+description. The badge says the check’s own state, as GitHub names it, in the ink of the
+bucket the server sorts it into as `gh pr checks` does: pass `--status-success-text`,
+fail `--status-error-text`, pending `--status-warning-text`, and skipping and cancel
+`--muted`; the page sorts no check into a bucket of its own.
+The rows are in `gh`’s order, failing first, then pending, then the rest, and the
+summary over them leads with `gh`’s headline for them, “Some checks are still pending”.
+The action says where it opens: **View action on GitHub** for a GitHub Actions run,
+**View on GitHub** for another page on a GitHub host, and **View details** for the
+check’s own site, and its accessible name adds the check’s name.
 A check whose address is not http(s) has no action.
 A run’s app is its description, except GitHub Actions beside an Actions link, which
 already says so.

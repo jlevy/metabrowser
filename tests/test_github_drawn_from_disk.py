@@ -525,8 +525,12 @@ def _header(built: Built, result: Invocation) -> None:
 
 
 def _checks(_built: Built, result: Invocation) -> None:
-    record = answer(result)["record"]
-    assert record["check_runs"] and record["status"] is not None
+    # The checks are the status's, kept beside the record, and drawn from disk with it.
+    envelope = answer(result)
+    head = envelope["record"]["pull"]["head"]["sha"]
+    assert envelope["checks"]["items"] and envelope["checks"]["head"] == head
+    assert envelope["status"]["head"] == head and envelope["readiness"]["head"] == head
+    assert "check_runs" not in envelope["record"]
 
 
 def _reviews(_built: Built, result: Invocation) -> None:

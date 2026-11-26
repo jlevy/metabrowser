@@ -286,7 +286,7 @@ def test_the_lane_leaves_what_is_on_screen_the_ceiling_it_needs(
 
 
 def test_the_caps_priced_at_a_page_a_part_fit_speculative_works_share() -> None:
-    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737)."""
+    """The arithmetic beside the caps: 4 points a record and 1 a list (A1, review A of #737)."""
 
     priced = RECORDS_PER_HOUR * POINTS_PER_RECORD + FILES_PER_HOUR * POINTS_PER_FILES_LIST
     assert priced <= gh_budget.SPECULATIVE_CORE_PER_HOUR

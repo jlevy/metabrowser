@@ -78,7 +78,7 @@ status: 200
       "hour_used": 0,
       "speculative_per_hour": 100,
       "speculative_hour_used": 0,
-      "prefetch_reserved": 48,
+      "prefetch_reserved": 32,
       "walk_hour_used": 0
     }
   },
@@ -134,7 +134,7 @@ status: 200
       "hour_used": 0,
       "speculative_per_hour": 100,
       "speculative_hour_used": 0,
-      "prefetch_reserved": 48,
+      "prefetch_reserved": 32,
       "walk_hour_used": 0
     }
   },
@@ -303,7 +303,7 @@ status: 200
       "hour_used": 1,
       "speculative_per_hour": 100,
       "speculative_hour_used": 1,
-      "prefetch_reserved": 48,
+      "prefetch_reserved": 32,
       "walk_hour_used": 0
     }
   },
@@ -376,7 +376,7 @@ status: 200
       "hour_used": 0,
       "speculative_per_hour": 100,
       "speculative_hour_used": 0,
-      "prefetch_reserved": 48,
+      "prefetch_reserved": 32,
       "walk_hour_used": 0
     }
   },

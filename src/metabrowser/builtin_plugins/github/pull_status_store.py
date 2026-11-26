@@ -5,8 +5,9 @@ database, in a table of its own (:func:`~.pull_catalog.write_pull_status`), so a
 that changes with every check moves no catalog row, fingerprint, core, or window
 generation. The checks of the same head (:class:`~.pull_status.PullChecks`) are
 ``pulls/<n>.checks.json`` beside the record, which only the pull request page needs.
-How the last read of them ended is ``pulls/<n>.status.refresh.json``. All three are under
-the source's ``pulls`` directory, so clearing the cache clears them
+How the last read of them ended is ``pulls/<n>.status.refresh.json``, and what the probes
+of the head's checks last saw is ``pulls/<n>.checks.probe.json`` (:class:`CheckProbes`).
+All four are under the source's ``pulls`` directory, so clearing the cache clears them
 (:func:`~.pull_record.clear_pulls`), and a checkout without a store has them as it has a
 catalog.
 
@@ -20,18 +21,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Annotated, Final
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from metabrowser.builtin_plugins.github.pull_catalog import read_pull_status
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_PULL_REFRESH_BYTES,
     PullRefreshStamp,
+    Reader,
+    Sha,
+    Timestamp,
     ensure_pulls_directory,
 )
 from metabrowser.builtin_plugins.github.pull_status import PullChecks, PullStatus
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
-from metabrowser.cache.paths import source_pull_checks, source_pull_status_refresh
+from metabrowser.cache.paths import (
+    source_pull_check_probes,
+    source_pull_checks,
+    source_pull_status_refresh,
+)
 from metabrowser.home import PrivateStorageError, write_private_file_atomic
 
 # The most a checks file may be, written or read. Measured 2026-11-26 on this repository's
@@ -127,6 +137,86 @@ def read_status_outcome(home: Path, slug: str, number: int) -> PullRefreshStamp 
         return None
 
 
+class ProbedPage(BaseModel):
+    """What the last conditional read of one checks page found.
+
+    ``etag`` is GitHub's for that answer, sent with the next read, or ``None`` when it sent
+    none; ``digest`` is a SHA-256 of what a status keeps of the page, each check's name,
+    state, and links (:func:`.pulls.probe_pull_request`), so a ``200`` that changed none of
+    it is no change.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    etag: Annotated[str, StringConstraints(max_length=300)] | None
+    digest: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+
+
+class CheckProbes(BaseModel):
+    """What the probes of one head's checks last saw, as *reader*, at ``seen_at``.
+
+    The status is read with GraphQL, which has no ETag, so the conditional reads that find
+    a change for free, the first pages of the head's check runs and of its combined status,
+    keep their own: the first probe of a head asks each page once unconditionally, a
+    ``200`` that seeds the baseline and is counted as a change, and every later probe is
+    conditional on it. ``refused`` says GitHub would not answer one of the pages for this
+    head and reader, as a token without checks access is refused, so its checks are not
+    probed and the status is read on the window's clock instead.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    number: int = Field(ge=1)
+    head: Sha
+    reader: Reader
+    seen_at: Timestamp
+    pages: dict[Annotated[str, StringConstraints(max_length=512)], ProbedPage] = Field(max_length=2)
+    refused: bool = False
+
+
+# The most a probes file may be: two pages, each a path of at most 512 characters, an ETag
+# of at most 300, and a 64-digit digest, with a head, a reader, and their keys, comes to
+# under 2.5 KB; 4 KiB is the bound, written and read.
+MAX_CHECK_PROBES_BYTES: Final = 4096
+
+
+def read_check_probes(home: Path, slug: str, number: int) -> CheckProbes | None:
+    """What the probes of pull request *number*'s checks last saw, or ``None``. Blocking.
+
+    A file that is missing, too large, malformed, or of another number is none, and the
+    next probe seeds a baseline again.
+    """
+
+    try:
+        data = read_bytes_bounded(
+            home, source_pull_check_probes(slug, number), max_bytes=MAX_CHECK_PROBES_BYTES
+        )
+        probes = CheckProbes.model_validate_json(data)
+    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValueError):
+        return None
+    return probes if probes.number == number else None
+
+
+def write_check_probes(home: Path, slug: str, probes: CheckProbes) -> bool:
+    """Keep *probes* unless what a later probe saw is kept; whether it did. Blocking.
+
+    Under the source's alias lock; call it through ``run_lock_section``. Raises the home's
+    ``PrivateStorageError`` or an ``OSError`` when the cache cannot take it, a slug no
+    source holds among them.
+    """
+
+    data = probes.model_dump_json().encode("utf-8")
+    if len(data) > MAX_CHECK_PROBES_BYTES:
+        raise ValueError("what a probe saw is larger than its file may be")
+    with source_alias_lock(home, slug):
+        ensure_pulls_directory(home, slug)
+        kept = read_check_probes(home, slug, probes.number)
+        if kept is not None and kept.seen_at > probes.seen_at:
+            return False
+        write_private_file_atomic(home, source_pull_check_probes(slug, probes.number), data)
+        return True
+
+
 @dataclass(frozen=True, slots=True)
 class KeptStatus:
     """What is kept of a pull request's operational status.
@@ -155,11 +245,16 @@ def kept_status(home: Path, slug: str, number: int) -> KeptStatus:
 
 
 __all__ = [
+    "MAX_CHECK_PROBES_BYTES",
     "MAX_PULL_CHECKS_BYTES",
+    "CheckProbes",
     "KeptStatus",
+    "ProbedPage",
     "kept_status",
+    "read_check_probes",
     "read_pull_checks",
     "read_status_outcome",
+    "write_check_probes",
     "write_pull_checks",
     "write_status_outcome",
 ]

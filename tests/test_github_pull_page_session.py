@@ -26,13 +26,14 @@ the server's are scoped to the build; which answers share one is kept. The Markd
 cut down to the rendered text: KPress's icon sprite and asset manifest are KPress's
 contract, pinned by its own render goldens, and would tie this recording to its version,
 and its stylesheets' manifest is left out for the same reason.
-Every pull envelope carries the whole record, and the story reads one record many
-times, so the recording holds each distinct record once: an answer whose record an
-earlier answer carried names that answer, ``{"same_as": "current"}``, and the session
-reads it back as that record. The envelope's operational status, verdict, and checks,
-which it carries beside the record, are left out: no session reads them yet, and
-``tests/golden/cli-github-pull-refresh.txt`` pins them. ``make golden-update`` rewrites
-the recording and then the transcript.
+Every pull envelope carries the whole record, and its operational status, verdict, and
+checks beside it, and the story reads each many times, so the recording holds each
+distinct one once: an answer whose record, or status, verdict, or checks, an earlier
+answer carried names that answer, ``{"same_as": "current"}``, and the session reads it
+back as that answer's. A status, verdict, or checks that differs from an earlier one only
+in what it describes and when, its number, head, and time, names that answer and keeps
+those beside the name, ``{"same_as": "current", "observed_at": "..."}``.
+``make golden-update`` rewrites the recording and then the transcript.
 """
 
 from __future__ import annotations
@@ -72,6 +73,7 @@ from tests.github_pull_fixture import (
     HOSTILE_COMMENT,
     Origin,
     allowlist_violations,
+    graph_status_entry,
     html_tree,
     install_fake_gh,
     ok,
@@ -172,20 +174,24 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     return json.loads(normalize_pull_comparison_scopes(json.dumps(recorded)))
 
 
-# What a pull envelope carries beside its record that no session reads yet: its
-# operational status, its verdict, and its checks (``pull_route.PullEnvelope``).
-_UNREAD: Final = ("status", "readiness", "checks", "status_unavailable")
+# What a pull envelope carries that the recording holds once: its record, and beside it
+# its operational status, its verdict, and its checks (``pull_route.PullEnvelope``).
+STORED_ONCE: Final = ("record", "status", "readiness", "checks")
+# What says which pull request, head, and moment an operational value describes, kept
+# beside the name of the answer that holds the rest of it.
+_IDENTITY: Final = ("number", "head", "observed_at")
 
 
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
-    """*recorded* with each distinct record written once; see the module docstring.
+    """*recorded* with each distinct record, status, verdict, and checks written once.
 
-    A record is held in full by the first pull-route answer that carried it. So a
-    one-field change to a pull request's record is one changed line of the recording.
-    What no session reads beside it is left out.
+    Each is held in full by the first pull-route answer that carried it, and a status,
+    verdict, or checks that differs from it only in what it describes and when
+    (``_IDENTITY``) keeps those beside the name; see the module docstring. So a one-field
+    change to a pull request's record or status is one changed line of the recording.
     """
 
-    holder: dict[str, str] = {}
+    holder: dict[tuple[str, str], tuple[str, dict[str, Any]]] = {}
     for name, answer in recorded.items():
         body = answer["body"]
         if not isinstance(body, dict):
@@ -194,16 +200,23 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
         for envelope in (body, body.get("pull")):
             if not isinstance(envelope, dict) or "labels_pending" not in envelope:
                 continue
-            for field in _UNREAD:
-                envelope.pop(field, None)
-            if not isinstance(envelope.get("record"), dict):
-                continue
-            # As text, in the order the server wrote it: reordered keys are a change.
-            key = json.dumps(envelope["record"])
-            if key in holder:
-                envelope["record"] = {"same_as": holder[key]}
-            elif envelope is body:
-                holder[key] = name
+            for field in STORED_ONCE:
+                value = envelope.get(field)
+                if not isinstance(value, dict):
+                    continue
+                own = () if field == "record" else _IDENTITY
+                # As text, in the order the server wrote it: reordered keys are a change.
+                same = {key: item for key, item in value.items() if key not in own}
+                key = (field, json.dumps(same))
+                if key in holder:
+                    held, identity = holder[key]
+                    envelope[field] = {"same_as": held} | {
+                        part: value[part]
+                        for part in own
+                        if part in value and value[part] != identity.get(part)
+                    }
+                elif envelope is body:
+                    holder[key] = (name, {part: value[part] for part in own if part in value})
     return recorded
 
 
@@ -364,12 +377,19 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 client.get(_MARKDOWN, params={**read_7, "part": f"issue_comment/{added['id']}"})
             )
 
-            # Ten seconds on, the page's own ask for the current record is a probe: GitHub
-            # answers its conditional read 304, so nothing is refreshed, and the record is
-            # vouched for by the probe. The ask names the record the page shows, so the
-            # answer leaves it out.
-            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=10)
+            # Five seconds on, the page's own ask is its first probe of the head's settling
+            # checks, which seeds what later probes compare with: a paid read of each page,
+            # counted as a change, so the status is read once, alone.
             held_7 = {**read_7, "held": recorded["refreshed"]["body"]["record_revision"]}
+            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=5)
+            seeded = client.post(_REFRESH, json=held_7, headers=JSON_BODY).json()
+            assert seeded["refresh"] == "started"
+            _until_refreshed(client, 7)
+            # Five seconds more, the page's ask is a probe again: GitHub answers its
+            # conditional read 304, so nothing is refreshed, and the record is vouched for
+            # by the probe. The ask names the record the page shows, so the answer leaves
+            # it out.
+            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=10)
             recorded["probed"] = _answer(client.post(_REFRESH, json=held_7, headers=JSON_BODY))
             assert recorded["probed"]["body"]["refresh"] == "not_due"
             probed = recorded["probed"]["body"]["pull"]
@@ -411,15 +431,20 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             def _answering_7(head: str) -> None:
                 path = "repos/octo/demo/pulls/7"
                 body = answers["api"][path]["body"]
-                moved = _api(
-                    answers, path, ok(path, {**body, "head": {**body["head"], "sha": head}})
-                )
-                for part, empty in (
-                    ("check-runs", {"total_count": 0, "check_runs": []}),
-                    ("status", {"state": "pending", "statuses": []}),
-                ):
-                    listed = page(f"repos/octo/demo/commits/{head}/{part}")
-                    moved = _api(moved, listed, ok(listed, empty))
+                pull = {**body, "head": {**body["head"], "sha": head}}
+                moved = _api(answers, path, ok(path, pull))
+                if head != body["head"]["sha"]:
+                    # Another head has no checks yet, in REST's pages and GitHub's status.
+                    none_yet: dict[str, Any] = {"pull": pull}
+                    for part, empty in (
+                        ("check-runs", {"total_count": 0, "check_runs": []}),
+                        ("status", {"state": "pending", "statuses": []}),
+                    ):
+                        listed = page(f"repos/octo/demo/commits/{head}/{part}")
+                        moved = _api(moved, listed, ok(listed, empty))
+                        none_yet[part.replace("-", "_")] = empty
+                    status = "graphql:status:7:start"
+                    moved = _api(moved, status, graph_status_entry(none_yet))
                 subprocess.run(
                     ["git", "--git-dir", str(origin.path), "update-ref", "refs/pull/7/head", head],
                     check=True,
@@ -534,8 +559,10 @@ def test_recording_is_what_a_served_pull_request_answers(
     assert allowlist_violations(recorded["markdown added"]["body"]["html"], pr_text=True) == []
     merged = recorded["merged"]["body"]["record"]["pull"]
     assert (merged["merged"], merged["merged_by"], merged["commits"]) == (True, "octo", 1)
-    conclusions = [run["conclusion"] for run in recorded["merged"]["body"]["record"]["check_runs"]]
-    assert conclusions == ["success", "skipped"]
+    # Its checks are its status's, beside the record, in GitHub's buckets: one skipped.
+    buckets = [item["bucket"] for item in recorded["merged"]["body"]["checks"]["items"]]
+    assert buckets == ["pass", "skipping", "pass"]
+    assert "check_runs" not in recorded["merged"]["body"]["record"]
     closed = recorded["closed"]["body"]["record"]["pull"]
     assert (closed["state"], closed["merged"], closed["commits"]) == ("closed", False, 1)
     unattributed = recorded["merged_unattributed"]["body"]["record"]["pull"]

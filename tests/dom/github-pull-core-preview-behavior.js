@@ -484,8 +484,7 @@ async function run() {
   full.record.issue_comments = [];
   full.record.reviews = [];
   full.record.review_comments = [];
-  full.record.check_runs = [];
-  full.record.status = null;
+  full.checks = { ...full.checks, items: [] };
   full.record.comparison = null;
   full.record.unavailable = { comparison: "no_store" };
   full.record_revision = "f".repeat(64);
@@ -842,13 +841,13 @@ async function run() {
   await cancelled.ready;
 
   current = structuredClone(recorded.current.body);
-  current.record.truncated = {
-    ...current.record.truncated,
-    check_runs: true,
-    issue_comments: true,
+  current.record.truncated = { ...current.record.truncated, issue_comments: true };
+  // The status's checks, its runs alone, cut at the list's bound.
+  current.checks = {
+    ...current.checks,
+    items: current.checks.items.filter((item) => item.kind === "run"),
+    truncated: true,
   };
-  current.record.status = null;
-  current.record.unavailable = { status: "fetch_failed" };
   window.location.pathname = checksRoute;
   const directChecks = new Element("main");
   const checksView = page.mountPullPage(directChecks, { number: 7, tab: "checks" }, mb);
@@ -859,9 +858,13 @@ async function run() {
     .find((tab) => tab.getAttribute("aria-selected") === "true");
   assert.equal(selectedChecks?.textContent, "Checks");
   assert.equal(selectedChecks?.getAttribute("href"), checksRoute);
-  // "1 success · 1 pending": its dot held to the count before it by a no-break space, and a
-  // comma said in the hidden dot's place, as the paragraph has no name in words (mb-vb51).
-  assert.match(checksBody.textContent, /1 success\u00a0·, {2}1 pending/);
+  // gh's headline, then "1 successful · 1 pending": its dot held to the count before it by a
+  // no-break space, and a comma said in the hidden dot's place, as the paragraph has no name
+  // in words (mb-vb51).
+  assert.match(
+    checksBody.textContent,
+    /Some checks are still pending: 1 successful\u00a0·, {2}1 pending/,
+  );
   const checksLine = checksBody
     .querySelectorAll(".github-pull-quiet")
     .find((line) => line.querySelectorAll(".summary-number").length > 0);
@@ -883,11 +886,20 @@ async function run() {
     ["1", "1"],
   );
   assert.match(checksBody.textContent, /tests \(3\.13\)/);
-  // One note for the checks: statuses that could not be loaded at all outweigh check runs
-  // that were cut short, which still show what they hold.
-  assert.match(checksBody.textContent, /Commit statuses could not be loaded\./);
-  assert.doesNotMatch(checksBody.textContent, /Only some check runs are shown/);
-  assert.match(checksBody.textContent, /No conflicts with the base branch/);
+  // The pending check leads, as `gh pr checks` lists it, in the pending ink.
+  assert.deepEqual(
+    checksBody
+      .querySelectorAll(".github-pull-badge")
+      .map((badge) => [badge.getAttribute("data-state"), badge.textContent]),
+    [
+      ["pending", "In progress"],
+      ["pass", "Success"],
+    ],
+  );
+  // One note for the checks: the list was cut short, and still shows what it holds.
+  assert.match(checksBody.textContent, /Only some checks are shown\./);
+  // The merge line is the server's conflicts requirement, in its words.
+  assert.match(checksBody.textContent, /No merge conflicts with topic\./);
   assert.doesNotMatch(checksBody.textContent, /Only some comments are shown|It no longer does/);
   const checkLinks = checksBody.querySelectorAll("a[href]");
   assert.equal(checkLinks.length, 2);
@@ -899,15 +911,27 @@ async function run() {
     page.conversationKey(page.describePull(current, { number: 7, tab: "", nowMs: Date.now() })),
     page.conversationKey(
       page.describePull(
-        {
-          ...current,
-          record: { ...current.record, check_runs: [], status: null, unavailable: {} },
-        },
+        { ...current, status: null, readiness: null, checks: null },
         { number: 7, tab: "", nowMs: Date.now() },
       ),
     ),
-    "only check data changed, so Conversation can keep its rendered discussion",
+    "only the status changed, so Conversation can keep its rendered discussion",
   );
+  // A status read that failed, with nothing of this head kept, says so over the checks.
+  const unread = page.describePull(
+    { ...current, checks: null, readiness: null, status_unavailable: "gh_failed" },
+    { number: 7, tab: "checks", nowMs: Date.now() },
+  );
+  assert.deepEqual(
+    [unread.checks, unread.checkNotes, unread.merge],
+    [null, ["Checks could not be loaded."], null],
+  );
+  // Checks of another head are none of this one's.
+  const other = page.describePull(
+    { ...current, checks: { ...current.checks, head: "f".repeat(40) } },
+    { number: 7, tab: "checks", nowMs: Date.now() },
+  );
+  assert.equal(other.checks, null);
   const checkResults = { route: checksRoute, links: checkLinks.length, empty: true, pending: true };
   checksView.dispose();
   window.location.pathname = "/pull/7";

@@ -4,21 +4,24 @@
 
 1. the active github.com account, from a conditional ``gh api user``
    (:func:`~.gh_lists.active_account`);
-2. the pull request, its issue comments, reviews, review comments, and the head
-   commit's check runs and combined status, each with ``gh api``, 100 per page up to
-   each list's cap, sending ``If-None-Match`` where the previous record by the same
-   reader holds an ETag and reusing that record's list on a ``304``;
+2. the pull request, its issue comments, reviews, and review comments, each with
+   ``gh api``, 100 per page up to each list's cap, sending ``If-None-Match`` where the
+   previous record by the same reader holds an ETag and reusing that record's list on a
+   ``304``;
 3. the account again: a record read while the active account changed is discarded;
 4. ``refs/pull/<n>/head`` into the store, which must name the head the API reported
    (one more full read if it moved meanwhile, then ``head_mismatch``);
 5. the comparison endpoints, then the record, written atomically; and
 6. its operational status, one GraphQL query kept apart from the record
-   (:func:`~.pull_status_read.keep_pull_status`), unless the prefetch asked.
+   (:func:`~.pull_status_read.keep_pull_status`), unless the prefetch asked: the only
+   read of whether it conflicts and how its checks stand.
 
-A part that fails on its own does not fail the record. Check runs or a combined status
-GitHub refuses, and a comparison whose base cannot be fetched or shares no history with
-the head, are left out and named in the record's ``unavailable``; a status read that
-fails is kept as how that read ended, and the status an earlier one kept stays. An item
+:func:`refresh_pull_status` is that last step alone, for a change only the status shows.
+
+A part that fails on its own does not fail the record. A comparison whose base cannot be
+fetched or shares no history with the head is left out and named in the record's
+``unavailable``; a status read that fails is kept as how that read ended, and the status
+an earlier one kept stays. An item
 GitHub sends that cannot be read, or that alone is larger than a page may be, is left
 out and its list marked incomplete; an optional field that cannot be read, such as an
 ``http://`` link, is left empty. Everything else that fails raises
@@ -37,6 +40,8 @@ signed-in account and ``reader`` is always ``gh:<login>``.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import re
 from collections.abc import Awaitable, Callable, Sequence
@@ -69,25 +74,21 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     unconditional_304,
     utc_stamp,
 )
+from metabrowser.builtin_plugins.github.pull_freshness import described, mergeability_pending
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_manifest import prepare_pull_manifest
 from metabrowser.builtin_plugins.github.pull_record import (
     API_PAGE_SIZE,
     MAX_BODY_BYTES,
-    MAX_CHECK_RUNS,
     MAX_DIFF_HUNK_BYTES,
     MAX_ISSUE_COMMENTS,
     MAX_LABELS,
     MAX_PULL_COMMITS,
     MAX_REVIEW_COMMENTS,
     MAX_REVIEWS,
-    MAX_STATUSES,
     MAX_TITLE_BYTES,
     PULL_RECORD_PROJECTION,
     PULL_RECORD_SCHEMA,
-    CheckRun,
-    CombinedStatus,
-    CommitStatus,
     Comparison,
     IssueComment,
     PullLabel,
@@ -101,7 +102,6 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Review,
     ReviewComment,
     Truncation,
-    UnavailablePart,
     cut_text,
     fit_record,
     label_color,
@@ -111,7 +111,12 @@ from metabrowser.builtin_plugins.github.pull_record import (
     write_pull_record,
     write_pull_refresh,
 )
-from metabrowser.builtin_plugins.github.pull_status_read import keep_pull_status
+from metabrowser.builtin_plugins.github.pull_status import PullStatus, merge_state
+from metabrowser.builtin_plugins.github.pull_status_read import (
+    keep_pull_status,
+    keep_status_failure,
+)
+from metabrowser.builtin_plugins.github.pull_status_store import CheckProbes, ProbedPage
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
@@ -137,7 +142,8 @@ log = logging.getLogger(__name__)
 # pushed to faster than two full reads is reported rather than chased.
 _READ_ATTEMPTS: Final = 2
 # GitHub refusals that fail only the part asked for: 403 or 404 (a token without checks
-# access) and anything else it will not answer, such as a 422.
+# access) and anything else it will not answer, such as a 422. A probe of the checks that
+# meets one stops probing that head's checks (:class:`.pull_status_store.CheckProbes`).
 _PART_FAILURES: Final = frozenset({"not_found_or_private", "gh_failed"})
 _SHORT_BYTES: Final = 1024
 _MAX_URL_CHARS: Final = 4096
@@ -153,7 +159,7 @@ _CORE_FIELDS: Final = """
       mergedBy { __typename login avatar_url:avatarUrl(size:40) }
       baseRefName baseRefOid baseRepository { nameWithOwner }
       headRefName headRefOid headRepository { nameWithOwner }
-      mergeable mergeCommit { oid } potentialMergeCommit { oid }
+      mergeCommit { oid } potentialMergeCommit { oid }
       commits(first:1) { totalCount }
       labels(first:100) { nodes { name color description } }"""
 _CORE_QUERY: Final = (
@@ -259,7 +265,6 @@ def _pull(value: object, number: int) -> PullRequest:
     labels = item.get("labels")
     listed: list[object] = labels[:MAX_LABELS] if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
     read = [_label(label) for label in listed]
-    mergeable = item.get("mergeable")
     return PullRequest(
         number=number,
         title=title,
@@ -272,11 +277,6 @@ def _pull(value: object, number: int) -> PullRequest:
         merged_by_avatar_url=avatar_of(item.get("merged_by")),
         commits=_count(item.get("commits")),
         merge_commit_sha=_sha(item.get("merge_commit_sha")),
-        mergeable="mergeable"
-        if mergeable is True
-        else "conflicting"
-        if mergeable is False
-        else "unknown",
         labels=tuple(label for label in read if label is not None),
         author=login_of(item.get("user")),
         author_avatar_url=avatar_of(item.get("user")),
@@ -353,40 +353,6 @@ def _review_comment(value: object) -> ReviewComment:
     )
 
 
-def _check_run(value: object) -> CheckRun:
-    item = as_dict(value)
-    app = item.get("app")
-    return CheckRun(
-        id=_required_int(item.get("id")),
-        name=_required_short(item.get("name")),
-        status=_required_short(item.get("status")),
-        conclusion=_short(item.get("conclusion")),
-        details_url=_url(item.get("details_url")),
-        app=_short(app.get("name")) if isinstance(app, dict) else None,  # pyright: ignore[reportUnknownMemberType]
-    )
-
-
-def _commit_status(value: object) -> CommitStatus:
-    entry = as_dict(value)
-    return CommitStatus(
-        context=_required_short(entry.get("context")),
-        state=_required_short(entry.get("state")),
-        description=_short(entry.get("description")),
-        target_url=_url(entry.get("target_url")),
-    )
-
-
-def _status(value: object) -> tuple[CombinedStatus, bool]:
-    item = as_dict(value)
-    entries = item.get("statuses")
-    listed: list[object] = entries[:MAX_STATUSES] if isinstance(entries, list) else []  # pyright: ignore[reportUnknownVariableType]
-    statuses, dropped = readable_items(listed, _commit_status)
-    total = _int(item.get("total_count"))
-    count = len(entries) if isinstance(entries, list) else 0  # pyright: ignore[reportUnknownArgumentType]
-    combined = CombinedStatus(state=_required_short(item.get("state")), statuses=statuses)
-    return combined, dropped or count > MAX_STATUSES or (total is not None and total > count)
-
-
 def _unreadable_pull() -> PullDataError:
     return PullDataError("gh_failed", "GitHub answered with a pull request Metabrowser cannot read")
 
@@ -420,7 +386,7 @@ def _reusable_etag(
     return previous.etags.get(_first_page(path))
 
 
-type _ListName = Literal["issue_comments", "reviews", "review_comments", "check_runs"]
+type _ListName = Literal["issue_comments", "reviews", "review_comments"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -460,43 +426,6 @@ async def _read_list_of[M: BaseModel](
 
 def _degrade(exc: PullDataError) -> bool:
     return exc.state in _PART_FAILURES
-
-
-def _conversation_kept(pull: PullRequest, previous: PullRecord | None) -> bool:
-    """Whether *pull* names the head, base, and update time of *previous*'s pull request.
-
-    ``updated_at`` moves with a comment, a review, a review comment, an edit, and a push, so
-    these parts of *previous* are still GitHub's. A base GitHub reports moved takes the
-    full read, which fetches it and computes Files changed again.
-    """
-
-    if previous is None or previous.projection_version < PULL_RECORD_PROJECTION:
-        return False
-    was = previous.pull
-    return (
-        pull.updated_at == was.updated_at
-        and pull.head.sha == was.head.sha
-        and pull.base.sha == was.base.sha
-        and pull.base.ref == was.base.ref
-    )
-
-
-async def _kept_list(
-    previous: PullRecord, name: _ListName, path: str, etags: dict[str, str]
-) -> _ListParts[Any]:
-    """*previous*'s list *name*, unread, with the ETag that keeps the next read conditional."""
-
-    etag = previous.etags.get(_first_page(path))
-    if etag is not None:
-        etags[_first_page(path)] = etag
-    return _ListParts(getattr(previous, name), getattr(previous.truncated, name), True)
-
-
-@dataclass(frozen=True, slots=True)
-class _Unavailable:
-    """A part of the pull request that could not be read, and the record stands without."""
-
-    state: PullDataState
 
 
 # The apps whose REST login is not ``<GraphQL login>[bot]``, by GraphQL login. The Copilot
@@ -553,9 +482,6 @@ def _graph_pull(value: object, number: int) -> PullRequest:
             "merged_by": _rest_actor(item["mergedBy"]),
             "commits": as_dict(item["commits"])["totalCount"],
             "merge_commit_sha": None if merged_commit is None else as_dict(merged_commit)["oid"],
-            "mergeable": {"MERGEABLE": True, "CONFLICTING": False, "UNKNOWN": None}[
-                item["mergeable"]
-            ],
             "labels": as_dict(item["labels"])["nodes"],
             "user": _rest_actor(item["author"]),
             "created_at": item["createdAt"],
@@ -625,18 +551,14 @@ async def _read_api(
     reader: str,
     on_core: Callable[[PullRequest], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
-    checks_only: bool = False,
 ) -> PullRecord:
     """Read every part of the pull request into a record with no comparison yet.
 
     *previous* is the cached record by the same reader, whose ETags make each request
-    conditional; a ``304`` reuses its part. An ETag names one request path, and the
-    check-run and status paths name the head commit, so a moved head asks afresh.
+    conditional; a ``304`` reuses its part. An ETag names one request path.
 
-    With *checks_only*, when the pull itself names the head, base, and ``updated_at`` of
-    *previous* (:func:`_conversation_kept`), its comments, reviews, and review comments are
-    *previous*'s, unread: ``updated_at`` covers them, and the catalog said it had not moved.
-    Only the pull, its check runs, and its status are asked for.
+    Whether it conflicts and how its checks stand are not the record's: the status read
+    after it reads them (:func:`~.pull_status_read.keep_pull_status`).
     """
 
     # A provider ETag identifies its representation, not the fields our older cache
@@ -645,7 +567,6 @@ async def _read_api(
         previous = previous.model_copy(update={"etags": {}})
     base = f"repos/{owner}/{repo}"
     etags: dict[str, str] = {}
-    unavailable: dict[UnavailablePart, str] = {}
     pull_path = f"{base}/pulls/{number}"
     pull_etag = previous.etags.get(pull_path) if previous is not None else None
     if on_core is not None:
@@ -671,64 +592,16 @@ async def _read_api(
             if response.etag is not None:
                 etags[pull_path] = response.etag
 
-    head = pull.head.sha
-    kept = previous if checks_only and _conversation_kept(pull, previous) else None
-    status_path = _first_page(f"{base}/commits/{head}/status")
-    status_etag = previous.etags.get(status_path) if previous is not None else None
-
-    async def read_check_runs(part_etags: dict[str, str]) -> _ListParts[CheckRun] | _Unavailable:
-        try:
-            return await _read_list_of(
-                f"{base}/commits/{head}/check-runs",
-                key="check_runs",
-                cap=MAX_CHECK_RUNS,
-                previous=previous,
-                name="check_runs",
-                build=_check_run,
-                etags=part_etags,
-            )
-        except PullDataError as exc:
-            if not _degrade(exc):
-                raise
-            return _Unavailable(exc.state)
-
-    async def read_status(
-        part_etags: dict[str, str],
-    ) -> tuple[CombinedStatus | None, bool] | _Unavailable:
-        try:
-            response = await _get(status_path, etag=status_etag)
-            if response.status == 304:
-                if previous is None or status_etag is None:
-                    raise unconditional_304()
-                part_etags[status_path] = status_etag
-                return previous.status, previous.truncated.statuses
-            try:
-                read = _status(response_json(response))
-            except READ_FAILURES as exc:
-                raise PullDataError(
-                    "gh_failed", "GitHub answered with a status Metabrowser cannot read"
-                ) from exc
-            if response.etag is not None:
-                part_etags[status_path] = response.etag
-            return read
-        except PageTooLargeError:
-            return _Unavailable("gh_failed")
-        except PullDataError as exc:
-            if not _degrade(exc):
-                raise
-            return _Unavailable(exc.state)
-
-    # The five parts are in flight together, each `gh` spawn its own connection: 0.44 to 0.93 s
-    # each, 3.0 to 4.0 s in sequence, measured 2026-11-02, the same whether it answers 304 or
-    # 200. Five is far inside GitHub's documented limit of 100 concurrent requests, and it is
-    # the same requests the sequence made, each page of a long list still after the one before.
-    # Each part has its own ETags and the first failure in this order is the one raised, so a
-    # record and a refusal read as they did in sequence.
-    part_etags: tuple[dict[str, str], ...] = ({}, {}, {}, {}, {})
+    # The three parts are in flight together, each `gh` spawn its own connection: 0.44 to
+    # 0.93 s each, the same whether it answers 304 or 200, measured 2026-11-02, when a
+    # record read five parts and they took 3.0 to 4.0 s in sequence. Three is far inside
+    # GitHub's documented limit of 100 concurrent requests, and it is the same requests the
+    # sequence made, each page of a long list still after the one before. Each part has its
+    # own ETags and the first failure in this order is the one raised, so a record and a
+    # refusal read as they did in sequence.
+    part_etags: tuple[dict[str, str], ...] = ({}, {}, {})
     reading_comments = asyncio.ensure_future(
-        _kept_list(kept, "issue_comments", f"{base}/issues/{number}/comments", part_etags[0])
-        if kept is not None
-        else _read_list_of(
+        _read_list_of(
             f"{base}/issues/{number}/comments",
             key=None,
             cap=MAX_ISSUE_COMMENTS,
@@ -739,9 +612,7 @@ async def _read_api(
         )
     )
     reading_reviews = asyncio.ensure_future(
-        _kept_list(kept, "reviews", f"{base}/pulls/{number}/reviews", part_etags[1])
-        if kept is not None
-        else _read_list_of(
+        _read_list_of(
             f"{base}/pulls/{number}/reviews",
             key=None,
             cap=MAX_REVIEWS,
@@ -752,9 +623,7 @@ async def _read_api(
         )
     )
     reading_review_comments = asyncio.ensure_future(
-        _kept_list(kept, "review_comments", f"{base}/pulls/{number}/comments", part_etags[2])
-        if kept is not None
-        else _read_list_of(
+        _read_list_of(
             f"{base}/pulls/{number}/comments",
             key=None,
             cap=MAX_REVIEW_COMMENTS,
@@ -764,18 +633,10 @@ async def _read_api(
             etags=part_etags[2],
         )
     )
-    reading_runs = asyncio.ensure_future(read_check_runs(part_etags[3]))
-    reading_status = asyncio.ensure_future(read_status(part_etags[4]))
-    reading = (
-        reading_comments,
-        reading_reviews,
-        reading_review_comments,
-        reading_runs,
-        reading_status,
-    )
+    reading = (reading_comments, reading_reviews, reading_review_comments)
     try:
         # The selected core already named its actual query viewer. Stage that verified
-        # core while the existing five reads start; callback failure drains them.
+        # core while the existing reads start; callback failure drains them.
         if on_core is not None:
             await on_core(pull)
         await asyncio.gather(*reading, return_exceptions=True)
@@ -787,24 +648,10 @@ async def _read_api(
     comments = reading_comments.result()
     reviews = reading_reviews.result()
     review_comments = reading_review_comments.result()
-    read_runs = reading_runs.result()
-    read_state = reading_status.result()
     for part in part_etags:
         etags.update(part)
 
-    if isinstance(read_runs, _Unavailable):
-        check_runs = _ListParts[CheckRun]((), False, False)
-        unavailable["check_runs"] = read_runs.state
-    else:
-        check_runs = read_runs
-    status: CombinedStatus | None = None
-    statuses_cut = False
-    if isinstance(read_state, _Unavailable):
-        unavailable["status"] = read_state.state
-    else:
-        status, statuses_cut = read_state
-
-    parts = (comments, reviews, review_comments, check_runs)
+    parts = (comments, reviews, review_comments)
     return PullRecord(
         schema_version=PULL_RECORD_SCHEMA,
         projection_version=PULL_RECORD_PROJECTION,
@@ -817,21 +664,17 @@ async def _read_api(
         issue_comments=comments.items,
         reviews=reviews.items,
         review_comments=review_comments.items,
-        check_runs=check_runs.items,
-        status=status,
         comparison=None,
         truncated=Truncation(
             issue_comments=comments.incomplete,
             reviews=reviews.incomplete,
             review_comments=review_comments.incomplete,
-            check_runs=check_runs.incomplete,
-            statuses=statuses_cut,
             # A reused list keeps any cut the text budget made in it.
             text=previous is not None
             and previous.truncated.text
             and any(part.reused for part in parts),
         ),
-        unavailable=unavailable,
+        unavailable={},
     )
 
 
@@ -1045,7 +888,6 @@ async def _refresh(
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
     published_records: list[PullRecord] | None = None,
-    checks_only: bool = False,
 ) -> PullRecord:
     owner, repo = _owner_and_repo(published)
     # An existing full record always retains the original two-check refresh path.
@@ -1071,7 +913,6 @@ async def _refresh(
             reader=reader,
             on_core=core_ready if progress is not None else None,
             observe_reader=observe_reader,
-            checks_only=checks_only,
         )
         final_login = await active_account()
         if observe_reader is not None:
@@ -1088,19 +929,6 @@ async def _refresh(
             # the newest metadata, and the merge keeps a mirror's comparison that fits it.
             return await _write(published, record)
         pull = record.pull
-        if (
-            checks_only
-            and previous is not None
-            and previous.comparison is not None
-            and _conversation_kept(pull, previous)
-        ):
-            # The head and base are the ones its comparison was computed for, so Files
-            # changed stands and the store needs no fetch.
-            return await _write(
-                published,
-                record.model_copy(update={"comparison": previous.comparison}),
-                expected=cached,
-            )
         try:
             fetched = await fetch_pull_head(
                 published, number, base_branch=pull.base.ref if pull.state == "open" else None
@@ -1178,7 +1006,6 @@ async def refresh_pull_request(
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
     adopt_current: bool = False,
-    checks_only: bool = False,
 ) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
@@ -1192,11 +1019,8 @@ async def refresh_pull_request(
     A failure leaves any previous record in place. How it ended is
     kept beside the record either way; see :func:`last_refresh`.
 
-    *checks_only* is for a record the catalog says is GitHub's but whose checks, statuses,
-    and ``mergeable``, which ``updated_at`` does not track, are a window old: while the pull
-    names the cached head, base, and update time, only it, its check runs, and its status
-    are read, and a mirror keeps its comparison (:func:`_read_api`). Otherwise it is the
-    full read.
+    What ``updated_at`` does not track, whether it conflicts and how its checks stand, is
+    its operational status, read last; :func:`refresh_pull_status` reads that alone.
     """
 
     cached: PullRecord | RecordAbsence = "not_cached"
@@ -1219,7 +1043,6 @@ async def refresh_pull_request(
                 on_core=on_core,
                 observe_reader=observe_reader,
                 published_records=published_records,
-                checks_only=checks_only,
             )
         except GitError as exc:
             raise _git_failure(number, exc) from exc
@@ -1256,6 +1079,35 @@ async def refresh_pull_request(
     return record
 
 
+async def refresh_pull_status(
+    published: PublishedSource | ListedRepository, number: int
+) -> PullStatus | None:
+    """Read pull request *number*'s operational status alone and keep it; the status, or ``None``.
+
+    For what changes the status and not the record: a check a probe saw change, a
+    mergeability GitHub has since computed, a status a window old, or a page with no
+    status for its record's head. One account check, a conditional read that spends
+    nothing while the login is the same, names the reader, and one GraphQL query reads
+    the status as that reader (:func:`~.pull_status_read.keep_pull_status`). Nothing of
+    the record is read over REST and nothing of it is written, so its revision, its
+    comparison, and how its last refresh ended stand.
+
+    A failure fails the status alone: it is kept as how the status's read ended, and the
+    status an earlier read kept stays. Raises only :class:`PullDataError`, and only for a
+    source that is not a GitHub repository's.
+    """
+
+    owner, repo = _owner_and_repo(published)
+    try:
+        login = await active_account()
+    except PullDataError as exc:
+        await keep_status_failure(published, owner, repo, number, exc, now=lambda: utc_now())
+        return None
+    return await keep_pull_status(
+        published, owner, repo, number, reader=f"gh:{login}", now=lambda: utc_now()
+    )
+
+
 # ── Probing ────────────────────────────────────────────────────
 
 type ProbeOutcome = Literal["unchanged", "changed", "checks_changed", "behind"]
@@ -1281,23 +1133,25 @@ class IssueSeen:
 
 @dataclass(frozen=True, slots=True)
 class PullProbe:
-    """What one probe found: whether the record still describes GitHub, and newer ETags.
+    """What one probe found: whether the record and its status still describe GitHub.
 
     ``changed`` says the pull request moved past the record, ``checks_changed`` that only
-    its check runs, statuses, or mergeability did, and ``behind`` that GitHub's issue
-    answer is older than the record, which is an answer that lags and not a change.
+    its operational status did, a check or its mergeability, and ``behind`` that GitHub's
+    issue answer is older than the record, which is an answer that lags and not a change.
 
-    ``etags`` holds the ETag of each check-run, status, or pull page GitHub answered
-    ``200`` without changing anything the record shows, for the next probe to send
-    instead of the record's. ``seen`` is the issue as this probe found it, for the next
-    probe to send; ``None`` when GitHub sent no ETag with it. ``updated_at`` is the
-    issue's, whether or not it came with an ETag.
+    ``etags`` holds the ETag of each pull page GitHub answered ``200`` without changing
+    the mergeability the status holds, for the next probe to send instead of the record's.
+    ``seen`` is the issue as this probe found it, for the next probe to send; ``None``
+    when GitHub sent no ETag with it. ``updated_at`` is the issue's, whether or not it came
+    with an ETag. ``checks`` is what the probes of the head's checks saw now, for the next
+    probe to compare with, when it differs from what this one was given.
     """
 
     outcome: ProbeOutcome
     etags: dict[str, str]
     seen: IssueSeen | None = None
     updated_at: str | None = None
+    checks: CheckProbes | None = None
 
 
 # What a probe of a pull request reads: its issue, ``repos/o/r/issues/<n>``, not the pull.
@@ -1313,8 +1167,8 @@ class PullProbe:
 #   repository's ``open_issues_count`` (56 times, so any issue or pull request opened or
 #   closed), its ``pushed_at`` (40), and the pull's ``mergeable`` as GitHub recomputed
 #   it (20). The last is something a page shows and the issue does not carry, which is
-#   why a record whose mergeability is unknown has the pull asked too
-#   (:func:`mergeability_probe_path`).
+#   why a pull request whose status has not settled its mergeability has the pull asked
+#   too (:func:`mergeability_probe_path`).
 # - The issue answered ``304`` in all 90 of those rounds.
 # - The issue answered ``200`` twice, both in the round the pull's ``updated_at`` moved:
 #   labels a bot added (02:08:12, seen 02:08:31) and a force-push of the head (02:19:22,
@@ -1347,69 +1201,122 @@ def _issue_updated_at(value: object, number: int) -> str:
 
 
 def mergeability_probe_path(
-    published: PublishedSource | ListedRepository, record: PullRecord
+    published: PublishedSource | ListedRepository,
+    record: PullRecord,
+    status: PullStatus | None,
 ) -> str | None:
-    """The pull's own path, which a probe asks while *record*'s mergeability is unknown.
+    """The pull's own path, which a probe asks while GitHub has not settled its mergeability.
 
-    ``None`` for any other record: the pull's ETag moves with its whole repository
+    That is while *status*, the kept status of *record*'s head, has an ``unknown``
+    ``conflicts`` or ``merge_state`` (:func:`~.pull_freshness.mergeability_pending`).
+    ``None`` otherwise: the pull's ETag moves with its whole repository
     (:data:`PROBE_RESOURCE`), so it is asked only for what no other page says.
     """
 
-    if record.pull.state != "open" or record.pull.mergeable != "unknown":
+    if not mergeability_pending(record, status):
         return None
     owner, repo = _owner_and_repo(published)
     return f"repos/{owner}/{repo}/pulls/{record.number}"
 
 
 def checks_probe_paths(
-    published: PublishedSource | ListedRepository, record: PullRecord
+    published: PublishedSource | ListedRepository,
+    record: PullRecord,
+    status: PullStatus | None,
+    probes: CheckProbes | None = None,
 ) -> tuple[str, str] | None:
     """The check-run and status pages a probe of *record*'s checks asks, or ``None``.
 
-    Only a record whose check runs fit on one page, since a ``304`` for page one then says
-    the whole list is unchanged, as :func:`_reusable_etag` relies on for the full read; and
-    only one that holds both parts, since a part GitHub refused would read as a change on
-    every probe.
+    Only for a head whose kept *status* counts fewer checks than a page holds, since a
+    ``304`` for page one then says the whole list is unchanged, and not for one whose
+    pages GitHub refused this reader (*probes*' ``refused``), since a part GitHub refuses
+    would be asked again on every probe and could never say anything changed.
     """
 
-    if (
-        record.truncated.check_runs
-        or len(record.check_runs) >= API_PAGE_SIZE
-        or record.status is None
-        or "check_runs" in record.unavailable
-        or "status" in record.unavailable
-    ):
+    kept = described(record, status)
+    if kept is None or kept.checks.total >= API_PAGE_SIZE:
+        return None
+    if probes is not None and _probes_of(record, probes) and probes.refused:
         return None
     owner, repo = _owner_and_repo(published)
     head = f"repos/{owner}/{repo}/commits/{record.pull.head.sha}"
     return _first_page(f"{head}/check-runs"), _first_page(f"{head}/status")
 
 
-def _same_check_runs(response: GhResponse, record: PullRecord) -> bool:
+def _probes_of(record: PullRecord, probes: CheckProbes) -> bool:
+    """Whether *probes* were seen of *record*'s head by its reader, so it may be compared."""
+
+    return (probes.number, probes.head, probes.reader) == (
+        record.number,
+        record.pull.head.sha,
+        record.reader,
+    )
+
+
+def _listed(payload: object, key: str) -> list[dict[str, Any]]:
+    entries = as_dict(payload).get(key)
+    if not isinstance(entries, list):
+        raise UnreadableItemError
+    return [as_dict(entry) for entry in entries]  # pyright: ignore[reportUnknownVariableType]
+
+
+def checks_digest(response: GhResponse) -> str:
+    """A digest of what a status keeps of a checks page GitHub answered ``200``.
+
+    A check-runs page gives each run's name, status, conclusion, and details link; a
+    combined status its state and each context's name, state, description, and link. The
+    rest of either answer, a run's output among it, is left out, so an answer that moves
+    only that is no change (``CHECKS_PROBE_S`` in :mod:`.served_pull`). Raises one of
+    ``READ_FAILURES`` for an answer of neither shape.
+    """
+
     payload = response_json(response)
-    items = payload.get("check_runs") if isinstance(payload, dict) else None  # pyright: ignore[reportUnknownMemberType]
-    if not isinstance(items, list):
-        return False
-    read, dropped = readable_items(items, _check_run)  # pyright: ignore[reportUnknownArgumentType]
-    return not dropped and read == record.check_runs
+    item = as_dict(payload)
+    if "check_runs" in item:
+        seen: object = {
+            "total_count": item.get("total_count"),
+            "check_runs": [
+                [run.get(field) for field in ("name", "status", "conclusion", "details_url")]
+                for run in _listed(payload, "check_runs")
+            ],
+        }
+    else:
+        seen = {
+            "state": item["state"],
+            "total_count": item.get("total_count"),
+            "statuses": [
+                [entry.get(field) for field in ("context", "state", "description", "target_url")]
+                for entry in _listed(payload, "statuses")
+            ],
+        }
+    text = json.dumps(seen, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
-def _same_status(response: GhResponse, record: PullRecord) -> bool:
+def _same_mergeability(response: GhResponse, number: int, status: PullStatus | None) -> bool:
+    """Whether the pull GitHub answered with says nothing *status* does not.
+
+    Its ``mergeable`` and ``mergeable_state`` are GitHub's REST spelling of the status's
+    ``conflicts`` and ``merge_state``. An ``unknown`` answer, which REST also gives a draft's
+    ``mergeable_state``, is no news; a known one that differs is a change.
+    """
+
     try:
-        status, dropped = _status(response_json(response))
+        payload = response_json(response)
+        # A pull this cannot read is no answer, never one that says "still unknown"
+        # (review B3 on #726).
+        _pull(payload, number)
     except READ_FAILURES:
         return False
-    return status == record.status and dropped == record.truncated.statuses
-
-
-def _same_mergeability(response: GhResponse, record: PullRecord) -> bool:
-    """Whether the pull GitHub answered with still leaves *record*'s mergeability unknown."""
-
-    try:
-        pull = _pull(response_json(response), record.number)
-    except READ_FAILURES:
+    item = as_dict(payload)
+    if status is None or "mergeable" not in item:
         return False
-    return pull.mergeable == record.pull.mergeable
+    mergeable = item.get("mergeable")
+    conflicts = "mergeable" if mergeable is True else "conflicting" if mergeable is False else None
+    state = merge_state(item.get("mergeable_state"))
+    return (conflicts is None or conflicts == status.conflicts) and (
+        state == "unknown" or state == status.merge_state
+    )
 
 
 async def probe_pull_request(
@@ -1420,11 +1327,13 @@ async def probe_pull_request(
     checks: bool,
     seen: IssueSeen | None = None,
     mergeability: bool = False,
+    status: PullStatus | None = None,
+    probes: CheckProbes | None = None,
 ) -> PullProbe:
-    """Ask GitHub whether *record* still describes pull request ``record.number``.
+    """Ask GitHub whether *record*, and *status*, still describe pull request ``record.number``.
 
-    Each request is conditional, and GitHub does not count one it answers ``304`` against
-    the rate limit (measured 2026-11-22; see
+    Each request is conditional once there is something to compare with, and GitHub does
+    not count one it answers ``304`` against the rate limit (measured 2026-11-22; see
     docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md).
 
     The pull request's issue is asked first (:func:`probe_path`), with the ETag of *seen*,
@@ -1440,21 +1349,25 @@ async def probe_pull_request(
     bring nothing. With no *seen*, the first probe of a number in a server, it is asked
     unconditionally once.
 
-    The issue does not carry ``mergeable`` or the head, and the full read a change starts
-    reads them. GitHub computes ``mergeable`` after the read that first asks, so a record
-    often holds ``unknown``. With *mergeability*, once the issue is unchanged, the pull
-    itself is asked for such a record (:func:`mergeability_probe_path`), and an answer
-    that is no longer unknown is ``checks_changed``. A mergeability GitHub recomputes
-    for a record that holds an answer, as when its base moves, waits for the next full
-    read.
+    The issue carries neither the head's checks nor whether the pull request can merge,
+    which are its operational status, *status*, the kept status of *record*'s head. Once
+    the issue is unchanged:
 
-    With *checks*, once the issue is unchanged, the first pages of the head's check runs
-    and status are asked (:func:`checks_probe_paths`), each on the ETag in *etags* or
-    else the record's; a ``200`` is compared with what the record holds, and only a real
-    change is ``checks_changed``. These and the pull are asked together.
+    - With *mergeability*, the pull itself is asked while GitHub has not settled the
+      status's mergeability (:func:`mergeability_probe_path`), on the ETag in *etags* or
+      else the record's, and an answer that settles it otherwise is ``checks_changed``
+      (:func:`_same_mergeability`). A mergeability GitHub recomputes for a status that
+      holds an answer, as when its base moves, waits for the next full read.
+    - With *checks*, the first pages of the head's check runs and status are asked
+      (:func:`checks_probe_paths`), each on the ETag *probes* keep for it. A ``200`` is
+      ``checks_changed`` unless its :func:`checks_digest` is the one kept, and either way
+      becomes the page's new baseline, which the result's ``checks`` carries; the first
+      ask of a head has none, so its two ``200`` answers seed the baseline and count as a
+      change. A page GitHub refuses marks the head's pages ``refused``.
 
-    Runs no account check and writes nothing: the full read a change starts checks the
-    account and publishes. Raises only :class:`PullDataError`.
+    These and the pull are asked together, and ``checks_changed`` starts a status read
+    (:func:`refresh_pull_status`). Runs no account check and writes nothing: the read a
+    change starts checks the account and publishes. Raises only :class:`PullDataError`.
     """
 
     newer: dict[str, str] = {}
@@ -1479,30 +1392,77 @@ async def probe_pull_request(
         return PullProbe("behind", newer, found, updated_at)
     if updated_at != record.pull.updated_at:
         return PullProbe("changed", newer, found, updated_at)
-    pull_path = mergeability_probe_path(published, record) if mergeability else None
-    paths = checks_probe_paths(published, record) if checks else None
-    asked: list[tuple[str, Callable[[GhResponse, PullRecord], bool]]] = []
-    if pull_path is not None:
-        asked.append((pull_path, _same_mergeability))
-    if paths is not None:
-        asked += zip(paths, (_same_check_runs, _same_status), strict=True)
-    if not asked:
+    pull_path = mergeability_probe_path(published, record, status) if mergeability else None
+    paths = checks_probe_paths(published, record, status, probes) if checks else None
+    if pull_path is None and paths is None:
         return PullProbe("unchanged", newer, found, updated_at)
+    kept = probes if probes is not None and _probes_of(record, probes) else None
+    pages = dict(kept.pages) if kept is not None else {}
 
-    async def ask(path: str) -> GhResponse | None:
+    async def ask_pull(path: str) -> GhResponse | None:
         try:
             return await _get(path, etag=etags.get(path) or record.etags.get(path))
         except PageTooLargeError:
             return None
 
-    answers = await asyncio.gather(*(ask(path) for path, _same in asked))
+    async def ask_page(path: str) -> GhResponse | None:
+        """The page's answer, or ``None`` for one GitHub refused or sent too large."""
+
+        baseline = pages.get(path)
+        try:
+            return await _get(path, etag=baseline.etag if baseline is not None else None)
+        except PageTooLargeError:
+            return None
+        except PullDataError as exc:
+            if not _degrade(exc):
+                raise
+            return None
+
+    asked_pages = paths or ()
+    answers = await asyncio.gather(
+        *((ask_pull(pull_path),) if pull_path is not None else ()),
+        *(ask_page(path) for path in asked_pages),
+    )
     changed = False
-    for (path, same), response in zip(asked, answers, strict=True):
-        if response is None or (response.status != 304 and not same(response, record)):
+    if pull_path is not None:
+        answer = answers[0]
+        if answer is None or (
+            answer.status != 304 and not _same_mergeability(answer, record.number, status)
+        ):
             changed = True
-        elif response.status != 304 and response.etag is not None:
-            newer[path] = response.etag
-    return PullProbe("checks_changed" if changed else "unchanged", newer, found, updated_at)
+        elif answer.status != 304 and answer.etag is not None:
+            newer[pull_path] = answer.etag
+    refused = False
+    for path, answer in zip(asked_pages, answers[1 if pull_path is not None else 0 :], strict=True):
+        if answer is None:
+            refused = True
+            continue
+        if answer.status == 304:
+            continue
+        try:
+            digest = checks_digest(answer)
+        except READ_FAILURES:
+            refused = True
+            continue
+        baseline = pages.get(path)
+        if baseline is None or baseline.digest != digest:
+            changed = True
+        pages[path] = ProbedPage(etag=answer.etag, digest=digest)
+    noticed: CheckProbes | None = None
+    if paths is not None:
+        noticed = CheckProbes(
+            number=record.number,
+            head=record.pull.head.sha,
+            reader=record.reader,
+            seen_at=utc_stamp(utc_now()),
+            pages=pages,
+            refused=refused,
+        )
+        if kept is not None and (kept.pages, kept.refused) == (noticed.pages, noticed.refused):
+            noticed = None
+    return PullProbe(
+        "checks_changed" if changed else "unchanged", newer, found, updated_at, noticed
+    )
 
 
 def _keep_stamp(
@@ -1595,6 +1555,7 @@ __all__ = [
     "PullProbe",
     "IssueSeen",
     "PROBE_RESOURCE",
+    "checks_digest",
     "checks_probe_paths",
     "mergeability_probe_path",
     "probe_path",
@@ -1602,5 +1563,6 @@ __all__ = [
     "open_pull_request",
     "probe_pull_request",
     "refresh_pull_request",
+    "refresh_pull_status",
     "utc_now",
 ]

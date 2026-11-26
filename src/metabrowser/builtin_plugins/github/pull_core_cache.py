@@ -34,9 +34,15 @@ from metabrowser.home import PrivateStorageError, write_private_file_atomic
 
 
 class CachedCore(BaseModel):
+    """One core as a page may show it before its record: the pull request, no operational status.
+
+    ``schema_version`` 2 took out the pull request's ``mergeable``, which is its status's
+    (:mod:`.pull_status`); a core of another version reads as none and is prepared again.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     source: str
     repository_id: str
     reader: str

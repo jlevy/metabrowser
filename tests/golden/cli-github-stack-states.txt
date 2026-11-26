@@ -267,7 +267,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
+  "record_revision": "5c011c3a5b821c19776edbdfa483a6ec9360c8295d279a5527cd55fbe14b7766",
   "fresh_for_s": 60.0,
   "probe_every_s": 5.0,
   "refreshing": false,
@@ -282,7 +282,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=<base>&right=<closed_head>&store=<STORE>",
   "size_route": "/api/plugin/github/pull-size?number=9&left=<base>&right=<closed_head>&store=<STORE>",
   "record": {
-    "schema_version": 2,
+    "schema_version": 3,
     "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 9,
@@ -292,9 +292,7 @@ status: 200
       "repos/octo/demo/pulls/9": "W/\"bd0a1535019ba33ca5d652f1e47b79467f9530f4108d8188308766a528b0938a\"",
       "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
       "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
-      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
-      "repos/octo/demo/commits/<closed_head>/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
-      "repos/octo/demo/commits/<closed_head>/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\""
     },
     "pull": {
       "number": 9,
@@ -308,7 +306,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 1,
       "merge_commit_sha": null,
-      "mergeable": "unknown",
       "labels": [
         {
           "name": "invalid",
@@ -337,35 +334,6 @@ status: 200
     "issue_comments": [],
     "reviews": [],
     "review_comments": [],
-    "check_runs": [
-      {
-        "id": 51401654787,
-        "name": "tests (3.13)",
-        "status": "completed",
-        "conclusion": "success",
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-        "app": "GitHub Actions"
-      },
-      {
-        "id": 51401654788,
-        "name": "docs",
-        "status": "in_progress",
-        "conclusion": null,
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "app": "GitHub Actions"
-      }
-    ],
-    "status": {
-      "state": "success",
-      "statuses": [
-        {
-          "context": "docs/readthedocs.org:demo",
-          "state": "success",
-          "description": "Read the Docs build succeeded!",
-          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
-        }
-      ]
-    },
     "comparison": {
       "base": "<base>",
       "head": "<closed_head>",
@@ -376,8 +344,6 @@ status: 200
       "issue_comments": false,
       "reviews": false,
       "review_comments": false,
-      "check_runs": false,
-      "statuses": false,
       "text": false
     },
     "unavailable": {}
@@ -458,8 +424,6 @@ status: 200
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/9
-gh api repos/octo/demo/commits/<closed_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<closed_head>/status?per_page=100&page=1
 gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
@@ -581,12 +545,12 @@ status: 200
   ],
   "guide": {
     "number": 8,
-    "revision": "75235de61fd188022fc7e82702d008534cd793a81deaafb9e6dc4bd2b7fab55c"
+    "revision": "f4e61e54ea6acf066c241e6ffb434eadd7188c3de9848c1d4dc3ed3166ba4b25"
   },
   "github_url": "https://github.com/octo/demo/pull/9",
   "probe": {
     "number": 9,
-    "held": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
+    "held": "5c011c3a5b821c19776edbdfa483a6ec9360c8295d279a5527cd55fbe14b7766",
     "every_s": 5.0
   },
   "moved": null
@@ -1059,12 +1023,12 @@ status: 200
   ],
   "guide": {
     "number": 10,
-    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
+    "revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
   },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+    "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
     "every_s": 5.0
   },
   "moved": {
@@ -1415,12 +1379,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    "revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "held": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
     "every_s": 5.0
   },
   "moved": null
@@ -1514,12 +1478,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "a908ac4efc1ac7242364966202d8587c32c72c0e68c1f651913d2d6c5f74357c"
+    "revision": "925c6a3e91bbc24ddb81c526c1103d8aee9a06f09fb1744396091bff8afabf40"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "a908ac4efc1ac7242364966202d8587c32c72c0e68c1f651913d2d6c5f74357c",
+    "held": "925c6a3e91bbc24ddb81c526c1103d8aee9a06f09fb1744396091bff8afabf40",
     "every_s": 5.0
   },
   "moved": {
@@ -1631,12 +1595,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    "revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "held": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
     "every_s": 5.0
   },
   "moved": {
@@ -1748,12 +1712,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    "revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "held": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
     "every_s": 5.0
   },
   "moved": null
@@ -1856,12 +1820,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    "revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "held": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
     "every_s": 5.0
   },
   "moved": null

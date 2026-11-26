@@ -30,8 +30,9 @@ Four kinds of work go below the floor, and only a hold stops them (the owner's r
 Everything else automatic stops below it: prefetch, backfill, the cores walk, stacks,
 labels, the timeline, and the periodic scan and files read, which ask :func:`admission`,
 and the reads a visible page's clock alone asks for, a record's
-:data:`~.served_pull.FULL_REFRESH_S` full read and an open one's checks once a window
-(:meth:`.served_pull.ServedPull.below_floor`).
+:data:`~.served_pull.FULL_REFRESH_S` full read (:meth:`.served_pull.ServedPull.below_floor`)
+and an open one's status once a window, which spends GraphQL and so waits below that
+budget's floor alone (:meth:`.served_pull.ServedPull.status_below_floor`).
 
 The observations and the hold are this process's, and belong to the account the last
 account check named (:func:`note_account`, called by :func:`~.gh.gh_account` and
@@ -93,7 +94,9 @@ from typing import Final, Literal, TypedDict
 # points, the pull and five parts of a page each, now that the account checks are
 # conditional (:func:`~.gh.gh_account`), so 1,250 of 5,000 cover 200 such reads, a
 # reader's Refresh or a change a probe found, with room beside them for the point a probe
-# costs when GitHub answers it ``200``.
+# costs when GitHub answers it ``200``. That was measured when a record read its check runs
+# and status; it reads three parts now, 4 points, and its status a GraphQL point, so the
+# same floor covers about 300.
 BACKGROUND_FLOOR: Final = 0.25
 # How long a refusal that named no reset time holds: the refresh coordinator's window, as
 # ``pull_list_refresh`` waits after one.

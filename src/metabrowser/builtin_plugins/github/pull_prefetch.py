@@ -50,10 +50,12 @@ queued would wait behind the reader too, and the page's next ask says what is wa
 The caps, measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``,
 count only what GitHub's API answers; a list the store gives is not counted
 (``tests/golden/cli-github-pulls-prefetch-local-lists.txt``): a
-background record refresh asks for at most 6 core points when each part fits on one page
-(the pull and five parts; a ``304`` is free, and so is the account check after a
-process's first, since it is conditional), and a one-page files list for 1. A part of more than 100 comments, reviews,
-or check runs costs a point a page more. The lanes are kept in memory, one per repository
+background record refresh asks for at most 4 core points when each part fits on one page
+(the pull and three parts; a ``304`` is free, and so is the account check after a
+process's first, since it is conditional), and a one-page files list for 1. A part of more
+than 100 comments, reviews, or review comments costs a point a page more. A record reads
+no check runs or statuses: they are its operational status, which a background record does
+not read. The lanes are kept in memory, one per repository
 a server process serves; the arithmetic of :data:`RECORDS_PER_HOUR` and
 :data:`FILES_PER_HOUR` is beside them. What bounds the lane's points, whatever its items
 cost, is speculative work's share of the process's own ceiling
@@ -117,10 +119,13 @@ MERGE_BASES_AT_ONCE: Final = 4
 # (``gh_budget.SPECULATIVE_CORE_PER_HOUR``), which refuses the lane whatever its items turn
 # out to cost. At one page a part a record costs at most :data:`POINTS_PER_RECORD` and a
 # files list from GitHub :data:`POINTS_PER_FILES_LIST`, so the two caps together spend at
-# most 12 × 6 + 20 × 1 = 92 points an hour, under the share's 100. While the lane has work
-# the cores walk leaves it what the caps can still spend at those prices, and between a
-# page's asks a scan's records (:func:`reserved`), so the walk cannot take it before the
-# lane asks (review B1 of #737, review A1 of #761); the catalog's
+# most 12 × 4 + 20 × 1 = 68 points an hour, under the share's 100; they were set when a
+# record also read its check runs and status, at 12 × 6 + 20 × 1 = 92, and stand until
+# the request performance work in the merge readiness plan measures them again
+# (docs/project/specs/active/plan-2026-11-26-pull-request-merge-readiness.md). While the
+# lane has work the cores walk leaves it what the caps can still spend at those prices,
+# and between a page's asks a scan's records (:func:`reserved`), so the walk cannot take
+# it before the lane asks (review B1 of #737, review A1 of #761); the catalog's
 # backfill, the label set's read, and whatever the caps do not use are first come, first
 # served with the lane. They were 40 and 100 before the ceiling, at most
 # 40 × 8 + 100 × 3 = 620 points an hour at that day's prices, against a ceiling of 300 for
@@ -136,11 +141,12 @@ RECORDS_PER_HOUR: Final = 12
 # in view, at the 16 an ask names, with a few rested on.
 FILES_PER_HOUR: Final = 20
 # What a background record and a files list from GitHub cost at most when each part fits
-# on one page: the pull and five parts, and the list's one page (the module docstring,
-# measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``).
-# A background record reads no operational status, the GraphQL point a page's own read
-# adds (``refresh_pull_request``), so the price leaves it out.
-POINTS_PER_RECORD: Final = 6
+# on one page: the pull and three parts, its comments, reviews, and review comments, and
+# the list's one page (the module docstring, measured against the fake ``gh`` in
+# ``tests/golden/cli-github-pulls-prefetch.txt``). A background record reads no operational
+# status, the GraphQL point a page's own read adds (``refresh_pull_request``), so the price
+# leaves it out.
+POINTS_PER_RECORD: Final = 4
 POINTS_PER_FILES_LIST: Final = 1
 # How long after a page's last ask its lane, idle, still keeps a scan's records from the
 # cores walk (:func:`reserved`). The Pulls panel asks once for each scan it sees end
@@ -655,7 +661,7 @@ async def _record(host: PullHost, lane: Lane, item: Item) -> ItemOutcome:
         if not item.named:
             return "skipped:not_cached"
     elif freshness is None or freshness.verdict != "changed":
-        # `checks`: only an open pull request's checks are due, which its visible page reads.
+        # `checks`: only an open pull request's status is due, which its visible page reads.
         return f"skipped:{freshness.verdict if freshness is not None else 'unverified'}"
     else:
         companion = await served.companion(item.number)

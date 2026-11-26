@@ -10,9 +10,13 @@ const recorded = JSON.parse(
 );
 for (const answer of Object.values(recorded)) {
   for (const envelope of [answer.body, answer.body?.pull]) {
-    const holder = envelope?.record?.same_as;
-    if (holder !== undefined) {
-      envelope.record = recorded[holder].body.record;
+    for (const field of ["record", "status", "readiness", "checks"]) {
+      const holder = envelope?.[field]?.same_as;
+      if (holder !== undefined) {
+        // Anything kept beside the name, a status's own time, is this answer's.
+        const { same_as: _held, ...own } = envelope[field];
+        envelope[field] = { ...recorded[holder].body[field], ...own };
+      }
     }
   }
 }
@@ -2127,54 +2131,37 @@ async function tabKeys(page) {
 // may not follow. Only an Actions link stands in for the "GitHub Actions" app.
 async function checkRows(page) {
   const body = structuredClone(recorded.current.body);
-  body.record.check_runs.push(
+  const passed = { kind: "run", bucket: "pass", status: "COMPLETED", conclusion: "SUCCESS" };
+  body.checks.items.push(
     {
-      id: 1,
+      ...passed,
       name: "coverage",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://github.com/octo/demo/runs/123",
       app: "Codecov",
     },
+    { ...passed, name: "lint", details_url: "https://ci.example/runs/2", app: "GitHub Actions" },
+    { ...passed, name: "gist", details_url: "https://gist.github.com/octo/abc", app: "Gist bot" },
     {
-      id: 2,
-      name: "lint",
-      status: "completed",
-      conclusion: "success",
-      details_url: "https://ci.example/runs/2",
-      app: "GitHub Actions",
-    },
-    {
-      id: 3,
-      name: "gist",
-      status: "completed",
-      conclusion: "success",
-      details_url: "https://gist.github.com/octo/abc",
-      app: "Gist bot",
-    },
-    {
-      id: 4,
+      ...passed,
       name: "proxied",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://github.com:8443/octo/demo/actions/runs/9",
       app: "Proxy",
     },
     {
-      id: 5,
+      ...passed,
       name: "credentialed",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://bot@github.com/octo/demo/runs/5",
       app: "Bot",
     },
+    {
+      kind: "status",
+      bucket: "pass",
+      conclusion: "SUCCESS",
+      name: "legacy-ci",
+      description: "Passed",
+      details_url: "ftp://ci.example/7",
+    },
   );
-  body.record.status.statuses.push({
-    context: "legacy-ci",
-    state: "success",
-    description: "Passed",
-    target_url: "ftp://ci.example/7",
-  });
   const { container, handle } = await mountOn(page, body, "checks", () => "now");
   const list = container.querySelector(".github-pull-checks");
   assert.ok(list, "the Checks tab lists its checks");
@@ -2220,7 +2207,17 @@ async function checkRows(page) {
     mark: kind === "external" ? null : "github before",
   });
   const job = "https://github.com/octo/demo/actions/runs/18062895276/job/";
+  // `gh pr checks`'s order: the pending docs build first, then the rest as the server kept
+  // them, its runs and then its commit status, then the ones added here.
   assert.deepEqual(rows, [
+    {
+      name: "docs",
+      action: {
+        ...actions("actions", `${job}51401654788`),
+        accessibleName: "View action on GitHub: docs",
+      },
+      detail: null,
+    },
     {
       name: "tests (3.13)",
       action: {
@@ -2230,12 +2227,12 @@ async function checkRows(page) {
       detail: null,
     },
     {
-      name: "docs",
+      name: "docs/readthedocs.org:demo",
       action: {
-        ...actions("actions", `${job}51401654788`),
-        accessibleName: "View action on GitHub: docs",
+        ...actions("external", "https://demo--7.org.readthedocs.build/en/7/"),
+        accessibleName: "View details: docs/readthedocs.org:demo",
       },
-      detail: null,
+      detail: "Read the Docs build succeeded!",
     },
     {
       name: "coverage",
@@ -2276,14 +2273,6 @@ async function checkRows(page) {
         accessibleName: "View details: credentialed",
       },
       detail: "Bot",
-    },
-    {
-      name: "docs/readthedocs.org:demo",
-      action: {
-        ...actions("external", "https://demo--7.org.readthedocs.build/en/7/"),
-        accessibleName: "View details: docs/readthedocs.org:demo",
-      },
-      detail: "Read the Docs build succeeded!",
     },
     { name: "legacy-ci", action: null, detail: "Passed" },
   ]);

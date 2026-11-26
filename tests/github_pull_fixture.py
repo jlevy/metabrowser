@@ -789,7 +789,8 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
 
 
 _LIST_PROBE = re.compile(r"gh api repos/[^/]+/[^/]+/(issues|pulls)\?state=all&sort=updated&")
-# The parts of a record a refresh reads together, after the pull itself.
+# The parts of a record a refresh reads together, after the pull itself, and the pages of
+# a head's checks a probe reads together.
 _RECORD_PART = re.compile(
     r"gh api repos/[^/]+/[^/]+/"
     r"(issues/\d+/comments|pulls/\d+/comments|pulls/\d+/reviews|commits/[0-9a-f]+/(status|check-runs))\?"
@@ -824,11 +825,6 @@ def graph_core_data(item: Mapping[str, Any], *, reader: str = READER) -> dict[st
                 "potentialMergeCommit": {"oid": merge_oid}
                 if not item.get("merged") and merge_oid
                 else None,
-                "mergeable": "MERGEABLE"
-                if item.get("mergeable") is True
-                else "CONFLICTING"
-                if item.get("mergeable") is False
-                else "UNKNOWN",
                 "labels": {"nodes": item.get("labels", [])},
                 "baseRefName": item["base"]["ref"],
                 "baseRefOid": item["base"]["sha"],

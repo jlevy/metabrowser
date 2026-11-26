@@ -23,7 +23,7 @@ from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal
 from unittest.mock import patch
 
 import pytest
@@ -43,7 +43,7 @@ from metabrowser.builtin_plugins.github.gh import (
     rate_limit_reset,
 )
 from metabrowser.builtin_plugins.github.gh_lists import active_account
-from metabrowser.builtin_plugins.github.pull_catalog import write_pull_status
+from metabrowser.builtin_plugins.github.pull_catalog import read_pull_status, write_pull_status
 from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_markdown import render_part
@@ -66,7 +66,12 @@ from metabrowser.builtin_plugins.github.pull_record import (
 )
 from metabrowser.builtin_plugins.github.pull_route import PullView, pull_state
 from metabrowser.builtin_plugins.github.pull_status import PullStatus
-from metabrowser.builtin_plugins.github.pull_status_store import kept_status
+from metabrowser.builtin_plugins.github.pull_status_store import (
+    CheckProbes,
+    kept_status,
+    read_pull_checks,
+    read_status_outcome,
+)
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
 from metabrowser.builtin_plugins.github.served_pull import (
     MAX_KEPT_PULLS,
@@ -110,9 +115,11 @@ from tests.github_pull_fixture import (
     account,
     graph_core_data,
     graph_core_entry,
+    graph_status_entry,
     install_fake_gh,
     ok,
     page,
+    pull_bodies,
     scenario,
 )
 from tests.golden_harness import read_recording, settle
@@ -583,8 +590,7 @@ def test_environment_token_login_resolution_failure_is_typed(
 def test_merged_and_closed_pull_requests_compare_from_base_sha(stand: _Stand) -> None:
     origin = stand.origin
     merged = stand.refresh(8)
-    assert merged.pull.merged and merged.pull.mergeable == "unknown"
-    assert merged.comparison is not None
+    assert merged.pull.merged and merged.comparison is not None
     assert (merged.comparison.base_commit, merged.comparison.base_from) == (
         origin["topic_before_merge"],
         "base_sha",
@@ -596,8 +602,16 @@ def test_merged_and_closed_pull_requests_compare_from_base_sha(stand: _Stand) ->
     assert closed.comparison.base_commit == origin["rewritten_base"]
     assert closed.comparison.base == origin["base"]
     draft = stand.refresh(10)
-    assert draft.pull.draft and draft.pull.mergeable == "conflicting"
-    assert draft.comparison is not None and draft.comparison.base == origin["topic"]
+    assert draft.pull.draft and draft.comparison is not None
+    assert draft.comparison.base == origin["topic"]
+    # Whether each can merge is its status's, read after its record.
+    home, slug = stand.published.home, stand.published.slug
+    conflicts = {number: read_pull_status(home, slug, number) for number in (8, 9, 10)}
+    assert {number: kept and kept.conflicts for number, kept in conflicts.items()} == {
+        8: "unknown",
+        9: "unknown",
+        10: "conflicting",
+    }
 
 
 def test_etags_are_not_sent_for_another_reader(stand: _Stand) -> None:
@@ -728,11 +742,13 @@ def test_a_record_from_another_schema_or_damaged_is_refetched(stand: _Stand) -> 
     # What a record may hold is checked again when it is read, not only when it is
     # written: a login that is not one, a link that is not https, and a field the record
     # does not have, such as GitHub's own rendering of a body.
-    pull, check = payload["pull"], payload["check_runs"][0]
+    pull = payload["pull"]
     for damaged in (
         {**payload, "pull": {**pull, "author": "not a login"}},
-        {**payload, "check_runs": [{**check, "details_url": "javascript:alert(1)"}]},
+        {**payload, "pull": {**pull, "html_url": "javascript:alert(1)"}},
         {**payload, "pull": {**pull, "body_html": "<script>alert(1)</script>"}},
+        # A field an earlier schema had, now the status's.
+        {**payload, "pull": {**pull, "mergeable": "mergeable"}},
     ):
         path.write_text(json.dumps(damaged), encoding="utf-8")
         assert stand.record(7) == "unreadable"
@@ -1235,40 +1251,21 @@ def test_harden_keeps_the_allowlist_and_is_idempotent() -> None:
 
 def test_unreadable_optional_fields_are_left_empty_and_items_left_out(stand: _Stand) -> None:
     answers = scenario(stand.origin)
-    head = stand.origin["fork_head"]
-    checks = page(f"repos/octo/demo/commits/{head}/check-runs")
-    runs = answers["api"][checks]["body"]["check_runs"]
-    listed = {
-        "total_count": 3,
-        "check_runs": [
-            {**runs[0], "details_url": "http://ci.example.invalid/job/1"},
-            {**runs[1], "details_url": "https://" + "x" * 5000, "conclusion": 7},
-            {**runs[1], "id": 3, "name": None},
-        ],
-    }
-    status_path = page(f"repos/octo/demo/commits/{head}/status")
-    status = answers["api"][status_path]["body"]
-    combined = {
-        **status,
-        "statuses": [{**status["statuses"][0], "target_url": "http://docs.example.invalid/"}],
-    }
     comments = page("repos/octo/demo/issues/7/comments")
     comment = answers["api"][comments]["body"][0]
     odd = [{**comment, "user": {"login": "not a login"}}, {**comment, "id": "seven"}]
-    answers = _api(answers, checks, ok(checks, listed))
-    answers = _api(answers, status_path, ok(status_path, combined))
     answers = _api(answers, comments, ok(comments, odd))
     stand.answer(answers)
     record = stand.refresh(7)
-    assert [run.details_url for run in record.check_runs] == [None, None]
-    assert record.check_runs[1].conclusion is None
-    assert record.truncated.check_runs
-    assert record.status is not None and record.status.statuses[0].target_url is None
     assert [comment.author for comment in record.issue_comments] == [None]
     assert record.truncated.issue_comments
 
 
-def test_refused_checks_and_status_leave_the_record_standing(stand: _Stand) -> None:
+def test_a_record_reads_no_checks_so_refused_check_pages_change_nothing(stand: _Stand) -> None:
+    """Whether a pull request conflicts and how its checks stand are its status's, read
+    with GraphQL: the full read asks neither check page, so a token without checks access
+    leaves the record whole, and its status is read all the same."""
+
     answers = scenario(stand.origin)
     head = stand.origin["fork_head"]
     checks = page(f"repos/octo/demo/commits/{head}/check-runs")
@@ -1277,9 +1274,13 @@ def test_refused_checks_and_status_leave_the_record_standing(stand: _Stand) -> N
     answers = _api(answers, status_path, {"status": 422, "body": {"message": "No commit found"}})
     stand.answer(answers)
     record = stand.refresh(7)
-    assert record.check_runs == () and record.status is None
-    assert record.unavailable == {"check_runs": "not_found_or_private", "status": "gh_failed"}
-    assert record.comparison is not None
+    assert record.unavailable == {} and record.comparison is not None
+    asked = [" ".join(call["args"]) for call in stand.calls()]
+    assert not any("/commits/" in call for call in asked)
+    assert sum("query=query PullStatus(" in call for call in asked) == 1
+    assert set(record.model_dump()) >= {"pull", "issue_comments", "reviews", "review_comments"}
+    assert not {"check_runs", "status"} & set(record.model_dump())
+    assert "mergeable" not in record.pull.model_dump()
 
 
 def _status_calls(stand: _Stand) -> list[str]:
@@ -2835,7 +2836,7 @@ def test_the_commit_count_is_kept_only_within_its_bound(value: object, kept: int
 def test_the_parts_are_in_flight_together_and_read_as_they_did_in_sequence(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Five requests at once, and a record whose bytes do not say in what order they answered."""
+    """Three requests at once, and a record whose bytes do not say in what order they answered."""
     real = gh_lists.gh_api
     running = 0
     most = 0
@@ -2856,16 +2857,10 @@ def test_the_parts_are_in_flight_together_and_read_as_they_did_in_sequence(
     monkeypatch.setattr(gh_lists, "gh_api", counted)
     stand.answer(scenario(stand.origin))
     record = stand.refresh(7)
-    assert most == 5, "the pull is read first, for its head, and then the other five together"
+    assert most == 3, "the pull is read first, for its head, and then the other three together"
     assert seen[0] == "repos/octo/demo/pulls/7"
     # The ETags are written in the order the parts are named, whichever answered first.
-    parts = [
-        "/issues/7/comments",
-        "/pulls/7/reviews",
-        "/pulls/7/comments",
-        "/check-runs",
-        "/status",
-    ]
+    parts = ["/issues/7/comments", "/pulls/7/reviews", "/pulls/7/comments"]
     written = [next(i for i, part in enumerate(parts) if part in p) for p in list(record.etags)[1:]]
     assert written == sorted(written) and len(written) > 1
 
@@ -3195,7 +3190,7 @@ def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _S
         for call in stand.calls()
         if call["args"][0] == "api" and call["args"][-1] != "user" and "graphql" not in call["args"]
     ]
-    assert len(reused) == len(sent) == 6
+    assert len(reused) == len(sent) == 4
     assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in reused)
 
 
@@ -3480,13 +3475,13 @@ def test_h82_selected_publication_during_snapshot(
     _exercise_selected_core_wait(pinned_pull, monkeypatch, settle_in_get="captured_snapshot")
 
 
-# How long the selected-core scenario's five reads stay held when nothing opens them, as
+# How long the selected-core scenario's three reads stay held when nothing opens them, as
 # this module's refresh stubs are bounded. A hold that gives up lets its read go on, so a
 # stall at the scenario's POST fails that one test instead of ending the run at the
 # suite's timeout, as it did in mb-xorh.
 CORE_HOLD_S: Final = 30.0
-# How long the one-thread scenario below may take before it counts as stuck: its five held
-# reads and its requests took 0.3 to 0.4 s on 3.14t (2026-11-17). Stuck, it waits until
+# How long the one-thread scenario below may take before it counts as stuck: its held
+# reads, five then, and its requests took 0.3 to 0.4 s on 3.14t (2026-11-17). Stuck, it waits until
 # its holds give up, so the bound has to sit well past a loaded run and under CORE_HOLD_S.
 ONE_WORKER_SCENARIO_S: Final = 20.0
 
@@ -3502,7 +3497,7 @@ def test_a_selected_core_wait_and_its_settlement_run_on_one_worker_thread(
     revoke_in_thread: bool,
     settle_in_get: Literal["same_pin", "switch_pin"] | None,
 ) -> None:
-    """The selected-core scenarios answer while their five reads are held, on one thread.
+    """The selected-core scenarios answer while their three reads are held, on one thread.
 
     The hold is a read in flight, as GitHub's slow answer is, and nothing in the refresh,
     its ``wait_core`` request, or the reads that settle it may keep a worker thread while
@@ -3550,7 +3545,7 @@ def _exercise_selected_core_wait(
     settle_in_get: Literal["same_pin", "switch_pin", "captured_snapshot"] | None = None,
     release: threading.Event | None = None,
 ) -> None:
-    """Hold pull request 8's five reads while its core is staged, then settle it.
+    """Hold pull request 8's three reads while its core is staged, then settle it.
 
     *release* opens the holds; a caller that bounds the scenario passes its own, to open
     them when the bound passes.
@@ -3578,8 +3573,7 @@ def _exercise_selected_core_wait(
         return await read_list(path, **kwargs)
 
     async def held_get(path: str, **kwargs: Any) -> Any:
-        if "/status?" in path:
-            await hold(path)
+        assert "/commits/" not in path, "a record reads no checks"
         return await get(path, **kwargs)
 
     monkeypatch.setattr(pulls, "_read_list", held_list)
@@ -3612,7 +3606,7 @@ def _exercise_selected_core_wait(
             "pull",
             "comparison_state",
         }
-        assert len(started) == 5
+        assert len(started) == 3
         assert stand.record(8) == "not_cached"
         first = client.get("/api/plugin/github/pull?number=8")
         assert first.json()["core_preview"] == preview
@@ -3855,7 +3849,7 @@ class _CoreGate:
 
         async def part() -> None:
             self.started += 1
-            if self.started == 5:
+            if self.started == 3:
                 self.parts_started.set()
             try:
                 await self.release.wait()
@@ -3882,10 +3876,8 @@ class _CoreGate:
             return graph_core_data(await core(), reader=self.viewer)
 
         async def get(path: str, **_kwargs: Any) -> GhResponse:
-            if "/pulls/7" in path:
-                return GhResponse(200, {}, json.dumps(await core()).encode())
-            await part()
-            return GhResponse(200, {}, b'{"state":"success","statuses":[]}')
+            assert "/pulls/7" in path, "a record reads no checks"
+            return GhResponse(200, {}, json.dumps(await core()).encode())
 
         async def listed(_path: str, **_kwargs: Any) -> gh_lists.ListRead:
             await part()
@@ -3939,7 +3931,7 @@ def test_selected_core_account_change_revokes_and_drains_without_publication(
             await asyncio.wait_for(job, 5)
         assert held.core_preview is None
         assert held.last is not None and held.last["outcome"] == "account_changed"
-        assert gate.started == gate.finished == (0 if when == "before_preview" else 5)
+        assert gate.started == gate.finished == (0 if when == "before_preview" else 3)
         assert gate.account_reads == (1 if when == "before_preview" else 2)
         assert stand.record(7) == "not_cached"
 
@@ -4239,7 +4231,7 @@ def test_h80_full_record_refresh_never_enters_the_graph_path(
     assert held.core_preview is None
 
 
-@pytest.mark.parametrize("damage", ["ghost_merger", "deleted_repositories", "unknown_mergeability"])
+@pytest.mark.parametrize("damage", ["ghost_merger", "deleted_repositories", "no_merge_commit"])
 def test_h80_graph_core_preserves_nullable_metadata(stand: _Stand, damage: str) -> None:
     rest = scenario(stand.origin)["api"]["repos/octo/demo/pulls/8"]["body"]
     if damage == "ghost_merger":
@@ -4248,12 +4240,12 @@ def test_h80_graph_core_preserves_nullable_metadata(stand: _Stand, damage: str) 
         rest["base"]["repo"] = None
         rest["head"]["repo"] = None
     else:
-        rest["mergeable"] = None
+        rest["merge_commit_sha"] = None
     data = graph_core_data(rest)
     assert pulls._graph_pull(data["repository"]["pull"], 8) == pulls._pull(rest, 8)
 
 
-def test_h80_cancel_after_verified_core_drains_all_five_parts(
+def test_h80_cancel_after_verified_core_drains_all_three_parts(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def run() -> None:
@@ -4263,11 +4255,11 @@ def test_h80_cancel_after_verified_core_drains_all_five_parts(
         job = asyncio.create_task(held.refresh())
         await held.wait_for_core()
         await asyncio.wait_for(gate.parts_started.wait(), 5)
-        assert held.core_preview is not None and gate.started == 5
+        assert held.core_preview is not None and gate.started == 3
         job.cancel()
         with pytest.raises(asyncio.CancelledError):
             await job
-        assert gate.finished == 5 and held.core_preview is None
+        assert gate.finished == 3 and held.core_preview is None
         assert stand.record(7) == "not_cached"
 
     asyncio.run(run())
@@ -6940,77 +6932,76 @@ def _api_paths(stand: _Stand) -> list[str]:
 _STATUS_QUERY: Final = "graphql PullStatus"
 
 
-def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
+def test_a_status_read_asks_the_status_alone_and_leaves_the_record(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review A1: ``updated_at`` covers the conversation, not checks, statuses, or ``mergeable``.
+    """Review A1: ``updated_at`` covers the conversation, not checks or mergeability.
 
     The three cases a record the catalog vouched for went on showing wrong: no CI
     registered yet when it was read, a re-run of completed checks, and a conflict a moved
-    base made. Each leaves ``updated_at`` and the head alone, and a checks-only read sees
-    each by asking for the pull, its check runs, and its status, and nothing else: no list
-    of the conversation and no fetch into the store, whose comparison stands. Its
-    operational status is read beside it, one GraphQL query, as after every read.
+    base made. Each leaves ``updated_at`` and the head alone, and each is the status's: a
+    status read sees each with its account check and one GraphQL query, and nothing else,
+    no REST read of the record, no fetch into the store, and no new record, so the
+    record's revision, its comparison, and how its last refresh ended stand.
     """
 
     answers = scenario(stand.origin)
-    head = stand.origin["fork_head"]
-    pull_path = "repos/octo/demo/pulls/7"
-    runs_path = page(f"repos/octo/demo/commits/{head}/check-runs")
-    status_path = page(f"repos/octo/demo/commits/{head}/status")
-    recorded_runs = answers["api"][runs_path]["body"]
-    none_yet = {"total_count": 0, "check_runs": []}
-    no_status = {"state": "pending", "total_count": 0, "statuses": []}
-    stand.answer(
-        _api(
-            _api(answers, runs_path, ok(runs_path, none_yet)),
-            status_path,
-            ok(status_path, no_status),
-        )
-    )
+    parts = pull_bodies(stand.origin)[7]
+    status_entry = "graphql:status:7:start"
+    none_yet = {
+        **parts,
+        "check_runs": {"total_count": 0, "check_runs": []},
+        "status": {"state": "pending", "total_count": 0, "statuses": []},
+    }
+    stand.answer(_api(answers, status_entry, graph_status_entry(none_yet)))
     first = stand.refresh(7)
-    assert first.check_runs == () and first.comparison is not None
+    assert first.comparison is not None
+    home, slug = stand.published.home, stand.published.slug
+    kept = read_pull_status(home, slug, 7)
+    assert kept is not None and kept.checks.state == "none"
+    stamp = read_pull_refresh(home, slug, 7)
     stand.calls()
 
     async def no_fetch(*_args: object, **_kwargs: object) -> str:
-        raise AssertionError("a checks-only read fetched into the store")
+        raise AssertionError("a status read fetched into the store")
 
     monkeypatch.setattr(pulls, "fetch_pull_head", no_fetch)
 
-    def checks_only() -> PullRecord:
-        return asyncio.run(pulls.refresh_pull_request(stand.published, 7, checks_only=True))
+    def status_read() -> PullStatus | None:
+        return asyncio.run(pulls.refresh_pull_status(stand.published, 7))
 
     # No CI registered when it was read; now it has.
     stand.answer(answers)
-    registered = checks_only()
-    assert len(registered.check_runs) == len(recorded_runs["check_runs"]) > 0
-    assert registered.comparison == first.comparison
-    assert (registered.issue_comments, registered.reviews, registered.review_comments) == (
-        first.issue_comments,
-        first.reviews,
-        first.review_comments,
-    )
-    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path, _STATUS_QUERY])
+    registered = status_read()
+    assert registered is not None and registered.checks.total > 0
+    assert _api_paths(stand) == [_STATUS_QUERY]
+    assert stand.record(7) == first and read_pull_refresh(home, slug, 7) == stamp
 
     # Completed checks re-run.
-    rerun = copy.deepcopy(recorded_runs)
-    for run in rerun["check_runs"]:
+    rerun = copy.deepcopy(parts)
+    for run in rerun["check_runs"]["check_runs"]:
         run.update(status="in_progress", conclusion=None, completed_at=None)
-    stand.answer(_api(answers, runs_path, ok(runs_path, rerun)))
-    rerunning = checks_only()
-    assert {run.status for run in rerunning.check_runs} == {"in_progress"}
-    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path, _STATUS_QUERY])
+    stand.answer(_api(answers, status_entry, graph_status_entry(rerun)))
+    rerunning = status_read()
+    assert rerunning is not None and rerunning.checks.state == "pending"
+    checks = read_pull_checks(home, slug, 7)
+    assert checks is not None
+    assert {item.bucket for item in checks.items if item.kind == "run"} == {"pending"}
+    assert _api_paths(stand) == [_STATUS_QUERY]
 
-    # The base moved and the pull request now conflicts: GitHub says so in the pull alone.
-    body = answers["api"][pull_path]["body"]
-    assert registered.pull.mergeable == "mergeable"
-    conflicting = {**body, "mergeable": False, "mergeable_state": "dirty"}
-    stand.answer(_api(answers, pull_path, ok(pull_path, conflicting)))
-    conflict = checks_only()
-    assert conflict.pull.mergeable == "conflicting"
-    assert conflict.comparison == first.comparison
-    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path, _STATUS_QUERY])
-    assert stand.record(7) == conflict
+    # The base moved and the pull request now conflicts: GitHub says so in the status.
+    shape = {"mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY", "reviewDecision": None}
+    stand.answer(_api(answers, status_entry, graph_status_entry(parts, shape=shape)))
+    conflict = status_read()
+    assert conflict is not None and conflict.conflicts == "conflicting"
+    assert _api_paths(stand) == [_STATUS_QUERY]
+    assert stand.record(7) == first
+    # An account check that fails fails the status alone, and is kept as how it ended.
+    stand.answer({**answers, "auth": {"stdout": '{"hosts":{}}\n', "exit": 0}})
+    assert status_read() is None
+    outcome = read_status_outcome(home, slug, 7)
+    assert outcome is not None and outcome.outcome != "succeeded"
+    assert read_pull_status(home, slug, 7) == conflict
 
 
 ISSUE_PATH = "repos/octo/demo/issues/7"
@@ -7024,7 +7015,12 @@ def _probe(
     etags: dict[str, str] | None = None,
     seen: pulls.IssueSeen | None = None,
     mergeability: bool = False,
+    status: PullStatus | None = None,
+    probes: CheckProbes | None = None,
 ) -> pulls.PullProbe:
+    """One probe, comparing with *status*, by default the one the stand keeps."""
+
+    kept = read_pull_status(stand.published.home, stand.published.slug, record.number)
     return asyncio.run(
         pulls.probe_pull_request(
             stand.published,
@@ -7033,6 +7029,8 @@ def _probe(
             checks=checks,
             seen=seen,
             mergeability=mergeability,
+            status=kept if status is None else status,
+            probes=probes,
         )
     )
 
@@ -7169,22 +7167,36 @@ def test_an_app_authored_pull_reads_the_same_through_graphql_and_rest(stand: _St
     assert pulls._graph_pull(graph, 7).author == "octocat"  # pyright: ignore[reportPrivateUsage]
 
 
-def test_a_probe_of_unknown_mergeability_asks_the_pull_and_sees_github_answer(
-    stand: _Stand,
-) -> None:
-    """Review A1 on #726: GitHub computes ``mergeable`` after the read that first asks, and
-    nothing the issue carries moves when it does. Before, three probes asked the issue and
-    never the pull, and each vouched for "Merge status unknown"."""
+def _computing(stand: _Stand) -> dict[str, Any]:
+    """The stand's answers while GitHub computes whether 7 can merge, in REST and GraphQL."""
 
     answers = scenario(stand.origin)
     pull_path = "repos/octo/demo/pulls/7"
     body = answers["api"][pull_path]["body"]
     computing = {**body, "state": "open", "merged": False, "mergeable": None}
+    shape = {"mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN", "reviewDecision": None}
+    parts = {**pull_bodies(stand.origin)[7], "pull": computing}
     answers = _api(answers, pull_path, ok(pull_path, computing))
+    return _api(answers, "graphql:status:7:start", graph_status_entry(parts, shape=shape))
+
+
+def test_a_probe_of_unknown_mergeability_asks_the_pull_and_sees_github_answer(
+    stand: _Stand,
+) -> None:
+    """Review A1 on #726: GitHub computes ``mergeable`` after the read that first asks, and
+    nothing the issue carries moves when it does. Before, three probes asked the issue and
+    never the pull, and each vouched for "Merge status unknown". The status holds it now,
+    so the pull is asked while the status's mergeability is unknown, and an answer starts
+    a status read."""
+
+    answers = _computing(stand)
+    pull_path = "repos/octo/demo/pulls/7"
     stand.answer(answers)
     record = stand.refresh(7)
-    assert record.pull.mergeable == "unknown"
-    assert pulls.mergeability_probe_path(stand.published, record) == pull_path
+    home, slug = stand.published.home, stand.published.slug
+    status = read_pull_status(home, slug, 7)
+    assert status is not None and status.conflicts == "unknown"
+    assert pulls.mergeability_probe_path(stand.published, record, status) == pull_path
     seen = _probe(stand, record, checks=False).seen
     stand.calls()
     # Not asked for: the issue alone.
@@ -7197,31 +7209,38 @@ def test_a_probe_of_unknown_mergeability_asks_the_pull_and_sees_github_answer(
         [(ISSUE_PATH, seen.etag if seen else None), (pull_path, record.etags[pull_path])]
     )
     # The repository moved and GitHub is still computing: the new ETag is kept.
-    base = {
-        **cast("dict[str, Any]", computing["base"]),
-        "repo": {"pushed_at": "2026-09-17T11:59:00Z"},
-    }
+    computing = answers["api"][pull_path]["body"]
+    base = {**computing["base"], "repo": {"pushed_at": "2026-09-17T11:59:00Z"}}
     moved = ok(pull_path, {**computing, "base": base})
     stand.answer(_api(answers, pull_path, moved))
     still = _probe(stand, record, checks=False, seen=seen, mergeability=True)
     assert (still.outcome, still.etags) == ("unchanged", {pull_path: moved["headers"]["Etag"]})
-    # GitHub answers, with the same updated_at: the checks are read again.
-    computed = ok(pull_path, {**computing, "mergeable": True})
-    stand.answer(_api(answers, pull_path, computed))
+    # A draft's mergeable_state is no news either.
+    drafted = ok(pull_path, {**computing, "mergeable_state": "draft"})
+    stand.answer(_api(answers, pull_path, drafted))
+    assert _probe(stand, record, checks=False, seen=seen, mergeability=True).outcome == (
+        "unchanged"
+    )
+    # GitHub answers, with the same updated_at: the status is read again, alone.
+    computed = ok(pull_path, {**computing, "mergeable": True, "mergeable_state": "clean"})
+    stand.answer(_api(scenario(stand.origin), pull_path, computed))
     assert _probe(stand, record, checks=False, seen=seen, mergeability=True).outcome == (
         "checks_changed"
     )
-    resolved = asyncio.run(pulls.refresh_pull_request(stand.published, 7, checks_only=True))
-    assert resolved.pull.mergeable == "mergeable"
-    # A record that holds an answer, or a closed one, never has the pull asked.
-    assert pulls.mergeability_probe_path(stand.published, resolved) is None
+    resolved = asyncio.run(pulls.refresh_pull_status(stand.published, 7))
+    assert resolved is not None and resolved.conflicts == "mergeable"
+    # A status that holds an answer, or a closed pull request, never has the pull asked.
+    assert pulls.mergeability_probe_path(stand.published, record, resolved) is None
     stand.calls()
-    assert _probe(stand, resolved, checks=False, seen=seen, mergeability=True).outcome == (
+    assert _probe(stand, record, checks=False, seen=seen, mergeability=True).outcome == (
         "unchanged"
     )
     assert _api_paths(stand) == [ISSUE_PATH]
     closed = record.model_copy(update={"pull": record.pull.model_copy(update={"state": "closed"})})
-    assert pulls.mergeability_probe_path(stand.published, closed) is None
+    assert pulls.mergeability_probe_path(stand.published, closed, status) is None
+    # Nor does a status of another head: a status read comes first.
+    other = status.model_copy(update={"head": stand.origin["fork_earlier"]})
+    assert pulls.mergeability_probe_path(stand.published, record, other) is None
 
 
 def test_a_pull_answer_that_cannot_be_read_is_not_taken_for_still_unknown(
@@ -7230,11 +7249,8 @@ def test_a_pull_answer_that_cannot_be_read_is_not_taken_for_still_unknown(
     """Review B3 on #726: read as "the same", a malformed 200 would be vouched for and its
     ETag kept, so the pull would answer 304 from then on."""
 
-    answers = scenario(stand.origin)
+    answers = _computing(stand)
     pull_path = "repos/octo/demo/pulls/7"
-    body = answers["api"][pull_path]["body"]
-    computing = {**body, "state": "open", "merged": False, "mergeable": None}
-    answers = _api(answers, pull_path, ok(pull_path, computing))
     stand.answer(answers)
     record = stand.refresh(7)
     seen = _probe(stand, record, checks=False).seen
@@ -7265,39 +7281,73 @@ def test_an_issue_older_than_the_record_is_behind_and_not_a_change(stand: _Stand
     assert unreadable.value.state == "gh_failed"
 
 
-def test_a_checks_probe_reads_the_first_pages_and_sees_a_rerun(stand: _Stand) -> None:
+def test_a_checks_probe_seeds_its_baseline_and_then_sees_only_a_real_change(
+    stand: _Stand,
+) -> None:
+    """The status is read with GraphQL, which has no ETag, so the probe keeps its own: the
+    first probe of a head asks both pages unconditionally, a ``200`` each that seeds the
+    baseline and counts as a change, and later probes are conditional on it. A ``200``
+    that changes nothing a status keeps, such as a run's output, is no change."""
+
     answers = scenario(stand.origin)
     head = stand.origin["fork_head"]
     runs_path = page(f"repos/octo/demo/commits/{head}/check-runs")
     status_path = page(f"repos/octo/demo/commits/{head}/status")
     record = stand.refresh(7)
-    assert pulls.checks_probe_paths(stand.published, record) == (runs_path, status_path)
+    status = read_pull_status(stand.published.home, stand.published.slug, 7)
+    assert status is not None and status.head == head
+    assert pulls.checks_probe_paths(stand.published, record, status) == (runs_path, status_path)
+    seen = _probe(stand, record, checks=False).seen
     stand.calls()
-    first = _probe(stand, record, checks=True)
-    assert (first.outcome, first.etags) == ("unchanged", {})
-    assert _api_paths(stand) == sorted([ISSUE_PATH, runs_path, status_path])
+    first = _probe(stand, record, checks=True, seen=seen)
+    assert first.outcome == "checks_changed" and first.checks is not None
+    assert sorted(_sent_etags(stand)) == sorted(
+        [(ISSUE_PATH, seen.etag if seen else None), (runs_path, None), (status_path, None)]
+    )
+    baseline = first.checks
+    assert (baseline.head, baseline.reader, baseline.refused) == (head, record.reader, False)
+    assert set(baseline.pages) == {runs_path, status_path}
+    # Unchanged: both pages answer 304 to the baseline's ETags, and nothing is to be kept.
+    again = _probe(stand, record, checks=True, seen=seen, probes=baseline)
+    assert (again.outcome, again.checks) == ("unchanged", None)
+    assert sorted(_sent_etags(stand)) == sorted(
+        [
+            (ISSUE_PATH, seen.etag if seen else None),
+            (runs_path, baseline.pages[runs_path].etag),
+            (status_path, baseline.pages[status_path].etag),
+        ]
+    )
+    # A run's output moved, and nothing a status keeps: a paid 200, its ETag kept.
+    runs = copy.deepcopy(answers["api"][runs_path]["body"])
+    runs["check_runs"][0]["output"] = {"title": "still going"}
+    stand.answer(_api(answers, runs_path, ok(runs_path, runs)))
+    quiet = _probe(stand, record, checks=True, seen=seen, probes=baseline)
+    assert quiet.outcome == "unchanged" and quiet.checks is not None
+    assert quiet.checks.pages[runs_path].digest == baseline.pages[runs_path].digest
+    assert quiet.checks.pages[runs_path].etag != baseline.pages[runs_path].etag
+    # A re-run is a change, and the baseline the next probe compares with.
     rerun = copy.deepcopy(answers["api"][runs_path]["body"])
     for run in rerun["check_runs"]:
         run.update(status="in_progress", conclusion=None)
     stand.answer(_api(answers, runs_path, ok(runs_path, rerun)))
-    assert _probe(stand, record, checks=True).outcome == "checks_changed"
-    # A part GitHub refused would read as a change on every probe, so it is not probed.
-    refused = record.model_copy(update={"status": None, "unavailable": {"status": "gh_failed"}})
-    assert pulls.checks_probe_paths(stand.published, refused) is None
-
-
-def test_a_checks_only_refresh_reads_everything_when_the_pull_moved(stand: _Stand) -> None:
-    """A pull whose ``updated_at`` moved since the record is the full read, every part."""
-
-    answers = scenario(stand.origin)
-    pull_path = "repos/octo/demo/pulls/7"
-    first = stand.refresh(7)
-    stand.calls()
-    body = answers["api"][pull_path]["body"]
-    edited = {**body, "updated_at": "2026-09-17T11:00:00Z", "title": "Count to three"}
-    stand.answer(_api(answers, pull_path, ok(pull_path, edited)))
-    record = asyncio.run(pulls.refresh_pull_request(stand.published, 7, checks_only=True))
-    assert record.pull.title == "Count to three" and record.comparison == first.comparison
-    read = _api_paths(stand)
-    assert page("repos/octo/demo/issues/7/comments") in read
-    assert page("repos/octo/demo/pulls/7/reviews") in read
+    changed = _probe(stand, record, checks=True, seen=seen, probes=quiet.checks)
+    assert changed.outcome == "checks_changed" and changed.checks is not None
+    assert _probe(stand, record, checks=True, seen=seen, probes=changed.checks).outcome == (
+        "unchanged"
+    )
+    # A baseline of another head, or another reader, is none: the pages are asked afresh.
+    elsewhere = changed.checks.model_copy(update={"head": stand.origin["fork_earlier"]})
+    assert _probe(stand, record, checks=True, seen=seen, probes=elsewhere).outcome == (
+        "checks_changed"
+    )
+    # A page GitHub refuses marks the head's pages refused, which are then not probed.
+    refusing = _api(answers, status_path, {"status": 403, "body": {"message": "Forbidden"}})
+    stand.answer(_api(refusing, runs_path, ok(runs_path, rerun)))
+    refused = _probe(stand, record, checks=True, seen=seen, probes=changed.checks)
+    assert refused.outcome == "unchanged" and refused.checks is not None
+    assert refused.checks.refused
+    assert pulls.checks_probe_paths(stand.published, record, status, refused.checks) is None
+    # More checks than a page holds cannot be probed by its first page.
+    counts = {**status.checks.counts, "pass": 100}
+    full = status.model_copy(update={"checks": status.checks.model_copy(update={"counts": counts})})
+    assert pulls.checks_probe_paths(stand.published, record, full) is None

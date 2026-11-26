@@ -187,7 +187,9 @@ The page has up to five tabs:
   ([A Commit’s Page](browsing-history.md#a-commits-page)); the page keeps the choice
   while you visit the other tabs, and a file you jump to that it hides shows every type
   again.
-- **Checks** (`E`): the check runs and commit statuses, with links to their details.
+- **Checks** (`E`): the check runs and commit statuses, with links to their details,
+  failing first and then pending, each marked as GitHub’s CLI marks it, under GitHub’s
+  summary of them.
 
 ### Links in a Pull Request’s Text
 

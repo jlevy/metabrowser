@@ -44,7 +44,7 @@ status: 200
 {
   "number": 7,
   "fetched_at": "2026-09-17T12:00:00Z",
-  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+  "record_revision": "a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538",
   "part": "body",
   "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
   "assets": {

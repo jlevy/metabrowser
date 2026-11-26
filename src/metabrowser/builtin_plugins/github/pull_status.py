@@ -31,15 +31,15 @@ from typing import Annotated, Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from metabrowser.builtin_plugins.github.pull_record import (
-    MAX_CHECK_RUNS,
-    MAX_STATUSES,
     Login,
-    Mergeable,
     Sha,
     Short,
     Timestamp,
     Url,
 )
+
+type Mergeable = Literal["mergeable", "conflicting", "unknown"]
+"""GitHub's ``mergeable``, lower case: ``unknown`` while GitHub computes it."""
 
 type MergeState = Literal["clean", "has_hooks", "unstable", "blocked", "behind", "dirty", "unknown"]
 """GitHub's ``mergeStateStatus``, lower case. ``DRAFT`` is deprecated and never reported."""
@@ -259,8 +259,14 @@ class CheckItem(_Model):
     description: Short | None = None
 
 
-MAX_CHECK_ITEMS: Final = MAX_CHECK_RUNS + MAX_STATUSES
-"""A head's checks: the bounds a record has kept for its check runs and statuses."""
+# Measured on ten public pull requests (octocat/Hello-World#1, cli/cli#14462,
+# kubernetes/kubernetes#18085 and #102884, rust-lang/rust#69864, #137944, and #162519,
+# microsoft/vscode#52707, python/cpython#118450, pytorch/pytorch#196374) with ``gh api``
+# on 2026-09-23, when a record kept them: check runs, pytorch#196374 has 159 and
+# cli#14462 31, so 300, three pages; commit statuses, at most one on any of them, so one
+# page of 100.
+MAX_CHECK_ITEMS: Final = 300 + 100
+"""A head's checks: 300 check runs and 100 commit statuses, as measured above."""
 
 
 class PullChecks(_Model):
@@ -286,6 +292,7 @@ __all__ = [
     "CheckKind",
     "ChecksSummary",
     "MergeMethod",
+    "Mergeable",
     "MergeState",
     "ObservedBy",
     "PullChecks",

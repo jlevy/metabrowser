@@ -893,7 +893,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "a row with a current record is probed at once, and an unchanged probe fetches nothing",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "waits": [
         0,
@@ -914,7 +914,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "a click on a row whose record is stale refreshes it at once",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "waits": [
         0,
@@ -935,7 +935,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "a key stopping on a stale row refreshes it after the wait",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "waits": [
         500,
@@ -973,7 +973,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       },
       "once let go": {
         "asked": [
-          "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+          "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
         ],
         "message": null,
         "revalidating": true

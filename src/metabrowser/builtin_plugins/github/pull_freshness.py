@@ -15,16 +15,23 @@ in one transaction, and only when the catalog's ``source`` and ``reader`` are th
   the record's, and ``verified_by`` is ``catalog``. A list probe that found the catalog
   unchanged (:mod:`.pull_list_probe`) counts as a scan run when it asked: GitHub had no
   pull request newer than the catalog's newest, so every row was as the scan left it.
-- **checks**: the same, for an open pull request read longer ago than the window. The
-  catalog vouches for its conversation and head, and the record is stale for what
-  ``updated_at`` does not track: check runs, commit statuses, and ``mergeable``, which a
-  refresh then reads on their own (``checks_only`` in :mod:`.pulls`).
+- **checks**: the same, for an open pull request whose operational status
+  (:class:`~.pull_status.PullStatus`) is missing, describes another head, or was observed
+  longer ago than the window. The record is current: the catalog vouches for its
+  conversation and head, and it holds nothing ``updated_at`` does not track. Its status
+  does, conflicts and checks, which a status read then reads on its own
+  (:func:`.pulls.refresh_pull_status`).
 - **unverified**: anything else, which the refresh coordinator's clock decides as before.
 
 GraphQL's ``updatedAt`` and ``headRefOid`` equalled REST's ``updated_at`` and ``head.sha``
 character for character on five open cli/cli pull requests (2026-11-11), which is what the
-comparison relies on. ``checks_pending`` reports checks still settling, for the page to
-say; it changes no verdict, since an open record past the window is read again anyway.
+comparison relies on.
+
+Whatever the verdict, ``status_missing`` says no kept status describes the record's head,
+so a visible page reads one (:meth:`.served_pull.ServedPull.is_stale`), and
+``checks_pending`` that the status's checks or mergeability are still settling, which the
+probes watch (:func:`checks_settling`, :func:`mergeability_pending`) and the page may say.
+Neither changes the verdict.
 """
 
 from __future__ import annotations
@@ -40,6 +47,7 @@ if TYPE_CHECKING:
     from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
     from metabrowser.builtin_plugins.github.pull_list import PullListRow
     from metabrowser.builtin_plugins.github.pull_record import PullRecord
+    from metabrowser.builtin_plugins.github.pull_status import PullStatus
 
 type Verdict = Literal["current", "changed", "checks", "unverified"]
 # ``probe`` is never a verdict of this module's: the pull route reports it when a probe
@@ -53,11 +61,12 @@ type VerifiedBy = Literal["catalog", "fetch", "probe"]
 # older catalog is unverified whatever is running, so a reopened page is judged by the
 # clock and refreshes a changed record at once, as it did before the catalog vouched.
 SCAN_GRACE_S: Final = 15.0
-# How long after a pull request's last update an open record with no check run and no
-# commit status counts as pending, since CI may not have registered yet. On three cli/cli
-# heads the first check run started 1 to 2 s after its check suite was created (2026-11-11);
-# five minutes leaves room for a queued workflow, and a visible open pull request's checks
-# are read again once a window in any case (``checks``).
+# How long after a pull request's last update an open pull request whose status has no
+# checks counts as settling, since CI may not have registered yet: a status observed that
+# soon after the update. On three cli/cli heads the first check run started 1 to 2 s after
+# its check suite was created (2026-11-11); five minutes leaves room for a queued workflow,
+# and a visible open pull request's status is read again once a window in any case
+# (``checks``).
 NO_CHECKS_GRACE_S: Final = 300.0
 
 
@@ -67,11 +76,12 @@ def _parse(stamp: str) -> datetime:
 
 @dataclass(frozen=True, slots=True)
 class RecordFreshness:
-    """What the catalog says of one record.
+    """What the catalog says of one record, and whether its status describes it.
 
     ``changed_row`` is, for a changed record, the identity of the row that reported the
     change, its ``updated_at`` and head: a refresh attempted for that row has seen it, and
     the next is due at once only when another row reports another change.
+    ``status_missing`` says no kept status describes the record's head.
     """
 
     verdict: Verdict
@@ -80,46 +90,72 @@ class RecordFreshness:
     head_moved: bool
     checks_pending: bool
     changed_row: str | None = None
+    status_missing: bool = False
 
 
-def mergeability_pending(record: PullRecord) -> bool:
-    """Whether an open pull request's record does not say whether it can merge.
+def described(record: PullRecord, status: PullStatus | None) -> PullStatus | None:
+    """*status* when it describes *record*'s head, and ``None`` when it describes another."""
 
-    GitHub computes ``mergeable`` in the background: the read that asks first is answered
-    ``null``, and a later one the answer. Nothing else about the pull request moves when
-    it does, its ``updated_at`` included.
+    return status if status is not None and status.head == record.pull.head.sha else None
+
+
+def mergeability_pending(record: PullRecord, status: PullStatus | None) -> bool:
+    """Whether GitHub has not yet said whether an open pull request can merge.
+
+    That is a kept status of the record's head whose ``conflicts`` (GitHub's
+    ``mergeable``) or ``merge_state`` (its ``mergeStateStatus``) is ``unknown``. GitHub
+    computes both in the background: the read that asks first is answered ``UNKNOWN``,
+    and a later one the answer. Nothing else about the pull request moves when it does,
+    its ``updated_at`` included. With no status of that head there is nothing pending to
+    watch; a status read comes first.
     """
 
-    return record.pull.state == "open" and record.pull.mergeable == "unknown"
+    kept = described(record, status)
+    return (
+        record.pull.state == "open"
+        and kept is not None
+        and (kept.conflicts == "unknown" or kept.merge_state == "unknown")
+    )
 
 
-def checks_settling(record: PullRecord) -> bool:
-    """Whether an open pull request's check runs or statuses are still settling.
+def checks_settling(record: PullRecord, status: PullStatus | None) -> bool:
+    """Whether an open pull request's checks are still settling, by its kept status.
 
-    A record read within :data:`NO_CHECKS_GRACE_S` of the pull request's last update with
-    no check run and no status context counts too: its CI may not have registered yet.
+    They are while GitHub's rollup for the record's head is ``pending`` or ``expected``,
+    or any check is in the bucket ``gh pr checks`` calls pending, as a run in progress
+    beside one that failed is. A status observed within :data:`NO_CHECKS_GRACE_S` of the
+    pull request's last update with no checks counts too: its CI may not have registered
+    yet. With no status of that head there is nothing settling to watch; a status read
+    comes first.
     """
 
-    if record.pull.state != "open":
+    kept = described(record, status)
+    if record.pull.state != "open" or kept is None:
         return False
-    if any(run.status != "completed" for run in record.check_runs):
+    checks = kept.checks
+    if checks.state in ("pending", "expected") or checks.counts["pending"]:
         return True
-    status = record.status
-    if status is not None and bool(status.statuses) and status.state == "pending":
-        return True
-    unregistered = not record.check_runs and (status is None or not status.statuses)
-    since_update = _parse(record.fetched_at) - _parse(record.pull.updated_at)
-    return unregistered and since_update <= timedelta(seconds=NO_CHECKS_GRACE_S)
+    since_update = _parse(kept.observed_at) - _parse(record.pull.updated_at)
+    return not checks.total and since_update <= timedelta(seconds=NO_CHECKS_GRACE_S)
 
 
-def checks_pending(record: PullRecord) -> bool:
-    """Whether an open pull request's checks, statuses, or mergeability are still settling.
+def checks_pending(record: PullRecord, status: PullStatus | None) -> bool:
+    """Whether an open pull request's checks or mergeability are still settling.
 
     Either :func:`mergeability_pending` or :func:`checks_settling`, which a probe asks
     of different pages.
     """
 
-    return mergeability_pending(record) or checks_settling(record)
+    return mergeability_pending(record, status) or checks_settling(record, status)
+
+
+def status_stale(
+    record: PullRecord, status: PullStatus | None, *, now: datetime, window_s: float
+) -> bool:
+    """Whether *record* has no status of its head observed within *window_s* of *now*."""
+
+    kept = described(record, status)
+    return kept is None or now - _parse(kept.observed_at) > timedelta(seconds=window_s)
 
 
 def record_freshness(
@@ -127,6 +163,7 @@ def record_freshness(
     catalog: CatalogState | None,
     row: PullListRow | None,
     *,
+    status: PullStatus | None,
     now: datetime,
     window_s: float = FRESHNESS_WINDOW_S,
     scanning: bool = False,
@@ -134,14 +171,16 @@ def record_freshness(
 ) -> RecordFreshness:
     """The verdict on *record* from *catalog* and its *row* of the same number.
 
-    *scanning* says the catalog's next scan is running, which decides in a moment what a
-    scan just past the window would: until it ends, and for at most :data:`SCAN_GRACE_S`
-    past the window, the last scan still vouches. *checked_at* is when a list probe last
-    found the catalog unchanged, if one did after the scan: the catalog is then as old as
-    that probe, not as its scan.
+    *status* is the kept operational status of that number, which decides ``checks``,
+    ``checks_pending``, and ``status_missing``. *scanning* says the catalog's next scan is
+    running, which decides in a moment what a scan just past the window would: until it
+    ends, and for at most :data:`SCAN_GRACE_S` past the window, the last scan still
+    vouches. *checked_at* is when a list probe last found the catalog unchanged, if one
+    did after the scan: the catalog is then as old as that probe, not as its scan.
     """
 
-    pending = checks_pending(record)
+    pending = checks_pending(record, status)
+    missing = described(record, status) is None
     usable = (
         catalog is not None
         and row is not None
@@ -158,7 +197,7 @@ def record_freshness(
         ):
             identity = f"{row.updated_at} {row.head_oid or '-'}"
             return RecordFreshness(
-                "changed", record.fetched_at, "fetch", other_head, pending, identity
+                "changed", record.fetched_at, "fetch", other_head, pending, identity, missing
             )
         checked = max(catalog.fetched_at, checked_at or catalog.fetched_at)
         age = now - _parse(checked)
@@ -170,13 +209,21 @@ def record_freshness(
         # rewrites it at this projection, once.
         if recent and record.projection_version >= PULL_RECORD_PROJECTION:
             verified = max(record.fetched_at, checked)
-            if record.pull.state == "open" and now - _parse(record.fetched_at) > window:
-                # The conversation and head are as GitHub has them; checks, statuses, and
-                # mergeability are not in `updated_at`, so an open pull request's are read
-                # again once a window, on their own.
-                return RecordFreshness("checks", verified, "catalog", False, pending)
-            return RecordFreshness("current", verified, "catalog", False, pending)
-    return RecordFreshness("unverified", record.fetched_at, "fetch", False, pending)
+            if record.pull.state == "open" and status_stale(
+                record, status, now=now, window_s=window_s
+            ):
+                # The conversation and head are as GitHub has them; conflicts and checks
+                # are not in `updated_at`, so an open pull request's status is read again
+                # once a window, on its own.
+                return RecordFreshness(
+                    "checks", verified, "catalog", False, pending, status_missing=missing
+                )
+            return RecordFreshness(
+                "current", verified, "catalog", False, pending, status_missing=missing
+            )
+    return RecordFreshness(
+        "unverified", record.fetched_at, "fetch", False, pending, status_missing=missing
+    )
 
 
 __all__ = [
@@ -187,6 +234,8 @@ __all__ = [
     "Verdict",
     "checks_pending",
     "checks_settling",
+    "described",
     "mergeability_pending",
     "record_freshness",
+    "status_stale",
 ]

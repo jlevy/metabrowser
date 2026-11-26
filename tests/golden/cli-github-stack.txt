@@ -290,8 +290,6 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/8
-gh api repos/octo/demo/commits/<merged_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<merged_head>/status?per_page=100&page=1
 gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
@@ -312,8 +310,6 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/10
-gh api repos/octo/demo/commits/<draft_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<draft_head>/status?per_page=100&page=1
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
@@ -430,12 +426,12 @@ status: 200
   ],
   "guide": {
     "number": 10,
-    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
+    "revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
   },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+    "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
     "every_s": 5.0
   },
   "moved": null
@@ -1132,8 +1128,6 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/7
-gh api repos/octo/demo/commits/<fork_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<fork_head>/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
@@ -1274,12 +1268,12 @@ status: 200
   ],
   "guide": {
     "number": 10,
-    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
+    "revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
   },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+    "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
     "every_s": 5.0
   },
   "moved": null

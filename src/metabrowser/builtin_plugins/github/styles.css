@@ -458,22 +458,22 @@
   overflow: hidden;
   visibility: hidden;
 }
-.github-pull-badge[data-state="success"],
+/* A check's badge is in the ink of its bucket, the server's (`state_bucket` in
+   pull_status.py), as `gh pr checks` colors its marks: pass green, fail red, pending yellow,
+   skipping and cancel muted. */
+.github-pull-badge[data-state="pass"],
 .github-pull-badge[data-state="APPROVED"] {
   color: var(--status-success-text);
 }
-.github-pull-badge[data-state="failure"],
+.github-pull-badge[data-state="fail"],
 .github-pull-badge[data-state="CHANGES_REQUESTED"] {
   color: var(--status-error-text);
 }
 .github-pull-badge[data-state="pending"] {
   color: var(--status-warning-text);
 }
-.github-pull-badge[data-state="neutral"],
-.github-pull-badge[data-state="skipped"],
-.github-pull-badge[data-state="cancelled"],
-.github-pull-badge[data-state="stale"],
-.github-pull-badge[data-state="unknown"],
+.github-pull-badge[data-state="skipping"],
+.github-pull-badge[data-state="cancel"],
 .github-pull-badge[data-state="outdated"],
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
@@ -1060,7 +1060,9 @@
 .github-pull-checks .github-pull-external-action:focus-visible {
   color: var(--link);
 }
-.github-pull-merge[data-state="conflicting"] {
+/* The Checks tab's last line, the server's conflicts requirement: in the error ink while
+   the author must resolve a conflict. */
+.github-pull-merge[data-state="unmet"] {
   color: var(--status-error-text);
 }
 

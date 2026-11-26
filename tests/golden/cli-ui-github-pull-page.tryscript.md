@@ -169,7 +169,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -180,14 +180,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -280,7 +277,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -291,14 +288,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -340,7 +334,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -351,14 +345,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -393,7 +384,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -404,14 +395,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -437,7 +425,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -448,14 +436,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -485,7 +470,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -496,14 +481,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -516,7 +498,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the reader stayed: the page asks for a refresh by itself",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -532,7 +514,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -543,14 +525,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -588,7 +567,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -599,14 +578,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -645,7 +621,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "merge": "[met] No merge conflicts with topic.",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -657,14 +633,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -749,7 +722,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the reader stayed: it asks",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -900,28 +873,28 @@ $ node tests/dom/github-pull-page-session.js
     "open": {
       "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
       "checks": {
-        "success": 2,
+        "successful": 2,
         "pending": 1
       }
     },
     "merged": {
       "header": "Say more in the guide #8 [Merged] octo merged 1 commit: guide-more → topic",
       "checks": {
-        "success": 2,
+        "successful": 2,
         "skipped": 1
       }
     },
     "closed": {
       "header": "spam #9 [Closed] ghost wants to merge 1 commit: spam (deleted fork) → octo:topic",
       "checks": {
-        "success": 2,
+        "successful": 2,
         "pending": 1
       }
     },
     "merged_unattributed": {
       "header": "Say more in the guide #8 [Merged] merged 1 commit: guide-more → topic",
       "checks": {
-        "success": 2,
+        "successful": 2,
         "skipped": 1
       }
     }
@@ -993,7 +966,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a page left open asks for its refresh",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1050,7 +1023,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "it asks for the next refresh at once",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1071,7 +1044,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a current page asks once the reader stays, and a probe answers",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1081,7 +1054,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "its interval later it asks again, and the probe vouches",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1101,7 +1074,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a probe ask the server does not answer is reported",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1120,7 +1093,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "the next probe ask that answers clears it",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1139,7 +1112,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "an answer slower than the interval is followed by a short gap",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1157,7 +1130,7 @@ $ node tests/dom/github-pull-page-second-session.js
       "step": "shown again past its interval it asks at once, and a probe that found a change refreshes",
       "requests": [
         "GET /api/plugin/github/pull?number=7 (If-None-Match)",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "fast",
       "paints": 2,
@@ -1178,7 +1151,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a stale page asks once, and its refresh is not due",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"be661cdd190c7d2665ed14d96f20d2059d0ff58522a15e34924d7ba4d2271701\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1233,7 +1206,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "that ask is sent with no wait, and is not due",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"be661cdd190c7d2665ed14d96f20d2059d0ff58522a15e34924d7ba4d2271701\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1272,7 +1245,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a stale page asks for its refresh",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1346,7 +1319,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "and sends that ask with no wait",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1365,6 +1338,16 @@ $ node tests/dom/github-pull-page-second-session.js
   ],
   "checkActions": [
     {
+      "name": "docs",
+      "detail": null,
+      "action": {
+        "kind": "actions",
+        "href": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "label": "View action on GitHub",
+        "name": "View action on GitHub: docs"
+      }
+    },
+    {
       "name": "tests (3.13)",
       "detail": null,
       "action": {
@@ -1375,13 +1358,13 @@ $ node tests/dom/github-pull-page-second-session.js
       }
     },
     {
-      "name": "docs",
-      "detail": null,
+      "name": "docs/readthedocs.org:demo",
+      "detail": "Read the Docs build succeeded!",
       "action": {
-        "kind": "actions",
-        "href": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "label": "View action on GitHub",
-        "name": "View action on GitHub: docs"
+        "kind": "external",
+        "href": "https://demo--7.org.readthedocs.build/en/7/",
+        "label": "View details",
+        "name": "View details: docs/readthedocs.org:demo"
       }
     },
     {
@@ -1432,16 +1415,6 @@ $ node tests/dom/github-pull-page-second-session.js
         "href": "https://bot@github.com/octo/demo/runs/5",
         "label": "View details",
         "name": "View details: credentialed"
-      }
-    },
-    {
-      "name": "docs/readthedocs.org:demo",
-      "detail": "Read the Docs build succeeded!",
-      "action": {
-        "kind": "external",
-        "href": "https://demo--7.org.readthedocs.build/en/7/",
-        "label": "View details",
-        "name": "View details: docs/readthedocs.org:demo"
       }
     },
     {

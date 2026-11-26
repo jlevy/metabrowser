@@ -480,16 +480,7 @@ const REVIEW_STATES = Object.freeze({
 });
 
 /** @type {Readonly<Record<string, string>>} */
-const MERGEABLE = Object.freeze({
-  mergeable: "No conflicts with the base branch.",
-  conflicting: "Conflicts with the base branch.",
-  unknown: "Merge status unknown.",
-});
-
-/** @type {Readonly<Record<string, string>>} */
 const UNAVAILABLE = Object.freeze({
-  check_runs: "check runs",
-  status: "commit statuses",
   comparison: "changes",
 });
 
@@ -498,8 +489,6 @@ const TRUNCATED = Object.freeze({
   issue_comments: "comments",
   reviews: "reviews",
   review_comments: "review comments",
-  check_runs: "check runs",
-  statuses: "statuses",
 });
 
 /**
@@ -530,7 +519,32 @@ const TRUNCATED = Object.freeze({
  *   repository_labels?: RepositoryLabel[],
  *   labels_pending?: boolean,
  *   no_store?: true,
+ *   status?: Record<string, any> | null,
+ *   readiness?: PullReadiness | null,
+ *   checks?: PullChecks | null,
+ *   status_unavailable?: string | null,
  * }} PullEnvelope
+ */
+
+/**
+ * A head's checks as the server keeps them beside the record (`PullChecks` in
+ * pull_status.py): each the latest run of one check, in the bucket `gh pr checks` sorts it
+ * into, which only the server decides.
+ *
+ * @typedef {{name: string, kind: "run" | "status", bucket: string, status?: string | null,
+ *   conclusion?: string | null, required?: boolean | null, details_url?: string | null,
+ *   app?: string | null, description?: string | null}} PullCheckItem
+ * @typedef {{number: number, head: string, observed_at: string, items: PullCheckItem[],
+ *   truncated?: boolean}} PullChecks
+ */
+
+/**
+ * The server's verdict on a pull request's head and the requirements behind it
+ * (`Readiness` in pull_readiness.py).
+ *
+ * @typedef {{kind: string, status: string, summary: string, github_url?: string | null}} PullRequirement
+ * @typedef {{verdict: string, tone: string, label: string, head: string,
+ *   observed_at?: string | null, requirements?: PullRequirement[]}} PullReadiness
  */
 
 /**
@@ -586,7 +600,10 @@ const TRUNCATED = Object.freeze({
  */
 
 /**
- * @typedef {{name: string, detail: string | null, tone: string, label: string, action: CheckAction | null}} CheckItem
+ * One row of the Checks tab. `bucket` is the server's, and the badge's ink
+ * (`data-state`, github/styles.css); `label` is the check's own state in words.
+ *
+ * @typedef {{name: string, detail: string | null, bucket: string, label: string, action: CheckAction | null}} CheckItem
  */
 
 /**
@@ -626,13 +643,13 @@ const TRUNCATED = Object.freeze({
  *     actor: string | null, action: string,
  *     base: string, head: string, htmlUrl: string, created: string, updated: string,
  *     closed: string | null, closedLabel: string | null, labels: PullLabel[],
- *     merge: {state: string, label: string} | null, text: string, truncated: boolean,
- *     commits: number | null,
+ *     text: string, truncated: boolean, commits: number | null,
  *   },
  *   timeline: TimelineItem[],
  *   reviewComments: ReviewCommentItem[],
- *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
+ *   checks: {headline: string, counts: Record<string, number>, items: CheckItem[]} | null,
  *   checkNotes: string[],
+ *   merge: {state: string, label: string} | null,
  *   notes: string[],
  *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, branch: {ref: string | null} | null} | null,
  *   comparisonComing: boolean,
@@ -866,66 +883,86 @@ export function describeLabel(value, known = new Map()) {
   };
 }
 
-// The tone a completed check run's conclusion is painted with and counted under. As
-// github.com's Checks page does (read 2026-09-24 on pytorch/pytorch#198558: "This job
-// was cancelled", "was skipped", "failed", "This check was neutral"), a cancelled,
-// skipped, or stale run is its own count, apart from neutral.
-/** @type {Readonly<Record<string, string>>} */
-const CONCLUSION_TONES = Object.freeze({
-  success: "success",
-  failure: "failure",
-  timed_out: "failure",
-  action_required: "failure",
-  startup_failure: "failure",
-  cancelled: "cancelled",
-  skipped: "skipped",
-  stale: "stale",
-  neutral: "neutral",
-});
+// The order `gh pr checks` lists a head's checks in (`pkg/cmd/pr/checks/output.go` in gh
+// 2.97.0): failing first, then pending, then the rest, each group in the order the server
+// kept them. The bucket is the server's (`state_bucket` in pull_status.py), so the page
+// sorts no check into one of its own.
+/** @type {readonly string[]} */
+const CHECK_ORDER = Object.freeze(["fail", "pending"]);
 
-// The tone of a commit status's state.
-/** @type {Readonly<Record<string, string>>} */
-const STATUS_TONES = Object.freeze({
-  success: "success",
-  failure: "failure",
-  error: "failure",
-  pending: "pending",
-});
+// `gh pr checks`'s summary of the checks it lists, in the words and the order of precedence
+// `checks_sentence` in pull_readiness.py gives the server's counts: its headline is the
+// first of these whose bucket has a check, and "All checks were successful" when none
+// does; its tallies are each bucket's count in this order, zeros left out.
+// tests/test_github_check_summary.py holds the two to the same words.
+/** @type {ReadonlyArray<readonly [string, string]>} */
+const CHECK_HEADLINES = Object.freeze([
+  ["fail", "Some checks were not successful"],
+  ["pending", "Some checks are still pending"],
+  ["cancel", "Some checks were cancelled"],
+]);
+const ALL_CHECKS_PASSED = "All checks were successful";
+/** @type {ReadonlyArray<readonly [string, string]>} */
+const CHECK_TALLIES = Object.freeze([
+  ["cancel", "cancelled"],
+  ["fail", "failing"],
+  ["pass", "successful"],
+  ["skipping", "skipped"],
+  ["pending", "pending"],
+]);
 
 /**
- * How one check run is labeled and counted. A run that has not completed (queued,
- * in_progress, waiting, requested, pending, or no status at all) is pending; a completed
- * run is its conclusion's tone, and `unknown` when GitHub gave none or one it does not
- * document.
+ * The words a check's badge says: its own state as GitHub named it, in lower case. A run
+ * says its conclusion once it completed and its status before; a commit status its state.
  *
- * @param {Record<string, any>} run
- * @returns {{tone: string, label: string}}
+ * @param {PullCheckItem} item
  */
-export function checkRunResult(run) {
-  const status = text(run.status);
-  if (status !== "completed") {
-    return { tone: "pending", label: (status || "pending").replaceAll("_", " ") };
-  }
-  const conclusion = text(run.conclusion);
-  if (!Object.hasOwn(CONCLUSION_TONES, conclusion)) {
-    return { tone: "unknown", label: conclusion.replaceAll("_", " ") || "no conclusion" };
-  }
-  return { tone: CONCLUSION_TONES[conclusion], label: conclusion.replaceAll("_", " ") };
+export function checkLabel(item) {
+  const status = text(item.status);
+  const state = item.kind === "run" && status !== "COMPLETED" ? status : text(item.conclusion);
+  return (state || status).toLowerCase().replaceAll("_", " ") || "unknown";
 }
 
 /**
- * How one commit status is labeled and counted: its state's tone, and `unknown` for a
- * state GitHub does not document.
+ * *items* in the order `gh pr checks` lists them (`CHECK_ORDER`). Pure, and stable.
  *
- * @param {Record<string, any>} status
- * @returns {{tone: string, label: string}}
+ * @template {{bucket: string}} T
+ * @param {readonly T[]} items
+ * @returns {T[]}
  */
-export function commitStatusResult(status) {
-  const state = text(status.state);
-  if (!Object.hasOwn(STATUS_TONES, state)) {
-    return { tone: "unknown", label: state || "unknown" };
+export function checksInOrder(items) {
+  const rank = (/** @type {T} */ item) => {
+    const at = CHECK_ORDER.indexOf(item.bucket);
+    return at < 0 ? CHECK_ORDER.length : at;
+  };
+  return items
+    .map((item, at) => ({ item, at }))
+    .sort((left, right) => rank(left.item) - rank(right.item) || left.at - right.at)
+    .map(({ item }) => item);
+}
+
+/**
+ * The summary over *items*' buckets: `gh pr checks`'s headline and each bucket's tally,
+ * in `CHECK_TALLIES`' order with zeros left out. Pure.
+ *
+ * @param {ReadonlyArray<{bucket: string}>} items
+ * @returns {{headline: string, counts: Record<string, number>}}
+ */
+export function checksSummary(items) {
+  /** @type {Record<string, number>} */
+  const counted = {};
+  for (const item of items) {
+    counted[item.bucket] = (counted[item.bucket] ?? 0) + 1;
   }
-  return { tone: STATUS_TONES[state], label: state };
+  const first = CHECK_HEADLINES.find(([bucket]) => (counted[bucket] ?? 0) > 0);
+  /** @type {Record<string, number>} */
+  const counts = {};
+  for (const [bucket, word] of CHECK_TALLIES) {
+    if ((counted[bucket] ?? 0) > 0) {
+      counts[word] = counted[bucket];
+    }
+  }
+  return { headline: first === undefined ? ALL_CHECKS_PASSED : first[1], counts };
 }
 
 /**
@@ -1264,40 +1301,74 @@ function checkAction(name, url, base) {
   return { kind, href, label, name: `${label}: ${name}` };
 }
 
-/** @param {Record<string, any>} record @param {string} base The pull request's page. */
-function checks(record, base) {
-  /** @type {CheckItem[]} */
-  const items = [];
-  for (const run of list(record.check_runs)) {
-    const name = text(run.name);
-    const action = checkAction(name, run.details_url, base);
-    const app = typeof run.app === "string" ? run.app : null;
-    items.push({
-      name,
-      // An Actions link already says where the run is; any other app is named.
-      detail: app === ACTIONS_APP && action?.kind === "actions" ? null : app,
-      ...checkRunResult(run),
-      action,
-    });
-  }
-  for (const status of list(record.status?.statuses)) {
-    const name = text(status.context);
-    items.push({
-      name,
-      detail: typeof status.description === "string" ? status.description : null,
-      ...commitStatusResult(status),
-      action: checkAction(name, status.target_url, base),
-    });
-  }
-  if (items.length === 0) {
+/**
+ * The checks of the head shown, as the Checks tab lists them, or `null` when the server
+ * keeps none of that head: a status is never shown for a head it does not describe.
+ *
+ * @param {PullChecks | null | undefined} kept the envelope's `checks`
+ * @param {string} head the head the record or core shown names
+ * @param {string} base The pull request's page.
+ */
+function checks(kept, head, base) {
+  if (kept === null || kept === undefined || head === "" || kept.head !== head) {
     return null;
   }
-  /** @type {Record<string, number>} */
-  const counts = {};
-  for (const item of items) {
-    counts[item.tone] = (counts[item.tone] ?? 0) + 1;
+  /** @type {CheckItem[]} */
+  const items = checksInOrder(list(kept.items)).map((check) => {
+    const name = text(check.name);
+    const action = checkAction(name, check.details_url, base);
+    const app = typeof check.app === "string" ? check.app : null;
+    const description = typeof check.description === "string" ? check.description : null;
+    return {
+      name,
+      // An Actions link already says where the run is; any other app is named.
+      detail:
+        check.kind === "run"
+          ? app === ACTIONS_APP && action?.kind === "actions"
+            ? null
+            : app
+          : description,
+      bucket: text(check.bucket),
+      label: checkLabel(check),
+      action,
+    };
+  });
+  return { ...checksSummary(items), items };
+}
+
+/**
+ * The one note over the checks, when they are missing or cut short: what the status's
+ * last read left (`status_unavailable`), when it left nothing of the head shown, or the
+ * list cut at its bound.
+ *
+ * @param {PullEnvelope} envelope
+ * @param {string} head
+ * @returns {string[]}
+ */
+function checkNotes(envelope, head) {
+  const kept = envelope.checks;
+  const shown = kept !== null && kept !== undefined && head !== "" && kept.head === head;
+  if (shown && kept.truncated === true) {
+    return ["Only some checks are shown."];
   }
-  return { counts, items };
+  return !shown && typeof envelope.status_unavailable === "string"
+    ? ["Checks could not be loaded."]
+    : [];
+}
+
+/**
+ * The sentence the Checks tab ends with, whether the pull request conflicts with its base:
+ * the server's `conflicts` requirement (`pull_readiness.py`), its words and its status, or
+ * `null` when the server judged nothing of the head shown, or a closed or merged one.
+ *
+ * @param {PullReadiness | null | undefined} readiness
+ * @returns {{state: string, label: string} | null}
+ */
+function mergeLine(readiness) {
+  const row = list(readiness?.requirements).find(
+    (requirement) => requirement?.kind === "conflicts",
+  );
+  return row === undefined ? null : { state: text(row.status), label: text(row.summary) };
 }
 
 /**
@@ -1312,34 +1383,27 @@ function joinedWords(words) {
 }
 
 /**
- * The one note over the conversation, or over the checks, when part of it is missing or
- * cut short: at most one sentence, never one per part. A part that could not be read at
- * all outweighs a list or text that was cut, which still shows what it holds. Why a part
- * could not be read stays in the record's `unavailable`, and Files changed says why its
- * Changes are missing (`filesUnavailableText`).
+ * The one note over the conversation when part of it is missing or cut short: at most one
+ * sentence, never one per part. A part that could not be read at all outweighs a list or
+ * text that was cut, which still shows what it holds. Why a part could not be read stays
+ * in the record's `unavailable`, and Files changed says why its Changes are missing
+ * (`filesUnavailableText`). The checks are the status's, with a note of their own
+ * (`checkNotes`).
  *
  * @param {Record<string, any>} record
- * @param {boolean} forChecks
  * @returns {string[]}
  */
-function notes(record, forChecks) {
+function notes(record) {
   const truncated = record.truncated ?? {};
-  const checkPart = (/** @type {string} */ name) =>
-    name === "check_runs" || name === "status" || name === "statuses";
   const missing = Object.entries(record.unavailable ?? {})
-    .filter(
-      ([part, why]) =>
-        checkPart(part) === forChecks && !(part === "comparison" && why === "no_store"),
-    )
+    .filter(([part, why]) => !(part === "comparison" && why === "no_store"))
     .map(([part]) => (Object.hasOwn(UNAVAILABLE, part) ? UNAVAILABLE[part] : "some details"));
   if (missing.length > 0) {
     const parts = joinedWords([...new Set(missing)]);
     return [`${parts.charAt(0).toUpperCase()}${parts.slice(1)} could not be loaded.`];
   }
-  const cut = Object.keys(TRUNCATED).filter(
-    (name) => checkPart(name) === forChecks && truncated[name] === true,
-  );
-  const textCut = !forChecks && truncated.text === true;
+  const cut = Object.keys(TRUNCATED).filter((name) => truncated[name] === true);
+  const textCut = truncated.text === true;
   if (cut.length > 0 && textCut) {
     return ["Only part of this conversation is shown."];
   }
@@ -1497,7 +1561,6 @@ export function fetchedNote(age, offline = false) {
 function describeCore(pull, known = new Map()) {
   const crossRepository = pull.head?.repository !== pull.base?.repository;
   const state = displayState(pull);
-  const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
   const commits = typeof pull.commits === "number" ? pull.commits : null;
   // "<merger> merged 6 commits", and for an open, draft, or closed pull request
   // "<author> wants to merge 1 commit", with "<head> → <base>" on the branch line under it.
@@ -1534,7 +1597,6 @@ function describeCore(pull, known = new Map()) {
     closed: state === "merged" ? pull.merged_at : state === "closed" ? pull.closed_at : null,
     closedLabel: state === "merged" ? "merged" : state === "closed" ? "closed" : null,
     labels: list(pull.labels).map((label) => describeLabel(label, known)),
-    merge: merge === null ? null : { state: merge, label: MERGEABLE[merge] ?? MERGEABLE.unknown },
     // The header's size line opens with it (docs/design-system.md, "Change Size Line").
     commits,
     text: text(pull.body),
@@ -1629,6 +1691,7 @@ export function describePull(envelope, page) {
     reviewComments: [],
     checks: null,
     checkNotes: [],
+    merge: null,
     notes: [],
     comparison: null,
     comparisonComing: false,
@@ -1790,10 +1853,13 @@ export function describePull(envelope, page) {
   );
   model.timeline = timeline(record);
   model.reviewComments = reviewComments(record);
-  model.checks = checks(record, model.pull.htmlUrl);
-  model.checkNotes = notes(record, true);
-  model.notes = notes(record, false);
   const head = text(pull.head?.sha);
+  // The checks and the merge line are the status's, beside the record: a check that
+  // finishes changes them and leaves the record, and the conversation drawn from it, alone.
+  model.checks = checks(envelope.checks, head, model.pull.htmlUrl);
+  model.checkNotes = checkNotes(envelope, head);
+  model.merge = mergeLine(envelope.readiness);
+  model.notes = notes(record);
   model.head = head || null;
   model.baseRef = text(pull.base?.ref) || null;
   const headRef = `refs/pull/${pull.number}/head`;
@@ -4158,7 +4224,7 @@ export function shownComparison(value) {
  */
 export function conversationKey(model) {
   return JSON.stringify([
-    model.pull === null ? null : { ...model.pull, merge: null },
+    model.pull,
     model.corePreview,
     ...(model.corePreview ? [model.refreshing] : []),
     model.timeline,
@@ -7504,36 +7570,35 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /** @param {PullModel} model @param {NonNullable<PullModel["pull"]>} pull */
-  function paintChecks(model, pull) {
+  /** @param {PullModel} model */
+  function paintChecks(model) {
     const summary = model.checks;
     const checksSection = h("section", { class: "github-pull-section" }, [
       h("h2", { class: "section-heading" }, ["Checks"]),
     ]);
-    if (model.corePreview) {
-      checksSection.append(
-        model.refreshing
-          ? pendingSection({ "aria-label": "Loading checks and statuses" })
-          : h("p", { class: "github-pull-quiet" }, ["Checks and statuses have not been fetched."]),
-      );
-    } else if (summary !== null) {
-      // "3 success · 1 failure": a count summary in its parts, painted by the shell's one
+    if (summary !== null && summary.items.length > 0) {
+      // "Some checks are still pending: 3 successful · 1 pending": `gh pr checks`'s headline
+      // (`checksSummary`), then a count summary in its parts, painted by the shell's one
       // painter of them (`mb.countPartsNodes`): its numbers bold, and its dots muted and
       // hidden from a screen reader, which is told a comma in each one's place, as a paragraph
       // has no name to say the line in words (docs/design-system.md, "Count Summaries Bold
       // Their Numbers"). A no-break space holds each dot to the count before it, so a line
       // that wraps never starts with one.
       /** @type {MetabrowserCountPart[]} */
-      const counted = Object.entries(summary.counts).flatMap(([tone, count], at) => [
-        ...(at === 0 ? [] : ["\u00a0", CHECKS_SEPARATOR, " "]),
-        { number: String(count) },
-        ` ${tone}`,
-      ]);
+      const counted = [
+        `${summary.headline}: `,
+        ...Object.entries(summary.counts).flatMap(([word, count], at) => [
+          ...(at === 0 ? [] : ["\u00a0", CHECKS_SEPARATOR, " "]),
+          { number: String(count) },
+          ` ${word}`,
+        ]),
+      ];
       checksSection.append(h("p", { class: "github-pull-quiet" }, mb.countPartsNodes(counted)));
       const rows = h("ul", { class: "github-pull-checks" });
       for (const item of summary.items) {
         rows.append(
           h("li", {}, [
-            stateBadge(item.tone, item.label, "check"),
+            stateBadge(item.bucket, item.label, "check"),
             " ",
             h("span", {}, [item.name]),
             item.action === null ? null : checkLink(item.action),
@@ -7542,14 +7607,24 @@ export function mountPullPage(container, ctx, mb) {
         );
       }
       checksSection.append(rows);
-    } else if (model.checkNotes.length === 0) {
+    } else if (summary !== null) {
       checksSection.append(
         h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
       );
-    }
-    if (!model.corePreview && pull.merge !== null) {
+    } else if (model.checkNotes.length === 0) {
+      // No status of the head shown yet: a prefetched record reads none, and the page's
+      // next ask reads it (`status_missing` in pull_freshness.py).
       checksSection.append(
-        h("p", { class: "github-pull-merge", "data-state": pull.merge.state }, [pull.merge.label]),
+        model.refreshing
+          ? pendingSection({ "aria-label": "Loading checks and statuses" })
+          : h("p", { class: "github-pull-quiet" }, ["Checks and statuses have not been fetched."]),
+      );
+    }
+    if (!model.corePreview && model.merge !== null) {
+      checksSection.append(
+        h("p", { class: "github-pull-merge", "data-state": model.merge.state }, [
+          model.merge.label,
+        ]),
       );
     }
     body.replaceChildren(
@@ -9223,10 +9298,10 @@ export function mountPullPage(container, ctx, mb) {
       const key = JSON.stringify([
         "checks",
         model.corePreview,
-        model.corePreview && model.refreshing,
+        model.checks === null && model.refreshing,
         model.checks,
         model.checkNotes,
-        model.pull.merge,
+        model.merge,
         model.pull.htmlUrl,
       ]);
       if (key !== bodyKey) {
@@ -9235,7 +9310,7 @@ export function mountPullPage(container, ctx, mb) {
         discussion = null;
         texts.clear();
         observer?.disconnect();
-        paintChecks(model, model.pull);
+        paintChecks(model);
       }
       return;
     }

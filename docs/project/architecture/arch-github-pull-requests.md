@@ -180,7 +180,7 @@ Every file is disposable and carries its own schema version.
 | `<n>.snapshots.json` | Earlier comparison pairs a revision link may open | `pull_snapshot_cache.py` |
 | `stack-<n>.snapshots.json` | A native stack’s earlier comparison pairs, which its page keeps drawn | `pull_stack_retained.py` |
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
-| `<n>.checks.json`, `<n>.status.refresh.json` | Its head’s checks as its status read found them, and how that read ended | `pull_status_store.py` |
+| `<n>.checks.json`, `<n>.status.refresh.json`, `<n>.checks.probe.json` | Its head’s checks as its status read found them, how that read ended, and what the probes of those checks last saw | `pull_status_store.py` |
 | `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, each pull request’s newest operational status in its `pull_status` table, and how the catalog’s refreshes ended | `pull_catalog.py`, `pull_list.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
 | `repos/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
@@ -190,13 +190,20 @@ Every file is disposable and carries its own schema version.
 ## Pull-Request Records
 
 `refresh_pull_request` in `pulls.py` is the whole network job for one pull request: the
-account, then the pull request, its issue comments, reviews, review comments, and the
-head’s check runs and combined status, a page at a time with `If-None-Match` from the
-same reader’s previous record; the account again, discarding a record read across an
-account switch; then the head fetch and the comparison endpoints; then the record; then
-its [operational status](#operational-status), kept apart from the record.
-A part GitHub refuses, such as check runs, and a comparison whose base cannot be
-fetched, are named in the record’s `unavailable` rather than failing it.
+account, then the pull request, its issue comments, reviews, and review comments, a page
+at a time with `If-None-Match` from the same reader’s previous record; the account
+again, discarding a record read across an account switch; then the head fetch and the
+comparison endpoints; then the record; then its
+[operational status](#operational-status), kept apart from the record.
+A comparison whose base cannot be fetched is named in the record’s `unavailable` rather
+than failing it.
+
+The record is the pull request’s core, what changes when a person changes it.
+Whether it conflicts and how its checks stand are its operational status, which it does
+not hold: `PullRequest` has no `mergeable`, and `PullRecord` no check runs or combined
+status, so a check that finishes gives the record no new revision and the page keeps the
+conversation drawn from it.
+A core (`pull_core_cache.py`) holds none either.
 
 `pull_record.py` holds `PullRecord` and every bound, with the measurements beside the
 constants. A page larger than `gh`’s output cap is asked for again in smaller pages; an
@@ -261,12 +268,15 @@ head’s checks, each in the bucket `gh pr checks` sorts it into.
 would show and one verdict, and is the only place readiness is decided; its docstring
 has the rules.
 
-- **Reading.** `refresh_pull_request` reads the status after it publishes the record, in
-  the same job, with one GraphQL query (`pull_status_read.py`): on every full read and
-  every checks-only read, so on every change a probe finds and every `FULL_REFRESH_S`
-  read of a visible page.
-  It goes through `gh_graphql`, as the core read does, so its `rateLimit { cost }`
-  counts toward the process’s ceiling and its `viewer` must be the job’s reader.
+- **Reading.** The status is the only read of whether a pull request conflicts and how
+  its checks stand. `refresh_pull_request` reads it after it publishes the record, in the
+  same job, with one GraphQL query (`pull_status_read.py`), and `refresh_pull_status`
+  reads it alone, with one account check and that query and no REST read of the record,
+  for what changes the status and not the record: a change a probe finds in the checks
+  or the mergeability, a status a window old, and a record with no status of its head
+  ([Freshness Verdicts](#freshness-verdicts)). It goes through `gh_graphql`, as the core
+  read does, so its `rateLimit { cost }` counts toward the process’s ceiling and its
+  `viewer` must be the job’s reader.
   It pages the rollup’s checks up to `MAX_CHECK_ITEMS` and keeps the latest run of each,
   as `gh pr checks` does; its module docstring has the rest, and its cost, latency, and
   size are beside `_STATUS_QUERY`. Whether `mergeStateStatus` depends on who asks is
@@ -276,8 +286,10 @@ has the rules.
   read ended is kept in `<n>.status.refresh.json`, and what an earlier read kept stays.
 - **Budget.** The prefetch’s records, which nobody is looking at, read no status
   (`gh_budget.speculating`): its caps are priced without it (`POINTS_PER_RECORD` in
-  `pull_prefetch.py`). Below `BACKGROUND_FLOOR` of either the REST or the GraphQL
-  budget, a visible page’s clock-driven reads wait (`ServedPull.below_floor`).
+  `pull_prefetch.py`), so a prefetched record’s page reads its status when it is shown.
+  Below `BACKGROUND_FLOOR` of either the REST or the GraphQL budget, a visible page’s
+  clock-driven full reads wait (`ServedPull.below_floor`); a status read alone spends
+  GraphQL, and waits below that floor alone (`ServedPull.status_below_floor`).
 - **Keeping.** The status is a row of the catalog’s `pull_status` table, one for each
   pull request number, which keeps the newer `observed_at` whatever its head.
   It is a table of its own, so a check that finishes moves no catalog row, fingerprint,
@@ -285,6 +297,9 @@ has the rules.
   it, as the records beside it are kept.
   The checks are `<n>.checks.json` beside the record, within `MAX_PULL_CHECKS_BYTES`
   (`pull_status_store.py`), cut from the end to fit.
+  What the probes of a head’s checks last saw, each page’s ETag and a digest of what a
+  status keeps of it, is `<n>.checks.probe.json` (`CheckProbes`), since the GraphQL read
+  has no ETag to probe with.
   Both are in the `pulls` directory, so [clearing the cache](#clearing-the-cache)
   removes them, and a checkout without a store keeps them as it keeps its catalog.
 - **Serving.** The pull envelope carries `status`, `checks`, and `readiness` beside
@@ -293,8 +308,12 @@ has the rules.
   or core shown: another head’s is `checking`, and a closed or merged pull request has
   none. The entity tag covers all three, so a read that moves the status’s head or
   `observed_at` moves it.
-  `metab --show /pull/<n>/checks` prints the verdict and each requirement’s status on
-  its model line.
+  The Checks tab draws its list from `checks` and its last line from the verdict’s
+  conflicts requirement, each check in the ink of its server-side bucket, failing first,
+  then pending, then the rest, as `gh pr checks` lists them, under `gh`’s headline for
+  them (`checksSummary` in `pull-page.js`, held to `checks_sentence` by
+  `tests/test_github_check_summary.py`). `metab --show /pull/<n>/checks` prints the
+  verdict and each requirement’s status on its model line.
 
 ## Serving Pull Requests
 
@@ -314,21 +333,33 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   (`StoreTurn` in `mirror_refresh.py`).
 - **What starts one:** a reader’s own action (`"retry": true`); a visible page whose
   record is stale and not tried within the window; a probe that finds a change; a
-  visible record last read in full `FULL_REFRESH_S` ago, a read of the checks alone not
-  counting; and a [prefetch](#background-prefetch) that names it.
-  A failed refresh is tried again after a window, and after `rate_limited` not before
-  `reset_at`. A branch or tag pin never runs `gh`.
+  visible record last read in full `FULL_REFRESH_S` ago, a read of the status alone not
+  counting; a visible page whose status alone is due (`ServedPull.status_due`), which
+  reads it alone and asks the probe first when one is due, so a change it finds reads
+  the record and its status in one job; and a [prefetch](#background-prefetch) that
+  names it. A failed refresh is tried again after a window, and after `rate_limited` not
+  before `reset_at`. A branch or tag pin never runs `gh`.
 - **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
   current record the server answers with a probe (`ServedPull.probe`), a conditional
   read of the pull request’s issue (`pulls.probe_path`) that GitHub answers `304`
-  without spending its rate limit, and, while checks are pending, of their first pages
+  without spending its rate limit, and, while the kept status says its checks settle
+  (`checks_settling`: a rollup `pending` or `expected`, a check in `gh`’s pending
+  bucket, or no checks within `NO_CHECKS_GRACE_S` of an update), of their first pages
   every `CHECKS_PROBE_S`. The issue’s `updated_at` is the pull request’s own, and its
   ETag does not move with the repository as the pull’s does; `PROBE_RESOURCE` records
-  the measurement. It carries neither `mergeable` nor the head, which the full read a
+  the measurement. It carries neither the mergeability nor the head, which the read a
   change starts reads.
-  GitHub computes `mergeable` after the read that first asks, so while an open record
-  holds `unknown` the probe asks the pull too, for `MERGEABLE_SETTLE_S`, and an answer
-  reads the checks alone; past that time no probe vouches for the record.
+  The status is read with GraphQL, which has no ETag, so the checks pages are probed on
+  ETags of their own, kept beside the status (`<n>.checks.probe.json`): the first probe
+  of a head asks each page unconditionally, a paid `200` that seeds the baseline and
+  counts as a change, one `core` a page and a status read, and every later one is
+  conditional. A `200` whose digest of what a status keeps is the one kept, as a run’s
+  output moving, is no change, and its ETag is kept; a page GitHub refuses marks the
+  head’s pages refused, and they are not probed again.
+  GitHub computes the mergeability after the read that first asks, so while the kept
+  status holds an `unknown` `conflicts` or `merge_state` the probe asks the pull too,
+  for `MERGEABLE_SETTLE_S`, and a known answer that differs reads the status alone; past
+  that time no probe vouches for the record.
   An issue answer older than the record is one that lags, and starts nothing.
   The page’s ask names the record it shows (`"held"`, its `record_revision`), and an
   answer about that record says `record_held` in place of `record`, so the page keeps
@@ -336,8 +367,9 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   `pull_route.py` records what the whole envelope cost at that cadence.
   A page that no longer holds that record reads the route instead.
   An unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it
-  current until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once,
-  a change to checks alone reads only them, and a failed probe waits a window.
+  current until the full read `FULL_REFRESH_S` asks, and so does one that found a change
+  in the status alone, whose issue is as the record has it; a change starts a refresh at
+  once, a change to the status alone reads only it, and a failed probe waits a window.
   Settling checks a probe cannot see (`checks_probe_paths`) leave the record to the
   window, unvouched. However many pages ask, probes of one pull request are one at a time
   and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
@@ -349,11 +381,12 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   network slot and no turn at the store, so shutdown cancels it.
 - **Below `BACKGROUND_FLOOR`:** probes go on, since a `304` is free, and a change one
   finds, or the catalog reports, still starts its read.
-  The `FULL_REFRESH_S` read and an open record’s once-a-window checks read wait until
-  the budget is back above the floor, and meanwhile an unchanged probe keeps vouching
-  for a record whose full read is overdue, so the page keeps asking every
-  `probe_every_s`. What a probe cannot see is that much later below the floor.
-  The same ask keeps the repository’s list probed (see [The Catalog](#the-catalog)). The
+  The `FULL_REFRESH_S` read waits until the budget is back above the floor, and so does
+  an open record’s once-a-window status read below the GraphQL floor; meanwhile an
+  unchanged probe keeps vouching for a record whose full read is overdue, so the page
+  keeps asking every `probe_every_s`. What a probe cannot see is that much later below
+  the floor. The same ask keeps the repository’s list probed (see
+  [The Catalog](#the-catalog)). The
   [update cadence plan](../specs/active/plan-2026-11-22-pull-request-update-cadence.md)
   records the measurements and the design.
 - **One-shot commands:** the CLI fetches a pull request only when it has no usable
@@ -394,9 +427,14 @@ always has; how the other tabs learn it is in
 The catalog’s delta scan reads pull requests by `UPDATED_AT`, and each row carries the
 head commit, so a record checked against its row is **changed** when the row is newer or
 names another head, **current** while the scan that published the row is recent,
-**checks** when an open record is past the window that its row still vouches for, since
-`updated_at` does not move for check runs, statuses, or mergeability, and **unverified**
-otherwise; the module docstring states each rule.
+**checks** when its row vouches for an open record whose kept status is missing, of
+another head, or observed longer ago than the window, since `updated_at` does not move
+for checks or mergeability, and **unverified** otherwise; the module docstring states
+each rule. A `checks` record is current: it holds nothing `updated_at` does not track,
+and only its status is read again, alone.
+Whatever the verdict, `status_missing` says no kept status describes the record’s head,
+which a visible page then reads, and `checks_pending` says the status’s checks or
+mergeability are still settling.
 A [list probe](#the-catalog) that found the catalog unchanged counts as a scan run when
 it asked, so the catalog vouches between scans.
 `verified_at` and `verified_by` say when and how the record was last known to describe

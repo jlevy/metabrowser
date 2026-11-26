@@ -1340,7 +1340,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 2,
       "merge_commit_sha": null,
-      "mergeable": "mergeable",
       "labels": [
         {
           "name": "enhancement",
@@ -1368,7 +1367,7 @@ status: 200
     },
     "comparison_state": "not_started",
     "observed_at": "2026-09-17T12:01:01Z",
-    "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
+    "revision": "dc404e32b2e1850bc1c65c44e3dd726c14fcb14d4d55da65b0b54fa289eea071"
   },
   "repository_labels": [],
   "labels_pending": false,
@@ -1436,7 +1435,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 2,
       "merge_commit_sha": null,
-      "mergeable": "mergeable",
       "labels": [
         {
           "name": "enhancement",
@@ -1464,7 +1462,7 @@ status: 200
     },
     "comparison_state": "not_started",
     "observed_at": "2026-09-17T12:01:01Z",
-    "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
+    "revision": "dc404e32b2e1850bc1c65c44e3dd726c14fcb14d4d55da65b0b54fa289eea071"
   },
   "repository_labels": [],
   "labels_pending": false,
@@ -1494,7 +1492,7 @@ status: 200
   "number": 7,
   "fetched_at": null,
   "record_revision": null,
-  "core_revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4",
+  "core_revision": "dc404e32b2e1850bc1c65c44e3dd726c14fcb14d4d55da65b0b54fa289eea071",
   "part": "body",
   "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
 }

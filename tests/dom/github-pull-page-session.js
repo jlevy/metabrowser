@@ -32,13 +32,18 @@ const recorded = JSON.parse(
 const kpressTree = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-kpress-tree.json"), "utf8"),
 );
-// The recording holds each distinct record once: an answer whose record an earlier
-// pull-route answer carried names that answer, and reads here as that record.
+// The recording holds each distinct record, status, verdict, and checks once: an answer
+// whose record an earlier pull-route answer carried names that answer, and reads here as
+// that answer's, and so for each of the others.
 for (const answer of Object.values(recorded)) {
   for (const envelope of [answer.body, answer.body?.pull]) {
-    const holder = envelope?.record?.same_as;
-    if (holder !== undefined) {
-      envelope.record = recorded[holder].body.record;
+    for (const field of ["record", "status", "readiness", "checks"]) {
+      const holder = envelope?.[field]?.same_as;
+      if (holder !== undefined) {
+        // Anything kept beside the name, a status's own time, is this answer's.
+        const { same_as: _held, ...own } = envelope[field];
+        envelope[field] = { ...recorded[holder].body[field], ...own };
+      }
     }
   }
 }
@@ -130,7 +135,7 @@ function summarize(model) {
             (label) =>
               `${label.name} ${label.color === null ? "neutral" : `#${label.color} ${label.style}`} ${label.tip === null ? "no tip" : `tip: ${label.tip}`}`,
           ),
-    merge: pull?.merge?.label ?? null,
+    merge: model.merge === null ? null : `[${model.merge.state}] ${model.merge.label}`,
     timeline: model.timeline.map(
       (item) =>
         // A review's chip is only for a state its verb does not say (mb-novh).
@@ -140,16 +145,21 @@ function summarize(model) {
       (comment) =>
         `${comment.path}:${comment.line ?? "outdated"} ${comment.author}${comment.reply ? " (reply)" : ""}${comment.hunk ? " +hunk" : ""}`,
     ),
+    // Each check's badge, its bucket's ink and its own words, as `gh pr checks` lists them.
+    // The summary as its paragraph reads, gh's headline and then each bucket's tally.
     checks:
       model.checks === null
         ? null
         : {
-            counts: model.checks.counts,
+            summary: `${model.checks.headline}: ${Object.entries(model.checks.counts)
+              .map(([word, count]) => `${count} ${word}`)
+              .join(" · ")}`,
             items: model.checks.items.map(
               (item) =>
-                `[${item.label}] ${item.name}${item.detail === null ? "" : ` (${item.detail})`} -> ${item.action === null ? "no action" : `${item.action.label} ${item.action.href}`}`,
+                `[${item.bucket}: ${item.label}] ${item.name}${item.detail === null ? "" : ` (${item.detail})`} -> ${item.action === null ? "no action" : `${item.action.label} ${item.action.href}`}`,
             ),
           },
+    ...(model.checkNotes.length === 0 ? {} : { checkNotes: model.checkNotes }),
     notes: model.notes,
     browse: browseCode(model),
     comparison:
@@ -1628,54 +1638,37 @@ async function main() {
   // github.com page and a check's own site each say where they open, an address a page
   // may not follow has no action, and only an Actions link stands in for the app's name.
   const variedChecks = structuredClone(recorded.current.body);
-  variedChecks.record.check_runs.push(
+  const passed = { kind: "run", bucket: "pass", status: "COMPLETED", conclusion: "SUCCESS" };
+  variedChecks.checks.items.push(
     {
-      id: 1,
+      ...passed,
       name: "coverage",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://github.com/octo/demo/runs/123",
       app: "Codecov",
     },
+    { ...passed, name: "lint", details_url: "https://ci.example/runs/2", app: "GitHub Actions" },
+    { ...passed, name: "gist", details_url: "https://gist.github.com/octo/abc", app: "Gist bot" },
     {
-      id: 2,
-      name: "lint",
-      status: "completed",
-      conclusion: "success",
-      details_url: "https://ci.example/runs/2",
-      app: "GitHub Actions",
-    },
-    {
-      id: 3,
-      name: "gist",
-      status: "completed",
-      conclusion: "success",
-      details_url: "https://gist.github.com/octo/abc",
-      app: "Gist bot",
-    },
-    {
-      id: 4,
+      ...passed,
       name: "proxied",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://github.com:8443/octo/demo/actions/runs/9",
       app: "Proxy",
     },
     {
-      id: 5,
+      ...passed,
       name: "credentialed",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://bot@github.com/octo/demo/runs/5",
       app: "Bot",
     },
+    {
+      kind: "status",
+      bucket: "pass",
+      conclusion: "SUCCESS",
+      name: "legacy-ci",
+      description: "Passed",
+      details_url: "ftp://ci.example/7",
+    },
   );
-  variedChecks.record.status.statuses.push({
-    context: "legacy-ci",
-    state: "success",
-    description: "Passed",
-    target_url: "ftp://ci.example/7",
-  });
   const checkActions = runtime
     .describePull(variedChecks, { number: 7, tab: "checks", nowMs: page.clock.now })
     .checks.items.map(({ name, detail, action }) => ({ name, detail, action }));

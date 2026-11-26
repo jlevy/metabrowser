@@ -284,12 +284,14 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
         _stamp(session.now),
     )
     session.say(
-        "The catalog vouches for open 7's conversation and head, not for its checks, statuses, "
-        "or mergeability, which do not move `updated_at`: read two hours ago, it is stale."
+        "The catalog vouches for open 7's conversation and head, and its record holds nothing "
+        "`updated_at` does not track, so it is current. Its status does, its checks and "
+        "whether it can merge: read two hours ago, it is due on its own, and its docs check "
+        "is still pending."
     )
     pending = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
     assert (pending["state"], pending["checks_pending"], pending["verified_by"]) == (
-        "stale",
+        "current",
         True,
         "catalog",
     )
@@ -297,7 +299,7 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     session.say(
         "A visible page asks for 7, 8, and 10 and for 8's changed files. The store gives 8's "
         "list from its record's comparison, with no request to GitHub, so it goes first; then "
-        "the records: only 7's checks are due, which its own page reads; 8 is current; 10 has "
+        "the records: only 7's status is due, which its own page reads; 8 is current; 10 has "
         "no record, so it is read."
     )
     prefetch = session.run(
@@ -312,7 +314,7 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
         ("record", 10, "refreshed"),
     ]
     assert (report["records"]["hour_used"], report["files"]["hour_used"]) == (1, 0)
-    # The price the reserve counts a record at is what 10's read spent: the pull and five
+    # The price the reserve counts a record at is what 10's read spent: the pull and three
     # parts, a page each (review A5 of #761). The page asked a moment ago, so the lane keeps
     # a scan's records from the cores walk.
     ceiling = report["governor"]["ceiling"]
@@ -322,12 +324,12 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     )
 
     session.say(
-        "7's page asks for its automatic refresh. Its checks alone are due, but its last full "
+        "7's page asks for its automatic refresh. Its status alone is due, but its last full "
         "read was two hours ago, past FULL_REFRESH_S, and a visible page's record is read in "
         "full that often: every part is asked with its ETag, and GitHub answers 304 for all "
-        "that did not change. A record read in full within that interval reads its checks alone. "
-        "The same ask probes the repository's list, one read of the row updated last, "
-        "as a visible Pulls tab's ask would."
+        "that did not change, and its status after it. A record read in full within that "
+        "interval reads its status alone. The same ask probes the repository's list, one read "
+        "of the row updated last, as a visible Pulls tab's ask would."
     )
     checks = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
     assert checks.exit_code == 0, checks.stderr
@@ -340,6 +342,42 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert all(call.endswith("(If-None-Match)") for call in api), calls
     read = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
     assert (read["state"], read["fetched_at"]) == ("current", _stamp(session.now))
+
+    session.advance(5)
+    session.say(
+        "7's page asks again while its docs check still runs. Its probe asks the issue and "
+        "the first pages of the head's checks, whose first ask seeds what later probes compare "
+        "with: a paid read of each page, counted as a change. So the status is read alone, an "
+        "account check and one GraphQL query, and nothing of the record over REST."
+    )
+    seeding = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
+    assert seeding.exit_code == 0, seeding.stderr
+    assert '"refresh": "started"' in seeding.stdout
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    head = origin["fork_head"]
+    assert [call for call in calls if LIST_PROBE_PATH not in call] == [
+        "gh api repos/octo/demo/issues/7",
+        f"gh api repos/octo/demo/commits/{head}/check-runs?per_page=100&page=1",
+        f"gh api repos/octo/demo/commits/{head}/status?per_page=100&page=1",
+        # A process's first account check; GitHub does not count one it answers 304.
+        "gh api user",
+        "gh api graphql status number=7 cursor=start",
+    ], calls
+    kept = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
+    assert kept["fetched_at"] == read["fetched_at"], "the record was not read again"
+    session.advance(5)
+    session.say(
+        "Five seconds on, the next ask's probe sends the ETags that one kept beside the "
+        "status, GitHub answers both pages 304, and nothing is due."
+    )
+    again = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
+    assert '"refresh": "not_due"' in again.stdout, again.stdout
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    assert [call for call in calls if LIST_PROBE_PATH not in call] == [
+        "gh api repos/octo/demo/issues/7",
+        f"gh api repos/octo/demo/commits/{head}/check-runs?per_page=100&page=1 (If-None-Match)",
+        f"gh api repos/octo/demo/commits/{head}/status?per_page=100&page=1 (If-None-Match)",
+    ], calls
 
     session.say(
         "Pull request 7 is force-pushed back to its earlier commit, where CI has finished. The "
@@ -448,7 +486,7 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     calls = calls[1:]
     assert calls[1] == "gh api user" and calls[-2] == "gh api user (If-None-Match)", calls
     assert calls[-1] == "gh api graphql status number=7 cursor=start", calls
-    assert len(calls) == 10, calls
+    assert len(calls) == 8, calls
     reread = session.run(CANONICAL, "--api", f"{PULL}?number=7", full=True).payload()
     assert reread["record"]["pull"]["title"] == "Retitled below the floor"
     session.blocks.pop()
