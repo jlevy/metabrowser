@@ -127,9 +127,12 @@ the later probes were added.
 the bare and confined timing samples.
 All three downstream entry points loaded from a separate environment.
 The workflow plugin’s process model and its nonempty chart responses matched byte for
-byte. The other two entry points were checked for discovery.
-Startup timing varied with host load, so these samples do not isolate the prefix’s cost.
-The watchdog cleaned up its supervised group after the server died.
+byte. The [downstream follow-up](results/2026-11-26-macos-downstream.json) adds six
+read-only routes from the other two providers with matching responses, including a raw
+HTML response with CSP and `nosniff`. It also records the `.pth` control.
+Both interpreters ran the control command, and only the bare interpreter wrote the
+marker. Startup timing varied with host load, so these samples do not isolate the
+prefix’s cost. The watchdog cleaned up its supervised group after the server died.
 APFS did not reuse the Git directory identity in five reclones.
 
 An ad-hoc signed Swift launcher with Hardened Runtime enabled started the host, which
@@ -176,8 +179,13 @@ uv --config-file uv.toml run --frozen python -I -B \
 Set `TMPDIR` to a writable scratch directory.
 The Unix socket path under it must fit in macOS’s socket address.
 Add `--real PLUGIN_ENV/bin/python ROOT RELATIVE/SPEC.md FIXTURE_DIR` for the downstream
-plugins, or `--privacy FILE` with a synthetic file in a privacy-protected folder and
-watch the desktop for a prompt.
+plugins. Add `--cases FILE` to compare more read-only calls.
+The file maps a public result label to an object with `plugin` (entry-point name),
+`route`, `query` (query parameters), and optional `headers` (lowercase response header
+names to record). Use synthetic fixtures.
+The probe prints response lengths and hashes and the selected headers.
+Use `--privacy FILE` with a synthetic file in a privacy-protected folder and watch the
+desktop for a prompt.
 Unified-log access depends on the local account’s permissions.
 These probes run outside CI.
 

@@ -22,9 +22,11 @@ answered for Landlock and seccomp, for ``sandbox-exec`` with a profile from
   Watch the desktop for a privacy prompt. This probe cannot determine TCC ordering.
 - ``real``, only with ``--real PLUGIN_PYTHON ROOT SPEC FIXTURE_DIR``: the downstream
   plugins, which are not public, bare and confined, with kernel denials recorded by worker.
-  The arguments are ``host_runtime.py``'s.
+  The arguments are ``host_runtime.py``'s. ``--cases FILE`` adds named read-only
+  requests against the fixture directory.
 
-Usage: macos_probe.py SCRATCH_DIR [PROBE ...] [--privacy FILE] [--real PY ROOT SPEC FIX]
+Usage: macos_probe.py SCRATCH_DIR [PROBE ...] [--privacy FILE]
+                      [--real PY ROOT SPEC FIX [--cases FILE]]
 
 Prints JSON that names no path: paths in the kernel's reports are given relative to the
 roots the probe knows (``<env>``, ``<python>``, ``~``, and so on).
@@ -604,7 +606,9 @@ def privacy(mac: Mac, guarded: Path) -> Result:
     return result
 
 
-def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
+def real(
+    mac: Mac, python: str, root: str, spec: str, fixture: str, *, cases: dict[str, Result]
+) -> Result:
     """Measure the downstream hooks with the same inputs, bare and confined."""
     facts = json.loads(
         subprocess.run(
@@ -642,17 +646,22 @@ def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
         except Exception as exc:
             return {"did not start": type(exc).__name__}
         pids.add(worker.pid)
-        hooks: dict[str, str] = {}
-        plugin = ""
         try:
             out["spawn_to_listed_ms"] = round(ready_ms, 1)
             out["plugins listed"] = len(listing["plugins"])
             out["errors"] = [redact(str(e)) for e in listing["errors"]]
-            target = next(
-                p for p in listing["plugins"] if "viz-model" in host_runtime.hooks_of(p["dir"])
+            plugins = {p["entry_point"]: Path(p["dir"]) for p in listing["plugins"]}
+            declarations = {
+                name: host_runtime.hooks_of(str(directory)) for name, directory in plugins.items()
+            }
+            out["plugin manifests"] = len(declarations)
+            out["plugin entry scripts"] = sum(
+                (directory / "index.js").is_file() for directory in plugins.values()
             )
-            hooks = host_runtime.hooks_of(target["dir"])
-            plugin = target["entry_point"]
+            out["declared hook counts"] = sorted(len(routes) for routes in declarations.values())
+            plugin, hooks = next(
+                (name, routes) for name, routes in declarations.items() if "viz-model" in routes
+            )
 
             def hook(route: str, query: str = "") -> tuple[Any, bytes]:
                 return worker.call(
@@ -673,6 +682,7 @@ def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
         except Exception as exc:
             out["failed while serving"] = type(exc).__name__
             worker.kill()
+            return out
         if "charts" not in hooks:
             return out
         fixture_worker = None
@@ -695,9 +705,29 @@ def real(mac: Mac, python: str, root: str, spec: str, fixture: str) -> Result:
                     "sha256": hashlib.sha256(body).hexdigest(),
                 }
             out["charts"] = charts
-            out["chart host calls"] = fixture_worker.callbacks
+            out["chart host calls"] = list(fixture_worker.callbacks)
+            extra: Result = {}
+            for label, case in cases.items():
+                provider: str = case["plugin"]
+                route: str = case["route"]
+                header, body = fixture_worker.call(
+                    "call",
+                    sidekick=declarations[provider][route],
+                    path=f"/api/plugin/{provider}/{route}",
+                    query=urlencode(case["query"]),
+                )
+                response_headers: dict[str, str] = dict(header.get("headers", []))
+                selected_headers: list[str] = case.get("headers", [])
+                extra[label] = {
+                    "status": header["status"],
+                    "bytes": len(body),
+                    "sha256": hashlib.sha256(body).hexdigest(),
+                    "headers": {name: response_headers.get(name) for name in selected_headers},
+                }
+            if extra:
+                out["extra fixture hooks"] = extra
         except Exception as exc:
-            out["charts"] = {"failed": type(exc).__name__}
+            out["fixture hooks failed"] = type(exc).__name__
         finally:
             if fixture_worker is not None:
                 fixture_worker.close()
@@ -741,6 +771,7 @@ def main() -> None:
     arguments = sys.argv[1:]
     guarded: Path | None = None
     real_args: list[str] | None = None
+    cases: dict[str, Result] = {}
     if "--privacy" in arguments:
         at = arguments.index("--privacy")
         guarded = Path(arguments[at + 1])
@@ -749,6 +780,12 @@ def main() -> None:
         at = arguments.index("--real")
         real_args = arguments[at + 1 : at + 5]
         del arguments[at : at + 5]
+    if "--cases" in arguments:
+        at = arguments.index("--cases")
+        if real_args is None or len(arguments) <= at + 1:
+            raise SystemExit("--cases FILE requires --real")
+        cases = json.loads(Path(arguments[at + 1]).read_text())
+        del arguments[at : at + 2]
     if not arguments:
         raise SystemExit(__doc__)
     if sys.platform != "darwin":
@@ -772,7 +809,7 @@ def main() -> None:
         if guarded is not None:
             result["privacy"] = privacy(mac, guarded)
         if real_args is not None:
-            result["real"] = real(mac, *real_args)
+            result["real"] = real(mac, *real_args, cases=cases)
     finally:
         mac.listeners.close()
     print(json.dumps(result, indent=2))

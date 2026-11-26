@@ -863,25 +863,71 @@ its start confined against 72 ms bare.
   worker. Not chosen: the first spike’s 0.3–0.9 s from spawn to listed would be paid on
   every call.
 
-### Not Verified in This Addendum
+### Limits of the Linux Run
 
-- Anything on macOS: a worker under `sandbox-exec`, whether a confined child can use the
-  app’s privacy grants, whether a hardened-runtime app’s descendants can start
-  `sandbox-exec`, and inode reuse on APFS.
-- The real downstream plugins, so every memory and handler time in the body of this
-  brief is as it was measured on 2026-11-12.
-- Landlock on a kernel older than 6.18, and the seccomp filter on aarch64.
-- That the filter’s list of refusals is complete.
-  `io_uring` was the door a reviewer found; nothing shows it was the last.
-- That an in-place `uv tool upgrade` under a running server pairs an old host with new
-  runtime files; it follows from the worker being started from disk each time.
+The Linux run used kernel 6.18 on x86-64. The minimum supported kernel, aarch64, and the
+full filter surface still need evidence.
+The mixed-build case after an in-place `uv tool upgrade` follows from startup loading
+its files from disk and still needs an integration test.
 
 ### macOS Follow-Up
 
 The [macOS worker spike](../../../explorations/plugin-worker-spike/README.md#results)
-records the sandbox runs on Apple Silicon, including all three downstream entry points,
-the workflow hooks, descriptor inheritance, and the hardening and watchdog checks.
-The installed app’s TCC and folder-stop paths still need live evidence.
+records runs on macOS 26.5.2 and Apple Silicon.
+The
+[downstream result](../../../explorations/plugin-worker-spike/results/2026-11-26-macos-downstream.json)
+includes the startup control and fixture parity for all three providers.
+
+| Question | Observation | Open test |
+| --- | --- | --- |
+| Can the worker start under the default file and network grants? | All three entry points, manifests, and JavaScript entry files were present from the locked downstream environment. Nine routes succeeded. The model, both chart responses, and six further hook bodies matched. | Run the remaining workflow report routes, adapter parsing, assets in the browser, and installed CLI/app integration. |
+| Is the interpreter already confined during startup? | A bare `-I` startup executed the `.pth` write. The confined interpreter ran the control command and reported a permission error on that write. | Prove an undecided or dry-run source never starts the interpreter. |
+| Does the worker preserve restrictions returned by HTML hooks? | The fixture returned the same HTML, MIME type, CSP, and `nosniff` header on both paths. | Verify that the HTTP host adds its own enforcing policy and that direct navigation and embedding obey it. |
+| Does the host launch and stop the worker? | The ad-hoc hardened launcher started the worker, an already sandboxed parent could not nest the backend, and the independent watchdog stopped its target and child on server loss. | Verify process-group cleanup, including a blocked worker, through the installed app. |
+| How much does confinement cost? | The paired start samples varied with machine load. | Alternate bare and confined launches of the same interpreter and fixture. Record machine load, startup distribution, and first-hook time before assigning a product budget. |
+
+Python processes executable lines in `.pth` during `site` initialization, which makes
+startup a trust decision.
+Its subprocess API can explicitly carry the two protocol descriptors.
+The macOS descriptor probe verified `pass_fds`, while a same-number `posix_spawn` dup2
+left the close-on-exec descriptor closed.
+[Python site initialization](https://docs.python.org/3.14/library/site.html),
+[Python subprocess documentation](https://docs.python.org/3.14/library/subprocess.html#subprocess.Popen).
+
+The signed launcher establishes process launch on this OS. It uses a different code
+identity from the distributed app and establishes no privacy attribution or permission
+ordering. Keep the installed app check separate.
+Apple documents
+[Hardened Runtime](https://developer.apple.com/documentation/security/hardened-runtime)
+and
+[how distribution code signatures identify an app](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements/).
+
+The HTML fixture supplies its own CSP and was tested at the worker frame boundary.
+The browser enforces every delivered CSP. A separate policy supplied by the host
+therefore remains in force regardless of the worker’s headers.
+Keep the host policy on all active worker documents, and validate it at the actual HTTP
+route in a browser.
+[Content Security Policy Level 3](https://www.w3.org/TR/CSP3/#multiple-policies).
+
+#### Local Verification
+
+The existing filesystem watcher gate missed a synthetic new file on the external APFS
+test volume.
+Native watchfiles and a direct Apple FSEvents stream both started and missed
+the event.
+The direct control started a live stream, waited half a second, created a file
+below the watched root, and waited four seconds for the event.
+Polling watchfiles saw the same type of change.
+This result leaves other APFS mounts and the distributed app open.
+The follow-up is `mb-vk94`. Apple describes FSEvents as advisory and calls for a rescan
+after dropped events.
+[File System Events Programming Guide](https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/FSEvents_ProgGuide/UsingtheFSEventsFramework/UsingtheFSEventsFramework.html).
+
+The local pytest retention override conflicted with the repository’s tests of setup and
+teardown evidence (`mb-1nik`). The process-group test also sometimes reached its
+deadline before the child reported a PID (`mb-me6y`). These failures belong to the
+verification harness.
+The separate worker and watchdog probes provide the current supervision evidence.
 
 ## References
 

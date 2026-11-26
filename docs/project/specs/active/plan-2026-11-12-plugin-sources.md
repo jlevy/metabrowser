@@ -593,10 +593,10 @@ can be granted one need at a time without giving up the rest.
     a prompt about what code may do and not about what it is; a machine without a
     backend never teaches the reader to click through to full access; it is the rule PDF
     previews already follow.
-  - Cons: a profile for a full Python environment on macOS is unproven and may need more
-    grants than the PDF child’s; on a machine with no backend a repository’s hooks do
-    not work until the reader opts in by a command; plugins that reach beyond the
-    default must declare it; the Linux backend needs kernel 5.13.
+  - Cons: the macOS results cover one downstream environment and the surveyed hooks.
+    Additional plugins may need further grants.
+    On a machine without a backend, repository hooks require a deliberate full-authority
+    command. The Linux backend needs kernel 5.13.
 - **C. As B, but offer `full` in the bar where no backend works.** The second revision’s
   choice.
   - Pros: a repository’s plugins work everywhere after one click.
@@ -671,7 +671,11 @@ on 2026-11-12:
 - an in-process overlay of the plugin environment silently binds the plugin to the wrong
   Softschema, and subinterpreters refuse `pydantic_core`.
 
-All four still hold on `main`.
+The startup discovery and extension-point limits still motivate this plan.
+`main` now pins a Softschema version in the motivating plugin’s range, so the specific
+resolver conflict above is historical.
+Testing a compatible range and co-installing across that range stay in Phase 0
+(`mb-hi06`).
 
 The downstream application repository is the pattern repository plugins must serve: a uv
 workspace whose members include its own two plugin packages and the workflow library,
@@ -1003,10 +1007,13 @@ SQLite opened read-write in the served folder, Git writing its index, and
   in native code cannot hold it.
   The macOS watchdog probe confirmed the test group exited after its server was killed.
   A live app test still needs to stop a folder and check that no worker remains.
-- **Privacy grants.** A worker with authority `full` is a descendant of the app, and
-  macOS attributes a descendant’s file access to the app (inferred), so it can read what
-  the user let Metabrowser read, and its consent says so.
-  A confined worker cannot use those grants outside its own.
+- **Privacy grants.** A worker with authority `full` is a descendant of the app.
+  Which app identity macOS uses to decide privacy access for the worker remains to be
+  measured. Test with the distribution-signed app and a synthetic protected file.
+  First demonstrate that an app-approved read reaches the intended child.
+  Keep the system setting fixed, run the confined worker with and without a grant for
+  that file, and record the read result and any prompt.
+  The existing CLI probe only established the refusal outside the sandbox’s file grants.
 - **Signing and the hardened runtime.** Nothing is added to the signed bundle.
   `sandbox-exec` is the system’s, and the worker is the plugin environment’s
   interpreter, a separate executable.
@@ -1356,9 +1363,16 @@ runs scripts on the application origin.
   `cross-origin-*-policy` family.
 - **Refused:** headers that widen access or move the client (`set-cookie`,
   `access-control-*`, `location`) and, for a worker’s hook, anything not listed.
-- **Added by the host:** `X-Content-Type-Options: nosniff` on every hook response, and
-  `Content-Security-Policy: sandbox; default-src 'none'` on a `text/html`, SVG, or XML
-  response that carries no policy of its own.
+- **Added by the host:** `X-Content-Type-Options: nosniff` on every hook response.
+  Active worker documents such as HTML, SVG, and XML also receive a separate enforcing
+  CSP from the host on every response.
+  The host policy sandboxes the document and denies scripts and external loads.
+  A hook’s own CSP can further restrict it.
+  Test direct navigation and embedding in a browser.
+  Check the known raw HTML preview’s inline styles and data images before fixing its
+  host policy. The
+  [macOS research](../../research/research-2026-11-12-plugin-sources.md#macos-follow-up)
+  records why the host owns this restriction.
 - **Request headers passed to a worker:** `accept`, `accept-encoding`, `content-type`,
   `content-length`, `range`, `if-none-match`, `if-modified-since`, and
   `x-metabrowser-pin`.
@@ -1840,8 +1854,10 @@ Independent pull requests, each useful on its own:
   previews of untrusted PDFs on Linux as its first user (`mb-v2m7`).
 - [x] Run the macOS worker spike against the three downstream plugins and record the
   default grants, process and network behavior, and prefix cost (`mb-gmut`).
-- [ ] Confirm privacy attribution and restricted reads via the installed macOS app, and
-  stop a folder to verify that its supervised worker group exits (`mb-gmut`).
+- [ ] Confirm privacy attribution and restricted reads through the installed macOS app.
+  After the worker and its fixture child report ready, stop the folder and verify they
+  both exit. Repeat with a killed server and a worker blocked in native code so the
+  watchdog has to act (`mb-gmut`).
 - [ ] The plugin API gate: one version, Cargo’s caret rule, read from the raw TOML,
   `sdk-changes.toml`, and refusals that name the changes (`mb-jn5e`).
 - [ ] Hook response headers for in-process hooks, from an inventory test of the built-in
@@ -1974,10 +1990,14 @@ installer inside Metabrowser.
 - **Performance.** Phase 1 records worker start, listing, memory, hook overhead by
   response size, and the cost of the confinement prefix, with the spikes’ probes; Phase
   3 records end-to-end log parsing against today’s in-process pipeline, paired.
-- **The app.** `ShellCore` tests for the settings model and the commands it runs; the
-  contract golden; a live test that stopping a folder leaves no worker.
-- **Downstream acceptance.** The three plugins from their own environments, with hooks,
-  adapters, and assets, under a uv tool install and in the app, confined.
+- **The app.** `ShellCore` tests for settings and launch commands, the contract golden,
+  and the signed-app privacy and shutdown tests in
+  [How It Fits the macOS App](#how-it-fits-the-macos-app).
+- **Downstream acceptance.** Start the three providers from their own environments with
+  both the uv tool and the installed app.
+  Check hook response parity, adapter output, and served assets.
+  Use the macOS spike’s synthetic hook cases, add the workflow report routes, and verify
+  the host’s active-document policy in a browser.
 
 ## Rollout Plan
 

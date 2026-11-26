@@ -512,24 +512,36 @@ def pth(bench: Bench) -> Result:
     included, and whether confinement applied by a prefix is in place before it."""
     (site,) = (bench.scratch / "env" / "lib").glob("python*/site-packages")
     marks = bench.scratch / "pth-marks"
-    shutil.rmtree(marks, ignore_errors=True)
-    marks.mkdir()
-    line = f"import pathlib; pathlib.Path({str(marks / 'ran')!r}).write_text('x')\n"
-    (site / "zz_probe.pth").write_text(line)
+    marks.mkdir(exist_ok=True)
+    marker = marks / "ran"
+    marker.unlink(missing_ok=True)
+    startup_hook = site / "zz_probe.pth"
+    startup_hook.write_text(f"import pathlib; pathlib.Path({str(marker)!r}).write_text('x')\n")
+    command = [bench.python, "-I", "-B", "-c", "print('interpreter ran')"]
     result: Result = {}
     try:
-        subprocess.run([bench.python, "-I", "-c", "pass"], check=True)
-        result["a .pth line ran in a bare interpreter started with -I"] = (marks / "ran").exists()
-        (marks / "ran").unlink(missing_ok=True)
+        bare = subprocess.run(command, capture_output=True, text=True, check=True, timeout=30)
+        result["bare interpreter ran the control command"] = (
+            bare.stdout.strip() == "interpreter ran"
+        )
+        result["a .pth line ran in a bare interpreter started with -I"] = marker.exists()
+        marker.unlink(missing_ok=True)
         if confine_backend.name() is not None:
             policy = {"read": [*confine_backend.interpreter_roots(), str(bench.scratch / "env")]}
-            command = [*confine_backend.prefix(policy), bench.python, "-I", "-c", "pass"]
-            subprocess.run(command, capture_output=True, check=False)
-            result["the same line wrote its file behind the confinement prefix"] = (
-                marks / "ran"
-            ).exists()
+            confined = subprocess.run(
+                [*confine_backend.prefix(policy), *command],
+                capture_output=True, text=True, check=True, timeout=30,
+            )  # fmt: skip
+            result["confined interpreter ran the control command"] = (
+                confined.stdout.strip() == "interpreter ran"
+            )
+            result["the same line wrote its file behind the confinement prefix"] = marker.exists()
+            result["confined interpreter reported a permission error"] = (
+                "PermissionError" in confined.stderr
+            )
     finally:
-        (site / "zz_probe.pth").unlink(missing_ok=True)
+        startup_hook.unlink(missing_ok=True)
+        marker.unlink(missing_ok=True)
     return result
 
 
