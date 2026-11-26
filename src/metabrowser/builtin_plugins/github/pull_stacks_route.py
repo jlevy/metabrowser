@@ -41,14 +41,17 @@ def member_identity(record: PullRecord | None, row: PullListRow | None) -> Membe
     """*record*'s, the member's cached record, which a reader's fetch wrote, else *row*'s, its
     row in the repository's cached list, else none: the one rule the stacks route and a
     stack's route (pull_stack.py) name a member by, so the stack menu and a stack's page name
-    it alike (docs/design-system.md, "Stacks")."""
+    it alike (docs/design-system.md, "Stacks"). Labels are the exception: *row*'s wherever
+    there is one, since the stacks route reads a record only for a member with no row, and a
+    label change marks neither stale, so the two routes would otherwise disagree for as long
+    as the two caches do, and the labels row would come and go after first paint."""
 
     if record is not None:
         return MemberIdentity(
             record.pull.title,
             record.pull.author,
             record.pull.author_avatar_url,
-            tuple(label.name for label in record.pull.labels),
+            row.labels if row is not None else tuple(label.name for label in record.pull.labels),
         )
     if row is not None:
         return MemberIdentity(row.title, row.author, row.author_avatar_url, row.labels)

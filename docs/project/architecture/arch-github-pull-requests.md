@@ -1006,9 +1006,12 @@ measurements that set them:
   The size is the combined comparison’s own, measured where the comparison is built
   (`combined`), once a pair and kept beside the store, and only where that comparison is
   the plain diff of its two commits and at most `MAX_SIZED_STACK_FILES` files, so the
-  size and the file count describe one diff; the answer reads it with `kept_change_size`
-  and runs no Git for it.
-  `labels` is null while a member has neither a record nor a row.
+  size and the file count describe one diff.
+  The first read after a member moves builds the comparison, so it waits on the
+  measurement too, which is bounded by the file cap and `MEASURE_TIMEOUT_S`; every later
+  read takes it from `kept_change_size` and runs no Git for it.
+  `labels` is null while a member has neither a record nor a row, and its names are the
+  row’s wherever there is one (`member_identity`), as the stacks route’s are.
 - **Admission.** `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
   `number` and admit the stack’s current pair, and `stack-comparison` lists it
   (`_stack_admission` in `pull_snapshot.py`). Each keeps answering a pair the `stack`

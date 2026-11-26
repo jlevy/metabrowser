@@ -504,3 +504,53 @@ def test_a_member_with_no_record_takes_its_author_from_the_cached_list(
         ("Count to two", "octo", "https://avatars.githubusercontent.com/u/1?s=40"),
         (None, None, None),
     ]
+
+
+def test_both_stack_routes_name_a_members_labels_by_one_rule() -> None:
+    # A stack's page decides at first paint whether it has a labels row from the stacks
+    # route's names, and keeps it from its own answer's, so the two must agree even when the
+    # member's record and its list row disagree, as after a label change neither marks.
+    from metabrowser.builtin_plugins.github.pull_list import PullListRow
+    from metabrowser.builtin_plugins.github.pull_stacks_route import member_identity
+
+    def label(name: str) -> Any:
+        return SimpleNamespace(name=name, color="ededed", description=None)
+
+    pull = SimpleNamespace(
+        title="Count to two",
+        author="octo",
+        author_avatar_url=None,
+        created_at=None,
+        updated_at=None,
+        labels=(label("stale"), label("kept")),
+        commits=1,
+        merged=False,
+        merged_by=None,
+        merged_by_avatar_url=None,
+    )
+    record = cast(Any, SimpleNamespace(pull=pull))
+
+    def row(*labels: str) -> PullListRow:
+        return PullListRow(
+            number=1,
+            title="Count to two",
+            state="open",
+            draft=False,
+            merged_at=None,
+            author="octo",
+            author_avatar_url=None,
+            created_at="2026-09-16T12:00:00Z",
+            updated_at="2026-09-17T12:00:00Z",
+            closed_at=None,
+            base_ref="topic",
+            head_ref="work",
+            head_repository="octo/demo",
+            labels=labels,
+        )
+
+    # The stacks route reads a record only for a member the list does not hold.
+    for listed in (row(), row("kept"), row("kept", "new"), None):
+        named = member_identity(record if listed is None else None, listed).labels
+        drawn = pull_stack._details(record, listed).labels  # pyright: ignore[reportPrivateUsage]
+        assert named == tuple(wire["name"] for wire in drawn)
+        assert member_identity(record, listed).labels == named

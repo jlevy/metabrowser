@@ -43,8 +43,10 @@ stacks of this repository, the base-to-top listing took 0.3 to 2.1 s at load ave
 330 and 440, so a page's first read after a member moves waits that long, and no read after.
 
 **Its size** is measured where the listing runs, once a comparison, and kept beside the
-store (:func:`metabrowser.git.change_size.change_size`), so a read says it with no Git
-(:func:`_size`). Only a comparison that is the plain diff of its two commits, every file of
+store (:func:`metabrowser.git.change_size.change_size`), so the first read after a member
+moves waits on it with the listing, within ``MEASURE_TIMEOUT_S``, and every later read says
+it with no Git (:func:`_size`). Its cost follows the objects packed more than the file
+count, so the file cap bounds the usual stack and the deadline the rest. Only a comparison that is the plain diff of its two commits, every file of
 which a layer changes, is measured, so the size and the file count describe one diff; one
 restricted to its layers' files has no size, since no pair of commits pushes just those
 files, and neither has one of more than :data:`MAX_SIZED_STACK_FILES` files.
@@ -72,7 +74,7 @@ import os
 import stat
 import threading
 from collections import Counter, OrderedDict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
@@ -81,7 +83,7 @@ from weakref import WeakKeyDictionary
 
 from metabrowser.builtin_plugins.diff.comparison_cache import ResolvedManifest
 from metabrowser.builtin_plugins.diff.sidekick import comparison_cache_key, listed_totals
-from metabrowser.builtin_plugins.github.pull_record import PullRecord
+from metabrowser.builtin_plugins.github.pull_record import PullLabel, PullRecord
 from metabrowser.builtin_plugins.github.pull_stacks import NativeStack, StackCache, read_stacks
 from metabrowser.builtin_plugins.github.served_pull import ATTENDED_PROBE_S
 from metabrowser.cache.locks import run_lock_section
@@ -372,6 +374,24 @@ class _Details:
     merger: StackPersonWire | None = None
 
 
+def _record_labels(
+    labels: Sequence[PullLabel], row: PullListRow | None
+) -> tuple[StackLabelWire, ...]:
+    """The member's labels by `member_identity`'s rule, the list row's names wherever there is
+    a row, each with the record's colour and description where the record knows that name."""
+
+    known = {label.name: label for label in labels}
+    names = row.labels if row is not None else tuple(known)
+    return tuple(
+        StackLabelWire(
+            name=name,
+            color=known[name].color if name in known else None,
+            description=known[name].description if name in known else None,
+        )
+        for name in names
+    )
+
+
 def _details(record: PullRecord | None, row: PullListRow | None) -> _Details:
     if record is not None:
         pull = record.pull
@@ -379,10 +399,7 @@ def _details(record: PullRecord | None, row: PullListRow | None) -> _Details:
             known=True,
             created_at=pull.created_at,
             updated_at=pull.updated_at,
-            labels=tuple(
-                StackLabelWire(name=label.name, color=label.color, description=label.description)
-                for label in pull.labels
-            ),
+            labels=_record_labels(pull.labels, row),
             commits=pull.commits,
             merger=StackPersonWire(login=pull.merged_by, avatar=pull.merged_by_avatar_url)
             if pull.merged and pull.merged_by
