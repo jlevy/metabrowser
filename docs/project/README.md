@@ -72,6 +72,10 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Link preview tooltips](specs/active/plan-2026-11-26-link-preview-tooltips.md): a
+  draft for a concise tooltip on a link that opens a page in Metabrowser, naming the
+  object, its title where known, and that it opens here, with prefetch on rest, and one
+  documented rule for tooltips on links
 - [SoftSchema collection tables](specs/active/plan-2026-11-26-softschema-collection-tables.md):
   a draft for opening a folder of SoftSchema records as linked tables, one per contract,
   from a cached collection index that a SoftSchema collection API builds and a
