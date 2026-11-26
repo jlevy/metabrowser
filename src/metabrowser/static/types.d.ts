@@ -340,6 +340,12 @@ type MetabrowserViewCompositionRuntime = Readonly<{
     getRegisteredView(kind: string, viewId: string): MetabrowserViewSpec | null | undefined;
     isCurrent?: () => boolean;
   }): Promise<MetabrowserPreparedViewComposition>;
+  /** Render the tab bar and view hosts for a prepared file or folder. */
+  renderTabs(
+    views: MetabrowserPreparedViewComposition["views"],
+    activeId: string | undefined,
+    escapeHtml: (value: unknown) => string,
+  ): string;
   /** Remember a committed layout and the context its lazy views will read. */
   retain(
     host: HTMLElement,
@@ -347,7 +353,8 @@ type MetabrowserViewCompositionRuntime = Readonly<{
       views: MetabrowserPreparedViewComposition["views"];
       context: { current: MetabrowserRenderContext };
     },
-  ): () => void;
+    disposers: Array<() => void>,
+  ): void;
   /** Refresh a matching committed layout when all its mounted views support it. */
   refresh(
     host: HTMLElement,

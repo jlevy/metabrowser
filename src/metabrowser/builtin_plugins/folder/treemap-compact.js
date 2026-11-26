@@ -83,7 +83,11 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
   viewport.className = "tm-viewport tm-viewport-compact";
   viewport.setAttribute("role", "application");
   viewport.setAttribute("aria-label", "Folder treemap");
-  container.append(viewport);
+  // Keep the live region mounted and give it the notice's box only when it has a message.
+  const status = document.createElement("div");
+  status.setAttribute("role", "status");
+  status.dataset.severity = "warning";
+  container.append(viewport, status);
 
   const map = createTreemapMap(mb, palette, viewport, {
     size: "compact",
@@ -115,20 +119,28 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
         ...treemapRollupQuery(),
         /** @param {unknown} error */
         onError(error) {
+          if (disposed) {
+            return;
+          }
           console.warn("Could not load the compact treemap.", error);
           if (!isCompleteSnapshot(envelope) || !envelope?.node) {
             failed = true;
             relayout();
+          } else if (!status.textContent) {
+            status.className = "notice tm-status";
+            status.textContent = "Could not refresh the treemap. Showing the previous data.";
           }
         },
       },
       /** @param {Record<string, any>} next */
       (next) => {
-        if (retainTreemap(envelope, next)) {
+        if (disposed || retainTreemap(envelope, next)) {
           return;
         }
         envelope = next;
         failed = false;
+        status.textContent = "";
+        status.className = "";
         relayout();
       },
     );

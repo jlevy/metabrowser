@@ -142,6 +142,78 @@
     return Object.freeze({ initialView, status: "ready", views: Object.freeze(views) });
   }
 
+  /** @param {MetabrowserPublicViewDescriptor} view @param {(value: unknown) => string} esc */
+  function viewMetaAttrs(view, esc) {
+    const printable = /** @type {unknown} */ (view.printable);
+    const isPrintable = printable === true || printable === "true" || printable === "1";
+    const profile = view.print_profile || "plain";
+    const runtime = view.render_runtime;
+    let attrs = ` data-printable="${isPrintable}" data-print-profile="${esc(profile)}"`;
+    if (runtime) {
+      attrs += ` data-render-runtime="${esc(runtime)}"`;
+    }
+    if (runtime === "kpress") {
+      attrs += ' data-kpress-enabled="true"';
+    }
+    return attrs;
+  }
+
+  /**
+   * The tabs and empty hosts for a file or folder's prepared views. A single tab
+   * keeps the same height as any other bar, without a shortcut for switching views.
+   *
+   * @param {MetabrowserPublicPreparedViewComposition["views"]} views
+   * @param {string | undefined} activeId
+   * @param {(value: unknown) => string} esc
+   */
+  function renderTabs(views, activeId, esc) {
+    if (views.length === 0) {
+      return '<div class="tab-bar" aria-hidden="true"><span class="tab-btn tab-slot">&nbsp;</span></div>';
+    }
+    const keyedBar = views.length > 1;
+    let html = '<div class="tab-bar" role="tablist">';
+    for (const { view } of views) {
+      const isActive = view.id === activeId;
+      const viewKey =
+        typeof view.key === "string" && view.key ? ` data-view-key="${esc(view.key)}"` : "";
+      html +=
+        '<button class="tab-btn' +
+        (isActive ? " active" : "") +
+        '" type="button" role="tab" aria-selected="' +
+        (isActive ? "true" : "false") +
+        '" data-tab="' +
+        esc(view.id) +
+        '"' +
+        (keyedBar ? viewKey : "") +
+        viewMetaAttrs(view, esc) +
+        ">" +
+        esc(view.label) +
+        "</button>";
+    }
+    html += "</div>";
+    for (const { renderer, view } of views) {
+      const containerClass = view.container_class || "content-body";
+      const hidden = view.id === activeId ? "" : "display:none;";
+      const padding = view.id === "raw" || view.id === "source" ? "padding-block:0;" : "";
+      html +=
+        '<div class="' +
+        containerClass +
+        '" data-tab-content="' +
+        view.id +
+        '"' +
+        (renderer ? ` data-plugin-view="${esc(view.id)}"` : "") +
+        viewMetaAttrs(view, esc) +
+        ' data-active-view="false"' +
+        (hidden || padding ? ` style="${hidden}${padding}"` : "") +
+        ">" +
+        (renderer
+          ? ""
+          : '<div class="preview-empty" role="alert">This view is unavailable. Reload the page to try again.</div>') +
+        "</div>";
+    }
+    return html;
+  }
+
   /** @type {WeakMap<HTMLElement, NonNullable<MetabrowserPublicViewRenderHandle["refresh"]>>} */
   const refreshers = new WeakMap();
 
@@ -154,14 +226,18 @@
   /** @type {WeakMap<HTMLElement, InstalledViews>} */
   const installedViews = new WeakMap();
 
-  /** @param {HTMLElement} host @param {InstalledViews} installed */
-  function retain(host, installed) {
+  /**
+   * @param {HTMLElement} host
+   * @param {InstalledViews} installed
+   * @param {Array<() => void>} disposers
+   */
+  function retain(host, installed, disposers) {
     installedViews.set(host, installed);
-    return () => {
+    disposers.push(() => {
       if (installedViews.get(host) === installed) {
         installedViews.delete(host);
       }
-    };
+    });
   }
 
   /**
@@ -581,6 +657,7 @@
     mount,
     prepare,
     refresh,
+    renderTabs,
     retain,
     selectTab,
     setActiveView,

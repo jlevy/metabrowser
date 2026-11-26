@@ -192,15 +192,15 @@ def test_catalog_refresh_timing_measures_the_job_and_survives_a_failed_retry(
             "finished_at": now().isoformat().replace("+00:00", "Z"),
             "duration_ms": 150 * len(calls),
         }
-        assert pull_list_envelope(view, window)["refresh_timing"] == expected
+        assert pull_list_envelope(view, window).get("refresh_timing") == expected
         exact = pull_list_envelope(view, ListWindow("all", limit=1, at=101))
         assert [row["number"] for row in exact["rows"]] == [101]
-        assert exact["refresh_timing"] == expected
+        assert exact.get("refresh_timing") == expected
 
         calls.clear()
         asyncio.run(refresh_pull_list(repository, "open"))
         assert calls == []
-        assert pull_list_envelope(view, window)["refresh_timing"] == expected
+        assert pull_list_envelope(view, window).get("refresh_timing") == expected
 
         async def refused(*args: Any, **kwargs: Any) -> dict[str, Any]:
             nonlocal elapsed_ms
@@ -210,7 +210,7 @@ def test_catalog_refresh_timing_measures_the_job_and_survives_a_failed_retry(
         monkeypatch.setattr(pull_list_refresh, "gh_graphql", refused)
         with pytest.raises(PullDataError), event_log.span("job", "failed catalog refresh"):
             asyncio.run(refresh_pull_list(repository, "open", retry=True))
-        assert pull_list_envelope(view, window)["refresh_timing"] == expected
+        assert pull_list_envelope(view, window).get("refresh_timing") == expected
 
     assert sink.path is not None
     records = [json.loads(line) for line in sink.path.read_text(encoding="utf-8").splitlines()]
@@ -237,7 +237,8 @@ def test_catalog_refresh_job_records_a_typed_failure(
     asyncio.run(refresh_pull_list(repository, "open"))
     view = ListView(repository, None, False)
     window = ListWindow("open", limit=1)
-    previous_timing = pull_list_envelope(view, window)["refresh_timing"]
+    previous_timing = pull_list_envelope(view, window).get("refresh_timing")
+    assert previous_timing is not None
     elapsed_ms = 0
     unavailable = gh.GhServerError(503)
     monkeypatch.setattr(pull_list_refresh, "monotonic_ns", lambda: elapsed_ms * 1_000_000)
@@ -280,7 +281,7 @@ def test_catalog_refresh_job_records_a_typed_failure(
     assert failure["attrs"]["refresh_duration_ms"] == 315
     assert failure["attrs"]["refresh_pages"] == 0
     envelope = pull_list_envelope(view, window)
-    assert envelope["refresh_timing"] == previous_timing
+    assert envelope.get("refresh_timing") == previous_timing
     assert [row["number"] for row in envelope["rows"]] == [1]
     stamp = envelope["last_refresh"]
     assert stamp is not None and stamp["outcome"] == "github_unavailable"

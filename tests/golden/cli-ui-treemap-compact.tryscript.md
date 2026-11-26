@@ -32,8 +32,10 @@ A cell’s hover is drawn on one of two marks canvases while the other fades out
 folder’s copies its fill and clears its interior, so its header and frame lift and the
 edges between its files do not.
 Files of one size sit by color family, then by extension and name, in whatever order the
-rollup sent them. A refresh that fails keeps the map; a first rollup that fails shows
-that the map is unavailable and recovers on Retry.
+rollup sent them. A refresh that fails keeps the map and its selection and shows a
+warning.
+The warning stays while a retry scans and clears when the completed map arrives.
+A first rollup that fails shows that the map is unavailable and recovers on Retry.
 The box is left out when the breakdown failed, the index stopped at its cap before
 finishing the folder, or the folder holds no files in the population shown.
 Disposal with the pointer on a cell releases every listener, the watch, the observer,
@@ -395,6 +397,7 @@ $ node tests/dom/treemap-compact-session.js
     },
     {
       "step": "a refresh fails after a complete answer",
+      "notice": "Could not refresh the treemap. Showing the previous data.",
       "hidden": false,
       "skeleton": false,
       "unavailable": false,

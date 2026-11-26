@@ -884,10 +884,43 @@ async function main() {
 
   const drawnCells = page.inspect().cells;
   const drawnLayers = [...page.viewport.children];
+  const chosenCell = focusedPath(page.inspect());
+  await page.handle.refresh();
   page.watch.options.onError(new Error("refresh failed"));
   assert.equal(page.inspect().cells, drawnCells, "a failed refresh keeps the map's layout");
   assert.deepEqual(page.viewport.children, drawnLayers, "and its layers");
-  steps.push({ step: "a refresh fails after a complete answer", ...summary(page) });
+  assert.equal(focusedPath(page.inspect()), chosenCell, "a failed refresh keeps the chosen cell");
+  const notice = page.container.find("tm-status");
+  assert.ok(notice?.classList.contains("notice"), "a failed refresh shows a notice");
+  assert.equal(notice.textContent, "Could not refresh the treemap. Showing the previous data.");
+  assert.equal(notice.getAttribute("role"), "status", "the notice can be announced");
+  assert.equal(notice.dataset.severity, "warning");
+  steps.push({
+    step: "a refresh fails after a complete answer",
+    notice: notice.textContent,
+    ...summary(page),
+  });
+
+  await page.handle.refresh();
+  page.handle.follow(breakdownAnswer("scanning", TREE, "pending"));
+  page.watch.apply({ index_status: "scanning", node: null });
+  assert.equal(
+    notice.classList.contains("notice"),
+    true,
+    "an intermediate answer keeps the notice",
+  );
+  assert.equal(page.inspect().cells, drawnCells, "and keeps the previous map");
+  page.watch.apply({ index_status: "done", node: changed });
+  page.handle.follow(breakdownAnswer("done", changed));
+  assert.equal(
+    notice.classList.contains("notice"),
+    false,
+    "a successful terminal answer dismisses the notice",
+  );
+  assert.equal(notice.textContent, "");
+  assert.equal(page.viewport.children[0], drawnLayers[0], "the new map uses the same canvas");
+  assert.ok(page.inspect().cells.some((cell) => cell.path === "src/new.py"));
+  assert.equal(focusedPath(page.inspect()), chosenCell, "recovery keeps the chosen cell");
 
   // Disposal with the pointer on a cell: the cell's hover is let go of, and the map's own
   // tooltip, anchored inside the map, is the one put away.
