@@ -367,8 +367,23 @@ function context(d, base, journey, rows, options) {
     if (!ok) {
       throw new Refusal("setup", `landing on ${p} did not become ready`);
     }
+    if (options.recordStartup) {
+      facts.startup = await d.evaluate(`({
+        timeOrigin: performance.timeOrigin,
+        landingReadyObservedMs: performance.now()
+      })`);
+    }
     await d.park();
     await sleep(settleMs);
+    if (options.recordStartup) {
+      Object.assign(
+        facts.startup,
+        await d.evaluate(`({
+        browsingSetupStartsMs: performance.now(),
+        warmupInFlight: window.metabrowser?.perf?.snapshot()?.fetches_in_flight ?? null,
+      })`),
+      );
+    }
   };
   // A subject row, mounted. A virtualized list mounts only the rows near its viewport, so
   // when `scroller` is given and the row is absent, the list is scrolled from the top one
@@ -414,7 +429,17 @@ function context(d, base, journey, rows, options) {
       };
     }
   };
-  return { d, base, measure, setupClick, land, requireRow, facts, newestCommit };
+  return {
+    d,
+    base,
+    measure,
+    setupClick,
+    land,
+    requireRow,
+    facts,
+    newestCommit,
+    pullSubjects: options.pullSubjects,
+  };
 }
 
 // The scroll container of every navigation panel.
@@ -693,7 +718,7 @@ async function closedPulls(ctx, numbers) {
 async function mainTabs(ctx) {
   const file = SUBJECTS.mainTabsFile;
   const rev = SUBJECTS.mainTabsCommit;
-  const pr = SUBJECTS.mainTabsPull;
+  const pr = ctx.pullSubjects?.[0] ?? SUBJECTS.mainTabsPull;
   const newest = ctx.newestCommit;
   await ctx.land(file);
   await ctx.requireRow(navTab("pulls"), "the Pulls tab");
@@ -829,7 +854,8 @@ async function commits(ctx) {
 }
 
 async function pulls(ctx) {
-  const P = SUBJECTS.pulls;
+  const [first, second, third, fourth] = ctx.pullSubjects ?? Object.values(SUBJECTS.pulls);
+  const P = { first, second, third, fourth };
   await ctx.land(SUBJECTS.landing);
   await ctx.requireRow(navTab("pulls"), "the Pulls tab");
   await ctx.measure({

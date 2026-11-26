@@ -136,6 +136,15 @@ export function harnessProvenance() {
 
 /** Fields of a build whose change during a run refuses it (`build_changed`). */
 export const BUILD_FIELDS = ["version", "commit", "dirty", "content"];
+
+// The checkout annotation comes from best-effort Git subprocesses. Under load git
+// describe can time out while rev-parse succeeds. Fingerprint the actual source or
+// wheel separately and compare the installed version across processes.
+export function versionIdentity(display) {
+  return typeof display === "string"
+    ? display.trim().replace(/ \((?:\+\d+ commits, )?(?:[\da-f]{7}(?:, dirty)?|dirty)\)$/, "")
+    : display;
+}
 /** Fields of a corpus whose change during a run refuses it (`corpus_changed`). */
 export const CORPUS_FIELDS = ["commit", "dirty", "trunk", "refs"];
 
@@ -143,7 +152,8 @@ export const CORPUS_FIELDS = ["commit", "dirty", "trunk", "refs"];
 export function provenanceChanges(start, end) {
   const out = [];
   for (const k of BUILD_FIELDS) {
-    if (end.build[k] !== start.build[k]) {
+    const value = k === "version" ? versionIdentity : (x) => x;
+    if (value(end.build[k]) !== value(start.build[k])) {
       out.push(["build_changed", `${k} was ${start.build[k]} at start, ${end.build[k]} at end`]);
     }
   }

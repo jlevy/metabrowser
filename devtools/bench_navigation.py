@@ -42,15 +42,17 @@ import math
 import os
 import platform
 import re
+import shutil
 import statistics
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from textwrap import dedent
@@ -136,6 +138,71 @@ class Route:
     label: str
     url: str
     native_paths: bool = False
+    compare_fields: tuple[str, ...] = ()
+    expect: dict[str, Any] = field(default_factory=dict)
+    revalidate: bool = False
+
+
+def load_api_cases(path: Path) -> list[Route]:
+    """Load named GET cases with explicit JSON fields and expected values."""
+
+    cases: object = json.loads(path.read_text())
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("API cases must be a nonempty JSON array")
+    routes: list[Route] = []
+    labels: set[str] = set()
+    for case in cast("list[object]", cases):
+        if not isinstance(case, dict):
+            raise ValueError("each API case must be an object")
+        data = cast("dict[str, Any]", case)
+        label = data.get("name")
+        url = data.get("path")
+        fields = data.get("compare")
+        expect = data.get("expect", {})
+        revalidate = data.get("revalidate", False)
+        if not isinstance(label, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", label):
+            raise ValueError("API case names use letters, digits, underscores and hyphens")
+        if label in labels:
+            raise ValueError(f"duplicate API case name: {label}")
+        if (
+            not isinstance(url, str)
+            or not url.startswith("/api/")
+            or "#" in url
+            or "\\" in url
+            or any(ord(char) <= 32 or ord(char) == 127 for char in url)
+        ):
+            raise ValueError(f"{label}: expected a local /api/ request path")
+        if (
+            not isinstance(fields, list)
+            or not fields
+            or not all(isinstance(name, str) and name for name in cast("list[object]", fields))
+        ):
+            raise ValueError(f"{label}: compare must name one or more JSON fields")
+        if not isinstance(expect, dict) or not isinstance(revalidate, bool):
+            raise ValueError(f"{label}: invalid expect or revalidate")
+        labels.add(label)
+        routes.append(
+            Route(
+                "api:" + label,
+                url,
+                compare_fields=tuple(cast("list[str]", fields)),
+                expect=cast("dict[str, Any]", expect),
+                revalidate=revalidate,
+            )
+        )
+    return routes
+
+
+def _api_fields(payload: object, names: tuple[str, ...], label: str) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for name in names:
+        value = payload
+        for key in name.split("."):
+            if not isinstance(value, dict) or key not in cast("dict[str, object]", value):
+                raise ValueError(f"{label}: missing response field {name}")
+            value = cast("dict[str, object]", value)[key]
+        result[name] = value
+    return result
 
 
 @dataclass(frozen=True)
@@ -165,7 +232,8 @@ def request(
         first_ms = (time.perf_counter() - start) * 1000
         wire = response.read()
         total_ms = (time.perf_counter() - start) * 1000
-        server = re.search(r"srv;dur=([\d.]+)", response.headers.get("Server-Timing", ""))
+        timing = response.headers.get("Server-Timing", "")
+        server = re.search(r"srv;dur=([\d.]+)", timing)
         body = gzip.decompress(wire) if response.headers.get("Content-Encoding") == "gzip" else wire
         payload = cast("dict[str, Any]", json.loads(body)) if body else {}
         sample: dict[str, Any] = {
@@ -175,10 +243,19 @@ def request(
             "first_byte_ms": first_ms,
             "server_ms": float(server[1]) if server else None,
             "wire_bytes": len(wire),
+            "server_timing": timing or None,
         }
         expected = 304 if etag is not None else 200
         if response.status != expected or (expected == 304 and body):
             raise ValueError(f"{route.label}: expected {expected} with valid body, got {sample}")
+        if route.compare_fields and expected == 200:
+            checked = _api_fields(payload, tuple(route.expect), route.label)
+            if checked != route.expect:
+                raise ValueError(f"{route.label}: response did not match expect")
+            compared = _api_fields(payload, route.compare_fields, route.label)
+            sample["content_sha256"] = hashlib.sha256(
+                json.dumps(compared, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
         # Store selected public fields, never the root-bearing response or raw ETag.
         if route.label.startswith("file:") and expected == 200:
             if not isinstance(payload.get("content"), str):
@@ -228,7 +305,7 @@ def summarize(samples: list[dict[str, Any]]) -> dict[str, Any]:
     for label in sorted({str(sample["label"]) for sample in samples}):
         group = [sample for sample in samples if sample["label"] == label]
         item: dict[str, Any] = {"n": len(group)}
-        for metric in ("total_ms", "server_ms"):
+        for metric in ("total_ms", "first_byte_ms", "server_ms", "wire_bytes"):
             values = sorted(float(sample[metric]) for sample in group if sample[metric] is not None)
             if values:
                 item[metric] = {
@@ -249,6 +326,9 @@ def run_build(
     rounds: int,
     render_file: str | None,
     native_paths: bool = False,
+    api_routes: tuple[Route, ...] = (),
+    prepare_api: frozenset[str] = frozenset(),
+    cache_seed: Path | None = None,
 ) -> dict[str, Any]:
     inventory = [
         Route("navigation", "/api/tree?depth=0"),
@@ -261,7 +341,7 @@ def run_build(
     inventory = [replace(route, native_paths=native_paths) for route in inventory]
     recent = replace(recent, native_paths=native_paths)
     file_routes = [replace(route, native_paths=native_paths) for route in file_routes]
-    routes = [*file_routes, cheap, *inventory, recent]
+    routes = [*file_routes, cheap, *inventory, recent, *api_routes]
     if render_file is not None:
         render_path = render_file if native_paths else canonical_inventory_path(render_file)
         routes.append(
@@ -269,7 +349,13 @@ def run_build(
         )
     result: dict[str, Any] = {"load_before": os.getloadavg()}
     phases: dict[str, list[dict[str, Any]]] = {}
-    with Server(root, log, build, provider="python") as server:
+    state_root = Path(tempfile.mkdtemp(prefix=f"{log.stem}-state-", dir=log.parent))
+    result["event_log"] = str(state_root / "state" / "events")
+    if cache_seed is not None:
+        shutil.copytree(cache_seed, state_root / "cache")
+    start = time.perf_counter()
+    with Server(root, log, build, provider="python", state_root=state_root) as server:
+        result["http_ready_ms"] = (time.perf_counter() - start) * 1000
         # Polling is intentionally outside measured phases. Main before the provider
         # refactor lacks provider-tagged walker logs; both builds expose index_status.
         deadline = time.monotonic() + SETTLE_TIMEOUT_S
@@ -280,22 +366,35 @@ def run_build(
             if time.monotonic() > deadline:
                 raise TimeoutError(f"inventory did not complete within {SETTLE_TIMEOUT_S} seconds")
             time.sleep(SETTLE_POLL_S)
+        result["inventory_ready_ms"] = (time.perf_counter() - start) * 1000
         result["files_indexed"] = settled["indexed_files"]
         result["process_before"] = server.diagnostics()["process"]
+        if prepare_api:
+            prepare_start = time.perf_counter()
+            phases["startup_preparation"] = [
+                request(server.base_url, route).sample
+                for route in api_routes
+                if route.label in prepare_api
+            ]
+            result["startup_preparation_ms"] = (time.perf_counter() - prepare_start) * 1000
         first = [request(server.base_url, route) for route in routes]
         phases["first"] = [response.sample for response in first]
         etags = {route.label: response.etag for route, response in zip(routes, first, strict=True)}
         for phase in ("warm", "revalidate"):
             samples: list[dict[str, Any]] = []
             for _ in range(rounds):
-                for route in [*file_routes, cheap, *[r for r in routes if r.label == "render"]]:
-                    etag = (
-                        etags[route.label]
-                        if phase == "revalidate" and route in file_routes
-                        else None
+                for route in [
+                    *file_routes,
+                    cheap,
+                    *[r for r in routes if r.label == "render"],
+                    *api_routes,
+                ]:
+                    conditional = phase == "revalidate" and (
+                        route in file_routes or route.revalidate
                     )
-                    if phase == "revalidate" and route in file_routes and etag is None:
-                        raise ValueError(f"{route.label}: missing file ETag")
+                    etag = etags[route.label] if conditional else None
+                    if conditional and etag is None:
+                        raise ValueError(f"{route.label}: missing ETag")
                     samples.append(request(server.base_url, route, etag=etag).sample)
                 time.sleep(SERIAL_PAUSE_S)
             phases[phase] = samples
@@ -336,7 +435,7 @@ def validate_equivalence(runs: list[dict[str, Any]]) -> None:
                 if sample["status"] != 200:
                     continue
                 label = sample["label"]
-                if not (label.startswith("file:") or label in {"catalog", "recent"}):
+                if not (label.startswith(("file:", "api:")) or label in {"catalog", "recent"}):
                     continue
                 signature = tuple(
                     sample.get(key)
@@ -360,7 +459,7 @@ def validate_equivalence(runs: list[dict[str, Any]]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
-    parser.add_argument("--baseline-metab", required=True)
+    parser.add_argument("--baseline-metab", help="omit for a single-build survey")
     parser.add_argument("--candidate-metab", default="metab")
     parser.add_argument(
         "--baseline-paths",
@@ -368,7 +467,16 @@ def main() -> None:
         default="canonical",
         help="use native for main before the inventory path-contract refactor",
     )
-    parser.add_argument("--file", action="append", required=True, dest="files")
+    parser.add_argument("--file", action="append", default=[], dest="files")
+    parser.add_argument("--api-cases", type=Path, help="JSON cases for golden-backed GET routes")
+    parser.add_argument(
+        "--prepare-api",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="issue this API case during a separate startup preparation phase",
+    )
+    parser.add_argument("--cache-seed", type=Path, help="copy one prepared cache into each server")
     parser.add_argument("--render-file")
     parser.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
     parser.add_argument("--json", type=Path, required=True, dest="output")
@@ -383,16 +491,34 @@ def main() -> None:
     log_dir = output.with_suffix(".logs")
     log_dir.mkdir(exist_ok=True)
     os.environ["PYTHONHASHSEED"] = "0"
-    builds = {
-        "baseline": resolve_metab_build(str(args.baseline_metab)),
-        "candidate": resolve_metab_build(str(args.candidate_metab)),
-    }
+    if not (args.files or args.api_cases):
+        parser.error("supply --file or --api-cases")
+    try:
+        api_routes = tuple(load_api_cases(args.api_cases)) if args.api_cases else ()
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    prepare_api = frozenset("api:" + name for name in cast("list[str]", args.prepare_api))
+    if prepare_api - {route.label for route in api_routes}:
+        parser.error("--prepare-api names a case absent from --api-cases")
+    cache_seed = args.cache_seed.resolve() if args.cache_seed else None
+    if cache_seed is not None and (not cache_seed.is_dir() or log_dir.is_relative_to(cache_seed)):
+        parser.error(
+            "--cache-seed must be an existing cache outside the output log directory’s ancestry"
+        )
+    builds = {"candidate": resolve_metab_build(str(args.candidate_metab))}
+    order = ("candidate",)
+    if args.baseline_metab:
+        builds["baseline"] = resolve_metab_build(str(args.baseline_metab))
+        order = ("baseline", "candidate", "candidate", "baseline")
     identities = {label: runtime_identity(build) for label, build in builds.items()}
-    require_matching_runtimes(identities)
+    if args.baseline_metab:
+        require_matching_runtimes(identities)
     files = cast("list[str]", args.files)
     result: dict[str, Any] = {
         "schema": 1,
-        "method": "fresh ABBA; settled read-only root; gzip; 24h Recent; Python hash seed 0",
+        "method": "settled read-only root; gzip; 24h Recent; Python hash seed 0",
+        "order": order,
+        "seeded_cache": cache_seed is not None,
         "started_at": datetime.now(UTC).isoformat(),
         "host": {"platform": platform.platform(), "cpu_count": os.cpu_count()},
         "rounds": args.rounds,
@@ -402,17 +528,20 @@ def main() -> None:
             label: {"version": build.version, "runtime": identities[label]}
             for label, build in builds.items()
         },
-        "dependencies_match": identities["baseline"]["dependencies"]
-        == identities["candidate"]["dependencies"],
+        "dependencies_match": (
+            identities["baseline"]["dependencies"] == identities["candidate"]["dependencies"]
+            if args.baseline_metab
+            else None
+        ),
         "runs": [],
     }
-    if not result["dependencies_match"]:
+    if result["dependencies_match"] is False:
         print(
             "WARNING: dependency versions differ; inspect builds.runtime.dependencies in the result",
             flush=True,
         )
-    for index, label in enumerate(("baseline", "candidate", "candidate", "baseline")):
-        print(f"Running {label} {index + 1}/4; load={os.getloadavg()}", flush=True)
+    for index, label in enumerate(order):
+        print(f"Running {label} {index + 1}/{len(order)}; load={os.getloadavg()}", flush=True)
         native_paths = label == "baseline" and args.baseline_paths == "native"
         file_routes = [
             Route(
@@ -432,6 +561,9 @@ def main() -> None:
             rounds=int(args.rounds),
             render_file=args.render_file,
             native_paths=native_paths,
+            api_routes=api_routes,
+            prepare_api=prepare_api,
+            cache_seed=cache_seed,
         )
         result["runs"].append({"build": label, **run})
         atomic_write_text(output, json.dumps(result, indent=2) + "\n")

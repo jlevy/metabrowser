@@ -146,6 +146,9 @@ It links each document below and the contributor standards in `docs/`.
 - [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
   Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
   the checks of a downloaded copy, with the owner-only steps
+- [Post-load navigation and fetch performance](specs/active/plan-2026-11-26-post-load-performance.md):
+  startup preparation, real HTTP timing of golden-backed API routes, and first-useful
+  paint after repository load
 - [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md):
   retained surfaces, fixed boxes at first paint, and prediction behind admission
   control, each a measured performance-loop round
@@ -253,6 +256,9 @@ A research record stays here while it informs open work, and moves to
 
 - [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md):
   the CLI-first and app-first install paths
+
+- [Post-load performance survey](research/research-2026-11-26-post-load-performance.md):
+  startup, golden-backed HTTP and Chrome diagnostics, and live GitHub observations
 
 - [Apparent UI performance for the native app](research/research-2026-11-11-ui-apparent-performance.md):
   what makes the app feel instant, and the evidence behind the stable-layout plan

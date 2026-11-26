@@ -14,6 +14,7 @@ import pytest
 
 from devtools.bench_navigation import (
     Route,
+    load_api_cases,
     request,
     require_matching_runtimes,
     run_build,
@@ -66,6 +67,7 @@ def test_response_validation_rejects_changed_content_and_selection() -> None:
         ("file:a.txt", "content_sha256"),
         ("catalog", "files"),
         ("recent", "paths_sha256"),
+        ("api:history", "content_sha256"),
     ):
         first = {"status": 200, "label": label, field: "before"}
         changed = {**first, field: "after"}
@@ -128,6 +130,25 @@ def test_tiny_real_server_workload_is_read_only_and_complete(tmp_path: Path) -> 
     build_corpus(root, 1)
     (root / "a.txt").write_text("hello")
     before = {path.relative_to(root): path.stat().st_mtime_ns for path in root.rglob("*")}
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    marker = tmp_path / "read-only-seed-marker"
+    marker.write_text("seeded")
+    (seed / "marker").symlink_to(marker)
+    manifest = tmp_path / "api-cases.json"
+    manifest.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "file",
+                    "path": "/api/file?path=a.txt",
+                    "compare": ["kind", "content"],
+                    "expect": {"path": "a.txt"},
+                    "revalidate": True,
+                }
+            ]
+        )
+    )
     result = run_build(
         root,
         resolve_metab_build("metab"),
@@ -135,9 +156,22 @@ def test_tiny_real_server_workload_is_read_only_and_complete(tmp_path: Path) -> 
         [Route("file:a.txt", "/api/file?path=a.txt")],
         rounds=1,
         render_file=None,
+        api_routes=tuple(load_api_cases(manifest)),
+        prepare_api=frozenset({"api:file"}),
+        cache_seed=seed,
     )
     validate_equivalence([result])
     assert result["phases"]["revalidate"][0]["status"] == 304
+    assert result["http_ready_ms"] <= result["inventory_ready_ms"]
+    copied_marker = Path(result["event_log"]).parent.parent / "cache" / "marker"
+    assert copied_marker.read_text() == "seeded"
+    assert not copied_marker.is_symlink()
+    assert result["startup_preparation_ms"] > 0
+    assert [row["label"] for row in result["phases"]["startup_preparation"]] == ["api:file"]
+    for phase, status in (("first", 200), ("warm", 200), ("revalidate", 304)):
+        sample = next(row for row in result["phases"][phase] if row["label"] == "api:file")
+        assert sample["status"] == status
+        assert bool(sample.get("content_sha256")) == (status == 200)
     assert any(row["label"] == "recent" for row in result["phases"]["with_recent"])
     assert all(row["label"] != "recent" for row in result["phases"]["without_recent"])
     assert before == {path.relative_to(root): path.stat().st_mtime_ns for path in root.rglob("*")}

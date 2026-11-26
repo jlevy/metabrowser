@@ -1069,6 +1069,14 @@ step with `pull_stacks.py` (`repository_snapshot.py`).
 
 ## Background Prefetch
 
+The
+[external fetch probes](../../../explorations/performance-loop/README.md#measuring-external-fetching)
+measure process cost, response status and spending, and the overlap of Git and GitHub
+commands with browser work.
+Evaluate additional speculation against first visits as well as revisits.
+A prefetched response helps a click when its result is available in the cache or view
+that the click actually uses.
+
 A visible page names what the reader is likely to open next with `POST pulls-prefetch`
 (`pull_prefetch.py`), which replaces the repository’s lane queue; nothing on the server
 starts that work by itself, so a hidden or offline page spends nothing.

@@ -26,6 +26,7 @@ import {
   harnessProvenance,
   provenanceChanges,
   serverFacts,
+  versionIdentity,
 } from "./provenance.mjs";
 import { JOURNEYS, runJourney, SUBJECTS } from "./transitions-journeys.mjs";
 import { driver, launchBrowser, REGIONS, Refusal, sleep } from "./transitions-recorder.mjs";
@@ -165,6 +166,7 @@ async function startServer({ metab, corpus, home, logPath }) {
             ...process.env,
             METABROWSER_CACHE_DIR: cache,
             METABROWSER_CONFIG_DIR: config,
+            METABROWSER_STATE_DIR: path.join(home, "app-state"),
             METABROWSER_RECORD_RECENT: "0",
           },
         },
@@ -271,6 +273,8 @@ async function pass({
   newestCommit,
   memoryAfter = [],
   memoryAtEnd = false,
+  recordStartup = false,
+  pullSubjects = null,
 }) {
   const out = [];
   for (const name of journeys) {
@@ -289,6 +293,8 @@ async function pass({
         facts,
         newestCommit,
         memoryAfter,
+        recordStartup,
+        pullSubjects,
         loadavg: () => loadavg()[0],
       });
       // Retained memory once the journey's last transition is done (revision 6): its
@@ -305,7 +311,7 @@ async function pass({
       const served = await d.evaluate(
         `(document.querySelector(".menu-version") || {}).textContent || null`,
       );
-      if (served?.trim() !== expectedVersion) {
+      if (versionIdentity(served) !== versionIdentity(expectedVersion)) {
         journey.refusals.push(["build_identity", `page reports ${served}`]);
       }
       journey.alertsAtEnd = await d.evaluate(
@@ -354,9 +360,11 @@ async function pass({
 
 async function oneRun(options) {
   const { exp, series, condition, runIndex, pairIndex, corpus, journeys, headed, warmup } = options;
-  const { keepGoing, subset, memoryAfter } = options;
+  const { keepGoing, subset, memoryAfter, firstVisit, expectedNewest, pullSubjects } = options;
   const expDir = path.join(BENCH, exp);
-  const home = path.join(expDir, "state", condition.label);
+  fs.mkdirSync(expDir, { recursive: true, mode: 0o700 });
+  const stateRoot = path.join(expDir, "state", condition.label);
+  const home = firstVisit ? fs.mkdtempSync(path.join(expDir, "first-visit-")) : stateRoot;
   fs.mkdirSync(home, { recursive: true, mode: 0o700 });
   const logDir = path.join(expDir, "logs");
   fs.mkdirSync(logDir, { recursive: true });
@@ -395,11 +403,21 @@ async function oneRun(options) {
     regime_flags: {
       headed,
       no_warmup: !warmup,
+      ...(firstVisit ? { first_visit: true } : {}),
+      ...(pullSubjects ? { pull_subjects: pullSubjects } : {}),
       journey_subset: subset,
       keep_going: keepGoing,
       memory_after: memoryAfter,
     },
-    regime: REGIME,
+    regime: firstVisit
+      ? {
+          ...REGIME,
+          server:
+            "fresh process and fresh application cache/config per run; no warm-up journey or pre-input Git and Pulls HTTP probes",
+          github:
+            "application starts from an empty cache; ordinary startup and live GitHub can supply data before the first measured click",
+        }
+      : REGIME,
     regions: Object.fromEntries(Object.entries(REGIONS).map(([k, v]) => [k, v.track])),
     journeys_requested: journeys,
     refusals: [],
@@ -420,9 +438,12 @@ async function oneRun(options) {
       served_version: server.served,
       serving_line: server.servingLine,
       indexed_files: server.progress.indexed_files,
+      ...(firstVisit
+        ? { event_log: path.relative(REPO, path.join(home, "app-state", "events")) }
+        : {}),
       log: path.relative(REPO, logPath),
     };
-    if (server.served !== row.build.version) {
+    if (versionIdentity(server.served) !== versionIdentity(row.build.version)) {
       row.refusals.push([
         "build_identity",
         `server reports ${server.served}, ${path.basename(condition.metab)} --version says ${row.build.version}`,
@@ -431,10 +452,12 @@ async function oneRun(options) {
     if (!server.servingLine?.includes(`${corpus} at http://127.0.0.1:${server.port}/`)) {
       row.refusals.push(["build_identity", "the server's serving line names another tree or port"]);
     }
-    row.facts = await serverFacts(server.base);
+    if (!firstVisit) {
+      row.facts = await serverFacts(server.base);
+    }
     // The commit a switch to Commits lands on in a build that selects the newest commit:
     // the first commit of the history the panel asks for (transitions-journeys.mjs).
-    const head = row.facts.git_log_head;
+    const head = firstVisit ? expectedNewest : row.facts.git_log_head;
     const newestCommit =
       typeof head === "string" && /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(head) ? head : null;
     if (warmup && (keepGoing || row.refusals.length === 0)) {
@@ -448,6 +471,7 @@ async function oneRun(options) {
         quiet: true,
         keepGoing,
         newestCommit,
+        pullSubjects,
       });
       row.warmup = warm.map((j) => ({
         name: j.name,
@@ -475,6 +499,8 @@ async function oneRun(options) {
         newestCommit,
         memoryAfter,
         memoryAtEnd: true,
+        recordStartup: firstVisit,
+        pullSubjects,
       });
       row.chrome = row.journeys.find((j) => j.chrome)?.chrome ?? null;
       // Which Commits landing this build has; compare pairs only runs that agree.
@@ -489,6 +515,15 @@ async function oneRun(options) {
         row.refusals.push([
           "memory_after",
           `--memory-after names ${id}, which no transition measured`,
+        ]);
+      }
+    }
+    if (firstVisit) {
+      row.facts = await serverFacts(server.base);
+      if (expectedNewest && row.facts.git_log_head !== expectedNewest) {
+        row.refusals.push([
+          "git_log_head",
+          `after the journey, server reports ${row.facts.git_log_head}; expected ${expectedNewest}`,
         ]);
       }
     }
@@ -528,6 +563,9 @@ async function cmdRun(argv) {
       out: { type: "string" },
       headed: { type: "boolean", default: false },
       "no-warmup": { type: "boolean", default: false },
+      "first-visit": { type: "boolean", default: false },
+      "expect-newest": { type: "string" },
+      "pull-subjects": { type: "string" },
       "keep-going": { type: "boolean", default: false },
       "memory-after": { type: "string" },
       order: { type: "string", default: "alternate" },
@@ -578,6 +616,29 @@ async function cmdRun(argv) {
       throw new Error(`unknown journey ${j}; known: ${Object.keys(JOURNEYS).join(",")}`);
     }
   }
+  const firstVisit = values["first-visit"];
+  const expectedNewest = values["expect-newest"] ?? null;
+  if (firstVisit && journeys.length !== 1) {
+    throw new CompareRefusal("--first-visit requires one --journeys name per process");
+  }
+  if (firstVisit && values["no-warmup"]) {
+    throw new CompareRefusal("--first-visit already skips the warm-up pass");
+  }
+  if (expectedNewest && (!firstVisit || !/^([a-f0-9]{40}|[a-f0-9]{64})$/.test(expectedNewest))) {
+    throw new CompareRefusal("--expect-newest requires --first-visit and a full commit ID");
+  }
+  if (firstVisit && ["commits", "maintabs"].includes(journeys[0]) && !expectedNewest) {
+    throw new CompareRefusal("--expect-newest is required for a first-visit Commits landing");
+  }
+  const pullSubjects = values["pull-subjects"]?.split(",").map(Number) ?? null;
+  if (
+    pullSubjects &&
+    (pullSubjects.length !== 4 ||
+      new Set(pullSubjects).size !== 4 ||
+      pullSubjects.some((number) => !Number.isSafeInteger(number) || number < 1))
+  ) {
+    throw new CompareRefusal("--pull-subjects requires four distinct positive PR numbers");
+  }
   const subset = !sameJson(journeys, Object.keys(JOURNEYS));
   // Transitions after which retained memory is read; its garbage collection changes what
   // each journey measures after them, so a run that names any is not the standard regime.
@@ -585,6 +646,8 @@ async function cmdRun(argv) {
   // A diagnostic run writes beside the standard file, never into it, unless --out says so.
   const standard =
     !subset &&
+    !firstVisit &&
+    !pullSubjects &&
     !values.headed &&
     !values["no-warmup"] &&
     !values["keep-going"] &&
@@ -599,7 +662,7 @@ async function cmdRun(argv) {
   );
   if (!standard) {
     console.log(
-      `NOT THE STANDARD REGIME: ${[subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}`].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
+      `NOT THE STANDARD REGIME: ${[firstVisit && "fresh-state first visit", pullSubjects && "alternate pull subjects", subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}`].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
     );
   }
   let refused = 0;
@@ -626,7 +689,10 @@ async function cmdRun(argv) {
         corpus,
         journeys,
         headed: values.headed,
-        warmup: !values["no-warmup"],
+        warmup: !firstVisit && !values["no-warmup"],
+        firstVisit,
+        expectedNewest,
+        pullSubjects,
         keepGoing: values["keep-going"],
         subset,
         memoryAfter,
@@ -730,8 +796,9 @@ function cmdSamples(argv) {
 const USAGE = `usage:
   transitions.mjs run --exp exp-NNN --corpus PATH --condition LABEL=PATH/TO/metab
                       [--condition LABEL=PATH/TO/metab] [--runs 5] [--journeys a,b]
-                      [--headed] [--no-warmup] [--keep-going] [--order alternate|fixed]
-                      [--memory-after TRANSITION,...] [--out FILE]
+                      [--headed] [--no-warmup | --first-visit [--expect-newest OID]]
+                      [--keep-going] [--order alternate|fixed]
+                      [--pull-subjects PR,PR,PR,PR] [--memory-after TRANSITION,...] [--out FILE]
   transitions.mjs summarize RUNS.jsonl [--condition LABEL] [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
                       [--expect TRANSITION:METRIC:lower|higher]... [--format markdown|json]

@@ -887,12 +887,51 @@ moves under a series changes the list and resets the server’s caches.
 Each run records the corpus’s commit, cleanliness, trunk, and a hash of all its refs at
 its start and end, and refuses itself (`corpus_changed`) if any moved.
 
-`--journeys` narrows a diagnostic run, `--headed` shows the window, `--no-warmup`
-measures a cold server, `--keep-going` continues past refusals to list them all, and
+`--journeys` narrows a diagnostic run, `--headed` shows the window, `--no-warmup` skips
+the journey warm-up pass, `--keep-going` continues past refusals to list them all, and
 `--memory-after ID,...` reads retained memory after the named transitions (below).
+`--no-warmup` still reuses condition storage and reads the Git history and Pulls catalog
+before the browser pass.
+Use `--first-visit` for a fresh application cache.
 None of them is the standard regime: such a run says so when it starts, records
 `regime_flags`, and writes to `diagnostic.jsonl` instead of `runs.jsonl` unless `--out`
 names a file, and `compare` refuses to mix it with standard runs.
+
+### First Visits After Repository Load
+
+Use one journey per fresh server and one browser profile per journey.
+For example, with `CORPUS` set to the pinned clone and `PULL_SUBJECTS` set to four
+comma-separated merged PR numbers from the catalog:
+
+```shell
+node explorations/performance-loop/transitions.mjs run --exp exp-NNN \
+  --corpus "$CORPUS" --condition baseline="$PWD/.venv/bin/metab" \
+  --journeys pulls --pull-subjects "$PULL_SUBJECTS" --first-visit --runs 3
+```
+
+For `commits` and `maintabs`, pass `--expect-newest` with the full first commit ID from
+the pinned corpus’s default Git history.
+The recorder verifies it against the server after the journey.
+Each run gets fresh application cache, config, and event log state.
+Only ordinary product startup and setup within the journey can warm a target before
+input. The run waits for server inventory, then loads a Files landing and gives
+application startup work its setup interval.
+Startup timings live in `server.ready_ms` and `journeys[].facts.startup`. The startup
+facts report when the landing was observed ready, when browsing setup began, and the
+number of instrumented browser fetches still in flight at that boundary.
+This is a declared start of browsing, with any remaining preparation reported.
+Later clicks retain state created by earlier clicks.
+Report startup and after-startup click timings separately.
+
+Keep first-visit timings apart from the reused-state `--no-warmup` diagnostic and the
+standard warm-server comparison.
+First visits use live GitHub, so compare paired runs under the same regime and disclose
+catalog changes and machine load.
+A smoke run helps find broken predicates and candidate bottlenecks.
+A judged result also needs the recorded protocol, adequate samples, and the
+[accept rule](#the-accept-rule).
+
+### Standard Transition Regime
 
 **The regime.** Each run starts a fresh server from the condition’s `metab` on a free
 port in 8890–8899, waits for its inventory to complete, runs every journey once
@@ -930,6 +969,10 @@ Closed list, past the rows a virtualized list mounts.
 A subject row that is not mounted is scrolled to, one screen at a time from the top of
 the list and before the clock starts, and the journey records where it sat (`facts`: its
 offset in the list and the screens scrolled), so a list that moved shows in the record.
+For a diagnostic against a current catalog, pass `--pull-subjects PR,PR,PR,PR` to pin
+four listed merged PRs.
+The override is recorded as part of the regime, and the comparator keeps it apart from
+the historical subjects.
 The open pull request count still moves the list that `pulls.first_show` and the
 main-tab Pulls rows land on.
 
@@ -2281,6 +2324,41 @@ uv --config-file uv.toml run --frozen python explorations/performance-loop/run.p
 ```
 
 `compare` prints each metric’s median with its range beside it.
+
+### Measuring External Fetching
+
+Use the transition rows to find the clicks whose destination arrives late, then look at
+requests and the matching server log for those clicks.
+A request’s elapsed time includes client waiting and transfer.
+Its `Server-Timing` entries attribute instrumented work on the server.
+See [Git Route Pairs](#git-route-pairs) for an equal-answer HTTP comparison with Git
+process counts.
+
+The product’s [event log](../../src/metabrowser/event_log.py) records subprocess spans
+for `gh` and for Git commands.
+First-visit runs record the directory in `server.event_log`. Use the span’s start or end
+timestamp, duration, and parent to distinguish selected work from overlapping background
+work. Long-lived Git history processes and open spans need separate accounting.
+Use the PR probe’s subprocess shim only with its overhead called out.
+Keep raw logs with machine-local output.
+
+Run the bounded live GitHub probe with a working `gh` login:
+
+```shell
+node explorations/performance-loop/github-fetch-probe.mjs > github-fetch-probe.json
+```
+
+It measures a local `gh --version` invocation, identical REST reads in serial and at
+concurrency two, conditional REST reads, and one minimal GraphQL batch per round.
+The GraphQL results report query cost and price a small projection.
+Compare only matched REST workloads when reading the concurrency result.
+The probe stops on refusal or exhaustion signals and reports only allowlisted status,
+rate headers, and byte counts.
+Read the rate-limit resource and reset with each observation.
+An account’s counters include other clients, so adjacent counter changes cannot always
+be attributed to the probe.
+Use deterministic responses to exercise retry and hold handling without exhausting a
+live quota.
 
 ### How the browser half is driven
 
