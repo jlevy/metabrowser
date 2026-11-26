@@ -28,7 +28,8 @@ LOG = logging.getLogger(__name__)
 _FORMAT = "softschema-collection-v2"
 _REFRESH_SECONDS = 3.0
 _INDEX_LIMIT = 4
-INDEX_WAIT_SECONDS = 30.0
+# Leave time for the CLI's 30-second request deadline to return the index state.
+INDEX_WAIT_SECONDS = 20.0
 _WORKERS = ThreadPoolExecutor(max_workers=1, thread_name_prefix="softschema-collection")
 _LOCK = threading.Lock()
 
@@ -84,6 +85,8 @@ class CollectionIndex:
                 saved = self._load(database)
                 if saved is not None:
                     previous, generation = saved
+                    with self._lock:
+                        self._view = CollectionVersion(previous, generation, True, True)
             ignore = make_ignore_filter(self.served_root, IgnoreMode.default)
             prefix = self.root.relative_to(self.served_root)
 
