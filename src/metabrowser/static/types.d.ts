@@ -4988,6 +4988,17 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
+  /** A file card's disclosure, as the diff view's `fileDisclosure` makes one: its `bar`,
+   * empty, and its `toggle`, the button that holds the chevron, for the caller to name the
+   * file in and place first on the bar; and the card's state, open at first. The one shape
+   * of it: the diff view returns it, and a plugin that requires the diff plugin takes it
+   * from `guidePatchDrawer().disclose(section, folded)`. */
+  type DiffFileDisclosure = {
+    bar: HTMLElement;
+    toggle: HTMLButtonElement;
+    expanded(): boolean;
+    setExpanded(next: boolean): void;
+  };
   type MetabrowserPluginAssets = PluginAssets;
   type MetabrowserAgentLogRenderers = AgentLogRenderers;
   type MetabrowserGithubPullStateIcon = GithubExports["pullStateIcon"];

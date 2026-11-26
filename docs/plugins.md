@@ -659,7 +659,9 @@ A plugin offers helpers to others by exporting them from its `index.js`, which i
 module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`,
 structured data exports `renderInlineTree` and the tree’s helpers, diff exports
 `mountFilePatch`, which draws one file’s hunks as Changes does and which GitHub’s Guided
-Review draws its excerpts with, GitHub exports `pullStateIcon`, which the shell’s ref
+Review draws its excerpts with, and `guidePatchDrawer`, whose
+`disclose(section, folded)` makes the bar and chevron that fold a file’s card in Changes
+for a card the guide draws itself, GitHub exports `pullStateIcon`, which the shell’s ref
 selector draws a branch’s pull request with, and PDF exports `mountPdfCard`, which draws
 a PDF’s first page, name, and page count where a viewer does not belong, as a diff’s
 binary `.pdf` change and a Markdown document’s embedded `.pdf` do.

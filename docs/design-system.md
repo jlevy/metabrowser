@@ -2854,6 +2854,30 @@ copy control and, with wide stats, its note under View file.
 The whole bar is one activation surface, the folder-row rule applied to a section
 header: clicking anywhere toggles, with only the copy control, the View file or View on
 branch control, and the chooser of views opting out.
+
+**Every card that shows a file’s changes folds by one builder.** `fileDisclosure` in
+`builtin_plugins/diff/diff-view.js` makes the bar and the button that leads it, with the
+chevron, and keeps the card’s state: open at first, folded to a body of no height that
+stays in the document, so nothing it drew is disposed and the bar stays where it was.
+Changes’ file cards are built from it (`renderFileSection`), and so is every card a
+[guided review](#guided-review) step draws for a file, an excerpt’s or one that holds a
+sentence in a diff’s place, which takes it from the guide’s drawer (`disclose` on
+`guidePatchDrawer`) and names the file in its trigger.
+Its Open full diff is a control that views the file (`.diff-file-view`), so a press on
+it is the link’s. A file’s state in Changes lasts while its diff is mounted.
+A guide draws a step anew each time it shows, so it remembers which of its cards the
+reader folded and draws those folded again (`folds` in
+`builtin_plugins/github/guide-reads.js`): for the document, as it keeps the step
+answers, so a fold lasts across Next and Back, a return to the tab, and a poll, and
+until the guide is read at a new head, whose files may differ.
+A file a step cites whole is the diff view’s own card and is not remembered.
+A new place that shows a file’s diff in a card takes the same builder, never a bar of
+its own.
+`tests/dom/diff-view-behavior.js` holds that the bar the builder hands a page is
+the one Changes draws and what a press does, and
+`tests/dom/github-guided-review-fold-chrome.mjs` measures a step’s card against the same
+server’s Changes, open and folded: where the chevron sits, how it turns, how the bar is
+painted, and that a real press folds the card and opens it.
 On a pull request’s Docs and Changes, a changed Markdown file’s bar carries that
 chooser, a joined chip group, and before it a small spinner that keeps its place in the
 bar and appears only after the loading-state delay while the rendered view is on its
@@ -3408,7 +3432,7 @@ reader does with it.
 | Way on and back | Worded buttons below a step that name the step they go to | `.github-pull-guide-pager` |
 | Step | A page card, as Conversation draws a comment: the badge and the place, the title as text and the note’s Markdown rendered as the description is, at the description’s inset, then its excerpts; a note whose render did not come, as typed, and, when it was refused, the warning a description’s refusal has under it, in its words | `.github-pull-guide-card`, `.github-pull-text`, `.github-pull-guide-commentary`, `.github-pull-guide-note-refused`, `textRefusalNote` |
 | Reference block | One comparison chooser immediately above the step’s file cards. Full appears when a whole-file reference can use it. | `guidePatchDrawer`, [Diff Toolbar](#diff-toolbar) |
-| Excerpt | A collapsible file card with the cited side and inclusive range, source hunks, their fold bars, and Open full diff. A presentation change stays within the cited range. | `mountFilePatch`, `mountExcerptDisclosure` |
+| Excerpt | A collapsible file card with the cited side and inclusive range, source hunks, their fold bars, and Open full diff. A presentation change stays within the cited range. | `mountFilePatch`, `fileDisclosure` through `guidePatchDrawer`, `referenceBar` |
 | Document | A whole file in the same collapsible card as Changes or Docs, with Rendered and Source where available. A failed read keeps the file name and Open full diff above its notice. | `mountRenderedFile`, `DOCS_DRAWING`, `CHANGES_DRAWING` |
 | Out of date | One warning notice above the guide and its one remedy, or a quiet line when no file it cites changed; a step that cites a changed file is marked “changed” in the list and on its card, in muted text | `OUTDATED`, `CHANGED`, `.github-pull-guide-stale`, `.github-pull-guide-step-changed` |
 | Another pull request’s file | An excerpt or a document, as a file of this pull request is drawn, under a bar that names that pull request’s number before the path, in a pull request number’s weight and muted ink; its Open full diff opens the file in that pull request’s Changes | `referenceBar`, `.github-pull-guide-reference-pull` |
