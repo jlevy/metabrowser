@@ -11,7 +11,9 @@
   prints it
   ([Operational Status](docs/project/architecture/arch-github-pull-requests.md#operational-status)).
   A pull request the last scan did not read, one past the newest it reads or no longer
-  open, has no verdict from an older scan: it is answered `not_scanned`.
+  open, has no verdict from an older scan: it is answered `not_scanned`; one whose
+  status was observed against another base than its row’s, before a retarget was read,
+  is answered `other_base`.
 
 - A pull request page shows its checks only beside the status that counts them: after
   the Pulls tab’s scan sees a new head, a new base, or checks that moved, the page reads

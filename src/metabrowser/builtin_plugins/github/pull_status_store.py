@@ -5,8 +5,9 @@ database, in a table of its own (:func:`~.pull_catalog.write_pull_status`), so a
 that changes with every check moves no catalog row, fingerprint, core, or window
 generation. The checks of the same head (:class:`~.pull_status.PullChecks`) are
 ``pulls/<n>.checks.json`` beside the record, which only the pull request page needs.
-How the last read of them ended is ``pulls/<n>.status.refresh.json``, and what the probes
-of the head's checks last saw is ``pulls/<n>.checks.probe.json`` (:class:`CheckProbes`).
+How the latest read of them ended is ``pulls/<n>.status.refresh.json``
+(:class:`StatusOutcome`), and what the probes of the head's checks last saw is
+``pulls/<n>.checks.probe.json`` (:class:`CheckProbes`).
 All four are under the source's ``pulls`` directory, so clearing the cache clears them
 (:func:`~.pull_record.clear_pulls`), and a checkout without a store has them as it has a
 catalog.
@@ -14,7 +15,9 @@ catalog.
 A write keeps the newer observation: a status observed before the one kept is dropped, so
 two reads that end out of order leave the later one (:func:`~.pull_status.kept_observation`),
 and a list of checks is kept exactly when the status kept then names it, so the checks
-file is always the list a status's ``listed_at`` names, whatever order reads end in. Every
+file is always the list a status's ``listed_at`` names, whatever order reads end in. How
+a read ended is kept likewise for the attempt that began last (:func:`write_status_outcome`),
+so an older read that fails after a newer one succeeded leaves the newer's outcome. Every
 file is written atomically by the home's private writer under the source-alias lock, and
 read lock-free with a size bound.
 """
@@ -22,10 +25,11 @@ read lock-free with a size bound.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from metabrowser.builtin_plugins.github.pull_catalog import read_pull_status
 from metabrowser.builtin_plugins.github.pull_record import (
@@ -36,7 +40,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Timestamp,
     ensure_pulls_directory,
 )
-from metabrowser.builtin_plugins.github.pull_status import PullChecks, PullStatus
+from metabrowser.builtin_plugins.github.pull_status import PullChecks, PullStatus, counted_list
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
@@ -118,31 +122,56 @@ def write_pull_checks(home: Path, slug: str, checks: PullChecks) -> bool:
         return True
 
 
-def write_status_outcome(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
-    """Keep how the last read of pull request *number*'s status ended. Blocking.
+class StatusOutcome(PullRefreshStamp):
+    """How one read of a pull request's status ended, and ``started_at``, when it began.
+
+    ``at`` is when GitHub answered a read that succeeded, its status's ``observed_at``, and
+    when one that failed gave up.
+    """
+
+    started_at: Timestamp
+
+    @field_validator("started_at")
+    @classmethod
+    def _a_real_start(cls, value: str) -> str:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+        return value
+
+
+def write_status_outcome(home: Path, slug: str, number: int, outcome: StatusOutcome) -> bool:
+    """Keep how a read of pull request *number*'s status ended, unless a later attempt's
+    is kept; whether it is now the one kept. Blocking.
+
+    Reads run in several processes, a server's and the one-shot CLI's among them, and end
+    in any order, so an attempt that began earlier and failed later never replaces the
+    outcome of one that began after it: the outcome kept is the newest attempt's, by
+    ``started_at``, as the status kept is the newest observation. Of two that began in one
+    second, the one written last is kept, as one process's reads follow each other.
 
     A failed read is the status's own part, as a refused part of a record is the record's:
     the refresh that ran it still succeeded, so it is not noted in the event log as the
-    refresh's failure is (:func:`~.pull_record.note_refresh_outcome`).
+    refresh's failure is (:func:`~.pull_record.note_refresh_outcome`). Under the source's
+    alias lock; call it through ``run_lock_section``.
     """
 
+    data = outcome.model_dump_json().encode("utf-8")
     with source_alias_lock(home, slug):
+        kept = read_status_outcome(home, slug, number)
+        if kept is not None and kept.started_at > outcome.started_at:
+            return False
         ensure_pulls_directory(home, slug)
-        write_private_file_atomic(
-            home,
-            source_pull_status_refresh(slug, number),
-            stamp.model_dump_json().encode("utf-8"),
-        )
+        write_private_file_atomic(home, source_pull_status_refresh(slug, number), data)
+        return True
 
 
-def read_status_outcome(home: Path, slug: str, number: int) -> PullRefreshStamp | None:
-    """How the last read of the status ended, or ``None`` when no usable stamp is kept."""
+def read_status_outcome(home: Path, slug: str, number: int) -> StatusOutcome | None:
+    """How the latest read of the status ended, or ``None`` when no usable stamp is kept."""
 
     try:
         data = read_bytes_bounded(
             home, source_pull_status_refresh(slug, number), max_bytes=MAX_PULL_REFRESH_BYTES
         )
-        return PullRefreshStamp.model_validate_json(data)
+        return StatusOutcome.model_validate_json(data)
     except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValueError):
         # ValueError covers pydantic's ValidationError: anything unusable is no stamp.
         return None
@@ -232,7 +261,7 @@ def write_check_probes(home: Path, slug: str, probes: CheckProbes) -> bool:
 class KeptStatus:
     """What is kept of a pull request's operational status.
 
-    ``unavailable`` is why the last read failed, when it did: the status and checks are
+    ``unavailable`` is why the latest read failed, when it did: the status and checks are
     then the ones an earlier read kept, or ``None``.
     """
 
@@ -245,18 +274,13 @@ class KeptStatus:
         """The kept checks when they are the list the kept status counts, else ``None``.
 
         That is a list of the status's head kept by the read the status's summary names
-        (``listed_at``). A status the Pulls tab's scan read for a new head, or with checks
-        that moved since the page's read, names none, so the page's list of another head or
-        of other counts is never shown beside it, and the page reads its own
-        (:func:`.pull_freshness.record_freshness`).
+        (:func:`~.pull_status.counted_list`). A status the Pulls tab's scan read for a new
+        head, or with checks that moved since the page's read, names none, so the page's
+        list of another head or of other counts is never shown beside it, and the page
+        reads its own (:func:`.pull_freshness.record_freshness`).
         """
 
-        status, checks = self.status, self.checks
-        if status is None or checks is None or status.checks.listed_at is None:
-            return None
-        if (checks.head, checks.observed_at) != (status.head, status.checks.listed_at):
-            return None
-        return checks
+        return counted_list(self.status, self.checks)
 
 
 def kept_status(home: Path, slug: str, number: int) -> KeptStatus:
@@ -279,6 +303,7 @@ __all__ = [
     "CheckProbes",
     "KeptStatus",
     "ProbedPage",
+    "StatusOutcome",
     "kept_status",
     "read_check_probes",
     "read_pull_checks",

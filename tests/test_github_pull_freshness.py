@@ -30,9 +30,19 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PULL_RECORD_SCHEMA,
     PullRecord,
 )
-from metabrowser.builtin_plugins.github.pull_route import pull_state
-from metabrowser.builtin_plugins.github.pull_status import BUCKETS, PullStatus, kept_observation
-from metabrowser.builtin_plugins.github.pull_status_store import CheckProbes
+from metabrowser.builtin_plugins.github.pull_route import (
+    judged_readiness,
+    pull_state,
+    shown_checks,
+)
+from metabrowser.builtin_plugins.github.pull_status import (
+    BUCKETS,
+    CheckItem,
+    PullChecks,
+    PullStatus,
+    kept_observation,
+)
+from metabrowser.builtin_plugins.github.pull_status_store import CheckProbes, KeptStatus
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
     CHECKS_PROBE_S,
@@ -41,6 +51,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     ServedPull,
     ServedPulls,
 )
+from metabrowser.cli.show_cli import _describe_pull  # pyright: ignore[reportPrivateUsage]
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 SOURCE = "https://github.com/octo/demo"
@@ -265,6 +276,47 @@ def test_a_record_with_no_status_of_its_head_says_so_whatever_the_verdict(
     verdict = _verdict(closed, _catalog(), _row(), status=other)
     assert (verdict.verdict, verdict.status_missing) == ("current", True)
     assert not _verdict(record, _catalog(), _row()).status_missing
+
+
+def test_a_status_of_the_base_before_a_retarget_is_read_again_before_anything_judges_it() -> None:
+    """When the layer below a stacked pull request merges, GitHub retargets the one above at
+    the merged layer's base and keeps its head; its conflicts, merge verdict, and required
+    checks are then the new base's. A status observed against the old base, and the list
+    it counts, describe nothing current: the record has a status read due, the verdict is
+    ``checking``, the route serves none of its checks, and ``--show`` says so."""
+
+    record = _record(fetched=NOW - timedelta(seconds=5))
+    before = _status(record).model_copy(update={"base_ref": "layer-1"})
+    verdict = _verdict(record, _catalog(), _row(), status=before)
+    assert (verdict.verdict, verdict.status_missing, verdict.checks_pending) == (
+        "checks",
+        True,
+        False,
+    )
+    failing = CheckItem(name="build", kind="run", bucket="fail", required=True)
+    listed = PullChecks(number=7, head=HEAD, observed_at=before.observed_at, items=(failing,))
+    kept = KeptStatus(before, listed, None)
+    assert kept.listed_checks == listed
+    shown = record.pull.model_dump(mode="json")
+    judged = judged_readiness(shown, kept)
+    assert judged is not None and (judged["verdict"], judged["requirements"]) == ("checking", [])
+    assert shown_checks(shown, kept) is None
+    envelope = {
+        "state": "current",
+        "record": record.model_dump(mode="json"),
+        "readiness": judged,
+        "checks": shown_checks(shown, kept),
+        "status_unavailable": None,
+    }
+    said = _describe_pull(envelope, "checks").split()
+    assert {"readiness=checking", "checks=none"} <= set(said)
+    # Read again into the new base, the same head and list judge the pull request.
+    after = before.model_copy(update={"base_ref": record.pull.base.ref})
+    again = KeptStatus(after, listed, None)
+    current = judged_readiness(shown, again)
+    assert current is not None and current["verdict"] != "checking"
+    assert shown_checks(shown, again) == listed.model_dump(mode="json")
+    assert not _verdict(record, _catalog(), _row(), status=after).status_missing
 
 
 def test_a_record_fetched_after_the_scan_is_verified_by_its_own_fetch_time() -> None:

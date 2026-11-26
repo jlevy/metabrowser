@@ -15,20 +15,32 @@ when an item cannot be read, the list says it is ``truncated``. Every page asks 
 query again, and a later page whose head is not the first page's ends the list there,
 ``truncated``: the checks of another head would be mixed in. Like ``gh pr checks``
 (``eliminateDuplicates`` in ``pkg/cmd/pr/checks/aggregate.go``, ``gh`` 2.97.0), only the
-latest run of each check is kept, by name, the latest ``startedAt`` winning; a commit
-status, which has no start, is keyed by its context.
+latest run of each check is kept, the latest ``startedAt`` winning (:func:`latest_of_each`):
+a check run is one check by its name, its workflow, and the event that ran it, and a
+commit status, which has no start, by its context, apart from the runs. So one job that a
+``push`` and a ``pull_request`` both ran is two checks: psf/requests#7619 has two failing
+``lint`` runs of one workflow, and both ``gh`` and this list show 61 checks of its 61
+contexts (2026-11-26).
 
 The counts in :class:`~.pull_status.ChecksSummary` are GitHub's own, folded from
 ``checkRunCountsByState`` and ``statusContextCountsByState`` (:func:`~.pull_status.bucket_counts`),
 so the Pulls tab's scan, which reads them without the checks, counts the same way. They
-count every context of the rollup, so a check GitHub ran twice for one head counts twice
-there and is listed once. ``required_failing`` and ``required_pending`` are counted from
-the listed checks, a cancelled required check among the failing, as the rollup counts a
-cancelled run; they are ``None`` when the list is truncated or a check did not say whether
-it is required. ``listed_at`` is when the read answered, the ``observed_at`` of the checks
-it keeps, so the summary names the list it counts. The Pulls tab's scan of every open
-pull request (:mod:`.pull_status_scan`) builds its statuses from the same fields with
+count every context of the rollup, as ``gh pr status`` does, so a check GitHub ran again
+for one head counts twice there and is listed once, as ``gh pr checks`` lists it:
+python/cpython#162697 counted 5 failing contexts where both listed 2 (2026-11-26). The
+page's sentence counts its list (:func:`~.pull_readiness.checks_sentence`).
+``required_failing`` and ``required_pending`` are counted from the listed checks, a
+cancelled required check among the failing, as the rollup counts a cancelled run; they
+are ``None`` when the list is truncated or a check did not say whether it is required.
+``listed_at`` is when the read answered, the ``observed_at`` of the checks it keeps, so
+the summary names the list it counts. The Pulls tab's scan of every open pull request
+(:mod:`.pull_status_scan`) builds its statuses from the same fields with
 :func:`operational_status` and :func:`rollup_summary`, and lists no check.
+
+The answer's repository is the one asked for when :func:`~.gh_lists.asked_repository`
+says so: GitHub's id, when the catalog the status is kept in knows the repository's, or
+else GitHub's answer for the name, which follows a rename as the REST read follows its
+redirect.
 
 What GitHub answers is validated: a field that is not what GitHub documents makes the
 whole answer unreadable (``gh_failed``), never a status that guesses, and a check that
@@ -38,6 +50,7 @@ escapes.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import sqlite3
@@ -53,6 +66,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     PullDataError,
     UnreadableItemError,
     as_dict,
+    asked_repository,
     cache_unwritable,
     login_of,
     newer_cache,
@@ -64,15 +78,17 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     NewerCatalogError,
     UnknownCatalogError,
     failure_line,
+    read_catalog,
     write_pull_status,
 )
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
-from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, cut_text
+from metabrowser.builtin_plugins.github.pull_record import MAX_REFRESH_MESSAGE_CHARS, cut_text
 from metabrowser.builtin_plugins.github.pull_status import (
     MAX_CHECK_ITEMS,
     AutoMerge,
     Bucket,
     CheckItem,
+    CheckKind,
     ChecksSummary,
     ObservedBy,
     PullChecks,
@@ -89,6 +105,7 @@ from metabrowser.builtin_plugins.github.pull_status import (
     state_bucket,
 )
 from metabrowser.builtin_plugins.github.pull_status_store import (
+    StatusOutcome,
     write_pull_checks,
     write_status_outcome,
 )
@@ -107,9 +124,15 @@ _PAGES: Final = -(-MAX_CHECK_ITEMS // CONTEXTS_PAGE)
 # Read on 2026-11-26 from a cloud container with gh 2.97.0, against jlevy/metabrowser's
 # pull requests (#380, #498, #508, #679, #870, #872), 14 reads in all: every one reported
 # ``rateLimit { cost }`` 1 and took 0.46 to 1.17 s, most near 0.6 s. An answer was 5.6 to
-# 11.5 KB for 15 to 35 checks, about 310 bytes a check, so a page of 100 is about 31 KB,
-# far inside ``GH_API_MAX_BYTES``. ``mergeStateStatus`` needed no preview header, and
-# ``statusCheckRollup`` is a field of the pull request itself, so one query reads it.
+# 11.5 KB for 15 to 35 checks, about 310 bytes a check. ``mergeStateStatus`` needed no
+# preview header, and ``statusCheckRollup`` is a field of the pull request itself, so one
+# query reads it.
+# Each run's workflow and event, which ``gh pr checks`` keys a run by, and the repository's
+# ``id`` cost nothing more: read again on 2026-11-26 with and without them, the same six
+# pull requests, psf/requests#7619, kubernetes/enhancements#6506, python/cpython#162697,
+# and a full page of pytorch/pytorch#196374's checks each reported ``cost`` 1 both ways,
+# and 1 in a dry run. They add about 65 bytes a check, so a check is about 375 bytes and
+# pytorch's page of 100 was 40.9 KB where it was 34.2 KB, far inside ``GH_API_MAX_BYTES``.
 # Whether ``mergeStateStatus`` depends on who asks, as for an admin who may bypass a rule,
 # was not settled: the only reader was the repository's admin, and its ``main`` has no
 # protection or ruleset, so no rule could block anyone. The schema gives the bypass a
@@ -119,7 +142,7 @@ _STATUS_QUERY: Final = """query PullStatus($owner:String!,$name:String!,$number:
   viewer { login }
   rateLimit { cost }
   repository(owner:$owner,name:$name) {
-    nameWithOwner
+    id nameWithOwner
     pull:pullRequest(number:$number) {
       number headRefOid baseRefName baseRefOid isDraft mergeable mergeStateStatus
       reviewDecision isInMergeQueue
@@ -135,7 +158,7 @@ _STATUS_QUERY: Final = """query PullStatus($owner:String!,$name:String!,$number:
             __typename
             ... on CheckRun {
               name status conclusion isRequired(pullRequestNumber:$number) detailsUrl startedAt
-              checkSuite { app { name } }
+              checkSuite { app { name } workflowRun { event workflow { name } } }
             }
             ... on StatusContext {
               context state isRequired(pullRequestNumber:$number) targetUrl description
@@ -229,30 +252,57 @@ def _required(value: object) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
-def _check_item(value: object) -> tuple[CheckItem, str]:
-    """One context as a :class:`CheckItem`, with the time it started, ``""`` for none."""
+def _field(value: object, key: str) -> object:
+    """*value*'s *key* when *value* is an object, and ``None`` otherwise."""
+
+    return value.get(key) if isinstance(value, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+
+
+@dataclass(frozen=True, slots=True)
+class ListedCheck:
+    """One context as read: its item, when it started, and which check it is a run of.
+
+    ``started`` is ``""`` for a commit status or a run not yet started. ``key`` is how
+    ``gh pr checks`` tells one check from another (``eliminateDuplicates``, ``gh``
+    2.97.0): a check run by ``<name>/<workflow>/<event>``, each ``""`` where GitHub gave
+    none, as for a run no workflow made; a commit status by its context, in a namespace of
+    its own.
+    """
+
+    item: CheckItem
+    started: str
+    key: tuple[CheckKind, str]
+
+
+def _check_item(value: object) -> ListedCheck:
+    """One context as a :class:`ListedCheck`; unreadable if GitHub sent it otherwise."""
 
     node = as_dict(value)
     kind = node.get("__typename")
     if kind == "CheckRun":
         status, conclusion = _required_short(node.get("status")), _short(node.get("conclusion"))
         suite = node.get("checkSuite")
-        app = suite.get("app") if isinstance(suite, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        run = _field(suite, "workflowRun")
+        workflow = _short(_field(_field(run, "workflow"), "name")) or ""
+        event = _short(_field(run, "event")) or ""
+        name = _required_short(node.get("name"))
         item = CheckItem(
-            name=_required_short(node.get("name")),
+            name=name,
             kind="run",
             bucket=check_run_bucket(status, conclusion),
             status=status,
             conclusion=conclusion,
             required=_required(node.get("isRequired")),
             details_url=_url(node.get("detailsUrl")),
-            app=_short(app.get("name")) if isinstance(app, dict) else None,  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            app=_short(_field(_field(suite, "app"), "name")),
         )
-        return item, _stamp(node.get("startedAt")) or ""
+        started = _stamp(node.get("startedAt")) or ""
+        return ListedCheck(item, started, ("run", f"{name}/{workflow}/{event}"))
     if kind == "StatusContext":
         state = _required_short(node.get("state"))
+        name = _required_short(node.get("context"))
         item = CheckItem(
-            name=_required_short(node.get("context")),
+            name=name,
             kind="status",
             bucket=state_bucket(state),
             conclusion=state,
@@ -260,25 +310,24 @@ def _check_item(value: object) -> tuple[CheckItem, str]:
             details_url=_url(node.get("targetUrl")),
             description=_short(node.get("description")),
         )
-        return item, ""
+        return ListedCheck(item, "", ("status", name))
     raise UnreadableItemError
 
 
-def latest_of_each(items: Sequence[tuple[CheckItem, str]]) -> tuple[CheckItem, ...]:
-    """The latest run of each check, by name, in the order GitHub listed the kept ones.
+def latest_of_each(contexts: Sequence[ListedCheck]) -> tuple[CheckItem, ...]:
+    """The latest run of each check, by its ``key``, in the order GitHub listed the kept ones.
 
-    *items* pairs each check with when it started, ``""`` for a commit status or a run not
-    yet started. Of two with one name the later start is kept, and of two that started
-    together, or never, the one GitHub listed first, as ``gh pr checks`` keeps the first
-    of a stable sort by start, newest first.
+    Of two runs of one check the later start is kept, and of two that started together, or
+    never, the one GitHub listed first, as ``gh pr checks`` keeps the first of its checks
+    sorted newest first.
     """
 
-    chosen: dict[str, int] = {}
-    for index, (item, started) in enumerate(items):
-        kept = chosen.get(item.name)
-        if kept is None or started > items[kept][1]:
-            chosen[item.name] = index
-    return tuple(items[index][0] for index in sorted(chosen.values()))
+    chosen: dict[tuple[CheckKind, str], int] = {}
+    for index, each in enumerate(contexts):
+        kept = chosen.get(each.key)
+        if kept is None or each.started > contexts[kept].started:
+            chosen[each.key] = index
+    return tuple(contexts[index].item for index in sorted(chosen.values()))
 
 
 def _required_counts(
@@ -322,12 +371,15 @@ def _auto_merge(pull: Mapping[str, Any]) -> AutoMerge | None:
 
 
 def answered_repository(
-    data: Mapping[str, Any], owner: str, repo: str, reader: str
+    data: Mapping[str, Any], reader: str, *, repository_id: str | None
 ) -> dict[str, Any]:
-    """The answer's repository, once its ``viewer`` is *reader* and its name is *owner*/*repo*.
+    """The answer's repository, once its ``viewer`` is *reader* and it is the one asked for.
 
     Another viewer is ``account_changed``: the status was read as someone else, and is
-    discarded. No repository is ``not_found_or_private``; any other shape is unreadable.
+    discarded. No repository is ``not_found_or_private``. A repository whose ``id`` is not
+    *repository_id*, the one the catalog the status is kept in describes, is unreadable, as
+    is any other shape; with no id known, GitHub's answer for the name asked is the
+    repository, renamed or not (:func:`~.gh_lists.asked_repository`).
     """
 
     viewer = login_of(data.get("viewer"))
@@ -342,8 +394,7 @@ def answered_repository(
     if raw is None:
         raise PullDataError("not_found_or_private", "GitHub has no readable pull request here")
     repository = as_dict(raw)
-    name = repository["nameWithOwner"]
-    if not isinstance(name, str) or name.casefold() != f"{owner}/{repo}".casefold():
+    if not asked_repository(repository, repository_id):
         raise UnreadableItemError
     return repository
 
@@ -419,10 +470,10 @@ class _Page:
     cursor: str | None
 
 
-def _page(data: Mapping[str, Any], owner: str, repo: str, number: int, reader: str) -> _Page:
+def _page(data: Mapping[str, Any], number: int, reader: str, *, repository_id: str | None) -> _Page:
     """The answer's pull request and contexts, once its viewer and repository are checked."""
 
-    repository = answered_repository(data, owner, repo, reader)
+    repository = answered_repository(data, reader, repository_id=repository_id)
     if repository["pull"] is None:
         raise PullDataError("not_found_or_private", "GitHub has no readable pull request here")
     pull = as_dict(repository["pull"])
@@ -477,7 +528,7 @@ def _status_of(
     """The status and checks *first*'s pull request and these *nodes* of its contexts say."""
 
     pull = first.pull
-    read: list[tuple[CheckItem, str]] = []
+    read: list[ListedCheck] = []
     dropped = False
     for node in nodes:
         try:
@@ -510,12 +561,19 @@ def _status_of(
 
 
 async def read_pull_status(
-    owner: str, repo: str, number: int, *, reader: str, now: Callable[[], datetime]
+    owner: str,
+    repo: str,
+    number: int,
+    *,
+    reader: str,
+    now: Callable[[], datetime],
+    repository_id: str | None = None,
 ) -> StatusRead:
     """Read pull request *number*'s status and checks as *reader*; see the module.
 
     *now* is the clock records are stamped with; ``observed_at`` is when the first page
-    answered. Raises only :class:`PullDataError`.
+    answered. *repository_id* is GitHub's id of the repository, when it is known, which
+    every page's must be. Raises only :class:`PullDataError`.
     """
 
     nodes: list[object] = []
@@ -526,7 +584,7 @@ async def read_pull_status(
     try:
         for _index in range(_PAGES):
             data = await _ask(owner, repo, number, cursor, now=now())
-            page = _page(data, owner, repo, number, reader)
+            page = _page(data, number, reader, repository_id=repository_id)
             if first is None:
                 first, observed_at = page, utc_stamp(now())
             elif page.head != first.head:
@@ -564,6 +622,18 @@ def _keep(repository: ListedRepository, read: StatusRead) -> bool:
     return kept
 
 
+def known_repository_id(repository: ListedRepository) -> str | None:
+    """GitHub's id of the repository whose catalog the status is kept in, or ``None`` with
+    no readable catalog of this source. Blocking and bounded: one checkpoint read."""
+
+    catalog = read_catalog(repository.home, repository.slug)
+    return (
+        catalog.repository_id
+        if catalog is not None and catalog.source == repository.source
+        else None
+    )
+
+
 async def keep_pull_status(
     published: PublishedSource | ListedRepository,
     owner: str,
@@ -572,6 +642,7 @@ async def keep_pull_status(
     *,
     reader: str,
     now: Callable[[], datetime],
+    started: datetime | None = None,
 ) -> PullStatus | None:
     """Read pull request *number*'s status as *reader* and keep it; the status, or ``None``.
 
@@ -579,15 +650,20 @@ async def keep_pull_status(
     record: it is kept as how the read ended (:func:`.pull_status_store.read_status_outcome`),
     the status and checks an earlier read kept stay, and nothing is raised. A catalog a
     newer release wrote, or one whose versions cannot be read, is left as it is, as the
-    list's refresh leaves it.
+    list's refresh leaves it. *started* is when the attempt began, *now* by default; how
+    it ended is kept unless a newer attempt's is (:func:`.pull_status_store.write_status_outcome`).
     """
 
+    started_at = utc_stamp(started or now())
     repository = _repository(published, owner, repo)
     checkout = repository.checkout
     status: PullStatus | None = None
     try:
         try:
-            read = await read_pull_status(owner, repo, number, reader=reader, now=now)
+            known = await asyncio.to_thread(known_repository_id, repository)
+            read = await read_pull_status(
+                owner, repo, number, reader=reader, now=now, repository_id=known
+            )
             await run_lock_section(partial(_keep, repository, read))
             status = read.status
         except NewerCatalogError as exc:
@@ -608,10 +684,12 @@ async def keep_pull_status(
             raise cache_unwritable(
                 _STATUS, exc, source=repository.source, checkout=checkout
             ) from exc
-        stamp = PullRefreshStamp(outcome="succeeded", at=status.observed_at, reader=reader)
+        stamp = StatusOutcome(
+            outcome="succeeded", at=status.observed_at, started_at=started_at, reader=reader
+        )
     except PullDataError as exc:
         log.debug("reading the status of pull request %s failed: %s", number, exc)
-        stamp = _failure_stamp(exc, now=now, reader=reader)
+        stamp = _failure_stamp(exc, now=now, reader=reader, started_at=started_at)
     await _keep_outcome(repository, number, stamp)
     return status
 
@@ -625,18 +703,19 @@ def _repository(
 
 
 def _failure_stamp(
-    exc: PullDataError, *, now: Callable[[], datetime], reader: str | None
-) -> PullRefreshStamp:
-    return PullRefreshStamp(
+    exc: PullDataError, *, now: Callable[[], datetime], reader: str | None, started_at: str
+) -> StatusOutcome:
+    return StatusOutcome(
         outcome=exc.state,
-        message=str(exc)[:1000],
+        message=str(exc)[:MAX_REFRESH_MESSAGE_CHARS],
         reset_at=exc.reset_at,
         at=utc_stamp(now()),
+        started_at=started_at,
         reader=reader,
     )
 
 
-async def _keep_outcome(repository: ListedRepository, number: int, stamp: PullRefreshStamp) -> None:
+async def _keep_outcome(repository: ListedRepository, number: int, stamp: StatusOutcome) -> None:
     try:
         await run_lock_section(
             partial(write_status_outcome, repository.home, repository.slug, number, stamp)
@@ -654,26 +733,30 @@ async def keep_status_failure(
     failure: PullDataError,
     *,
     now: Callable[[], datetime],
+    started: datetime,
 ) -> None:
     """Keep *failure*, which ended a read of pull request *number*'s status before it asked.
 
     As :func:`keep_pull_status` keeps a failure of its own: the status and checks an
-    earlier read kept stay, and nothing is raised. The read named no reader yet.
+    earlier read kept stay, and nothing is raised. The read named no reader yet; it began
+    at *started*.
     """
 
     log.debug("reading the status of pull request %s failed: %s", number, failure)
-    stamp = _failure_stamp(failure, now=now, reader=None)
+    stamp = _failure_stamp(failure, now=now, reader=None, started_at=utc_stamp(started))
     await _keep_outcome(_repository(published, owner, repo), number, stamp)
 
 
 __all__ = [
     "CONTEXTS_PAGE",
+    "ListedCheck",
     "StatusRead",
     "answered_repository",
     "ask_github",
     "head_of",
     "keep_pull_status",
     "keep_status_failure",
+    "known_repository_id",
     "latest_of_each",
     "operational_status",
     "read_pull_status",

@@ -6,12 +6,16 @@ source-alias lock; no network operation runs while that lock is held. Beside the
 table of its own keeps each pull request's newest operational status
 (:func:`write_pull_status`), which moves no row, checkpoint, or generation.
 
-A catalog this release cannot use is replaced only once every version it declares has
-been read (:func:`_declarations`) and none is past this release's. One a newer
-Metabrowser wrote says so: a schema, checkpoint schema, or row projection past this
-release's (:class:`NewerCatalogError`). Several builds can share one cache, so a writer
-leaves it as it is and the refresh says to upgrade; replacing it would have the two
-builds rebuild each other's catalog page by page for as long as both run. One whose
+A catalog an earlier release wrote, at a version :data:`_UPGRADES` names and with exactly
+its schema, is brought to this one in place by the first writer, in its own transaction,
+or by the first ranked read (:func:`upgrade_catalog`), so its rows and checkpoint stay
+(:func:`_upgrade`). A catalog this release cannot use is
+replaced only once every version it declares has been read (:func:`_declarations`) and
+none is past this release's. One a newer Metabrowser wrote says so: a schema, checkpoint
+schema, or row projection past this release's (:class:`NewerCatalogError`). Several
+builds can share one cache, so a writer leaves it as it is and the refresh says to
+upgrade; replacing it would have the two builds rebuild each other's catalog page by page
+for as long as both run. One whose
 versions cannot all be read safely is left as it is too (:class:`UnknownCatalogError`):
 nothing says it may go. That is a write-ahead-log database; anything named checkpoint, in
 any letter case, but this release's exact table; a checkpoint that is not a JSON object
@@ -79,7 +83,8 @@ log = logging.getLogger(__name__)
 
 # The tables and indexes, as ``PRAGMA user_version``. 2 indexed the Pulls list by
 # activity for all three filters; 3 added ``pull_status``, each pull request's newest
-# operational status (:func:`write_pull_status`).
+# operational status (:func:`write_pull_status`). A catalog of 1, the released schema, is
+# brought to 3 in place (:data:`_UPGRADES`).
 CATALOG_SCHEMA = 3
 # Version 2 separates each tab's activity cursor from the creation-order backfill.
 CHECKPOINT_SCHEMA = 2
@@ -496,6 +501,45 @@ def _state(db: sqlite3.Connection, *, allow_previous: bool = False) -> CatalogSt
     return state
 
 
+# The schema each earlier version declares that is brought to this one in place, and the
+# statements that do: 1 ordered by creation and had no ``pull_status``, so its creation
+# index gives way to the activity indexes and the status table is added empty. A catalog
+# an earlier release wrote keeps its rows and checkpoint, and its list is not read again.
+_UPGRADES: Final[dict[int, tuple[frozenset[tuple[str, str, str, str]], tuple[str, ...]]]] = {
+    1: (
+        frozenset(_SCHEMA_V1),
+        (
+            "DROP INDEX pulls_state_number",
+            *(entry[3] for entry in _ACTIVITY_INDEXES + _STATUS_TABLE),
+        ),
+    ),
+}
+
+
+def _upgrade(db: sqlite3.Connection) -> None:
+    """Bring an earlier schema to this one, in the caller's open transaction.
+
+    Only a catalog whose ``user_version`` is one :data:`_UPGRADES` names, with exactly that
+    version's tables and index, is changed, and its new tables and version commit with the
+    write that follows, so another writer or reader sees the catalog before or after,
+    never between. Anything else, an older or unknown version, another schema, or a newer
+    release's, is left for :func:`_state` to judge as it always has.
+    """
+
+    version: object = db.execute("PRAGMA main.user_version").fetchone()[0]
+    if type(version) is not int or version not in _UPGRADES:
+        return
+    expected, statements = _UPGRADES[version]
+    schema = db.execute(
+        "SELECT type,name,tbl_name,sql FROM main.sqlite_schema LIMIT ?", (len(_SCHEMA) + 1,)
+    ).fetchall()
+    if frozenset(schema) != expected or len(schema) != len(expected):
+        return
+    for statement in statements:
+        db.execute(statement)
+    db.execute(f"PRAGMA main.user_version={CATALOG_SCHEMA}")
+
+
 def _refuse_newer_in_copy(home: Path, relative: str) -> None:
     """Raise :class:`NewerCatalogError` when a write-ahead-log catalog's file declares one.
 
@@ -699,10 +743,7 @@ def upgrade_catalog(repository: ListedRepository) -> bool:
                 state = _state(db, allow_previous=True)
                 if state is None or state.source != repository.source:
                     return False
-                db.execute("DROP INDEX pulls_state_number")
-                for entry in _ACTIVITY_INDEXES + _STATUS_TABLE:
-                    db.execute(entry[3])
-                db.execute(f"PRAGMA user_version={CATALOG_SCHEMA}")
+                _upgrade(db)
                 db.execute("UPDATE checkpoint SET value=? WHERE id=1", (state.model_dump_json(),))
             return True
         except (FileNotFoundError, CatalogUnusableError):
@@ -1131,9 +1172,10 @@ def publish_page(
 
     The caller uses run_lock_section, so a cancelled lock waiter cannot publish later.
     An account/repository change replaces the disposable catalog in one transaction.
-    A catalog this release cannot use, once its versions are read and none is newer, is
-    replaced with an empty one first, and logged; a publisher that expected a checkpoint
-    is then superseded, and rereads. A newer release's catalog raises
+    A catalog an earlier release wrote is upgraded in that transaction, keeping its rows
+    (:func:`_upgrade`). A catalog this release cannot use, once its versions are read and
+    none is newer, is replaced with an empty one first, and logged; a publisher that
+    expected a checkpoint is then superseded, and rereads. A newer release's catalog raises
     :class:`NewerCatalogError`, and one whose versions cannot be read
     :class:`UnknownCatalogError`; both are left as they are.
     """
@@ -1187,11 +1229,12 @@ def write_pull_statuses(repository: ListedRepository, statuses: Sequence[PullSta
     At most :data:`PAGE_SIZE` statuses, the most one page of GitHub's answers holds.
 
     The caller uses ``run_lock_section``: the rows commit in one short transaction under
-    the source-alias lock, with no network work under it. A catalog this release cannot
-    use is replaced with an empty one first, as :func:`publish_page` replaces it, and a
-    newer release's raises :class:`NewerCatalogError` and one whose versions cannot be read
-    :class:`UnknownCatalogError`, both left as they are. How many of *statuses* are now
-    the newest kept for their number.
+    the source-alias lock, with no network work under it. A catalog an earlier release
+    wrote is upgraded in that transaction, keeping its rows (:func:`_upgrade`). A catalog
+    this release cannot use is replaced with an empty one first, as :func:`publish_page`
+    replaces it, and a newer release's raises :class:`NewerCatalogError` and one whose
+    versions cannot be read :class:`UnknownCatalogError`, both left as they are. How many
+    of *statuses* are now the newest kept for their number.
     """
     if len(statuses) > PAGE_SIZE:
         raise ValueError("a status transaction holds at most one page")
@@ -1247,6 +1290,7 @@ def _put_statuses(repository: ListedRepository, statuses: Sequence[PullStatus]) 
     try:
         with _database(repository.home, repository.slug, write=True) as db, db:
             db.execute("BEGIN IMMEDIATE")
+            _upgrade(db)
             _state(db)
             classified = True
             newest = 0
@@ -1356,6 +1400,7 @@ def _commit(
     try:
         with _database(repository.home, repository.slug, write=True) as db, db:
             db.execute("BEGIN IMMEDIATE")
+            _upgrade(db)
             current = _state(db)
             classified = True
             current_key = (current.epoch, current.revision) if current else None

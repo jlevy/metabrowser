@@ -5,8 +5,8 @@ conversation) changes when a person changes it, and moves its ``updated_at``. It
 operational status changes without anyone touching it: a check finishes, the base branch
 moves, or GitHub finishes computing ``mergeable``. So the two are separate models.
 :class:`PullStatus` is one observation of one head, against its base, at one time; a
-status for another head describes nothing current
-(docs/project/specs/active/plan-2026-11-26-pull-request-merge-readiness.md).
+status for another head or another base describes nothing current (:func:`describes`,
+docs/project/specs/active/plan-2026-11-26-pull-request-merge-readiness.md).
 
 Whether a state counts as passing, failing, or pending is GitHub's call, never
 Metabrowser's (the owner's decision of 2026-11-26). Two GitHub sources are exact:
@@ -26,7 +26,7 @@ Metabrowser's (the owner's decision of 2026-11-26). Two GitHub sources are exact
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Annotated, Final, Literal
+from typing import Annotated, Final, Literal, TypeGuard
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -184,7 +184,12 @@ class ChecksSummary(_Model):
     are the list this summary counts. It is ``None`` when no read listed checks that sum to
     it, as for a status the scan read. ``required_failing`` and ``required_pending`` come
     from that list, so they are known only with it, and only when the list was whole and
-    every check said whether it is required; ``None`` otherwise.
+    every check said whether it is required; ``None`` otherwise. A cancelled required check
+    is among the failing, since a required check must pass, skip, or be neutral. They say
+    whether the checks can be why GitHub blocks a merge
+    (:func:`.pull_readiness.requirements`); no sentence prints them beside ``counts``, which
+    count every context where the list counts each check once
+    (:func:`.pull_readiness.checks_sentence`).
 
     ``moved_at`` is the newest moment an observation kept beside this one summarized the
     pull request's checks otherwise (:func:`same_checks`): another head or base, another
@@ -270,6 +275,28 @@ class PullStatus(_Model):
             if moment is not None and moment > self.observed_at:
                 raise ValueError("a status names nothing observed after it")
         return self
+
+
+def describes(
+    status: PullStatus | None, *, head: str | None, base_ref: str | None
+) -> TypeGuard[PullStatus]:
+    """Whether *status* describes a pull request whose head is *head* and base *base_ref*.
+
+    A status is one observation of one head against one base branch. Another head is a
+    push it did not see; another base is a retarget it did not see, as when GitHub
+    retargets the layer above a stacked pull request that merged, keeping its head:
+    conflicts, the merge verdict, and which checks are required are then the new base's.
+    Every surface that judges a status asks this, the verdict, the checks served beside
+    it, the freshness verdict, and the Pulls tab's rows, so none shows a status another
+    calls stale.
+    """
+
+    return (
+        status is not None
+        and head is not None
+        and base_ref is not None
+        and (status.head, status.base_ref) == (head, base_ref)
+    )
 
 
 def same_checks(one: PullStatus, other: PullStatus) -> bool:
@@ -413,7 +440,8 @@ MAX_CHECK_ITEMS: Final = 300 + 100
 
 
 class PullChecks(_Model):
-    """A head's checks, one item for the latest run of each, as the Checks tab lists them.
+    """A head's checks, one item for the latest run of each, as ``gh pr checks`` lists them
+    (:func:`.pull_status_read.latest_of_each`).
 
     ``truncated`` says GitHub listed more than :data:`MAX_CHECK_ITEMS`, or an item could
     not be read, so the list is short.
@@ -424,6 +452,21 @@ class PullChecks(_Model):
     observed_at: Timestamp
     items: tuple[CheckItem, ...] = Field(max_length=MAX_CHECK_ITEMS)
     truncated: bool = False
+
+
+def counted_list(status: PullStatus | None, checks: PullChecks | None) -> PullChecks | None:
+    """*checks* when they are the list *status*'s summary counts, else ``None``.
+
+    That is a list of the status's head kept by the read its summary names
+    (``listed_at``). A status the Pulls tab's scan read for a new head, or with checks that
+    moved since the page's read, names none (:func:`kept_observation`).
+    """
+
+    if status is None or checks is None or status.checks.listed_at is None:
+        return None
+    if (checks.head, checks.observed_at) != (status.head, status.checks.listed_at):
+        return None
+    return checks
 
 
 __all__ = [
@@ -446,6 +489,8 @@ __all__ = [
     "RollupState",
     "bucket_counts",
     "check_run_bucket",
+    "counted_list",
+    "describes",
     "kept_observation",
     "merge_method",
     "merge_state",

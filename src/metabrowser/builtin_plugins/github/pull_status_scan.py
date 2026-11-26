@@ -109,6 +109,7 @@ from metabrowser.builtin_plugins.github.pull_status_read import (
     answered_repository,
     ask_github,
     head_of,
+    known_repository_id,
     operational_status,
     rollup_summary,
     unreadable_status,
@@ -165,7 +166,7 @@ _QUERY: Final = f"""query PullStatuses($owner:String!,$name:String!,$cursor:Stri
   viewer {{ login }}
   rateLimit {{ cost }}
   repository(owner:$owner,name:$name) {{
-    nameWithOwner
+    id nameWithOwner
     pullRequests(first:{SCAN_ROWS},after:$cursor,states:OPEN,orderBy:{{field:CREATED_AT,direction:DESC}}) {{
       pageInfo {{ hasNextPage endCursor }}
       nodes {{
@@ -304,15 +305,21 @@ def _scanned(value: object, observed_at: str) -> PullStatus:
 
 
 def scan_page(
-    data: Mapping[str, Any], repository: ListedRepository, cursor: str | None, *, reader: str
+    data: Mapping[str, Any],
+    cursor: str | None,
+    *,
+    reader: str,
+    repository_id: str | None,
 ) -> ScanPage:
     """The statuses one answer of the scan holds, once its viewer and repository are checked.
 
+    The repository is the one asked for by GitHub's id, *repository_id*, the catalog's,
+    under whatever name GitHub has it now (:func:`~.pull_status_read.answered_repository`).
     A pull request GitHub sent in a shape it does not document is left out, and its kept
     status stays; a page that is not a page is unreadable.
     """
 
-    found = answered_repository(data, repository.owner, repository.repo, reader)
+    found = answered_repository(data, reader, repository_id=repository_id)
     connection = as_dict(found["pullRequests"])
     nodes = connection["nodes"]
     if not isinstance(nodes, list) or len(nodes) > SCAN_ROWS:  # pyright: ignore[reportUnknownArgumentType]
@@ -344,14 +351,14 @@ def scan_page(
 
 
 async def read_scan_page(
-    repository: ListedRepository, cursor: str | None, *, reader: str
+    repository: ListedRepository, cursor: str | None, *, reader: str, repository_id: str | None
 ) -> ScanPage:
     """One page of the scan, after *cursor*, read as *reader*. Raises only :class:`PullDataError`."""
 
     variables = {"owner": repository.owner, "name": repository.repo, "cursor": cursor}
     data = await ask_github(_QUERY, variables, now=pull_list.utc_now())
     try:
-        return scan_page(data, repository, cursor, reader=reader)
+        return scan_page(data, cursor, reader=reader, repository_id=repository_id)
     except (*READ_FAILURES, ValueError) as exc:
         raise unreadable_status() from exc
 
@@ -408,6 +415,7 @@ async def scan_statuses(
     cursors: Sequence[str | None] | None,
     slot: asyncio.Semaphore | None,
     progress: _Progress,
+    repository_id: str | None = None,
 ) -> None:
     """Read and keep the open pull requests' statuses as *reader*, a page at a time.
 
@@ -423,7 +431,9 @@ async def scan_statuses(
     while pending and progress.pages < MAX_SCAN_PAGES:
         cursor = pending.pop(0)
         async with slot if slot is not None else contextlib.nullcontext():
-            page = await read_scan_page(repository, cursor, reader=reader)
+            page = await read_scan_page(
+                repository, cursor, reader=reader, repository_id=repository_id
+            )
         progress.pages += 1
         progress.cost += page.cost
         progress.rows += len(page.statuses)
@@ -518,10 +528,11 @@ async def run_scan(
 ) -> ScanStamp:
     """Scan as *trigger* asks, after *previous*, and keep how it ended; the stamp it kept.
 
-    Every page's ``viewer`` must be *reader*, the catalog's. A walk asks *tips* for the
-    mirror's tip of each base the last walk's pull requests target before its first page,
-    and of any base first seen in it after its last; with no *tips* it keeps none. A
-    failure keeps every status kept before it, and is the stamp's outcome; an unexpected
+    Every page's ``viewer`` must be *reader*, the catalog's, and its repository the
+    catalog's by GitHub's id, whatever its name now. A walk asks *tips* for the mirror's
+    tip of each base the last walk's pull requests target before its first page, and of
+    any base first seen in it after its last; with no *tips* it keeps none. A failure
+    keeps every status kept before it, and is the stamp's outcome; an unexpected
     error is kept as ``gh_failed`` and raised, for the coordinator to log. Every stamp it
     leaves is handed to *remember* before it is written, so a stamp the cache cannot keep
     still spaces the next scan in this process.
@@ -535,8 +546,14 @@ async def run_scan(
     known = sorted(previous.bases) if walk and previous is not None else []
     at_start = (await tips(known) or {}) if tips is not None and known else {}
     try:
+        identity = await asyncio.to_thread(known_repository_id, repository)
         await scan_statuses(
-            repository, reader=reader, cursors=cursors, slot=slot, progress=progress
+            repository,
+            reader=reader,
+            cursors=cursors,
+            slot=slot,
+            progress=progress,
+            repository_id=identity,
         )
     except PullDataError as exc:
         log.debug("scanning the statuses of %s failed: %s", repository.source, exc)

@@ -9,10 +9,20 @@
   of GitHub’s merge box; a closed or merged pull request has no verdict.
   `metab <pull request> --show /pull/<n>/checks` prints the verdict and each
   requirement’s status.
+  The checks are listed and counted as `gh pr checks` lists them, the latest run of each
+  check by its name, workflow, and event, and the verdict’s checks sentence counts that
+  list, naming the required ones beside the failing and the cancelled.
+  A block GitHub reports while every required check passes is shown as Blocked, never as
+  checks pending or failing.
+  A status observed before GitHub retargeted the pull request, as it does when the layer
+  below in a stack merges, is not shown as current: the verdict is Checking until the
+  status is read again.
+  A renamed repository’s status is read under its new name.
   A status read that fails leaves the record and the status read before it, and the
-  envelope names why as `status_unavailable`
+  envelope names why as `status_unavailable`, unless a read that began later succeeded
   ([Operational Status](docs/project/architecture/arch-github-pull-requests.md#operational-status)).
 
-- The repository’s pull-request catalog gains a table for those statuses, so a catalog
-  an older Metabrowser wrote is replaced and its list read again once, and an older
-  Metabrowser sharing the cache leaves a newer catalog as it is and says to upgrade.
+- The repository’s pull-request catalog gains a table for those statuses, which the
+  first write after an upgrade adds to a catalog an older Metabrowser wrote, keeping its
+  list, and an older Metabrowser sharing the cache leaves a newer catalog as it is and
+  says to upgrade.

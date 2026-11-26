@@ -390,6 +390,7 @@ def _page(
         "viewer": {"login": viewer},
         "rateLimit": {"cost": 1},
         "repository": {
+            "id": "R_demo",
             "nameWithOwner": "octo/demo",
             "pullRequests": {
                 "pageInfo": {"hasNextPage": cursor is not None, "endCursor": cursor or "end"},
@@ -564,6 +565,26 @@ def test_a_page_github_did_not_send_as_documented_is_refused_and_a_row_left_out(
         assert _scan(repository).outcome == state
 
 
+def test_a_renamed_repository_is_scanned_as_the_catalogs_by_its_id(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, clock: list[datetime]
+) -> None:
+    """GitHub answers a renamed repository's old name under its new one: the catalog's, by
+    its id, so its statuses are kept. One that took the old name since is another."""
+
+    _seeded(repository, {10: HEAD})
+    renamed = _page([_node(10)])
+    renamed["repository"]["nameWithOwner"] = "octo-org/demo-renamed"
+    _GitHub(monkeypatch, renamed)
+    assert _scan(repository).outcome == "succeeded"
+    assert read_pull_status(repository.home, repository.slug, 10) is not None
+    another = _page([_node(9)])
+    another["repository"]["id"] = "R_another"
+    clock[0] += timedelta(hours=1)
+    _GitHub(monkeypatch, another)
+    assert _scan(repository).outcome == "gh_failed"
+    assert read_pull_status(repository.home, repository.slug, 9) is None
+
+
 def test_a_failed_scan_keeps_every_status_and_waits_a_window(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, clock: list[datetime]
 ) -> None:
@@ -717,10 +738,13 @@ def test_an_hour_of_asks_spends_what_the_spacing_allows(
 
 
 def _seeded(repository: ListedRepository, heads: Mapping[int, str]) -> None:
+    """Open pull requests of these heads, each into ``main``, as :func:`_status` observes them."""
+
     items = []
     for number, head in heads.items():
         item = generated_item(number)
         item["head"] = {**item["head"], "sha": head}
+        item["base"] = {**item["base"], "ref": "main"}
         items.append(item)
     seed_catalog(repository, items)
 
@@ -954,15 +978,18 @@ def test_the_ask_never_waits_on_git(
 def test_each_named_pull_request_has_its_status_and_verdict_or_says_why_not(
     repository: ListedRepository,
 ) -> None:
-    _seeded(repository, {5: HEAD, 6: HEAD, 7: HEAD})
+    _seeded(repository, {5: HEAD, 6: HEAD, 7: HEAD, 8: HEAD})
     for number, head in ((5, HEAD), (7, OTHER_HEAD), (11, HEAD)):
         write_pull_status(repository, _status("2026-11-26T12:00:01Z", number=number, head=head))
-    envelope = pull_statuses(repository, (11, 5, 6, 7), scanning=False)
+    # Observed into another base: GitHub retargeted 8 since, keeping its head.
+    write_pull_status(repository, _status("2026-11-26T12:00:01Z", number=8, base_ref="layer-1"))
+    envelope = pull_statuses(repository, (11, 5, 6, 7, 8), scanning=False)
     assert [(row["number"], row["state"], row["reason"]) for row in envelope["rows"]] == [
         (11, "absent", "not_cached"),
         (5, "status", None),
         (6, "absent", "no_status"),
         (7, "absent", "other_head"),
+        (8, "absent", "other_base"),
     ]
     absent = [row for row in envelope["rows"] if row["state"] == "absent"]
     assert all(row["status"] is None and row["readiness"] is None for row in absent)
@@ -974,7 +1001,7 @@ def test_each_named_pull_request_has_its_status_and_verdict_or_says_why_not(
         repository,
         _status("2026-11-26T12:00:09Z", number=5, by="scan", summary="one pending"),
     )
-    after = pull_statuses(repository, (11, 5, 6, 7), scanning=False)
+    after = pull_statuses(repository, (11, 5, 6, 7, 8), scanning=False)
     assert after["rows"][1]["readiness"]["verdict"] == "checks_pending"  # pyright: ignore[reportOptionalSubscript]
     assert envelope_etag(after) != before
 
@@ -1052,6 +1079,7 @@ def test_a_closed_or_merged_pull_requests_status_has_no_verdict(
     }
     for item in (closed, merged):
         item["head"] = {**item["head"], "sha": HEAD}
+        item["base"] = {**item["base"], "ref": "main"}
     seed_catalog(repository, [closed, merged])
     for number in (8, 9):
         write_pull_status(repository, _status("2026-11-26T12:00:01Z", number=number))

@@ -16,21 +16,23 @@ in one transaction, and only when the catalog's ``source`` and ``reader`` are th
   unchanged (:mod:`.pull_list_probe`) counts as a scan run when it asked: GitHub had no
   pull request newer than the catalog's newest, so every row was as the scan left it.
 - **checks**: the same, for an open pull request whose operational status
-  (:class:`~.pull_status.PullStatus`) is missing, describes another head, or was observed
-  longer ago than the window. The record is current: the catalog vouches for its
-  conversation and head, and it holds nothing ``updated_at`` does not track. Its status
-  does, conflicts and checks, which a status read then reads on its own
-  (:func:`.pulls.refresh_pull_status`).
+  (:class:`~.pull_status.PullStatus`) is missing, describes another head or base
+  (:func:`described`), or was observed longer ago than the window. The record is current:
+  the catalog vouches for its conversation and head, and it holds nothing ``updated_at``
+  does not track. Its status does, conflicts and checks, which a status read then reads
+  on its own (:func:`.pulls.refresh_pull_status`).
 - **unverified**: anything else, which the refresh coordinator's clock decides as before.
 
 GraphQL's ``updatedAt`` and ``headRefOid`` equalled REST's ``updated_at`` and ``head.sha``
 character for character on five open cli/cli pull requests (2026-11-11), which is what the
 comparison relies on.
 
-Whatever the verdict, ``status_missing`` says no kept status of the record's head counts a
-list of its checks (:func:`listing_missing`), so a visible page reads its own
-(:meth:`.served_pull.ServedPull.is_stale`): none is kept, or the one kept is the Pulls tab's
-scan's, of a new head or base or of checks that moved since the page last listed them.
+Whatever the verdict, ``status_missing`` says no kept status of the record's head and base
+counts a list of its checks (:func:`listing_missing`), so a visible page reads its own
+(:meth:`.served_pull.ServedPull.is_stale`): none is kept, the one kept was observed against
+another base, as after GitHub retargets the layer above a stacked pull request that merged,
+or it is the Pulls tab's scan's, of a new head or base or of checks that moved since the
+page last listed them.
 ``unlisted_at`` is then that status's ``observed_at``, when it has one, and a status newer
 than the page's last read is a change the page reads at once. ``checks_pending`` says the
 status's checks or mergeability are still settling, which the probes watch
@@ -45,6 +47,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser.builtin_plugins.github.pull_record import PULL_RECORD_PROJECTION
+from metabrowser.builtin_plugins.github.pull_status import describes
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 if TYPE_CHECKING:
@@ -101,9 +104,12 @@ class RecordFreshness:
 
 
 def described(record: PullRecord, status: PullStatus | None) -> PullStatus | None:
-    """*status* when it describes *record*'s head, and ``None`` when it describes another."""
+    """*status* when it describes *record*'s head and base, and ``None`` when it describes
+    another (:func:`~.pull_status.describes`): after a push, or a retarget that kept the
+    head, a status is read again before anything judges it."""
 
-    return status if status is not None and status.head == record.pull.head.sha else None
+    pull = record.pull
+    return status if describes(status, head=pull.head.sha, base_ref=pull.base.ref) else None
 
 
 def listing_missing(record: PullRecord, status: PullStatus | None) -> tuple[bool, str | None]:
@@ -113,8 +119,8 @@ def listing_missing(record: PullRecord, status: PullStatus | None) -> tuple[bool
     status alone. A scan's status of the record's head that finds the checks as the page's
     read left them keeps that read's list (:func:`~.pull_status.kept_observation`); one of a
     new head or base, or of checks that moved, counts none, and the page then reads its own
-    while the readiness is the scan's. ``(True, None)`` with no status of the record's head;
-    ``(True, observed_at)`` with one that counts no list.
+    while the readiness is the scan's. ``(True, None)`` with no status of the record's head
+    and base; ``(True, observed_at)`` with one that counts no list.
     """
 
     kept = described(record, status)

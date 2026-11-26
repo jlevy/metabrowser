@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser.builtin_plugins.github import gh_budget, pull_prefetch, pulls
 from metabrowser.builtin_plugins.github.gh import GhError, gh_graphql
-from metabrowser.builtin_plugins.github.gh_lists import READ_FAILURES, as_dict
+from metabrowser.builtin_plugins.github.gh_lists import READ_FAILURES, as_dict, asked_repository
 from metabrowser.builtin_plugins.github.pull_catalog import (
     MAX_CATALOG_MEMBERS,
     CatalogMember,
@@ -436,15 +436,13 @@ async def _prepare(
         observed_at = pulls.utc_now()
         repository = as_dict(data["repository"])
         login = as_dict(data["viewer"])["login"]
-        name = repository["nameWithOwner"]
         if isinstance(login, str):
             pulls_set.observe_reader(publication, f"gh:{login}")
+        # The catalog's repository, by GitHub's id, under whatever name GitHub has it now.
         if (
             not isinstance(login, str)
             or catalog.reader != f"gh:{login}"
-            or repository["id"] != catalog.repository_id
-            or not isinstance(name, str)
-            or name.casefold() != f"{owner}/{repo}".casefold()
+            or not asked_repository(repository, catalog.repository_id)
         ):
             return
         models = {

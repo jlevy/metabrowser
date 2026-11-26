@@ -86,7 +86,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     RecordAbsence,
     read_pull_record,
 )
-from metabrowser.builtin_plugins.github.pull_status import PullStatus
+from metabrowser.builtin_plugins.github.pull_status import PullStatus, describes
 from metabrowser.builtin_plugins.github.pull_status_store import (
     CheckProbes,
     KeptStatus,
@@ -175,11 +175,12 @@ class PullEnvelope(TypedDict):
     # by the page or by the Pulls tab's scan, its head's checks (:class:`~.pull_status.PullChecks`),
     # and the verdict on it (:func:`~.pull_readiness.readiness`), beside the record and never
     # in it: they change with a check, and the record does not. Each names the head it
-    # describes, and ``readiness`` judges ``status`` only when that is the head of the record
-    # or core shown; it is ``None`` for a closed or merged pull request, and with nothing
-    # shown. ``checks`` is the list ``status`` counts, of the head shown, and ``None`` until
-    # the page has read one (:func:`shown_checks`): a scan's status of a new head, or of
-    # checks that moved, counts no list.
+    # describes, and ``readiness`` judges ``status`` only when it describes the head and the
+    # base of the record or core shown, so a status of the base before a retarget is
+    # ``checking`` until a read of the new one; it is ``None`` for a closed or merged pull
+    # request, and with nothing shown. ``checks`` is the list ``status`` counts, of the pull
+    # request shown, and ``None`` until the page has read one (:func:`shown_checks`): a scan's
+    # status of a new head, or of checks that moved, counts no list.
     # ``status_unavailable`` is why the last read of the status failed, when it did; what
     # an earlier read kept is still answered.
     status: dict[str, Any] | None
@@ -201,37 +202,45 @@ def display_state(pull: Mapping[str, object]) -> DisplayState:
     )
 
 
-def _shown_head(shown: object) -> str | None:
-    """The head commit of *shown*, the ``pull`` the envelope shows, or ``None``."""
+def _side(shown: object, side: str, key: str) -> str | None:
+    """*shown*'s ``<side>.<key>``, of the ``pull`` the envelope shows, or ``None``."""
 
-    if not isinstance(shown, dict):
-        return None
-    head = shown.get("head")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-    sha = head.get("sha") if isinstance(head, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-    return sha if isinstance(sha, str) else None
+    found = shown.get(side) if isinstance(shown, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    value = found.get(key) if isinstance(found, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    return value if isinstance(value, str) else None
+
+
+def _describes_shown(shown: object, status: PullStatus | None) -> bool:
+    """Whether *status* describes *shown*'s head and base (:func:`.pull_status.describes`)."""
+
+    return describes(status, head=_side(shown, "head", "sha"), base_ref=_side(shown, "base", "ref"))
 
 
 def shown_checks(shown: object, kept: KeptStatus) -> dict[str, Any] | None:
     """The checks the envelope carries beside *shown*, as the wire has them, or ``None``.
 
     Only the list the kept status counts (:attr:`~.pull_status_store.KeptStatus.listed_checks`),
-    and only of the head shown: checks of another head, or ones a newer status no longer
-    sums to, are never served, and ``None`` says the head shown has no list yet.
+    and only while that status describes the pull request shown, its head and base: checks
+    of another head, ones a newer status no longer sums to, and ones whose ``required`` was
+    another base's are never served, and ``None`` says the pull request shown has no list
+    yet.
     """
 
     checks = kept.listed_checks
-    if checks is None or checks.head != _shown_head(shown):
+    if checks is None or not _describes_shown(shown, kept.status):
         return None
     return checks.model_dump(mode="json")
 
 
-def judged_readiness(shown: object, status: PullStatus | None) -> dict[str, Any] | None:
-    """The verdict on *shown*, the ``pull`` the envelope shows, with *status*, as the wire has it.
+def judged_readiness(shown: object, kept: KeptStatus) -> dict[str, Any] | None:
+    """The verdict on *shown*, the ``pull`` the envelope shows, with what *kept* holds, as the
+    wire has it: its status, judged only for the head and base shown, and the list of
+    checks that status counts, which the checks row's sentence counts as the page lists it.
 
     ``None`` with no pull request shown, or a closed or merged one.
     """
 
-    sha = _shown_head(shown)
+    sha = _side(shown, "head", "sha")
     if not isinstance(shown, dict) or sha is None:
         return None
     pull: dict[str, object] = shown  # pyright: ignore[reportUnknownVariableType]
@@ -239,7 +248,9 @@ def judged_readiness(shown: object, status: PullStatus | None) -> dict[str, Any]
     verdict = readiness(
         state=display_state(pull),
         head=sha,
-        status=status,
+        base_ref=_side(shown, "base", "ref"),
+        status=kept.status,
+        listed=kept.listed_checks,
         html_url=url if isinstance(url, str) else None,
     )
     return None if verdict is None else verdict.model_dump(mode="json")
@@ -673,7 +684,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         repository_labels=lookup.entries,
         labels_pending=view.labels_running and bool(lookup.missing),
         status=(None if operational.status is None else operational.status.model_dump(mode="json")),
-        readiness=judged_readiness(shown, operational.status),
+        readiness=judged_readiness(shown, operational),
         checks=shown_checks(shown, operational),
         status_unavailable=operational.unavailable,
     )

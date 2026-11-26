@@ -4151,13 +4151,31 @@ def test_h80_graph_core_keeps_the_complete_validated_rest_model(stand: _Stand, n
     assert pulls._graph_pull(answer["repository"]["pull"], number) == pulls._pull(rest, number)
 
 
+def test_h80_graph_core_of_a_renamed_repository_is_read_under_its_new_name(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub answers a renamed repository's old name with its new one, as ``tiangolo/fastapi``
+    answers ``fastapi/fastapi``, and as the REST reads after the core follow its redirect."""
+
+    rest = scenario(stand.origin)["api"]["repos/octo/demo/pulls/7"]["body"]
+    answer = _h80_graph_answer(rest)
+    answer["repository"]["nameWithOwner"] = "octo-org/demo-renamed"
+
+    async def graph(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
+        return answer
+
+    monkeypatch.setattr(pulls, "gh_graphql", graph)
+    core = asyncio.run(pulls._read_graph_core("octo", "demo", 7, f"gh:{READER}"))
+    assert core == pulls._pull(rest, 7)
+
+
 @pytest.mark.parametrize(
     "damage,expected",
     [
         ("viewer_changed", "account_changed"),
         ("viewer_malformed", "gh_failed"),
         ("repository_missing", "not_found_or_private"),
-        ("repository_wrong", "gh_failed"),
+        ("repository_unnamed", "gh_failed"),
         ("pull_missing", "not_found_or_private"),
         ("number_wrong", "gh_failed"),
         ("head_invalid", "gh_failed"),
@@ -4177,8 +4195,8 @@ def test_h80_graph_core_refuses_before_any_preview_or_part_can_start(
         answer["viewer"]["login"] = 12
     elif damage == "repository_missing":
         answer["repository"] = None
-    elif damage == "repository_wrong":
-        answer["repository"]["nameWithOwner"] = "octo/elsewhere"
+    elif damage == "repository_unnamed":
+        answer["repository"]["nameWithOwner"] = None
     elif damage == "pull_missing":
         answer["repository"]["pull"] = None
     elif damage == "number_wrong":

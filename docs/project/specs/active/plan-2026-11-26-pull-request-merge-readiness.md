@@ -52,8 +52,9 @@ github.com shows it, and how Metabrowser models and shows it today.
   The inputs say why.
 - Each requirement links to where the reader can act: the failing check’s details, the
   conflicts, the reviews, the merge queue, or the pull request on GitHub.
-- Operational status is a model of its own, stamped with the head commit it describes.
-  A status for another head is never shown as current.
+- Operational status is a model of its own, stamped with the head commit and the base
+  branch it describes.
+  A status for another head or base is never shown as current.
 - A check finishing does not change the pull request’s core record, its revision, or the
   Conversation tab’s rendering.
 - The colors are GitHub’s roles (success, danger, attention, neutral) expressed in
@@ -357,9 +358,14 @@ its module source:
 | cancel | `CANCELLED` | muted `-`, with the status “fail” |
 
 It lists checks failing first, then pending, then the rest.
-It keeps only the latest run of each check, and summarizes in this order of precedence:
-“Some checks were not successful”, “Some checks are still pending”, “Some checks were
-cancelled”, “All checks were successful”.
+It keeps only the latest run of each check (`eliminateDuplicates`): a check run is one
+check by its name, its workflow, and the event that ran it, and a commit status one by
+its context, apart from the runs.
+So a job that a push and a pull request both ran is two checks: psf/requests#7619 had
+two failing `lint` runs of one workflow, and `gh pr checks` listed all 61 of its
+contexts on 2026-11-26. It counts the checks it lists, not the rollup’s contexts, and
+summarizes in this order of precedence: “Some checks were not successful”, “Some checks
+are still pending”, “Some checks were cancelled”, “All checks were successful”.
 
 - **A pull request’s summary.** `gh pr status` counts a cancelled run as failing, as the
   rollup does (`parseCheckStatusFromCheckRunState` in `api/queries_pr.go`), and prints
@@ -572,7 +578,10 @@ at one time. It is small enough for every open row:
   skipping, and cancel, folded from `checkRunCountsByState` and
   `statusContextCountsByState` by the mapping `gh pr checks` uses;
 - `required_failing` and `required_pending`, when the read had the contexts’ nodes, and
-  otherwise null.
+  otherwise null. A cancelled required check is among the failing.
+  They say whether the checks can be why GitHub blocks a merge (see
+  [Readiness](#readiness)); no sentence prints them beside `counts`, which count every
+  context where a list counts each check once.
 
 The buckets replace `CONCLUSION_TONES` and `STATUS_TONES` in `pull-page.js` and move to
 the server, so the counts a row shows and the counts the Checks tab shows have one
@@ -584,7 +593,7 @@ and failing today.
 `PullChecks` is the list of checks for one head, which only the Checks tab needs.
 Each item has its name, its kind (run or status), its bucket, its raw status and
 conclusion, `required`, its details address, its app, and its description.
-Like `gh`, it keeps only the latest run of each check.
+Like `gh`, it keeps only the latest run of each check, by the same keys.
 It carries the truncation and unavailability that `PullRecord` carries for checks today.
 
 ### Readiness
@@ -613,14 +622,26 @@ set, Up to date only when GitHub reports `behind`, and Queue only while queued.
 | Rules | Not `blocked`, or `blocked` explained by a row above |  | `blocked` that no row above explains | `merge_state` `unknown` |
 | Queue |  | `QUEUED`, `AWAITING_CHECKS`, `MERGEABLE`, `LOCKED` | `UNMERGEABLE` |  |
 
-“Explained” means another requirement is `waiting` or `unmet`. GitHub does not say which
-rule blocks a pull request, so the Rules row says that a rule blocks it and links to the
-pull request on GitHub.
+“Explained” means another requirement is `waiting` or `unmet` and could be why GitHub
+blocks the merge. Checks no rule requires never block one (`unstable`), so once the
+page’s read knows the required checks’ counts and they are zero, pending or failing
+checks explain nothing: kubernetes/enhancements#6506 read `BLOCKED` and `APPROVED` on
+2026-11-26 with every required check passing and only the unrequired `tide` pending, and
+its verdict is `blocked`, not `checks_pending`. Without those counts, as for a status
+the Pulls tab’s scan read, a check that waits or fails still explains a block.
+GitHub does not say which rule blocks a pull request, so the Rules row says that a rule
+blocks it and links to the pull request on GitHub.
 
 Checks follow the rollup, so failing checks that no rule requires (`unstable`) are
 `unmet` and red, as `gh pr status` and the merge box show them.
 The row adds what `unstable` says: GitHub allows the merge, since none of the failing
-checks is required.
+checks is required. Its sentence counts the page’s whole list of the head’s checks where
+there is one, as `gh pr checks` counts what it lists, so it says what the list under it
+says, with the required ones named beside the failing and the cancelled tallies; with no
+list, as on the Pulls tab, it counts the rollup’s contexts, as `gh pr status` does, and
+names no required count.
+python/cpython#162697 shows why the two never mix: its rollup counted 5 failing contexts
+where both lists showed 2 failing checks.
 
 **Verdict.** Each status has a tone: `unmet` danger, `waiting` and `unknown` attention
 (GitHub’s CLI shows an unknown mergeability in yellow), and `met` success.
@@ -648,8 +669,10 @@ Three rules sit outside the requirements:
 
 - **Closed and merged** pull requests have no readiness.
   Their lifecycle is the answer.
-- **A status for another head** gives `checking`. A status is never shown for a head it
-  does not describe.
+- **A status for another head or base** gives `checking`. A status is never shown for a
+  pull request it does not describe.
+  A base changes under a status when GitHub retargets the layer above a stacked pull
+  request that merged, which keeps its head.
 - **A draft** is judged as an open pull request is, as GitHub’s `mergeStateStatus` and
   `gh pr status` judge it, since a draft reports the state it would have if it were
   ready. GitHub never merges a draft, so a draft with every requirement met is
@@ -692,6 +715,8 @@ is.
 **What makes a status stale:**
 
 - the head moves (a catalog row’s `headRefOid` or the record’s head);
+- the pull request is retargeted (the record’s or the row’s base branch is not the
+  status’s `base_ref`), so a status read is due at once;
 - the base moves (the mirror’s base branch differs from the status’s `base`), which can
   change conflicts and up-to-date;
 - a check probe finds a change;
@@ -972,16 +997,23 @@ It absorbs `mb-mg37`, the hour of real browsing that `AUTOMATIC_CORE_PER_HOUR` a
 
 ## Testing Strategy
 
-**Invariants of the derivation** (`pull_readiness.py`), over every combination of the
-enums, generated rather than listed:
+**Invariants of the derivation** (`pull_readiness.py`), over every status GitHub can
+report, generated from what each `mergeStateStatus` means rather than listed, and over
+answers GitHub gave for real pull requests:
 
 - a closed or merged pull request has no readiness;
-- a status for another head gives `checking`;
+- a status for another head or base gives `checking`;
 - the tone is the worst requirement status, and the headline names a requirement at that
   status, so a danger verdict always names an unmet requirement;
 - `ready` and `ready_for_review` hold only when every requirement is met, and
   `ready_for_review` exactly when the pull request is a draft;
-- the Checks requirement’s status is a function of the rollup’s state alone;
+- the Checks requirement’s status is the meaning of the bucket `gh` sorts the rollup’s
+  state into;
+- the verdict agrees with `mergeStateStatus` and the required counts: a state GitHub
+  lets merge is never blocked, `DIRTY` always shows its conflicts, and `BLOCKED` with no
+  required check failing or pending always shows a Rules or Reviews block;
+- the page’s sentence tallies exactly the checks it lists, and the list is the one
+  `gh pr checks` lists of the same answer;
 - `conflicting` or `dirty` always yields an unmet Conflicts requirement;
 - `blocked` with every other requirement met yields `blocked`, never `ready`;
 - a draft and an open pull request with the same status have the same verdict, but for

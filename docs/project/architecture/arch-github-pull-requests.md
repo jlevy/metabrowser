@@ -279,9 +279,13 @@ has the rules.
   read does, so its `rateLimit { cost }` counts toward the process’s ceiling and its
   `viewer` must be the job’s reader.
   It pages the rollup’s checks up to `MAX_CHECK_ITEMS` and keeps the latest run of each,
-  as `gh pr checks` does; its module docstring has the rest, and its cost, latency, and
-  size are beside `_STATUS_QUERY`. Whether `mergeStateStatus` depends on who asks is
-  unsettled, and the note there says why.
+  as `gh pr checks` does: a run by its name, workflow, and event, and a commit status by
+  its context (`latest_of_each`). Its module docstring has the rest, and its cost,
+  latency, and size are beside `_STATUS_QUERY`. Whether `mergeStateStatus` depends on
+  who asks is unsettled, and the note there says why.
+  GitHub answers a renamed repository’s old name under its new one, so the answer is the
+  repository asked for when its `id` is the catalog’s, or, with no catalog, as GitHub
+  names it (`asked_repository` in `gh_lists.py`, which the scan and the cores share).
 - **Scanning every open pull request.** The Pulls tab needs a verdict for every row, so
   `pull_status_scan.py` reads the repository’s open pull requests, newest first, with
   one GraphQL query a page, `PullStatuses`: the same fields as the page’s read and the
@@ -311,6 +315,9 @@ has the rules.
 - **Failing alone.** A read that fails fails the status alone, as a refused part fails
   only that part of a record: the record is published and its refresh succeeds, how the
   read ended is kept in `<n>.status.refresh.json`, and what an earlier read kept stays.
+  That file keeps the outcome of the attempt that began last (`StatusOutcome`), so an
+  older read that fails after a newer one succeeded, as another process’s can, never
+  reports a failure beside the newer status.
   A scan that fails keeps every status kept before it, and its stamp says why.
 - **Budget.** The prefetch’s records, which nobody is looking at, read no status
   (`gh_budget.speculating`): its caps are priced without it (`POINTS_PER_RECORD` in
@@ -343,9 +350,12 @@ has the rules.
   removes them, and a checkout without a store keeps them as it keeps its catalog.
 - **Serving.** The pull envelope carries `status`, `checks`, and `readiness` beside
   `record`, and `status_unavailable` while the last read had failed.
-  Each names its head, and the verdict judges a status only for the head of the record
-  or core shown: another head’s is `checking`, and a closed or merged pull request has
-  none. `checks` is only the list the status counts, of the head shown
+  Each names its head, and the verdict judges a status only for the head and base of the
+  record or core shown (`describes` in `pull_status.py`, which the freshness verdict,
+  the served checks, and the Pulls tab’s rows ask too): another head’s, or one observed
+  into the base before GitHub retargeted the pull request, is `checking`, and a closed
+  or merged pull request has none.
+  `checks` is only the list the status counts, of the pull request shown
   (`KeptStatus.listed_checks`): beside a scan’s status of a new head, or of checks that
   moved, it is `null`, and the page reads its own at once, once (`listing_missing` in
   `pull_freshness.py`), while its verdict is the scan’s. The entity tag covers all
@@ -354,14 +364,18 @@ has the rules.
   conflicts requirement, each check in the ink of its server-side bucket, failing first,
   then pending, then the rest, as `gh pr checks` lists them, under `gh`’s headline for
   them (`checksSummary` in `pull-page.js`, held to `checks_sentence` by
-  `tests/test_github_check_summary.py`). `metab --show /pull/<n>/checks` prints the
-  verdict and each requirement’s status on its model line.
+  `tests/test_github_check_summary.py`). The verdict’s checks row counts the same list,
+  so the two agree; without a whole list, as on the Pulls tab, it counts GitHub’s
+  rollup, as `gh pr status` does.
+  A block that no required check explains, once the read knows every required one
+  passes, is a Rules row (`pull_readiness.py`). `metab --show /pull/<n>/checks` prints
+  the verdict and each requirement’s status on its model line.
   `GET pull-statuses` answers the kept status and verdict of up to `MAX_STATUS_NUMBERS`
-  named pull requests from the cache alone, judged on the lifecycle and head of each
-  one’s catalog row, or `absent` with why, and how the last scan ended
-  (`pull_statuses_route.py`). A scan’s status from before the last whole walk, of a pull
-  request that walk did not read, is `not_scanned`: one past the newest the scan reads,
-  or no longer open, whose verdict nothing keeps current.
+  named pull requests from the cache alone, judged on the lifecycle, head, and base of
+  each one’s catalog row, or `absent` with why, `other_base` among the reasons, and how
+  the last scan ended (`pull_statuses_route.py`). A scan’s status from before the last
+  whole walk, of a pull request that walk did not read, is `not_scanned`: one past the
+  newest the scan reads, or no longer open, whose verdict nothing keeps current.
 
 ## Serving Pull Requests
 
@@ -567,15 +581,16 @@ database before SQLite opens it.
 A catalog a newer release wrote declares it, in `user_version`, the checkpoint’s schema,
 or a row’s projection, and is left as it is with the refresh ending `newer_cache`,
 because several builds can share one cache.
-One whose versions cannot all be read safely ends `unknown_cache`; anything else a
-writer cannot use is replaced with an empty catalog under the lock.
-The module docstring gives each case, and `tests/test_github_pull_list.py` pins the
-shape each version names.
-The first ranked list read or refresh can add activity indexes to a version 1 catalog
-under the source lock.
-The local upgrade preserves cached rows and needs no GitHub access.
+One whose versions cannot all be read safely ends `unknown_cache`. One an earlier
+release wrote, of a version `_UPGRADES` names and with exactly its schema, is brought to
+this schema in place, its activity indexes and status table added, by the first ranked
+list read or refresh or by the first writer, in that write’s transaction under the
+source lock. The local upgrade preserves cached rows and needs no GitHub access.
 The checkpoint retains the creation-order backfill cursor and clears incomplete prefix
 coverage so each filter can resume in update order.
+Anything else a writer cannot use is replaced with an empty catalog under the lock.
+The module docstring gives each case, and `tests/test_github_pull_list.py` pins the
+shape each version names.
 
 **Reading.** `GET pulls` answers an indexed window of up to `MAX_WINDOW` rows below the
 `after` row. Each filter orders by descending update time and then descending PR number.

@@ -128,6 +128,9 @@ VERDICTS: dict[int, tuple[str, dict[str, Any], dict[str, Any] | None]] = {
 DRAFT = 102
 # A push the catalog has not read: the scan reports a head its row does not name.
 PUSHED = 113
+# A retarget the catalog has not read, as GitHub makes when the layer below in a stack
+# merges: the scan reports the same head into a base its row does not name.
+RETARGETED = 115
 # Closed on GitHub after the scans read it, before the catalog's next scan.
 GONE = 111
 CLOSED = 114
@@ -137,7 +140,7 @@ PUSHED_HEAD = "f" * 40
 
 def _items() -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
-    for number in (*VERDICTS, PUSHED, CLOSED):
+    for number in (*VERDICTS, PUSHED, RETARGETED, CLOSED):
         item = {**generated_item(number), "draft": number == DRAFT}
         if number == CLOSED:
             item.update(state="closed", closed_at="2026-09-17T11:00:00Z")
@@ -154,6 +157,10 @@ def _nodes(items: list[dict[str, Any]], *, settled: bool) -> list[dict[str, Any]
         if number == PUSHED:
             pushed = {**item, "head": {**item["head"], "sha": PUSHED_HEAD}}
             nodes.append(scan_node(pushed, shape={}))
+            continue
+        if number == RETARGETED:
+            retargeted = {**item, "base": {**item["base"], "ref": "layer-1"}}
+            nodes.append(scan_node(retargeted, shape={}))
             continue
         _verdict, shape, rollup = VERDICTS[number]
         if settled and number == 112:
@@ -261,7 +268,7 @@ def test_golden_pull_statuses_scan_settle_and_refuse(
         request.write_text(json.dumps(body) + "\n", encoding="utf-8")
         return run(CANONICAL, "--api", REFRESH, "--data", str(request), project=_asked)
 
-    every = (*VERDICTS, PUSHED, CLOSED, NOT_LISTED)
+    every = (*VERDICTS, PUSHED, CLOSED, RETARGETED, NOT_LISTED)
     say("Nothing is cached: no pull request named has a row or a status, and none asks GitHub.")
     nothing = statuses((101, NOT_LISTED), whole=True).payload()
     assert [row["reason"] for row in nothing["rows"]] == ["not_cached", "not_cached"]
@@ -286,8 +293,9 @@ def test_golden_pull_statuses_scan_settle_and_refuse(
     assert "status_scan=started" in blocks[-1]
 
     say(
-        "One pull request for each verdict, judged on the lifecycle and head of its catalog "
-        "row; #112's mergeability GitHub had not finished computing. The scan lists no check."
+        "One pull request for each verdict, judged on the lifecycle, head, and base of its "
+        "catalog row; #112's mergeability GitHub had not finished computing. The scan lists "
+        "no check."
     )
     scanned = statuses(every).payload()
     verdicts = {
@@ -295,7 +303,12 @@ def test_golden_pull_statuses_scan_settle_and_refuse(
     }
     assert verdicts == {number: verdict for number, (verdict, _, _) in VERDICTS.items()}
     reasons = {row["number"]: row["reason"] for row in scanned["rows"] if row["reason"]}
-    assert reasons == {PUSHED: "other_head", CLOSED: "no_status", NOT_LISTED: "not_cached"}
+    assert reasons == {
+        PUSHED: "other_head",
+        RETARGETED: "other_base",
+        CLOSED: "no_status",
+        NOT_LISTED: "not_cached",
+    }
     scan = scanned["scan"]
     assert (scan["trigger"], scan["pages"], scan["cost"], scan["unknown"]) == (
         "periodic",

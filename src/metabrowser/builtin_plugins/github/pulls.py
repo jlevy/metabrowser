@@ -65,6 +65,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     UnreadableItemError,
     active_account,
     as_dict,
+    asked_repository,
     cache_unwritable,
     get_response,
     login_of,
@@ -527,12 +528,13 @@ async def _read_graph_core(
         if raw_repository is None:
             raise PullDataError("not_found_or_private", "GitHub has no readable pull request here")
         repository = as_dict(raw_repository)
-        identity, name = repository["id"], repository["nameWithOwner"]
+        identity = repository["id"]
+        # No id of the repository is known here, so GitHub's answer for the name is it,
+        # renamed or not, as the REST reads after it follow their redirects.
         if (
             not isinstance(identity, str)
             or not 1 <= len(identity) <= 256
-            or not isinstance(name, str)
-            or name.casefold() != f"{owner}/{repo}".casefold()
+            or not asked_repository(repository, None)
         ):
             raise UnreadableItemError
         if repository["pull"] is None:
@@ -1098,13 +1100,22 @@ async def refresh_pull_status(
     """
 
     owner, repo = _owner_and_repo(published)
+    started = utc_now()
     try:
         login = await active_account()
     except PullDataError as exc:
-        await keep_status_failure(published, owner, repo, number, exc, now=lambda: utc_now())
+        await keep_status_failure(
+            published, owner, repo, number, exc, now=lambda: utc_now(), started=started
+        )
         return None
     return await keep_pull_status(
-        published, owner, repo, number, reader=f"gh:{login}", now=lambda: utc_now()
+        published,
+        owner,
+        repo,
+        number,
+        reader=f"gh:{login}",
+        now=lambda: utc_now(),
+        started=started,
     )
 
 

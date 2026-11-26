@@ -8,7 +8,8 @@ or Git and never waits on the network. The statuses are the Pulls tab's scan's
 request page's own read, whichever observed last.
 
 The verdict judges the lifecycle the catalog's row names, open, draft, closed, or merged,
-and the row's head: a status is ``status`` only when it describes that head, and its
+and the row's head and base: a status is ``status`` only when it describes that head and
+base (:func:`~.pull_status.describes`), as the pull request page judges it, and its
 ``readiness`` is ``None`` for a closed or merged pull request, whose lifecycle is its
 answer. Anything else is ``absent``, with a ``reason``:
 
@@ -20,7 +21,10 @@ answer. Anything else is ``absent``, with a ``reason``:
   last verdict nothing keeps current. A status the page's own read kept is answered as it
   is;
 - ``other_head``: the status kept describes another head than the row's, a push the scan
-  or the page has not read since, or a row that names no head.
+  or the page has not read since, or a row that names no head;
+- ``other_base``: the status kept was observed against another base branch than the
+  row's, a retarget the scan or the page has not read since, as when GitHub retargets the
+  layer above a stacked pull request that merged and keeps its head.
 
 ``scanning`` says a scan runs now, so a status may arrive, and ``scan`` is how the last
 one ended (:class:`ScanWire`), a failure included: what it kept before is still answered.
@@ -38,6 +42,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 from metabrowser.builtin_plugins.github.pull_catalog import MAX_STATUS_NUMBERS, catalog_statuses
 from metabrowser.builtin_plugins.github.pull_files_summary import named_numbers
 from metabrowser.builtin_plugins.github.pull_readiness import DisplayState, lifecycle, readiness
+from metabrowser.builtin_plugins.github.pull_status import describes
 from metabrowser.builtin_plugins.github.pull_status_scan import (
     ScanStamp,
     ScanTrigger,
@@ -54,7 +59,7 @@ if TYPE_CHECKING:
 PULL_STATUSES_ROUTE: Final = "/api/plugin/github/pull-statuses"
 
 type StatusesState = Literal["status", "absent"]
-type StatusAbsence = Literal["not_cached", "no_status", "not_scanned", "other_head"]
+type StatusAbsence = Literal["not_cached", "no_status", "not_scanned", "other_head", "other_base"]
 
 
 class PullStatusWire(TypedDict):
@@ -153,9 +158,15 @@ def _wire(
         return absent("not_scanned")
     if row.head_oid is None or status.head != row.head_oid:
         return absent("other_head")
+    if not describes(status, head=row.head_oid, base_ref=row.base_ref):
+        return absent("other_base")
     shown = _row_lifecycle(row)
     verdict = readiness(
-        state=shown, head=row.head_oid, status=status, html_url=f"{source}/pull/{number}"
+        state=shown,
+        head=row.head_oid,
+        base_ref=row.base_ref,
+        status=status,
+        html_url=f"{source}/pull/{number}",
     )
     return PullStatusWire(
         number=number,

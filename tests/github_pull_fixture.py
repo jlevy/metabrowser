@@ -936,7 +936,13 @@ def graph_status_data(
                 "isRequired": run["name"] in REQUIRED_CHECKS,
                 "detailsUrl": run["details_url"],
                 "startedAt": f"2026-09-16T17:{30 + minute:02d}:00Z",
-                "checkSuite": {"app": {"name": run["app"]["name"]}},
+                "checkSuite": {
+                    "app": {"name": run["app"]["name"]},
+                    # An Actions run's workflow and event, which tell its reruns apart.
+                    "workflowRun": {"event": "pull_request", "workflow": {"name": "CI"}}
+                    if run["app"]["name"] == "GitHub Actions"
+                    else None,
+                },
             }
         )
     for status in statuses:
@@ -976,6 +982,7 @@ def graph_status_data(
         "viewer": {"login": reader},
         "rateLimit": {"cost": 1},
         "repository": {
+            "id": "R_demo",
             "nameWithOwner": "octo/demo",
             "pull": {
                 "number": pull["number"],
@@ -993,6 +1000,64 @@ def graph_status_data(
             },
         },
     }
+
+
+# Three pull requests' status answers as GitHub gave them on 2026-11-26 to this query, each
+# beside what ``gh pr checks`` 2.97.0 listed of the same head (name, bucket, workflow,
+# event), trimmed to the fields a status keeps, with the viewer the stand-in's reader. Each
+# is BLOCKED: psf/requests#7619 waits on a review, with two failing ``lint`` runs of one
+# workflow that a push and a pull request each ran, neither required; kubernetes/
+# enhancements#6506 is approved, every required check passing and only ``tide`` pending; and
+# python/cpython#162697 fails two required checks, one of them run four times.
+LIVE_STATUS_ANSWERS: Final = Path(__file__).parent / "fixtures" / "github-status-answers.json"
+
+
+@dataclass(frozen=True)
+class LiveStatusAnswer:
+    """One recorded answer (:data:`LIVE_STATUS_ANSWERS`): the pull request, the status
+    query's answer to it, and the checks ``gh pr checks`` listed of it."""
+
+    owner: str
+    repo: str
+    number: int
+    data: dict[str, Any]
+    gh_pr_checks: tuple[tuple[str, str, str, str], ...]
+
+    @property
+    def name(self) -> str:
+        return f"{self.owner}/{self.repo}#{self.number}"
+
+
+def live_status_answers() -> list[LiveStatusAnswer]:
+    """The recorded answers of :data:`LIVE_STATUS_ANSWERS`, each as the query's ``data``."""
+
+    answers: list[LiveStatusAnswer] = []
+    for entry in json.loads(LIVE_STATUS_ANSWERS.read_text(encoding="utf-8")):
+        slug, number = entry["pull"].split("#")
+        owner, repo = slug.split("/")
+        rollup = {
+            "state": entry["rollup"],
+            "contexts": {
+                "pageInfo": entry["pageInfo"],
+                "checkRunCountsByState": entry["checkRunCountsByState"],
+                "statusContextCountsByState": entry["statusContextCountsByState"],
+                "nodes": entry["nodes"],
+            },
+        }
+        data = {
+            "viewer": {"login": READER},
+            "rateLimit": {"cost": 1},
+            "repository": {
+                **entry["repository"],
+                "pull": {**entry["fields"], "statusCheckRollup": rollup},
+            },
+        }
+        listed = tuple(
+            (name, bucket, workflow, event)
+            for name, bucket, workflow, event in entry["gh_pr_checks"]
+        )
+        answers.append(LiveStatusAnswer(owner, repo, int(number), data, listed))
+    return answers
 
 
 def graph_status_entry(
@@ -1065,6 +1130,7 @@ def statuses_entries(nodes: list[dict[str, Any]], *, reader: str = READER) -> di
                 "viewer": {"login": reader},
                 "rateLimit": {"cost": 1},
                 "repository": {
+                    "id": "R_demo",
                     "nameWithOwner": "octo/demo",
                     "pullRequests": {
                         "pageInfo": {
@@ -1481,6 +1547,27 @@ def scan_rollups() -> dict[int, dict[str, Any] | None]:
 
 
 _SCAN_ROLLUPS: dict[int, dict[str, Any] | None] = {}
+
+
+def make_released_catalog(repository: ListedRepository, **updates: object) -> None:
+    """Restore the released schema-1 catalog: creation-ordered, v1 cursors, no status.
+
+    *updates* replace checkpoint fields as that release wrote them.
+    """
+    import sqlite3
+
+    path = repository.home / f"sources/{repository.slug}/pulls/catalog.sqlite3"
+    with contextlib.closing(sqlite3.connect(path)) as db, db:
+        db.execute("DROP TABLE pull_status")
+        db.execute("DROP INDEX pulls_updated_number")
+        db.execute("DROP INDEX pulls_state_updated_number")
+        db.execute("CREATE INDEX pulls_state_number ON pulls(state, number DESC)")
+        db.execute("PRAGMA user_version=1")
+        (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+        checkpoint = json.loads(value) | {"schema_version": 1} | updates
+        del checkpoint["backfill_cursor"]
+        del checkpoint["prefix_heads"]
+        db.execute("UPDATE checkpoint SET value=?", (json.dumps(checkpoint),))
 
 
 def seed_catalog(

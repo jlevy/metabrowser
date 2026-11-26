@@ -59,13 +59,13 @@ refresh=not_due status_scan=started
 --- gh ---
 gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
 gh api graphql statuses cursor=start
-## One pull request for each verdict, judged on the lifecycle and head of its catalog row; #112's mergeability GitHub had not finished computing. The scan lists no check.
-# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=101,102,103,104,105,106,107,108,109,110,111,112,113,114,999'
+## One pull request for each verdict, judged on the lifecycle, head, and base of its catalog row; #112's mergeability GitHub had not finished computing. The scan lists no check.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,999'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-statuses?numbers=101,102,103,104,105,106,107,108,109,110,111,112,113,114,999
+api: /api/plugin/github/pull-statuses?numbers=101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,999
 status: 200
-scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:00:20Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 1, "rows": 13, "cost": 1, "unknown": 1, "settle_at": "2026-09-17T12:00:50Z"}
+scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:00:20Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 1, "rows": 14, "cost": 1, "unknown": 1, "settle_at": "2026-09-17T12:00:50Z"}
 #101 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
 #102 status reason=- lifecycle=draft observed_by=scan verdict=ready_for_review/success conflicts:met,checks:met
 #103 status reason=- lifecycle=open observed_by=scan verdict=conflicts/danger conflicts:unmet,checks:met
@@ -80,6 +80,7 @@ scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, 
 #112 status reason=- lifecycle=open observed_by=scan verdict=checking/attention conflicts:unknown,checks:met,rules:unknown
 #113 absent reason=other_head lifecycle=open observed_by=- verdict=-
 #114 absent reason=no_status lifecycle=closed observed_by=- verdict=-
+#115 absent reason=other_base lifecycle=open observed_by=- verdict=-
 #999 absent reason=not_cached lifecycle=- observed_by=- verdict=-
 --- stderr ---
 --- gh ---
@@ -100,7 +101,7 @@ status: 200
     "reader": "gh:octo-reader",
     "trigger": "periodic",
     "pages": 1,
-    "rows": 13,
+    "rows": 14,
     "cost": 1,
     "unknown": 1,
     "settle_at": "2026-09-17T12:00:50Z"
@@ -204,7 +205,7 @@ exit: 0
 --- stdout ---
 api: /api/plugin/github/pull-statuses?numbers=112
 status: 200
-scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:00:50Z", "reader": "gh:octo-reader", "trigger": "settle", "pages": 1, "rows": 13, "cost": 1, "unknown": 0, "settle_at": null}
+scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:00:50Z", "reader": "gh:octo-reader", "trigger": "settle", "pages": 1, "rows": 14, "cost": 1, "unknown": 0, "settle_at": null}
 #112 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
 --- stderr ---
 --- gh ---
@@ -260,7 +261,7 @@ exit: 0
 --- stdout ---
 api: /api/plugin/github/pull-statuses?numbers=111,101
 status: 200
-scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:03:52Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 1, "rows": 12, "cost": 1, "unknown": 0, "settle_at": null}
+scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:03:52Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 1, "rows": 13, "cost": 1, "unknown": 0, "settle_at": null}
 #111 absent reason=not_scanned lifecycle=open observed_by=- verdict=-
 #101 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
 --- stderr ---

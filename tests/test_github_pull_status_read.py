@@ -10,8 +10,10 @@ reads the status beside a record, through the fake ``gh``, is in
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import sqlite3
+from collections import Counter
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,11 +25,13 @@ from metabrowser.builtin_plugins.github import pull_status_read, pull_status_sto
 from metabrowser.builtin_plugins.github.gh import GhError
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import (
+    CATALOG_SCHEMA,
     read_catalog,
     read_pull_status,
     write_pull_status,
 )
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.pull_readiness import checks_sentence
 from metabrowser.builtin_plugins.github.pull_record import clear_pulls
 from metabrowser.builtin_plugins.github.pull_status import (
     MAX_CHECK_ITEMS,
@@ -39,23 +43,32 @@ from metabrowser.builtin_plugins.github.pull_status_read import (
     CONTEXTS_PAGE,
     StatusRead,
     keep_pull_status,
-    latest_of_each,
 )
 from metabrowser.builtin_plugins.github.pull_status_read import (
     read_pull_status as read_from_github,
 )
 from metabrowser.builtin_plugins.github.pull_status_store import (
+    StatusOutcome,
     kept_status,
     read_pull_checks,
     read_status_outcome,
     write_pull_checks,
+    write_status_outcome,
 )
 from tests.cache_home_fixture import (  # pyright: ignore[reportPrivateUsage]
     FixtureSource,
     _stage_and_publish_source,
     build_empty_home,
 )
-from tests.github_pull_fixture import CANONICAL, READER, generated_item, seed_catalog
+from tests.github_pull_fixture import (
+    CANONICAL,
+    READER,
+    LiveStatusAnswer,
+    generated_item,
+    live_status_answers,
+    make_released_catalog,
+    seed_catalog,
+)
 
 HEAD = "a" * 40
 OTHER_HEAD = "b" * 40
@@ -118,6 +131,7 @@ def _answer(
         "viewer": {"login": READER},
         "rateLimit": {"cost": 1},
         "repository": {
+            "id": "R_demo",
             "nameWithOwner": "octo/demo",
             "pull": {
                 "number": 5,
@@ -294,24 +308,66 @@ def test_a_push_between_pages_ends_the_list_at_the_first_head(
     assert "check 500" not in {item.name for item in read.checks.items}
 
 
-def test_only_the_latest_run_of_each_check_is_kept() -> None:
-    def item(name: str, conclusion: str) -> CheckItem:
-        return CheckItem(name=name, kind="run", bucket="pass", conclusion=conclusion)
+def _workflow(name: str, event: str) -> dict[str, Any]:
+    return {
+        "app": {"name": "GitHub Actions"},
+        "workflowRun": {"event": event, "workflow": {"name": name}},
+    }
 
-    listed = [
-        (item("build", "FAILURE"), "2026-11-26T10:00:00Z"),
-        (item("lint", "SUCCESS"), ""),
-        (item("build", "SUCCESS"), "2026-11-26T10:05:00Z"),
-        (item("build", "CANCELLED"), "2026-11-26T09:00:00Z"),
-        (item("lint", "FAILURE"), ""),
+
+def test_a_check_is_a_run_of_one_name_workflow_and_event_or_a_status_of_one_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``gh pr checks`` keys a run by its name, workflow, and event, and a commit status by
+    its context, apart from the runs (``eliminateDuplicates``, gh 2.97.0): a job a push and
+    a pull request both ran is two checks, as is one two workflows share a name in, and a
+    status named as a run is a check of its own. Of runs of one check, the latest start is
+    kept, and of two that started together, or never, the one GitHub listed first."""
+
+    def run(conclusion: str, started: str | None, suite: dict[str, Any]) -> dict[str, Any]:
+        return _run(1, started, conclusion=conclusion, name="lint", checkSuite=suite)
+
+    push, pull = _workflow("Lint", "push"), _workflow("Lint", "pull_request")
+    answer = _answer(
+        [
+            run("FAILURE", "2026-11-26T10:00:00Z", pull),
+            run("SUCCESS", "2026-11-26T10:05:00Z", push),
+            run("SUCCESS", "2026-11-26T10:09:00Z", pull),
+            run("CANCELLED", "2026-11-26T09:00:00Z", pull),
+            run("FAILURE", None, _workflow("Style", "pull_request")),
+            run("SUCCESS", None, _workflow("Style", "pull_request")),
+            run("NEUTRAL", None, {"app": {"name": "Linter"}, "workflowRun": None}),
+            _context("lint", "PENDING"),
+        ],
+        runs={"SUCCESS": 3, "FAILURE": 2, "CANCELLED": 1, "NEUTRAL": 1},
+        statuses={"PENDING": 1},
+    )
+    kept = _read(monkeypatch, answer).checks.items
+    assert [(item.kind, item.conclusion) for item in kept] == [
+        ("run", "SUCCESS"),  # the push's
+        ("run", "SUCCESS"),  # the pull request's latest
+        ("run", "FAILURE"),  # Style's first listed, neither started
+        ("run", "NEUTRAL"),  # another app's, with no workflow
+        ("status", "PENDING"),
     ]
-    kept = latest_of_each(listed)
-    # The newest build, and of two runs that never started, the one listed first, each
-    # where GitHub listed it.
-    assert [(each.name, each.conclusion) for each in kept] == [
-        ("lint", "SUCCESS"),
-        ("build", "SUCCESS"),
-    ]
+
+
+@pytest.mark.parametrize("answer", live_status_answers(), ids=lambda answer: answer.name)
+def test_the_list_is_the_one_gh_pr_checks_lists_of_the_same_answer(
+    monkeypatch: pytest.MonkeyPatch, answer: LiveStatusAnswer
+) -> None:
+    """On GitHub's own answers, each check and its bucket are what ``gh pr checks`` 2.97.0
+    listed of the same head, however many times GitHub ran it."""
+
+    _GitHub(monkeypatch, answer.data)
+    read = asyncio.run(
+        read_from_github(
+            answer.owner, answer.repo, answer.number, reader=f"gh:{READER}", now=lambda: NOW
+        )
+    )
+    listed = Counter((item.name, item.bucket) for item in read.checks.items)
+    assert listed == Counter((name, bucket) for name, bucket, *_ in answer.gh_pr_checks)
+    assert not read.checks.truncated
 
 
 def test_a_rerun_check_is_listed_once_and_its_latest_run_judges_it(
@@ -327,8 +383,8 @@ def test_a_rerun_check_is_listed_once_and_its_latest_run_judges_it(
     read = _read(monkeypatch, answer)
     assert [(item.name, item.conclusion) for item in read.checks.items] == [("check 1", "SUCCESS")]
     assert read.status.checks.required_failing == 0
-    # The counts are GitHub's own, of every context, as the Pulls tab's scan reads them.
-    assert read.status.checks.counts["fail"] == 1
+    # The page's sentence counts the list it shows, as ``gh pr checks`` counts it.
+    assert "failing" not in checks_sentence(read.checks)
 
 
 def test_a_cancelled_required_check_counts_as_failing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -398,7 +454,7 @@ _CONTEXTS = (*_PULL, "statusCheckRollup", "contexts")
     "broken",
     [
         _break(("viewer",), None),
-        _break(("repository", "nameWithOwner"), "someone/else"),
+        _break(("repository", "nameWithOwner"), None),
         _break((*_PULL, "number"), 6),
         _break((*_PULL, "number"), "5"),
         _break((*_PULL, "headRefOid"), "not a commit"),
@@ -419,6 +475,15 @@ def test_an_answer_github_does_not_document_is_unreadable_and_raises_nothing_els
     answer = _answer([_run(1)], runs={"SUCCESS": 1}, statuses={"SUCCESS": 0})
     broken(answer)
     assert _refused(monkeypatch, answer) == "gh_failed"
+
+
+def test_a_renamed_repository_answers_under_its_new_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GitHub answers the name asked with the repository it names now, as ``tiangolo/fastapi``
+    answers ``fastapi/fastapi``: with no id known, that is the repository."""
+
+    renamed = _answer([_run(1)], runs={"SUCCESS": 1})
+    renamed["repository"]["nameWithOwner"] = "octo-org/demo-renamed"
+    assert [item.name for item in _read(monkeypatch, renamed).checks.items] == ["check 1"]
 
 
 def test_another_viewer_or_a_missing_pull_request_is_a_typed_refusal(
@@ -613,3 +678,75 @@ def test_a_catalog_a_newer_release_wrote_is_left_as_it_is(
     assert kept_status(repository.home, repository.slug, 5).unavailable == "newer_cache"
     with sqlite3.connect(path) as db:
         assert db.execute("PRAGMA user_version").fetchone()[0] == 999
+
+
+def test_the_catalogs_repository_is_known_by_its_id_whatever_its_name_now(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A status is kept in the catalog of one repository: GitHub's answer under a new name is
+    that repository when its id is the catalog's, and a repository that took the old name is
+    another, whose status is never kept there."""
+
+    seed_catalog(repository, [generated_item(5)], repository_id="R_demo")
+    renamed = _answer([_run(1)], runs={"SUCCESS": 1})
+    renamed["repository"]["nameWithOwner"] = "octo-org/demo-renamed"
+    _GitHub(monkeypatch, renamed)
+    kept = asyncio.run(
+        keep_pull_status(repository, "octo", "demo", 5, reader=f"gh:{READER}", now=lambda: NOW)
+    )
+    assert kept is not None and kept_status(repository.home, repository.slug, 5).unavailable is None
+    another = _answer([_run(2)], runs={"SUCCESS": 1}, headRefOid=OTHER_HEAD)
+    another["repository"]["id"] = "R_another"
+    _GitHub(monkeypatch, another)
+    later = datetime(2026, 11, 26, 12, 5, tzinfo=UTC)
+    refused = asyncio.run(
+        keep_pull_status(repository, "octo", "demo", 5, reader=f"gh:{READER}", now=lambda: later)
+    )
+    held = kept_status(repository.home, repository.slug, 5)
+    assert (refused, held.status, held.unavailable) == (None, kept, "gh_failed")
+
+
+def _outcome(started: str, outcome: str = "succeeded") -> StatusOutcome:
+    return StatusOutcome(outcome=outcome, at="2026-11-26T12:00:09Z", started_at=started)
+
+
+def test_how_a_read_ended_is_kept_for_the_attempt_that_began_last_in_either_order(
+    repository: ListedRepository,
+) -> None:
+    """Two reads end in any order, from any process: whichever is written last, the outcome
+    kept is that of the one that began later, so an older read that failed never reports a
+    failure beside a newer one's status."""
+
+    home, slug = repository.home, repository.slug
+    older_failed = _outcome("2026-11-26T12:00:01Z", "network_error")
+    newer_succeeded = _outcome("2026-11-26T12:00:05Z")
+    newer_failed = _outcome("2026-11-26T12:00:05Z", "rate_limited")
+    older_succeeded = _outcome("2026-11-26T12:00:01Z")
+    for older, newer in ((older_failed, newer_succeeded), (older_succeeded, newer_failed)):
+        for order in ((older, newer), (newer, older)):
+            clear_pulls(home, slug)
+            written = [write_status_outcome(home, slug, 5, each) for each in order]
+            assert read_status_outcome(home, slug, 5) == newer
+            assert written == [True, order[1] is newer]
+
+
+def test_a_catalog_an_earlier_release_wrote_keeps_its_rows_through_a_status_write(
+    repository: ListedRepository,
+) -> None:
+    """The first status written after an upgrade, as any pull request page's read writes
+    one, adds the table to a schema-1 catalog in place: its rows and checkpoint stay, so its
+    list is not fetched again."""
+
+    seed_catalog(repository, [generated_item(n) for n in range(1, 6)])
+    make_released_catalog(repository)
+    released = read_catalog(repository.home, repository.slug)
+    assert released is not None
+    path = repository.home / f"sources/{repository.slug}/pulls/catalog.sqlite3"
+    assert write_pull_status(repository, _status("2026-11-26T12:00:00Z"))
+    assert read_catalog(repository.home, repository.slug) == released
+    with contextlib.closing(sqlite3.connect(path)) as db:
+        assert db.execute("SELECT COUNT(*) FROM pulls").fetchone() == (5,)
+        assert db.execute("PRAGMA user_version").fetchone() == (CATALOG_SCHEMA,)
+    assert _observed(read_pull_status(repository.home, repository.slug, 5)) == _status(
+        "2026-11-26T12:00:00Z"
+    )

@@ -5,8 +5,9 @@ Whether a check passes, fails, or waits is GitHub's call, which the server makes
 draws: ``checksInOrder``, ``checksSummary``, and ``checkLabel`` in ``pull-page.js``. These
 hold the page to the server and to what ``gh pr checks`` means, not to a copy of either:
 every bucket has a badge inked by what it means, by the design tokens' own names, the
-summary leads with the words ``checks_sentence`` in ``pull_readiness.py`` says for the same
-counts, and every list of checks is ordered as ``gh pr checks`` orders it.
+summary over a list says what ``checks_sentence`` in ``pull_readiness.py`` says of the same
+list, which the merge status section's checks row says above it, and every list of checks
+is ordered as ``gh pr checks`` orders it.
 """
 
 from __future__ import annotations
@@ -23,7 +24,8 @@ import pytest
 from metabrowser.builtin_plugins.github.pull_readiness import checks_sentence
 from metabrowser.builtin_plugins.github.pull_status import (
     BUCKETS,
-    ChecksSummary,
+    CheckItem,
+    PullChecks,
     check_run_bucket,
     state_bucket,
 )
@@ -109,17 +111,22 @@ def drawn() -> dict[str, Any]:
 def test_the_summary_leads_with_the_words_the_server_says(
     drawn: dict[str, Any], index: int, counts: dict[str, int]
 ) -> None:
-    """The page's headline and tallies are ``checks_sentence``'s, which the readiness
-    requirement says, for the same counts: the order of precedence, the words, and the
-    tallies' order, zeros left out."""
+    """The page's headline and tallies over a list are ``checks_sentence``'s over the same
+    list, which the readiness requirement says above it: the order of precedence, the
+    words, and the tallies' order, zeros left out."""
 
     if not any(counts.values()):
         return
     said = drawn["summaries"][index]
     tallies = [f"{count} {word}" for word, count in said["counts"].items()]
     listed = tallies[0] if len(tallies) == 1 else ", ".join(tallies[:-1]) + f", and {tallies[-1]}"
-    summary = ChecksSummary(state="pending", counts=counts)  # pyright: ignore[reportArgumentType]
-    assert f"{said['headline']}: {listed}." == checks_sentence(summary)
+    items = tuple(
+        CheckItem(name=f"{bucket} {at}", kind="run", bucket=bucket)  # pyright: ignore[reportArgumentType]
+        for bucket, count in counts.items()
+        for at in range(count)
+    )
+    checks = PullChecks(number=1, head="a" * 40, observed_at="2026-11-26T12:00:00Z", items=items)
+    assert f"{said['headline']}: {listed}." == checks_sentence(checks)
 
 
 def _rank(bucket: str) -> int:

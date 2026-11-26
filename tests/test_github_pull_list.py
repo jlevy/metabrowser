@@ -93,6 +93,7 @@ from tests.github_pull_fixture import (
     catalog_entries,
     generated_item,
     install_fake_gh,
+    make_released_catalog,
     next_link,
     ok,
     seed_catalog,
@@ -429,7 +430,7 @@ def test_activity_indexes_upgrade_the_v1_catalog_without_reloading_rows(
 ) -> None:
     items = [generated_item(20), generated_item(1) | {"updated_at": STAMP}]
     initial = _seed(repository, items)
-    _make_legacy_catalog(repository)
+    make_released_catalog(repository)
     write_list_refresh(
         repository.home,
         repository.slug,
@@ -463,27 +464,12 @@ def test_activity_indexes_upgrade_the_v1_catalog_without_reloading_rows(
     assert calls == []
 
 
-def _make_legacy_catalog(repository: ListedRepository, **updates: object) -> None:
-    """Restore the released creation-ordered indexes, v1 cursor layout, and no status."""
-    with sqlite3.connect(_path(repository)) as db:
-        db.execute("DROP TABLE pull_status")
-        db.execute("DROP INDEX pulls_updated_number")
-        db.execute("DROP INDEX pulls_state_updated_number")
-        db.execute("CREATE INDEX pulls_state_number ON pulls(state, number DESC)")
-        db.execute("PRAGMA user_version=1")
-        (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
-        checkpoint = json.loads(value) | {"schema_version": 1} | updates
-        del checkpoint["backfill_cursor"]
-        del checkpoint["prefix_heads"]
-        db.execute("UPDATE checkpoint SET value=?", (json.dumps(checkpoint),))
-
-
 def test_legacy_creation_cursor_resumes_only_the_creation_backfill(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     items = [generated_item(n) for n in range(1, 251)]
     old = _seed(repository, items[-100:], complete=False)
-    _make_legacy_catalog(
+    make_released_catalog(
         repository,
         cursors={"all": "all-100", "open": "open-100", "closed": None},
         totals={"all": 250, "open": 250, "closed": 0},

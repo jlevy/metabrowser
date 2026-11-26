@@ -23,6 +23,13 @@ mergeability in yellow), ``met`` green. The labels and sentences are ``gh``'s wo
 ``gh`` has them (``pkg/cmd/pr/status/status.go`` and ``pkg/cmd/pr/checks/output.go`` in
 ``gh`` 2.97.0).
 
+A Rules row says GitHub blocks the merge for a reason no other row gives. A row explains a
+block only when it could be the reason: a check no rule requires never blocks a merge, so
+once the page's read found every required check passing, pending or failing checks
+explain nothing. On kubernetes/enhancements#6506, approved and every required check
+passing with only the unrequired ``tide`` pending, GitHub answered ``BLOCKED``
+(2026-11-26), and the verdict is ``blocked``.
+
 A draft is judged as an open pull request is, as GitHub's ``mergeStateStatus`` and
 ``gh pr status`` judge it: a draft reports the state it would have if it were ready.
 GitHub never merges a draft, so a draft with every requirement met is
@@ -37,10 +44,15 @@ from pydantic import BaseModel, ConfigDict
 
 from metabrowser.builtin_plugins.github.pull_record import Sha, Short, Timestamp, Url
 from metabrowser.builtin_plugins.github.pull_status import (
+    BUCKETS,
     AutoMerge,
+    Bucket,
     ChecksSummary,
+    PullChecks,
     PullStatus,
     QueueEntry,
+    counted_list,
+    describes,
 )
 
 type DisplayState = Literal["open", "draft", "merged", "closed"]
@@ -203,12 +215,46 @@ def _conflicts(status: PullStatus, base: str, html_url: str | None) -> Requireme
     return Requirement(kind="conflicts", status="met", summary=f"No merge conflicts with {base}.")
 
 
-def checks_sentence(checks: ChecksSummary) -> str:
-    """``gh pr checks``'s summary of a head's checks, with its tallies, zeros left out."""
+# ``gh pr checks``'s tallies, in its order, each bucket's word (``printSummary`` in
+# ``pkg/cmd/pr/checks/output.go``), and the buckets whose required checks a tally names.
+_TALLIES: Final[tuple[tuple[Bucket, str], ...]] = (
+    ("cancel", "cancelled"),
+    ("fail", "failing"),
+    ("pass", "successful"),
+    ("skipping", "skipped"),
+    ("pending", "pending"),
+)
+_NAMES_REQUIRED: Final[frozenset[Bucket]] = frozenset(("cancel", "fail"))
 
-    if checks.state == "none" or not checks.total:
+
+def _tally(checks: ChecksSummary | PullChecks) -> tuple[dict[Bucket, int], dict[Bucket, int]]:
+    """Each bucket's checks, and the required ones among them where that is known."""
+
+    if isinstance(checks, ChecksSummary):
+        return dict(checks.counts), {}
+    counts: dict[Bucket, int] = dict.fromkeys(BUCKETS, 0)
+    required: dict[Bucket, int] = dict.fromkeys(BUCKETS, 0)
+    for item in checks.items:
+        counts[item.bucket] += 1
+        required[item.bucket] += item.required is True
+    known = all(item.required is not None for item in checks.items)
+    return counts, required if known else {}
+
+
+def checks_sentence(checks: ChecksSummary | PullChecks) -> str:
+    """``gh``'s summary of a head's checks, with its tallies, zeros left out.
+
+    A list, :class:`PullChecks`, is counted as ``gh pr checks`` counts the checks it lists:
+    each listed check once, in its bucket, and, when every one said whether it is
+    required, the required ones among the cancelled and the failing, each beside its own
+    tally. A :class:`ChecksSummary` is counted as ``gh pr status`` counts: GitHub's rollup
+    counts, over every context, with no required count, since only a list says which are
+    required and it counts a check GitHub ran twice once. So no sentence mixes the two.
+    """
+
+    counts, required = _tally(checks)
+    if not sum(counts.values()):
         return "No checks."
-    counts = checks.counts
     if counts["fail"]:
         headline = "Some checks were not successful"
     elif counts["pending"]:
@@ -217,24 +263,28 @@ def checks_sentence(checks: ChecksSummary) -> str:
         headline = "Some checks were cancelled"
     else:
         headline = "All checks were successful"
-    failing = f"{counts['fail']} failing"
-    if checks.required_failing:
-        failing += f" ({checks.required_failing} required)"
-    tallies = [
-        (counts["cancel"], f"{counts['cancel']} cancelled"),
-        (counts["fail"], failing),
-        (counts["pass"], f"{counts['pass']} successful"),
-        (counts["skipping"], f"{counts['skipping']} skipped"),
-        (counts["pending"], f"{counts['pending']} pending"),
-    ]
-    parts = [text for count, text in tallies if count]
+    parts: list[str] = []
+    for bucket, word in _TALLIES:
+        if not counts[bucket]:
+            continue
+        named = required.get(bucket, 0) if bucket in _NAMES_REQUIRED else 0
+        parts.append(f"{counts[bucket]} {word}" + (f" ({named} required)" if named else ""))
     listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + f", and {parts[-1]}"
     return f"{headline}: {listed}."
 
 
-def _checks(status: PullStatus, html_url: str | None) -> Requirement:
+def _counted(status: PullStatus, listed: PullChecks | None) -> ChecksSummary | PullChecks:
+    """What the checks row counts: *listed* when it is the whole list *status* counts, as
+    the page shows it under the row, and GitHub's rollup otherwise, as the Pulls tab has
+    it. A list cut short counts fewer checks than the rollup judges, so it is not used."""
+
+    whole = counted_list(status, listed)
+    return status.checks if whole is None or whole.truncated else whole
+
+
+def _checks(status: PullStatus, listed: PullChecks | None, html_url: str | None) -> Requirement:
     rollup = status.checks.state
-    summary = checks_sentence(status.checks)
+    summary = checks_sentence(_counted(status, listed))
     if rollup in ("failure", "error"):
         if status.merge_state == "unstable":
             summary += " GitHub allows merging, since no failing check is required."
@@ -308,25 +358,46 @@ def _rules(
     return None
 
 
-def requirements(status: PullStatus, *, html_url: str | None = None) -> tuple[Requirement, ...]:
+def _required_pass(checks: ChecksSummary) -> bool:
+    """Whether the list behind *checks* found no required check failing or pending."""
+
+    return checks.required_failing == 0 and checks.required_pending == 0
+
+
+def _explains_block(row: Requirement, checks: ChecksSummary) -> bool:
+    """Whether *row* can be why GitHub reports ``blocked``: it waits or is unmet, and, for
+    the checks, no list found every required one passing. Checks no rule requires never
+    block a merge (``unstable``), so once the read knows the required ones pass, a check
+    still pending or failing says nothing of the block."""
+
+    if row.status not in ("waiting", "unmet"):
+        return False
+    return row.kind != "checks" or not _required_pass(checks)
+
+
+def requirements(
+    status: PullStatus, *, listed: PullChecks | None = None, html_url: str | None = None
+) -> tuple[Requirement, ...]:
     """The rows github.com's merge box would show for *status*, in :data:`REQUIREMENT_ORDER`.
 
     A row is present only where GitHub would show one: Reviews only when it gave a
     review decision, Up to date only when it reports ``behind``, Queue only while
-    queued, and Rules only when GitHub reports a block no other row explains, or has
-    not answered.
+    queued, and Rules only when GitHub reports a block no other row explains
+    (:func:`_explains_block`), or has not answered. *listed* is the page's list of the
+    head's checks, which the checks row's sentence counts when it is the whole list the
+    status counts (:func:`checks_sentence`).
     """
 
     base = status.base_ref
     rows = [
         _queue(status.queue),
         _conflicts(status, base, html_url),
-        _checks(status, html_url),
+        _checks(status, listed, html_url),
         _reviews(status, html_url),
         _up_to_date(status, base, html_url),
     ]
     present = [row for row in rows if row is not None]
-    explained = any(row.status in ("waiting", "unmet") for row in present)
+    explained = any(_explains_block(row, status.checks) for row in present)
     rules = _rules(status, base, html_url, explained)
     return (*present, *((rules,) if rules else ()))
 
@@ -364,21 +435,25 @@ def readiness(
     *,
     state: DisplayState,
     head: str,
+    base_ref: str | None,
     status: PullStatus | None,
+    listed: PullChecks | None = None,
     html_url: str | None = None,
 ) -> Readiness | None:
-    """The verdict for a pull request at *head*, or ``None`` when it is closed or merged.
+    """The verdict for a pull request at *head* into *base_ref*, or ``None`` when it is
+    closed or merged.
 
-    *status* counts only when it describes *head*: a status for another head, or none,
-    gives ``checking`` with no requirements, since a verdict is never shown for a head
-    it does not describe.
+    *status* counts only when it describes that head and base (:func:`.pull_status.describes`):
+    a status for another head or base, or none, gives ``checking`` with no requirements,
+    since a verdict is never shown for a pull request it does not describe. *listed* is
+    the page's list of the head's checks, for the checks row (:func:`requirements`).
     """
 
     if state in ("closed", "merged"):
         return None
-    if status is None or status.head != head:
+    if not describes(status, head=head, base_ref=base_ref):
         return Readiness(verdict="checking", tone="attention", label=LABELS["checking"], head=head)
-    rows = requirements(status, html_url=html_url)
+    rows = requirements(status, listed=listed, html_url=html_url)
     worst_status = worst(rows)
     first = headline(rows)
     if first is None:
