@@ -361,7 +361,11 @@ async def _run(
                     completed = _Completed(
                         completed.returncode, completed.stdout, completed.stderr, read
                     )
-            if completed.returncode != 0:
+            # gh exits 1 on any status past a 2xx, a 304 among them (gh 2.97.0, checked
+            # 2026-11-26 against api.github.com), so an exit alone does not say gh failed:
+            # GitHub answering a conditional read unchanged is an answer, and the span
+            # ends as one; a refusal it answered (4xx, 5xx) still ends failed.
+            if completed.returncode != 0 and not _answered(completed):
                 diagnostic = completed.stderr.decode("utf-8", errors="replace")
                 cause = network_cause.classify(diagnostic)
                 if cause is not None:
@@ -743,6 +747,12 @@ def _accepted(status: int) -> bool:
     """Whether GitHub answered *status* without refusing: 2xx, or ``304`` unchanged."""
 
     return 200 <= status < 300 or status == 304
+
+
+def _answered(completed: _Completed) -> bool:
+    """Whether GitHub's answer in *completed* was one it gave without refusing."""
+
+    return completed.answer is not None and _accepted(completed.answer.response.status)
 
 
 def _read_answer(stdout: bytes, *, graphql: bool) -> _Answer | None:
