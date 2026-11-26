@@ -4,8 +4,11 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** In implementation, as the owner asked on 2026-11-26; the beads linked to
-this spec track it (`tbd list --spec plan-2026-11-26-in-app-link-resolution.md`).
+**Status:** Implemented in [#874](https://github.com/jlevy/metabrowser/pull/874), after
+an engineering review, a security review, and a technical and design review; the beads
+linked to this spec track it
+(`tbd list --spec plan-2026-11-26-in-app-link-resolution.md`), and
+[Follow-ups](#follow-ups) names what it leaves.
 
 ## Overview
 
@@ -219,32 +222,42 @@ the external-link mark the other surfaces give them.
 
 One pull request.
 
-- [ ] `static/repository-links.js`: `localize` and `enhance`, its on-demand registration
-  in `server.py`, its runtime type in `static/types.d.ts`, and its behavior test,
-  carrying `github-localizer.js`’s cases; remove `github-localizer.js`
-- [ ] Markdown documents: `link-enhancer.js` uses `localize` for every repository link;
-  `rendered.js` ensures the asset when the page has a repository context
-- [ ] Pull request texts: `inertProse`, Guided Review’s `loadDrawProse`, and the stack
-  page’s `loadDrawProse` call `enhance` with the text context
-- [ ] Commit bodies: `commitKpressHost` calls `enhance`
-- [ ] Rendered diffs: the head-link fallback and repository links in `diff-markdown.js`
-- [ ] Parity row, browserless session and golden, user guides (`browsing-files.md`,
-  `reviewing-pull-requests.md`, the skill’s guidance on links in notes), architecture
-  documents, the Markdown navigation plan’s pointer, and a changelog fragment
+- [x] `static/repository-links.js`, organized by the structure of a GitHub URL, its
+  on-demand bundle with the GitPath codec, `metabrowser.loadRepositoryLinks()`, its
+  runtime type, and its session; `github-localizer.js` removed
+- [x] Markdown documents: `link-enhancer.js` uses `localize` for every repository link,
+  with the runtime `rendered.js` loads, waiting at most `REPOSITORY_LINKS_WAIT_MS`
+- [x] Pull request texts and Guided Review notes, on a pull request and a stack: the
+  text context, the Changes step, and a re-read once the changed files arrive
+- [x] Commit bodies: `commitKpressHost` applies `enhance`
+- [x] Rendered diffs: the head-link fallback (`viewFileUrl`) and repository links
+- [x] Parity rows, sessions and goldens, user guides, the skill’s guidance on links in
+  notes, architecture documents, the Markdown navigation plan’s pointer, and a changelog
+  fragment
 
 ## Testing Strategy
 
-- A browserless session runs the exact `repository-links.js` against one table of URLs
-  and contexts (each rule above, its refusals, a served prefix, a pinned revision, and a
-  text context at and away from the head) and pins its output in a golden; the parity
-  check credits `localize` and `enhance` to the row.
-- `markdown-link-enhancer-behavior.js` and the pull-request page, Guided Review, commit
-  body, and diff sessions assert the rewritten `href`s and that a plain click on a
-  `/view/` target goes through `mb.navigation.open`.
+- `tests/dom/repository-links-session.js` runs the exact `repository-links.js` against
+  one table of URLs and contexts (each rule above, its refusals, a served prefix, a
+  pinned revision, and pull request and stack texts at and away from their heads, with
+  and without their changed files), its `viewFileUrl`, and `enhance` read once and
+  again; `cli-ui-repository-links.tryscript.md` pins it, and parity row
+  `shell.repository-links` credits it.
+- `tests/test_repository_links_js.py` holds those answers to the server’s own reading of
+  the same URLs: each in-app page is the one `GithubUrlReducer` and
+  `selection_view_href` open the URL at, each Changes route the one the route decoders
+  read back, each pinned address the server’s GitPath spelling, and each github.com
+  fallback that file at the head; and one click listener a link, however often its text
+  is read.
+- The pull request page’s mount behavior, the stack guide session, the commit body
+  session, `markdown-link-enhancer-behavior.js`, and the diff Markdown session assert
+  each surface’s wiring with the real resolver (parity rows `github.pull-text-links`,
+  `github.stack-note-links`, `git.commit-body-markdown`).
 - `cli-github-guided-review.tryscript.md` keeps pinning the server’s render, which does
   not change; the browser side is the sessions above.
-- A real-browser check of the fixture checkout and the guided fixture repeats the
-  measurements in [What Exists Today](#what-exists-today).
+- A real-browser check of a fixture checkout and the GitHub pull request fixture: the
+  guided note’s `docs/new.md` link opens the file at the head in the same tab, and away
+  from the head the file at the head on github.com.
 
 ## Rollout Plan
 
@@ -260,6 +273,17 @@ None blocking. Two choices the owner may revisit, each a one-line change in `loc
   content never chooses what the server serves.
 - **The repository root opens the served root**, not the default branch, since no in-app
   address names the default branch either.
+
+## Follow-ups
+
+Beads under the Markdown rendering epic, each from a review of #874:
+
+- `mb-0uzt`: a commit’s or the list’s page, and another pull request outside the pull
+  request page, open in place rather than by a page load.
+- `mb-e2lo`: a rendered diff localizes `/view/` targets while it shows the head.
+- `mb-wt8y`: a pull request’s texts read their links again when the pin changes.
+- `mb-40en`: a single helper that loads and applies the links; the loader now makes a
+  forgotten load impossible, and the bead is whether more is worth it.
 
 ## References
 
