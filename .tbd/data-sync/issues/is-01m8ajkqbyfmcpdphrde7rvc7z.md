@@ -5,14 +5,16 @@ title: "Stack page header: a pull request's header for the whole stack (state ta
 kind: feature
 status: in_progress
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m8ar6wz990fewz7m05yjp9yk
 hold: null
 hold_until: null
 created_at: 2026-11-26T00:03:14.938Z
-updated_at: 2026-11-26T01:24:54.107Z
+updated_at: 2026-11-26T01:41:06.147Z
 started_at: 2026-11-26T00:03:21.103Z
 ---
 
