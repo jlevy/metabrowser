@@ -3,9 +3,9 @@ type: is
 id: is-01m8bp7ce37pgee1zpr3wrq5q6
 title: "Address PR #874 reviews A and C: link resolution round 1"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-26-in-app-link-resolution.md
 delegate: claude-code@vm
 labels: []
@@ -22,6 +22,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T10:25:39.263Z
-updated_at: 2026-11-26T10:25:46.829Z
+updated_at: 2026-11-26T10:28:58.607Z
 started_at: 2026-11-26T10:25:46.829Z
+closed_at: 2026-11-26T10:28:58.607Z
+close_reason: Round 1 of https://github.com/jlevy/metabrowser/pull/874 is being addressed by the owner's mb-b6qw (4cea6585 and later on the branch); this parallel attempt was not pushed.
+resolution: duplicate
+duplicate_of: is-01m8bkxf108ayt40j2hhjkrxm5
 ---
