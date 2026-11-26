@@ -107,6 +107,8 @@ class CollectionIndex:
                 or snapshot.removed
                 or snapshot.problems != previous.problems
                 or snapshot.complete != previous.complete
+                or snapshot.records != previous.records
+                or snapshot.schemas != previous.schemas
             )
             if changed or generation == "indexing":
                 raw = snapshot.snapshot_json()
