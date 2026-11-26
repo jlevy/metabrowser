@@ -5,16 +5,26 @@ title: Bring Paraverse relationship context and record identity to the shared ta
 kind: feature
 status: in_progress
 priority: 2
-version: 3
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/882
+    at: 2026-11-26T17:34:39.979Z
 delegate: codex@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m8amwhv15ckjw7prckfmmggr
+child_order_hints:
+  - is-01m8cfwqgwqeky7gxpj7pkcpnf
+  - is-01m8cfwza8gpy20g971q2wjjfy
+  - is-01m8cfx7jeb9v62ef8n0esaz16
+  - is-01m8cg5pqdycqe1vwjjtz9xpbe
+  - is-01m8cg67y3mx9wvkscxnzkrc5d
 hold: null
 hold_until: null
 created_at: 2026-11-26T10:02:27.266Z
-updated_at: 2026-11-26T10:45:15.152Z
+updated_at: 2026-11-26T17:59:24.858Z
 started_at: 2026-11-26T10:04:05.984Z
 ---
 Use the existing TableSource and table renderer for SQLite, fSQLite, structured, delimited and future SoftSchema data. Fix field-specific back-reference drilldowns and improve human-readable record context without changing stable keys or workbench conventions.
