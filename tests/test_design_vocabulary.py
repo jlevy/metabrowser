@@ -2601,7 +2601,6 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "controls.groupHtml(" in panel
     assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
     assert 'class: "github-pulls-status nav-metadata"' in panel
-    assert 'class: "btn github-pulls-refresh"' in panel
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     # No control or notice counts the rows held. Below them, pages still on their way show
@@ -4397,7 +4396,6 @@ _FOCUS_OFFSET_OUTSET = "var(--focus-ring-offset-outset)"
 _FOCUS_RING_OUTSET = frozenset(
     {
         ".nav-shortcut-action:focus-visible",
-        ".source-freshness-label:focus-visible",
         ".filter-check:has(input:focus-visible)",
         ".help-project a:focus-visible",
         ".event-log-details a:focus-visible",

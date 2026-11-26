@@ -420,7 +420,7 @@
 }
 /* A Retry that waits for the refresh it asked for stays in its place and keeps its number,
    muted, and does nothing, as the Pulls tab's waiting Refresh does
-   (`.github-pulls-refresh[aria-disabled="true"]`). */
+   (`.icon-btn[aria-disabled="true"]` in the shell's styles.css). */
 .github-pull-text-action[aria-disabled="true"] {
   color: var(--muted);
   text-decoration: none;
@@ -1133,10 +1133,6 @@
   min-width: 0;
   max-width: 100%;
 }
-.github-pulls-refresh {
-  flex: none;
-  margin-inline-start: auto;
-}
 .github-pulls-filters .chip {
   overflow-wrap: anywhere;
   white-space: normal;
@@ -1183,11 +1179,6 @@
 }
 .github-pulls-connection-spinner.mb-delayed-loading {
   order: 1;
-}
-.github-pulls-refresh[aria-disabled="true"] {
-  color: var(--muted);
-  border-color: var(--border);
-  cursor: default;
 }
 /* The Pulls rows' column gap, and the text column's offset: one icon slot and that gap. A
    row's title, its number's line, and its change line's values start one of it in, a stack

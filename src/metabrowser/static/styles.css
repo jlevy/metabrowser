@@ -1860,7 +1860,10 @@ body {
   width: 100%;
   height: 100%;
 }
-.app-header > .settings-toggle {
+/* The row's end: the navigation's Refresh, then the Metabrowser menu, two icon buttons at
+   the row's gap, both on every page from the first paint (server.py). Refresh takes the auto
+   margin. */
+.app-header > .nav-refresh {
   margin-left: auto;
 }
 /* A pin with no mirror's heading: it has no name and no ref selector, so its ref
@@ -2230,6 +2233,20 @@ details[open] > summary.fold-expander::before {
 .icon-btn-reveal:focus-visible {
   opacity: 1;
   pointer-events: auto;
+}
+/* An icon button that cannot act now keeps its place, dimmed as a waiting chip's label is,
+   and the pointer raises no surface over it, since a press does nothing. Up is `disabled` at
+   the served root. The navigation's Refresh waits while what is on screen refreshes:
+   `aria-disabled`, which leaves it its focus, its tooltip, and its number
+   (docs/design-system.md, "Refresh, Retry, and Reload Page"). */
+.icon-btn:is(:disabled, [aria-disabled="true"]) {
+  opacity: var(--dimmed-content-opacity);
+  cursor: default;
+}
+.icon-btn:is(:disabled, [aria-disabled="true"]):hover:not(:focus-visible) {
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
 }
 .icon-btn[hidden] {
   display: none;
@@ -3358,27 +3375,6 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   background: var(--sidebar-bg);
   color: var(--muted);
   line-height: 1.2;
-}
-.source-freshness-label {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.source-freshness-label:hover,
-.source-freshness-label:focus-visible {
-  color: var(--link);
-}
-.source-freshness-label:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset-outset);
-  border-radius: var(--radius-chrome);
-}
-.source-freshness-label:disabled {
-  color: inherit;
-  cursor: default;
 }
 .source-freshness[data-tone="warning"] .source-freshness-label {
   color: var(--status-warning-text);
@@ -4565,38 +4561,38 @@ a.tab-btn {
    In a pane too narrow for that, the row wraps between its controls, in order and as
    late as it can, so no control is cut, scrolled out of reach, or cut short: the
    leading controls stay first, and the trailing group, which takes the line's end
-   with an auto margin (Clear and the chevron on Files, Refresh on Pulls), moves down
-   whole and stays right-aligned. A segmented group wider than a whole line takes the
-   cluster layout instead (`.chip-group[data-fit="wrap"]`).
+   with an auto margin (Clear and the chevron on Files), moves down whole and stays
+   right-aligned. A segmented group wider than a whole line takes the cluster layout
+   instead (`.chip-group[data-fit="wrap"]`).
 
    Lines are `--nav-toolbar-line-height` tall and `--nav-toolbar-gap` apart, the gap
    between controls and above the first line and below the last, so a toolbar grows
    by a line and a gap for each line it adds, and a wrapped toolbar reads as one. A
    control is one line tall: a shorter one is centred in a line's height rather than
    making its line shorter, as Show ignored's checkbox is in the Files drawer
-   (`.filter-drawer-row`), and a taller one, a `.btn` such as Refresh (26 px at the
-   default size, two over a chip), is held to it rather than making its line, and so
-   the one-line toolbar, taller. A cluster's own lines are a row's apart.
+   (`.filter-drawer-row`), and a taller one, such as a `.btn` (26 px at the default
+   size, two over a chip), is held to it rather than making its line, and so the
+   one-line toolbar, taller. A cluster's own lines are a row's apart.
 
    Measured in headless Chrome on 2026-11-15, and the Files rows again on 2026-11-18
    once Show ignored moved into the drawer (mb-ey0d), and the Pulls rows again on
-   2026-11-24 once Reload became Refresh (mb-qkvr), pane widths 179 px (the
-   narrowest, 180 less the pane's border) to 420 px, both font sets; the themes lay out
-   alike. The widths each row fits one line from, default set / system set, the Pulls
-   tallies "Open 100, Closed 2, All 102" unless four-digit:
+   2026-11-25 once Refresh moved to the top of the navigation (mb-te3c), pane widths
+   179 px (the narrowest, 180 less the pane's border) to 420 px, both font sets; the
+   themes lay out alike. The widths each row fits one line from, default set / system
+   set, the Pulls tallies "Open 100, Closed 2, All 102" unless four-digit:
      Files, no filter set                             179 / 179 (the narrowest)
      Files, a filter set, "No grouping" (its widest)  204 / 216
-     Pulls, Show and Refresh                          279 / 312
-     Pulls, Show and Refresh, four-digit tallies      306 / 346
+     Pulls, Show                                      218 / 245
+     Pulls, Show, four-digit tallies                  244 / 278
    Before this rule, the Files row ran up to 17.69 px past the default pane in the
    system set and 118 px past the narrowest pane, and the Pulls toolbar 8.05 px past
    the default pane in the system set, scrolled out of sight (35.77 px in the default
-   set while it held a Stacks chip). The Pulls Show group alone is joined from
-   218 / 245 with three-digit tallies and 244 / 278 with four, and the cluster below.
-   At the narrowest pane, with a filter set, the Files row is two lines (67 px) and
-   the Pulls toolbar three or four. tests/test_files_tab_chrome.py and
-   tests/test_github_pulls_stacks_chrome.py sweep those widths and hold the wrap to
-   this rule (tests/dom/nav-toolbar-wrap.mjs). */
+   set while it held a Stacks chip). The Pulls toolbar holds the Show group alone, so
+   it is one line from the width the group is joined from and the cluster below it.
+   At the narrowest pane, with a filter set, the Files row is two lines (67 px), and
+   the Pulls toolbar two in the default set and three in the system set (67 / 97 px).
+   tests/test_files_tab_chrome.py and tests/test_github_pulls_stacks_chrome.py sweep
+   those widths and hold the wrap to this rule (tests/dom/nav-toolbar-wrap.mjs). */
 .nav-toolbar-row {
   display: flex;
   flex-wrap: wrap;
@@ -5004,21 +5000,13 @@ a.tab-btn {
 /* Up is an icon button (`.icon-btn`): the arrow alone at rest, and the hover surface and
    its hairline only while hovered or focused, as the navigation's collapse chevron
    (`.nav-collapse-toggle`), at a box the eyebrow's row holds. At the served root it is
-   disabled in place, dimmed, and surfaces nothing. */
+   disabled in place, dimmed, and surfaces nothing, as any disabled icon button is
+   (`.icon-btn:disabled`). */
 .view-header-eyebrow > .folder-up {
   --icon-btn-size: var(--view-header-up-size);
 }
 .view-header-eyebrow > .folder-up > .parent-nav-arrow {
   color: inherit;
-}
-.view-header-eyebrow > .folder-up[disabled] {
-  cursor: default;
-  opacity: 0.4;
-}
-.view-header-eyebrow > .folder-up[disabled]:hover {
-  color: var(--muted);
-  background: transparent;
-  border-color: transparent;
 }
 .view-header-eyebrow > .file-header-path {
   font-weight: var(--weight-normal);

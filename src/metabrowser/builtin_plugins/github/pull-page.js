@@ -1611,7 +1611,7 @@ export function describePull(envelope, page) {
       !envelope.refreshing &&
       !page.fetching;
     // Only the selected fetch on its way, or still to be sent, prepares the record. A refused
-    // or failed one leaves nothing running, which the Pulls tab's Refresh then starts.
+    // or failed one leaves nothing running, which the navigation's Refresh then starts.
     model.changesPending =
       model.refreshing ||
       (diffTab(page.tab) && (page.fetching === true || page.fetchQueued === true));
@@ -2976,7 +2976,7 @@ export function createPullController(deps, options) {
   /**
    * Ask the server for a refresh and take the envelope it answers with. A refusal of the
    * page's own request says nothing to the reader, whose page still shows what it did, and
-   * which the Pulls tab's Refresh still reaches.
+   * which the navigation's Refresh still reaches.
    *
    * An automatic ask (*automatic*), a visible page's recurring probe or its ask for a stale
    * record, restarts the poll only when it started a refresh or the poll should be fast and
@@ -3098,7 +3098,7 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * A reader's own press of the Pulls tab's Refresh, or of Retry or Fetch on the status row
+   * A reader's own press of the navigation's Refresh, or of Retry or Fetch on the status row
    * (mb-ablv). Files names the comparison still displayed, which can be older than the
    * latest metadata the page has polled.
    * @param {{base: string, head: string} | undefined} [recovery]
@@ -5326,15 +5326,6 @@ export function mountPullPage(container, ctx, mb) {
   let diffHost = null;
   /** @type {Set<(file: Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null) => void>} */
   const currentFileListeners = new Set();
-  /**
-   * What follows whether the page has something to refresh, the Pulls tab's Refresh, which
-   * refreshes the page and then the list and waits while neither can (mb-ablv).
-   *
-   * @type {Set<() => void>}
-   */
-  const refreshListeners = new Set();
-  /** Whether the last paint said the page can refresh, which its listeners last heard. */
-  let refreshOffered = false;
   /** @type {(() => void) | null} */
   let unwatchCurrentFile = null;
   /** @type {number | null} */
@@ -6316,14 +6307,19 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** Refresh what the page shows: on Changes, the comparison on screen with the record. */
-  function refreshShown() {
+  /**
+   * Refresh what the page shows: on Changes, the comparison on screen with the record.
+   * Settles when the refresh it asked for has been answered.
+   *
+   * @returns {Promise<void>}
+   */
+  async function refreshShown() {
     if (listening.signal.aborted || shown?.canRefresh !== true) {
       return;
     }
     const displayed = diffTab(shown.tab) ? diffFor : null;
     filesRefresh = displayed;
-    void controller.requestRefresh(
+    await controller.requestRefresh(
       displayed === null ? undefined : { base: displayed.left, head: displayed.right },
     );
   }
@@ -6424,8 +6420,9 @@ export function mountPullPage(container, ctx, mb) {
     /** The situational controls this paint draws, by what each does, for their numbers.
      * @type {Map<string, {element: HTMLElement, run: () => unknown}>} */
     const numbered = new Map();
-    // The page has no Refresh of its own (mb-ablv): the Pulls tab's Refresh is the one
-    // Refresh, and refreshes this page and then the list (`refresh` on the page's handle).
+    // The page has no Refresh of its own (mb-ablv): the navigation's Refresh is the one
+    // Refresh, and refreshes this page first (`refresh` on the page's handle, the page's
+    // part of static/refresh-plan.js).
     // Its slot at the end of the row of ages held the stack chip a Refresh's width short of
     // the title's number (mb-dwha). What a sentence on the status row tells the reader to do
     // is on that row instead, after it (`remedy`, below), so a reader with the navigation
@@ -8769,12 +8766,6 @@ export function mountPullPage(container, ctx, mb) {
   function paint(model) {
     container.dataset.corePreview = String(model.corePreview);
     shown = model;
-    if (model.canRefresh !== refreshOffered) {
-      refreshOffered = model.canRefresh;
-      for (const listener of refreshListeners) {
-        listener();
-      }
-    }
     noteRefreshWait(model);
     if (model.tab !== "guided" || model.pull === null) {
       disposeGuided();
@@ -9542,7 +9533,6 @@ export function mountPullPage(container, ctx, mb) {
     unwatchCurrentFile = null;
     diffHandle?.cancelPending?.();
     currentFileListeners.clear();
-    refreshListeners.clear();
   }
   const page = Object.freeze({
     ready,
@@ -9684,24 +9674,16 @@ export function mountPullPage(container, ctx, mb) {
     /**
      * Whether the page has something to refresh now: a stale record whose own refresh did
      * not run, a failure, the comparison Changes or Docs shows, or a pull request not fetched
-     * yet. The Pulls tab's Refresh, the one Refresh, reads it to know whether it waits
-     * (mb-ablv).
+     * yet. The navigation's Refresh reads it before it runs the page's part (mb-ablv).
      */
     canRefresh: () => !listening.signal.aborted && shown?.canRefresh === true,
     /**
-     * What the page's own Refresh did, which the Pulls tab's Refresh now runs before it
-     * refreshes the list (mb-ablv): the record, with the comparison on screen on Changes and
-     * Docs, or Fetch before a record. Nothing while the page cannot refresh.
+     * What the page's own Refresh did, which the navigation's one Refresh runs as the page's
+     * part (static/refresh-plan.js, through the Pulls tab's list): the record, with the
+     * comparison on screen on Changes and Docs, or Fetch before a record. Nothing while the
+     * page cannot refresh. Settles when the refresh it asked for has been answered.
      */
     refresh: refreshShown,
-    /** Follow `canRefresh` as the page paints. @param {() => void} listener */
-    onRefreshChange(listener) {
-      if (listening.signal.aborted) {
-        return () => {};
-      }
-      refreshListeners.add(listener);
-      return () => refreshListeners.delete(listener);
-    },
     dispose() {
       cancelPending();
       disposeDiff();

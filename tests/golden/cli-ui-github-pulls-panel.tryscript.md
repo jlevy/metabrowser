@@ -981,7 +981,11 @@ $ node tests/dom/github-pulls-panel-second-session.js
   ],
   "paint": {
     "loading status": "Fetching pull requests…",
-    "ready action": "Refresh",
+    "lent to the one Refresh": [
+      "page",
+      "pulls"
+    ],
+    "the list's part while the list loads": "asks nothing",
     "landing": "Select a pull request.",
     "filter tallies": [
       "Open 100",
@@ -1067,15 +1071,15 @@ $ node tests/dom/github-pulls-panel-second-session.js
   },
   "numbers": {
     "the Pulls tab, loading": [
-      "1 Open",
-      "2 Closed",
-      "3 All",
-      "4 Refresh",
+      "1 Refresh",
+      "2 Open",
+      "3 Closed",
+      "4 All",
       "5 Browse code"
     ],
-    "Refresh waits": [
+    "Refresh while the list loads": [
       {
-        "what": "press 4",
+        "what": "press 1",
         "handled": true
       },
       {
@@ -1083,15 +1087,15 @@ $ node tests/dom/github-pulls-panel-second-session.js
       }
     ],
     "the Pulls tab, settled": [
-      "1 Open",
-      "2 Closed",
-      "3 All",
-      "4 Refresh",
+      "1 Refresh",
+      "2 Open",
+      "3 Closed",
+      "4 All",
       "5 Browse code"
     ],
     "Refresh": [
       {
-        "what": "press 4",
+        "what": "press 1",
         "handled": true,
         "asked": [
           "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
@@ -1104,9 +1108,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
         ]
       }
     ],
+    "the button while the list's refresh is on its way, then once it is answered": [
+      "true",
+      null
+    ],
     "the state chips": [
       {
-        "what": "press 1",
+        "what": "press 2",
         "handled": true,
         "asked": [
           "GET /api/plugin/github/pulls?state=open&limit=100"
@@ -1115,7 +1123,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "focused": "Open"
       },
       {
-        "what": "press 2",
+        "what": "press 3",
         "handled": true,
         "asked": [
           "GET /api/plugin/github/pulls?state=closed&limit=100"
@@ -1124,7 +1132,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "focused": "Closed"
       },
       {
-        "what": "press 3",
+        "what": "press 4",
         "handled": true,
         "asked": [
           "GET /api/plugin/github/pulls?state=all&limit=100"
@@ -1154,59 +1162,70 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "list": "all"
       },
       {
-        "what": "press 3",
+        "what": "press 4",
         "handled": true
       },
       {
         "what": "click All"
       }
     ],
-    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Refresh 4, Modified within none, File type none, Browse code 5",
+    "the keycaps while Shift is held": "Refresh 1, Open 2, Closed 3, All 4, Modified within none, File type none, Browse code 5",
     "the Files tab": [
-      "1 Modified within",
-      "2 File type",
-      "3 Browse code"
+      "1 Refresh",
+      "2 Modified within",
+      "3 File type",
+      "4 Browse code"
     ],
     "on the Files tab": [
       {
-        "what": "press 1",
+        "what": "press 2",
         "handled": true,
         "ran": [
           "Modified within"
         ]
       },
       {
-        "what": "press 3",
+        "what": "press 4",
         "handled": true,
         "ran": [
           "Browse code"
         ]
       },
       {
-        "what": "press 4",
+        "what": "press 5",
         "handled": false
       }
     ],
+    "Refresh behind the Files tab": {
+      "what": "press 1",
+      "handled": true,
+      "asked": [
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
+      ],
+      "then the list's catalog job": "asked"
+    },
     "the Pulls tab, disposed": [
-      "1 Browse code"
+      "1 Refresh",
+      "2 Browse code"
     ],
     "after disposal": [
       {
-        "what": "press 1",
+        "what": "press 2",
         "handled": true,
         "ran": [
           "Browse code"
         ]
       },
       {
-        "what": "press 2",
+        "what": "press 3",
         "handled": false
       }
     ],
     "the Files tab, after disposal": [
-      "1 Modified within",
-      "2 File type",
-      "3 Browse code"
+      "1 Refresh",
+      "2 Modified within",
+      "3 File type",
+      "4 Browse code"
     ]
   }
 }

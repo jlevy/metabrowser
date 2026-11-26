@@ -128,6 +128,11 @@ type MetabrowserPullsNavHost = Readonly<{
    * connection lines fill; or null.
    */
   metadata?: HTMLElement | null;
+  /**
+   * The navigation's one Refresh (static/refresh-plan.js), to which the list provides its
+   * own refresh and the shown pull request page's; or null on a page with no Refresh.
+   */
+  refreshParts?: MetabrowserRefreshParts | null;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   /** A changed file's address, through the route's encoder; null where a path is not one. */
@@ -3996,6 +4001,8 @@ declare global {
     start(): Promise<void>;
     poll(): Promise<void>;
     requestRefresh(body?: Record<string, unknown>): Promise<string | null>;
+    /** A reader's refresh, settled once nothing is fetching (static/refresh-plan.js). */
+    refreshNow(): Promise<void>;
     fetchMissing(options?: {
       retry?: boolean;
       waiting?: () => void;
@@ -4491,8 +4498,41 @@ declare global {
     renderCommitGraph(row: MetabrowserGitGraphRow): SVGSVGElement;
   };
 
+  /** A part of the page the navigation's Refresh refreshes (static/refresh-plan.js). */
+  type MetabrowserRefreshPart = "source" | "page" | "files" | "pulls" | "git";
+
+  /** What a module that owns a part lends the plan: its refresh, until released. */
+  type MetabrowserRefreshParts = Readonly<{
+    provide(id: MetabrowserRefreshPart, refresh: () => unknown): () => void;
+  }>;
+
+  type MetabrowserRefreshPlan = MetabrowserRefreshParts &
+    Readonly<{
+      press(): Promise<boolean>;
+      waiting(): boolean;
+      parts(): MetabrowserRefreshPart[];
+    }>;
+
+  type MetabrowserRefreshPlanRuntime = Readonly<{
+    PARTS: readonly MetabrowserRefreshPart[];
+    createPlan(deps: {
+      shown(id: MetabrowserRefreshPart): boolean;
+      waiting(on: boolean): void;
+      failed?(id: MetabrowserRefreshPart, error: unknown): void;
+    }): MetabrowserRefreshPlan;
+    inVisibilityOrder(
+      ids: readonly MetabrowserRefreshPart[],
+      shown: (id: MetabrowserRefreshPart) => boolean,
+    ): { visible: MetabrowserRefreshPart[]; hidden: MetabrowserRefreshPart[] };
+    isShown(id: MetabrowserRefreshPart, view: { front: string; owner: string }): boolean;
+    mount(): MetabrowserRefreshPlan | null;
+    plan(): MetabrowserRefreshPlan | null;
+  }>;
+
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
+    /** Read the history again once it has been read; settles when it is drawn. */
+    refresh(): Promise<void>;
     /** Stops the panel's work for another owner; returns what disposes its shown commit diff. */
     cancelPending(): (() => void) | null;
     restoreCommitLanding(): Promise<void>;
@@ -4607,6 +4647,8 @@ declare global {
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    /** Read the tree and the file or folder the pane holds again; settles when drawn. */
+    rereadFiles(): Promise<unknown>;
     stagePreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): (() => void) | null;
     shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
@@ -4989,6 +5031,7 @@ declare global {
     MetabrowserResourceContext: MetabrowserResourceContextRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserShell?: MetabrowserShellRuntime;
+    MetabrowserRefreshPlan?: MetabrowserRefreshPlanRuntime;
     MetabrowserMainTabs?: Readonly<{
       create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
       REVEAL_ROUTES: readonly MetabrowserRevealRoute[];

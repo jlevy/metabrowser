@@ -254,6 +254,7 @@ from metabrowser.settings import (
     blocks_remote_images,
     client_settings_dict,
 )
+from metabrowser.shell_glyphs import REFRESH_SVG
 from metabrowser.source import (
     ContentRef,
     SubjectNotOpenError,
@@ -2053,6 +2054,21 @@ async def index(
         if pulls_tab
         else ""
     )
+    # The navigation's one Refresh, at the top of the navigation pane just before the
+    # Metabrowser menu, an icon button as the menu's gear is, on every page and under every
+    # tab. It is here, glyph and all, from the first paint (shell_glyphs.py), so nothing in
+    # the header appears or moves after it. A press refreshes what the page shows, the parts
+    # on screen first (static/refresh-plan.js, which wires it once `shell-tools` loads).
+    # Its cost is page bytes, not a request: the button is 334 bytes as written. With it and
+    # refresh-plan.js's entry in the `shell-tools` bundle, a folder's page grew from 67,950
+    # to 68,402 bytes, and from 17,772 to 17,881 as sent compressed, against main at
+    # a96ac3304, measured 2026-11-25 with `render_shells` and `sent_body_bytes` in
+    # devtools/check_startup_scripts.py (the served root's temporary name moves the sent
+    # size by a few bytes from run to run).
+    nav_refresh = (
+        '\n        <button class="icon-btn nav-refresh" id="nav-refresh" type="button"'
+        f' aria-label="Refresh" data-tip-text="Refresh">{REFRESH_SVG}</button>'
+    )
     pulls_container = ""
     if pulls_tab:
         pulls_container = (
@@ -2311,6 +2327,8 @@ async def index(
             {"src": git_graph_url},
             {"src": git_history_window_url},
             {"src": git_panel_url},
+            # The navigation's Refresh: mounts as it evaluates, on the button the server drew.
+            {"src": _static_asset_url("refresh-plan.js"), "provides": "MetabrowserRefreshPlan"},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
             *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
             # The event log's reporter, last: nothing here waits on it (`event-reports`).
@@ -2614,7 +2632,7 @@ async def index(
             {root_repository_links}
             <div class="root-details-status" role="status"></div>
           </div>
-        </div>
+        </div>{nav_refresh}
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,
