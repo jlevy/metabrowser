@@ -3994,6 +3994,8 @@ declare global {
       directory?: boolean,
       suffix?: string,
     ): string | null;
+    /** Whether a click is a plain primary one, which a link it made in-app opens in place. */
+    isPlainClick(event: Event): boolean;
     viewFileUrl(
       context: MetabrowserRepositoryContext | null | undefined,
       revision: string,

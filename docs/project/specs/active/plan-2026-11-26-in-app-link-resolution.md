@@ -210,10 +210,14 @@ When a checkout lacks a linked commit object, the commit pane offers that commit
 GitHub.
 
 In rendered Markdown in Changes, Docs, and guided documents, a link to a file of the
-head opens it in place while the served pin is the head, as now; when it is not, or the
-pin changes, it becomes the external link to that file at the head instead of plain
-text. Its repository links are localized as everywhere else, and its external links get
-the external-link mark the other surfaces give them.
+head opens it in place while the served pin is the head: a plain click opens its
+`/view/` address through `mb.navigation.open` (`openHeadLinks` in `diff-markdown.js`,
+reading the click with the resolver’s `isPlainClick`), as the resolver’s own `/view/`
+targets beside it open, where it once loaded the page again; when the pin is not the
+head, or it changes, the link becomes the external link to that file at the head instead
+of plain text, and its click is the browser’s. Its repository links are localized as
+everywhere else, and its external links get the external-link mark the other surfaces
+give them.
 
 A repository link the resolver would open at a `/view/` address follows the same rule
 (`mb-e2lo`): a `blob/` or `tree/` link to the served branch or commit opens in place, as
@@ -304,6 +308,9 @@ request loaded the page again, which lost the shell’s state.
   session, which draws without the diff’s view, clicks a link to a commit’s page, to the
   list, and to another pull request, plainly and with a modifier;
   `diff-view-behavior.js` does for the production diff view.
+  The diff Markdown session and `diff-view-behavior.js` also click a link to a file of
+  the head the server spelled, at the head and after the pin changes, the second at the
+  target the shell’s own `parse` reads its address as.
 - `tests/dom/nav-reveal-session.js`’s part `links` runs the SDK’s `openRoute` and the
   tab controller’s whole over the shell’s tabs: each address it opens, what each part of
   the shell is asked, and the addresses it leaves to the browser;

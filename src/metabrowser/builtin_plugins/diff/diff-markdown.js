@@ -449,13 +449,68 @@ function outsideLink(value) {
 
 /**
  * The links `sanitizeBlock` kept at a `/view/` address (`markdownTargets`): the server's
- * spelling of a link to a file of the head, which `closeHeadLinks` points elsewhere when
- * the pin changes. A `/view/` link the repository's resolver made of a github.com address
+ * spelling of a link to a file of the head, which a plain click opens in place
+ * (`openHeadLinks`) and `closeHeadLinks` points elsewhere when the pin changes. A `/view/`
+ * link the repository's resolver made of a github.com address
  * (`enhanceLinks`) is not one of them: the resolver keeps that link as it was written, and
  * reads it again itself.
  * @type {WeakSet<Element>}
  */
 const headLinks = new WeakSet();
+/**
+ * The links `openHeadLinks` has given their one click listener, so a later read of the
+ * same body gives none of them another.
+ * @type {WeakSet<Element>}
+ */
+const headListening = new WeakSet();
+
+/**
+ * Open each link to a file of the head in *root* (`headLinks`) in place on a plain click,
+ * as the repository's resolver opens its own `/view/` targets beside it
+ * (static/repository-links.js, `enhance`), so a plain click on neither loads the page
+ * again: through *navigation*, while *linksOpen* says the page shows the head and the link
+ * still holds the server's spelling. A pin's navigation target names a path in the GitPath
+ * wire, as that address does, and its fragment decoded. Any other click is the browser's,
+ * which follows the same `href`, and so is every click once `closeHeadLinks` has pointed
+ * the link at github.com or taken its address. It may read the same body again, and
+ * gives each link one listener.
+ *
+ * @param {ParentNode} root
+ * @param {{
+ *   navigation: Pick<MetabrowserPublicSdk["navigation"], "open">,
+ *   linksOpen: () => boolean,
+ *   isPlainClick: (event: Event) => boolean,
+ * }} how *isPlainClick* is the resolver's own test of a plain click.
+ */
+export function openHeadLinks(root, how) {
+  for (const link of root.querySelectorAll('a[href^="/view/"]')) {
+    if (!headLinks.has(link) || headListening.has(link)) {
+      continue;
+    }
+    headListening.add(link);
+    link.addEventListener("click", (event) => {
+      const href = link.getAttribute("href") ?? "";
+      if (!HEAD_LINK.test(href) || !how.linksOpen() || !how.isPlainClick(event)) {
+        return;
+      }
+      const [path, written] = href.slice("/view/".length).split("#", 2);
+      let fragment;
+      try {
+        fragment = written === undefined ? undefined : decodeURIComponent(written);
+      } catch {
+        // An escape that decodes to nothing: no target spells this address, so the
+        // browser follows it.
+        return;
+      }
+      event.preventDefault();
+      void how.navigation
+        .open(fragment ? { path, fragment } : { path })
+        .catch((/** @type {unknown} */ error) => {
+          console.warn("metabrowser diff: could not open the link", error);
+        });
+    });
+  }
+}
 
 /**
  * The shared sanitizer discards reserved application URLs. Preserve only
